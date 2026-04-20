@@ -1,0 +1,101 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 210 20% 98%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 221 83% 53%;
+  }
+
+  .dark {
+    --background: 222 47% 11%;
+    --foreground: 210 40% 98%;
+    --card: 222 47% 11%;
+    --card-foreground: 210 40% 98%;
+    --border: 217 33% 17%;
+    --input: 217 33% 17%;
+    --ring: 224 76% 48%;
+  }
+
+  * {
+    @apply box-border;
+  }
+  html {
+    @apply scroll-smooth;
+  }
+  body {
+    @apply bg-gray-50 text-gray-900 antialiased transition-colors duration-300;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+  .dark body {
+    @apply bg-gray-950 text-gray-100;
+  }
+
+  /* Modern Scrollbar */
+  ::-webkit-scrollbar {
+    @apply w-1.5 h-1.5;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-gray-400/30 rounded-full hover:bg-gray-400/50 transition-colors duration-200
+           dark:bg-gray-600/30 dark:hover:bg-gray-600/50;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium
+           transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-primary-600 text-white hover:bg-primary-700 focus:ring-primary-500 shadow-sm
+           dark:bg-primary-500 dark:hover:bg-primary-400;
+  }
+  .btn-secondary {
+    @apply btn bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 focus:ring-primary-500
+           dark:bg-gray-900 dark:text-gray-300 dark:border-gray-800 dark:hover:bg-gray-800;
+  }
+  .input {
+    @apply w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm
+           placeholder-gray-400 shadow-sm focus:border-primary-500 focus:outline-none
+           focus:ring-1 focus:ring-primary-500 disabled:bg-gray-100 disabled:cursor-not-allowed
+           dark:bg-gray-900 dark:border-gray-800 dark:text-gray-100 dark:placeholder-gray-500;
+  }
+  .label {
+    @apply block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300;
+  }
+  .error-text {
+    @apply text-xs text-red-600 mt-1 dark:text-red-400;
+  }
+  .card {
+    @apply bg-white rounded-lg shadow-sm border border-gray-200 p-6
+           dark:bg-gray-900 dark:border-gray-800;
+  }
+
+  /* Glassmorphism */
+  .glass {
+    @apply bg-white/70 backdrop-blur-md border border-white/20
+           dark:bg-gray-900/70 dark:border-gray-800/20;
+  }
+
+  .glass-dark {
+    @apply bg-gray-950/40 backdrop-blur-xl border border-white/5;
+  }
+}
+
+@layer utilities {
+  .animate-in {
+    animation-duration: 200ms;
+    animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    animation-fill-mode: forwards;
+  }
+}

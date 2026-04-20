@@ -1,0 +1,103 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Helpers;
+
+class EmailTemplateHelper
+{
+    /**
+     * Generate a modern HTML email wrapper.
+     */
+    public static function wrap(string $title, string $content, string $preheader = ''): string
+    {
+        $appName = getenv('APP_NAME') ?: 'CurMis';
+        
+        return "
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset='utf-8'>
+            <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+            <title>$title</title>
+            <style>
+                body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f9fafb; margin: 0; padding: 0; color: #111827; }
+                .wrapper { width: 100%; table-layout: fixed; background-color: #f9fafb; padding-bottom: 40px; }
+                .main { background-color: #ffffff; margin: 40px auto; width: 100%; max-width: 600px; border-radius: 16px; border: 1px solid #e5e7eb; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+                .header { background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 32px; text-align: center; }
+                .header-logo { color: #ffffff; font-weight: 800; font-size: 24px; letter-spacing: -0.025em; text-decoration: none; }
+                .body { padding: 40px 32px; }
+                .title { font-size: 24px; font-weight: 700; color: #111827; margin-bottom: 16px; line-height: 1.25; }
+                .text { font-size: 16px; line-height: 1.6; color: #4b5563; margin-bottom: 24px; }
+                .otp-container { background-color: #f3f4f6; border-radius: 12px; padding: 24px; text-align: center; margin: 32px 0; border: 1px dashed #d1d5db; }
+                .otp-code { font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 36px; font-weight: 800; color: #1e40af; letter-spacing: 0.25em; }
+                .footer { padding: 32px; text-align: center; background-color: #f9fafb; border-top: 1px solid #e5e7eb; }
+                .footer-text { font-size: 13px; color: #9ca3af; line-height: 1.5; }
+                .button { display: inline-block; padding: 12px 24px; background-color: #1e40af; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; margin-top: 16px; }
+            </style>
+        </head>
+        <body>
+            <div class='wrapper'>
+                <div class='main'>
+                    <div class='header'>
+                        <a href='#' class='header-logo'>$appName</a>
+                    </div>
+                    <div class='body'>
+                        <h1 class='title'>$title</h1>
+                        <div class='text'>
+                            $content
+                        </div>
+                    </div>
+                    <div class='footer'>
+                        <p class='footer-text'>
+                            © " . date('Y') . " $appName. All rights reserved.<br>
+                            This is an automated message, please do not reply.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </body>
+        </html>
+        ";
+    }
+
+    /**
+     * Template for OTP verification.
+     */
+    public static function otpTemplate(string $name, string $otp, string $expiry = '10 minutes'): string
+    {
+        $safeName = htmlspecialchars($name);
+        $content = "
+            Hello $safeName,<br><br>
+            Please use the verification code below to complete your sign-in process. 
+            This code is valid for <strong>$expiry</strong>.
+            <div class='otp-container'>
+                <div class='otp-code'>$otp</div>
+            </div>
+            If you did not request this code, you can safely ignore this email.
+        ";
+
+        return self::wrap("Verification Code", $content);
+    }
+
+    /**
+     * Template for Password Reset.
+     */
+    public static function passwordResetTemplate(string $name, string $link): string
+    {
+        $safeName = htmlspecialchars($name);
+        $content = "
+            Hello $safeName,<br><br>
+            We received a request to reset your password. Click the button below to choose a new one:
+            <div style='text-align: center; margin: 32px 0;'>
+                <a href='$link' class='button'>Reset Password</a>
+            </div>
+            Or copy and paste this link into your browser:<br>
+            <span style='font-size: 12px; color: #9ca3af;'>$link</span>
+            <br><br>
+            This link will expire in 1 hour. If you didn't request a password reset, no further action is required.
+        ";
+
+        return self::wrap("Password Reset Request", $content);
+    }
+}
