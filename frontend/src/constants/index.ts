@@ -39,3 +39,5 @@ export const HTTP = {
   TOO_MANY_REQUESTS:   429,
   SERVER_ERROR:        500,
 } as const
+
+export * from './permissions'

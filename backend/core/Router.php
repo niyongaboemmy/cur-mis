@@ -124,8 +124,12 @@ class Router
             $request->setRouteParams($params);
 
             // Run each middleware in order; any can abort the request
-            foreach ($route['middleware'] as $middlewareClass) {
-                (new $middlewareClass())->handle($request, $response);
+            foreach ($route['middleware'] as $middleware) {
+                if (is_string($middleware)) {
+                    (new $middleware())->handle($request, $response);
+                } elseif (is_object($middleware) && method_exists($middleware, 'handle')) {
+                    $middleware->handle($request, $response);
+                }
             }
 
             // Dispatch to controller method or closure

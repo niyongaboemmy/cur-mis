@@ -8,6 +8,8 @@ use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
 use App\Services\MailService;
 use App\Models\UserModel;
+use App\Models\RoleModel;
+use App\Models\RolePermissionModel;
 use App\Helpers\EmailTemplateHelper;
 
 class AuthService
@@ -30,6 +32,10 @@ class AuthService
 
         if (!$user || !password_verify($password, $user['password'])) {
             return ['success' => false, 'message' => 'Invalid credentials.', 'data' => null];
+        }
+
+        if (!(int)$user['is_active']) {
+            return ['success' => false, 'message' => 'Your account is currently disabled. Please contact the administrator.', 'data' => null];
         }
 
         // Generate 6-digit OTP
@@ -69,11 +75,23 @@ class AuthService
             return ['success' => false, 'message' => 'Invalid or expired verification code.', 'data' => null];
         }
 
+        if (!(int)$user['is_active']) {
+            return ['success' => false, 'message' => 'This account is disabled.', 'data' => null];
+        }
+
         // OTP is valid, clear it
         $model->clearOtp($user['id']);
 
         $userData = $model->find($user['id']);
-        $token    = $this->generateToken($user);
+        
+        $roleModel = new RoleModel();
+        $role = $roleModel->find($userData['role_id'] ?? 0);
+        $userData['role_name'] = $role ? $role['name'] : 'guest';
+
+        $rolePermModel = new RolePermissionModel();
+        $userData['permissions'] = $rolePermModel->getSlugsForRole((int)($userData['role_id'] ?? 0));
+
+        $token    = $this->generateToken($userData);
 
         return [
             'success' => true,
@@ -89,6 +107,10 @@ class AuthService
 
         if (!$user) {
             return ['success' => false, 'message' => 'User not found.', 'data' => null];
+        }
+
+        if (!(int)$user['is_active']) {
+            return ['success' => false, 'message' => 'Your account is disabled.', 'data' => null];
         }
 
         $otp       = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
@@ -126,6 +148,13 @@ class AuthService
 
         $user = $model->find($id);
 
+        $roleModel = new RoleModel();
+        $role = $roleModel->find($user['role_id'] ?? 0);
+        $user['role_name'] = $role ? $role['name'] : 'guest';
+
+        $rolePermModel = new RolePermissionModel();
+        $user['permissions'] = $rolePermModel->getSlugsForRole((int)($user['role_id'] ?? 0));
+
         return [
             'success' => true,
             'message' => 'Registration successful.',
@@ -141,6 +170,10 @@ class AuthService
         if (!$user) {
             // Return success anyway to prevent email enumeration
             return ['success' => true, 'message' => 'If an account exists, a reset code has been sent.', 'data' => null];
+        }
+
+        if (!(int)$user['is_active']) {
+            return ['success' => false, 'message' => 'This account is disabled. Password reset is not available.', 'data' => null];
         }
 
         // Use OTP for reset step
@@ -224,12 +257,14 @@ class AuthService
             'exp'  => $now + $this->jwtExpiry,
             'sub'  => $user['id'],
             'user' => [
-                'id'         => $user['id'],
-                'email'      => $user['email'],
-                'username'   => $user['username'] ?? '',
-                'full_name'  => $user['full_name'] ?? '',
-                'role'       => $user['role'] ?? 'Member',
-                'created_at' => $user['created_at'] ?? null,
+                'id'          => $user['id'],
+                'email'       => $user['email'],
+                'username'    => $user['username'] ?? '',
+                'full_name'   => $user['full_name'] ?? '',
+                'role'        => $user['role_name'] ?? 'guest',
+                'role_id'     => $user['role_id'] ?? null,
+                'permissions' => $user['permissions'] ?? [],
+                'created_at'  => $user['created_at'] ?? null,
             ],
         ];
 
@@ -240,7 +275,8 @@ class AuthService
     {
         try {
             $decoded = JWT::decode($token, new Key($this->jwtSecret, 'HS256'));
-            return (array) $decoded;
+            // Recursively convert to array to avoid stdClass vs array errors
+            return json_decode(json_encode($decoded), true);
         } catch (\Exception) {
             return false;
         }

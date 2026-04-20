@@ -51,18 +51,18 @@ apiClient.interceptors.response.use(
 
 
 export const api = {
-  get: <T>(url: string, params?: Record<string, unknown>) =>
-    apiClient.get<ApiResponse<T>>(url, { params }).then((r) => r.data),
+  get: <T>(url: string, params?: Record<string, unknown>, signal?: AbortSignal) =>
+    apiClient.get<ApiResponse<T>>(url, { params, signal }).then((r) => r.data),
 
-  post: <T>(url: string, body?: unknown) =>
-    apiClient.post<ApiResponse<T>>(url, body).then((r) => r.data),
+  post: <T>(url: string, body?: unknown, signal?: AbortSignal) =>
+    apiClient.post<ApiResponse<T>>(url, body, { signal }).then((r) => r.data),
 
-  put: <T>(url: string, body?: unknown) =>
-    apiClient.put<ApiResponse<T>>(url, body).then((r) => r.data),
+  put: <T>(url: string, body?: unknown, signal?: AbortSignal) =>
+    apiClient.put<ApiResponse<T>>(url, body, { signal }).then((r) => r.data),
 
-  patch: <T>(url: string, body?: unknown) =>
-    apiClient.patch<ApiResponse<T>>(url, body).then((r) => r.data),
+  patch: <T>(url: string, body?: unknown, signal?: AbortSignal) =>
+    apiClient.patch<ApiResponse<T>>(url, body, { signal }).then((r) => r.data),
 
-  delete: <T>(url: string) =>
-    apiClient.delete<ApiResponse<T>>(url).then((r) => r.data),
-}
+  delete: <T>(url: string, signal?: AbortSignal) =>
+    apiClient.delete<ApiResponse<T>>(url, { signal }).then((r) => r.data),
+};

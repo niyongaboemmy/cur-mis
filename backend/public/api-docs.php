@@ -198,6 +198,216 @@ $routes = [
       ['status' => 429, 'message' => 'Too many requests.', 'notes' => 'Wait and retry'],
     ],
   ],
+
+  // ── Roles Management ────────────────────────────────────────────────────────
+  [
+    'group' => 'Roles Management',
+    'method' => 'GET',
+    'path' => '/api/roles',
+    'summary' => 'List all roles',
+    'description' => 'Returns a list of all roles including their assigned permission slugs.',
+    'auth' => true,
+    'rateLimit' => false,
+    'request' => null,
+    'response' => [
+      'success' => true,
+      'message' => 'Roles fetched successfully.',
+      'data' => [
+        ['id' => 1, 'name' => 'superadmin', 'description' => 'Full access', 'permissions' => ['MANAGE_ROLES', 'MANAGE_PERMISSIONS']],
+        ['id' => 2, 'name' => 'admin', 'description' => 'Admin access', 'permissions' => []],
+      ],
+    ],
+    'errors' => [['status' => 401, 'message' => 'Unauthorized.', 'notes' => '']],
+  ],
+  [
+    'group' => 'Roles Management',
+    'method' => 'POST',
+    'path' => '/api/roles',
+    'summary' => 'Create new role',
+    'description' => 'Creates a new dynamic role in the system.',
+    'auth' => true,
+    'rateLimit' => false,
+    'request' => [
+      'fields' => [
+        ['name' => 'name', 'type' => 'string', 'required' => true, 'notes' => 'Unique role name'],
+        ['name' => 'description', 'type' => 'string', 'required' => false, 'notes' => ''],
+      ],
+      'example' => ['name' => 'registrar', 'description' => 'Academic management'],
+    ],
+    'response' => [
+      'success' => true,
+      'message' => 'Role created successfully.',
+      'data' => ['id' => 5],
+    ],
+    'errors' => [
+      ['status' => 422, 'message' => 'Validation failed.', 'notes' => ''],
+      ['status' => 409, 'message' => 'Role name already exists.', 'notes' => ''],
+    ],
+  ],
+  [
+    'group' => 'Roles Management',
+    'method' => 'POST',
+    'path' => '/api/roles/:id/permissions',
+    'summary' => 'Assign permissions to role',
+    'description' => 'Replaces all permissions for a role with the provided list of IDs.',
+    'auth' => true,
+    'rateLimit' => false,
+    'request' => [
+      'fields' => [
+        ['name' => 'permissions', 'type' => 'array', 'required' => true, 'notes' => 'Array of permission IDs'],
+      ],
+      'example' => ['permissions' => [1, 2, 5]],
+    ],
+    'response' => [
+      'success' => true,
+      'message' => 'Permissions assigned successfully.',
+      'data' => null,
+    ],
+    'errors' => [['status' => 404, 'message' => 'Role not found.', 'notes' => '']],
+  ],
+
+  // ── Permissions Management ──────────────────────────────────────────────────
+  [
+    'group' => 'Permissions Management',
+    'method' => 'GET',
+    'path' => '/api/permissions',
+    'summary' => 'List all permissions',
+    'description' => 'Returns all permission categories with their nested permissions.',
+    'auth' => true,
+    'rateLimit' => false,
+    'request' => null,
+    'response' => [
+      'success' => true,
+      'message' => 'Permissions fetched successfully.',
+      'data' => [
+        [
+          'id' => 1,
+          'name' => 'System',
+          'description' => 'Core permissions',
+          'permissions' => [
+            ['id' => 1, 'name' => 'MANAGE_ROLES', 'slug' => 'MANAGE_ROLES', 'description' => '...'],
+          ]
+        ],
+      ],
+    ],
+    'errors' => [['status' => 401, 'message' => 'Unauthorized.', 'notes' => '']],
+  ],
+  [
+    'group' => 'Permissions Management',
+    'method' => 'POST',
+    'path' => '/api/permissions',
+    'summary' => 'Create permission',
+    'description' => 'Adds a new permission to a category.',
+    'auth' => true,
+    'rateLimit' => false,
+    'request' => [
+      'fields' => [
+        ['name' => 'category_id', 'type' => 'number', 'required' => true, 'notes' => ''],
+        ['name' => 'name', 'type' => 'string', 'required' => true, 'notes' => 'Display name'],
+        ['name' => 'slug', 'type' => 'string', 'required' => true, 'notes' => 'UPPER_CASE identifier'],
+      ],
+      'example' => ['category_id' => 1, 'name' => 'Delete Users', 'slug' => 'DELETE_USERS'],
+    ],
+    'response' => [
+      'success' => true,
+      'message' => 'Permission created successfully.',
+      'data' => ['id' => 10],
+    ],
+    'errors' => [
+      ['status' => 409, 'message' => 'Permission slug already exists.', 'notes' => ''],
+    ],
+  ],
+  // ── User Management ────────────────────────────────────────────────────────
+  [
+    'group' => 'User Management',
+    'method' => 'GET',
+    'path' => '/api/users',
+    'summary' => 'List all users',
+    'description' => 'Returns a paginated list of users with their role names.',
+    'auth' => true,
+    'rateLimit' => false,
+    'request' => null,
+    'response' => [
+      'success' => true,
+      'message' => 'Users fetched successfully.',
+      'data' => [
+        'data' => [
+          ['id' => 1, 'full_name' => 'Admin User', 'email' => 'admin@test.com', 'role_id' => 1, 'role_name' => 'superadmin', 'is_active' => 1],
+        ],
+        'total' => 1,
+        'per_page' => 15,
+        'current_page' => 1,
+        'last_page' => 1
+      ],
+    ],
+    'errors' => [['status' => 403, 'message' => 'Forbidden.', 'notes' => 'Requires MANAGE_USERS permission']],
+  ],
+  [
+    'group' => 'User Management',
+    'method' => 'POST',
+    'path' => '/api/users',
+    'summary' => 'Create new user (Admin)',
+    'description' => 'Administrative registration of new users with role assignment.',
+    'auth' => true,
+    'rateLimit' => false,
+    'request' => [
+      'fields' => [
+        ['name' => 'full_name', 'type' => 'string', 'required' => true, 'notes' => ''],
+        ['name' => 'email', 'type' => 'string', 'required' => true, 'notes' => ''],
+        ['name' => 'username', 'type' => 'string', 'required' => true, 'notes' => ''],
+        ['name' => 'password', 'type' => 'string', 'required' => true, 'notes' => ''],
+        ['name' => 'role_id', 'type' => 'number', 'required' => true, 'notes' => ''],
+      ],
+      'example' => ['full_name' => 'John Doe', 'email' => 'john@test.com', 'username' => 'johndoe', 'password' => 'secret', 'role_id' => 2],
+    ],
+    'response' => [
+      'success' => true,
+      'message' => 'User created successfully.',
+      'data' => ['id' => 15],
+    ],
+    'errors' => [['status' => 409, 'message' => 'Email already registered.', 'notes' => '']],
+  ],
+  [
+    'group' => 'User Management',
+    'method' => 'PUT',
+    'path' => '/api/users/:id',
+    'summary' => 'Update user details',
+    'description' => 'Modify user profile, role, or status.',
+    'auth' => true,
+    'rateLimit' => false,
+    'request' => [
+      'fields' => [
+        ['name' => 'full_name', 'type' => 'string', 'required' => true, 'notes' => ''],
+        ['name' => 'email', 'type' => 'string', 'required' => true, 'notes' => ''],
+        ['name' => 'role_id', 'type' => 'number', 'required' => true, 'notes' => ''],
+        ['name' => 'password', 'type' => 'string', 'required' => false, 'notes' => 'Optional: provide to change password'],
+        ['name' => 'is_active', 'type' => 'number', 'required' => false, 'notes' => '1 or 0'],
+      ],
+      'example' => ['full_name' => 'John Doe updated', 'email' => 'john.new@test.com', 'role_id' => 3],
+    ],
+    'response' => [
+      'success' => true,
+      'message' => 'User updated successfully.',
+      'data' => null,
+    ],
+    'errors' => [['status' => 404, 'message' => 'User not found.', 'notes' => '']],
+  ],
+  [
+    'group' => 'User Management',
+    'method' => 'PATCH',
+    'path' => '/api/users/:id/toggle-status',
+    'summary' => 'Toggle user active status',
+    'description' => 'Fast toggle between enabled and disabled status.',
+    'auth' => true,
+    'rateLimit' => false,
+    'request' => null,
+    'response' => [
+      'success' => true,
+      'message' => 'User status toggled.',
+      'data' => ['is_active' => 0],
+    ],
+    'errors' => [['status' => 404, 'message' => 'User not found.', 'notes' => '']],
+  ],
 ];
 
 // Group routes by category
@@ -706,8 +916,26 @@ function badge(string $method, array $colors): string
       }
 
       .content {
-        padding: 24px 20px;
+        padding: 24px 16px;
       }
+    }
+
+    /* Custom sidebar scrollbar */
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: rgba(0, 0, 0, 0.05);
+      border-radius: 10px;
+    }
+    .dark .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.05);
+    }
+    .custom-scrollbar:hover::-webkit-scrollbar-thumb {
+      background: rgba(0, 0, 0, 0.1);
     }
   </style>
 </head>

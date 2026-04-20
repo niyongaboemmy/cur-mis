@@ -4,15 +4,18 @@ import { useAuthStore } from '@/store/authStore'
 /**
  * Route guard — redirects unauthenticated users to /login.
  * Passes the current path as `?redirect=` so after login they return here.
- *
- * Usage in App.tsx:
- *   <Route element={<ProtectedRoute />}>
- *     <Route path="/" element={<HomePage />} />
- *   </Route>
+ * Also checks `requiredPermissions`.
  */
-export default function ProtectedRoute() {
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
-  const location        = useLocation()
+interface Props {
+  requiredPermissions?: string | string[]
+}
+
+export default function ProtectedRoute({ requiredPermissions }: Props) {
+  const { isAuthenticated, user } = useAuthStore((s) => ({
+    isAuthenticated: s.isAuthenticated,
+    user: s.user
+  }))
+  const location = useLocation()
 
   if (!isAuthenticated) {
     return (
@@ -21,6 +24,18 @@ export default function ProtectedRoute() {
         replace
       />
     )
+  }
+
+  if (requiredPermissions && user?.role !== 'superadmin') {
+    const required = Array.isArray(requiredPermissions) ? requiredPermissions : [requiredPermissions];
+    const userPerms = user?.permissions || [];
+    
+    // Check if user has ANY of the required permissions
+    const hasAccess = required.some(p => userPerms.includes(p));
+    if (!hasAccess) {
+      // User is authenticated but lacks permission
+      return <Navigate to="/" replace />
+    }
   }
 
   return <Outlet />

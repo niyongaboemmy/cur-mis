@@ -4,9 +4,11 @@ import { AUTH_STORAGE_KEY } from '@/constants'
 
 export interface AuthUser {
   id:    number | string
-  email: string
-  full_name:  string
-  role?: string
+  email:       string
+  full_name:   string
+  role?:       string
+  role_id?:    number
+  permissions?: string[]
 }
 
 interface AuthState {
