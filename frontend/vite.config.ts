@@ -5,9 +5,13 @@ import path from 'path'
 export default defineConfig(({ mode }) => {
   // Load ALL env vars (prefix '' = include non-VITE_ ones like MAMP_PORT)
   const env = loadEnv(mode, process.cwd(), '')
-  const mampPort = env.MAMP_PORT ?? '8888'
+  const mampPort  = env.MAMP_PORT ?? '8888'
+  // In production set VITE_BASE_PATH=/umsTest/ so all assets are rooted there.
+  // In dev, leave blank or set to / — Vite defaults to /.
+  const basePath  = env.VITE_BASE_PATH ? env.VITE_BASE_PATH.replace(/\/?$/, '/') : '/'
 
   return {
+    base: basePath,
     plugins: [react()],
 
     resolve: {

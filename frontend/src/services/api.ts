@@ -37,9 +37,11 @@ apiClient.interceptors.response.use(
       // Only clear and reload if we are truly unauthenticated on a protected route
       useAuthStore.getState().logout()
       
-      // If we are not already on the login page, redirect
-      if (!window.location.pathname.includes('/login')) {
-        window.location.href = '/login'
+      // Build the login path respecting the subfolder base (e.g. /umsTest/login)
+      const base      = (import.meta.env.VITE_BASE_PATH ?? '').replace(/\/$/, '')
+      const loginPath = `${base}/login`
+      if (!window.location.pathname.startsWith(loginPath)) {
+        window.location.href = loginPath
       }
     }
     return Promise.reject(error)

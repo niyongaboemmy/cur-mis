@@ -3,7 +3,7 @@
     "description": "CUR-MIS PHP Backend API",
     "type": "project",
     "require": {
-        "php": "^8.2",
+        "php": ">=8.1.0",
         "firebase/php-jwt": "^6.10",
         "phpmailer/phpmailer": "^7.0",
         "vlucas/phpdotenv": "^5.6"
@@ -18,7 +18,13 @@
     "config": {
         "optimize-autoloader": true,
         "preferred-install": "dist",
-        "sort-packages": true
+        "sort-packages": true,
+        "platform": {
+            "php": "8.1.34"
+        },
+        "audit": {
+            "block-insecure": false
+        }
     },
     "minimum-stability": "stable",
     "prefer-stable": true

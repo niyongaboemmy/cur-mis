@@ -1,10 +1,13 @@
 Options -Indexes -MultiViews
 RewriteEngine On
 
-# Ensure Authorization header is passed to PHP
+# Pass Authorization header to PHP (required for JWT Bearer tokens)
 RewriteCond %{HTTP:Authorization} .
 RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
 
+# Allow CORS OPTIONS preflight through to index.php
+RewriteCond %{REQUEST_METHOD} OPTIONS
+RewriteRule ^ index.php [QSA,L]
 
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
@@ -14,3 +17,4 @@ RewriteRule ^ index.php [QSA,L]
     Order allow,deny
     Deny from all
 </FilesMatch>
+

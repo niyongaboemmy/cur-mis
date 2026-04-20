@@ -2,7 +2,34 @@
 
 declare(strict_types=1);
 
-require_once __DIR__ . '/../vendor/autoload.php';
+// ── Base path resolution ──────────────────────────────────────────────────────
+$fsRoots = [
+    dirname(__DIR__),                  // Local: `public/` is inside `file-server/`
+    dirname(__DIR__) . '/file-server', // Sibling: `cdn/` and `file-server/` exist together
+];
+
+$foundFsRoot = null;
+foreach ($fsRoots as $dir) {
+    if (file_exists($dir . '/vendor/autoload.php')) {
+        $foundFsRoot = $dir;
+        break;
+    }
+}
+
+if ($foundFsRoot) {
+    $_FS_ROOT = $foundFsRoot;
+} else {
+    // cPanel split layout: `public/` is in `public_html/umsTest/cdn/`
+    $docRoot = $_SERVER['DOCUMENT_ROOT'] ?? '';
+    if (($pos = strpos($docRoot, '/public_html')) !== false) {
+        $_FS_ROOT = substr($docRoot, 0, $pos) . '/file-server';
+    } else {
+        header('HTTP/1.1 500 Internal Server Error');
+        die("Configuration Error: Cannot resolve file-server root path.");
+    }
+}
+
+require_once $_FS_ROOT . '/vendor/autoload.php';
 
 use Dotenv\Dotenv;
 use FileServer\Request;
@@ -11,10 +38,10 @@ use FileServer\Router;
 use FileServer\Storage;
 
 // ── Configuration ─────────────────────────────────────────────────────────────
-$dotenv = Dotenv::createImmutable(dirname(__DIR__));
+$dotenv = Dotenv::createImmutable($_FS_ROOT);
 $dotenv->safeLoad();
 
-define('STORAGE_PATH', dirname(__DIR__) . '/storage/uploads/');
+define('STORAGE_PATH', $_FS_ROOT . '/storage/uploads/');
 define('API_KEY', $_ENV['FILE_SERVER_KEY'] ?? 'development_key_change_me');
 
 $request  = new Request();

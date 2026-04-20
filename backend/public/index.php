@@ -2,7 +2,33 @@
 
 declare(strict_types=1);
 
-define('BASE_PATH', dirname(__DIR__));
+// ── Base path resolution ──────────────────────────────────────────────────────
+$basePath = null;
+$checks = [
+    dirname(__DIR__),              // Local or standard: `public/` is inside `backend/`
+    dirname(__DIR__) . '/backend', // Sibling layout: `api/` and `backend/` exist together
+];
+
+foreach ($checks as $dir) {
+    if (file_exists($dir . '/vendor/autoload.php')) {
+        $basePath = $dir;
+        break;
+    }
+}
+
+if ($basePath) {
+    define('BASE_PATH', $basePath);
+} else {
+    // cPanel split layout: backend source is in `~/backend/`.
+    $docRoot = $_SERVER['DOCUMENT_ROOT'] ?? '';
+    if (($pos = strpos($docRoot, '/public_html')) !== false) {
+        define('BASE_PATH', substr($docRoot, 0, $pos) . '/backend');
+    } else {
+        header('HTTP/1.1 500 Internal Server Error');
+        die("Configuration Error: Cannot resolve backend root path. Ensure the 'backend' folder exists in your home directory.");
+    }
+}
+
 
 require BASE_PATH . '/vendor/autoload.php';
 
