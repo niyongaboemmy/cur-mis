@@ -1,4 +1,3 @@
-import React from "react";
 import { ClipboardList, Construction } from "lucide-react";
 
 export default function ExamsPage() {
@@ -7,7 +6,9 @@ export default function ExamsPage() {
       <div className="w-20 h-20 bg-primary-50 dark:bg-primary-900/30 rounded-full flex items-center justify-center text-primary-600 dark:text-primary-400 mb-6 animate-bounce">
         <ClipboardList size={40} />
       </div>
-      <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Examination Results</h1>
+      <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+        Examination Results
+      </h1>
       <p className="text-gray-500 dark:text-gray-400 max-w-md mx-auto">
         Results processing and transcript generation modules are being built.
       </p>
