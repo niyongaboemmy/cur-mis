@@ -49,6 +49,12 @@ abstract class BaseModel
         $this->db = Database::getInstance();
     }
 
+    /** Expose the database instance for custom queries. */
+    public function db(): Database
+    {
+        return $this->db;
+    }
+
     // ──────────────────────────────────────────────────────────
     // Read
     // ──────────────────────────────────────────────────────────
