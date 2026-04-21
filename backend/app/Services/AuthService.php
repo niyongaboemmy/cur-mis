@@ -50,7 +50,21 @@ class AuthService
         
         $emailSent = $this->mailService->send($email, 'Verification Code', $htmlBody, $altBody);
 
+        // DEV fallback — if SMTP is unreachable but we're running locally with APP_DEBUG=true,
+        // log the OTP to the PHP error log so developers can still complete login.
+        $debug = filter_var($_ENV['APP_DEBUG'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
         if (!$emailSent) {
+            if ($debug) {
+                error_log("[DEV OTP] Login OTP for {$email}: {$otp}");
+                return [
+                    'success'      => true,
+                    'message'      => 'Mailer unavailable — OTP logged to PHP error log (dev mode).',
+                    'otp_required' => true,
+                    'data'         => ['email' => $email, 'dev_otp' => $otp],
+                ];
+            }
+
             return [
                 'success' => false,
                 'message' => 'Failed to send verification code. Please try again later.',
@@ -168,8 +182,7 @@ class AuthService
         $user  = $model->findBy('email', $email);
 
         if (!$user) {
-            // Return success anyway to prevent email enumeration
-            return ['success' => true, 'message' => 'If an account exists, a reset code has been sent.', 'data' => null];
+            return ['success' => false, 'message' => 'No account found with this email address.', 'data' => null];
         }
 
         if (!(int)$user['is_active']) {
@@ -184,7 +197,7 @@ class AuthService
 
         $htmlBody  = EmailTemplateHelper::otpTemplate($user['full_name'] ?? 'User', $otp, '10 minutes');
         $altBody   = "Your password reset code is: $otp. It expires in 10 minutes.";
-        
+
         $emailSent = $this->mailService->send($email, 'Password Reset Code', $htmlBody, $altBody);
 
         if (!$emailSent) {
