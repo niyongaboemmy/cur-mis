@@ -19,7 +19,8 @@ type OtpFormValues = z.infer<typeof otpSchema>;
 export default function VerifyOtpPage() {
   const location = useLocation();
   const navigate = useNavigate();
-  const email = location.state?.email;
+  const email   = location.state?.email;
+  const devOtp  = location.state?.devOtp as string | undefined;
 
   const verifyMutation = useVerifyOtp();
   const resendMutation = useResendOtp();
@@ -46,7 +47,18 @@ export default function VerifyOtpPage() {
     control,
     handleSubmit,
     formState: { errors, isSubmitting },
-  } = useForm<OtpFormValues>({ resolver: zodResolver(otpSchema) });
+    setValue,
+  } = useForm<OtpFormValues>({
+    resolver: zodResolver(otpSchema),
+    defaultValues: { otp: devOtp ?? "" },
+  });
+
+  // In dev mode, the backend returns the OTP in the login response when SMTP is down.
+  useEffect(() => {
+    if (devOtp && devOtp.length === 6) {
+      setValue("otp", devOtp);
+    }
+  }, [devOtp, setValue]);
 
   const onSubmit = (data: OtpFormValues) => {
     if (email) verifyMutation.mutate({ email, otp: data.otp });
@@ -73,6 +85,13 @@ export default function VerifyOtpPage() {
           <Mail className="w-4 h-4" /> Code sent to <span className="font-medium text-gray-900 dark:text-gray-100">{email}</span>
         </p>
       </div>
+
+      {devOtp && (
+        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-900/40 px-4 py-3 text-amber-800 dark:text-amber-200 text-xs">
+          <p className="font-semibold">Dev mode — SMTP unreachable</p>
+          <p className="mt-0.5">Pre-filled code: <span className="font-mono font-semibold">{devOtp}</span></p>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
         <div>
@@ -128,7 +147,7 @@ export default function VerifyOtpPage() {
             <button
               onClick={onResend}
               disabled={resendMutation.isPending}
-              className="text-primary-600 font-bold hover:underline"
+              className="text-primary-600 font-semibold hover:underline"
             >
               Resend code
             </button>

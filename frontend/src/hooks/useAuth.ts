@@ -26,7 +26,8 @@ export function useLogin() {
       if (response.success) {
         if (response.otp_required) {
           toast.success(response.message || 'Verification code sent!')
-          navigate('/verify-otp', { state: { email: (response.data as any).email } })
+          const payload = response.data as any
+          navigate('/verify-otp', { state: { email: payload?.email, devOtp: payload?.dev_otp } })
         } else if (response.data) {
           const { setAuth } = useAuthStore.getState()
           setAuth(response.data.user, response.data.token)

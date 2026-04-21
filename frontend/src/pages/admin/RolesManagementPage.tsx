@@ -139,7 +139,7 @@ export default function RolesManagementPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-primary-600 to-indigo-600 bg-clip-text text-transparent flex items-center gap-2">
+          <h1 className="text-2xl font-semibold bg-gradient-to-r from-primary-600 to-indigo-600 bg-clip-text text-transparent flex items-center gap-2">
             <Shield className="w-6 h-6 text-primary-600" />
             Roles Management
           </h1>
@@ -191,7 +191,7 @@ export default function RolesManagementPage() {
                 </div>
               </div>
             </div>
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white capitalize">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white capitalize">
               {role.name}
             </h3>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 line-clamp-2">
@@ -231,7 +231,7 @@ export default function RolesManagementPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-gray-800/50">
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
                 {editingRole ? "Edit Role" : "Create New Role"}
               </h3>
               <button
@@ -295,7 +295,7 @@ export default function RolesManagementPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
             <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-gray-800/50">
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
                 <Lock className="w-5 h-5 text-primary-500" />
                 Assign Permissions —{" "}
                 <span className="capitalize text-primary-600">
@@ -313,7 +313,7 @@ export default function RolesManagementPage() {
             <div className="flex-1 overflow-y-auto p-6 space-y-8">
               {(Array.isArray(categories) ? categories : []).map((cat) => (
                 <div key={cat.id}>
-                  <h4 className="text-md font-bold text-gray-800 dark:text-gray-200 mb-4 pb-2 border-b border-gray-100 dark:border-gray-800">
+                  <h4 className="text-md font-semibold text-gray-800 dark:text-gray-200 mb-4 pb-2 border-b border-gray-100 dark:border-gray-800">
                     {cat.name}
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

@@ -1,6 +1,9 @@
 /** App-wide constants. Import from '@/constants' */
 
-export const APP_NAME = import.meta.env.VITE_APP_NAME ?? 'CUR-MIS'
+export const APP_NAME      = import.meta.env.VITE_APP_NAME ?? 'CUR-MIS'
+export const APP_SHORT     = 'CUR'
+export const APP_FULL_NAME = 'Catholic University of Rwanda'
+export const APP_TAGLINE   = 'Management Information System'
 
 /** Local-storage key used by Zustand auth persist middleware */
 export const AUTH_STORAGE_KEY = import.meta.env.VITE_AUTH_STORAGE_KEY ?? 'cur-mis-auth'
