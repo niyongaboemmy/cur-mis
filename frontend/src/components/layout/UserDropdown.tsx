@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useNavigate } from "react-router-dom";
 import { User, LogOut, Sun, Moon, ChevronDown, Settings } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useThemeStore } from "@/store/themeStore";
@@ -8,9 +9,15 @@ import { useLogout } from "@/hooks/useAuth";
 export default function UserDropdown() {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const navigate    = useNavigate();
   const { user } = useAuthStore();
   const { theme, toggleTheme } = useThemeStore();
   const logoutMutation = useLogout();
+
+  const go = (path: string) => {
+    setIsOpen(false);
+    navigate(path);
+  };
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -85,8 +92,8 @@ export default function UserDropdown() {
 
             {/* Menu */}
             <div className="p-1.5">
-              <MenuItem icon={<User className="h-4 w-4" />}>My profile</MenuItem>
-              <MenuItem icon={<Settings className="h-4 w-4" />}>Account settings</MenuItem>
+              <MenuItem icon={<User     className="h-4 w-4" />} onClick={() => go('/profile')}>My profile</MenuItem>
+              <MenuItem icon={<Settings className="h-4 w-4" />} onClick={() => go('/profile')}>Account settings</MenuItem>
 
               {/* Theme toggle */}
               <button
@@ -135,9 +142,21 @@ export default function UserDropdown() {
 }
 
 /* --- tiny row --- */
-function MenuItem({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
+function MenuItem({
+  icon,
+  children,
+  onClick,
+}: {
+  icon:      React.ReactNode;
+  children:  React.ReactNode;
+  onClick?:  () => void;
+}) {
   return (
-    <button className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-ink-700 dark:text-ink-200 hover:bg-ink-50 dark:hover:bg-ink-700/50 transition-colors">
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-ink-700 dark:text-ink-200 hover:bg-ink-50 dark:hover:bg-ink-700/50 transition-colors"
+    >
       <span className="text-ink-500 dark:text-ink-400">{icon}</span>
       <span className="text-[13px] font-medium">{children}</span>
     </button>

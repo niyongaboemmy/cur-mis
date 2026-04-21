@@ -36,6 +36,7 @@ import {
 } from "react";
 import UserDropdown from "@/components/layout/UserDropdown";
 import Logo from "@/components/brand/Logo";
+import { useCurrentUser } from "@/hooks/useAuth";
 
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
@@ -144,6 +145,10 @@ const STORAGE_KEY = "cur-mis-sidebar-collapsed";
 
 export default function MainLayout() {
   const location = useLocation();
+  // Fetch /auth/me once on mount — keeps the Zustand user (role, permissions)
+  // in sync with the server. The hook syncs the response back via setUser.
+  useCurrentUser();
+
   const [sidebarOpen, setSidebarOpen] = useState(false); // mobile drawer
   const [collapsed,   setCollapsed]   = useState<boolean>(() => {
     try { return localStorage.getItem(STORAGE_KEY) === "1"; } catch { return false; }

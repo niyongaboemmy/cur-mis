@@ -8,6 +8,7 @@ import { PERMISSIONS }      from '@/constants'
 
 // Lazy loaded pages
 const HomePage             = lazy(() => import('@/pages/HomePage'))
+const ProfilePage          = lazy(() => import('@/pages/ProfilePage'))
 const LoginPage            = lazy(() => import('@/pages/LoginPage'))
 const VerifyOtpPage        = lazy(() => import('@/pages/VerifyOtpPage'))
 const ForgotPasswordPage   = lazy(() => import('@/pages/ForgotPasswordPage'))
@@ -53,7 +54,8 @@ function App() {
           {/* Protected — requires valid JWT in Zustand store */}
           <Route element={<ProtectedRoute />}>
             <Route element={<MainLayout />}>
-              <Route path="/"  element={<HomePage />} />
+              <Route path="/"        element={<HomePage />} />
+              <Route path="/profile" element={<ProfilePage />} />
               
               {/* Admin Routes with Permissions Protection */}
               <Route element={<ProtectedRoute requiredPermissions={PERMISSIONS.MANAGE_ROLES} />}>

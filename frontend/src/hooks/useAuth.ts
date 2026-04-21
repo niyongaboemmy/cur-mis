@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { api } from '@/services/api'
@@ -59,7 +60,11 @@ export function useVerifyOtp() {
 
     onSuccess: (response) => {
       if (response.success && response.data) {
-        setAuth(response.data.user, response.data.token)
+        // Normalize: backend returns `role_name` here but /auth/me returns `role`.
+        // Alias to `role` so downstream UI reading `user.role` works immediately.
+        const u = response.data.user as any
+        if (!u.role && u.role_name) u.role = u.role_name
+        setAuth(u, response.data.token)
         toast.success('Identity verified!')
         navigate('/')
       } else {
@@ -178,12 +183,24 @@ export function useLogout() {
 }
 
 export function useCurrentUser() {
-  const { isAuthenticated } = useAuthStore()
+  const { isAuthenticated, setUser } = useAuthStore()
 
-  return useQuery({
+  const query = useQuery({
     queryKey: ['auth', 'me'],
-    queryFn:  () => api.get('/api/auth/me'),
+    queryFn:  () => api.get<any>('/api/auth/me'),
     enabled:  isAuthenticated,
     staleTime: 1000 * 60 * 5,
   })
+
+  // Keep the Zustand auth user in sync with the server.
+  // /auth/me is the authoritative shape (returns `role`, `permissions`, etc.).
+  useEffect(() => {
+    const payload: any = query.data
+    const u = payload?.data ?? payload
+    if (u && typeof u === 'object' && u.id) {
+      setUser(u)
+    }
+  }, [query.data, setUser])
+
+  return query
 }
