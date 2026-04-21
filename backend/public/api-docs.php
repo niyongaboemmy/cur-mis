@@ -317,6 +317,18 @@ $routes = [
       ['status' => 409, 'message' => 'Permission slug already exists.', 'notes' => ''],
     ],
   ],
+  [
+    'group' => 'Permissions',
+    'method' => 'DELETE',
+    'path' => '/api/permissions/:id',
+    'summary' => 'Delete permission',
+    'description' => 'Removes a permission from the system.',
+    'auth' => true,
+    'rateLimit' => false,
+    'request' => null,
+    'response' => ['success' => true, 'message' => 'Permission deleted.', 'data' => null],
+    'errors' => [['status' => 404, 'message' => 'Permission not found.']],
+  ],
   // ── User Management ────────────────────────────────────────────────────────
   [
     'group' => 'User Management',
@@ -407,6 +419,288 @@ $routes = [
       'data' => ['is_active' => 0],
     ],
     'errors' => [['status' => 404, 'message' => 'User not found.', 'notes' => '']],
+  ],
+
+  // ── Academic Years & Terms ──────────────────────────────────────────────────
+  [
+    'group' => 'Academic Settings',
+    'method' => 'GET',
+    'path' => '/api/academic/years',
+    'summary' => 'List academic years',
+    'description' => 'Returns all academic years defined in the system.',
+    'auth' => true,
+    'rateLimit' => false,
+    'request' => null,
+    'response' => [
+      'success' => true,
+      'message' => 'Academic years fetched.',
+      'data' => [['id' => 1, 'label' => '2024/2025', 'is_current' => 1]]
+    ],
+    'errors' => [],
+  ],
+  [
+    'group' => 'Academic Settings',
+    'method' => 'POST',
+    'path' => '/api/academic/years',
+    'summary' => 'Create academic year',
+    'description' => 'Creates a new academic year with validation.',
+    'auth' => true,
+    'rateLimit' => false,
+    'request' => [
+      'fields' => [
+        ['name' => 'label', 'type' => 'string', 'required' => true, 'notes' => 'Format: YYYY/YYYY (e.g. 2024/2025)'],
+        ['name' => 'start_date', 'type' => 'string', 'required' => true, 'notes' => 'Format: YYYY-MM-DD'],
+        ['name' => 'end_date', 'type' => 'string', 'required' => true, 'notes' => 'Format: YYYY-MM-DD'],
+      ],
+      'example' => ['label' => '2025/2026', 'start_date' => '2025-09-01', 'end_date' => '2026-08-31']
+    ],
+    'response' => ['success' => true, 'message' => 'Academic year created.', 'data' => ['id' => 5]],
+    'errors' => [['status' => 422, 'message' => 'Validation failed.']],
+  ],
+  [
+    'group' => 'Academic Settings',
+    'method' => 'PATCH',
+    'path' => '/api/academic/years/:id/activate',
+    'summary' => 'Activate academic year',
+    'description' => 'Sets the specified year as current and deactivates all others.',
+    'auth' => true,
+    'rateLimit' => false,
+    'request' => null,
+    'response' => ['success' => true, 'message' => 'Academic year activated.'],
+    'errors' => [['status' => 404, 'message' => 'Year not found.']],
+  ],
+  [
+    'group' => 'Academic Settings',
+    'method' => 'GET',
+    'path' => '/api/academic/terms',
+    'summary' => 'List academic terms',
+    'description' => 'Returns terms/semesters, optionally filtered by academic_year_id.',
+    'auth' => true,
+    'rateLimit' => false,
+    'request' => null,
+    'response' => [
+      'success' => true,
+      'message' => 'Academic terms fetched.',
+      'data' => [['id' => 1, 'label' => 'Semester 1', 'is_current' => 1]]
+    ],
+    'errors' => [],
+  ],
+  [
+    'group' => 'Academic Settings',
+    'method' => 'POST',
+    'path' => '/api/academic/terms',
+    'summary' => 'Create academic term',
+    'description' => 'Creates a new term within an academic year.',
+    'auth' => true,
+    'rateLimit' => false,
+    'request' => [
+      'fields' => [
+        ['name' => 'academic_year_id', 'type' => 'number', 'required' => true, 'notes' => 'Valid ID from /academic/years'],
+        ['name' => 'label', 'type' => 'string', 'required' => true, 'notes' => 'Min 3 characters'],
+        ['name' => 'start_date', 'type' => 'string', 'required' => true, 'notes' => 'YYYY-MM-DD'],
+        ['name' => 'end_date', 'type' => 'string', 'required' => true, 'notes' => 'YYYY-MM-DD'],
+      ],
+      'example' => ['academic_year_id' => 1, 'label' => 'Semester 1', 'start_date' => '2024-09-01', 'end_date' => '2025-02-28']
+    ],
+    'response' => ['success' => true, 'message' => 'Academic term created.', 'data' => ['id' => 10]],
+    'errors' => [['status' => 422, 'message' => 'Validation failed.']],
+  ],
+
+  // ── Academics Management ────────────────────────────────────────────────────
+  [
+    'group' => 'Academics Management',
+    'method' => 'GET',
+    'path' => '/api/academics-management/:entity',
+    'summary' => 'Generic CRUD for academic entities',
+    'description' => 'Supports: degrees, facility, departments, options, levels, leave_types, modules, schools.',
+    'auth' => true,
+    'rateLimit' => false,
+    'request' => null,
+    'response' => [
+      'success' => true,
+      'message' => 'Entity fetched.',
+      'data' => ['data' => [], 'total' => 0]
+    ],
+    'errors' => [['status' => 404, 'message' => 'Entity not found.']],
+  ],
+  [
+    'group' => 'Academics Management',
+    'method' => 'POST',
+    'path' => '/api/academics-management/departments',
+    'summary' => 'Create a department',
+    'description' => 'Add a new department to a faculty.',
+    'auth' => true,
+    'rateLimit' => false,
+    'request' => [
+      'fields' => [
+        ['name' => 'name', 'type' => 'string', 'required' => true, 'notes' => 'Min 3 chars'],
+        ['name' => 'faculty_id', 'type' => 'number', 'required' => true, 'notes' => ''],
+        ['name' => 'description', 'type' => 'string', 'required' => false, 'notes' => ''],
+      ],
+      'example' => ['name' => 'Information Technology', 'faculty_id' => 1]
+    ],
+    'response' => ['success' => true, 'message' => 'Departments created.', 'data' => ['id' => 10]],
+    'errors' => [['status' => 422, 'message' => 'Validation failed.']],
+  ],
+  [
+    'group' => 'Academics Management',
+    'method' => 'POST',
+    'path' => '/api/academics-management/degrees',
+    'summary' => 'Create an academic program (degree)',
+    'description' => 'Add a new academic program to a department.',
+    'auth' => true,
+    'rateLimit' => false,
+    'request' => [
+      'fields' => [
+        ['name' => 'department_id', 'type' => 'number', 'required' => true, 'notes' => 'Valid department ID'],
+        ['name' => 'code', 'type' => 'string', 'required' => true, 'notes' => 'e.g. BIT'],
+        ['name' => 'name', 'type' => 'string', 'required' => true, 'notes' => 'e.g. Business Information Technology'],
+        ['name' => 'degree_type', 'type' => 'string', 'required' => true, 'notes' => 'Certificate, Diploma, Bachelor, Master, PhD'],
+        ['name' => 'duration_years', 'type' => 'number', 'required' => true, 'notes' => 'e.g. 3'],
+      ],
+      'example' => ['department_id' => 1, 'code' => 'BIT', 'name' => 'Business IT', 'degree_type' => 'Bachelor', 'duration_years' => 3]
+    ],
+    'response' => ['success' => true, 'message' => 'Degrees created.', 'data' => ['id' => 5]],
+    'errors' => [['status' => 422, 'message' => 'Validation failed.']],
+  ],
+  [
+    'group' => 'Academics Management',
+    'method' => 'POST',
+    'path' => '/api/academics-management/leave_types',
+    'summary' => 'Create a leave type',
+    'description' => 'Add a new type of staff leave.',
+    'auth' => true,
+    'rateLimit' => false,
+    'request' => [
+      'fields' => [
+        ['name' => 'name', 'type' => 'string', 'required' => true, 'notes' => ''],
+        ['name' => 'days_allowed', 'type' => 'number', 'required' => true, 'notes' => ''],
+        ['name' => 'is_paid', 'type' => 'number', 'required' => false, 'notes' => '0 or 1'],
+      ],
+      'example' => ['name' => 'Annual Leave', 'days_allowed' => 30, 'is_paid' => 1]
+    ],
+    'response' => ['success' => true, 'message' => 'Leave_types created.', 'data' => ['id' => 2]],
+    'errors' => [['status' => 422, 'message' => 'Validation failed.']],
+  ],
+  [
+    'group' => 'Academics Management',
+    'method' => 'POST',
+    'path' => '/api/academics-management/modules',
+    'summary' => 'Create a module',
+    'description' => 'Add a new course module to the catalog.',
+    'auth' => true,
+    'rateLimit' => false,
+    'request' => [
+      'fields' => [
+        ['name' => 'module_name', 'type' => 'string', 'required' => true, 'notes' => ''],
+        ['name' => 'module_code', 'type' => 'string', 'required' => true, 'notes' => ''],
+        ['name' => 'module_credits', 'type' => 'number', 'required' => true, 'notes' => ''],
+        ['name' => 'department', 'type' => 'number', 'required' => true, 'notes' => 'Department ID'],
+        ['name' => 'level', 'type' => 'number', 'required' => true, 'notes' => 'Level ID'],
+      ],
+      'example' => ['module_name' => 'English', 'module_code' => 'ENGL1220', 'module_credits' => 5, 'department' => 8, 'level' => 1]
+    ],
+    'response' => ['success' => true, 'message' => 'Modules created.', 'data' => ['id' => 94]],
+    'errors' => [['status' => 422, 'message' => 'Validation failed.']],
+  ],
+  [
+    'group' => 'Academics Management',
+    'method' => 'POST',
+    'path' => '/api/academics-management/schools',
+    'summary' => 'Create a school/branch',
+    'description' => 'Configure a new school or university branch.',
+    'auth' => true,
+    'rateLimit' => false,
+    'request' => [
+      'fields' => [
+        ['name' => 'school_name', 'type' => 'string', 'required' => true, 'notes' => ''],
+        ['name' => 'school_descript', 'type' => 'string', 'required' => false, 'notes' => ''],
+        ['name' => 'school_address', 'type' => 'string', 'required' => false, 'notes' => ''],
+        ['name' => 'school_phone', 'type' => 'string', 'required' => false, 'notes' => ''],
+        ['name' => 'school_email', 'type' => 'string', 'required' => false, 'notes' => ''],
+        ['name' => 'url', 'type' => 'string', 'required' => false, 'notes' => 'Website URL'],
+      ],
+      'example' => ['school_name' => 'Catholic University', 'url' => 'www.cur.ac.rw']
+    ],
+    'response' => ['success' => true, 'message' => 'Schools created.', 'data' => ['id' => 1]],
+    'errors' => [['status' => 422, 'message' => 'Validation failed.']],
+  ],
+  [
+    'group' => 'Academics Management',
+    'method' => 'POST',
+    'path' => '/api/academics-management/facility',
+    'summary' => 'Create a facility (Room)',
+    'description' => 'Add a new classroom or lab.',
+    'auth' => true,
+    'rateLimit' => false,
+    'request' => [
+      'fields' => [
+        ['name' => 'name', 'type' => 'string', 'required' => true, 'notes' => 'Room name/number'],
+        ['name' => 'building', 'type' => 'string', 'required' => false, 'notes' => 'Building name'],
+        ['name' => 'capacity', 'type' => 'number', 'required' => true, 'notes' => 'Seating capacity'],
+        ['name' => 'room_type', 'type' => 'string', 'required' => false, 'notes' => 'lecture, lab, seminar, exam_hall'],
+      ],
+      'example' => ['name' => 'Room 101', 'building' => 'Block A', 'capacity' => 40, 'room_type' => 'lecture']
+    ],
+    'response' => ['success' => true, 'message' => 'Facility created.', 'data' => ['id' => 1]],
+    'errors' => [['status' => 422, 'message' => 'Validation failed.']],
+  ],
+
+  // ── System Basics ───────────────────────────────────────────────────────────
+  [
+    'group' => 'System Basics',
+    'method' => 'GET',
+    'path' => '/api/system/basics',
+    'summary' => 'Get system initialization data',
+    'description' => 'Returns active year/term, all years/terms, settings, and timetable.',
+    'auth' => true,
+    'rateLimit' => false,
+    'request' => null,
+    'response' => [
+      'success' => true,
+      'message' => 'System basics fetched.',
+      'data' => [
+        'active_year' => ['id' => 1, 'label' => '2024/2025'],
+        'active_term' => ['id' => 1, 'label' => 'Semester 1'],
+        'settings' => ['APP_NAME' => 'CUR-MIS'],
+        'timetable' => []
+      ]
+    ],
+    'errors' => [],
+  ],
+
+  // ── Student & HR Registry ───────────────────────────────────────────────────
+  [
+    'group' => 'Student Registry',
+    'method' => 'GET',
+    'path' => '/api/students',
+    'summary' => 'List students (Paginated)',
+    'description' => 'Searchable and paginated list of students.',
+    'auth' => true,
+    'rateLimit' => false,
+    'request' => null,
+    'response' => [
+      'success' => true,
+      'message' => 'Students fetched.',
+      'data' => ['data' => [], 'total' => 100]
+    ],
+    'errors' => [],
+  ],
+  [
+    'group' => 'HR Management',
+    'method' => 'GET',
+    'path' => '/api/employees',
+    'summary' => 'List HR employees (Paginated)',
+    'description' => 'Searchable and paginated list of employees.',
+    'auth' => true,
+    'rateLimit' => false,
+    'request' => null,
+    'response' => [
+      'success' => true,
+      'message' => 'HR Employees fetched.',
+      'data' => ['data' => [], 'total' => 10]
+    ],
+    'errors' => [],
   ],
 ];
 
@@ -924,16 +1218,20 @@ function badge(string $method, array $colors): string
     .custom-scrollbar::-webkit-scrollbar {
       width: 4px;
     }
+
     .custom-scrollbar::-webkit-scrollbar-track {
       background: transparent;
     }
+
     .custom-scrollbar::-webkit-scrollbar-thumb {
       background: rgba(0, 0, 0, 0.05);
       border-radius: 10px;
     }
+
     .dark .custom-scrollbar::-webkit-scrollbar-thumb {
       background: rgba(255, 255, 255, 0.05);
     }
+
     .custom-scrollbar:hover::-webkit-scrollbar-thumb {
       background: rgba(0, 0, 0, 0.1);
     }

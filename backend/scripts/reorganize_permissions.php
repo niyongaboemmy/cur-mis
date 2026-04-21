@@ -27,10 +27,6 @@ $categories = [
     3 => [
         'name' => 'Finance & Accounts',
         'description' => 'Handling of student fees, billing, and accounting.'
-    ],
-    4 => [
-        'name' => 'Examinations',
-        'description' => 'Planning and recording of examinations and results.'
     ]
 ];
 
@@ -59,9 +55,6 @@ $permsByCat = [
     ],
     3 => [
         ['name' => 'Manage Financial Records', 'slug' => Permissions::MANAGE_FINANCE],
-    ],
-    4 => [
-        ['name' => 'Manage Examination Results', 'slug' => Permissions::MANAGE_EXAMS],
     ]
 ];
 

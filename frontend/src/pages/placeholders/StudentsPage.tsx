@@ -9,12 +9,12 @@ export default function StudentsPage() {
       subtitle="A single source of truth for every CUR student — from admission through graduation."
       tone="lilac"
       features={[
-        { label: 'Admissions pipeline',       status: 'soon'    },
-        { label: 'Student profile & records', status: 'soon'    },
-        { label: 'Enrolment per semester',    status: 'planned' },
-        { label: 'Transcript generation',     status: 'planned' },
-        { label: 'ID card issuance',          status: 'planned' },
-        { label: 'Alumni directory',          status: 'planned' },
+        { label: 'Admissions pipeline', status: 'soon' },
+        { label: 'Student profile & records', status: 'soon' },
+        { label: 'Enrolment per semester', status: 'planned' },
+        { label: 'Transcript generation', status: 'planned' },
+        { label: 'ID card issuance', status: 'planned' },
+        { label: 'Alumni directory', status: 'planned' },
       ]}
     />
   )
