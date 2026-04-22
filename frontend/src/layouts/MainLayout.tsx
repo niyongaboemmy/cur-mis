@@ -9,6 +9,8 @@ import {
   CreditCard,
   ClipboardList,
   BookOpen,
+  Layers,
+  Sliders,
   Activity,
   Search,
   Bell,
@@ -37,6 +39,7 @@ import {
 import UserDropdown from "@/components/layout/UserDropdown";
 import Logo from "@/components/brand/Logo";
 import { useCurrentUser } from "@/hooks/useAuth";
+import { useSystemBasics } from "@/hooks/useSystemBasics";
 
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
@@ -67,6 +70,9 @@ const NAV_TREE: NavNode[] = [
       { to: "/students/alumni",  label: "Alumni"       },
     ],
   },
+  // ─── Academic (promoted to top-level for visibility) ───
+  { id: "academic-settings",    label: "Academic settings",    icon: Sliders,  to: "/academic/settings"   },
+  { id: "academics-management", label: "Academics management", icon: Layers,   to: "/academic/management" },
   {
     id: "teachers-group",
     label: "Teachers",
@@ -118,7 +124,9 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
   "/roles":              { title: "Roles",           sub: "Who can do what in the system" },
   "/permissions":        { title: "Permissions",     sub: "Fine-grained access control" },
   "/logs":               { title: "System logs",     sub: "Audit trail across the platform" },
-  "/students":           { title: "Students",        sub: "The CUR student registry" },
+  "/students":           { title: "Students & Staff", sub: "CUR student registry & HR employees" },
+  "/academic/settings":   { title: "Academic settings",    sub: "Academic years & terms" },
+  "/academic/management": { title: "Academics management", sub: "Degrees, schools, departments, modules, facilities and more" },
   "/students/new":       { title: "Admissions",      sub: "New student applications" },
   "/students/alumni":    { title: "Alumni",          sub: "CUR alumni directory" },
   "/teachers":           { title: "Teachers",        sub: "Lecturers and faculty members" },
@@ -148,6 +156,9 @@ export default function MainLayout() {
   // Fetch /auth/me once on mount — keeps the Zustand user (role, permissions)
   // in sync with the server. The hook syncs the response back via setUser.
   useCurrentUser();
+  // Fetch /system/basics once — active academic year / term become globally
+  // available via useSystemStore.
+  useSystemBasics();
 
   const [sidebarOpen, setSidebarOpen] = useState(false); // mobile drawer
   const [collapsed,   setCollapsed]   = useState<boolean>(() => {
