@@ -156,6 +156,27 @@ class UserController extends BaseController
     }
 
     /**
+     * Delete a user. Cannot delete your own account.
+     */
+    public function delete(Request $request, Response $response): never
+    {
+        $id      = (int)$request->param('id');
+        $authUser = $request->param('_auth_user');
+
+        if ($id === (int)($authUser['id'] ?? 0)) {
+            $this->error($response, 'You cannot delete your own account.', 403);
+        }
+
+        $user = $this->userModel->find($id);
+        if (!$user) {
+            $this->error($response, 'User not found', 404);
+        }
+
+        $this->userModel->delete($id);
+        $this->success($response, null, 'User deleted successfully.');
+    }
+
+    /**
      * Toggle active status.
      */
     public function toggleStatus(Request $request, Response $response): never

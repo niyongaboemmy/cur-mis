@@ -8,7 +8,9 @@ class HrEmployeeModel extends BaseModel
 {
     protected string $table = 'hr_employees';
     protected array $fillable = [
-        'first_name', 'last_name', 'email', 'phone', 'gender', 
-        'position', 'department_id', 'joining_date', 'employment_status', 'is_active'
+        'emp_code', 'staff_id', 'full_name', 'gender',
+        'department', 'position', 'contract_type',
+        'start_date', 'end_date', 'salary',
+        'phone', 'email', 'status',
     ];
 }

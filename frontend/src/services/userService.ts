@@ -42,6 +42,10 @@ const userService = {
   toggleStatus: async (id: number) => {
     return api.patch<void>(`/api/users/${id}/toggle-status`);
   },
+
+  deleteUser: async (id: number) => {
+    return api.delete<void>(`/api/users/${id}`);
+  },
 };
 
 export default userService;

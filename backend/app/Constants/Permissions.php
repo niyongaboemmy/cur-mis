@@ -18,6 +18,7 @@ class Permissions
 
     // Academic Registry
     public const VIEW_STUDENTS       = 'VIEW_STUDENTS';
+    public const MANAGE_STUDENTS     = 'MANAGE_STUDENTS';
     public const MANAGE_ACADEMICS    = 'MANAGE_ACADEMICS';
     public const MANAGE_DEGREES      = 'MANAGE_DEGREES';
     public const MANAGE_FACILITIES   = 'MANAGE_FACILITIES';
@@ -29,6 +30,7 @@ class Permissions
 
     // HR Management
     public const VIEW_HR_EMPLOYEES   = 'VIEW_HR_EMPLOYEES';
+    public const MANAGE_HR_EMPLOYEES = 'MANAGE_HR_EMPLOYEES';
     public const MANAGE_LEAVE_TYPES  = 'MANAGE_LEAVE_TYPES';
 
     // Finance
@@ -57,6 +59,7 @@ class Permissions
             self::MANAGE_ACADEMIC_TERMS,
             self::VIEW_SYSTEM_BASICS,
             self::VIEW_STUDENTS,
+            self::MANAGE_STUDENTS,
             self::MANAGE_ACADEMICS,
             self::MANAGE_DEGREES,
             self::MANAGE_FACILITIES,
@@ -66,6 +69,7 @@ class Permissions
             self::MANAGE_MODULES,
             self::MANAGE_SCHOOLS,
             self::VIEW_HR_EMPLOYEES,
+            self::MANAGE_HR_EMPLOYEES,
             self::MANAGE_LEAVE_TYPES,
             self::MANAGE_FINANCE,
             self::MANAGE_ADMISSION_REQUIREMENTS,
