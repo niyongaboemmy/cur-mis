@@ -34,6 +34,15 @@ class Permissions
     // Finance
     public const MANAGE_FINANCE = 'MANAGE_FINANCE';
 
+    // Admissions
+    public const MANAGE_ADMISSION_REQUIREMENTS = 'MANAGE_ADMISSION_REQUIREMENTS';
+    public const MANAGE_STUDENT_APPLICATIONS   = 'MANAGE_STUDENT_APPLICATIONS';
+    public const VERIFY_DOCUMENTS              = 'VERIFY_DOCUMENTS';
+    public const MANAGE_ADMISSIONS             = 'MANAGE_ADMISSIONS';
+
+    // Applicant self-service
+    public const MANAGE_OWN_PROFILE = 'MANAGE_OWN_PROFILE';
+
     /**
      * Get all predefined system permissions.
      */
@@ -59,6 +68,11 @@ class Permissions
             self::VIEW_HR_EMPLOYEES,
             self::MANAGE_LEAVE_TYPES,
             self::MANAGE_FINANCE,
+            self::MANAGE_ADMISSION_REQUIREMENTS,
+            self::MANAGE_STUDENT_APPLICATIONS,
+            self::VERIFY_DOCUMENTS,
+            self::MANAGE_ADMISSIONS,
+            self::MANAGE_OWN_PROFILE,
         ];
     }
 }

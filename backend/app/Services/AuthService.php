@@ -10,6 +10,8 @@ use App\Services\MailService;
 use App\Models\UserModel;
 use App\Models\RoleModel;
 use App\Models\RolePermissionModel;
+use App\Models\StudentApplicationModel;
+use App\Models\ApplicantProfileModel;
 use App\Helpers\EmailTemplateHelper;
 
 class AuthService
@@ -105,7 +107,10 @@ class AuthService
         $rolePermModel = new RolePermissionModel();
         $userData['permissions'] = $rolePermModel->getSlugsForRole((int)($userData['role_id'] ?? 0));
 
-        $token    = $this->generateToken($userData);
+        // Include is_applicant from raw user row
+        $userData['is_applicant'] = (bool)(int)($user['is_applicant'] ?? 0);
+
+        $token = $this->generateToken($userData);
 
         return [
             'success' => true,
@@ -173,6 +178,95 @@ class AuthService
             'success' => true,
             'message' => 'Registration successful.',
             'data'    => $user,
+        ];
+    }
+
+    /**
+     * Applicant self-registration.
+     *
+     * Flow:
+     *  1. Validate that application_number + email match a row in student_applications.
+     *  2. Ensure no users account already exists for the email.
+     *  3. Resolve the "applicant" role ID.
+     *  4. Create a users row tagged is_applicant = 1.
+     *  5. Create a stub applicant_profiles row.
+     *  6. Trigger the OTP flow for email verification.
+     */
+    public function registerApplicant(string $appNumber, string $email, string $password): array
+    {
+        $appModel = new StudentApplicationModel();
+        $email    = strtolower(trim($email));
+        $appNumber = strtoupper(trim($appNumber));
+
+        // 1. Verify application_number + email match
+        $application = $appModel->findByApplicationNumber($appNumber);
+        if (!$application || strtolower((string)$application['email']) !== $email) {
+            return [
+                'success' => false,
+                'code'    => 422,
+                'message' => 'Application number and email do not match. Please check your details.',
+                'data'    => null,
+            ];
+        }
+
+        $userModel = new UserModel();
+
+        // 2. Check no account already registered for this email
+        if ($userModel->exists('email', $email)) {
+            return [
+                'success' => false,
+                'code'    => 409,
+                'message' => 'An account already exists for this email. Please log in instead.',
+                'data'    => null,
+            ];
+        }
+
+        // 3. Resolve applicant role
+        $roleModel = new RoleModel();
+        $roleRow   = $roleModel->findBy('name', 'applicant');
+        $roleId    = $roleRow ? (int)$roleRow['id'] : null;
+
+        // 4. Create user account
+        $fullName = trim($application['first_name'] . ' ' . $application['last_name']);
+        $userId   = (int)$userModel->create([
+            'full_name'    => $fullName,
+            'email'        => $email,
+            'username'     => strtolower(str_replace(' ', '.', $fullName)) . '.' . rand(100, 999),
+            'password'     => password_hash($password, PASSWORD_BCRYPT),
+            'role_id'      => $roleId,
+            'is_active'    => 1,
+            'is_applicant' => 1,
+        ]);
+
+        // 5. Create stub applicant_profiles row
+        $profileModel = new ApplicantProfileModel();
+        $profileModel->create([
+            'user_id'        => $userId,
+            'application_id' => (int)$application['id'],
+        ]);
+
+        // 6. Trigger the OTP flow for email verification (reuse existing login OTP logic)
+        $otp       = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+        $expiresAt = date('Y-m-d H:i:s', time() + 600);
+        $userModel->saveOtp($userId, $otp, $expiresAt);
+
+        $htmlBody  = EmailTemplateHelper::otpTemplate($fullName, $otp, '10 minutes');
+        $altBody   = "Your verification code is: $otp. It expires in 10 minutes.";
+        $emailSent = $this->mailService->send($email, 'Verify Your Account', $htmlBody, $altBody);
+
+        if (!$emailSent) {
+            return [
+                'success' => false,
+                'code'    => 500,
+                'message' => 'Account created but failed to send verification email. Please try logging in.',
+                'data'    => null,
+            ];
+        }
+
+        return [
+            'success' => true,
+            'message' => 'Account created. A verification code has been sent to your email.',
+            'data'    => ['email' => $email],
         ];
     }
 
@@ -270,14 +364,15 @@ class AuthService
             'exp'  => $now + $this->jwtExpiry,
             'sub'  => $user['id'],
             'user' => [
-                'id'          => $user['id'],
-                'email'       => $user['email'],
-                'username'    => $user['username'] ?? '',
-                'full_name'   => $user['full_name'] ?? '',
-                'role'        => $user['role_name'] ?? 'guest',
-                'role_id'     => $user['role_id'] ?? null,
-                'permissions' => $user['permissions'] ?? [],
-                'created_at'  => $user['created_at'] ?? null,
+                'id'           => $user['id'],
+                'email'        => $user['email'],
+                'username'     => $user['username'] ?? '',
+                'full_name'    => $user['full_name'] ?? '',
+                'role'         => $user['role_name'] ?? 'guest',
+                'role_id'      => $user['role_id'] ?? null,
+                'permissions'  => $user['permissions'] ?? [],
+                'is_applicant' => $user['is_applicant'] ?? false,
+                'created_at'   => $user['created_at'] ?? null,
             ],
         ];
 
