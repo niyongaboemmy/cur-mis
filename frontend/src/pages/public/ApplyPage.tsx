@@ -22,10 +22,29 @@ import { portalService } from '@/services/admissionService'
 /* ─────────────────────────────────────────────────────────────
    Application form schema (frontend-side validation)
    ───────────────────────────────────────────────────────────── */
+/** React-Hook-Form's `valueAsNumber: true` sends `NaN` for empty selects/inputs,
+ *  which breaks `z.coerce.number()` ("Expected number, received nan"). This
+ *  helper explicitly normalises falsy inputs → `undefined` so the user only
+ *  ever sees the nice required-message below (no zod internals leaking through). */
+const normaliseId = (v: unknown): unknown => {
+  if (v === '' || v == null) return undefined
+  if (typeof v === 'number' && Number.isNaN(v)) return undefined
+  if (typeof v === 'string') {
+    const n = Number(v)
+    return Number.isFinite(n) ? n : undefined
+  }
+  return v
+}
+const numberId = (msg: string) =>
+  z.preprocess(
+    normaliseId,
+    z.number({ required_error: msg, invalid_type_error: msg }).int().positive(msg),
+  )
+
 const schema = z.object({
   // Step 2 (picked in step 1 but stored together)
-  faculty_id:         z.coerce.number().int().positive('Please select a faculty'),
-  program_id:         z.coerce.number().int().positive('Please select a program'),
+  faculty_id:         numberId('Please select a faculty'),
+  program_id:         numberId('Please select a program'),
   intake:             z.string().min(1, 'Required').default('2026-A'),
 
   // Step 3 — personal
@@ -43,7 +62,13 @@ const schema = z.object({
   prev_qualification: z.string().min(2, 'Required'),
   prev_grade:         z.string().min(1, 'Required'),
   combination:        z.string().optional(),
-  graduation_year:    z.coerce.number().int().min(1980).max(new Date().getFullYear()),
+  graduation_year:    z.preprocess(
+                         normaliseId,
+                         z.number({ required_error: 'Graduation year is required', invalid_type_error: 'Graduation year is required' })
+                           .int()
+                           .min(1980, 'Year must be ≥ 1980')
+                           .max(new Date().getFullYear(), 'Year cannot be in the future'),
+                       ),
 
   // Step 5 — sponsorship
   sponsorship:        z.enum(['government', 'self', 'private', 'scholarship']),
@@ -210,16 +235,39 @@ export default function ApplyPage() {
               <select
                 className="input"
                 {...form.register('program_id', { valueAsNumber: true })}
-                disabled={!facultyId || programsQ.isLoading}
+                disabled={!facultyId || programsQ.isLoading || programs.length === 0}
               >
                 <option value="">
-                  {!facultyId ? '— pick a faculty first —' : programsQ.isLoading ? 'Loading…' : '— select program —'}
+                  {!facultyId
+                    ? '— pick a faculty first —'
+                    : programsQ.isLoading
+                      ? 'Loading…'
+                      : programs.length === 0
+                        ? 'No programs available for this faculty'
+                        : '— select program —'}
                 </option>
                 {programs.map((p) => (
                   <option key={p.id} value={p.id}>{p.name} ({p.code})</option>
                 ))}
               </select>
-              {form.formState.errors.program_id && <p className="error-text">{form.formState.errors.program_id.message}</p>}
+
+              {/* Only show zod error if the user touched AND there are programs to pick */}
+              {form.formState.errors.program_id && programs.length > 0 && (
+                <p className="error-text">{form.formState.errors.program_id.message}</p>
+              )}
+
+              {/* Empty-state explainer — helps when a faculty has no open programs yet */}
+              {facultyId && !programsQ.isLoading && programs.length === 0 && (
+                <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-[12.5px] text-amber-800 flex items-start gap-2">
+                  <svg className="w-4 h-4 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  <div>
+                    <p className="font-semibold">No programs open for this faculty</p>
+                    <p>Please pick a different faculty, or check back later when this round's programs are published.</p>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div>
@@ -363,7 +411,12 @@ export default function ApplyPage() {
             <ArrowLeft className="w-3.5 h-3.5" /> Back
           </button>
           {step < STEPS.length ? (
-            <button type="button" onClick={goNext} className="btn-primary">
+            <button
+              type="button"
+              onClick={goNext}
+              className="btn-primary"
+              disabled={step === 1 && !!facultyId && !programsQ.isLoading && programs.length === 0}
+            >
               Next <ArrowRight className="w-3.5 h-3.5" />
             </button>
           ) : (
