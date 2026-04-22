@@ -17,8 +17,12 @@ const RolesManagementPage  = lazy(() => import('@/pages/admin/RolesManagementPag
 const PermissionsManagementPage = lazy(() => import('@/pages/admin/PermissionsManagementPage'))
 const UsersManagementPage = lazy(() => import('@/pages/admin/UsersManagementPage'))
 
-// University Modules (Placeholders)
-const StudentsPage   = lazy(() => import('@/pages/placeholders/StudentsPage'))
+// University Modules
+const StudentsPage              = lazy(() => import('@/pages/StudentsPage'))
+const AcademicSettingsPage      = lazy(() => import('@/pages/academic/AcademicSettingsPage'))
+const AcademicsManagementPage   = lazy(() => import('@/pages/academic/AcademicsManagementPage'))
+
+// Placeholders still in use for modules not yet wired up
 const ProgramsPage   = lazy(() => import('@/pages/placeholders/ProgramsPage'))
 const FinancePage    = lazy(() => import('@/pages/placeholders/FinancePage'))
 const ExamsPage      = lazy(() => import('@/pages/placeholders/ExamsPage'))
@@ -74,7 +78,12 @@ function App() {
               <Route element={<ProtectedRoute requiredPermissions={PERMISSIONS.VIEW_STUDENTS} />}>
                 <Route path="/students" element={<StudentsPage />} />
               </Route>
-              
+
+              {/* Academic Settings — years & terms */}
+              <Route path="/academic/settings"   element={<AcademicSettingsPage />} />
+              {/* Academics Management — degrees, schools, departments, modules, etc. */}
+              <Route path="/academic/management" element={<AcademicsManagementPage />} />
+
               <Route element={<ProtectedRoute requiredPermissions={PERMISSIONS.MANAGE_ACADEMICS} />}>
                 <Route path="/programs" element={<ProgramsPage />} />
               </Route>

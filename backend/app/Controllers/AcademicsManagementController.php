@@ -38,11 +38,30 @@ class AcademicsManagementController extends BaseController
     }
 
     /**
+     * Resolve the target entity from the request.
+     * Routes register `/api/academics-management/{entity}` with the entity
+     * hardcoded in the URL prefix, so `$request->param('entity')` is null.
+     * Fall back to deriving it from the URI segment after `academics-management/`.
+     */
+    private function resolveEntity(Request $request): ?string
+    {
+        $entity = $request->param('entity');
+        if ($entity !== null && $entity !== '') {
+            return $entity;
+        }
+        $uri = $request->uri(); // e.g. /api/academics-management/schools/7
+        if (preg_match('#/academics-management/([a-z_]+)#', $uri, $m)) {
+            return $m[1];
+        }
+        return null;
+    }
+
+    /**
      * Generic list method for academic entities.
      */
     public function index(Request $request, Response $response): never
     {
-        $entity = $request->param('entity');
+        $entity = $this->resolveEntity($request);
         if (!isset($this->models[$entity])) {
             $this->error($response, 'Entity not found.', 404);
         }
@@ -59,7 +78,7 @@ class AcademicsManagementController extends BaseController
      */
     public function show(Request $request, Response $response): never
     {
-        $entity = $request->param('entity');
+        $entity = $this->resolveEntity($request);
         $id = (int) $request->param('id');
 
         if (!isset($this->models[$entity])) {
@@ -79,7 +98,7 @@ class AcademicsManagementController extends BaseController
      */
     public function create(Request $request, Response $response): never
     {
-        $entity = $request->param('entity');
+        $entity = $this->resolveEntity($request);
         $data = $request->body();
 
         if (!isset($this->models[$entity])) {
@@ -102,7 +121,7 @@ class AcademicsManagementController extends BaseController
      */
     public function update(Request $request, Response $response): never
     {
-        $entity = $request->param('entity');
+        $entity = $this->resolveEntity($request);
         $id = (int) $request->param('id');
         $data = $request->body();
 
@@ -130,7 +149,7 @@ class AcademicsManagementController extends BaseController
      */
     public function delete(Request $request, Response $response): never
     {
-        $entity = $request->param('entity');
+        $entity = $this->resolveEntity($request);
         $id = (int) $request->param('id');
 
         if (!isset($this->models[$entity])) {
