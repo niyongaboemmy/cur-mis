@@ -23,7 +23,7 @@ use App\Constants\Permissions;
  * Application flow:
  *   1. GET  /api/portal/active-year                       → confirm system is open
  *   2. GET  /api/portal/faculties                         → pick faculty
- *   3. GET  /api/portal/faculties/:id/programs            → pick program
+ *   3. GET  /api/portal/faculties/:id/departments          → pick department
  *   4. GET  /api/portal/faculties/:id/requirements        → see what docs are needed
  *   5. POST /api/portal/applications                      → submit application
  *   6. POST /api/portal/applications/:num/documents       → upload each document
@@ -40,7 +40,7 @@ $router->get('/api/portal/active-year', [ApplicationPortalController::class, 'ge
 
 // Faculty & program discovery
 $router->get('/api/portal/faculties',                            [ApplicationPortalController::class, 'getFaculties']);
-$router->get('/api/portal/faculties/:faculty_id/programs',       [ApplicationPortalController::class, 'getFacultyPrograms']);
+$router->get('/api/portal/faculties/:faculty_id/departments',     [ApplicationPortalController::class, 'getFacultyDepartments']);
 $router->get('/api/portal/faculties/:faculty_id/requirements',   [ApplicationPortalController::class, 'getFacultyRequirements']);
 
 // Application lifecycle

@@ -152,7 +152,7 @@ export default function TrackApplicationPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-5 text-[13px]">
                 <Info k="Faculty" v={app.faculty_name ?? `#${app.faculty_id}`} />
-                <Info k="Program" v={app.program_name ?? `#${app.program_id}`} />
+                <Info k="Department" v={app.department_name ?? `#${app.department_id}`} />
                 <Info k="Intake"  v={app.intake} />
                 <Info k="Sponsorship" v={app.sponsorship} />
               </div>

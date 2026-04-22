@@ -30,22 +30,20 @@ class AdmissionController extends BaseController
 
     /**
      * GET /api/admin/admissions/offers
-     * Paginated list of admission offers with optional filters.
      */
     public function listOffers(Request $request, Response $response): never
     {
-        // Auto-expire stale pending offers before fetching
         $db = Database::getInstance();
         $db->execute(
             "UPDATE `admission_offers` SET status = 'expired', updated_at = NOW()
              WHERE expires_at < CURDATE() AND status = 'pending'"
         );
 
-        $page    = (int)($request->query('page')      ?? 1);
-        $perPage = (int)($request->query('per_page')  ?? 15);
-        $status  = $request->query('status')           ?? '';
-        $programId = (int)($request->query('program_id') ?? 0);
-        $intake  = $request->query('intake')            ?? '';
+        $page         = (int)($request->query('page')          ?? 1);
+        $perPage      = (int)($request->query('per_page')      ?? 15);
+        $status       = $request->query('status')               ?? '';
+        $departmentId = (int)($request->query('department_id') ?? 0);
+        $intake       = $request->query('intake')               ?? '';
 
         $perPage = max(1, min(100, $perPage));
         $offset  = ($page - 1) * $perPage;
@@ -58,9 +56,9 @@ class AdmissionController extends BaseController
             $bindings[]   = $status;
         }
 
-        if ($programId > 0) {
-            $conditions[] = 'sa.program_id = ?';
-            $bindings[]   = $programId;
+        if ($departmentId > 0) {
+            $conditions[] = 'sa.department_id = ?';
+            $bindings[]   = $departmentId;
         }
 
         if ($intake !== '') {
@@ -80,11 +78,11 @@ class AdmissionController extends BaseController
 
         $rows = $db->fetchAll(
             "SELECT ao.*, sa.first_name, sa.last_name, sa.email,
-                    sa.application_number, sa.intake, sa.program_id,
-                    p.name AS program_name
+                    sa.application_number, sa.intake, sa.department_id,
+                    d.dep_name AS department_name
              FROM `admission_offers` ao
-             JOIN `student_applications` sa ON sa.id = ao.application_id
-             JOIN `programs` p ON p.id = sa.program_id
+             JOIN `student_applications` sa ON sa.id    = ao.application_id
+             JOIN `departements`         d  ON d.dep_id = sa.department_id
              {$where}
              ORDER BY ao.id DESC
              LIMIT ? OFFSET ?",
@@ -102,7 +100,6 @@ class AdmissionController extends BaseController
 
     /**
      * POST /api/admin/admissions/offers
-     * Create a single admission offer for one applicant.
      */
     public function createOffer(Request $request, Response $response): never
     {
@@ -120,7 +117,7 @@ class AdmissionController extends BaseController
         }
 
         $applicationId = (int)$data['application_id'];
-        $application   = $this->appModel->getWithProgram($applicationId);
+        $application   = $this->appModel->getWithDetails($applicationId);
 
         if (!$application) {
             $this->error($response, 'Application not found.', 404);
@@ -163,7 +160,7 @@ class AdmissionController extends BaseController
             'email'      => $application['email'],
         ], [
             'application_number' => $application['application_number'],
-            'program_name'       => $application['program_name'],
+            'program_name'       => $application['department_name'],
             'offer_reference'    => $offerRef,
             'expires_at'         => $data['expires_at'],
             'portal_url'         => $portalUrl,
@@ -179,7 +176,6 @@ class AdmissionController extends BaseController
 
     /**
      * POST /api/admin/admissions/offers/bulk
-     * Create offers for all qualified applicants in a program+intake.
      */
     public function bulkCreateOffers(Request $request, Response $response): never
     {
@@ -188,7 +184,7 @@ class AdmissionController extends BaseController
         $actorId  = (int)($authUser['id'] ?? 0);
 
         $errors = ValidationHelper::validate($data, [
-            'program_id'       => 'required|numeric',
+            'department_id'    => 'required|numeric',
             'intake'           => 'required|string',
             'academic_year_id' => 'required|numeric',
             'expires_at'       => 'required|regex:/^\d{4}-\d{2}-\d{2}$/',
@@ -200,34 +196,33 @@ class AdmissionController extends BaseController
 
         $db = Database::getInstance();
 
-        // Fetch qualified applicants without an existing active offer
         $qualified = $db->fetchAll(
             "SELECT sa.id AS application_id, sa.application_number,
                     sa.first_name, sa.last_name, sa.email, sa.status AS application_status,
-                    p.name AS program_name
+                    d.dep_name AS department_name
              FROM `merit_lists` ml
-             JOIN `student_applications` sa ON sa.id = ml.application_id
-             JOIN `programs` p ON p.id = sa.program_id
-             WHERE ml.program_id = ? AND ml.intake = ? AND ml.academic_year_id = ?
+             JOIN `student_applications` sa ON sa.id    = ml.application_id
+             JOIN `departements`         d  ON d.dep_id = sa.department_id
+             WHERE ml.department_id = ? AND ml.intake = ? AND ml.academic_year_id = ?
              AND ml.is_qualified = 1
              AND sa.id NOT IN (
                  SELECT application_id FROM `admission_offers`
                  WHERE status IN ('pending', 'accepted')
              )",
-            [(int)$data['program_id'], $data['intake'], (int)$data['academic_year_id']]
+            [(int)$data['department_id'], $data['intake'], (int)$data['academic_year_id']]
         );
 
         if (empty($qualified)) {
             $this->success($response, ['created' => 0], 'No eligible applicants found for bulk offer.');
         }
 
-        $created  = 0;
+        $created    = 0;
         $portalBase = rtrim((string)(getenv('APP_URL') ?: ''), '/') . '/portal/applications/';
 
         foreach ($qualified as $app) {
             $offerRef = $this->offerModel->generateOfferReference();
 
-            $offerId = (int)$this->offerModel->create([
+            $this->offerModel->create([
                 'application_id'         => (int)$app['application_id'],
                 'offer_letter_reference' => $offerRef,
                 'offered_at'             => date('Y-m-d H:i:s'),
@@ -250,7 +245,7 @@ class AdmissionController extends BaseController
                 'email'      => $app['email'],
             ], [
                 'application_number' => $app['application_number'],
-                'program_name'       => $app['program_name'],
+                'program_name'       => $app['department_name'],
                 'offer_reference'    => $offerRef,
                 'expires_at'         => $data['expires_at'],
                 'portal_url'         => $portalBase . $app['application_number'],
@@ -264,7 +259,6 @@ class AdmissionController extends BaseController
 
     /**
      * GET /api/admin/admissions/offers/:offer_id
-     * Full details of a single offer.
      */
     public function getOfferDetails(Request $request, Response $response): never
     {
@@ -280,7 +274,6 @@ class AdmissionController extends BaseController
 
     /**
      * POST /api/admin/admissions/offers/:offer_id/enroll
-     * Initiate enrollment for an accepted offer.
      */
     public function initiateEnrollment(Request $request, Response $response): never
     {

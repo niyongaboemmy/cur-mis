@@ -72,7 +72,7 @@ function Overview() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-5">
-        <StatTile k="Program" v={app.program_name ?? `#${app.program_id}`} />
+        <StatTile k="Department" v={app.department_name ?? `#${app.department_id}`} />
         <StatTile k="Intake"  v={app.intake} />
         <StatTile k="Documents" v={`${docs.filter((d) => d.verification_status === 'verified').length}/${docs.length} verified`} />
       </div>

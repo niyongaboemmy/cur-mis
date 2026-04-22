@@ -91,7 +91,7 @@ export default function OffersPage() {
                 <tr key={o.id}>
                   <td className="font-mono text-[12px]">{o.offer_letter_reference}</td>
                   <td>{o.applicant_name ?? `App #${o.application_id}`}</td>
-                  <td>{o.program_name ?? '—'}</td>
+                  <td>{o.department_name ?? '—'}</td>
                   <td>{fmt(o.offered_at)}</td>
                   <td>{o.expires_at}</td>
                   <td><span className={STATUS_TONE[o.status] ?? 'chip-soft'}>{o.status}</span></td>

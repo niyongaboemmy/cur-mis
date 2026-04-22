@@ -98,7 +98,7 @@ export default function ApplicationDetailPage() {
           </div>
           <div className="space-y-1.5 text-[13px]">
             <Row icon={Building2}    k="Faculty" v={app.faculty_name ?? `#${app.faculty_id}`} />
-            <Row icon={GraduationCap} k="Program" v={app.program_name ?? `#${app.program_id}`} />
+            <Row icon={GraduationCap} k="Department" v={app.department_name ?? `#${app.department_id}`} />
             <Row icon={GraduationCap} k="Intake"  v={app.intake} />
             <Row icon={GraduationCap} k="Prev. school"   v={app.prev_school} />
             <Row icon={GraduationCap} k="Qualification" v={`${app.prev_qualification} · grade ${app.prev_grade}`} />

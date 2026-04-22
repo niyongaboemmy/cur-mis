@@ -26,22 +26,22 @@ class MeritListController extends BaseController
     }
 
     /**
-     * GET /api/admin/merit/criteria?program_id=&intake=&academic_year_id=
+     * GET /api/admin/merit/criteria?department_id=&intake=&academic_year_id=
      */
     public function getCriteria(Request $request, Response $response): never
     {
-        $programId = (int)($request->query('program_id')      ?? 0);
-        $intake    = $request->query('intake')                 ?? '';
-        $yearId    = (int)($request->query('academic_year_id') ?? 0);
+        $departmentId = (int)($request->query('department_id')    ?? 0);
+        $intake       = $request->query('intake')                  ?? '';
+        $yearId       = (int)($request->query('academic_year_id') ?? 0);
 
-        if (!$programId || !$intake || !$yearId) {
-            $this->error($response, 'program_id, intake, and academic_year_id are required.', 422);
+        if (!$departmentId || !$intake || !$yearId) {
+            $this->error($response, 'department_id, intake, and academic_year_id are required.', 422);
         }
 
-        $criteria = $this->criteriaModel->findForProgramIntake($programId, $intake, $yearId);
+        $criteria = $this->criteriaModel->findForDeptIntake($departmentId, $intake, $yearId);
 
         if (!$criteria) {
-            $this->error($response, 'No merit criteria configured for this program and intake.', 404);
+            $this->error($response, 'No merit criteria configured for this department and intake.', 404);
         }
 
         $this->success($response, $criteria, 'Merit criteria fetched.');
@@ -49,15 +49,14 @@ class MeritListController extends BaseController
 
     /**
      * POST /api/admin/merit/criteria
-     * Create or update merit criteria for a program+intake+year.
      */
     public function saveCriteria(Request $request, Response $response): never
     {
-        $data   = $request->body();
+        $data     = $request->body();
         $authUser = $request->param('_auth_user');
 
         $errors = ValidationHelper::validate($data, [
-            'program_id'          => 'required|numeric',
+            'department_id'       => 'required|numeric',
             'intake'              => 'required|string|min:3|max:20',
             'academic_year_id'    => 'required|numeric',
             'grade_weight'        => 'required|numeric|min:0|max:100',
@@ -77,7 +76,7 @@ class MeritListController extends BaseController
         }
 
         $payload = [
-            'program_id'            => (int)$data['program_id'],
+            'department_id'         => (int)$data['department_id'],
             'intake'                => $data['intake'],
             'academic_year_id'      => (int)$data['academic_year_id'],
             'grade_weight'          => (float)$data['grade_weight'],
@@ -97,7 +96,6 @@ class MeritListController extends BaseController
 
     /**
      * POST /api/admin/merit/generate
-     * Generate (or regenerate) the merit list for a program+intake+year.
      */
     public function generateMeritList(Request $request, Response $response): never
     {
@@ -105,7 +103,7 @@ class MeritListController extends BaseController
         $authUser = $request->param('_auth_user');
 
         $errors = ValidationHelper::validate($data, [
-            'program_id'       => 'required|numeric',
+            'department_id'    => 'required|numeric',
             'intake'           => 'required|string',
             'academic_year_id' => 'required|numeric',
         ]);
@@ -116,7 +114,7 @@ class MeritListController extends BaseController
 
         try {
             $result = $this->service->generateMeritList(
-                (int)$data['program_id'],
+                (int)$data['department_id'],
                 (string)$data['intake'],
                 (int)$data['academic_year_id'],
                 (int)($authUser['id'] ?? 0)
@@ -129,21 +127,21 @@ class MeritListController extends BaseController
     }
 
     /**
-     * GET /api/admin/merit/list?program_id=&intake=&academic_year_id=&page=&per_page=
+     * GET /api/admin/merit/list?department_id=&intake=&academic_year_id=&page=&per_page=
      */
     public function getMeritList(Request $request, Response $response): never
     {
-        $programId = (int)($request->query('program_id')       ?? 0);
-        $intake    = $request->query('intake')                  ?? '';
-        $yearId    = (int)($request->query('academic_year_id')  ?? 0);
-        $page      = (int)($request->query('page')              ?? 1);
-        $perPage   = (int)($request->query('per_page')          ?? 20);
+        $departmentId = (int)($request->query('department_id')     ?? 0);
+        $intake       = $request->query('intake')                   ?? '';
+        $yearId       = (int)($request->query('academic_year_id')  ?? 0);
+        $page         = (int)($request->query('page')              ?? 1);
+        $perPage      = (int)($request->query('per_page')          ?? 20);
 
-        if (!$programId || !$intake || !$yearId) {
-            $this->error($response, 'program_id, intake, and academic_year_id are required.', 422);
+        if (!$departmentId || !$intake || !$yearId) {
+            $this->error($response, 'department_id, intake, and academic_year_id are required.', 422);
         }
 
-        $total = $this->meritListModel->countForProgramIntake($programId, $intake, $yearId);
+        $total = $this->meritListModel->countForDeptIntake($departmentId, $intake, $yearId);
 
         if ($total === 0) {
             $this->success($response, [
@@ -152,10 +150,9 @@ class MeritListController extends BaseController
                 'per_page'     => $perPage,
                 'current_page' => $page,
                 'last_page'    => 1,
-            ], 'No merit list generated yet for this program and intake.');
+            ], 'No merit list generated yet for this department and intake.');
         }
 
-        // Paginate via raw query
         $perPage = max(1, min(100, $perPage));
         $offset  = ($page - 1) * $perPage;
 
@@ -165,10 +162,10 @@ class MeritListController extends BaseController
                     sa.email, sa.combination, sa.prev_grade, sa.status AS application_status
              FROM `merit_lists` ml
              JOIN `student_applications` sa ON sa.id = ml.application_id
-             WHERE ml.program_id = ? AND ml.intake = ? AND ml.academic_year_id = ?
+             WHERE ml.department_id = ? AND ml.intake = ? AND ml.academic_year_id = ?
              ORDER BY ml.rank ASC
              LIMIT ? OFFSET ?",
-            [$programId, $intake, $yearId, $perPage, $offset]
+            [$departmentId, $intake, $yearId, $perPage, $offset]
         );
 
         $this->success($response, [
@@ -182,13 +179,12 @@ class MeritListController extends BaseController
 
     /**
      * PATCH /api/admin/merit/publish
-     * Publish (or unpublish) the merit list for a program+intake+year.
      */
     public function publishMeritList(Request $request, Response $response): never
     {
         $data   = $request->body();
         $errors = ValidationHelper::validate($data, [
-            'program_id'       => 'required|numeric',
+            'department_id'    => 'required|numeric',
             'intake'           => 'required|string',
             'academic_year_id' => 'required|numeric',
         ]);
@@ -197,14 +193,14 @@ class MeritListController extends BaseController
             $this->error($response, 'Validation failed.', 422, $errors);
         }
 
-        $criteria = $this->criteriaModel->findForProgramIntake(
-            (int)$data['program_id'],
+        $criteria = $this->criteriaModel->findForDeptIntake(
+            (int)$data['department_id'],
             (string)$data['intake'],
             (int)$data['academic_year_id']
         );
 
         if (!$criteria) {
-            $this->error($response, 'No merit criteria found for this program and intake.', 404);
+            $this->error($response, 'No merit criteria found for this department and intake.', 404);
         }
 
         $isPublished = isset($data['is_published']) ? (int)(bool)$data['is_published'] : 1;

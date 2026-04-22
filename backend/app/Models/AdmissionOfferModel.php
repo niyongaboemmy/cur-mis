@@ -27,10 +27,11 @@ class AdmissionOfferModel extends BaseModel
         return $this->db->fetchOne(
             "SELECT ao.*, sa.first_name, sa.last_name, sa.email, sa.phone,
                     sa.application_number, sa.status AS application_status,
-                    p.name AS program_name, p.code AS program_code
+                    d.dep_name    AS department_name,
+                    d.dep_acronym AS department_code
              FROM `admission_offers` ao
-             JOIN `student_applications` sa ON sa.id = ao.application_id
-             JOIN `programs` p ON p.id = sa.program_id
+             JOIN `student_applications` sa ON sa.id      = ao.application_id
+             JOIN `departements`         d  ON d.dep_id   = sa.department_id
              WHERE ao.id = ?
              LIMIT 1",
             [$offerId]

@@ -117,7 +117,7 @@ export default function ApplicationsListPage() {
                       <p className="font-medium text-ink-900 dark:text-ink-100">{a.first_name} {a.last_name}</p>
                       <p className="text-[11.5px] text-ink-500">{a.email}</p>
                     </td>
-                    <td>{a.program_name ?? `#${a.program_id}`}</td>
+                    <td>{a.department_name ?? `#${a.department_id}`}</td>
                     <td>{a.intake}</td>
                     <td><span className={STATUS_TONE[a.status] ?? 'chip-soft'}>{a.status}</span></td>
                     <td>{a.document_status}</td>

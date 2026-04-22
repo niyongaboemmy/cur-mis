@@ -41,7 +41,7 @@ class ApplicationAdminController extends BaseController
         $filters = [
             'search'          => $request->query('search')          ?? '',
             'status'          => $request->query('status')          ?? '',
-            'program_id'      => $request->query('program_id')      ?? '',
+            'department_id'   => $request->query('department_id')   ?? '',
             'intake'          => $request->query('intake')          ?? '',
             'academic_year_id'=> $request->query('academic_year_id') ?? '',
         ];
@@ -60,7 +60,7 @@ class ApplicationAdminController extends BaseController
     public function show(Request $request, Response $response): never
     {
         $id          = (int)$request->param('id');
-        $application = $this->appModel->getWithProgram($id);
+        $application = $this->appModel->getWithDetails($id);
 
         if (!$application) {
             $this->error($response, 'Application not found.', 404);

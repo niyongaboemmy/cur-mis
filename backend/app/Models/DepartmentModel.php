@@ -6,8 +6,11 @@ namespace App\Models;
 
 class DepartmentModel extends BaseModel
 {
-    // The table name in the DB has a typo: 'departements' (and PK is `dep_id`).
     protected string $table      = 'departements';
     protected string $primaryKey = 'dep_id';
-    protected array  $fillable   = ['name', 'code', 'description', 'faculty_id', 'is_active'];
+    protected array  $fillable   = [
+        'dep_name', 'dep_acronym', 'dep_description',
+        'fac_id', 'school_id', 'dep_author', 'index_number',
+    ];
+    protected array $hidden = [];
 }

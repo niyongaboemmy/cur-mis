@@ -9,18 +9,18 @@ import { academicsMgmtService } from '@/services/academicsMgmtService'
 export default function MeritPage() {
   const qc = useQueryClient()
   const activeYear = useSystemStore(selectActiveYear)
-  const [programId, setProgramId] = useState<number | ''>('')
+  const [departmentId, setDepartmentId] = useState<number | ''>('')
   const [intake, setIntake] = useState('2026-A')
 
-  // program picker — list degrees
-  const programsQ = useQuery({
-    queryKey: ['acmgmt', 'degrees', 'all'],
-    queryFn:  () => academicsMgmtService.list<any>('degrees', { page: 1, per_page: 100 }),
+  // department picker
+  const departmentsQ = useQuery({
+    queryKey: ['acmgmt', 'departments', 'all'],
+    queryFn:  () => academicsMgmtService.list<any>('departments', { page: 1, per_page: 100 }),
   })
-  const programs = programsQ.data?.data?.data ?? []
+  const departments = departmentsQ.data?.data?.data ?? []
 
-  const canQuery = !!programId && !!intake && !!activeYear
-  const keyParams = canQuery ? { program_id: Number(programId), intake, academic_year_id: activeYear!.id } : null
+  const canQuery = !!departmentId && !!intake && !!activeYear
+  const keyParams = canQuery ? { department_id: Number(departmentId), intake, academic_year_id: activeYear!.id } : null
 
   const criteriaQ = useQuery({
     queryKey: ['admin', 'merit', 'criteria', keyParams],
@@ -40,7 +40,7 @@ export default function MeritPage() {
 
   const save = useMutation({
     mutationFn: () => meritService.saveCriteria({
-      program_id:       Number(programId),
+      department_id:    Number(departmentId),
       intake,
       academic_year_id: activeYear!.id,
       grade_weight:       Number(form.grade_weight),
@@ -84,10 +84,10 @@ export default function MeritPage() {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
-            <label className="label">Program</label>
-            <select className="input" value={programId} onChange={(e) => setProgramId(e.target.value ? Number(e.target.value) : '')}>
-              <option value="">— pick program —</option>
-              {programs.map((p) => <option key={p.id} value={p.id}>{p.code} · {p.name}</option>)}
+            <label className="label">Department</label>
+            <select className="input" value={departmentId} onChange={(e) => setDepartmentId(e.target.value ? Number(e.target.value) : '')}>
+              <option value="">— pick department —</option>
+              {departments.map((p: any) => <option key={p.dep_id} value={p.dep_id}>{p.dep_acronym} · {p.dep_name}</option>)}
             </select>
           </div>
           <div>

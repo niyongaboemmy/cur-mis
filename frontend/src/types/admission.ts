@@ -9,13 +9,12 @@ export interface Faculty {
   school_name?: string
 }
 
-export interface PortalProgram {
+export interface PortalDepartment {
   id:          number
   name:        string
   code:        string
-  degree_type?: string
-  duration_years?: number
-  total_credits?: number
+  description?: string
+  fac_id?:     number
 }
 
 export interface DocumentType {
@@ -65,7 +64,7 @@ export interface StudentApplication {
 
   academic_year_id:   number
   faculty_id:         number
-  program_id:         number
+  department_id:      number
   intake:             string
 
   first_name:         string
@@ -101,8 +100,8 @@ export interface StudentApplication {
   updated_at:         string
 
   /* Enrichments from server */
-  program_name?:  string
-  faculty_name?:  string
+  department_name?:  string
+  faculty_name?:     string
   academic_year_label?: string
 }
 
@@ -137,7 +136,7 @@ export interface ApplicationStatusLog {
 
 export interface MeritCriteria {
   id?:                    number
-  program_id:             number
+  department_id:          number
   intake:                 string
   academic_year_id:       number
   grade_weight:           number
@@ -176,7 +175,7 @@ export interface AdmissionOffer {
   enrolled_at?:           string | null
   /* Enriched */
   applicant_name?:        string
-  program_name?:          string
+  department_name?:       string
 }
 
 /* ── Applicant self-service ──────────────────────────────────────── */

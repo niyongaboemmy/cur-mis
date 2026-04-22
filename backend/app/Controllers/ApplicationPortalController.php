@@ -44,8 +44,6 @@ class ApplicationPortalController extends BaseController
 
     /**
      * GET /api/portal/active-year
-     * Returns the currently active academic year.
-     * The frontend uses this to confirm the system is open for applications.
      */
     public function getActiveYear(Request $request, Response $response): never
     {
@@ -65,7 +63,6 @@ class ApplicationPortalController extends BaseController
 
     /**
      * GET /api/portal/faculties
-     * Lists all faculties with school context for the faculty-selection step.
      */
     public function getFaculties(Request $request, Response $response): never
     {
@@ -74,26 +71,19 @@ class ApplicationPortalController extends BaseController
     }
 
     /**
-     * GET /api/portal/faculties/:faculty_id/programs
-     * Lists active programs offered by a specific faculty.
-     * Applicant selects program after choosing faculty.
+     * GET /api/portal/faculties/:faculty_id/departments
+     * Lists departments offered by a specific faculty for the application form.
      */
-    public function getFacultyPrograms(Request $request, Response $response): never
+    public function getFacultyDepartments(Request $request, Response $response): never
     {
-        $facultyId = (int)$request->param('faculty_id');
-        $programs  = $this->facultyModel->getProgramsByFaculty($facultyId);
+        $facultyId   = (int)$request->param('faculty_id');
+        $departments = $this->facultyModel->getDepartmentsByFaculty($facultyId);
 
-        if (empty($programs)) {
-            $this->success($response, [], 'No active programs found for this faculty.');
-        }
-
-        $this->success($response, $programs, 'Programs fetched successfully.');
+        $this->success($response, $departments, 'Departments fetched successfully.');
     }
 
     /**
      * GET /api/portal/faculties/:faculty_id/requirements
-     * Returns the document requirements for a faculty in the active academic year.
-     * Applicant uses this to know what to upload.
      */
     public function getFacultyRequirements(Request $request, Response $response): never
     {
@@ -120,15 +110,9 @@ class ApplicationPortalController extends BaseController
 
     /**
      * POST /api/portal/applications
-     * Submit a new student application.
-     *
-     * academic_year_id is never taken from the request — it is always resolved
-     * server-side from the active academic year.
-     * faculty_id must be supplied and must own the chosen program.
      */
     public function submitApplication(Request $request, Response $response): never
     {
-        // Resolve active academic year first
         try {
             $activeYear = $this->service->getActiveAcademicYear();
         } catch (\RuntimeException $e) {
@@ -140,7 +124,7 @@ class ApplicationPortalController extends BaseController
         $data   = $request->body();
         $errors = ValidationHelper::validate($data, [
             'faculty_id'         => 'required|numeric',
-            'program_id'         => 'required|numeric',
+            'department_id'      => 'required|numeric',
             'intake'             => 'required|string|min:3|max:20',
             'first_name'         => 'required|string|min:2|max:100',
             'last_name'          => 'required|string|min:2|max:100',
@@ -160,19 +144,19 @@ class ApplicationPortalController extends BaseController
             $this->error($response, 'Validation failed.', 422, $errors);
         }
 
-        $facultyId = (int)$data['faculty_id'];
-        $programId = (int)$data['program_id'];
+        $facultyId    = (int)$data['faculty_id'];
+        $departmentId = (int)$data['department_id'];
 
-        // Verify the program belongs to the given faculty
-        $programs = $this->facultyModel->getProgramsByFaculty($facultyId);
-        $programIds = array_column($programs, 'id');
-        if (!in_array((string)$programId, $programIds, true) && !in_array($programId, $programIds, true)) {
-            $this->error($response, 'The selected program does not belong to this faculty.', 422);
+        // Verify the department belongs to the given faculty
+        $departments   = $this->facultyModel->getDepartmentsByFaculty($facultyId);
+        $departmentIds = array_column($departments, 'id');
+        if (!in_array($departmentId, $departmentIds, false)) {
+            $this->error($response, 'The selected department does not belong to this faculty.', 422);
         }
 
-        // Duplicate check: active application for same email + program + intake + year
-        if ($this->appModel->existsActiveForProgramIntake($data['email'], $programId, $data['intake'], $academicYearId)) {
-            $this->error($response, 'An active application already exists for this email, program, and intake.', 409);
+        // Duplicate check: active application for same email + department + intake + year
+        if ($this->appModel->existsActiveForDeptIntake($data['email'], $departmentId, $data['intake'], $academicYearId)) {
+            $this->error($response, 'An active application already exists for this email, department, and intake.', 409);
         }
 
         $appNumber = $this->service->generateApplicationNumber();
@@ -181,7 +165,7 @@ class ApplicationPortalController extends BaseController
             'application_number' => $appNumber,
             'academic_year_id'   => $academicYearId,
             'faculty_id'         => $facultyId,
-            'program_id'         => $programId,
+            'department_id'      => $departmentId,
             'intake'             => $data['intake'],
             'first_name'         => trim($data['first_name']),
             'last_name'          => trim($data['last_name']),
@@ -205,10 +189,10 @@ class ApplicationPortalController extends BaseController
 
         $this->service->logStatusChange($appId, null, 'submitted', null, 'applicant', 'Application submitted.');
 
-        // Fetch program name for the confirmation email
-        $db          = Database::getInstance();
-        $program     = $db->fetchOne("SELECT name FROM `programs` WHERE id = ? LIMIT 1", [$programId]);
-        $programName = $program['name'] ?? '';
+        // Fetch department name for the confirmation email
+        $db             = Database::getInstance();
+        $dept           = $db->fetchOne("SELECT dep_name FROM `departements` WHERE dep_id = ? LIMIT 1", [$departmentId]);
+        $departmentName = $dept['dep_name'] ?? '';
 
         $this->service->sendApplicationEmail('application_received', [
             'first_name' => $data['first_name'],
@@ -216,7 +200,7 @@ class ApplicationPortalController extends BaseController
             'email'      => $data['email'],
         ], [
             'application_number' => $appNumber,
-            'program_name'       => $programName,
+            'program_name'       => $departmentName,
         ]);
 
         $this->success($response, [
@@ -233,7 +217,6 @@ class ApplicationPortalController extends BaseController
 
     /**
      * GET /api/portal/applications/:application_number
-     * Track application status — sanitised public view (no file IDs exposed).
      */
     public function trackApplication(Request $request, Response $response): never
     {
@@ -247,14 +230,11 @@ class ApplicationPortalController extends BaseController
         $documents = $this->docModel->getForApplication((int)$application['id']);
         $statusLog = $this->logModel->getForApplication((int)$application['id']);
 
-        // Fetch the document requirements for this faculty + year so the applicant
-        // can see what else they need to upload
         $requirements = $this->requirementModel->getForFacultyYear(
             (int)$application['faculty_id'],
             (int)$application['academic_year_id']
         );
 
-        // Build a map: document_type_id → uploaded doc status
         $uploadedMap = [];
         foreach ($documents as $doc) {
             $uploadedMap[(int)$doc['document_type_id']] = [
@@ -264,7 +244,6 @@ class ApplicationPortalController extends BaseController
             ];
         }
 
-        // Merge requirements with upload status
         $checklist = array_map(function ($req) use ($uploadedMap) {
             $typeId   = (int)$req['document_type_id'];
             $uploaded = $uploadedMap[$typeId] ?? null;
@@ -282,7 +261,6 @@ class ApplicationPortalController extends BaseController
             ];
         }, $requirements);
 
-        // Active offer details (if in offered state)
         $offer = null;
         if ($application['status'] === 'offered') {
             $rawOffer = $this->offerModel->findByApplicationId((int)$application['id']);
@@ -295,32 +273,41 @@ class ApplicationPortalController extends BaseController
             }
         }
 
-        $db      = Database::getInstance();
-        $program = $db->fetchOne("SELECT name, code FROM `programs` WHERE id = ? LIMIT 1", [(int)$application['program_id']]);
-        $faculty = $db->fetchOne("SELECT fac_name FROM `faculty` WHERE fac_id = ? LIMIT 1", [(int)$application['faculty_id']]);
-        $year    = $db->fetchOne("SELECT label FROM `academic_years` WHERE id = ? LIMIT 1", [(int)$application['academic_year_id']]);
+        $db   = Database::getInstance();
+        $dept = $db->fetchOne(
+            "SELECT dep_name, dep_acronym FROM `departements` WHERE dep_id = ? LIMIT 1",
+            [(int)$application['department_id']]
+        );
+        $faculty = $db->fetchOne(
+            "SELECT fac_name FROM `faculty` WHERE fac_id = ? LIMIT 1",
+            [(int)$application['faculty_id']]
+        );
+        $year = $db->fetchOne(
+            "SELECT label FROM `academic_years` WHERE id = ? LIMIT 1",
+            [(int)$application['academic_year_id']]
+        );
 
         $this->success($response, [
-            'application_number' => $application['application_number'],
-            'academic_year'      => $year['label']    ?? '',
-            'faculty_name'       => $faculty['fac_name'] ?? '',
-            'program_name'       => $program['name']  ?? '',
-            'program_code'       => $program['code']  ?? '',
-            'intake'             => $application['intake'],
-            'first_name'         => $application['first_name'],
-            'last_name'          => $application['last_name'],
-            'status'             => $application['status'],
-            'document_status'    => $application['document_status'],
-            'submitted_at'       => $application['submitted_at'],
-            'document_checklist' => $checklist,
-            'status_log'         => array_map(fn($l) => [
+            'application_number'  => $application['application_number'],
+            'academic_year'       => $year['label']       ?? '',
+            'faculty_name'        => $faculty['fac_name'] ?? '',
+            'department_name'     => $dept['dep_name']    ?? '',
+            'department_code'     => $dept['dep_acronym'] ?? '',
+            'intake'              => $application['intake'],
+            'first_name'          => $application['first_name'],
+            'last_name'           => $application['last_name'],
+            'status'              => $application['status'],
+            'document_status'     => $application['document_status'],
+            'submitted_at'        => $application['submitted_at'],
+            'document_checklist'  => $checklist,
+            'status_log'          => array_map(fn($l) => [
                 'from_status' => $l['from_status'],
                 'to_status'   => $l['to_status'],
                 'actor_type'  => $l['actor_type'],
                 'notes'       => $l['notes'],
                 'created_at'  => $l['created_at'],
             ], $statusLog),
-            'offer'              => $offer,
+            'offer'               => $offer,
         ], 'Application status fetched.');
     }
 
@@ -330,8 +317,6 @@ class ApplicationPortalController extends BaseController
 
     /**
      * POST /api/portal/applications/:application_number/documents
-     * Upload a document for an open application.
-     * Only document types configured in admission_requirements for that faculty+year are accepted.
      */
     public function uploadDocument(Request $request, Response $response): never
     {
@@ -357,8 +342,7 @@ class ApplicationPortalController extends BaseController
 
         $docTypeId = (int)$body['document_type_id'];
 
-        // Verify this document type is part of the faculty+year requirements
-        $requirements = $this->requirementModel->getForFacultyYear(
+        $requirements   = $this->requirementModel->getForFacultyYear(
             (int)$application['faculty_id'],
             (int)$application['academic_year_id']
         );
@@ -393,11 +377,9 @@ class ApplicationPortalController extends BaseController
             'rejection_notes'     => null,
         ]);
 
-        // Recalculate document completeness and update application
         $docStatus = $this->service->checkDocumentCompleteness($appId);
         $this->appModel->update($appId, ['document_status' => $docStatus]);
 
-        // Find the requirement entry to return its label
         $reqEntry = current(array_filter($requirements, fn($r) => (int)$r['document_type_id'] === $docTypeId));
 
         $this->success($response, [
@@ -415,7 +397,6 @@ class ApplicationPortalController extends BaseController
 
     /**
      * POST /api/portal/applications/:application_number/respond
-     * Applicant accepts or declines an admission offer.
      */
     public function respondToOffer(Request $request, Response $response): never
     {
@@ -445,7 +426,6 @@ class ApplicationPortalController extends BaseController
             $this->error($response, 'Offer record not found.', 404);
         }
 
-        // Check expiry
         if (strtotime($offer['expires_at']) < strtotime(date('Y-m-d'))) {
             $this->offerModel->update((int)$offer['id'], ['status' => 'expired']);
             $this->error($response, 'This offer has expired. Please contact the admissions office.', 422);
@@ -467,17 +447,20 @@ class ApplicationPortalController extends BaseController
             'applicant', "Applicant responded: {$action}."
         );
 
-        // Fetch program name for email
-        $db          = Database::getInstance();
-        $program     = $db->fetchOne("SELECT name FROM `programs` WHERE id = ? LIMIT 1", [(int)$application['program_id']]);
-        $programName = $program['name'] ?? '';
+        // Fetch department name for email
+        $db             = Database::getInstance();
+        $dept           = $db->fetchOne(
+            "SELECT dep_name FROM `departements` WHERE dep_id = ? LIMIT 1",
+            [(int)$application['department_id']]
+        );
+        $departmentName = $dept['dep_name'] ?? '';
 
         if ($action === 'accepted') {
             $this->service->sendApplicationEmail('offer_accepted', [
                 'first_name' => $application['first_name'],
                 'last_name'  => $application['last_name'],
                 'email'      => $application['email'],
-            ], ['program_name' => $programName]);
+            ], ['program_name' => $departmentName]);
         }
 
         $this->success($response, ['status' => $newStatus], 'Your response has been recorded successfully.');

@@ -245,24 +245,24 @@ class ApplicationService
     // Merit list generation
     // ─────────────────────────────────────────────────────────────────────────
 
-    public function generateMeritList(int $programId, string $intake, int $yearId, int $actorId): array
+    public function generateMeritList(int $departmentId, string $intake, int $yearId, int $actorId): array
     {
-        $criteria = $this->criteriaModel->findForProgramIntake($programId, $intake, $yearId);
+        $criteria = $this->criteriaModel->findForDeptIntake($departmentId, $intake, $yearId);
 
         if (!$criteria) {
-            throw new \RuntimeException('Merit criteria not configured for this program and intake.');
+            throw new \RuntimeException('Merit criteria not configured for this department and intake.');
         }
 
         $applications = $this->db->fetchAll(
             "SELECT * FROM `student_applications`
-             WHERE program_id = ? AND intake = ? AND academic_year_id = ?
+             WHERE department_id = ? AND intake = ? AND academic_year_id = ?
              AND status = 'documents_verified'",
-            [$programId, $intake, $yearId]
+            [$departmentId, $intake, $yearId]
         );
 
         if (empty($applications)) {
             throw new \RuntimeException(
-                'No verified applications found for this program and intake. '
+                'No verified applications found for this department and intake. '
                 . 'Ensure applicants have had their documents fully verified first.'
             );
         }
@@ -316,16 +316,16 @@ class ApplicationService
         }
 
         // Atomic: clear old list → insert new → update application scores
-        $this->db->transaction(function () use ($rows, $programId, $intake, $yearId, $now, $actorId) {
-            $this->meritListModel->clearForProgramIntake($programId, $intake, $yearId);
+        $this->db->transaction(function () use ($rows, $departmentId, $intake, $yearId, $now, $actorId) {
+            $this->meritListModel->clearForDeptIntake($departmentId, $intake, $yearId);
 
             foreach ($rows as $row) {
                 $this->db->execute(
                     "INSERT INTO `merit_lists`
-                         (program_id, intake, academic_year_id, application_id,
+                         (department_id, intake, academic_year_id, application_id,
                           merit_score, rank, is_qualified, generated_at, generated_by)
                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    [$programId, $intake, $yearId,
+                    [$departmentId, $intake, $yearId,
                      $row['application_id'], $row['merit_score'], $row['rank'],
                      $row['is_qualified'], $now, $actorId]
                 );
@@ -385,7 +385,7 @@ class ApplicationService
             'email'             => $offer['email'],
             'phone'             => $offer['phone']        ?? '',
             'nationality'       => $offer['nationality']  ?? 'Rwandan',
-            'program'           => $offer['program_code'] ?? $offer['program_name'],
+            'program'           => $offer['department_code'] ?? $offer['department_name'],
             'registration_date' => date('Y-m-d'),
             'student_state'     => 'active',
         ];
@@ -417,7 +417,7 @@ class ApplicationService
             'email'      => $offer['email'],
         ], [
             'reg_number'   => $regNumber,
-            'program_name' => $offer['program_name'],
+            'program_name' => $offer['department_name'],
         ]);
 
         return [

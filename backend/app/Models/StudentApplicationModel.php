@@ -10,7 +10,7 @@ class StudentApplicationModel extends BaseModel
     protected array  $fillable = [
         'application_number',
         // Institutional context
-        'academic_year_id', 'faculty_id', 'program_id', 'intake',
+        'academic_year_id', 'faculty_id', 'department_id', 'intake',
         // Personal information
         'first_name', 'last_name', 'email', 'phone',
         'gender', 'birthdate', 'nationality', 'address',
@@ -47,14 +47,13 @@ class StudentApplicationModel extends BaseModel
     {
         return $this->db->fetchOne(
             "SELECT sa.*,
-                    p.name  AS program_name,  p.code AS program_code, p.degree_type,
+                    d.dep_name    AS department_name,
+                    d.dep_acronym AS department_code,
                     f.fac_name AS faculty_name, f.fac_code AS faculty_code,
-                    ay.label AS academic_year_label,
-                    d.dep_name AS department_name
+                    ay.label   AS academic_year_label
              FROM `student_applications` sa
-             LEFT JOIN `programs`      p  ON p.id       = sa.program_id
-             LEFT JOIN `departements`  d  ON d.dep_id   = p.department_id
-             LEFT JOIN `faculty`       f  ON f.fac_id   = sa.faculty_id
+             LEFT JOIN `departements`   d  ON d.dep_id   = sa.department_id
+             LEFT JOIN `faculty`        f  ON f.fac_id   = sa.faculty_id
              LEFT JOIN `academic_years` ay ON ay.id      = sa.academic_year_id
              WHERE sa.id = ?
              LIMIT 1",
@@ -87,9 +86,9 @@ class StudentApplicationModel extends BaseModel
             $bindings[]   = (int)$filters['faculty_id'];
         }
 
-        if (!empty($filters['program_id'])) {
-            $conditions[] = 'sa.program_id = ?';
-            $bindings[]   = (int)$filters['program_id'];
+        if (!empty($filters['department_id'])) {
+            $conditions[] = 'sa.department_id = ?';
+            $bindings[]   = (int)$filters['department_id'];
         }
 
         if (!empty($filters['intake'])) {
@@ -111,13 +110,14 @@ class StudentApplicationModel extends BaseModel
 
         $rows = $this->db->fetchAll(
             "SELECT sa.*,
-                    p.name AS program_name, p.code AS program_code,
+                    d.dep_name    AS department_name,
+                    d.dep_acronym AS department_code,
                     f.fac_name AS faculty_name, f.fac_code AS faculty_code,
-                    ay.label AS academic_year_label
+                    ay.label   AS academic_year_label
              FROM `student_applications` sa
-             LEFT JOIN `programs`       p  ON p.id     = sa.program_id
-             LEFT JOIN `faculty`        f  ON f.fac_id = sa.faculty_id
-             LEFT JOIN `academic_years` ay ON ay.id    = sa.academic_year_id
+             LEFT JOIN `departements`   d  ON d.dep_id   = sa.department_id
+             LEFT JOIN `faculty`        f  ON f.fac_id   = sa.faculty_id
+             LEFT JOIN `academic_years` ay ON ay.id      = sa.academic_year_id
              {$where}
              ORDER BY sa.id DESC
              LIMIT ? OFFSET ?",
@@ -136,13 +136,13 @@ class StudentApplicationModel extends BaseModel
     /**
      * Check for an active (non-withdrawn, non-declined) duplicate application.
      */
-    public function existsActiveForProgramIntake(string $email, int $programId, string $intake, int $academicYearId): bool
+    public function existsActiveForDeptIntake(string $email, int $departmentId, string $intake, int $academicYearId): bool
     {
         $row = $this->db->fetchOne(
             "SELECT COUNT(*) AS cnt FROM `student_applications`
-             WHERE email = ? AND program_id = ? AND intake = ? AND academic_year_id = ?
+             WHERE email = ? AND department_id = ? AND intake = ? AND academic_year_id = ?
              AND status NOT IN ('withdrawn', 'offer_declined')",
-            [$email, $programId, $intake, $academicYearId]
+            [$email, $departmentId, $intake, $academicYearId]
         );
         return ($row['cnt'] ?? 0) > 0;
     }

@@ -1,7 +1,7 @@
 import { api } from '@/services/api'
 import type { PaginatedResponse } from '@/types'
 import type {
-  Faculty, PortalProgram, DocumentType, AdmissionRequirement,
+  Faculty, PortalDepartment, DocumentType, AdmissionRequirement,
   StudentApplication, ApplicationDocument, ApplicationStatusLog,
   ApplicationStatus, MeritCriteria, MeritListRow, AdmissionOffer,
   ApplicantProfile, AcademicRecord,
@@ -18,8 +18,8 @@ export const portalService = {
   getFaculties: (signal?: AbortSignal) =>
     api.get<Faculty[]>('/api/portal/faculties', {}, signal),
 
-  getFacultyPrograms: (facultyId: number, signal?: AbortSignal) =>
-    api.get<PortalProgram[]>(`/api/portal/faculties/${facultyId}/programs`, {}, signal),
+  getFacultyDepartments: (facultyId: number, signal?: AbortSignal) =>
+    api.get<PortalDepartment[]>(`/api/portal/faculties/${facultyId}/departments`, {}, signal),
 
   getFacultyRequirements: (facultyId: number, signal?: AbortSignal) =>
     api.get<AdmissionRequirement[]>(`/api/portal/faculties/${facultyId}/requirements`, {}, signal),
@@ -134,19 +134,19 @@ export const verificationService = {
  * permission: MANAGE_ADMISSIONS
  * ─────────────────────────────────────────────────────────────── */
 export const meritService = {
-  getCriteria: (params: { program_id: number; intake: string; academic_year_id: number }, signal?: AbortSignal) =>
+  getCriteria: (params: { department_id: number; intake: string; academic_year_id: number }, signal?: AbortSignal) =>
     api.get<MeritCriteria | null>('/api/admin/merit/criteria', params, signal),
 
   saveCriteria: (d: MeritCriteria) =>
     api.post<{ id: number }>('/api/admin/merit/criteria', d),
 
-  generate: (d: { program_id: number; intake: string; academic_year_id: number }) =>
+  generate: (d: { department_id: number; intake: string; academic_year_id: number }) =>
     api.post<{ generated: number }>('/api/admin/merit/generate', d),
 
-  getMeritList: (params: { program_id: number; intake: string; academic_year_id: number }, signal?: AbortSignal) =>
+  getMeritList: (params: { department_id: number; intake: string; academic_year_id: number }, signal?: AbortSignal) =>
     api.get<PaginatedResponse<MeritListRow>>('/api/admin/merit/list', params, signal),
 
-  publish: (d: { program_id: number; intake: string; academic_year_id: number }) =>
+  publish: (d: { department_id: number; intake: string; academic_year_id: number }) =>
     api.patch<null>('/api/admin/merit/publish', d),
 }
 

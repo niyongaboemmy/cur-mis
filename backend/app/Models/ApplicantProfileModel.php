@@ -4,12 +4,6 @@ declare(strict_types=1);
 
 namespace App\Models;
 
-/**
- * ApplicantProfileModel
- *
- * Manages the applicant_profiles table which provides a 1-to-1 extended
- * profile for each authenticated applicant linked to their application.
- */
 class ApplicantProfileModel extends BaseModel
 {
     protected string $table = 'applicant_profiles';
@@ -17,26 +11,19 @@ class ApplicantProfileModel extends BaseModel
     protected array $fillable = [
         'user_id',
         'application_id',
-        // Extended personal info
         'middle_name',
         'id_type',
         'id_number',
-        // Address
         'province',
         'district',
         'sector',
-        // Emergency contact
         'emergency_contact_name',
         'emergency_contact_phone',
-        // Photo
         'profile_photo_id',
     ];
 
     protected array $hidden = [];
 
-    /**
-     * Find a profile by the owning user's ID.
-     */
     public function findByUserId(int $userId): array|false
     {
         return $this->db->fetchOne(
@@ -45,9 +32,6 @@ class ApplicantProfileModel extends BaseModel
         );
     }
 
-    /**
-     * Find a profile by the linked application ID.
-     */
     public function findByApplicationId(int $applicationId): array|false
     {
         return $this->db->fetchOne(
@@ -69,13 +53,14 @@ class ApplicantProfileModel extends BaseModel
                 sa.document_status, sa.first_name, sa.last_name,
                 sa.phone, sa.gender, sa.birthdate, sa.nationality, sa.address,
                 sa.intake, sa.submitted_at,
-                p.name  AS program_name,  p.code AS program_code,
+                d.dep_name    AS department_name,
+                d.dep_acronym AS department_code,
                 f.fac_name AS faculty_name,
                 ay.label   AS academic_year
              FROM `applicant_profiles` ap
              JOIN `users`                u  ON u.id       = ap.user_id
              JOIN `student_applications` sa ON sa.id      = ap.application_id
-             LEFT JOIN `programs`        p  ON p.id       = sa.program_id
+             LEFT JOIN `departements`    d  ON d.dep_id   = sa.department_id
              LEFT JOIN `faculty`         f  ON f.fac_id   = sa.faculty_id
              LEFT JOIN `academic_years`  ay ON ay.id      = sa.academic_year_id
              WHERE ap.user_id = ?

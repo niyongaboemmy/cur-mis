@@ -31,7 +31,6 @@ $router->group('/api/academic', function ($router) {
 
 // 2. Academics Management (Granular Permissions)
 $entityPermissions = [
-    'degrees'            => Permissions::MANAGE_DEGREES,
     'facility'           => Permissions::MANAGE_FACILITIES,
     'departments'        => Permissions::MANAGE_DEPARTMENTS,
     'options'            => Permissions::MANAGE_OPTIONS,

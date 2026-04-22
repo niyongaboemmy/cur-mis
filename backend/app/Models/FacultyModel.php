@@ -27,18 +27,16 @@ class FacultyModel extends BaseModel
     }
 
     /**
-     * Return all programs that belong to departments within this faculty.
+     * Return all departments that belong to this faculty.
      */
-    public function getProgramsByFaculty(int $facultyId): array
+    public function getDepartmentsByFaculty(int $facultyId): array
     {
         return $this->db->fetchAll(
-            "SELECT p.id, p.name, p.code, p.degree_type, p.duration_years,
-                    p.total_credits, p.is_active,
-                    d.dep_name AS department_name
-             FROM `programs` p
-             JOIN `departements` d ON d.dep_id = p.department_id
-             WHERE d.fac_id = ? AND p.is_active = 1
-             ORDER BY p.name ASC",
+            "SELECT d.dep_id AS id, d.dep_name AS name, d.dep_acronym AS code,
+                    d.dep_description AS description, d.fac_id
+             FROM `departements` d
+             WHERE d.fac_id = ?
+             ORDER BY d.dep_name ASC",
             [$facultyId]
         );
     }
