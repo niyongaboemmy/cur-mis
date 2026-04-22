@@ -1,0 +1,132 @@
+<?php
+
+declare(strict_types=1);
+
+use App\Controllers\ApplicationPortalController;
+use App\Controllers\ApplicationAdminController;
+use App\Controllers\DocumentVerificationController;
+use App\Controllers\MeritListController;
+use App\Controllers\AdmissionController;
+use App\Controllers\AdmissionRequirementController;
+use App\Controllers\DocumentTypeController;
+use App\Middleware\AuthMiddleware;
+use App\Middleware\PermissionMiddleware;
+use App\Constants\Permissions;
+
+/**
+ * Student Management Module — API Routes
+ *
+ * Architecture:
+ *   Public portal  → /api/portal/*   (no auth; used by prospective students)
+ *   Admin panel    → /api/admin/*    (JWT required; role-specific permissions)
+ *
+ * Application flow:
+ *   1. GET  /api/portal/active-year                       → confirm system is open
+ *   2. GET  /api/portal/faculties                         → pick faculty
+ *   3. GET  /api/portal/faculties/:id/programs            → pick program
+ *   4. GET  /api/portal/faculties/:id/requirements        → see what docs are needed
+ *   5. POST /api/portal/applications                      → submit application
+ *   6. POST /api/portal/applications/:num/documents       → upload each document
+ *   7. GET  /api/portal/applications/:num                 → track status / checklist
+ *   8. POST /api/portal/applications/:num/respond         → accept or decline offer
+ */
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Public portal — no authentication required
+// ─────────────────────────────────────────────────────────────────────────────
+
+// System-state check
+$router->get('/api/portal/active-year', [ApplicationPortalController::class, 'getActiveYear']);
+
+// Faculty & program discovery
+$router->get('/api/portal/faculties',                            [ApplicationPortalController::class, 'getFaculties']);
+$router->get('/api/portal/faculties/:faculty_id/programs',       [ApplicationPortalController::class, 'getFacultyPrograms']);
+$router->get('/api/portal/faculties/:faculty_id/requirements',   [ApplicationPortalController::class, 'getFacultyRequirements']);
+
+// Application lifecycle
+$router->post('/api/portal/applications',                                          [ApplicationPortalController::class, 'submitApplication']);
+$router->get('/api/portal/applications/:application_number',                       [ApplicationPortalController::class, 'trackApplication']);
+$router->post('/api/portal/applications/:application_number/documents',            [ApplicationPortalController::class, 'uploadDocument']);
+$router->post('/api/portal/applications/:application_number/respond',              [ApplicationPortalController::class, 'respondToOffer']);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Admin routes — all require a valid JWT token
+// ─────────────────────────────────────────────────────────────────────────────
+$router->group('/api/admin', function ($router) {
+
+    // ── 1. Document type catalogue (global list of possible document types) ──
+    // Permission: MANAGE_ADMISSION_REQUIREMENTS
+    $router->group('/document-types', function ($router) {
+        $router->get('',        [DocumentTypeController::class, 'index']);
+        $router->post('',       [DocumentTypeController::class, 'create']);
+        $router->get('/:id',    [DocumentTypeController::class, 'show']);
+        $router->put('/:id',    [DocumentTypeController::class, 'update']);
+        $router->delete('/:id', [DocumentTypeController::class, 'delete']);
+    }, [new PermissionMiddleware(Permissions::MANAGE_ADMISSION_REQUIREMENTS)]);
+
+    // ── 2. Admission requirements (per-faculty, per-year document checklist) ──
+    // Permission: MANAGE_ADMISSION_REQUIREMENTS
+    $router->group('/admission-requirements', function ($router) {
+        $router->get('',   [AdmissionRequirementController::class, 'index']);
+        $router->post('',  [AdmissionRequirementController::class, 'create']);
+        $router->post('/copy', [AdmissionRequirementController::class, 'copyToYear']);
+
+        $router->get(
+            '/faculty/:faculty_id/year/:year_id',
+            [AdmissionRequirementController::class, 'getForFacultyYear']
+        );
+
+        $router->get('/:id',    [AdmissionRequirementController::class, 'show']);
+        $router->put('/:id',    [AdmissionRequirementController::class, 'update']);
+        $router->delete('/:id', [AdmissionRequirementController::class, 'delete']);
+    }, [new PermissionMiddleware(Permissions::MANAGE_ADMISSION_REQUIREMENTS)]);
+
+    // ── 3. Application management ─────────────────────────────────────────────
+    // Permission: MANAGE_STUDENT_APPLICATIONS
+    $router->group('/applications', function ($router) {
+        $router->get('',              [ApplicationAdminController::class, 'index']);
+        $router->get('/:id',          [ApplicationAdminController::class, 'show']);
+        $router->patch('/:id/status', [ApplicationAdminController::class, 'updateStatus']);
+        $router->post('/:id/notes',   [ApplicationAdminController::class, 'addNote']);
+    }, [new PermissionMiddleware(Permissions::MANAGE_STUDENT_APPLICATIONS)]);
+
+    // ── 4. Document verification ──────────────────────────────────────────────
+    // Permission: VERIFY_DOCUMENTS
+    $router->group('/verifications', function ($router) {
+        $router->get('', [DocumentVerificationController::class, 'getPendingApplications']);
+
+        $router->get(
+            '/:application_id/documents',
+            [DocumentVerificationController::class, 'getApplicationDocuments']
+        );
+        $router->patch(
+            '/:application_id/documents/:document_id',
+            [DocumentVerificationController::class, 'verifyDocument']
+        );
+        $router->get(
+            '/:application_id/documents/:document_id/download',
+            [DocumentVerificationController::class, 'downloadDocument']
+        );
+    }, [new PermissionMiddleware(Permissions::VERIFY_DOCUMENTS)]);
+
+    // ── 5. Merit list management ──────────────────────────────────────────────
+    // Permission: MANAGE_ADMISSIONS
+    $router->group('/merit', function ($router) {
+        $router->get('/criteria',  [MeritListController::class, 'getCriteria']);
+        $router->post('/criteria', [MeritListController::class, 'saveCriteria']);
+        $router->post('/generate', [MeritListController::class, 'generateMeritList']);
+        $router->get('/list',      [MeritListController::class, 'getMeritList']);
+        $router->patch('/publish', [MeritListController::class, 'publishMeritList']);
+    }, [new PermissionMiddleware(Permissions::MANAGE_ADMISSIONS)]);
+
+    // ── 6. Admission offers & enrollment ─────────────────────────────────────
+    // Permission: MANAGE_ADMISSIONS
+    $router->group('/admissions', function ($router) {
+        $router->get('/offers',               [AdmissionController::class, 'listOffers']);
+        $router->post('/offers',              [AdmissionController::class, 'createOffer']);
+        $router->post('/offers/bulk',         [AdmissionController::class, 'bulkCreateOffers']);
+        $router->get('/offers/:offer_id',     [AdmissionController::class, 'getOfferDetails']);
+        $router->post('/offers/:offer_id/enroll', [AdmissionController::class, 'initiateEnrollment']);
+    }, [new PermissionMiddleware(Permissions::MANAGE_ADMISSIONS)]);
+
+}, [AuthMiddleware::class]);
