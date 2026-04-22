@@ -24,7 +24,7 @@ class AuthController extends BaseController
 
         $errors = ValidationHelper::validate($data, [
             'email'    => ['required', 'email'],
-            'password' => ['required', 'min:8'],
+            'password' => ['required', 'min:6'],
         ]);
 
         if (!empty($errors)) {
@@ -95,7 +95,7 @@ class AuthController extends BaseController
         $errors = ValidationHelper::validate($data, [
             'name'     => ['required', 'min:2', 'max:100'],
             'email'    => ['required', 'email'],
-            'password' => ['required', 'min:8'],
+            'password' => ['required', 'min:6'],
         ]);
 
         if (!empty($errors)) {
@@ -160,7 +160,7 @@ class AuthController extends BaseController
 
         $errors = ValidationHelper::validate($data, [
             'token'    => ['required'],
-            'password' => ['required', 'min:8'],
+            'password' => ['required', 'min:6'],
         ]);
 
         if (!empty($errors)) {

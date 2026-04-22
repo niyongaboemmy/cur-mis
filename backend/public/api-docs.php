@@ -183,7 +183,7 @@ $routes = [
     'request' => [
       'fields' => [
         ['name' => 'token', 'type' => 'string', 'required' => true, 'notes' => 'The reset token from the email link'],
-        ['name' => 'password', 'type' => 'string', 'required' => true, 'notes' => 'Minimum 8 characters'],
+        ['name' => 'password', 'type' => 'string', 'required' => true, 'notes' => 'Minimum 6 characters'],
       ],
       'example' => ['token' => 'abcdef123456...', 'password' => 'new-secret-123'],
     ],

@@ -40,7 +40,7 @@ const otpSchema = z.object({
 // Step 3 Schema: Password
 const passwordSchema = z
   .object({
-    password: z.string().min(8, "Password must be at least 8 characters"),
+    password: z.string().min(6, "Password must be at least 6 characters"),
     confirmPassword: z.string().min(1, "Please confirm your password"),
   })
   .refine((data) => data.password === data.confirmPassword, {
@@ -149,7 +149,7 @@ export default function ForgotPasswordPage() {
           {steps.map((s, idx) => (
             <div key={s.id} className="flex items-center gap-2">
               <div
-                className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold transition-colors ${
+                className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold transition-colors ${
                   idx <= currentStepIndex
                     ? "bg-primary-600 text-white"
                     : "bg-gray-200 text-gray-500 dark:bg-gray-800"

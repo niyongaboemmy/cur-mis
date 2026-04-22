@@ -26,6 +26,8 @@ class MailService
             $this->mailer->SMTPSecure = $_ENV['MAIL_ENCRYPTION'] ?? PHPMailer::ENCRYPTION_STARTTLS;
             $this->mailer->Port       = (int)($_ENV['MAIL_PORT'] ?? 587);
             $this->mailer->SMTPDebug  = 0;
+            // Short timeout — prevents requests from blocking when SMTP host is unreachable.
+            $this->mailer->Timeout    = (int)($_ENV['MAIL_TIMEOUT'] ?? 6);
 
             // Bypass SSL for specific servers if requested in .env
             if (($_ENV['MAIL_SSL_BYPASS'] ?? 'false') === 'true') {

@@ -89,7 +89,7 @@ export default function OtpInput({
           onPaste={handlePaste}
           whileFocus={{ scale: 1.05 }}
           className={`
-            w-10 h-12 sm:w-12 sm:h-16 text-center text-xl sm:text-2xl font-bold 
+            w-10 h-12 sm:w-12 sm:h-16 text-center text-xl sm:text-2xl font-semibold 
             rounded-xl border-2 transition-all duration-200 outline-none
             ${disabled ? "bg-gray-100 border-gray-200 cursor-not-allowed text-gray-400" : 
               digit ? "border-primary-500 bg-primary-50/30 text-primary-900 ring-2 ring-primary-500/10" : 
