@@ -22,6 +22,19 @@ const StudentsPage              = lazy(() => import('@/pages/StudentsPage'))
 const AcademicSettingsPage      = lazy(() => import('@/pages/academic/AcademicSettingsPage'))
 const AcademicsManagementPage   = lazy(() => import('@/pages/academic/AcademicsManagementPage'))
 
+// Admissions / Student Management Module
+const ApplyPage                 = lazy(() => import('@/pages/public/ApplyPage'))
+const TrackApplicationPage      = lazy(() => import('@/pages/public/TrackApplicationPage'))
+const AdmissionsHub             = lazy(() => import('@/pages/admin/admissions/AdmissionsHub'))
+const ApplicationsListPage      = lazy(() => import('@/pages/admin/admissions/ApplicationsListPage'))
+const ApplicationDetailPage     = lazy(() => import('@/pages/admin/admissions/ApplicationDetailPage'))
+const VerificationsPage         = lazy(() => import('@/pages/admin/admissions/VerificationsPage'))
+const MeritPage                 = lazy(() => import('@/pages/admin/admissions/MeritPage'))
+const OffersPage                = lazy(() => import('@/pages/admin/admissions/OffersPage'))
+const RequirementsPage          = lazy(() => import('@/pages/admin/admissions/RequirementsPage'))
+const DocumentTypesPage         = lazy(() => import('@/pages/admin/admissions/DocumentTypesPage'))
+const ApplicantPortalPage       = lazy(() => import('@/pages/applicant/ApplicantPortalPage'))
+
 // Placeholders still in use for modules not yet wired up
 const ProgramsPage   = lazy(() => import('@/pages/placeholders/ProgramsPage'))
 const FinancePage    = lazy(() => import('@/pages/placeholders/FinancePage'))
@@ -54,6 +67,9 @@ function App() {
           <Route path="/login"           element={<LoginPage />} />
           <Route path="/verify-otp"      element={<VerifyOtpPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          {/* Public admissions portal — no auth required */}
+          <Route path="/apply"           element={<ApplyPage />} />
+          <Route path="/apply/track"     element={<TrackApplicationPage />} />
 
           {/* Protected — requires valid JWT in Zustand store */}
           <Route element={<ProtectedRoute />}>
@@ -83,6 +99,21 @@ function App() {
               <Route path="/academic/settings"   element={<AcademicSettingsPage />} />
               {/* Academics Management — degrees, schools, departments, modules, etc. */}
               <Route path="/academic/management" element={<AcademicsManagementPage />} />
+
+              {/* Admissions hub (admins) */}
+              <Route path="/admin/admissions" element={<AdmissionsHub />}>
+                <Route index                           element={<ApplicationsListPage />} />
+                <Route path="applications"             element={<ApplicationsListPage />} />
+                <Route path="applications/:id"         element={<ApplicationDetailPage />} />
+                <Route path="verifications"            element={<VerificationsPage />} />
+                <Route path="merit"                    element={<MeritPage />} />
+                <Route path="offers"                   element={<OffersPage />} />
+                <Route path="requirements"             element={<RequirementsPage />} />
+                <Route path="document-types"           element={<DocumentTypesPage />} />
+              </Route>
+
+              {/* Applicant portal (authenticated applicants) */}
+              <Route path="/applicant" element={<ApplicantPortalPage />} />
 
               <Route element={<ProtectedRoute requiredPermissions={PERMISSIONS.MANAGE_ACADEMICS} />}>
                 <Route path="/programs" element={<ProgramsPage />} />

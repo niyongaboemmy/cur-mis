@@ -11,6 +11,7 @@ import {
   BookOpen,
   Layers,
   Sliders,
+  Files,
   Activity,
   Search,
   Bell,
@@ -73,6 +74,20 @@ const NAV_TREE: NavNode[] = [
   // ─── Academic (promoted to top-level for visibility) ───
   { id: "academic-settings",    label: "Academic settings",    icon: Sliders,  to: "/academic/settings"   },
   { id: "academics-management", label: "Academics management", icon: Layers,   to: "/academic/management" },
+  // ─── Admissions / Student Management Module ───
+  {
+    id: "admissions",
+    label: "Admissions",
+    icon: Files,
+    children: [
+      { to: "/admin/admissions/applications",    label: "Applications"    },
+      { to: "/admin/admissions/verifications",   label: "Verifications"   },
+      { to: "/admin/admissions/merit",           label: "Merit lists"     },
+      { to: "/admin/admissions/offers",          label: "Offers"          },
+      { to: "/admin/admissions/requirements",    label: "Requirements"    },
+      { to: "/admin/admissions/document-types",  label: "Document types"  },
+    ],
+  },
   {
     id: "teachers-group",
     label: "Teachers",
@@ -127,6 +142,16 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
   "/students":           { title: "Students & Staff", sub: "CUR student registry & HR employees" },
   "/academic/settings":   { title: "Academic settings",    sub: "Academic years & terms" },
   "/academic/management": { title: "Academics management", sub: "Degrees, schools, departments, modules, facilities and more" },
+
+  "/admin/admissions":                  { title: "Admissions",      sub: "Student Management Module" },
+  "/admin/admissions/applications":     { title: "Applications",    sub: "All prospective student applications" },
+  "/admin/admissions/verifications":    { title: "Verifications",   sub: "Documents awaiting review" },
+  "/admin/admissions/merit":            { title: "Merit lists",     sub: "Configure scoring, generate and publish merit lists" },
+  "/admin/admissions/offers":           { title: "Offers",          sub: "Admission offers + enrollment initiation" },
+  "/admin/admissions/requirements":     { title: "Requirements",    sub: "Per-faculty, per-year document checklist" },
+  "/admin/admissions/document-types":   { title: "Document types",  sub: "Catalogue of possible admission documents" },
+
+  "/applicant":                         { title: "Applicant portal", sub: "Your application, profile, records and documents" },
   "/students/new":       { title: "Admissions",      sub: "New student applications" },
   "/students/alumni":    { title: "Alumni",          sub: "CUR alumni directory" },
   "/teachers":           { title: "Teachers",        sub: "Lecturers and faculty members" },
