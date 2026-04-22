@@ -81,6 +81,142 @@ class EmailTemplateHelper
     }
 
     /**
+     * Template: application received confirmation sent to applicant.
+     */
+    public static function applicationReceivedTemplate(string $name, string $appNumber, string $programName): string
+    {
+        $safeName       = htmlspecialchars($name);
+        $safeAppNumber  = htmlspecialchars($appNumber);
+        $safeProgramName = htmlspecialchars($programName);
+        $content = "
+            Hello $safeName,<br><br>
+            Thank you for applying to <strong>$safeProgramName</strong>. Your application has been received and is currently under review.<br><br>
+            <strong>Your Application Number:</strong>
+            <div class='otp-container'>
+                <div class='otp-code' style='font-size:24px;'>$safeAppNumber</div>
+            </div>
+            You can use this number to track the status of your application on our application portal at any time.<br><br>
+            The next step is to upload all required documents. Please log in to the portal and complete your document submission.
+        ";
+        return self::wrap("Application Received — {$safeAppNumber}", $content);
+    }
+
+    /**
+     * Template: one or more documents rejected — applicant must re-upload.
+     *
+     * @param array $rejectedDocs  Array of ['type_name' => '...', 'rejection_notes' => '...']
+     */
+    public static function documentsRejectedTemplate(string $name, string $appNumber, array $rejectedDocs): string
+    {
+        $safeName      = htmlspecialchars($name);
+        $safeAppNumber = htmlspecialchars($appNumber);
+
+        $list = '';
+        foreach ($rejectedDocs as $doc) {
+            $typeName = htmlspecialchars($doc['type_name'] ?? 'Document');
+            $notes    = htmlspecialchars($doc['rejection_notes'] ?? 'Please re-upload.');
+            $list .= "<li style='margin-bottom:8px;'><strong>{$typeName}</strong>: {$notes}</li>";
+        }
+
+        $content = "
+            Hello $safeName,<br><br>
+            We have reviewed the documents for your application <strong>$safeAppNumber</strong>.
+            Unfortunately, the following document(s) could not be accepted:<br><br>
+            <ul style='color:#374151;line-height:1.8;'>$list</ul>
+            Please log in to the application portal and re-upload the affected documents.
+            Once all required documents are verified, your application will proceed to the next stage.
+        ";
+        return self::wrap("Action Required: Documents Need Attention — {$safeAppNumber}", $content);
+    }
+
+    /**
+     * Template: all required documents verified successfully.
+     */
+    public static function documentsVerifiedTemplate(string $name, string $appNumber): string
+    {
+        $safeName      = htmlspecialchars($name);
+        $safeAppNumber = htmlspecialchars($appNumber);
+        $content = "
+            Hello $safeName,<br><br>
+            Great news! All required documents for your application <strong>$safeAppNumber</strong> have been successfully verified.<br><br>
+            Your application will now be evaluated as part of the merit ranking process.
+            You will be notified of the outcome once the merit list has been finalised.
+        ";
+        return self::wrap("Documents Verified — {$safeAppNumber}", $content);
+    }
+
+    /**
+     * Template: formal admission offer sent to applicant.
+     */
+    public static function admissionOfferTemplate(
+        string $name,
+        string $appNumber,
+        string $programName,
+        string $offerRef,
+        string $expiresAt,
+        string $portalUrl
+    ): string {
+        $safeName       = htmlspecialchars($name);
+        $safeAppNumber  = htmlspecialchars($appNumber);
+        $safeProgramName = htmlspecialchars($programName);
+        $safeOfferRef   = htmlspecialchars($offerRef);
+        $safeExpires    = htmlspecialchars($expiresAt);
+        $content = "
+            Dear $safeName,<br><br>
+            Congratulations! We are delighted to offer you admission to the
+            <strong>$safeProgramName</strong> programme at our institution.<br><br>
+            <strong>Offer Reference:</strong> $safeOfferRef<br>
+            <strong>Application Number:</strong> $safeAppNumber<br>
+            <strong>Offer Expires:</strong> $safeExpires<br><br>
+            Please visit the application portal to accept or decline this offer before the expiry date:
+            <div style='text-align:center;margin:32px 0;'>
+                <a href='$portalUrl' class='button'>Respond to Offer</a>
+            </div>
+            If you have any questions, please contact our admissions office.<br><br>
+            We look forward to welcoming you.
+        ";
+        return self::wrap("Congratulations — Admission Offer ({$safeOfferRef})", $content);
+    }
+
+    /**
+     * Template: applicant has accepted the offer.
+     */
+    public static function offerAcceptedConfirmationTemplate(string $name, string $programName): string
+    {
+        $safeName        = htmlspecialchars($name);
+        $safeProgramName = htmlspecialchars($programName);
+        $content = "
+            Dear $safeName,<br><br>
+            We are pleased to confirm that you have accepted the offer of admission to the
+            <strong>$safeProgramName</strong> programme.<br><br>
+            Our admissions team will contact you shortly with further instructions regarding
+            your enrollment and registration. Please ensure you have all required documents ready.
+        ";
+        return self::wrap("Enrollment Confirmed — Welcome!", $content);
+    }
+
+    /**
+     * Template: enrollment complete, student registration number issued.
+     */
+    public static function enrollmentCompleteTemplate(string $name, string $regNumber, string $programName): string
+    {
+        $safeName        = htmlspecialchars($name);
+        $safeRegNumber   = htmlspecialchars($regNumber);
+        $safeProgramName = htmlspecialchars($programName);
+        $content = "
+            Dear $safeName,<br><br>
+            Your enrollment in the <strong>$safeProgramName</strong> programme is now complete.<br><br>
+            <strong>Your Student Registration Number:</strong>
+            <div class='otp-container'>
+                <div class='otp-code' style='font-size:24px;'>$safeRegNumber</div>
+            </div>
+            Please keep this number safe — you will need it for all future correspondence with the institution.
+            Welcome to the institution. We wish you a successful academic journey!
+        ";
+        return self::wrap("Welcome — Your Registration Number is {$safeRegNumber}", $content);
+    }
+
+    /**
      * Template for Password Reset.
      */
     public static function passwordResetTemplate(string $name, string $link): string

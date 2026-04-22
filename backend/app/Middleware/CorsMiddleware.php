@@ -8,22 +8,28 @@ class CorsMiddleware
 {
     public function handle(mixed $request = null, mixed $response = null): void
     {
-        $allowedOrigins = array_map(
-            'trim',
-            explode(',', $_ENV['CORS_ALLOWED_ORIGINS'] ?? '*')
-        );
+        $allowedOriginsStr = $_ENV['CORS_ALLOWED_ORIGINS'] ?? '*';
+        $allowedOrigins = array_map('trim', explode(',', $allowedOriginsStr));
 
         $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 
+        // Handle Wildcard or Specific Match
         if (in_array('*', $allowedOrigins, true)) {
-            header('Access-Control-Allow-Origin: *');
-        } elseif (in_array($origin, $allowedOrigins, true)) {
+            // When Access-Control-Allow-Credentials is true, we cannot use '*' as the origin.
+            // We must return the actual origin from the request to allow any site.
+            if (!empty($origin)) {
+                header("Access-Control-Allow-Origin: {$origin}");
+                header('Vary: Origin');
+            } else {
+                header('Access-Control-Allow-Origin: *');
+            }
+        } elseif (!empty($origin) && in_array($origin, $allowedOrigins, true)) {
             header("Access-Control-Allow-Origin: {$origin}");
             header('Vary: Origin');
         }
 
         header('Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS');
-        header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, X-HTTP-Method-Override');
+        header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, X-HTTP-Method-Override, Accept');
         header('Access-Control-Allow-Credentials: true');
         header('Access-Control-Max-Age: 86400');
 

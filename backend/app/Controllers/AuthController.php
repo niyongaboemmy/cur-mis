@@ -170,7 +170,7 @@ class AuthController extends BaseController
         $result = $this->authService->resetPassword($data['token'], $data['password']);
 
         if (!$result['success']) {
-            $this->error($response, $result['message'], 400); // Bad Request for invalid token
+            $this->error($response, $result['message'], 400);
         }
 
         $this->success($response, null, $result['message']);
@@ -185,5 +185,41 @@ class AuthController extends BaseController
     {
         $user = $request->param('_auth_user');
         $this->success($response, $user, 'Authenticated user.');
+    }
+
+    /**
+     * POST /api/auth/applicant/register
+     *
+     * Allows a prospective student to claim an account by verifying their
+     * application_number + email combination against student_applications.
+     * On success, creates a users row (is_applicant = 1), a stub
+     * applicant_profiles row, and triggers the OTP flow.
+     */
+    public function registerApplicant(Request $request, Response $response): never
+    {
+        $data = array_map(fn($v) => is_string($v) ? trim($v) : $v, $request->body());
+
+        $errors = ValidationHelper::validate($data, [
+            'application_number' => ['required', 'string'],
+            'email'              => ['required', 'email'],
+            'password'           => ['required', 'min:8'],
+        ]);
+
+        if (!empty($errors)) {
+            $this->error($response, 'Validation failed.', 422, $errors);
+        }
+
+        $result = $this->authService->registerApplicant(
+            $data['application_number'],
+            $data['email'],
+            $data['password']
+        );
+
+        if (!$result['success']) {
+            $statusCode = $result['code'] ?? 409;
+            $this->error($response, $result['message'], $statusCode);
+        }
+
+        $this->success($response, $result['data'], $result['message'], 201);
     }
 }
