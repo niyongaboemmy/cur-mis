@@ -2,7 +2,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mail, Loader2, ArrowRight } from "lucide-react";
+import { Mail, Loader2, ArrowRight, GraduationCap } from "lucide-react";
+import { Link } from "react-router-dom";
 import { useLogin } from "@/hooks/useAuth";
 import AuthLayout from "@/components/auth/AuthLayout";
 import PasswordInput from "@/components/ui/PasswordInput";
@@ -91,6 +92,25 @@ export default function LoginPage() {
           {busy ? "Signing in…" : "Sign in"}
         </motion.button>
       </form>
+
+      {/* ─── Prospective students ─── */}
+      <div className="mt-8 pt-6 border-t border-ink-100 dark:border-ink-700">
+        <div className="flex items-center justify-between gap-3 rounded-xl bg-primary-50 dark:bg-ink-800 p-4 border border-primary-100 dark:border-ink-700">
+          <div className="min-w-0">
+            <p className="text-[13px] font-semibold text-ink-900 dark:text-white">New to CUR?</p>
+            <p className="text-[12px] text-ink-500 dark:text-ink-400 mt-0.5">
+              Apply online in a few minutes.
+            </p>
+          </div>
+          <Link
+            to="/apply"
+            className="btn-primary btn-sm shrink-0 !bg-gold-500 hover:!bg-gold-400 !text-primary-900"
+          >
+            <GraduationCap className="h-4 w-4" />
+            Apply now
+          </Link>
+        </div>
+      </div>
 
       {/* API status indicator (dev only) */}
       {import.meta.env.DEV && (

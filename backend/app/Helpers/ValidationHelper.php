@@ -20,7 +20,16 @@ class ValidationHelper
         foreach ($rules as $field => $fieldRules) {
             $value = $data[$field] ?? null;
 
-            foreach ($fieldRules as $rule) {
+            // Accept both array-of-rules (['required','email']) and
+            // pipe-separated string ('required|email') notations.
+            if (is_string($fieldRules)) {
+                $fieldRules = array_filter(
+                    array_map('trim', explode('|', $fieldRules)),
+                    fn ($r) => $r !== '',
+                );
+            }
+
+            foreach ((array)$fieldRules as $rule) {
                 [$ruleName, $param] = array_pad(explode(':', $rule, 2), 2, null);
 
                 $error = match ($ruleName) {
