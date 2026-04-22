@@ -3,21 +3,22 @@ import { APP_SHORT } from '@/constants'
 
 interface LogoProps {
   to?:        string
-  size?:      'sm' | 'md' | 'lg'
+  size?:      'sm' | 'md' | 'lg' | 'xl'
   variant?:   'dark' | 'light'
   showText?:  boolean
   className?: string
 }
 
 const sizeMap = {
-  sm: { box: 'w-8 h-8',  text: 'text-[13px]', wordmark: 'text-[14px]' },
-  md: { box: 'w-9 h-9',  text: 'text-[14px]', wordmark: 'text-[15px]' },
-  lg: { box: 'w-12 h-12', text: 'text-[16px]', wordmark: 'text-[19px]' },
+  sm: { box: 'w-8 h-8',   text: 'text-[13px]', wordmark: 'text-[14px]' },
+  md: { box: 'w-10 h-10', text: 'text-[14px]', wordmark: 'text-[15px]' },
+  lg: { box: 'w-14 h-14', text: 'text-[16px]', wordmark: 'text-[19px]' },
+  xl: { box: 'w-20 h-20', text: 'text-[18px]', wordmark: 'text-[22px]' },
 }
 
 /**
- * CUR brand mark — a small chapel / cross motif inside a rounded-gradient tile.
- * Purposely abstract so it reads clean at any size.
+ * Catholic University of Rwanda brand mark.
+ * Renders /public/logo.png — the official university crest.
  */
 export default function Logo({ to = '/', size = 'md', variant = 'dark', showText = true, className = '' }: LogoProps) {
   const s = sizeMap[size]
@@ -26,13 +27,14 @@ export default function Logo({ to = '/', size = 'md', variant = 'dark', showText
     : 'text-ink-900 dark:text-white'
 
   const content = (
-    <span className={`inline-flex items-center gap-2 ${className}`}>
-      <span className={`${s.box} relative rounded-md bg-brand dark:bg-brand-active flex items-center justify-center`}>
-        <svg viewBox="0 0 24 24" className="w-1/2 h-1/2 text-white" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M12 3v18" />
-          <path d="M7 8h10" />
-          <path d="M5 21h14" opacity="0.6" />
-        </svg>
+    <span className={`inline-flex items-center gap-2.5 ${className}`}>
+      <span className={`${s.box} relative shrink-0 flex items-center justify-center`}>
+        <img
+          src="/logo.png"
+          alt="Catholic University of Rwanda"
+          className="w-full h-full object-contain select-none"
+          draggable={false}
+        />
       </span>
       {showText && (
         <span className="flex flex-col leading-tight">

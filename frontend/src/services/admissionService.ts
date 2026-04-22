@@ -32,10 +32,19 @@ export const portalService = {
       `/api/portal/applications/${appNumber}`, {}, signal,
     ),
 
-  uploadDocument: (
-    appNumber: string,
-    data: { document_type_id: number; file_server_id: string; file_original_name?: string; file_size?: number; file_mime?: string },
-  ) => api.post<{ id: number }>(`/api/portal/applications/${appNumber}/documents`, data),
+  /** Multipart upload — backend proxies to the file-server internally. */
+  uploadDocument: (appNumber: string, data: { document_type_id: number; file: File }) => {
+    const form = new FormData()
+    form.append('document_type_id', String(data.document_type_id))
+    form.append('document', data.file)
+    return api.upload<{
+      id: number
+      document_type_id: number
+      document_name: string
+      verification_status: 'pending' | 'verified' | 'rejected'
+      document_status: string
+    }>(`/api/portal/applications/${appNumber}/documents`, form)
+  },
 
   respondToOffer: (appNumber: string, data: { response: 'accept' | 'decline'; notes?: string }) =>
     api.post<null>(`/api/portal/applications/${appNumber}/respond`, data),
@@ -60,9 +69,12 @@ export const admissionRequirementService = {
     api.get<AdmissionRequirement[]>('/api/admin/admission-requirements', params, signal),
 
   getForFacultyYear: (facultyId: number, yearId: number, signal?: AbortSignal) =>
-    api.get<AdmissionRequirement[]>(
-      `/api/admin/admission-requirements/faculty/${facultyId}/year/${yearId}`, {}, signal,
-    ),
+    api.get<{
+      faculty:         { id: number; name: string; code: string }
+      academic_year:   { id: number; label: string }
+      requirements:    AdmissionRequirement[]
+      available_types: DocumentType[]
+    }>(`/api/admin/admission-requirements/faculty/${facultyId}/year/${yearId}`, {}, signal),
 
   create: (d: Partial<AdmissionRequirement>) =>
     api.post<{ id: number }>('/api/admin/admission-requirements', d),
@@ -104,7 +116,7 @@ export const applicationAdminService = {
  * ─────────────────────────────────────────────────────────────── */
 export const verificationService = {
   getPendingApplications: (signal?: AbortSignal) =>
-    api.get<StudentApplication[]>('/api/admin/verifications', {}, signal),
+    api.get<PaginatedResponse<StudentApplication>>('/api/admin/verifications', {}, signal),
 
   getApplicationDocuments: (applicationId: number, signal?: AbortSignal) =>
     api.get<ApplicationDocument[]>(`/api/admin/verifications/${applicationId}/documents`, {}, signal),
@@ -132,7 +144,7 @@ export const meritService = {
     api.post<{ generated: number }>('/api/admin/merit/generate', d),
 
   getMeritList: (params: { program_id: number; intake: string; academic_year_id: number }, signal?: AbortSignal) =>
-    api.get<MeritListRow[]>('/api/admin/merit/list', params, signal),
+    api.get<PaginatedResponse<MeritListRow>>('/api/admin/merit/list', params, signal),
 
   publish: (d: { program_id: number; intake: string; academic_year_id: number }) =>
     api.patch<null>('/api/admin/merit/publish', d),
@@ -144,7 +156,7 @@ export const meritService = {
  * ─────────────────────────────────────────────────────────────── */
 export const offerService = {
   list: (params: { status?: string } = {}, signal?: AbortSignal) =>
-    api.get<AdmissionOffer[]>('/api/admin/admissions/offers', params, signal),
+    api.get<PaginatedResponse<AdmissionOffer>>('/api/admin/admissions/offers', params, signal),
 
   create: (d: { application_id: number; expires_at: string; notes?: string }) =>
     api.post<{ id: number; offer_letter_reference: string }>('/api/admin/admissions/offers', d),
@@ -195,8 +207,19 @@ export const applicantService = {
   listDocuments: (signal?: AbortSignal) =>
     api.get<ApplicationDocument[]>('/api/applicant/documents', {}, signal),
 
-  uploadDocument: (d: { document_type_id: number; file_server_id: string; file_original_name?: string; file_size?: number; file_mime?: string }) =>
-    api.post<{ id: number }>('/api/applicant/documents', d),
+  /** Multipart upload — backend proxies to the file-server internally. */
+  uploadDocument: (data: { document_type_id: number; file: File }) => {
+    const form = new FormData()
+    form.append('document_type_id', String(data.document_type_id))
+    form.append('document', data.file)
+    return api.upload<{
+      id: number
+      document_type_id: number
+      document_name: string
+      verification_status: 'pending' | 'verified' | 'rejected'
+      document_status: string
+    }>('/api/applicant/documents', form)
+  },
 
   deleteDocument: (id: number) =>
     api.delete<null>(`/api/applicant/documents/${id}`),

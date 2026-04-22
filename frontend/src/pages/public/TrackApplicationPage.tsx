@@ -9,12 +9,17 @@ import {
   FileText,
   AlertTriangle,
   Loader2,
-  ArrowRight,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import Logo from '@/components/brand/Logo'
+import DocumentsUploader from '@/components/ui/DocumentsUploader'
 import { portalService } from '@/services/admissionService'
 import type { ApplicationStatus } from '@/types/admission'
+
+/** Normalize a user-typed application number: trim whitespace and
+ *  uppercase so the lookup matches the stored value (the input is
+ *  displayed uppercase via CSS but the underlying value is not). */
+const normaliseAppNo = (v: string) => v.trim().toUpperCase()
 
 const STATUS_META: Record<ApplicationStatus, { label: string; tone: string; icon: any }> = {
   draft:                  { label: 'Draft',                     tone: 'chip-soft',    icon: FileText },
@@ -32,10 +37,13 @@ const STATUS_META: Record<ApplicationStatus, { label: string; tone: string; icon
 
 export default function TrackApplicationPage() {
   const [params, setParams] = useSearchParams()
-  const [appNo, setAppNo] = useState(params.get('no') ?? '')
-  const [queriedNo, setQueriedNo] = useState(params.get('no') ?? '')
+  const [appNo, setAppNo] = useState(normaliseAppNo(params.get('no') ?? ''))
+  const [queriedNo, setQueriedNo] = useState(normaliseAppNo(params.get('no') ?? ''))
 
-  useEffect(() => { if (params.get('no')) setQueriedNo(params.get('no')!) }, [params])
+  useEffect(() => {
+    const fromUrl = params.get('no')
+    if (fromUrl) setQueriedNo(normaliseAppNo(fromUrl))
+  }, [params])
 
   const q = useQuery({
     queryKey: ['portal', 'track', queriedNo],
@@ -60,10 +68,21 @@ export default function TrackApplicationPage() {
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!appNo.trim()) return
-    setParams({ no: appNo.trim() })
-    setQueriedNo(appNo.trim())
+    const normalised = normaliseAppNo(appNo)
+    if (!normalised) return
+    setParams({ no: normalised })
+    setQueriedNo(normalised)
   }
+
+  // Requirements checklist for this applicant's faculty/year — used by the
+  // inline document uploader below.
+  const reqQ = useQuery({
+    queryKey: ['portal', 'requirements', app?.faculty_id],
+    queryFn:  () => portalService.getFacultyRequirements(app!.faculty_id),
+    enabled:  !!app?.faculty_id,
+  })
+  const requirements = reqQ.data?.data ?? []
+  const canUpload = status === 'submitted' || status === 'documents_under_review' || status === 'documents_rejected'
 
   return (
     <div className="min-h-screen bg-[rgb(var(--bg-app))]">
@@ -85,9 +104,9 @@ export default function TrackApplicationPage() {
         <form onSubmit={onSubmit} className="card p-4 flex gap-2 mb-4">
           <input
             value={appNo}
-            onChange={(e) => setAppNo(e.target.value)}
+            onChange={(e) => setAppNo(e.target.value.toUpperCase())}
             placeholder="e.g. APP-2026-00042"
-            className="input flex-1 font-mono uppercase"
+            className="input flex-1 font-mono"
           />
           <button className="btn-primary shrink-0" type="submit">
             <Search className="w-3.5 h-3.5" /> Track
@@ -171,11 +190,30 @@ export default function TrackApplicationPage() {
 
             {/* Documents */}
             <div className="card p-6">
-              <h3 className="section-title mb-3">Documents</h3>
-              {(app.documents ?? []).length === 0 ? (
-                <p className="text-[13px] text-ink-500">
-                  No documents uploaded yet. Use the upload below to attach each required document.
-                </p>
+              <h3 className="section-title mb-1">Documents</h3>
+              <p className="section-sub mb-4">
+                {canUpload
+                  ? 'Upload each required document below.'
+                  : 'Your document uploads are locked at this stage of the application.'}
+              </p>
+
+              {canUpload ? (
+                reqQ.isLoading ? (
+                  <p className="text-[13px] text-ink-500 py-4 text-center flex items-center justify-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Loading your checklist…
+                  </p>
+                ) : (
+                  <DocumentsUploader
+                    requirements={requirements}
+                    uploaded={app.documents ?? []}
+                    onUpload={({ document_type_id, file }) =>
+                      portalService.uploadDocument(queriedNo, { document_type_id, file })
+                    }
+                    invalidateKeys={[['portal', 'track', queriedNo]]}
+                  />
+                )
+              ) : (app.documents ?? []).length === 0 ? (
+                <p className="text-[13px] text-ink-500">No documents on file.</p>
               ) : (
                 <ul className="space-y-2">
                   {(app.documents ?? []).map((d) => (
@@ -194,10 +232,6 @@ export default function TrackApplicationPage() {
                   ))}
                 </ul>
               )}
-              <p className="text-[12px] text-ink-500 mt-4">
-                To upload more documents, sign in to your applicant portal or use the secure
-                upload link emailed when you submitted.
-              </p>
             </div>
 
             {/* Rejection reason if present */}
@@ -210,15 +244,6 @@ export default function TrackApplicationPage() {
               </div>
             )}
 
-            {/* Continue CTA */}
-            {status === 'submitted' && (
-              <div className="text-center">
-                <p className="text-[13px] text-ink-500 mb-2">Next step — upload your required documents.</p>
-                <Link to="/applicant" className="btn-primary inline-flex">
-                  Go to applicant portal <ArrowRight className="w-3.5 h-3.5" />
-                </Link>
-              </div>
-            )}
           </div>
         )}
       </main>

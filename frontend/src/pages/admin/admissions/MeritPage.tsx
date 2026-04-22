@@ -69,7 +69,7 @@ export default function MeritPage() {
     onError:    (e: any) => toast.error(e?.response?.data?.message ?? 'Failed'),
   })
 
-  const rows = listQ.data?.data ?? []
+  const rows = listQ.data?.data?.data ?? []
 
   return (
     <div className="space-y-4">
