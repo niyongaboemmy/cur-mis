@@ -40,7 +40,7 @@ export default function RequirementsPage() {
     onError:   (e: any) => toast.error(e?.response?.data?.message ?? 'Failed'),
   })
 
-  const rows      = listQ.data?.data ?? []
+  const rows      = listQ.data?.data?.requirements ?? []
   const docTypes  = docTypesQ.data?.data ?? []
   const faculties = facultiesQ.data?.data ?? []
   const years     = yearsQ.data?.data ?? []

@@ -65,4 +65,15 @@ export const api = {
 
   delete: <T>(url: string, signal?: AbortSignal) =>
     apiClient.delete<ApiResponse<T>>(url, { signal }).then((r) => r.data),
+
+  /** Multipart POST — pass a FormData body. Axios sets the correct
+   *  `multipart/form-data` boundary automatically when we leave Content-Type
+   *  unset here (overrides the client default of application/json). */
+  upload: <T>(url: string, form: FormData, signal?: AbortSignal) =>
+    apiClient
+      .post<ApiResponse<T>>(url, form, {
+        signal,
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      .then((r) => r.data),
 };

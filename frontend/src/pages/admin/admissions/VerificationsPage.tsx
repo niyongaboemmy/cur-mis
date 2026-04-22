@@ -8,7 +8,7 @@ export default function VerificationsPage() {
     queryKey: ['admin', 'verifications'],
     queryFn:  () => verificationService.getPendingApplications(),
   })
-  const apps = q.data?.data ?? []
+  const apps = q.data?.data?.data ?? []
 
   return (
     <section className="card p-0 overflow-hidden">

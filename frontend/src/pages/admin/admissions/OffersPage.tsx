@@ -45,7 +45,7 @@ export default function OffersPage() {
     onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed'),
   })
 
-  const rows = listQ.data?.data ?? []
+  const rows = listQ.data?.data?.data ?? []
 
   return (
     <section className="card p-0 overflow-hidden">

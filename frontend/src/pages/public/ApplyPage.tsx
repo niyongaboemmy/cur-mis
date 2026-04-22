@@ -15,9 +15,11 @@ import {
   ArrowRight,
   ArrowLeft,
   Search,
+  FileUp,
 } from 'lucide-react'
 import Logo from '@/components/brand/Logo'
 import { portalService } from '@/services/admissionService'
+import DocumentsUploader from '@/components/ui/DocumentsUploader'
 
 /* ─────────────────────────────────────────────────────────────
    Application form schema (frontend-side validation)
@@ -41,6 +43,10 @@ const numberId = (msg: string) =>
     z.number({ required_error: msg, invalid_type_error: msg }).int().positive(msg),
   )
 
+const CURRENT_YEAR = new Date().getFullYear()
+const MIN_APPLICANT_AGE = 15   // youngest plausible university applicant
+const MAX_APPLICANT_AGE = 80
+
 const schema = z.object({
   // Step 2 (picked in step 1 but stored together)
   faculty_id:         numberId('Please select a faculty'),
@@ -53,7 +59,15 @@ const schema = z.object({
   email:              z.string().email('Valid email required'),
   phone:              z.string().min(7, 'Required'),
   gender:             z.enum(['M', 'F', 'Other']),
-  birthdate:          z.string().min(1, 'Required'),
+  birthdate:          z.string()
+                        .min(1, 'Date of birth is required')
+                        .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use the date picker (YYYY-MM-DD)')
+                        .refine((v) => !Number.isNaN(Date.parse(v)),      'Enter a valid date')
+                        .refine((v) => new Date(v) <= new Date(),          'Date of birth cannot be in the future')
+                        .refine((v) => yearsBetween(v, new Date()) >= MIN_APPLICANT_AGE,
+                                `You must be at least ${MIN_APPLICANT_AGE} years old to apply`)
+                        .refine((v) => yearsBetween(v, new Date()) <= MAX_APPLICANT_AGE,
+                                'Please check your date of birth'),
   nationality:        z.string().min(2, 'Required').default('Rwandan'),
   address:            z.string().optional(),
 
@@ -65,15 +79,26 @@ const schema = z.object({
   graduation_year:    z.preprocess(
                          normaliseId,
                          z.number({ required_error: 'Graduation year is required', invalid_type_error: 'Graduation year is required' })
-                           .int()
-                           .min(1980, 'Year must be ≥ 1980')
-                           .max(new Date().getFullYear(), 'Year cannot be in the future'),
+                           .int('Graduation year must be a whole number')
+                           .min(1990, 'Graduation year must be 1990 or later')
+                           .max(CURRENT_YEAR, `Graduation year cannot be later than ${CURRENT_YEAR}`),
                        ),
 
   // Step 5 — sponsorship
   sponsorship:        z.enum(['government', 'self', 'private', 'scholarship']),
   sponsor_name:       z.string().optional(),
 })
+
+/** Whole years between two dates, accounting for month/day (so a 17y11m person
+ *  reports 17, not 18). */
+function yearsBetween(from: string | Date, to: Date): number {
+  const d = typeof from === 'string' ? new Date(from) : from
+  if (Number.isNaN(d.getTime())) return -1
+  let y = to.getFullYear() - d.getFullYear()
+  const m = to.getMonth() - d.getMonth()
+  if (m < 0 || (m === 0 && to.getDate() < d.getDate())) y -= 1
+  return y
+}
 type FormValues = z.infer<typeof schema>
 
 const STEPS = [
@@ -82,7 +107,11 @@ const STEPS = [
   { id: 3, label: 'Academic',      icon: ScrollText },
   { id: 4, label: 'Sponsorship',   icon: Building2 },
   { id: 5, label: 'Review',        icon: CheckCircle2 },
+  { id: 6, label: 'Documents',     icon: FileUp },
 ] as const
+
+const REVIEW_STEP = 5
+const DOCUMENTS_STEP = 6
 
 /* ───────────────────────────────────────────────────────────── */
 
@@ -118,7 +147,8 @@ export default function ApplyPage() {
     onSuccess: (r) => {
       if (r.success && r.data) {
         setSuccessApp(r.data)
-        toast.success('Application submitted')
+        setStep(DOCUMENTS_STEP)
+        toast.success('Application submitted — now upload your documents')
       } else {
         toast.error(r.message || 'Submission failed')
       }
@@ -127,7 +157,8 @@ export default function ApplyPage() {
   })
 
   const goNext = async () => {
-    // Validate only the fields on the current step
+    // Validate only the fields on the current step. No submission ever
+    // happens here — submission is its own explicit action on the Review step.
     const keys: (keyof FormValues)[][] = [
       ['faculty_id', 'program_id'],
       ['first_name', 'last_name', 'email', 'phone', 'gender', 'birthdate', 'nationality'],
@@ -135,37 +166,27 @@ export default function ApplyPage() {
       ['sponsorship'],
     ]
     const ok = await form.trigger(keys[step - 1])
-    if (ok) setStep((s) => Math.min(s + 1, STEPS.length))
+    if (ok) setStep((s) => Math.min(s + 1, REVIEW_STEP))
   }
 
-  const goPrev = () => setStep((s) => Math.max(s - 1, 1))
+  const goPrev = () => {
+    // Once the app is submitted (step 6 Documents), Back is a no-op —
+    // there's nothing to go back to, the application already exists.
+    if (successApp) return
+    setStep((s) => Math.max(s - 1, 1))
+  }
 
-  /* ── Success screen ── */
-  if (successApp) {
-    return (
-      <Shell>
-        <div className="card p-8 max-w-xl mx-auto text-center">
-          <div className="w-14 h-14 mx-auto rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mb-4">
-            <CheckCircle2 className="w-7 h-7" />
-          </div>
-          <h1 className="text-[22px] font-semibold text-ink-900">Your application was submitted!</h1>
-          <p className="text-ink-500 text-[14px] mt-2">
-            Your tracking number is{' '}
-            <span className="font-mono font-bold text-brand">{successApp.application_number}</span>.
-            Save it — you'll use it to upload documents and check status.
-          </p>
-          <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-2">
-            <button
-              onClick={() => navigate(`/apply/track?no=${successApp.application_number}`)}
-              className="btn-primary"
-            >
-              Track my application <ArrowRight className="w-4 h-4" />
-            </button>
-            <Link to="/" className="btn-secondary">Back to home</Link>
-          </div>
-        </div>
-      </Shell>
-    )
+  /** Explicit submission — only ever called by the Submit button's onClick.
+   *  The form's native submit event is neutralised (preventDefault) so Enter
+   *  keys, focus changes, or rapid clicks cannot fire this. */
+  const submitNow = async () => {
+    if (submitM.isPending || successApp) return
+    const ok = await form.trigger()
+    if (!ok) {
+      toast.error('Please fix the errors before submitting.')
+      return
+    }
+    submitM.mutate(form.getValues())
   }
 
   const faculties = facultiesQ.data?.data ?? []
@@ -212,7 +233,12 @@ export default function ApplyPage() {
       )}
 
       <form
-        onSubmit={form.handleSubmit((v) => submitM.mutate(v))}
+        noValidate
+        // Submission is never routed through the form's native submit event —
+        // the Submit button uses onClick only. This means Enter keys, rapid
+        // button re-renders, or accidental clicks anywhere in the form cannot
+        // fire the mutation. Kept here only to neutralise the browser default.
+        onSubmit={(e) => e.preventDefault()}
         className="card p-6 md:p-8 space-y-6"
       >
         {/* ── Step 1: Program ── */}
@@ -323,7 +349,13 @@ export default function ApplyPage() {
                 </select>
               </Field>
               <Field label="Date of birth" error={form.formState.errors.birthdate?.message}>
-                <input type="date" className="input" {...form.register('birthdate')} />
+                <input
+                  type="date"
+                  className="input"
+                  max={todayYMD()}
+                  min={`${CURRENT_YEAR - MAX_APPLICANT_AGE}-01-01`}
+                  {...form.register('birthdate')}
+                />
               </Field>
               <Field label="Nationality" error={form.formState.errors.nationality?.message}>
                 <input className="input" {...form.register('nationality')} />
@@ -353,7 +385,14 @@ export default function ApplyPage() {
                 <input className="input" placeholder="e.g. MCB, PCB, HEG" {...form.register('combination')} />
               </Field>
               <Field label="Graduation year"       error={form.formState.errors.graduation_year?.message}>
-                <input type="number" className="input" placeholder="2024" {...form.register('graduation_year', { valueAsNumber: true })} />
+                <input
+                  type="number"
+                  className="input"
+                  placeholder={String(CURRENT_YEAR - 1)}
+                  min={1990}
+                  max={CURRENT_YEAR}
+                  {...form.register('graduation_year', { valueAsNumber: true })}
+                />
               </Field>
             </div>
           </div>
@@ -380,9 +419,9 @@ export default function ApplyPage() {
         )}
 
         {/* ── Step 5: Review ── */}
-        {step === 5 && (
+        {step === REVIEW_STEP && (
           <div className="space-y-5 animate-fade-up">
-            <SectionTitle title="Review your application" sub="Make sure everything is correct before submitting." />
+            <SectionTitle title="Review your application" sub="Make sure everything is correct. The next step will be document upload." />
             <div className="grid sm:grid-cols-2 gap-4 text-[13px]">
               <Info k="Faculty"       v={selectedFaculty ? `${selectedFaculty.name} (${selectedFaculty.code})` : '—'} />
               <Info k="Program"       v={selectedProgram ? `${selectedProgram.name} (${selectedProgram.code})` : '—'} />
@@ -395,37 +434,70 @@ export default function ApplyPage() {
               <Info k="Previous school" v={form.watch('prev_school')} />
               <Info k="Qualification" v={form.watch('prev_qualification')} />
               <Info k="Grade"         v={form.watch('prev_grade')} />
+              <Info k="Graduation year" v={String(form.watch('graduation_year') ?? '—')} />
               <Info k="Sponsorship"   v={form.watch('sponsorship')} />
             </div>
 
+            {requirements.length > 0 && (
+              <div className="rounded-md border border-ink-100 bg-ink-50 p-4">
+                <p className="text-[12px] font-semibold text-ink-700 mb-2">
+                  You'll upload these on the next step:
+                </p>
+                <ul className="space-y-1">
+                  {requirements.map((r) => (
+                    <li key={r.id} className="text-[12.5px] flex items-center gap-1.5 text-ink-700">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                      {r.document_type_name ?? `Document #${r.document_type_id}`}
+                      {r.is_required ? '' : <span className="text-ink-400 ml-1">(optional)</span>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             <div className="rounded-md bg-amber-50 border border-amber-200 px-4 py-3 text-[12.5px] text-amber-800">
-              After submitting you'll get an application number. Keep it safe — you'll use it
-              to upload your documents and track the review.
+              Clicking <b>Submit application</b> creates your file. You'll then be
+              taken to the Documents step to upload your supporting papers.
             </div>
           </div>
         )}
 
+        {/* ── Step 6: Documents (post-submission) ── */}
+        {step === DOCUMENTS_STEP && successApp && (
+          <DocumentsStep
+            appNumber={successApp.application_number}
+            onFinish={() => navigate(`/apply/track?no=${successApp.application_number}`)}
+          />
+        )}
+
         {/* Nav buttons */}
-        <div className="flex items-center justify-between pt-4 border-t border-ink-100">
-          <button type="button" onClick={goPrev} className="btn-secondary" disabled={step === 1}>
-            <ArrowLeft className="w-3.5 h-3.5" /> Back
-          </button>
-          {step < STEPS.length ? (
-            <button
-              type="button"
-              onClick={goNext}
-              className="btn-primary"
-              disabled={step === 1 && !!facultyId && !programsQ.isLoading && programs.length === 0}
-            >
-              Next <ArrowRight className="w-3.5 h-3.5" />
+        {step !== DOCUMENTS_STEP && (
+          <div className="flex items-center justify-between pt-4 border-t border-ink-100">
+            <button type="button" onClick={goPrev} className="btn-secondary" disabled={step === 1 || submitM.isPending}>
+              <ArrowLeft className="w-3.5 h-3.5" /> Back
             </button>
-          ) : (
-            <button type="submit" className="btn-primary" disabled={submitM.isPending}>
-              {submitM.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-              Submit application
-            </button>
-          )}
-        </div>
+            {step < REVIEW_STEP ? (
+              <button
+                type="button"
+                onClick={goNext}
+                className="btn-primary"
+                disabled={step === 1 && !!facultyId && !programsQ.isLoading && programs.length === 0}
+              >
+                Next <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={submitNow}
+                className="btn-primary"
+                disabled={submitM.isPending || !!successApp}
+              >
+                {submitM.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                Submit application
+              </button>
+            )}
+          </div>
+        )}
       </form>
 
       {/* Existing applicant shortcut */}
@@ -486,6 +558,85 @@ function Info({ k, v }: { k: string; v: React.ReactNode }) {
     <div className="rounded-md bg-ink-50 px-3 py-2">
       <p className="text-[10.5px] uppercase tracking-wider font-semibold text-ink-400">{k}</p>
       <p className="text-ink-900 font-medium truncate">{v || '—'}</p>
+    </div>
+  )
+}
+
+/** Returns today's date as YYYY-MM-DD (used as the `max` on the DOB picker). */
+function todayYMD(): string {
+  const d = new Date()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${m}-${day}`
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Step 6 — Documents. Rendered inside the form shell after
+   submission succeeds. Fetches the just-submitted application
+   (for faculty_id / academic_year_id), loads its requirements,
+   and lets the applicant upload each file in place.
+   ───────────────────────────────────────────────────────────── */
+function DocumentsStep({
+  appNumber, onFinish,
+}: {
+  appNumber: string
+  onFinish:  () => void
+}) {
+  const trackQ = useQuery({
+    queryKey: ['portal', 'track', appNumber],
+    queryFn:  () => portalService.trackApplication(appNumber),
+  })
+  const app = trackQ.data?.data
+
+  const reqQ = useQuery({
+    queryKey: ['portal', 'requirements', app?.faculty_id],
+    queryFn:  () => portalService.getFacultyRequirements(app!.faculty_id),
+    enabled:  !!app?.faculty_id,
+  })
+
+  const requirements = reqQ.data?.data ?? []
+  const uploaded     = app?.documents ?? []
+  const loading      = trackQ.isLoading || reqQ.isLoading
+
+  return (
+    <div className="space-y-5 animate-fade-up">
+      <div className="rounded-md bg-emerald-50 border border-emerald-200 px-4 py-3 flex items-start gap-3">
+        <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+        <div>
+          <p className="text-[14px] font-semibold text-emerald-900">
+            Application submitted — tracking number{' '}
+            <span className="font-mono">{appNumber}</span>
+          </p>
+          <p className="text-[12.5px] text-emerald-800 mt-0.5">
+            Save this number. You can use it at any time on the tracking page.
+          </p>
+        </div>
+      </div>
+
+      <SectionTitle title="Upload your documents" sub="Upload each required document. You can come back later via the tracking page." />
+
+      {loading ? (
+        <p className="text-[13px] text-ink-500 py-6 text-center flex items-center justify-center gap-2">
+          <Loader2 className="w-4 h-4 animate-spin" /> Loading your checklist…
+        </p>
+      ) : (
+        <DocumentsUploader
+          requirements={requirements}
+          uploaded={uploaded}
+          onUpload={({ document_type_id, file }) =>
+            portalService.uploadDocument(appNumber, { document_type_id, file })
+          }
+          invalidateKeys={[['portal', 'track', appNumber]]}
+          emptyHint="Your faculty has no configured document requirements for this round. You can skip this step and continue — the admissions team will contact you if anything is missing."
+        />
+      )}
+
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-4 border-t border-ink-100">
+        <Link to="/" className="btn-secondary">Back to home</Link>
+        <button type="button" onClick={onFinish} className="btn-primary">
+          Finish &amp; go to tracking <ArrowRight className="w-3.5 h-3.5" />
+        </button>
+      </div>
     </div>
   )
 }

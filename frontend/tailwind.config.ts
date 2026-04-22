@@ -79,7 +79,11 @@ const config: Config = {
           lilac:  '#D6E0F4',
           sun:    '#FFF2C6',
         },
-        /** Neutrals — body copy / page chrome. */
+        /** Neutrals — body copy / page chrome.
+         *  Dark-mode levels (600+) sit on a cohesive navy-slate ramp so
+         *  `dark:bg-ink-800` (cards) and `dark:bg-ink-900` (page) feel
+         *  intentionally stacked rather than clashing.
+         */
         ink: {
           50:  '#F7F8FB',
           100: '#EEF0F6',
@@ -88,9 +92,9 @@ const config: Config = {
           400: '#8690A8',
           500: '#5D6782',
           600: '#3E4760',
-          700: '#2A3249',
-          800: '#1A1A1A',   /* official Dark Text */
-          900: '#0E1326',
+          700: '#2A3654',   /* border / divider in dark */
+          800: '#151C30',   /* card surface in dark */
+          900: '#0B1121',   /* page background in dark */
         },
       },
       boxShadow: {

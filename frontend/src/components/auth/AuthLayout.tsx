@@ -39,7 +39,7 @@ export default function AuthLayout({ children, title, subtitle }: AuthLayoutProp
         <div className="absolute inset-0 bg-gradient-to-t from-primary-900/90 via-transparent to-transparent" />
 
         <div className="relative z-10">
-          <Logo to="/" size="lg" variant="light" />
+          <Logo to="/" size="xl" variant="light" />
         </div>
 
         <div className="relative z-10 space-y-10">
@@ -97,7 +97,7 @@ export default function AuthLayout({ children, title, subtitle }: AuthLayoutProp
           >
             {/* Mobile logo */}
             <div className="lg:hidden mb-8">
-              <Logo to="/" size="md" />
+              <Logo to="/" size="lg" />
             </div>
 
             <div className="mb-8">

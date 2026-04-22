@@ -2,11 +2,12 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import {
-  User, ScrollText, FileUp, ListTree, Loader2, CheckCircle2, XCircle, Clock,
-  Trash2, Plus, Pencil, Star, FileText,
+  User, ScrollText, FileUp, ListTree, Loader2,
+  Trash2, Plus, Pencil, Star,
 } from 'lucide-react'
-import { applicantService } from '@/services/admissionService'
+import { applicantService, portalService } from '@/services/admissionService'
 import Modal from '@/components/ui/Modal'
+import DocumentsUploader from '@/components/ui/DocumentsUploader'
 import type { AcademicRecord, ApplicantProfile } from '@/types/admission'
 
 type Tab = 'overview' | 'profile' | 'records' | 'documents'
@@ -278,87 +279,36 @@ function RecordModal({
 /* ─────────────────────────────────────────────────────────── */
 
 function DocumentsPanel() {
-  const qc = useQueryClient()
-  const q  = useQuery({ queryKey: ['applicant', 'documents'], queryFn: () => applicantService.listDocuments() })
-  const rows = q.data?.data ?? []
+  const appQ = useQuery({ queryKey: ['applicant', 'application'], queryFn: () => applicantService.getApplication() })
+  const docsQ = useQuery({ queryKey: ['applicant', 'documents'],   queryFn: () => applicantService.listDocuments() })
 
-  const [fileServerId, setFileServerId] = useState('')
-  const [fileName, setFileName] = useState('')
-  const [typeId, setTypeId] = useState('')
+  const app      = appQ.data?.data
+  const uploaded = docsQ.data?.data ?? []
 
-  const add = useMutation({
-    mutationFn: () => applicantService.uploadDocument({
-      document_type_id: Number(typeId),
-      file_server_id:   fileServerId,
-      file_original_name: fileName || undefined,
-    }),
-    onSuccess: () => {
-      toast.success('Document added')
-      setFileServerId(''); setFileName(''); setTypeId('')
-      qc.invalidateQueries({ queryKey: ['applicant', 'documents'] })
-    },
-    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed'),
+  const reqQ = useQuery({
+    queryKey: ['portal', 'requirements', app?.faculty_id],
+    queryFn:  () => portalService.getFacultyRequirements(app!.faculty_id),
+    enabled:  !!app?.faculty_id,
   })
-
-  const remove = useMutation({
-    mutationFn: (id: number) => applicantService.deleteDocument(id),
-    onSuccess: () => { toast.success('Removed'); qc.invalidateQueries({ queryKey: ['applicant', 'documents'] }) },
-  })
+  const requirements = reqQ.data?.data ?? []
 
   return (
     <Card>
       <SectionHeader title="Documents" sub="Upload each required document from your checklist." />
 
-      {q.isLoading ? <Loading /> : rows.length === 0 ? (
-        <p className="mt-4 text-[13px] text-ink-500">No documents uploaded yet.</p>
-      ) : (
-        <ul className="space-y-2 mt-4">
-          {rows.map((d) => (
-            <li key={d.id} className="rounded-md border border-ink-100 p-3 flex items-center justify-between gap-3 flex-wrap">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <FileText className="w-4 h-4 text-ink-400 shrink-0" />
-                <div className="min-w-0">
-                  <p className="text-[13px] font-medium text-ink-800">{d.document_type_name ?? `Type #${d.document_type_id}`}</p>
-                  <p className="text-[11.5px] text-ink-500 truncate">{d.file_original_name}</p>
-                  {d.rejection_notes && <p className="text-[12px] text-red-700 mt-1">Rejection: {d.rejection_notes}</p>}
-                </div>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <VerifChip s={d.verification_status} />
-                <button
-                  className="icon-btn text-red-500 hover:bg-red-50"
-                  onClick={() => confirm('Delete this document?') && remove.mutate(d.id)}
-                  disabled={d.verification_status === 'verified'}
-                  title={d.verification_status === 'verified' ? 'Verified documents cannot be deleted' : ''}
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {/* Upload form (placeholder — file-server upload integration is out of scope here) */}
-      <div className="mt-6 rounded-md border border-dashed border-ink-200 bg-ink-50 p-4">
-        <p className="text-[13px] font-semibold mb-3">Attach a document</p>
-        <div className="grid grid-cols-1 sm:grid-cols-[1fr_2fr_2fr_auto] gap-2 items-end">
-          <Field label="Type ID">
-            <input className="input" placeholder="1" value={typeId} onChange={(e) => setTypeId(e.target.value)} />
-          </Field>
-          <Field label="File-server ID">
-            <input className="input font-mono" placeholder="uuid-from-file-server" value={fileServerId} onChange={(e) => setFileServerId(e.target.value)} />
-          </Field>
-          <Field label="Original filename">
-            <input className="input" placeholder="id-card.pdf" value={fileName} onChange={(e) => setFileName(e.target.value)} />
-          </Field>
-          <button className="btn-primary" onClick={() => add.mutate()} disabled={!typeId || !fileServerId || add.isPending}>
-            {add.isPending && <Loader2 className="w-3 h-3 animate-spin" />} Save
-          </button>
-        </div>
-        <p className="mt-2 text-[11.5px] text-ink-500">
-          Uploads go through the file-server. Paste the returned file UUID above.
-        </p>
+      <div className="mt-4">
+        {appQ.isLoading || docsQ.isLoading || reqQ.isLoading ? (
+          <Loading />
+        ) : (
+          <DocumentsUploader
+            requirements={requirements}
+            uploaded={uploaded}
+            onUpload={({ document_type_id, file }) =>
+              applicantService.uploadDocument({ document_type_id, file })
+            }
+            invalidateKeys={[['applicant', 'documents'], ['applicant', 'application']]}
+          />
+        )}
       </div>
     </Card>
   )
@@ -372,9 +322,4 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 function SectionHeader({ title, sub }: { title: string; sub: string }) {
   return <div><h2 className="section-title">{title}</h2><p className="section-sub">{sub}</p></div>
-}
-function VerifChip({ s }: { s: 'pending' | 'verified' | 'rejected' }) {
-  if (s === 'verified') return <span className="chip-success"><CheckCircle2 className="w-3 h-3" /> Verified</span>
-  if (s === 'rejected') return <span className="chip-danger"><XCircle className="w-3 h-3" /> Rejected</span>
-  return <span className="chip-warning"><Clock className="w-3 h-3" /> Pending</span>
 }
