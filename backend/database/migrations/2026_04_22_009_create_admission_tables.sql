@@ -12,16 +12,34 @@
 SET FOREIGN_KEY_CHECKS = 0;
 
 -- ─────────────────────────────────────────────────────────────────────────────
+-- PRE-FLIGHT: ensure `programs` has a PRIMARY KEY (created without one)
+-- ─────────────────────────────────────────────────────────────────────────────
+SET @pk_exists = (
+    SELECT COUNT(*)
+    FROM information_schema.TABLE_CONSTRAINTS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = 'programs'
+      AND CONSTRAINT_TYPE = 'PRIMARY KEY'
+);
+SET @sql = IF(@pk_exists = 0, 'ALTER TABLE `programs` ADD PRIMARY KEY (`id`)', 'SELECT 1');
+PREPARE _stmt FROM @sql;
+EXECUTE _stmt;
+DEALLOCATE PREPARE _stmt;
+
+-- ─────────────────────────────────────────────────────────────────────────────
 -- 0. Rename legacy tables to avoid name conflicts
 -- ─────────────────────────────────────────────────────────────────────────────
-ALTER TABLE IF EXISTS `application`
-    RENAME TO `legacy_application`;
+SET @t = (SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'application');
+SET @sql = IF(@t > 0, 'RENAME TABLE `application` TO `legacy_application`', 'SELECT 1');
+PREPARE _stmt FROM @sql; EXECUTE _stmt; DEALLOCATE PREPARE _stmt;
 
-ALTER TABLE IF EXISTS `application_documents`
-    RENAME TO `legacy_application_documents`;
+SET @t = (SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'application_documents');
+SET @sql = IF(@t > 0, 'RENAME TABLE `application_documents` TO `legacy_application_documents`', 'SELECT 1');
+PREPARE _stmt FROM @sql; EXECUTE _stmt; DEALLOCATE PREPARE _stmt;
 
-ALTER TABLE IF EXISTS `application_options`
-    RENAME TO `legacy_application_options`;
+SET @t = (SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'application_options');
+SET @sql = IF(@t > 0, 'RENAME TABLE `application_options` TO `legacy_application_options`', 'SELECT 1');
+PREPARE _stmt FROM @sql; EXECUTE _stmt; DEALLOCATE PREPARE _stmt;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 1. document_types  — global catalogue of possible document types

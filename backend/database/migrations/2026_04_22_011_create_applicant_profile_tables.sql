@@ -15,10 +15,15 @@ SET FOREIGN_KEY_CHECKS = 0;
 --    is_applicant = 1 → created via applicant self-registration
 --    is_applicant = 0 (default) → staff / superadmin accounts
 -- ─────────────────────────────────────────────────────────────────────────────
-ALTER TABLE `users`
-    ADD COLUMN IF NOT EXISTS `is_applicant` TINYINT(1) NOT NULL DEFAULT 0
-        COMMENT '1 = self-registered applicant; 0 = staff account'
-    AFTER `is_active`;
+SET @col_exists = (
+    SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'is_applicant'
+);
+SET @sql = IF(@col_exists = 0,
+    'ALTER TABLE `users` ADD COLUMN `is_applicant` TINYINT(1) NOT NULL DEFAULT 0 COMMENT \'1 = self-registered applicant; 0 = staff account\' AFTER `is_active`',
+    'SELECT 1'
+);
+PREPARE _stmt FROM @sql; EXECUTE _stmt; DEALLOCATE PREPARE _stmt;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 2. applicant_profiles — one per user/application pair
