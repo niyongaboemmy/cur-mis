@@ -32,7 +32,7 @@ class FileServerClient
      * Validate and upload a file from $_FILES to the file server.
      *
      * @param  array $file  One entry from $_FILES (e.g. $_FILES['document'])
-     * @return array        {id, original_name, mime, size}
+     * @return array [id, original_name, mime, size]
      * @throws RuntimeException on validation failure or server error
      */
     public function upload(array $file): array
@@ -91,7 +91,7 @@ class FileServerClient
     /**
      * Download a file from the file server by its UUID.
      *
-     * @return array {content: string, mime: string, original_name: string}
+     * @return array [content, mime, original_name]
      * @throws RuntimeException on server error
      */
     public function download(string $fileServerId): array
