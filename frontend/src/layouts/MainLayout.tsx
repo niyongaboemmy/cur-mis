@@ -72,7 +72,6 @@ const NAV_TREE: NavNode[] = [
     permissions: [PERMISSIONS.ACCESS_APPLICANT_PORTAL],
     children: [
       { to: "/applicant", label: "Overview" },
-      { to: "/applicant/records", label: "Academic Records" },
       { to: "/applicant/documents", label: "Documents" },
     ],
   },
