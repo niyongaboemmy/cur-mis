@@ -13,6 +13,12 @@ export const PERMISSIONS = {
 
   // Examinations
   MANAGE_EXAMS: 'MANAGE_EXAMS',
+
+  // Applicant Portal
+  ACCESS_APPLICANT_PORTAL: 'ACCESS_APPLICANT_PORTAL',
+  
+  // General Staff Access
+  STAFF_ACCESS: 'STAFF_ACCESS',
 } as const;
 
 export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];

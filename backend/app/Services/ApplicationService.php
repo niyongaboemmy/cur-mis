@@ -267,9 +267,21 @@ class ApplicationService
             );
         }
 
-        // Score every applicant
+        // Pre-compute minimum grade score once if a threshold is set
+        $minGradeScore = null;
+        if (!empty($criteria['min_grade'])) {
+            $minGradeScore = $this->gradeToNumeric((string)$criteria['min_grade']);
+        }
+
+        // Score every applicant; skip those below the minimum grade threshold
         $scored = [];
         foreach ($applications as $app) {
+            if ($minGradeScore !== null) {
+                $applicantGradeScore = $this->gradeToNumeric((string)($app['prev_grade'] ?? ''));
+                if ($applicantGradeScore < $minGradeScore) {
+                    continue; // Does not meet minimum grade requirement
+                }
+            }
             $scored[] = [
                 'application_id' => (int)$app['id'],
                 'merit_score'    => $this->computeMeritScore($app, $criteria),
@@ -406,6 +418,21 @@ class ApplicationService
             [$applicationId]
         );
 
+        // Convert user account from Applicant to Student
+        $profile = $this->db->fetchOne("SELECT user_id FROM `applicant_profiles` WHERE application_id = ? LIMIT 1", [$applicationId]);
+        if ($profile) {
+            $userId    = (int)$profile['user_id'];
+            $roleModel = new \App\Models\RoleModel();
+            $studentRoleId = $roleModel->getIdByName('student');
+            
+            if ($studentRoleId) {
+                $this->db->execute(
+                    "UPDATE `users` SET role_id = ?, updated_at = NOW() WHERE id = ?",
+                    [$studentRoleId, $userId]
+                );
+            }
+        }
+
         $this->logStatusChange(
             $applicationId, 'offer_accepted', 'enrolled',
             $actorId, 'admin', "Enrollment initiated. Student ID: {$studentId}."
@@ -446,7 +473,10 @@ class ApplicationService
             switch ($template) {
                 case 'application_received':
                     $html    = EmailTemplateHelper::applicationReceivedTemplate(
-                        $name, $extra['application_number'] ?? '', $extra['program_name'] ?? ''
+                        $name, 
+                        $extra['application_number'] ?? '', 
+                        $extra['program_name'] ?? '',
+                        $extra['verification_code'] ?? null
                     );
                     $subject = 'Application Received — ' . ($extra['application_number'] ?? '');
                     break;

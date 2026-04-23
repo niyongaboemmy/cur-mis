@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import {
   Files, Search, ChevronRight, ArrowLeft, ArrowRight, Filter,
 } from 'lucide-react'
-import { applicationAdminService } from '@/services/admissionService'
+import { applicationAdminService, intakeService } from '@/services/admissionService'
 import type { ApplicationStatus } from '@/types/admission'
 
 const STATUSES: { value: ApplicationStatus | ''; label: string }[] = [
@@ -38,13 +38,18 @@ const STATUS_TONE: Record<string, string> = {
 export default function ApplicationsListPage() {
   const [page, setPage] = useState(1)
   const [status, setStatus] = useState<ApplicationStatus | ''>('')
+  const [intake, setIntake] = useState('')
   const [q, setQ] = useState('')
 
+  const intakesQ = useQuery({ queryKey: ['admin', 'intakes'], queryFn: () => intakeService.list() })
+  const intakes = intakesQ.data?.data ?? []
+
   const listQ = useQuery({
-    queryKey: ['admin', 'applications', page, status, q],
+    queryKey: ['admin', 'applications', page, status, intake, q],
     queryFn: () => applicationAdminService.list({
       page, per_page: 15,
       status: status || undefined,
+      intake: intake || undefined,
       q: q || undefined,
     }),
     placeholderData: (prev) => prev,
@@ -85,6 +90,19 @@ export default function ApplicationsListPage() {
             onChange={(e) => { setStatus(e.target.value as any); setPage(1) }}
           >
             {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+          </select>
+        </div>
+        <div className="relative">
+          <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-400 pointer-events-none" />
+          <select
+            className="input pl-8 w-40"
+            value={intake}
+            onChange={(e) => { setIntake(e.target.value); setPage(1) }}
+          >
+            <option value="">All intakes</option>
+            {intakes.map((i: any) => (
+              <option key={i.id} value={i.name}>{i.name}</option>
+            ))}
           </select>
         </div>
       </div>

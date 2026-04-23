@@ -20,8 +20,8 @@ class AdmissionRequirementModel extends BaseModel
     public function getForFacultyYear(int $facultyId, int $academicYearId): array
     {
         return $this->db->fetchAll(
-            "SELECT ar.*, dt.name AS document_name, dt.slug AS document_slug,
-                    dt.description AS document_description
+            "SELECT ar.*, dt.name AS document_type_name, dt.slug AS document_type_slug,
+                    dt.description AS document_description, dt.allowed_extensions
              FROM `admission_requirements` ar
              JOIN `document_types` dt ON dt.id = ar.document_type_id
              WHERE ar.faculty_id = ? AND ar.academic_year_id = ?
@@ -62,7 +62,7 @@ class AdmissionRequirementModel extends BaseModel
 
         $rows = $this->db->fetchAll(
             "SELECT ar.*,
-                    dt.name AS document_name, dt.slug AS document_slug,
+                    dt.name AS document_type_name, dt.slug AS document_type_slug,
                     f.fac_name AS faculty_name, f.fac_code AS faculty_code,
                     ay.label AS academic_year_label
              FROM `admission_requirements` ar

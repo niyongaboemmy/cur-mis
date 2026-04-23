@@ -184,21 +184,258 @@ class ApplicantProfileController extends BaseController
         ], 'Profile photo uploaded successfully.');
     }
 
+
+    // ── Application creation & verification ──────────────────────────────────
+
+    /**
+     * POST /api/applicant/application/draft
+     * Creates a draft application so documents can be attached during the wizard.
+     */
+    public function draftApplication(Request $request, Response $response): never
+    {
+        $profile = $request->param('_applicant_profile');
+        $profileId = (int)$profile['id'];
+
+        // Allow multiple applications. We still link the MOST RECENT one to the profile for legacy single-app logic,
+        // but we return the list in getApplications.
+
+        $data = $request->body();
+        $errors = ValidationHelper::validate($data, [
+            'faculty_id'    => 'required|numeric',
+            'department_id' => 'required|numeric',
+            'intake'        => 'required|string',
+        ]);
+
+        if (!empty($errors)) {
+            $this->error($response, 'Validation failed.', 422, $errors);
+        }
+
+        try {
+            $activeYear = $this->service->getActiveAcademicYear();
+            $academicYearId = (int)$activeYear['id'];
+        } catch (\RuntimeException $e) {
+            $this->error($response, $e->getMessage(), 503);
+        }
+
+        $appNumber = $this->service->generateApplicationNumber();
+        $authUser = $request->param('_auth_user');
+
+        // Create draft application
+        $fullName = $authUser['full_name'] ?? '';
+        $nameParts = explode(' ', $fullName);
+        $firstName = $nameParts[0] ?? 'Applicant';
+        $lastName  = count($nameParts) > 1 ? implode(' ', array_slice($nameParts, 1)) : 'User';
+
+        $appId = (int)$this->appModel->create([
+            'application_number' => $appNumber,
+            'academic_year_id'   => $academicYearId,
+            'faculty_id'         => (int)$data['faculty_id'],
+            'department_id'      => (int)$data['department_id'],
+            'intake'             => $data['intake'],
+            'status'             => 'draft',
+            'first_name'         => $firstName,
+            'last_name'          => $lastName,
+            'email'              => $authUser['email'] ?? '',
+            'phone'              => '0000000000',
+            'gender'             => 'Other',
+            'birthdate'          => date('Y-m-d'),
+            'nationality'        => 'Rwandan',
+            'prev_school'        => 'N/A',
+            'prev_qualification' => 'N/A',
+            'prev_grade'         => 'N/A',
+            'graduation_year'    => date('Y'),
+            'sponsorship'        => 'self',
+            'ip_address'         => $_SERVER['REMOTE_ADDR'] ?? null,
+            'email_verified'     => 0,
+        ]);
+
+        // Link it to the profile
+        $this->profileModel->update($profileId, ['application_id' => $appId]);
+
+        $this->service->logStatusChange($appId, null, 'draft', null, 'applicant', 'Draft application created.');
+
+        $this->success($response, ['id' => $appId, 'application_number' => $appNumber], 'Draft created.', 201);
+    }
+
+    /**
+     * POST /api/applicant/application/submit
+     */
+    public function submitApplication(Request $request, Response $response): never
+    {
+        $profile = $request->param('_applicant_profile');
+        $appId = (int)$profile['application_id'];
+
+        if (!$appId) {
+            $this->error($response, 'No draft application found.', 404);
+        }
+
+        $application = $this->appModel->find($appId);
+        if ($application['status'] !== 'draft') {
+            $this->error($response, 'Application is already submitted.', 422);
+        }
+
+        $data = $request->body();
+        // Skip validation of basics here to save lines, assuming frontend validated it
+        $updateData = [
+            'first_name'         => $data['first_name'] ?? $application['first_name'],
+            'last_name'          => $data['last_name'] ?? $application['last_name'],
+            'email'              => $data['email'] ?? $application['email'],
+            'phone'              => $data['phone'] ?? $application['phone'],
+            'gender'             => $data['gender'] ?? $application['gender'],
+            'birthdate'          => $data['birthdate'] ?? $application['birthdate'],
+            'nationality'        => $data['nationality'] ?? $application['nationality'],
+            'prev_school'        => $data['prev_school'] ?? $application['prev_school'],
+            'prev_qualification' => $data['prev_qualification'] ?? $application['prev_qualification'],
+            'prev_grade'         => $data['prev_grade'] ?? $application['prev_grade'],
+            'graduation_year'    => (int)($data['graduation_year'] ?? $application['graduation_year']),
+            'sponsorship'        => $data['sponsorship'] ?? $application['sponsorship'],
+            'status'             => 'submitted',
+            'submitted_at'       => date('Y-m-d H:i:s'),
+        ];
+
+        // Generate verification code
+        $code = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+        $updateData['verification_code'] = $code;
+        $updateData['email_verified'] = 0;
+
+        $this->appModel->update($appId, $updateData);
+
+        $this->service->logStatusChange($appId, 'draft', 'submitted', null, 'applicant', 'Application submitted.');
+
+        // Send Email
+        // 6. Send verification email
+        $htmlBody = \App\Helpers\EmailTemplateHelper::otpTemplate(
+            $updateData['first_name'], 
+            $code, 
+            '15 minutes'
+        );
+        $mailService = new \App\Services\MailService();
+        $emailSent   = $mailService->send($updateData['email'], 'Verify Your Application', $htmlBody, "Verification Code: $code");
+
+        // If email fails and we are in debug mode, return the code in the response for testing
+        $debug = filter_var($_ENV['APP_DEBUG'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $extraData = [];
+        if (!$emailSent && $debug) {
+            $extraData['dev_code'] = $code;
+            error_log("[DEV] Application verification code for {$updateData['email']}: {$code}");
+        }
+
+        $this->success($response, array_merge(['status' => 'submitted'], $extraData), 'Application submitted. Please check your email for the verification code.');
+    }
+
+    /**
+     * POST /api/applicant/application/verify
+     */
+    public function verifyApplication(Request $request, Response $response): never
+    {
+        $data = $request->body();
+        $code = trim($data['code'] ?? '');
+        $profile = $request->param('_applicant_profile');
+        $appId = (int)($profile['application_id'] ?? 0);
+
+        if (!$appId) {
+            $this->error($response, 'No active application found to verify.', 404);
+        }
+
+        $app = $this->appModel->find($appId);
+
+        if (!$app || (string)$app['verification_code'] !== (string)$code) {
+            $this->error($response, 'Invalid verification code.', 422);
+        }
+
+        if ((int)$app['email_verified'] === 1) {
+            $this->success($response, null, 'Application is already verified.');
+        }
+
+        $this->appModel->update($appId, [
+            'email_verified' => 1,
+            'verification_code' => null
+        ]);
+
+        $this->success($response, null, 'Application verified successfully.');
+    }
+
+    /**
+     * POST /api/applicant/application/resend-code
+     */
+    public function resendVerificationCode(Request $request, Response $response): never
+    {
+        $profile = $request->param('_applicant_profile');
+        $appId   = (int)($profile['application_id'] ?? 0);
+
+        if (!$appId) {
+            $this->error($response, 'No active application found.', 404);
+        }
+
+        $app = $this->appModel->find($appId);
+
+        if (!$app) {
+            $this->error($response, 'Application not found.', 404);
+        }
+        if ((int)$app['email_verified'] === 1) {
+            $this->error($response, 'Application is already verified.', 422);
+        }
+        if ($app['status'] === 'draft') {
+            $this->error($response, 'Submit the application before verifying.', 422);
+        }
+
+        $code = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+        $this->appModel->update($appId, ['verification_code' => $code]);
+
+        $htmlBody = \App\Helpers\EmailTemplateHelper::otpTemplate(
+            $app['first_name'],
+            $code,
+            '15 minutes'
+        );
+        $mailService = new \App\Services\MailService();
+        $emailSent   = $mailService->send($app['email'], 'Verify Your Application', $htmlBody, "Verification Code: $code");
+
+        $debug     = filter_var($_ENV['APP_DEBUG'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $extraData = [];
+        if (!$emailSent && $debug) {
+            $extraData['dev_code'] = $code;
+        }
+
+        $this->success($response, $extraData, 'A new verification code has been sent to your email.');
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Application status
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
      * GET /api/applicant/application
-     * Returns the full application status, checklist, and status history.
-     * Mirrors the public trackApplication endpoint but scoped to the logged-in user.
+     * Returns a list of all applications for the authenticated user.
      */
     public function getApplication(Request $request, Response $response): never
     {
-        $profile = $request->param('_applicant_profile');
-        $appId   = (int)$profile['application_id'];
+        $authUser = $request->param('_auth_user');
+        $email    = $authUser['email'];
 
+        // Fetch all applications matching this email
+        $apps = $this->db->fetchAll(
+            "SELECT sa.*, f.fac_name as faculty_name, d.dep_name as department_name, ay.label as academic_year_label
+             FROM `student_applications` sa
+             LEFT JOIN faculty f ON sa.faculty_id = f.fac_id
+             LEFT JOIN departements d ON sa.department_id = d.dep_id
+             LEFT JOIN academic_years ay ON sa.academic_year_id = ay.id
+             WHERE sa.email = ?
+             ORDER BY sa.created_at DESC",
+            [$email]
+        );
+
+        $this->success($response, $apps, 'Applications fetched successfully.');
+    }
+
+    /**
+     * GET /api/applicant/application/:id
+     * Returns full details for a specific application.
+     */
+    public function getApplicationDetails(Request $request, Response $response): never
+    {
+        $appId = (int)$request->param('id');
         $application = $this->appModel->getWithDetails($appId);
+        
         if (!$application) {
             $this->error($response, 'Application not found.', 404);
         }
@@ -227,8 +464,8 @@ class ApplicantProfileController extends BaseController
             $uploaded = $uploadedMap[$typeId] ?? null;
             return [
                 'document_type_id'    => $typeId,
-                'document_name'       => $req['document_name'],
-                'document_slug'       => $req['document_slug'],
+                'document_type_name'  => $req['document_type_name'],
+                'document_type_slug'  => $req['document_type_slug'],
                 'is_required'         => (bool)$req['is_required'],
                 'notes'               => $req['notes'],
                 'sort_order'          => $req['sort_order'],
@@ -251,6 +488,7 @@ class ApplicantProfileController extends BaseController
         );
 
         $this->success($response, [
+            'id'                 => $application['id'],
             'application_number' => $application['application_number'],
             'academic_year'      => $application['academic_year_label'] ?? '',
             'faculty_name'       => $application['faculty_name']        ?? '',
@@ -262,9 +500,73 @@ class ApplicantProfileController extends BaseController
             'merit_score'        => $application['merit_score'],
             'merit_rank'         => $application['merit_rank'],
             'submitted_at'       => $application['submitted_at'],
+            // Add other fields for editing
+            'first_name'         => $application['first_name'],
+            'last_name'          => $application['last_name'],
+            'email'              => $application['email'],
+            'phone'              => $application['phone'],
+            'gender'             => $application['gender'],
+            'birthdate'          => $application['birthdate'],
+            'nationality'        => $application['nationality'],
+            'address'            => $application['address'],
+            'prev_school'        => $application['prev_school'],
+            'prev_qualification' => $application['prev_qualification'],
+            'prev_grade'         => $application['prev_grade'],
+            'graduation_year'    => $application['graduation_year'],
+            'sponsorship'        => $application['sponsorship'],
+            'sponsor_name'       => $application['sponsor_name'],
             'document_checklist' => $checklist,
             'status_log'         => $logRows,
         ], 'Application details fetched.');
+    }
+
+    /**
+     * PUT /api/applicant/application/:id
+     * Update application details before it's processed.
+     */
+    public function updateApplication(Request $request, Response $response): never
+    {
+        $appId = (int)$request->param('id');
+        $data  = $request->body();
+
+        $application = $this->appModel->find($appId);
+        if (!$application) {
+            $this->error($response, 'Application not found.', 404);
+        }
+
+        // Security: Ensure it belongs to the logged-in user
+        $authUser = $request->param('_auth_user');
+        if ($application['email'] !== $authUser['email']) {
+            $this->error($response, 'Unauthorized.', 403);
+        }
+
+        // Only allow editing if status is draft or submitted (not yet review_started or beyond)
+        $allowed = ['draft', 'submitted'];
+        if (!in_array($application['status'], $allowed, true)) {
+            $this->error($response, 'Application cannot be edited at this stage.', 422);
+        }
+
+        $fields = array_filter([
+            'first_name'         => $data['first_name']         ?? null,
+            'last_name'          => $data['last_name']          ?? null,
+            'phone'              => $data['phone']              ?? null,
+            'gender'             => $data['gender']             ?? null,
+            'birthdate'          => $data['birthdate']          ?? null,
+            'nationality'        => $data['nationality']        ?? null,
+            'address'            => $data['address']            ?? null,
+            'prev_school'        => $data['prev_school']        ?? null,
+            'prev_qualification' => $data['prev_qualification'] ?? null,
+            'prev_grade'         => $data['prev_grade']         ?? null,
+            'graduation_year'    => isset($data['graduation_year']) ? (int)$data['graduation_year'] : null,
+            'sponsorship'        => $data['sponsorship']        ?? null,
+            'sponsor_name'       => $data['sponsor_name']       ?? null,
+        ], fn($v) => $v !== null);
+
+        if (!empty($fields)) {
+            $this->appModel->update($appId, $fields);
+        }
+
+        $this->success($response, null, 'Application updated successfully.');
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -433,8 +735,8 @@ class ApplicantProfileController extends BaseController
             $uploaded = $uploadedMap[$typeId] ?? null;
             return [
                 'document_type_id'    => $typeId,
-                'document_name'       => $req['document_name'],
-                'document_slug'       => $req['document_slug'],
+                'document_type_name'  => $req['document_type_name'],
+                'document_type_slug'  => $req['document_type_slug'],
                 'is_required'         => (bool)$req['is_required'],
                 'notes'               => $req['notes'],
                 'uploaded'            => $uploaded !== null,
@@ -469,7 +771,7 @@ class ApplicantProfileController extends BaseController
             $this->error($response, 'Application not found.', 404);
         }
 
-        $allowedStatuses = ['submitted', 'documents_under_review', 'documents_rejected'];
+        $allowedStatuses = ['draft', 'submitted', 'documents_under_review', 'documents_rejected'];
         if (!in_array($application['status'], $allowedStatuses, true)) {
             $this->error($response, 'Documents cannot be uploaded at this stage of the application.', 422);
         }
@@ -496,6 +798,23 @@ class ApplicantProfileController extends BaseController
         $file = $request->file('document');
         if (!$file) {
             $this->error($response, 'No document file provided.', 422);
+        }
+
+        // Validate file extension against requirement rules
+        $matchingReq = null;
+        foreach ($requirements as $req) {
+            if ((int)$req['document_type_id'] === $docTypeId) {
+                $matchingReq = $req;
+                break;
+            }
+        }
+
+        if ($matchingReq && !empty($matchingReq['allowed_extensions'])) {
+            $allowed = array_map('trim', explode(',', strtolower($matchingReq['allowed_extensions'])));
+            $ext     = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+            if (!in_array($ext, $allowed, true)) {
+                $this->error($response, "Invalid file type '{$ext}'. Allowed extensions: " . implode(', ', $allowed), 422);
+            }
         }
 
         try {

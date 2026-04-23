@@ -13,6 +13,8 @@ use App\Models\LevelModel;
 use App\Models\LeaveTypeModel;
 use App\Models\ModuleModel;
 use App\Models\SchoolModel;
+use App\Models\IntakeModel;
+use App\Models\DegreeModel;
 use App\Helpers\ValidationHelper;
 
 /**
@@ -32,6 +34,8 @@ class AcademicsManagementController extends BaseController
             'leave_types' => new LeaveTypeModel(),
             'modules'     => new ModuleModel(),
             'schools'     => new SchoolModel(),
+            'intakes'     => new IntakeModel(),
+            'degrees'     => new DegreeModel(),
         ];
     }
 
@@ -181,6 +185,19 @@ class AcademicsManagementController extends BaseController
                 'school_phone'    => ['string'],
                 'school_email'    => ['string'],
                 'url'             => ['string'],
+            ],
+            'degrees' => [
+                'code'           => ['required', 'min:2'],
+                'name'           => ['required', 'min:3'],
+                'department_id'  => ['numeric'],
+                'degree_type'    => ['string'],
+                'duration_years' => ['numeric'],
+                'total_credits'  => ['numeric'],
+            ],
+            'intakes' => [
+                'name'       => ['required', 'min:3'],
+                'start_date' => ['required'],
+                'end_date'   => ['required'],
             ],
             default => [],
         };

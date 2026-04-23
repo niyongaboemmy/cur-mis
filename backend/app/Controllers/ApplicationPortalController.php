@@ -12,6 +12,7 @@ use App\Models\ApplicationDocumentModel;
 use App\Models\AdmissionRequirementModel;
 use App\Models\ApplicationStatusLogModel;
 use App\Models\AdmissionOfferModel;
+use App\Models\IntakeModel;
 use App\Models\FacultyModel;
 use App\Services\ApplicationService;
 use App\Helpers\ValidationHelper;
@@ -24,6 +25,7 @@ class ApplicationPortalController extends BaseController
     private AdmissionRequirementModel $requirementModel;
     private ApplicationStatusLogModel $logModel;
     private AdmissionOfferModel       $offerModel;
+    private IntakeModel               $intakeModel;
     private FacultyModel              $facultyModel;
     private ApplicationService        $service;
 
@@ -34,6 +36,7 @@ class ApplicationPortalController extends BaseController
         $this->requirementModel = new AdmissionRequirementModel();
         $this->logModel         = new ApplicationStatusLogModel();
         $this->offerModel       = new AdmissionOfferModel();
+        $this->intakeModel      = new IntakeModel();
         $this->facultyModel     = new FacultyModel();
         $this->service          = new ApplicationService();
     }
@@ -59,6 +62,15 @@ class ApplicationPortalController extends BaseController
             'start_date' => $year['start_date'],
             'end_date'   => $year['end_date'],
         ], 'Active academic year fetched.');
+    }
+
+    /**
+     * GET /api/portal/intakes
+     */
+    public function getIntakes(Request $request, Response $response): never
+    {
+        $intakes = $this->intakeModel->getActive();
+        $this->success($response, $intakes, 'Active intakes fetched successfully.');
     }
 
     /**
@@ -160,6 +172,7 @@ class ApplicationPortalController extends BaseController
         }
 
         $appNumber = $this->service->generateApplicationNumber();
+        $verificationCode = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
 
         $appId = (int)$this->appModel->create([
             'application_number' => $appNumber,
@@ -184,6 +197,7 @@ class ApplicationPortalController extends BaseController
             'sponsor_name'       => $data['sponsor_name'] ?? null,
             'status'             => 'submitted',
             'submitted_at'       => date('Y-m-d H:i:s'),
+            'verification_code'  => $verificationCode,
             'ip_address'         => $this->resolveIp($request),
         ]);
 
@@ -201,6 +215,7 @@ class ApplicationPortalController extends BaseController
         ], [
             'application_number' => $appNumber,
             'program_name'       => $departmentName,
+            'verification_code'  => $verificationCode,
         ]);
 
         $this->success($response, [
@@ -249,8 +264,8 @@ class ApplicationPortalController extends BaseController
             $uploaded = $uploadedMap[$typeId] ?? null;
             return [
                 'document_type_id'    => $typeId,
-                'document_name'       => $req['document_name'],
-                'document_slug'       => $req['document_slug'],
+                'document_type_name'  => $req['document_type_name'],
+                'document_type_slug'  => $req['document_type_slug'],
                 'is_required'         => (bool)$req['is_required'],
                 'notes'               => $req['notes'],
                 'sort_order'          => $req['sort_order'],
@@ -289,6 +304,10 @@ class ApplicationPortalController extends BaseController
 
         $this->success($response, [
             'application_number'  => $application['application_number'],
+            'id'                  => (int)$application['id'],
+            'faculty_id'          => (int)$application['faculty_id'],
+            'department_id'       => (int)$application['department_id'],
+            'academic_year_id'    => (int)$application['academic_year_id'],
             'academic_year'       => $year['label']       ?? '',
             'faculty_name'        => $faculty['fac_name'] ?? '',
             'department_name'     => $dept['dep_name']    ?? '',
@@ -296,9 +315,12 @@ class ApplicationPortalController extends BaseController
             'intake'              => $application['intake'],
             'first_name'          => $application['first_name'],
             'last_name'           => $application['last_name'],
+            'email'               => $application['email'],
+            'email_verified'      => (int)$application['email_verified'],
             'status'              => $application['status'],
             'document_status'     => $application['document_status'],
             'submitted_at'        => $application['submitted_at'],
+            'documents'           => $documents,
             'document_checklist'  => $checklist,
             'status_log'          => array_map(fn($l) => [
                 'from_status' => $l['from_status'],
@@ -357,6 +379,23 @@ class ApplicationPortalController extends BaseController
             $this->error($response, 'No document file provided. Please attach a file.', 422);
         }
 
+        // Validate file extension against requirement rules
+        $matchingReq = null;
+        foreach ($requirements as $req) {
+            if ((int)$req['document_type_id'] === $docTypeId) {
+                $matchingReq = $req;
+                break;
+            }
+        }
+
+        if ($matchingReq && !empty($matchingReq['allowed_extensions'])) {
+            $allowed = array_map('trim', explode(',', strtolower($matchingReq['allowed_extensions'])));
+            $ext     = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+            if (!in_array($ext, $allowed, true)) {
+                $this->error($response, "Invalid file type '{$ext}'. Allowed extensions: " . implode(', ', $allowed), 422);
+            }
+        }
+
         try {
             $client   = new FileServerClient();
             $uploaded = $client->upload($file);
@@ -385,7 +424,7 @@ class ApplicationPortalController extends BaseController
         $this->success($response, [
             'id'                  => (int)$docId,
             'document_type_id'    => $docTypeId,
-            'document_name'       => $reqEntry['document_name'] ?? '',
+            'document_type_name'  => $reqEntry['document_type_name'] ?? '',
             'verification_status' => 'pending',
             'document_status'     => $docStatus,
         ], 'Document uploaded successfully.', 201);

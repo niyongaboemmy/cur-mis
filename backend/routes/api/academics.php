@@ -38,14 +38,16 @@ $entityPermissions = [
     'leave_types'        => Permissions::MANAGE_LEAVE_TYPES,
     'modules'            => Permissions::MANAGE_MODULES,
     'schools'            => Permissions::MANAGE_SCHOOLS,
+    'degrees'            => Permissions::MANAGE_DEGREES,
+    'intakes'            => Permissions::MANAGE_ADMISSIONS,
 ];
 
 foreach ($entityPermissions as $entity => $permission) {
-    $router->group("/api/academics-management/{$entity}", function ($router) {
-        $router->get('',       [AcademicsManagementController::class, 'index']);
-        $router->get('/:id',   [AcademicsManagementController::class, 'show']);
-        $router->post('',      [AcademicsManagementController::class, 'create']);
-        $router->put('/:id',   [AcademicsManagementController::class, 'update']);
-        $router->delete('/:id', [AcademicsManagementController::class, 'delete']);
+    $router->group("/api/academics-management/{$entity}", function (Core\Router $r) {
+        $r->get('',       [AcademicsManagementController::class, 'index']);
+        $r->get('/:id',   [AcademicsManagementController::class, 'show']);
+        $r->post('',      [AcademicsManagementController::class, 'create']);
+        $r->put('/:id',   [AcademicsManagementController::class, 'update']);
+        $r->delete('/:id', [AcademicsManagementController::class, 'delete']);
     }, [AuthMiddleware::class, new PermissionMiddleware($permission)]);
 }

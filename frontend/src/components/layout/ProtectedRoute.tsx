@@ -31,7 +31,14 @@ export default function ProtectedRoute({ requiredPermissions }: Props) {
     const userPerms = user?.permissions || [];
     
     // Check if user has ANY of the required permissions
-    const hasAccess = required.some(p => userPerms.includes(p));
+    const hasAccess = required.some(p => {
+      // Handle pseudo-permissions
+      if (p === 'ACCESS_APPLICANT_PORTAL' && user?.role === 'applicant') return true;
+      if (p === 'STAFF_ACCESS' && user?.role !== 'applicant') return true;
+      
+      return userPerms.includes(p);
+    });
+
     if (!hasAccess) {
       // User is authenticated but lacks permission
       return <Navigate to="/" replace />

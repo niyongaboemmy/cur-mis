@@ -16,7 +16,7 @@ import type {
  * Handle initial login step (email/password).
  * If OTP is required, it redirects to the verification page.
  */
-export function useLogin() {
+export function useLogin(options?: { onSuccess?: (response: any) => void }) {
   const navigate = useNavigate()
 
   return useMutation({
@@ -25,15 +25,25 @@ export function useLogin() {
 
     onSuccess: (response) => {
       if (response.success) {
+        if (options?.onSuccess) {
+          options.onSuccess(response)
+          return
+        }
         if (response.otp_required) {
           toast.success(response.message || 'Verification code sent!')
           const payload = response.data as any
           navigate('/verify-otp', { state: { email: payload?.email, devOtp: payload?.dev_otp } })
         } else if (response.data) {
           const { setAuth } = useAuthStore.getState()
-          setAuth(response.data.user, response.data.token)
+          const user = response.data.user
+          setAuth(user, response.data.token)
           toast.success('Logged in successfully!')
-          navigate('/')
+          
+          if (user.is_applicant || user.role === 'applicant' || user.role_name === 'applicant') {
+            navigate('/applicant')
+          } else {
+            navigate('/')
+          }
         }
       } else {
         toast.error(response.message || 'Login failed')
@@ -50,7 +60,7 @@ export function useLogin() {
 /**
  * Handle OTP verification to complete the login.
  */
-export function useVerifyOtp() {
+export function useVerifyOtp(options?: { onSuccess?: (response: any) => void }) {
   const { setAuth } = useAuthStore()
   const navigate    = useNavigate()
 
@@ -65,8 +75,19 @@ export function useVerifyOtp() {
         const u = response.data.user as any
         if (!u.role && u.role_name) u.role = u.role_name
         setAuth(u, response.data.token)
+        
+        if (options?.onSuccess) {
+          options.onSuccess(response)
+          return
+        }
+        
         toast.success('Identity verified!')
-        navigate('/')
+        
+        if (u.is_applicant || u.role === 'applicant' || u.role_name === 'applicant') {
+          navigate('/applicant')
+        } else {
+          navigate('/')
+        }
       } else {
         toast.error(response.message || 'Verification failed')
       }

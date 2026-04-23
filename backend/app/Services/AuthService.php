@@ -182,6 +182,82 @@ class AuthService
     }
 
     /**
+     * Applicant self-registration (Before Application)
+     */
+    public function registerApplicantAccount(string $firstName, string $lastName, string $email, string $password): array
+    {
+        $userModel = new UserModel();
+        $email = strtolower(trim($email));
+
+        // 1. Check no account already registered for this email
+        if ($userModel->exists('email', $email)) {
+            return [
+                'success' => false,
+                'code'    => 409,
+                'message' => 'An account already exists for this email. Please log in instead.',
+                'data'    => null,
+            ];
+        }
+
+        // 2. Resolve applicant role
+        $roleModel = new RoleModel();
+        $roleRow   = $roleModel->findBy('name', 'applicant');
+        $roleId    = $roleRow ? (int)$roleRow['id'] : null;
+
+        // 3. Create user account
+        $fullName = trim($firstName . ' ' . $lastName);
+        $userId   = (int)$userModel->create([
+            'full_name'    => $fullName,
+            'email'        => $email,
+            'username'     => strtolower(str_replace(' ', '.', $fullName)) . '.' . rand(100, 999),
+            'password'     => password_hash($password, PASSWORD_BCRYPT),
+            'role_id'      => $roleId,
+            'is_active'    => 1,
+            'is_applicant' => 1,
+        ]);
+
+        // 4. Create stub applicant_profiles row
+        $profileModel = new ApplicantProfileModel();
+        $profileModel->create([
+            'user_id' => $userId,
+        ]);
+
+        // 5. Trigger the OTP flow for email verification
+        $otp       = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+        $expiresAt = date('Y-m-d H:i:s', time() + 600);
+        $userModel->saveOtp($userId, $otp, $expiresAt);
+
+        $htmlBody  = EmailTemplateHelper::otpTemplate($fullName, $otp, '10 minutes');
+        $altBody   = "Your verification code is: $otp. It expires in 10 minutes.";
+        $emailSent = $this->mailService->send($email, 'Verify Your Account', $htmlBody, $altBody);
+
+        $debug = filter_var($_ENV['APP_DEBUG'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+        if (!$emailSent) {
+            if ($debug) {
+                error_log("[DEV OTP] Registration OTP for {$email}: {$otp}");
+                return [
+                    'success' => true,
+                    'message' => 'Account created. OTP logged to error log (dev mode).',
+                    'data'    => ['email' => $email, 'dev_otp' => $otp],
+                ];
+            }
+            return [
+                'success' => false,
+                'code'    => 500,
+                'message' => 'Account created but failed to send verification email. Please try logging in.',
+                'data'    => null,
+            ];
+        }
+
+        return [
+            'success' => true,
+            'message' => 'Account created. A verification code has been sent to your email.',
+            'data'    => ['email' => $email],
+        ];
+    }
+
+    /**
      * Applicant self-registration.
      *
      * Flow:
@@ -371,7 +447,7 @@ class AuthService
                 'role'         => $user['role_name'] ?? 'guest',
                 'role_id'      => $user['role_id'] ?? null,
                 'permissions'  => $user['permissions'] ?? [],
-                'is_applicant' => $user['is_applicant'] ?? false,
+                'is_applicant' => ($user['role_name'] ?? '') === 'applicant',
                 'created_at'   => $user['created_at'] ?? null,
             ],
         ];

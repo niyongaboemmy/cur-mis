@@ -10,6 +10,7 @@ import { PERMISSIONS }      from '@/constants'
 const HomePage             = lazy(() => import('@/pages/HomePage'))
 const ProfilePage          = lazy(() => import('@/pages/ProfilePage'))
 const LoginPage            = lazy(() => import('@/pages/LoginPage'))
+const RegisterPage         = lazy(() => import('@/pages/RegisterPage'))
 const VerifyOtpPage        = lazy(() => import('@/pages/VerifyOtpPage'))
 const ForgotPasswordPage   = lazy(() => import('@/pages/ForgotPasswordPage'))
 const NotFoundPage         = lazy(() => import('@/pages/NotFoundPage'))
@@ -33,7 +34,10 @@ const MeritPage                 = lazy(() => import('@/pages/admin/admissions/Me
 const OffersPage                = lazy(() => import('@/pages/admin/admissions/OffersPage'))
 const RequirementsPage          = lazy(() => import('@/pages/admin/admissions/RequirementsPage'))
 const DocumentTypesPage         = lazy(() => import('@/pages/admin/admissions/DocumentTypesPage'))
-const ApplicantPortalPage       = lazy(() => import('@/pages/applicant/ApplicantPortalPage'))
+const IntakesManagementPage     = lazy(() => import('@/pages/admin/admissions/IntakesManagementPage'))
+const ApplicantOverviewPage   = lazy(() => import('@/pages/applicant/ApplicantOverviewPage'))
+const ApplicantRecordsPage    = lazy(() => import('@/pages/applicant/ApplicantRecordsPage'))
+const ApplicantDocumentsPage  = lazy(() => import('@/pages/applicant/ApplicantDocumentsPage'))
 
 // Placeholders still in use for modules not yet wired up
 const ProgramsPage   = lazy(() => import('@/pages/placeholders/ProgramsPage'))
@@ -65,6 +69,7 @@ function App() {
         <Routes>
           {/* Public */}
           <Route path="/login"           element={<LoginPage />} />
+          <Route path="/register"        element={<RegisterPage />} />
           <Route path="/verify-otp"      element={<VerifyOtpPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           {/* Public admissions portal — no auth required */}
@@ -110,10 +115,15 @@ function App() {
                 <Route path="offers"                   element={<OffersPage />} />
                 <Route path="requirements"             element={<RequirementsPage />} />
                 <Route path="document-types"           element={<DocumentTypesPage />} />
+                <Route path="intakes"                  element={<IntakesManagementPage />} />
               </Route>
 
               {/* Applicant portal (authenticated applicants) */}
-              <Route path="/applicant" element={<ApplicantPortalPage />} />
+              <Route element={<ProtectedRoute requiredPermissions={[PERMISSIONS.ACCESS_APPLICANT_PORTAL]} />}>
+                <Route path="/applicant"           element={<ApplicantOverviewPage />} />
+                <Route path="/applicant/records"   element={<ApplicantRecordsPage />} />
+                <Route path="/applicant/documents" element={<ApplicantDocumentsPage />} />
+              </Route>
 
               <Route element={<ProtectedRoute requiredPermissions={PERMISSIONS.MANAGE_ACADEMICS} />}>
                 <Route path="/programs" element={<ProgramsPage />} />

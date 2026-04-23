@@ -38,8 +38,16 @@ $router->group('/api/applicant', function ($router) {
     $router->put('/profile',       [ApplicantProfileController::class, 'updateProfile']);
     $router->post('/profile/photo', [ApplicantProfileController::class, 'uploadPhoto']);
 
+    // ── Application creation & verification ──────────────────────────────────
+    $router->post('/application/draft',  [ApplicantProfileController::class, 'draftApplication']);
+    $router->post('/application/submit', [ApplicantProfileController::class, 'submitApplication']);
+    $router->post('/application/verify',       [ApplicantProfileController::class, 'verifyApplication']);
+    $router->post('/application/resend-code',  [ApplicantProfileController::class, 'resendVerificationCode']);
+
     // ── Application status & checklist ────────────────────────────────────────
-    $router->get('/application', [ApplicantProfileController::class, 'getApplication']);
+    $router->get('/application',      [ApplicantProfileController::class, 'getApplication']);
+    $router->get('/application/:id',  [ApplicantProfileController::class, 'getApplicationDetails']);
+    $router->put('/application/:id',  [ApplicantProfileController::class, 'updateApplication']);
 
     // ── Academic records ──────────────────────────────────────────────────────
     $router->get('/academic-records',                        [ApplicantProfileController::class, 'listAcademicRecords']);

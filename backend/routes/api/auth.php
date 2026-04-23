@@ -20,3 +20,4 @@ $router->get('/api/auth/me',                  [AuthController::class, 'me'],    
 
 // Applicant self-registration — public endpoint, rate-limited
 $router->post('/api/auth/applicant/register', [AuthController::class, 'registerApplicant'],  [RateLimitMiddleware::class]);
+$router->post('/api/auth/register-applicant-account', [AuthController::class, 'registerApplicantAccount'], [RateLimitMiddleware::class]);

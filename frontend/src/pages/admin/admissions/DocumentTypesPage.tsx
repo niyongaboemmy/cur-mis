@@ -99,6 +99,7 @@ function EditModal({
   const [form, setForm] = useState<Partial<DocumentType>>({
     name: doc.name ?? '', slug: doc.slug ?? '', description: doc.description ?? '',
     is_active: doc.is_active ?? 1, sort_order: doc.sort_order ?? 0, id: doc.id,
+    allowed_extensions: doc.allowed_extensions ?? 'pdf,jpg,jpeg,png',
   })
   return (
     <Modal
@@ -127,6 +128,10 @@ function EditModal({
         <div>
           <label className="label">Description</label>
           <textarea className="input min-h-[80px]" value={form.description ?? ''} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+        </div>
+        <div>
+          <label className="label">Allowed Extensions (comma separated)</label>
+          <input className="input" value={form.allowed_extensions ?? ''} onChange={(e) => setForm({ ...form, allowed_extensions: e.target.value })} placeholder="pdf, jpg, png" />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>

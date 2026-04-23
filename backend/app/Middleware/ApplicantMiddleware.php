@@ -14,7 +14,7 @@ use App\Models\ApplicantProfileModel;
  * Must run AFTER AuthMiddleware (which sets _auth_user on the request).
  * 
  * Responsibilities:
- *  1. Assert the authenticated user is an applicant (is_applicant = true in JWT).
+ *  1. Assert the authenticated user is an applicant (role = 'applicant' in JWT).
  *  2. Load the applicant_profiles record and inject it as _applicant_profile.
  *  3. If the profile doesn't exist yet (race condition), return 404.
  */
@@ -32,7 +32,7 @@ class ApplicantMiddleware
         $authUser = $request->param('_auth_user');
 
         // Guard: ensure caller is an authenticated applicant, not a staff member
-        if (!$authUser || !($authUser['is_applicant'] ?? false)) {
+        if (!$authUser || ($authUser['role'] ?? '') !== 'applicant') {
             http_response_code(403);
             echo json_encode([
                 'success' => false,

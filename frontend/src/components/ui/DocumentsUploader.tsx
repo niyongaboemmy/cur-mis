@@ -81,6 +81,17 @@ function Row({
   const handleFiles = (files: FileList | null) => {
     if (!files || files.length === 0) return
     const f = files[0]
+    
+    // Validate extension
+    if (requirement.allowed_extensions) {
+      const allowed = requirement.allowed_extensions.split(',').map(e => e.trim().toLowerCase())
+      const ext = f.name.split('.').pop()?.toLowerCase()
+      if (!ext || !allowed.includes(ext)) {
+        toast.error(`Invalid file type. Allowed: ${allowed.join(', ')}`)
+        return
+      }
+    }
+
     if (f.size > 10 * 1024 * 1024) {
       toast.error('File is larger than 10MB.')
       return
@@ -103,7 +114,7 @@ function Row({
           <FileText className="w-4 h-4 text-ink-400 shrink-0 mt-0.5" />
           <div className="min-w-0">
             <p className="text-[13.5px] font-medium text-ink-800 dark:text-ink-100 flex items-center gap-2 flex-wrap">
-              {requirement.document_type_name ?? `Document #${requirement.document_type_id}`}
+              {requirement.document_type_name || requirement.document_name || `Document #${requirement.document_type_id}`}
               {requirement.is_required
                 ? <span className="chip-primary">Required</span>
                 : <span className="chip-soft">Optional</span>}
@@ -130,7 +141,7 @@ function Row({
           <input
             ref={inputRef}
             type="file"
-            accept=".pdf,.jpg,.jpeg,.png,.webp"
+            accept={requirement.allowed_extensions ? requirement.allowed_extensions.split(',').map(e => '.' + e.trim()).join(',') : ".pdf,.jpg,.jpeg,.png,.webp"}
             className="hidden"
             onChange={(e) => handleFiles(e.target.files)}
           />

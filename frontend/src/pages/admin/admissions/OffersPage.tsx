@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { Handshake, Loader2, Plus, Send } from 'lucide-react'
+import { Handshake, Loader2, Plus, Send, Layers } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 import { offerService } from '@/services/admissionService'
+import { academicService } from '@/services/academicService'
+import { academicsMgmtService } from '@/services/academicsMgmtService'
 
 const STATUS_TONE: Record<string, string> = {
   pending:  'chip-warning',
@@ -16,6 +18,11 @@ export default function OffersPage() {
   const qc = useQueryClient()
   const [status, setStatus] = useState('')
   const [newOpen, setNewOpen] = useState(false)
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [bulkForm, setBulkForm] = useState({ department_id: '', intake: '', academic_year_id: '', expires_at: '' })
+
+  const deptsQ = useQuery({ queryKey: ['admin', 'departments'], queryFn: () => academicsMgmtService.list('departments', { per_page: 500 }), enabled: bulkOpen })
+  const yearsQ = useQuery({ queryKey: ['admin', 'years'], queryFn: () => academicService.listYears(), enabled: bulkOpen })
 
   const listQ = useQuery({
     queryKey: ['admin', 'offers', status],
@@ -45,6 +52,21 @@ export default function OffersPage() {
     onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed'),
   })
 
+  const bulkCreate = useMutation({
+    mutationFn: () => offerService.bulkCreate({
+      department_id: Number(bulkForm.department_id),
+      intake: bulkForm.intake,
+      academic_year_id: Number(bulkForm.academic_year_id),
+      expires_at: bulkForm.expires_at,
+    }),
+    onSuccess: (r) => {
+      toast.success(`${r.data?.created ?? 0} offers created`)
+      setBulkOpen(false); setBulkForm({ department_id: '', intake: '', academic_year_id: '', expires_at: '' })
+      qc.invalidateQueries({ queryKey: ['admin', 'offers'] })
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed'),
+  })
+
   const rows = listQ.data?.data?.data ?? []
 
   return (
@@ -63,6 +85,9 @@ export default function OffersPage() {
           <option value="declined">Declined</option>
           <option value="expired">Expired</option>
         </select>
+        <button className="btn-secondary btn-sm" onClick={() => setBulkOpen(true)}>
+          <Layers className="w-3.5 h-3.5" /> Bulk offer
+        </button>
         <button className="btn-primary btn-sm" onClick={() => setNewOpen(true)}>
           <Plus className="w-3.5 h-3.5" /> New offer
         </button>
@@ -146,6 +171,59 @@ export default function OffersPage() {
             <input type="date" className="input"
               value={newOffer.expires_at}
               onChange={(e) => setNewOffer({ ...newOffer, expires_at: e.target.value })} />
+          </div>
+        </div>
+      </Modal>
+
+      {/* Bulk offer modal */}
+      <Modal
+        open={bulkOpen}
+        onClose={() => setBulkOpen(false)}
+        title="Bulk create offers"
+        footer={
+          <>
+            <button className="btn-secondary" onClick={() => setBulkOpen(false)}>Cancel</button>
+            <button className="btn-primary" disabled={bulkCreate.isPending || !bulkForm.department_id || !bulkForm.intake || !bulkForm.academic_year_id || !bulkForm.expires_at} onClick={() => bulkCreate.mutate()}>
+              {bulkCreate.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Create offers
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="label">Department</label>
+            <select className="input" value={bulkForm.department_id} onChange={(e) => setBulkForm({ ...bulkForm, department_id: e.target.value })}>
+              <option value="">— Select —</option>
+              {deptsQ.data?.data?.data?.map((d: any) => (
+                <option key={d.id} value={d.id}>{d.name} ({d.code})</option>
+              ))}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Intake</label>
+              <select className="input" value={bulkForm.intake} onChange={(e) => setBulkForm({ ...bulkForm, intake: e.target.value })}>
+                <option value="">— Select —</option>
+                <option value="January">January</option>
+                <option value="August">August</option>
+              </select>
+            </div>
+            <div>
+              <label className="label">Academic Year</label>
+              <select className="input" value={bulkForm.academic_year_id} onChange={(e) => setBulkForm({ ...bulkForm, academic_year_id: e.target.value })}>
+                <option value="">— Select —</option>
+                {yearsQ.data?.data?.map((y: any) => (
+                  <option key={y.id} value={y.id}>{y.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="label">Offer expiry</label>
+            <input type="date" className="input"
+              value={bulkForm.expires_at}
+              onChange={(e) => setBulkForm({ ...bulkForm, expires_at: e.target.value })} />
+            <p className="text-[11.5px] text-ink-500 mt-1">Offers will be generated for all "Merit listed" applications in this intake/year.</p>
           </div>
         </div>
       </Modal>

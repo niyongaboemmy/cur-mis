@@ -12,4 +12,10 @@ class RoleModel extends BaseModel
         'name',
         'description',
     ];
+
+    public function getIdByName(string $name): ?int
+    {
+        $role = $this->findBy('name', $name);
+        return $role ? (int)$role['id'] : null;
+    }
 }

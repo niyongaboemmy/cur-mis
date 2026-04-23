@@ -24,6 +24,7 @@ class StudentApplicationModel extends BaseModel
         // Tracking
         'submitted_at', 'reviewed_by', 'reviewed_at',
         'internal_notes', 'rejection_reason', 'ip_address',
+        'email_verified', 'verification_code',
     ];
     protected array $hidden = [];
 

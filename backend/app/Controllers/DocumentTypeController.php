@@ -50,8 +50,9 @@ class DocumentTypeController extends BaseController
         $data   = $request->body();
         $errors = ValidationHelper::validate($data, [
             'name'        => 'required|string|min:3|max:100',
-            'slug'        => 'required|regex:/^[a-z_]+$/|max:100',
-            'is_required' => 'required|boolean',
+            'slug'               => 'required|regex:/^[a-z_]+$/|max:100',
+            'allowed_extensions' => 'required|string',
+
         ]);
 
         if (!empty($errors)) {
@@ -63,12 +64,12 @@ class DocumentTypeController extends BaseController
         }
 
         $id = $this->model->create([
-            'name'        => $data['name'],
-            'slug'        => $data['slug'],
-            'description' => $data['description'] ?? null,
-            'is_required' => (int)(bool)$data['is_required'],
-            'sort_order'  => isset($data['sort_order']) ? (int)$data['sort_order'] : 0,
-            'is_active'   => isset($data['is_active']) ? (int)(bool)$data['is_active'] : 1,
+            'name'               => $data['name'],
+            'slug'               => $data['slug'],
+            'description'        => $data['description'] ?? null,
+            'allowed_extensions' => $data['allowed_extensions'],
+            'sort_order'         => isset($data['sort_order']) ? (int)$data['sort_order'] : 0,
+            'is_active'          => isset($data['is_active']) ? (int)(bool)$data['is_active'] : 1,
         ]);
 
         $this->success($response, ['id' => (int)$id], 'Document type created successfully.', 201);
@@ -89,8 +90,9 @@ class DocumentTypeController extends BaseController
         $data   = $request->body();
         $errors = ValidationHelper::validate($data, [
             'name'        => 'required|string|min:3|max:100',
-            'slug'        => 'required|regex:/^[a-z_]+$/|max:100',
-            'is_required' => 'required|boolean',
+            'slug'               => 'required|regex:/^[a-z_]+$/|max:100',
+            'allowed_extensions' => 'required|string',
+
         ]);
 
         if (!empty($errors)) {
@@ -102,12 +104,12 @@ class DocumentTypeController extends BaseController
         }
 
         $this->model->update($id, [
-            'name'        => $data['name'],
-            'slug'        => $data['slug'],
-            'description' => $data['description'] ?? null,
-            'is_required' => (int)(bool)$data['is_required'],
-            'sort_order'  => isset($data['sort_order']) ? (int)$data['sort_order'] : 0,
-            'is_active'   => isset($data['is_active']) ? (int)(bool)$data['is_active'] : 1,
+            'name'               => $data['name'],
+            'slug'               => $data['slug'],
+            'description'        => $data['description'] ?? null,
+            'allowed_extensions' => $data['allowed_extensions'],
+            'sort_order'         => isset($data['sort_order']) ? (int)$data['sort_order'] : 0,
+            'is_active'          => isset($data['is_active']) ? (int)(bool)$data['is_active'] : 1,
         ]);
 
         $this->success($response, ['id' => $id], 'Document type updated successfully.');

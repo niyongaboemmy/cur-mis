@@ -42,11 +42,17 @@ export interface AuthTokenResponse {
 }
 
 export interface User {
-  id:          number
-  full_name:   string
-  email:       string
-  created_at?: string
-  updated_at?: string
+  id:           number
+  full_name:    string
+  email:        string
+  username?:    string
+  role?:        string
+  role_name?:   string
+  role_id?:     number
+  permissions?: string[]
+  is_applicant?: boolean
+  created_at?:  string
+  updated_at?:  string
 }
 
 export interface PaginatedResponse<T> {

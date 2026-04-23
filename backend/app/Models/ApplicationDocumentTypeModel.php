@@ -7,7 +7,7 @@ namespace App\Models;
 class ApplicationDocumentTypeModel extends BaseModel
 {
     protected string $table    = 'document_types';
-    protected array  $fillable = ['name', 'slug', 'description', 'is_required', 'sort_order', 'is_active'];
+    protected array  $fillable = ['name', 'slug', 'description', 'allowed_extensions', 'sort_order', 'is_active'];
     protected array  $hidden   = [];
 
     public function getActive(): array

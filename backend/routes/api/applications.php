@@ -9,6 +9,7 @@ use App\Controllers\MeritListController;
 use App\Controllers\AdmissionController;
 use App\Controllers\AdmissionRequirementController;
 use App\Controllers\DocumentTypeController;
+use App\Controllers\IntakeController;
 use App\Middleware\AuthMiddleware;
 use App\Middleware\PermissionMiddleware;
 use App\Constants\Permissions;
@@ -37,6 +38,7 @@ use App\Constants\Permissions;
 
 // System-state check
 $router->get('/api/portal/active-year', [ApplicationPortalController::class, 'getActiveYear']);
+$router->get('/api/portal/intakes', [ApplicationPortalController::class, 'getIntakes']);
 
 // Faculty & program discovery
 $router->get('/api/portal/faculties',                            [ApplicationPortalController::class, 'getFaculties']);
@@ -127,6 +129,16 @@ $router->group('/api/admin', function ($router) {
         $router->post('/offers/bulk',         [AdmissionController::class, 'bulkCreateOffers']);
         $router->get('/offers/:offer_id',     [AdmissionController::class, 'getOfferDetails']);
         $router->post('/offers/:offer_id/enroll', [AdmissionController::class, 'initiateEnrollment']);
+    }, [new PermissionMiddleware(Permissions::MANAGE_ADMISSIONS)]);
+
+    // ── 7. Intake management ──────────────────────────────────────────────────
+    // Permission: MANAGE_ADMISSIONS
+    $router->group('/intakes', function ($router) {
+        $router->get('',               [IntakeController::class, 'index']);
+        $router->post('',              [IntakeController::class, 'create']);
+        $router->put('/:id',           [IntakeController::class, 'update']);
+        $router->delete('/:id',        [IntakeController::class, 'delete']);
+        $router->patch('/:id/toggle',  [IntakeController::class, 'toggleActive']);
     }, [new PermissionMiddleware(Permissions::MANAGE_ADMISSIONS)]);
 
 }, [AuthMiddleware::class]);

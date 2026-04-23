@@ -22,6 +22,7 @@ export interface DocumentType {
   name:        string
   slug:        string
   description?: string
+  allowed_extensions?: string
   is_active?:  0 | 1
   sort_order?: number
   created_at?: string
@@ -33,14 +34,17 @@ export interface AdmissionRequirement {
   faculty_id:         number
   academic_year_id:   number
   document_type_id:   number
-  is_required:        0 | 1
+  is_required:        boolean
   notes?:             string | null
   sort_order?:        number
   created_at?:        string
   /** Enriched fields some endpoints return */
   document_type_name?: string
   document_type_slug?: string
+  document_name?:      string
+  document_slug?:      string
   faculty_name?:      string
+  allowed_extensions?: string
 }
 
 export type ApplicationStatus =
@@ -87,6 +91,8 @@ export interface StudentApplication {
 
   status:             ApplicationStatus
   document_status:    DocStatus
+  email_verified:     0 | 1
+  verification_code?: string | null
   merit_score?:       number | null
   merit_rank?:        number | null
 
@@ -193,6 +199,7 @@ export interface ApplicantProfile {
   emergency_contact_name?:   string | null
   emergency_contact_phone?:  string | null
   profile_photo_id?:         string | null
+  profile_photo_url?:        string | null
   created_at?:               string
   updated_at?:               string
 }

@@ -29,7 +29,7 @@ class Request
         return '/' . ltrim($uri, '/');
     }
 
-    public function query(string $key = null, mixed $default = null): mixed
+    public function query(?string $key = null, mixed $default = null): mixed
     {
         if ($key === null) {
             return $_GET;

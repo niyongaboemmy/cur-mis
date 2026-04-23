@@ -12,7 +12,7 @@ class EmailTemplateHelper
     public static function wrap(string $title, string $content, string $preheader = ''): string
     {
         $appName = getenv('APP_NAME') ?: 'CurMis';
-        
+
         return "
         <!DOCTYPE html>
         <html>
@@ -83,11 +83,23 @@ class EmailTemplateHelper
     /**
      * Template: application received confirmation sent to applicant.
      */
-    public static function applicationReceivedTemplate(string $name, string $appNumber, string $programName): string
+    public static function applicationReceivedTemplate(string $name, string $appNumber, string $programName, ?string $verificationCode = null): string
     {
-        $safeName       = htmlspecialchars($name);
-        $safeAppNumber  = htmlspecialchars($appNumber);
+        $safeName = htmlspecialchars($name);
+        $safeAppNumber = htmlspecialchars($appNumber);
         $safeProgramName = htmlspecialchars($programName);
+
+        $verificationHtml = "";
+        if ($verificationCode) {
+            $verificationHtml = "
+                <div style='background-color: #fff7ed; border: 1px solid #ffedd5; border-radius: 12px; padding: 20px; margin: 24px 0;'>
+                    <p style='margin: 0 0 10px 0; font-weight: 600; color: #9a3412;'>Action Required: Verification Code</p>
+                    <p style='margin: 0 0 15px 0; font-size: 14px; color: #c2410c;'>Please use this code in the application portal to verify your submission:</p>
+                    <div style='font-family: monospace; font-size: 32px; font-weight: 800; color: #ea580c; letter-spacing: 0.2em;'>$verificationCode</div>
+                </div>
+            ";
+        }
+
         $content = "
             Hello $safeName,<br><br>
             Thank you for applying to <strong>$safeProgramName</strong>. Your application has been received and is currently under review.<br><br>
@@ -95,6 +107,7 @@ class EmailTemplateHelper
             <div class='otp-container'>
                 <div class='otp-code' style='font-size:24px;'>$safeAppNumber</div>
             </div>
+            $verificationHtml
             You can use this number to track the status of your application on our application portal at any time.<br><br>
             The next step is to upload all required documents. Please log in to the portal and complete your document submission.
         ";
@@ -108,13 +121,13 @@ class EmailTemplateHelper
      */
     public static function documentsRejectedTemplate(string $name, string $appNumber, array $rejectedDocs): string
     {
-        $safeName      = htmlspecialchars($name);
+        $safeName = htmlspecialchars($name);
         $safeAppNumber = htmlspecialchars($appNumber);
 
         $list = '';
         foreach ($rejectedDocs as $doc) {
             $typeName = htmlspecialchars($doc['type_name'] ?? 'Document');
-            $notes    = htmlspecialchars($doc['rejection_notes'] ?? 'Please re-upload.');
+            $notes = htmlspecialchars($doc['rejection_notes'] ?? 'Please re-upload.');
             $list .= "<li style='margin-bottom:8px;'><strong>{$typeName}</strong>: {$notes}</li>";
         }
 
@@ -134,7 +147,7 @@ class EmailTemplateHelper
      */
     public static function documentsVerifiedTemplate(string $name, string $appNumber): string
     {
-        $safeName      = htmlspecialchars($name);
+        $safeName = htmlspecialchars($name);
         $safeAppNumber = htmlspecialchars($appNumber);
         $content = "
             Hello $safeName,<br><br>
@@ -156,11 +169,11 @@ class EmailTemplateHelper
         string $expiresAt,
         string $portalUrl
     ): string {
-        $safeName       = htmlspecialchars($name);
-        $safeAppNumber  = htmlspecialchars($appNumber);
+        $safeName = htmlspecialchars($name);
+        $safeAppNumber = htmlspecialchars($appNumber);
         $safeProgramName = htmlspecialchars($programName);
-        $safeOfferRef   = htmlspecialchars($offerRef);
-        $safeExpires    = htmlspecialchars($expiresAt);
+        $safeOfferRef = htmlspecialchars($offerRef);
+        $safeExpires = htmlspecialchars($expiresAt);
         $content = "
             Dear $safeName,<br><br>
             Congratulations! We are delighted to offer you admission to the
@@ -183,7 +196,7 @@ class EmailTemplateHelper
      */
     public static function offerAcceptedConfirmationTemplate(string $name, string $programName): string
     {
-        $safeName        = htmlspecialchars($name);
+        $safeName = htmlspecialchars($name);
         $safeProgramName = htmlspecialchars($programName);
         $content = "
             Dear $safeName,<br><br>
@@ -200,8 +213,8 @@ class EmailTemplateHelper
      */
     public static function enrollmentCompleteTemplate(string $name, string $regNumber, string $programName): string
     {
-        $safeName        = htmlspecialchars($name);
-        $safeRegNumber   = htmlspecialchars($regNumber);
+        $safeName = htmlspecialchars($name);
+        $safeRegNumber = htmlspecialchars($regNumber);
         $safeProgramName = htmlspecialchars($programName);
         $content = "
             Dear $safeName,<br><br>

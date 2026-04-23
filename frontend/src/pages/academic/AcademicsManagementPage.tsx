@@ -19,6 +19,7 @@ import {
 import Modal from '@/components/ui/Modal'
 import { academicsMgmtService } from '@/services/academicsMgmtService'
 import type { AcMgmtEntity } from '@/types/academic'
+import { CalendarDays } from 'lucide-react'
 
 /* ─────────────────────────────────────────────────────────────
    Entity config — one row per endpoint we want to surface.
@@ -51,16 +52,16 @@ const ENTITIES: EntityCfg[] = [
       { key: 'code',          label: 'Code' },
       { key: 'name',          label: 'Name' },
       { key: 'degree_type',   label: 'Type' },
-      { key: 'duration_years',label: 'Years' },
-      { key: 'total_credits', label: 'Credits' },
+      { key: 'is_active',     label: 'Active', render: (r) => r.is_active ? 'Yes' : 'No' },
     ],
     fields: [
-      { key: 'department_id', label: 'Department ID', type: 'number',   required: true, placeholder: 'e.g. 1' },
-      { key: 'code',          label: 'Code',          type: 'text',     required: true, placeholder: 'BSC-CS' },
-      { key: 'name',          label: 'Name',          type: 'text',     required: true, placeholder: 'Bachelor of Computer Science' },
-      { key: 'degree_type',   label: 'Type',          type: 'text',     placeholder: 'Bachelor / Master / PhD' },
-      { key: 'duration_years',label: 'Duration (yrs)',type: 'number'   },
-      { key: 'total_credits', label: 'Total credits', type: 'number'   },
+      { key: 'code',           label: 'Code',           type: 'text',     required: true, placeholder: 'BSC' },
+      { key: 'name',           label: 'Name',           type: 'text',     required: true, placeholder: 'Bachelor of Science' },
+      { key: 'degree_type',    label: 'Type',           type: 'text',     placeholder: 'Bachelor / Master / PhD' },
+      { key: 'duration_years', label: 'Duration (yrs)', type: 'number' },
+      { key: 'total_credits',  label: 'Total credits',  type: 'number' },
+      { key: 'department_id',  label: 'Department ID',  type: 'number' },
+      { key: 'is_active',      label: 'Active',         type: 'checkbox' },
     ],
   },
   {
@@ -87,10 +88,10 @@ const ENTITIES: EntityCfg[] = [
       { key: 'dep_acronym', label: 'Acronym' },
     ],
     fields: [
-      { key: 'name',        label: 'Name',        type: 'text',     required: true },
-      { key: 'code',        label: 'Code',        type: 'text' },
-      { key: 'description', label: 'Description', type: 'textarea' },
-      { key: 'faculty_id',  label: 'Faculty ID',  type: 'number' },
+      { key: 'dep_name',        label: 'Name',        type: 'text',     required: true },
+      { key: 'dep_acronym',     label: 'Acronym',     type: 'text' },
+      { key: 'dep_description', label: 'Description', type: 'textarea' },
+      { key: 'fac_id',          label: 'Faculty ID',  type: 'number' },
     ],
   },
   {
@@ -162,6 +163,21 @@ const ENTITIES: EntityCfg[] = [
       { key: 'name',         label: 'Name',         type: 'text',     required: true, placeholder: 'Annual leave' },
       { key: 'days_allowed', label: 'Days allowed', type: 'number' },
       { key: 'is_paid',      label: 'Paid',         type: 'checkbox' },
+    ],
+  },
+  {
+    slug: 'intakes' as AcMgmtEntity, label: 'Intakes', singular: 'Intake', icon: CalendarDays, pk: 'id',
+    columns: [
+      { key: 'name',         label: 'Name' },
+      { key: 'start_date',   label: 'Start Date' },
+      { key: 'end_date',     label: 'End Date' },
+      { key: 'is_active',    label: 'Active', render: (r) => r.is_active ? 'Yes' : 'No' },
+    ],
+    fields: [
+      { key: 'name',         label: 'Name',       type: 'text', required: true, placeholder: 'January 2024' },
+      { key: 'start_date',   label: 'Start Date', type: 'text', required: true, placeholder: 'YYYY-MM-DD' },
+      { key: 'end_date',     label: 'End Date',   type: 'text', required: true, placeholder: 'YYYY-MM-DD' },
+      { key: 'is_active',    label: 'Active',     type: 'checkbox' },
     ],
   },
 ]

@@ -3,12 +3,15 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import { AUTH_STORAGE_KEY } from '@/constants'
 
 export interface AuthUser {
-  id:    number | string
-  email:       string
-  full_name:   string
-  role?:       string
-  role_id?:    number
+  id:           number | string
+  email:        string
+  full_name:    string
+  username?:    string
+  role?:        string
+  role_name?:   string
+  role_id?:     number
   permissions?: string[]
+  is_applicant?: boolean
 }
 
 interface AuthState {

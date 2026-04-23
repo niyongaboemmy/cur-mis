@@ -17,6 +17,7 @@ import {
   Bell,
   MessageSquare,
   ShieldCheck,
+  LayoutDashboard,
   LayoutGrid,
   BookMarked,
   CalendarDays,
@@ -41,135 +42,242 @@ import UserDropdown from "@/components/layout/UserDropdown";
 import Logo from "@/components/brand/Logo";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { useSystemBasics } from "@/hooks/useSystemBasics";
+import { PERMISSIONS } from "@/constants";
 
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
+import { useAuthStore } from "@/store/authStore";
 
 /* ------------------------------------------------------------------
  * Nav tree — Home is a direct leaf (no sub-items). Groups with
  * `children` expand when clicked.
  * ------------------------------------------------------------------ */
 
-type NavChild = { to: string; label: string };
+type NavChild = { to: string; label: string; permissions?: string[] };
 type NavNode = {
-  id:        string;
-  label:     string;
-  icon:      LucideIcon;
-  to?:       string;
+  id: string;
+  label: string;
+  icon: LucideIcon;
+  to?: string;
+  permissions?: string[];
   children?: NavChild[];
 };
 
 const NAV_TREE: NavNode[] = [
   { id: "home", label: "Home", icon: Home, to: "/" },
   {
+    id: "applicant-dashboard",
+    label: "My Application",
+    icon: LayoutDashboard,
+    permissions: [PERMISSIONS.ACCESS_APPLICANT_PORTAL],
+    children: [
+      { to: "/applicant", label: "Overview" },
+      { to: "/applicant/records", label: "Academic Records" },
+      { to: "/applicant/documents", label: "Documents" },
+    ],
+  },
+  {
+    id: "profile",
+    label: "My Profile",
+    icon: UserIcon,
+    to: "/profile",
+  },
+  {
     id: "students-group",
     label: "Students",
     icon: GraduationCap,
+    permissions: [PERMISSIONS.VIEW_STUDENTS],
     children: [
-      { to: "/students",         label: "All students" },
-      { to: "/students/new",     label: "Admissions"   },
-      { to: "/students/alumni",  label: "Alumni"       },
+      { to: "/students", label: "All students" },
+      { to: "/students/new", label: "Admissions" },
+      { to: "/students/alumni", label: "Alumni" },
     ],
   },
   // ─── Academic (promoted to top-level for visibility) ───
-  { id: "academic-settings",    label: "Academic settings",    icon: Sliders,  to: "/academic/settings"   },
-  { id: "academics-management", label: "Academics management", icon: Layers,   to: "/academic/management" },
+  {
+    id: "academic-settings",
+    label: "Academic settings",
+    icon: Sliders,
+    to: "/academic/settings",
+    permissions: [PERMISSIONS.MANAGE_ACADEMICS],
+  },
+  {
+    id: "academics-management",
+    label: "Academics management",
+    icon: Layers,
+    to: "/academic/management",
+    permissions: [PERMISSIONS.MANAGE_ACADEMICS],
+  },
   // ─── Admissions / Student Management Module ───
   {
     id: "admissions",
     label: "Admissions",
     icon: Files,
+    permissions: [PERMISSIONS.MANAGE_ACADEMICS],
     children: [
-      { to: "/admin/admissions/applications",    label: "Applications"    },
-      { to: "/admin/admissions/verifications",   label: "Verifications"   },
-      { to: "/admin/admissions/merit",           label: "Merit lists"     },
-      { to: "/admin/admissions/offers",          label: "Offers"          },
-      { to: "/admin/admissions/requirements",    label: "Requirements"    },
-      { to: "/admin/admissions/document-types",  label: "Document types"  },
+      { to: "/admin/admissions/applications", label: "Applications" },
+      { to: "/admin/admissions/verifications", label: "Verifications" },
+      { to: "/admin/admissions/merit", label: "Merit lists" },
+      { to: "/admin/admissions/offers", label: "Offers" },
+      { to: "/admin/admissions/requirements", label: "Requirements" },
+      { to: "/admin/admissions/document-types", label: "Document types" },
     ],
   },
   {
     id: "teachers-group",
     label: "Teachers",
     icon: Users,
+    permissions: [PERMISSIONS.STAFF_ACCESS],
     children: [
-      { to: "/teachers",           label: "All teachers" },
-      { to: "/teachers/schedules", label: "Schedules"    },
+      { to: "/teachers", label: "All teachers" },
+      { to: "/teachers/schedules", label: "Schedules" },
     ],
   },
-  { id: "library",    label: "Library",    icon: BookMarked,     to: "/library" },
+  { id: "library", label: "Library", icon: BookMarked, to: "/library", permissions: [PERMISSIONS.STAFF_ACCESS] },
   {
     id: "account",
     label: "Account",
     icon: CreditCard,
+    permissions: [PERMISSIONS.MANAGE_FINANCE],
     children: [
-      { to: "/finance",          label: "Finance"  },
-      { to: "/account/billing",  label: "Billing"  },
+      { to: "/finance", label: "Finance" },
+      { to: "/account/billing", label: "Billing" },
       { to: "/account/salaries", label: "Salaries" },
     ],
   },
-  { id: "class",      label: "Class",      icon: LayoutGrid,     to: "/class" },
-  { id: "subject",    label: "Subject",    icon: BookOpen,       to: "/subject" },
-  { id: "routine",    label: "Routine",    icon: CalendarDays,   to: "/routine" },
-  { id: "attendance", label: "Attendance", icon: ClipboardCheck, to: "/attendance" },
+  { id: "class", label: "Class", icon: LayoutGrid, to: "/class", permissions: [PERMISSIONS.STAFF_ACCESS] },
+  { id: "subject", label: "Subject", icon: BookOpen, to: "/subject", permissions: [PERMISSIONS.STAFF_ACCESS] },
+  { id: "routine", label: "Routine", icon: CalendarDays, to: "/routine", permissions: [PERMISSIONS.STAFF_ACCESS] },
+  {
+    id: "attendance",
+    label: "Attendance",
+    icon: ClipboardCheck,
+    to: "/attendance",
+  },
   {
     id: "exam",
     label: "Exam",
     icon: ClipboardList,
+    permissions: [PERMISSIONS.MANAGE_EXAMS],
     children: [
-      { to: "/exams",         label: "Exam schedule" },
-      { to: "/exams/results", label: "Results"       },
+      { to: "/exams", label: "Exam schedule" },
+      { to: "/exams/results", label: "Results" },
     ],
   },
-  { id: "notice",     label: "Notice",     icon: Megaphone,      to: "/notice" },
-  { id: "transport",  label: "Transport",  icon: Bus,            to: "/transport" },
-  { id: "hostel",     label: "Hostel",     icon: Building2,      to: "/hostel" },
+  { id: "notice", label: "Notice", icon: Megaphone, to: "/notice" },
+  { id: "transport", label: "Transport", icon: Bus, to: "/transport" },
+  { id: "hostel", label: "Hostel", icon: Building2, to: "/hostel" },
 ];
 
 const ADMIN_TREE: NavNode[] = [
-  { id: "users",       label: "Users",       icon: UserIcon,    to: "/users" },
-  { id: "roles",       label: "Roles",       icon: ShieldCheck, to: "/roles" },
-  { id: "permissions", label: "Permissions", icon: Settings,    to: "/permissions" },
-  { id: "logs",        label: "System logs", icon: Activity,    to: "/logs" },
+  {
+    id: "users",
+    label: "Users",
+    icon: UserIcon,
+    to: "/users",
+    permissions: [PERMISSIONS.MANAGE_USERS],
+  },
+  {
+    id: "roles",
+    label: "Roles",
+    icon: ShieldCheck,
+    to: "/roles",
+    permissions: [PERMISSIONS.MANAGE_ROLES],
+  },
+  {
+    id: "permissions",
+    label: "Permissions",
+    icon: Settings,
+    to: "/permissions",
+    permissions: [PERMISSIONS.MANAGE_PERMISSIONS],
+  },
+  {
+    id: "logs",
+    label: "System logs",
+    icon: Activity,
+    to: "/logs",
+    permissions: [PERMISSIONS.VIEW_SYSTEM_LOGS],
+  },
 ];
 
 const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
-  "/":                   { title: "Admin Dashboard", sub: "Welcome back to Catholic University of Rwanda" },
-  "/users":              { title: "User management", sub: "Staff, faculty and student accounts" },
-  "/roles":              { title: "Roles",           sub: "Who can do what in the system" },
-  "/permissions":        { title: "Permissions",     sub: "Fine-grained access control" },
-  "/logs":               { title: "System logs",     sub: "Audit trail across the platform" },
-  "/students":           { title: "Students & Staff", sub: "CUR student registry & HR employees" },
-  "/academic/settings":   { title: "Academic settings",    sub: "Academic years & terms" },
-  "/academic/management": { title: "Academics management", sub: "Degrees, schools, departments, modules, facilities and more" },
+  "/": {
+    title: "Admin Dashboard",
+    sub: "Welcome back to Catholic University of Rwanda",
+  },
+  "/users": {
+    title: "User management",
+    sub: "Staff, faculty and student accounts",
+  },
+  "/roles": { title: "Roles", sub: "Who can do what in the system" },
+  "/permissions": { title: "Permissions", sub: "Fine-grained access control" },
+  "/logs": { title: "System logs", sub: "Audit trail across the platform" },
+  "/students": {
+    title: "Students & Staff",
+    sub: "CUR student registry & HR employees",
+  },
+  "/academic/settings": {
+    title: "Academic settings",
+    sub: "Academic years & terms",
+  },
+  "/academic/management": {
+    title: "Academics management",
+    sub: "Degrees, schools, departments, modules, facilities and more",
+  },
 
-  "/admin/admissions":                  { title: "Admissions",      sub: "Student Management Module" },
-  "/admin/admissions/applications":     { title: "Applications",    sub: "All prospective student applications" },
-  "/admin/admissions/verifications":    { title: "Verifications",   sub: "Documents awaiting review" },
-  "/admin/admissions/merit":            { title: "Merit lists",     sub: "Configure scoring, generate and publish merit lists" },
-  "/admin/admissions/offers":           { title: "Offers",          sub: "Admission offers + enrollment initiation" },
-  "/admin/admissions/requirements":     { title: "Requirements",    sub: "Per-faculty, per-year document checklist" },
-  "/admin/admissions/document-types":   { title: "Document types",  sub: "Catalogue of possible admission documents" },
+  "/admin/admissions": {
+    title: "Admissions",
+    sub: "Student Management Module",
+  },
+  "/admin/admissions/applications": {
+    title: "Applications",
+    sub: "All prospective student applications",
+  },
+  "/admin/admissions/verifications": {
+    title: "Verifications",
+    sub: "Documents awaiting review",
+  },
+  "/admin/admissions/merit": {
+    title: "Merit lists",
+    sub: "Configure scoring, generate and publish merit lists",
+  },
+  "/admin/admissions/offers": {
+    title: "Offers",
+    sub: "Admission offers + enrollment initiation",
+  },
+  "/admin/admissions/requirements": {
+    title: "Requirements",
+    sub: "Per-faculty, per-year document checklist",
+  },
+  "/admin/admissions/document-types": {
+    title: "Document types",
+    sub: "Catalogue of possible admission documents",
+  },
 
-  "/applicant":                         { title: "Applicant portal", sub: "Your application, profile, records and documents" },
-  "/students/new":       { title: "Admissions",      sub: "New student applications" },
-  "/students/alumni":    { title: "Alumni",          sub: "CUR alumni directory" },
-  "/teachers":           { title: "Teachers",        sub: "Lecturers and faculty members" },
-  "/teachers/schedules": { title: "Teacher schedules", sub: "Weekly teaching assignments" },
-  "/programs":           { title: "Programs",        sub: "Academic programs & curriculum" },
-  "/finance":            { title: "Finance",         sub: "Fees, payments and billing" },
-  "/account/billing":    { title: "Billing",         sub: "Invoices and statements" },
-  "/account/salaries":   { title: "Salaries",        sub: "Staff payroll" },
-  "/exams":              { title: "Examinations",    sub: "Exams, results and transcripts" },
-  "/exams/results":      { title: "Exam results",    sub: "All examination results" },
-  "/library":            { title: "Library",         sub: "Books and digital resources" },
-  "/class":              { title: "Classes",         sub: "Class schedules and rooms" },
-  "/subject":            { title: "Subjects",        sub: "All academic subjects" },
-  "/routine":            { title: "Routine",         sub: "Weekly class routine" },
-  "/attendance":         { title: "Attendance",      sub: "Student and staff attendance" },
-  "/notice":             { title: "Notice board",    sub: "Announcements and circulars" },
-  "/transport":          { title: "Transport",       sub: "Routes and vehicles" },
-  "/hostel":             { title: "Hostel",          sub: "Accommodation management" },
+  "/applicant": { title: "My Applications", sub: "Track your progress and respond to offers." },
+  "/applicant/records": { title: "Academic Records", sub: "Your high school and university transcripts." },
+  "/applicant/documents": { title: "Documents", sub: "Upload required files for your checklist." },
+  "/students/new": { title: "Admissions", sub: "New student applications" },
+  "/students/alumni": { title: "Alumni", sub: "CUR alumni directory" },
+  "/teachers": { title: "Teachers", sub: "Lecturers and faculty members" },
+  "/teachers/schedules": {
+    title: "Teacher schedules",
+    sub: "Weekly teaching assignments",
+  },
+  "/programs": { title: "Programs", sub: "Academic programs & curriculum" },
+  "/finance": { title: "Finance", sub: "Fees, payments and billing" },
+  "/account/billing": { title: "Billing", sub: "Invoices and statements" },
+  "/account/salaries": { title: "Salaries", sub: "Staff payroll" },
+  "/exams": { title: "Examinations", sub: "Exams, results and transcripts" },
+  "/exams/results": { title: "Exam results", sub: "All examination results" },
+  "/library": { title: "Library", sub: "Books and digital resources" },
+  "/class": { title: "Classes", sub: "Class schedules and rooms" },
+  "/subject": { title: "Subjects", sub: "All academic subjects" },
+  "/routine": { title: "Routine", sub: "Weekly class routine" },
+  "/attendance": { title: "Attendance", sub: "Student and staff attendance" },
+  "/notice": { title: "Notice board", sub: "Announcements and circulars" },
+  "/transport": { title: "Transport", sub: "Routes and vehicles" },
+  "/hostel": { title: "Hostel", sub: "Accommodation management" },
 };
 
 const STORAGE_KEY = "cur-mis-sidebar-collapsed";
@@ -186,15 +294,20 @@ export default function MainLayout() {
   useSystemBasics();
 
   const [sidebarOpen, setSidebarOpen] = useState(false); // mobile drawer
-  const [collapsed,   setCollapsed]   = useState<boolean>(() => {
-    try { return localStorage.getItem(STORAGE_KEY) === "1"; } catch { return false; }
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(STORAGE_KEY) === "1";
+    } catch {
+      return false;
+    }
   });
   const [query, setQuery] = useState("");
 
   const initiallyOpen = useMemo<Set<string>>(() => {
     const set = new Set<string>();
     for (const node of [...NAV_TREE, ...ADMIN_TREE]) {
-      if (node.children?.some((c) => c.to === location.pathname)) set.add(node.id);
+      if (node.children?.some((c) => c.to === location.pathname))
+        set.add(node.id);
     }
     return set;
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -205,7 +318,10 @@ export default function MainLayout() {
   useEffect(() => {
     setOpenIds((prev) => {
       for (const node of [...NAV_TREE, ...ADMIN_TREE]) {
-        if (node.children?.some((c) => c.to === location.pathname) && !prev.has(node.id)) {
+        if (
+          node.children?.some((c) => c.to === location.pathname) &&
+          !prev.has(node.id)
+        ) {
           const next = new Set(prev);
           next.add(node.id);
           return next;
@@ -216,40 +332,121 @@ export default function MainLayout() {
   }, [location.pathname]);
 
   // Close mobile drawer on route change
-  useEffect(() => { setSidebarOpen(false); }, [location.pathname]);
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [location.pathname]);
 
   // Persist collapse state
   useEffect(() => {
-    try { localStorage.setItem(STORAGE_KEY, collapsed ? "1" : "0"); } catch {}
+    try {
+      localStorage.setItem(STORAGE_KEY, collapsed ? "1" : "0");
+    } catch {}
   }, [collapsed]);
 
   const toggleGroup = useCallback((id: string) => {
     setOpenIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   }, []);
 
   const toggleCollapse = useCallback(() => setCollapsed((v) => !v), []);
-  const openSidebar    = useCallback(() => setSidebarOpen(true),  []);
-  const closeSidebar   = useCallback(() => setSidebarOpen(false), []);
-  const onQuery        = useCallback((e: React.ChangeEvent<HTMLInputElement>) => setQuery(e.target.value), []);
+  const openSidebar = useCallback(() => setSidebarOpen(true), []);
+  const closeSidebar = useCallback(() => setSidebarOpen(false), []);
+  const onQuery = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => setQuery(e.target.value),
+    [],
+  );
+
+  const { user } = useAuthStore();
+
+  const hasAccess = useCallback(
+    (perms?: string[]) => {
+      if (!perms || perms.length === 0) return true;
+      if (user?.role === "superadmin") return true;
+      
+      // If ACCESS_APPLICANT_PORTAL is required, allow if role is applicant
+      if (perms.includes(PERMISSIONS.ACCESS_APPLICANT_PORTAL) && user?.role === 'applicant') {
+        return true;
+      }
+
+      // If STAFF_ACCESS is required, allow if role is NOT applicant
+      if (perms.includes(PERMISSIONS.STAFF_ACCESS) && user?.role !== 'applicant') {
+        return true;
+      }
+
+      return perms.some((p) => (user?.permissions || []).includes(p));
+    },
+    [user],
+  );
 
   const filtered = useMemo<NavNode[]>(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return NAV_TREE;
-    return NAV_TREE
-      .map((n) => {
-        if (n.label.toLowerCase().includes(q)) return n;
-        if (n.children) {
-          const kids = n.children.filter((c) => c.label.toLowerCase().includes(q));
-          if (kids.length) return { ...n, children: kids };
-        }
-        return null;
-      })
-      .filter(Boolean) as NavNode[];
-  }, [query]);
+
+    const filterTree = (tree: NavNode[]) => {
+      return tree
+        .filter((n) => hasAccess(n.permissions))
+        .map((n) => {
+          // If node has children, filter them by permissions first
+          let filteredChildren = n.children?.filter((c) => hasAccess(c.permissions));
+
+          // Then filter by search query if exists
+          if (q) {
+            const matchesParent = n.label.toLowerCase().includes(q);
+            const matchingChildren = filteredChildren?.filter((c) =>
+              c.label.toLowerCase().includes(q),
+            );
+
+            if (!matchesParent && (!matchingChildren || matchingChildren.length === 0)) {
+              return null;
+            }
+            if (matchingChildren) {
+              filteredChildren = matchingChildren;
+            }
+          }
+
+          return { ...n, children: filteredChildren };
+        })
+        .filter(Boolean) as NavNode[];
+    };
+
+    return filterTree(NAV_TREE);
+  }, [query, hasAccess]);
+
+  const filteredAdmin = useMemo<NavNode[]>(() => {
+    const q = query.trim().toLowerCase();
+
+    const filterTree = (tree: NavNode[]) => {
+      return tree
+        .filter((n) => hasAccess(n.permissions))
+        .map((n) => {
+          // If node has children, filter them by permissions first
+          let filteredChildren = n.children?.filter((c) => hasAccess(c.permissions));
+
+          // Then filter by search query if exists
+          if (q) {
+            const matchesParent = n.label.toLowerCase().includes(q);
+            const matchingChildren = filteredChildren?.filter((c) =>
+              c.label.toLowerCase().includes(q),
+            );
+
+            if (!matchesParent && (!matchingChildren || matchingChildren.length === 0)) {
+              return null;
+            }
+            if (matchingChildren) {
+              filteredChildren = matchingChildren;
+            }
+          }
+
+          return { ...n, children: filteredChildren };
+        })
+        .filter(Boolean) as NavNode[];
+    };
+
+    return filterTree(ADMIN_TREE);
+  }, [query, hasAccess]);
 
   const headerMeta = ROUTE_TITLES[location.pathname] ?? { title: "CUR-MIS" };
   const sidebarWidth = collapsed ? 72 : 240;
@@ -265,7 +462,9 @@ export default function MainLayout() {
           flex flex-col`}
       >
         {/* Logo header */}
-        <div className={`h-16 flex items-center justify-between border-b border-ink-100 dark:border-ink-700 shrink-0 ${collapsed ? "px-3" : "px-5"}`}>
+        <div
+          className={`h-16 flex items-center justify-between border-b border-ink-100 dark:border-ink-700 shrink-0 ${collapsed ? "px-3" : "px-5"}`}
+        >
           {collapsed ? (
             <Logo to="/" size="sm" showText={false} />
           ) : (
@@ -297,7 +496,9 @@ export default function MainLayout() {
         )}
 
         {/* Scrollable nav area */}
-        <nav className={`${collapsed ? "mt-3" : "mt-4"} pb-4 overflow-y-auto no-scrollbar flex-1 space-y-0.5 ${collapsed ? "px-2" : "px-3"}`}>
+        <nav
+          className={`${collapsed ? "mt-3" : "mt-4"} pb-4 overflow-y-auto no-scrollbar flex-1 space-y-0.5 ${collapsed ? "px-2" : "px-3"}`}
+        >
           {filtered.length === 0 && !collapsed && (
             <p className="px-3 py-6 text-[12px] text-ink-400 text-center">
               No matches for “{query}”.
@@ -315,18 +516,22 @@ export default function MainLayout() {
           ))}
 
           {/* Admin tools band */}
-          <div className="pt-4 mt-4 border-t border-ink-100 dark:border-ink-700 space-y-0.5">
-            {!collapsed && <h3 className="nav-group-label mb-1">Administration</h3>}
-            {ADMIN_TREE.map((node) => (
-              <NavNodeItem
-                key={node.id}
-                node={node}
-                collapsed={collapsed}
-                isOpen={openIds.has(node.id)}
-                onToggle={toggleGroup}
-              />
-            ))}
-          </div>
+          {filteredAdmin.length > 0 && (
+            <div className="pt-4 mt-4 border-t border-ink-100 dark:border-ink-700 space-y-0.5">
+              {!collapsed && (
+                <h3 className="nav-group-label mb-1">Administration</h3>
+              )}
+              {filteredAdmin.map((node) => (
+                <NavNodeItem
+                  key={node.id}
+                  node={node}
+                  collapsed={collapsed}
+                  isOpen={openIds.has(node.id)}
+                  onToggle={toggleGroup}
+                />
+              ))}
+            </div>
+          )}
         </nav>
 
         {/* Footer — collapse toggle */}
@@ -337,9 +542,14 @@ export default function MainLayout() {
             title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
-            {collapsed
-              ? <PanelLeftOpen className="w-4 h-4" />
-              : <><PanelLeftClose className="w-4 h-4" /><span className="text-[12.5px] font-medium">Collapse</span></>}
+            {collapsed ? (
+              <PanelLeftOpen className="w-4 h-4" />
+            ) : (
+              <>
+                <PanelLeftClose className="w-4 h-4" />
+                <span className="text-[12.5px] font-medium">Collapse</span>
+              </>
+            )}
           </button>
         </div>
       </aside>
@@ -430,10 +640,10 @@ const NavNodeItem = memo(function NavNodeItem({
   isOpen,
   onToggle,
 }: {
-  node:      NavNode;
+  node: NavNode;
   collapsed: boolean;
-  isOpen:    boolean;
-  onToggle:  (id: string) => void;
+  isOpen: boolean;
+  onToggle: (id: string) => void;
 }) {
   const location = useLocation();
 
@@ -446,13 +656,15 @@ const NavNodeItem = memo(function NavNodeItem({
         title={collapsed ? node.label : undefined}
         className={({ isActive }) =>
           `${collapsed ? "flex items-center justify-center h-10 w-full rounded-lg transition-colors" : "nav-link"}
-           ${isActive
-              ? collapsed
-                ? "bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-200"
-                : "nav-link-active"
-              : collapsed
-                ? "text-ink-500 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-400 dark:hover:bg-ink-700/50 dark:hover:text-white"
-                : "nav-link-idle"}`
+           ${
+             isActive
+               ? collapsed
+                 ? "bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-200"
+                 : "nav-link-active"
+               : collapsed
+                 ? "text-ink-500 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-400 dark:hover:bg-ink-700/50 dark:hover:text-white"
+                 : "nav-link-idle"
+           }`
         }
       >
         <node.icon className="h-[18px] w-[18px] shrink-0" />
@@ -463,7 +675,9 @@ const NavNodeItem = memo(function NavNodeItem({
 
   // When collapsed, treat groups as an "icon-only" button — click goes to first child.
   if (collapsed) {
-    const hasActiveChild = node.children.some((c) => c.to === location.pathname);
+    const hasActiveChild = node.children.some(
+      (c) => c.to === location.pathname,
+    );
     return (
       <NavLink
         to={node.children[0].to}
@@ -532,8 +746,8 @@ const RoundIconBtn = memo(function RoundIconBtn({
   dot = false,
 }: {
   children: ReactNode;
-  label:    string;
-  dot?:     boolean;
+  label: string;
+  dot?: boolean;
 }) {
   return (
     <button

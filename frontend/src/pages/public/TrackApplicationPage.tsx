@@ -9,6 +9,7 @@ import {
   FileText,
   AlertTriangle,
   Loader2,
+  Info as InfoIcon,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import Logo from '@/components/brand/Logo'
@@ -20,6 +21,18 @@ import type { ApplicationStatus } from '@/types/admission'
  *  uppercase so the lookup matches the stored value (the input is
  *  displayed uppercase via CSS but the underlying value is not). */
 const normaliseAppNo = (v: string) => v.trim().toUpperCase()
+
+const STATUS_GUIDANCE: Partial<Record<ApplicationStatus, string>> = {
+  submitted:              'Your application is under review. We will notify you once your documents have been checked.',
+  documents_under_review: 'Our team is reviewing your uploaded documents. This usually takes 2–5 business days.',
+  documents_rejected:     'Some documents were rejected. Please check the feedback below and re-upload the corrected files.',
+  documents_verified:     'Your documents have been verified. You will be notified when the merit list is published.',
+  merit_listed:           'You are on the merit list. Admission offers will be sent out shortly.',
+  offered:                'Congratulations! You have received an admission offer. Please respond before the deadline.',
+  offer_accepted:         'You have accepted your offer. The enrollment team will contact you with next steps.',
+  offer_declined:         'You have declined your admission offer. Contact admissions if you wish to reconsider.',
+  enrolled:               'You are now enrolled. Welcome to the university!',
+}
 
 const STATUS_META: Record<ApplicationStatus, { label: string; tone: string; icon: any }> = {
   draft:                  { label: 'Draft',                     tone: 'chip-soft',    icon: FileText },
@@ -61,9 +74,13 @@ export default function TrackApplicationPage() {
     onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed'),
   })
 
+  const [decliningOffer, setDecliningOffer] = useState(false)
+  const [declineNotes, setDeclineNotes] = useState('')
+
   const app = q.data?.data
   const status = app?.status as ApplicationStatus | undefined
   const meta = status ? STATUS_META[status] : null
+  const guidance = status ? STATUS_GUIDANCE[status] : undefined
   const hasOffer = status === 'offered'
 
   const onSubmit = (e: React.FormEvent) => {
@@ -81,7 +98,7 @@ export default function TrackApplicationPage() {
     queryFn:  () => portalService.getFacultyRequirements(app!.faculty_id),
     enabled:  !!app?.faculty_id,
   })
-  const requirements = reqQ.data?.data ?? []
+  const requirements = reqQ.data?.data?.requirements ?? []
   const canUpload = status === 'submitted' || status === 'documents_under_review' || status === 'documents_rejected'
 
   return (
@@ -158,6 +175,14 @@ export default function TrackApplicationPage() {
               </div>
             </div>
 
+            {/* Status guidance */}
+            {guidance && (
+              <div className="flex items-start gap-3 rounded-lg border border-brand/20 bg-brand/5 px-4 py-3">
+                <InfoIcon className="w-4 h-4 text-brand shrink-0 mt-0.5" />
+                <p className="text-[13px] text-brand-700 leading-relaxed">{guidance}</p>
+              </div>
+            )}
+
             {/* Offer actions */}
             {hasOffer && (
               <div className="card p-6 border-emerald-200 bg-emerald-50">
@@ -165,7 +190,7 @@ export default function TrackApplicationPage() {
                 <p className="text-[13px] text-emerald-800 mt-1">
                   Please respond to your admission offer below.
                 </p>
-                <div className="flex gap-2 mt-4">
+                <div className="flex gap-2 mt-4 flex-wrap">
                   <button
                     onClick={() => respond.mutate({ response: 'accept' })}
                     disabled={respond.isPending}
@@ -174,17 +199,38 @@ export default function TrackApplicationPage() {
                     {respond.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                     Accept offer
                   </button>
-                  <button
-                    onClick={() => {
-                      const notes = window.prompt('Optional reason for declining (you can leave blank):') ?? ''
-                      respond.mutate({ response: 'decline', notes })
-                    }}
-                    disabled={respond.isPending}
-                    className="btn-secondary"
-                  >
-                    Decline
-                  </button>
+                  {!decliningOffer && (
+                    <button
+                      onClick={() => setDecliningOffer(true)}
+                      disabled={respond.isPending}
+                      className="btn-secondary"
+                    >
+                      Decline
+                    </button>
+                  )}
                 </div>
+                {decliningOffer && (
+                  <div className="mt-4 space-y-2">
+                    <textarea
+                      value={declineNotes}
+                      onChange={(e) => setDeclineNotes(e.target.value)}
+                      placeholder="Optional reason for declining…"
+                      rows={3}
+                      className="input w-full"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => { respond.mutate({ response: 'decline', notes: declineNotes }); setDecliningOffer(false) }}
+                        disabled={respond.isPending}
+                        className="btn-secondary btn-sm"
+                      >
+                        {respond.isPending && <Loader2 className="w-3 h-3 animate-spin" />}
+                        Confirm decline
+                      </button>
+                      <button onClick={() => setDecliningOffer(false)} className="btn-ghost btn-sm">Cancel</button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

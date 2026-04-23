@@ -15,6 +15,9 @@ export const portalService = {
   getActiveYear: (signal?: AbortSignal) =>
     api.get<AcademicYear>('/api/portal/active-year', {}, signal),
 
+  getIntakes: (signal?: AbortSignal) =>
+    api.get<{ id: number; name: string }[]>('/api/portal/intakes', {}, signal),
+
   getFaculties: (signal?: AbortSignal) =>
     api.get<Faculty[]>('/api/portal/faculties', {}, signal),
 
@@ -22,7 +25,7 @@ export const portalService = {
     api.get<PortalDepartment[]>(`/api/portal/faculties/${facultyId}/departments`, {}, signal),
 
   getFacultyRequirements: (facultyId: number, signal?: AbortSignal) =>
-    api.get<AdmissionRequirement[]>(`/api/portal/faculties/${facultyId}/requirements`, {}, signal),
+    api.get<{ academic_year: { id: number; label: string }; faculty_id: number; requirements: AdmissionRequirement[] }>(`/api/portal/faculties/${facultyId}/requirements`, {}, signal),
 
   submitApplication: (data: Record<string, unknown>) =>
     api.post<{ id: number; application_number: string }>('/api/portal/applications', data),
@@ -40,7 +43,7 @@ export const portalService = {
     return api.upload<{
       id: number
       document_type_id: number
-      document_name: string
+      document_type_name: string
       verification_status: 'pending' | 'verified' | 'rejected'
       document_status: string
     }>(`/api/portal/applications/${appNumber}/documents`, form)
@@ -94,7 +97,7 @@ export const admissionRequirementService = {
  * ─────────────────────────────────────────────────────────────── */
 export const applicationAdminService = {
   list: (
-    params: { page?: number; per_page?: number; status?: ApplicationStatus; faculty_id?: number; q?: string } = {},
+    params: { page?: number; per_page?: number; status?: ApplicationStatus; department_id?: number; intake?: string; q?: string } = {},
     signal?: AbortSignal,
   ) => api.get<PaginatedResponse<StudentApplication>>('/api/admin/applications', params, signal),
 
@@ -161,7 +164,7 @@ export const offerService = {
   create: (d: { application_id: number; expires_at: string; notes?: string }) =>
     api.post<{ id: number; offer_letter_reference: string }>('/api/admin/admissions/offers', d),
 
-  bulkCreate: (d: { application_ids: number[]; expires_at: string }) =>
+  bulkCreate: (d: { department_id: number; intake: string; academic_year_id: number; expires_at: string }) =>
     api.post<{ created: number }>('/api/admin/admissions/offers/bulk', d),
 
   getDetails: (offerId: number, signal?: AbortSignal) =>
@@ -176,16 +179,41 @@ export const offerService = {
  * ─────────────────────────────────────────────────────────────── */
 export const applicantService = {
   getProfile: (signal?: AbortSignal) =>
-    api.get<ApplicantProfile>('/api/applicant/profile', {}, signal),
+    api.get<{
+      profile: ApplicantProfile;
+      user: { email: string; full_name: string; username: string };
+      application?: StudentApplication;
+    }>('/api/applicant/profile', {}, signal),
 
   updateProfile: (d: Partial<ApplicantProfile>) =>
     api.put<null>('/api/applicant/profile', d),
 
-  uploadPhoto: (d: { file_server_id: string }) =>
-    api.post<null>('/api/applicant/profile/photo', d),
+  uploadPhoto: (file: File) => {
+    const form = new FormData()
+    form.append('photo', file)
+    return api.upload<{ profile_photo_id: string; url: string | null }>('/api/applicant/profile/photo', form)
+  },
 
-  getApplication: (signal?: AbortSignal) =>
-    api.get<StudentApplication & { documents?: ApplicationDocument[] }>('/api/applicant/application', {}, signal),
+  listApplications: (signal?: AbortSignal) =>
+    api.get<StudentApplication[]>('/api/applicant/application', {}, signal),
+
+  getApplicationDetails: (id: number, signal?: AbortSignal) =>
+    api.get<StudentApplication & { document_checklist?: AdmissionRequirement[]; status_log?: ApplicationStatusLog[] }>(`/api/applicant/application/${id}`, {}, signal),
+
+  updateApplication: (id: number, data: Partial<StudentApplication>) =>
+    api.put<null>(`/api/applicant/application/${id}`, data),
+
+  draftApplication: (data: { faculty_id: number; department_id: number; intake: string }) =>
+    api.post<{ id: number; application_number: string }>('/api/applicant/application/draft', data),
+
+  submitApplication: (data: Record<string, unknown>) =>
+    api.post<{ status: string }>('/api/applicant/application/submit', data),
+
+  verifyApplication: (data: { code: string }) =>
+    api.post<null>('/api/applicant/application/verify', data),
+
+  resendVerificationCode: () =>
+    api.post<null>('/api/applicant/application/resend-code', {}),
 
   /* Academic records */
   listAcademicRecords: (signal?: AbortSignal) =>
@@ -215,7 +243,7 @@ export const applicantService = {
     return api.upload<{
       id: number
       document_type_id: number
-      document_name: string
+      document_type_name: string
       verification_status: 'pending' | 'verified' | 'rejected'
       document_status: string
     }>('/api/applicant/documents', form)
@@ -223,4 +251,16 @@ export const applicantService = {
 
   deleteDocument: (id: number) =>
     api.delete<null>(`/api/applicant/documents/${id}`),
+}
+
+/* ───────────────────────────────────────────────────────────────
+ * Admin — Intakes
+ * permission: MANAGE_ADMISSIONS
+ * ─────────────────────────────────────────────────────────────── */
+export const intakeService = {
+  list:   (signal?: AbortSignal) => api.get<any[]>('/api/admin/intakes', {}, signal),
+  create: (d: any) => api.post<any>('/api/admin/intakes', d),
+  update: (id: number, d: any) => api.put<any>(`/api/admin/intakes/${id}`, d),
+  remove: (id: number) => api.delete<null>(`/api/admin/intakes/${id}`),
+  toggle: (id: number) => api.patch<any>(`/api/admin/intakes/${id}/toggle`),
 }

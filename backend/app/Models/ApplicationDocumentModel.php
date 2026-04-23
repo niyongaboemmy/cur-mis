@@ -17,7 +17,7 @@ class ApplicationDocumentModel extends BaseModel
     public function getForApplication(int $applicationId): array
     {
         return $this->db->fetchAll(
-            "SELECT ad.*, dt.name AS type_name, dt.slug AS type_slug, dt.is_required
+            "SELECT ad.*, dt.name AS type_name, dt.slug AS type_slug
              FROM `application_documents` ad
              JOIN `document_types` dt ON dt.id = ad.document_type_id
              WHERE ad.application_id = ?

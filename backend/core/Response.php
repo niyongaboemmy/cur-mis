@@ -21,7 +21,7 @@ class Response
         return $this;
     }
 
-    public function json(mixed $data, int $status = null): never
+    public function json(mixed $data, ?int $status = null): never
     {
         if ($status !== null) {
             $this->statusCode = $status;
