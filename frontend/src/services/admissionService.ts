@@ -27,6 +27,9 @@ export const portalService = {
   getFacultyRequirements: (facultyId: number, signal?: AbortSignal) =>
     api.get<{ academic_year: { id: number; label: string }; faculty_id: number; requirements: AdmissionRequirement[] }>(`/api/portal/faculties/${facultyId}/requirements`, {}, signal),
 
+  getDocumentTypes: (signal?: AbortSignal) =>
+    api.get<DocumentType[]>('/api/portal/document-types', {}, signal),
+
   submitApplication: (data: Record<string, unknown>) =>
     api.post<{ id: number; application_number: string }>('/api/portal/applications', data),
 
@@ -219,10 +222,10 @@ export const applicantService = {
   listAcademicRecords: (signal?: AbortSignal) =>
     api.get<AcademicRecord[]>('/api/applicant/academic-records', {}, signal),
 
-  addAcademicRecord: (d: Omit<AcademicRecord, 'id' | 'applicant_profile_id'>) =>
+  addAcademicRecord: (d: Omit<AcademicRecord, 'id' | 'applicant_profile_id'> & { document_id?: number | null }) =>
     api.post<{ id: number }>('/api/applicant/academic-records', d),
 
-  updateAcademicRecord: (id: number, d: Partial<AcademicRecord>) =>
+  updateAcademicRecord: (id: number, d: Partial<AcademicRecord> & { document_id?: number | null }) =>
     api.put<null>(`/api/applicant/academic-records/${id}`, d),
 
   deleteAcademicRecord: (id: number) =>
@@ -233,7 +236,7 @@ export const applicantService = {
 
   /* Documents */
   listDocuments: (signal?: AbortSignal) =>
-    api.get<ApplicationDocument[]>('/api/applicant/documents', {}, signal),
+    api.get<{ documents: ApplicationDocument[] }>('/api/applicant/documents', {}, signal),
 
   /** Multipart upload — backend proxies to the file-server internally. */
   uploadDocument: (data: { document_type_id: number; file: File }) => {
@@ -251,6 +254,9 @@ export const applicantService = {
 
   deleteDocument: (id: number) =>
     api.delete<null>(`/api/applicant/documents/${id}`),
+
+  downloadUrl: (id: number) =>
+    `${import.meta.env.VITE_API_URL ?? ''}/api/applicant/documents/${id}/download`,
 }
 
 /* ───────────────────────────────────────────────────────────────

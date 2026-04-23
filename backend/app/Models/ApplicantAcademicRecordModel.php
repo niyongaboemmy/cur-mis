@@ -16,6 +16,7 @@ class ApplicantAcademicRecordModel extends BaseModel
 
     protected array $fillable = [
         'applicant_profile_id',
+        'document_id',
         'institution_name',
         'qualification',
         'grade',

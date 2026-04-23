@@ -8,7 +8,7 @@ class ApplicationDocumentModel extends BaseModel
 {
     protected string $table    = 'application_documents';
     protected array  $fillable = [
-        'application_id', 'document_type_id', 'file_server_id',
+        'applicant_profile_id', 'application_id', 'document_type_id', 'file_server_id',
         'file_original_name', 'file_size', 'file_mime',
         'verification_status', 'verified_by', 'verified_at', 'rejection_notes',
     ];
@@ -61,5 +61,36 @@ class ApplicationDocumentModel extends BaseModel
         $data['application_id']   = $applicationId;
         $data['document_type_id'] = $documentTypeId;
         return $this->create($data);
+    }
+
+    public function upsertForProfile(int $profileId, int $documentTypeId, array $data, ?int $applicationId = null): string
+    {
+        // Try to find existing document of this type for the profile
+        $existing = $this->db->fetchOne(
+            "SELECT id FROM `application_documents` WHERE applicant_profile_id = ? AND document_type_id = ?",
+            [$profileId, $documentTypeId]
+        );
+
+        if ($existing) {
+            $this->update((int)$existing['id'], $data);
+            return (string)$existing['id'];
+        }
+
+        $data['applicant_profile_id'] = $profileId;
+        $data['application_id']       = $applicationId;
+        $data['document_type_id']     = $documentTypeId;
+        return $this->create($data);
+    }
+
+    public function getForProfile(int $profileId): array
+    {
+        return $this->db->fetchAll(
+            "SELECT ad.*, dt.name AS type_name, dt.slug AS type_slug
+             FROM `application_documents` ad
+             JOIN `document_types` dt ON dt.id = ad.document_type_id
+             WHERE ad.applicant_profile_id = ?
+             ORDER BY ad.uploaded_at DESC",
+            [$profileId]
+        );
     }
 }

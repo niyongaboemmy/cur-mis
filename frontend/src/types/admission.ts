@@ -113,7 +113,8 @@ export interface StudentApplication {
 
 export interface ApplicationDocument {
   id:                    number
-  application_id:        number
+  applicant_profile_id:  number
+  application_id?:       number | null
   document_type_id:      number
   file_server_id?:       string | null
   file_original_name?:   string | null
@@ -127,6 +128,7 @@ export interface ApplicationDocument {
   /* Enriched */
   document_type_name?:   string
   document_type_slug?:   string
+  usage?:                string[]
 }
 
 export interface ApplicationStatusLog {
@@ -207,6 +209,7 @@ export interface ApplicantProfile {
 export interface AcademicRecord {
   id:                    number
   applicant_profile_id:  number
+  document_id?:          number | null
   institution_name:      string
   qualification:         string
   grade:                 string
@@ -214,4 +217,8 @@ export interface AcademicRecord {
   year_completed:        number
   is_primary:            0 | 1
   created_at?:           string
+  /* Joined fields */
+  file_original_name?:   string | null
+  file_server_id?:       string | null
+  doc_status?:           string | null
 }
