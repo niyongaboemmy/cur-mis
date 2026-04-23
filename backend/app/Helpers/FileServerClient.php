@@ -15,8 +15,8 @@ class FileServerClient
     private const ALLOWED_MIMES = [
         'application/pdf',
         'image/jpeg',
-        'image/jpg',
         'image/png',
+        'image/webp',
     ];
 
     /** Max upload size: 5 MB */
@@ -24,8 +24,8 @@ class FileServerClient
 
     public function __construct()
     {
-        $this->baseUrl = rtrim((string)(getenv('FILE_SERVER_URL') ?: ''), '/');
-        $this->apiKey  = (string)(getenv('FILE_SERVER_KEY') ?: '');
+        $this->baseUrl = rtrim((string)($_ENV['FILE_SERVER_URL'] ?? ''), '/');
+        $this->apiKey  = (string)($_ENV['FILE_SERVER_KEY'] ?? '');
     }
 
     /**
@@ -76,7 +76,8 @@ class FileServerClient
         $body = json_decode((string)$raw, true);
 
         if ($httpCode < 200 || $httpCode >= 300 || empty($body['data']['id'])) {
-            throw new RuntimeException('File storage service returned an error. Please try again.');
+            $msg = $body['message'] ?? 'Unknown error';
+            throw new RuntimeException("File storage service error ({$httpCode}): {$msg}");
         }
 
         return [
