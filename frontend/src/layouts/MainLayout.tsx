@@ -20,7 +20,6 @@ import {
   LayoutDashboard,
   LayoutGrid,
   BookMarked,
-  CalendarDays,
   ClipboardCheck,
   Megaphone,
   Bus,
@@ -122,6 +121,32 @@ const NAV_TREE: NavNode[] = [
       { to: "/admin/admissions/document-types", label: "Document types" },
     ],
   },
+  // ─── Modules Management Module ───
+  {
+    id: "modules",
+    label: "Modules",
+    icon: BookOpen,
+    permissions: [
+      PERMISSIONS.MANAGE_MODULES,
+      PERMISSIONS.MANAGE_MODULE_SCHEDULES,
+      PERMISSIONS.MANAGE_MODULE_ASSIGNMENTS,
+      PERMISSIONS.MANAGE_MODULE_REGISTRATIONS,
+    ],
+    children: [
+      { to: "/modules/catalog", label: "Catalog" },
+      { to: "/modules/scheduling", label: "Scheduling" },
+      { to: "/modules/assignments", label: "Assignments" },
+      { to: "/modules/registrations", label: "Registrations" },
+    ],
+  },
+  // ─── Student self-service ───
+  {
+    id: "my-modules",
+    label: "My Modules",
+    icon: BookOpen,
+    to: "/my-modules",
+    permissions: [PERMISSIONS.VIEW_MY_MODULES],
+  },
   {
     id: "teachers-group",
     label: "Teachers",
@@ -145,8 +170,6 @@ const NAV_TREE: NavNode[] = [
     ],
   },
   { id: "class", label: "Class", icon: LayoutGrid, to: "/class", permissions: [PERMISSIONS.STAFF_ACCESS] },
-  { id: "subject", label: "Subject", icon: BookOpen, to: "/subject", permissions: [PERMISSIONS.STAFF_ACCESS] },
-  { id: "routine", label: "Routine", icon: CalendarDays, to: "/routine", permissions: [PERMISSIONS.STAFF_ACCESS] },
   {
     id: "attendance",
     label: "Attendance",
@@ -271,12 +294,18 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
   "/exams/results": { title: "Exam results", sub: "All examination results" },
   "/library": { title: "Library", sub: "Books and digital resources" },
   "/class": { title: "Classes", sub: "Class schedules and rooms" },
-  "/subject": { title: "Subjects", sub: "All academic subjects" },
-  "/routine": { title: "Routine", sub: "Weekly class routine" },
   "/attendance": { title: "Attendance", sub: "Student and staff attendance" },
   "/notice": { title: "Notice board", sub: "Announcements and circulars" },
   "/transport": { title: "Transport", sub: "Routes and vehicles" },
   "/hostel": { title: "Hostel", sub: "Accommodation management" },
+
+  // Modules Management Module
+  "/modules": { title: "Modules", sub: "Module catalog, scheduling, assignments & registrations" },
+  "/modules/catalog": { title: "Module Catalog", sub: "Browse and manage course modules" },
+  "/modules/scheduling": { title: "Module Scheduling", sub: "Timetable entries and conflict detection" },
+  "/modules/assignments": { title: "Module Assignments", sub: "Faculty-to-module assignments and workload" },
+  "/modules/registrations": { title: "Module Registrations", sub: "Admin view of student module registrations" },
+  "/my-modules": { title: "My Modules", sub: "Register for modules and track your courses" },
 };
 
 const STORAGE_KEY = "cur-mis-sidebar-collapsed";
