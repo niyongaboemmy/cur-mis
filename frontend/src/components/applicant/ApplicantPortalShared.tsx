@@ -12,8 +12,16 @@ export function Field({ label, children }: { label: string; children: React.Reac
   return <div><label className="label">{label}</label>{children}</div> 
 }
 
-export function SectionHeader({ title, sub }: { title: string; sub: string }) { 
-  return <div><h2 className="section-title">{title}</h2><p className="section-sub">{sub}</p></div> 
+export function SectionHeader({ title, sub, icon: Icon }: { title: string; sub: string; icon?: any }) { 
+  return (
+    <div className="flex items-start gap-3">
+      {Icon && <div className="w-10 h-10 rounded-xl bg-primary-50 dark:bg-primary-900/20 flex items-center justify-center text-primary-600 shrink-0"><Icon className="w-5 h-5" /></div>}
+      <div>
+        <h2 className="section-title">{title}</h2>
+        <p className="section-sub">{sub}</p>
+      </div>
+    </div>
+  ) 
 }
 
 export function fmt(v: string | null | undefined) { 

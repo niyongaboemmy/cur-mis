@@ -36,7 +36,6 @@ const RequirementsPage          = lazy(() => import('@/pages/admin/admissions/Re
 const DocumentTypesPage         = lazy(() => import('@/pages/admin/admissions/DocumentTypesPage'))
 const IntakesManagementPage     = lazy(() => import('@/pages/admin/admissions/IntakesManagementPage'))
 const ApplicantOverviewPage   = lazy(() => import('@/pages/applicant/ApplicantOverviewPage'))
-const ApplicantRecordsPage    = lazy(() => import('@/pages/applicant/ApplicantRecordsPage'))
 const ApplicantDocumentsPage  = lazy(() => import('@/pages/applicant/ApplicantDocumentsPage'))
 
 // Placeholders still in use for modules not yet wired up
@@ -121,7 +120,6 @@ function App() {
               {/* Applicant portal (authenticated applicants) */}
               <Route element={<ProtectedRoute requiredPermissions={[PERMISSIONS.ACCESS_APPLICANT_PORTAL]} />}>
                 <Route path="/applicant"           element={<ApplicantOverviewPage />} />
-                <Route path="/applicant/records"   element={<ApplicantRecordsPage />} />
                 <Route path="/applicant/documents" element={<ApplicantDocumentsPage />} />
               </Route>
 

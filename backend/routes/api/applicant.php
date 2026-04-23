@@ -60,5 +60,6 @@ $router->group('/api/applicant', function ($router) {
     $router->get('/documents',       [ApplicantProfileController::class, 'listDocuments']);
     $router->post('/documents',      [ApplicantProfileController::class, 'uploadDocument']);
     $router->delete('/documents/:id', [ApplicantProfileController::class, 'deleteDocument']);
+    $router->get('/documents/:id/download', [ApplicantProfileController::class, 'downloadDocument']);
 
 }, [AuthMiddleware::class, ApplicantMiddleware::class]);

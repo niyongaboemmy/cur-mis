@@ -199,13 +199,6 @@ class ApplicantProfileController extends BaseController
         // Allow multiple applications. We still link the MOST RECENT one to the profile for legacy single-app logic,
         // but we return the list in getApplications.
 
-        $data = $request->body();
-        $errors = ValidationHelper::validate($data, [
-            'faculty_id'    => 'required|numeric',
-            'department_id' => 'required|numeric',
-            'intake'        => 'required|string',
-        ]);
-
         if (!empty($errors)) {
             $this->error($response, 'Validation failed.', 422, $errors);
         }
@@ -215,6 +208,18 @@ class ApplicantProfileController extends BaseController
             $academicYearId = (int)$activeYear['id'];
         } catch (\RuntimeException $e) {
             $this->error($response, $e->getMessage(), 503);
+        }
+
+        // Duplicate check: Prevent multiple applications for the same faculty + intake + academic year
+        $existing = $this->db->fetchOne(
+            "SELECT id FROM `student_applications` 
+             WHERE email = ? AND faculty_id = ? AND intake = ? AND academic_year_id = ? 
+             AND status NOT IN ('withdrawn', 'offer_declined') LIMIT 1",
+            [$authUser['email'] ?? '', (int)$data['faculty_id'], $data['intake'], $academicYearId]
+        );
+
+        if ($existing) {
+            $this->error($response, 'You already have an active application for this faculty, intake, and academic year.', 409);
         }
 
         $appNumber = $this->service->generateApplicationNumber();
@@ -582,7 +587,14 @@ class ApplicantProfileController extends BaseController
         $profile   = $request->param('_applicant_profile');
         $profileId = (int)$profile['id'];
 
-        $records = $this->recordModel->getForProfile($profileId);
+        $records = $this->db->fetchAll(
+            "SELECT ar.*, ad.file_original_name, ad.file_server_id, ad.verification_status as doc_status
+             FROM `applicant_academic_records` ar
+             LEFT JOIN `application_documents` ad ON ar.document_id = ad.id
+             WHERE ar.applicant_profile_id = ?
+             ORDER BY ar.is_primary DESC, ar.year_completed DESC",
+            [$profileId]
+        );
         $this->success($response, $records, 'Academic records fetched.');
     }
 
@@ -602,6 +614,7 @@ class ApplicantProfileController extends BaseController
             'grade'            => 'required|string|max:50',
             'year_completed'   => 'required|numeric|min:1980|max:2030',
             'combination'      => 'string|max:100',
+            'document_id'      => 'numeric',
         ]);
 
         if (!empty($errors)) {
@@ -614,6 +627,7 @@ class ApplicantProfileController extends BaseController
 
         $id = $this->recordModel->create([
             'applicant_profile_id' => $profileId,
+            'document_id'          => !empty($data['document_id']) ? (int)$data['document_id'] : null,
             'institution_name'     => trim($data['institution_name']),
             'qualification'        => trim($data['qualification']),
             'grade'                => trim($data['grade']),
@@ -647,6 +661,7 @@ class ApplicantProfileController extends BaseController
             'grade'            => 'required|string|max:50',
             'year_completed'   => 'required|numeric|min:1980|max:2030',
             'combination'      => 'string|max:100',
+            'document_id'      => 'numeric',
         ]);
 
         if (!empty($errors)) {
@@ -659,6 +674,7 @@ class ApplicantProfileController extends BaseController
             'grade'            => trim($data['grade']),
             'combination'      => $data['combination'] ?? null,
             'year_completed'   => (int)$data['year_completed'],
+            'document_id'      => !empty($data['document_id']) ? (int)$data['document_id'] : null,
         ]);
 
         $this->success($response, null, 'Academic record updated successfully.');
@@ -715,45 +731,36 @@ class ApplicantProfileController extends BaseController
      */
     public function listDocuments(Request $request, Response $response): never
     {
-        $profile = $request->param('_applicant_profile');
-        $appId   = (int)$profile['application_id'];
+        $profile   = $request->param('_applicant_profile');
+        $profileId = (int)$profile['id'];
+        $appId     = (int)$profile['application_id'];
 
-        $application  = $this->appModel->find($appId);
-        $requirements = $this->requirementModel->getForFacultyYear(
-            (int)($application['faculty_id']      ?? 0),
-            (int)($application['academic_year_id'] ?? 0)
-        );
-        $documents = $this->docModel->getForApplication($appId);
+        // Get all profile-level documents
+        $documents = $this->docModel->getForProfile($profileId);
 
-        $uploadedMap = [];
-        foreach ($documents as $doc) {
-            $uploadedMap[(int)$doc['document_type_id']] = $doc;
-        }
+        // Enhance with usage info
+        $enriched = array_map(function($doc) {
+            $usage = [];
+            
+            // Check if used in an application
+            if ($doc['application_id']) {
+                $app = $this->db->fetchOne("SELECT application_number FROM `student_applications` WHERE id = ?", [(int)$doc['application_id']]);
+                if ($app) $usage[] = "Requirement for Application " . $app['application_number'];
+            }
 
-        $checklist = array_map(function ($req) use ($uploadedMap) {
-            $typeId   = (int)$req['document_type_id'];
-            $uploaded = $uploadedMap[$typeId] ?? null;
-            return [
-                'document_type_id'    => $typeId,
-                'document_type_name'  => $req['document_type_name'],
-                'document_type_slug'  => $req['document_type_slug'],
-                'is_required'         => (bool)$req['is_required'],
-                'notes'               => $req['notes'],
-                'uploaded'            => $uploaded !== null,
-                'document_id'         => $uploaded ? (int)$uploaded['id'] : null,
-                'file_original_name'  => $uploaded['file_original_name']  ?? null,
-                'file_size'           => $uploaded['file_size']            ?? null,
-                'verification_status' => $uploaded['verification_status'] ?? null,
-                'uploaded_at'         => $uploaded['uploaded_at']         ?? null,
-                'rejection_notes'     => $uploaded['rejection_notes']     ?? null,
-            ];
-        }, $requirements);
+            // Check if used in academic records
+            $recs = $this->db->fetchAll("SELECT institution_name FROM `applicant_academic_records` WHERE document_id = ?", [(int)$doc['id']]);
+            foreach ($recs as $r) {
+                $usage[] = "Attached to " . $r['institution_name'];
+            }
+
+            $doc['usage'] = $usage;
+            return $doc;
+        }, $documents);
 
         $this->success($response, [
-            'application_number' => $application['application_number'] ?? '',
-            'document_status'    => $application['document_status']    ?? 'incomplete',
-            'checklist'          => $checklist,
-        ], 'Documents fetched.');
+            'documents' => $enriched,
+        ], 'Profile documents fetched.');
     }
 
     /**
@@ -824,7 +831,7 @@ class ApplicantProfileController extends BaseController
             $this->error($response, $e->getMessage(), 422);
         }
 
-        $docId = $this->docModel->upsert($appId, $docTypeId, [
+        $docId = $this->docModel->upsertForProfile($profileId, $docTypeId, [
             'file_server_id'      => $uploaded['id'],
             'file_original_name'  => $uploaded['original_name'],
             'file_size'           => $uploaded['size'],
@@ -833,7 +840,7 @@ class ApplicantProfileController extends BaseController
             'verified_by'         => null,
             'verified_at'         => null,
             'rejection_notes'     => null,
-        ]);
+        ], $appId);
 
         // Recalculate document completeness
         $docStatus = $this->service->checkDocumentCompleteness($appId);
@@ -931,5 +938,38 @@ class ApplicantProfileController extends BaseController
                 'academic_year'      => $row['academic_year'],
             ],
         ];
+    }
+    /**
+     * GET /api/applicant/documents/:id/download
+     */
+    public function downloadDocument(Request $request, Response $response): never
+    {
+        $id      = (int)$request->param('id');
+        $profile = $request->param('_applicant_profile');
+        
+        $document = $this->docModel->find($id);
+        
+        if (!$document || (int)$document['applicant_profile_id'] !== (int)$profile['id']) {
+            $this->error($response, 'Document not found.', 404);
+        }
+
+        if (empty($document['file_server_id'])) {
+            $this->error($response, 'No file associated with this document record.', 404);
+        }
+
+        try {
+            $client   = new \App\Helpers\FileServerClient();
+            $fileData = $client->download($document['file_server_id']);
+        } catch (\RuntimeException $e) {
+            $this->error($response, $e->getMessage(), 502);
+        }
+
+        header('Content-Type: ' . $fileData['mime']);
+        header('Content-Disposition: attachment; filename="' . addslashes($fileData['original_name']) . '"');
+        header('Content-Length: ' . strlen($fileData['content']));
+        header('Cache-Control: private, no-store');
+
+        echo $fileData['content'];
+        exit;
     }
 }

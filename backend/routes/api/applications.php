@@ -44,6 +44,7 @@ $router->get('/api/portal/intakes', [ApplicationPortalController::class, 'getInt
 $router->get('/api/portal/faculties',                            [ApplicationPortalController::class, 'getFaculties']);
 $router->get('/api/portal/faculties/:faculty_id/departments',     [ApplicationPortalController::class, 'getFacultyDepartments']);
 $router->get('/api/portal/faculties/:faculty_id/requirements',   [ApplicationPortalController::class, 'getFacultyRequirements']);
+$router->get('/api/portal/document-types',                       [ApplicationPortalController::class, 'getDocumentTypes']);
 
 // Application lifecycle
 $router->post('/api/portal/applications',                                          [ApplicationPortalController::class, 'submitApplication']);

@@ -83,6 +83,15 @@ class ApplicationPortalController extends BaseController
     }
 
     /**
+     * GET /api/portal/document-types
+     */
+    public function getDocumentTypes(Request $request, Response $response): never
+    {
+        $types = (new \App\Models\ApplicationDocumentTypeModel())->getActive();
+        $this->success($response, $types, 'Document types fetched.');
+    }
+
+    /**
      * GET /api/portal/faculties/:faculty_id/departments
      * Lists departments offered by a specific faculty for the application form.
      */

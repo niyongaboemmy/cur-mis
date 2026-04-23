@@ -15,8 +15,8 @@ class FileServerClient
     private const ALLOWED_MIMES = [
         'application/pdf',
         'image/jpeg',
-        'image/jpg',
         'image/png',
+        'image/webp',
     ];
 
     /** Max upload size: 5 MB */
@@ -24,15 +24,15 @@ class FileServerClient
 
     public function __construct()
     {
-        $this->baseUrl = rtrim((string)(getenv('FILE_SERVER_URL') ?: ''), '/');
-        $this->apiKey  = (string)(getenv('FILE_SERVER_KEY') ?: '');
+        $this->baseUrl = rtrim((string)($_ENV['FILE_SERVER_URL'] ?? ''), '/');
+        $this->apiKey  = (string)($_ENV['FILE_SERVER_KEY'] ?? '');
     }
 
     /**
      * Validate and upload a file from $_FILES to the file server.
      *
      * @param  array $file  One entry from $_FILES (e.g. $_FILES['document'])
-     * @return array        {id, original_name, mime, size}
+     * @return array [id, original_name, mime, size]
      * @throws RuntimeException on validation failure or server error
      */
     public function upload(array $file): array
@@ -76,7 +76,8 @@ class FileServerClient
         $body = json_decode((string)$raw, true);
 
         if ($httpCode < 200 || $httpCode >= 300 || empty($body['data']['id'])) {
-            throw new RuntimeException('File storage service returned an error. Please try again.');
+            $msg = $body['message'] ?? 'Unknown error';
+            throw new RuntimeException("File storage service error ({$httpCode}): {$msg}");
         }
 
         return [
@@ -90,7 +91,7 @@ class FileServerClient
     /**
      * Download a file from the file server by its UUID.
      *
-     * @return array {content: string, mime: string, original_name: string}
+     * @return array [content, mime, original_name]
      * @throws RuntimeException on server error
      */
     public function download(string $fileServerId): array
