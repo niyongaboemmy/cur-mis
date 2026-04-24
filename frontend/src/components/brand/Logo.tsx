@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { APP_SHORT } from '@/constants'
+import { asset } from '@/utils/asset'
 
 interface LogoProps {
   to?:        string
@@ -30,7 +31,7 @@ export default function Logo({ to = '/', size = 'md', variant = 'dark', showText
     <span className={`inline-flex items-center gap-2.5 ${className}`}>
       <span className={`${s.box} relative shrink-0 flex items-center justify-center`}>
         <img
-          src="/logo.png"
+          src={asset('logo.png')}
           alt="Catholic University of Rwanda"
           className="w-full h-full object-contain select-none"
           draggable={false}

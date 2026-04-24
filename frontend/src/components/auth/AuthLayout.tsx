@@ -1,4 +1,5 @@
 import { ReactNode } from "react";
+import { asset } from "@/utils/asset";
 import { motion } from "framer-motion";
 import { CheckCircle2, ExternalLink } from "lucide-react";
 import Logo from "@/components/brand/Logo";
@@ -27,7 +28,7 @@ export default function AuthLayout({ children, title, subtitle }: AuthLayoutProp
       <div className="hidden lg:flex lg:w-1/2 xl:w-[55%] relative flex-col justify-between overflow-hidden bg-brand dark:bg-brand-active p-12">
         {/* Hero photograph — swap the file at /public/login-hero.jpg to change the photo. */}
         <img
-          src="/login-hero.jpg"
+          src={asset('login-hero.jpg')}
           alt="Catholic University of Rwanda graduates"
           className="absolute inset-0 w-full h-full object-cover object-center opacity-90"
           loading="eager"
