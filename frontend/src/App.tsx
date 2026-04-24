@@ -20,6 +20,14 @@ const UsersManagementPage = lazy(() => import('@/pages/admin/UsersManagementPage
 
 // University Modules
 const StudentsPage              = lazy(() => import('@/pages/StudentsPage'))
+const StudentDetailsPage        = lazy(() => import('@/pages/StudentDetailsPage'))
+const AttendancePage            = lazy(() => import('@/pages/AttendancePage'))
+
+// HR Management
+const StaffListPage             = lazy(() => import('@/pages/hr/StaffListPage'))
+const StaffDetailPage           = lazy(() => import('@/pages/hr/StaffDetailPage'))
+const HrAttendancePage          = lazy(() => import('@/pages/hr/HrAttendancePage'))
+const HrDocumentsPage           = lazy(() => import('@/pages/hr/HrDocumentsPage'))
 const AcademicSettingsPage      = lazy(() => import('@/pages/academic/AcademicSettingsPage'))
 const AcademicsManagementPage   = lazy(() => import('@/pages/academic/AcademicsManagementPage'))
 
@@ -105,28 +113,67 @@ function App() {
               {/* University Modules */}
               <Route element={<ProtectedRoute requiredPermissions={PERMISSIONS.VIEW_STUDENTS} />}>
                 <Route path="/students" element={<StudentsPage />} />
+                <Route path="/students/:id" element={<StudentDetailsPage />} />
+              </Route>
+
+              {/* HR Management */}
+              <Route element={<ProtectedRoute requiredPermissions={PERMISSIONS.VIEW_HR_EMPLOYEES} />}>
+                <Route path="/hr/staff"       element={<StaffListPage />} />
+                <Route path="/hr/staff/:id"   element={<StaffDetailPage />} />
+                <Route path="/hr/attendance"  element={<HrAttendancePage />} />
+                <Route path="/hr/documents"   element={<HrDocumentsPage />} />
               </Route>
 
               {/* Academic Settings — years & terms */}
-              <Route path="/academic/settings"   element={<AcademicSettingsPage />} />
-              {/* Academics Management — degrees, schools, departments, modules, etc. */}
-              <Route path="/academic/management" element={<AcademicsManagementPage />} />
-
-              {/* Admissions hub (admins) */}
-              <Route path="/admin/admissions" element={<AdmissionsHub />}>
-                <Route index                           element={<ApplicationsListPage />} />
-                <Route path="applications"             element={<ApplicationsListPage />} />
-                <Route path="applications/:id"         element={<ApplicationDetailPage />} />
-                <Route path="verifications"            element={<VerificationsPage />} />
-                <Route path="merit"                    element={<MeritPage />} />
-                <Route path="offers"                   element={<OffersPage />} />
-                <Route path="requirements"             element={<RequirementsPage />} />
-                <Route path="document-types"           element={<DocumentTypesPage />} />
-                <Route path="intakes"                  element={<IntakesManagementPage />} />
+              <Route element={<ProtectedRoute requiredPermissions={[
+                PERMISSIONS.MANAGE_ACADEMIC_YEARS,
+                PERMISSIONS.MANAGE_ACADEMIC_TERMS,
+                PERMISSIONS.VIEW_SYSTEM_BASICS,
+              ]} />}>
+                <Route path="/academic/settings" element={<AcademicSettingsPage />} />
               </Route>
 
-              {/* Applicant portal (authenticated applicants) */}
-              <Route element={<ProtectedRoute requiredPermissions={[PERMISSIONS.ACCESS_APPLICANT_PORTAL]} />}>
+              {/* Academics Management — degrees, schools, departments, modules, etc. */}
+              <Route element={<ProtectedRoute requiredPermissions={[
+                PERMISSIONS.MANAGE_ACADEMICS,
+                PERMISSIONS.MANAGE_DEGREES,
+                PERMISSIONS.MANAGE_FACILITIES,
+                PERMISSIONS.MANAGE_DEPARTMENTS,
+                PERMISSIONS.MANAGE_OPTIONS,
+                PERMISSIONS.MANAGE_LEVELS,
+                PERMISSIONS.MANAGE_SCHOOLS,
+                PERMISSIONS.MANAGE_LEAVE_TYPES,
+              ]} />}>
+                <Route path="/academic/management" element={<AcademicsManagementPage />} />
+              </Route>
+
+              {/* Admissions hub (admins) */}
+              <Route element={<ProtectedRoute requiredPermissions={[
+                PERMISSIONS.MANAGE_STUDENT_APPLICATIONS,
+                PERMISSIONS.VERIFY_DOCUMENTS,
+                PERMISSIONS.MANAGE_ADMISSIONS,
+                PERMISSIONS.MANAGE_ADMISSION_REQUIREMENTS,
+              ]} />}>
+                <Route path="/admin/admissions" element={<AdmissionsHub />}>
+                  <Route index                   element={<ApplicationsListPage />} />
+                  <Route path="applications"     element={<ApplicationsListPage />} />
+                  <Route path="applications/:id" element={<ApplicationDetailPage />} />
+                  <Route path="verifications"    element={<VerificationsPage />} />
+                  <Route path="merit"            element={<MeritPage />} />
+                  <Route path="offers"           element={<OffersPage />} />
+                  <Route path="requirements"     element={<RequirementsPage />} />
+                  <Route path="document-types"   element={<DocumentTypesPage />} />
+                  <Route path="intakes"          element={<IntakesManagementPage />} />
+                </Route>
+              </Route>
+
+              {/* Applicant portal — role-scoped to the `applicant` role only.
+                  Admins with ACCESS_APPLICANT_PORTAL still can't land here,
+                  because they have no applicant profile to render. */}
+              <Route element={<ProtectedRoute
+                requiredRoles="applicant"
+                requiredPermissions={[PERMISSIONS.ACCESS_APPLICANT_PORTAL]}
+              />}>
                 <Route path="/applicant"           element={<ApplicantOverviewPage />} />
                 <Route path="/applicant/documents" element={<ApplicantDocumentsPage />} />
               </Route>
@@ -179,7 +226,15 @@ function App() {
               <Route path="/class"            element={<ComingSoonPage />} />
               <Route path="/subject"          element={<ComingSoonPage />} />
               <Route path="/routine"          element={<ComingSoonPage />} />
-              <Route path="/attendance"       element={<ComingSoonPage />} />
+
+              <Route element={<ProtectedRoute requiredPermissions={[
+                PERMISSIONS.VIEW_ATTENDANCE,
+                PERMISSIONS.RECORD_ATTENDANCE,
+                PERMISSIONS.MANAGE_ATTENDANCE,
+              ]} />}>
+                <Route path="/attendance" element={<AttendancePage />} />
+              </Route>
+
               <Route path="/exams/results"    element={<ComingSoonPage />} />
               <Route path="/notice"           element={<ComingSoonPage />} />
               <Route path="/transport"        element={<ComingSoonPage />} />

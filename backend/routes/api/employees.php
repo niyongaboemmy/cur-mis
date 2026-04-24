@@ -13,8 +13,9 @@ use App\Constants\Permissions;
 
 // Read-only: any user with VIEW_HR_EMPLOYEES
 $router->group('/api/employees', function ($router) {
-    $router->get('',     [HrEmployeeController::class, 'index']);
-    $router->get('/:id', [HrEmployeeController::class, 'show']);
+    $router->get('/stats', [HrEmployeeController::class, 'stats']);
+    $router->get('',       [HrEmployeeController::class, 'index']);
+    $router->get('/:id',   [HrEmployeeController::class, 'show']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::VIEW_HR_EMPLOYEES)]);
 
 // Write: requires MANAGE_HR_EMPLOYEES

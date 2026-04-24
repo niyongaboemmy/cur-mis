@@ -93,7 +93,6 @@ export default function UserDropdown() {
             {/* Menu */}
             <div className="p-1.5">
               <MenuItem icon={<User     className="h-4 w-4" />} onClick={() => go('/profile')}>My profile</MenuItem>
-              <MenuItem icon={<Settings className="h-4 w-4" />} onClick={() => go('/profile')}>Account settings</MenuItem>
 
               {/* Theme toggle */}
               <button

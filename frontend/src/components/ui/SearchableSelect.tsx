@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useMemo } from 'react'
-import { Search, ChevronDown, X } from 'lucide-react'
+import { Search, ChevronDown } from 'lucide-react'
 
 export interface SelectOption {
   value: number | string
@@ -8,12 +8,12 @@ export interface SelectOption {
 }
 
 interface Props {
-  options:      SelectOption[]
-  value:        number | string
-  onChange:     (value: number | string) => void
+  options: SelectOption[]
+  value: number | string
+  onChange: (value: number | string) => void
   placeholder?: string
-  allLabel?:    string
-  className?:   string
+  allLabel?: string
+  className?: string
 }
 
 export default function SearchableSelect({
@@ -80,9 +80,8 @@ export default function SearchableSelect({
             {allLabel && (
               <button
                 type="button"
-                className={`w-full text-left px-3 py-1.5 text-[12px] transition-colors ${
-                  !value || value === 0 || value === '' ? 'bg-brand/10 text-brand font-semibold' : 'hover:bg-ink-50 dark:hover:bg-ink-700/30 text-ink-600 dark:text-ink-300'
-                }`}
+                className={`w-full text-left px-3 py-1.5 text-[12px] transition-colors ${!value || value === 0 || value === '' ? 'bg-brand/10 text-brand font-semibold' : 'hover:bg-ink-50 dark:hover:bg-ink-700/30 text-ink-600 dark:text-ink-300'
+                  }`}
                 onClick={() => { onChange(0); setOpen(false) }}
               >
                 {allLabel}
@@ -94,9 +93,8 @@ export default function SearchableSelect({
               <button
                 key={o.value}
                 type="button"
-                className={`w-full text-left px-3 py-1.5 text-[12px] flex items-center gap-2 transition-colors ${
-                  String(o.value) === String(value) ? 'bg-brand/10 text-brand font-semibold' : 'hover:bg-ink-50 dark:hover:bg-ink-700/30'
-                }`}
+                className={`w-full text-left px-3 py-1.5 text-[12px] flex items-center gap-2 transition-colors ${String(o.value) === String(value) ? 'bg-brand/10 text-brand font-semibold' : 'hover:bg-ink-50 dark:hover:bg-ink-700/30'
+                  }`}
                 onClick={() => { onChange(o.value); setOpen(false) }}
               >
                 <span className="truncate">{o.label}</span>
