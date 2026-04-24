@@ -14,6 +14,7 @@ import {
   Plus,
 } from "lucide-react";
 import { applicantService } from "@/services/admissionService";
+import { ApplicationStatus } from "@/types/admission";
 import Modal from "@/components/ui/Modal";
 import VerificationStep from "@/components/admission/VerificationStep";
 import { Field } from "@/components/applicant/ApplicantPortalShared";
@@ -221,6 +222,32 @@ function ApplicationView({ app }: { app: any }) {
               Congratulations! You have accepted the admission offer. Our
               admissions team is now finalizing your enrollment. You will
               receive your Student Registration Number via email shortly.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Requested Changes Banner */}
+      {app.status === ApplicationStatus.REQUESTED_CHANGES && (
+        <div className="p-6 bg-red-50 border-red-200 dark:bg-red-900/10 dark:border-red-900/50 rounded-2xl flex flex-col sm:flex-row items-start gap-6 animate-in slide-in-from-top-4 duration-500">
+          <div className="w-14 h-14 rounded-2xl bg-red-100 dark:bg-red-900/40 flex items-center justify-center shrink-0 border border-red-200 dark:border-red-900/50">
+            <AlertCircle className="w-7 h-7 text-red-600 dark:text-red-400" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-lg font-black text-red-900 dark:text-red-100 uppercase tracking-tight flex items-center gap-2">
+              Action Required: Changes Requested
+              <span className="px-2 py-0.5 bg-red-600 text-white text-[10px] rounded-full">Urgent</span>
+            </h3>
+            {app.rejection_reason && (
+              <div className="mt-3 p-4 bg-white/50 dark:bg-black/20 rounded-xl border border-red-100 dark:border-red-900/20">
+                <p className="text-[11px] font-black text-red-500 uppercase tracking-widest mb-1">Message from Admissions Office:</p>
+                <p className="text-[14px] text-red-800 dark:text-red-300 font-medium leading-relaxed">
+                  {app.rejection_reason}
+                </p>
+              </div>
+            )}
+            <p className="text-[13px] text-red-700 dark:text-red-400 mt-3 leading-relaxed">
+              Please review the document checklist below. Rejected documents are highlighted and must be re-uploaded to proceed with your application.
             </p>
           </div>
         </div>

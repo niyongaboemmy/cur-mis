@@ -17,26 +17,33 @@ import {
   CheckCircle2,
   XCircle,
   MessageSquarePlus,
-  ExternalLink,
   ChevronRight,
+  Eye,
+  Calendar,
+  AlertCircle,
+  Download,
+  FileCheck2,
 } from "lucide-react";
 import {
   applicationAdminService,
   verificationService,
 } from "@/services/admissionService";
-import type { ApplicationStatus } from "@/types/admission";
+import { ApplicationStatus, VerificationStatus } from "@/types/admission";
+import DocumentPreviewModal from "./DocumentPreviewModal";
+import RequestChangesModal from "./RequestChangesModal";
 
 const STATUS_OPTIONS: ApplicationStatus[] = [
-  "submitted",
-  "documents_under_review",
-  "documents_verified",
-  "documents_rejected",
-  "merit_listed",
-  "offered",
-  "offer_accepted",
-  "offer_declined",
-  "enrolled",
-  "withdrawn",
+  ApplicationStatus.SUBMITTED,
+  ApplicationStatus.DOCUMENTS_UNDER_REVIEW,
+  ApplicationStatus.DOCUMENTS_VERIFIED,
+  ApplicationStatus.DOCUMENTS_REJECTED,
+  ApplicationStatus.REQUESTED_CHANGES,
+  ApplicationStatus.MERIT_LISTED,
+  ApplicationStatus.OFFERED,
+  ApplicationStatus.OFFER_ACCEPTED,
+  ApplicationStatus.OFFER_DECLINED,
+  ApplicationStatus.ENROLLED,
+  ApplicationStatus.WITHDRAWN,
 ];
 
 export default function ApplicationDetailPage() {
@@ -46,9 +53,10 @@ export default function ApplicationDetailPage() {
   const navigate = useNavigate();
 
   const [noteInput, setNoteInput] = useState("");
-  // Per-document rejection state: which doc id is open for rejection input
-  const [rejectingDocId, setRejectingDocId] = useState<number | null>(null);
-  const [rejectNotes, setRejectNotes] = useState("");
+
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [previewIndex, setPreviewIndex] = useState(0);
+  const [isRequestChangesOpen, setIsRequestChangesOpen] = useState(false);
 
   const appQ = useQuery({
     queryKey: ["admin", "applications", appId],
@@ -56,7 +64,6 @@ export default function ApplicationDetailPage() {
     enabled: !!appId,
   });
 
-  // Fetch the pending verifications queue so we can navigate applicant-by-applicant
   const queueQ = useQuery({
     queryKey: ["admin", "verifications"],
     queryFn: () => verificationService.getPendingApplications(),
@@ -87,45 +94,10 @@ export default function ApplicationDetailPage() {
     onError: (e: any) => toast.error(e?.response?.data?.message ?? "Failed"),
   });
 
-  const verify = useMutation({
-    mutationFn: (d: {
-      documentId: number;
-      status: "verified" | "rejected";
-      rejection_notes?: string;
-    }) =>
-      verificationService.verifyDocument(appId, d.documentId, {
-        verification_status: d.status,
-        rejection_notes: d.rejection_notes,
-      }),
-    onSuccess: () => {
-      toast.success("Document updated");
-      setRejectingDocId(null);
-      setRejectNotes("");
-      qc.invalidateQueries({ queryKey: ["admin", "applications", appId] });
-      qc.invalidateQueries({ queryKey: ["admin", "verifications"] });
-    },
-    onError: (e: any) => toast.error(e?.response?.data?.message ?? "Failed"),
-  });
-
-  const handleApprove = (docId: number) => {
-    verify.mutate({ documentId: docId, status: "verified" });
-  };
-
-  const handleOpenReject = (docId: number) => {
-    setRejectingDocId(docId);
-    setRejectNotes("");
-  };
-
-  const handleSubmitReject = () => {
-    if (!rejectNotes.trim()) {
-      toast.error("Please provide rejection notes for the applicant.");
-      return;
-    }
-    verify.mutate({
-      documentId: rejectingDocId!,
-      status: "rejected",
-      rejection_notes: rejectNotes.trim(),
-    });
+  const requestChangesSuccess = () => {
+    toast.success("Changes requested and applicant notified.");
+    qc.invalidateQueries({ queryKey: ["admin", "applications", appId] });
+    qc.invalidateQueries({ queryKey: ["admin", "verifications"] });
   };
 
   if (appQ.isLoading)
@@ -139,19 +111,14 @@ export default function ApplicationDetailPage() {
       <p className="text-ink-500 text-[13px] p-4">Application not found.</p>
     );
 
-  const app = appQ.data.data;
-  const docs = app.documents ?? [];
-  const statusLog = app.status_log ?? [];
-
-  const pendingDocs = docs.filter(
-    (d: any) => d.verification_status === "pending",
-  ).length;
-  const verifiedDocs = docs.filter(
-    (d: any) => d.verification_status === "verified",
-  ).length;
+  const appData = appQ.data.data;
+  const app = appData.application;
+  const docs = appData.documents ?? [];
+  const statusLog = appData.status_log ?? [];
+  const status: string = app.status ?? "";
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6 animate-in fade-in duration-500">
       {/* Breadcrumb + queue navigation */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <Link
@@ -160,7 +127,6 @@ export default function ApplicationDetailPage() {
         >
           <ArrowLeft className="w-3.5 h-3.5" /> Back to queue
         </Link>
-
         {queue.length > 0 && (
           <div className="flex items-center gap-2 text-[12.5px] text-ink-500">
             <span className="text-ink-400">
@@ -192,191 +158,236 @@ export default function ApplicationDetailPage() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
-        {/* LEFT COLUMN: Applicant Profile (5/12) */}
-        <div className="xl:col-span-5 space-y-6">
-          {/* Main Info */}
-          <section className="card p-6">
-            <div className="flex items-start justify-between gap-4 mb-6">
-              <div>
-                <p className="text-[11px] uppercase tracking-wider font-semibold text-ink-400">
-                  Application
-                </p>
-                <p className="text-[24px] font-black text-ink-900 dark:text-white font-mono leading-none mt-1">
-                  {app.application_number}
-                </p>
-                <p className="text-[15px] font-bold text-ink-700 dark:text-ink-300 mt-2">
-                  {app.first_name} {app.last_name}
-                </p>
-              </div>
-              <div className="text-right">
-                <span
-                  className={`chip-${app.status === "documents_verified" ? "success" : app.status === "documents_rejected" ? "danger" : "warning"} px-3 py-1 text-[11px] font-black uppercase tracking-widest`}
-                >
-                  {app.status.replace(/_/g, " ")}
-                </span>
-                <div className="mt-2">
-                  <select
-                    className="input py-1 text-[12px] w-44"
-                    value={app.status}
-                    onChange={(e) =>
-                      updateStatus.mutate(e.target.value as ApplicationStatus)
-                    }
-                    disabled={updateStatus.isPending}
-                  >
-                    {STATUS_OPTIONS.map((s) => (
-                      <option key={s} value={s}>
-                        {s.replace(/_/g, " ")}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+      {/* Application Header Card */}
+      <div className="card p-6">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-4">
+            <div className="w-16 h-16 rounded-2xl bg-brand/10 flex items-center justify-center text-brand shrink-0">
+              <FileText className="w-8 h-8" />
             </div>
-
-            <div className="space-y-4">
-              <div className="bg-ink-50 dark:bg-ink-800/40 rounded-2xl p-4 space-y-3">
-                <h4 className="text-[12px] font-black uppercase tracking-widest text-ink-400 mb-1">
-                  Personal Details
-                </h4>
-                <Row icon={User} k="Gender" v={app.gender} />
-                <Row icon={CalendarDays} k="Birthdate" v={app.birthdate} />
-                <Row icon={Mail} k="Email" v={app.email} />
-                <Row icon={Phone} k="Phone" v={app.phone} />
-                <Row icon={MapPin} k="Nationality" v={app.nationality} />
-                <Row icon={MapPin} k="Address" v={app.address || "—"} />
-              </div>
-
-              <div className="bg-ink-50 dark:bg-ink-800/40 rounded-2xl p-4 space-y-3">
-                <h4 className="text-[12px] font-black uppercase tracking-widest text-ink-400 mb-1">
-                  Academic Choice
-                </h4>
-                <Row
-                  icon={Building2}
-                  k="Faculty"
-                  v={app.faculty_name ?? `#${app.faculty_id}`}
-                />
-                <Row
-                  icon={GraduationCap}
-                  k="Department"
-                  v={app.department_name ?? `#${app.department_id}`}
-                />
-                <Row icon={GraduationCap} k="Intake" v={app.intake} />
-                <Row
-                  icon={GraduationCap}
-                  k="Prev. school"
-                  v={app.prev_school}
-                />
-                <Row
-                  icon={GraduationCap}
-                  k="Qualification"
-                  v={`${app.prev_qualification} · grade ${app.prev_grade}`}
-                />
-                <Row
-                  icon={GraduationCap}
-                  k="Sponsorship"
-                  v={`${app.sponsorship}${app.sponsor_name ? " — " + app.sponsor_name : ""}`}
-                />
-              </div>
-            </div>
-          </section>
-
-          {/* Internal Notes */}
-          <section className="card p-6 border-brand/20 shadow-sm">
-            <h3 className="section-title mb-4 flex items-center gap-2">
-              <MessageSquarePlus className="w-4 h-4 text-brand" /> Internal
-              Review Notes
-            </h3>
-            <textarea
-              className="input min-h-[100px] text-[13px] bg-brand/5 focus:bg-white transition-colors"
-              placeholder="Admin-only notes — never shown to the applicant."
-              value={noteInput}
-              onChange={(e) => setNoteInput(e.target.value)}
-            />
-            <div className="mt-3 flex justify-end">
-              <button
-                className="btn-primary"
-                onClick={() =>
-                  noteInput.trim() && addNote.mutate(noteInput.trim())
-                }
-                disabled={!noteInput.trim() || addNote.isPending}
-              >
-                {addNote.isPending && (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            <div>
+              <p className="text-[11px] uppercase tracking-widest font-bold text-ink-400">
+                Application Reference
+              </p>
+              <h2 className="text-[24px] font-mono font-black text-brand leading-tight">
+                {app.application_number}
+              </h2>
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                <StatusPill status={status} />
+                {app.submitted_at && (
+                  <span className="text-[13px] text-ink-500 font-medium">
+                    Submitted on{" "}
+                    {new Date(app.submitted_at).toLocaleDateString()}
+                  </span>
                 )}
-                Save Private Note
-              </button>
+              </div>
             </div>
-            {app.internal_notes && (
-              <div className="mt-4 rounded-xl bg-brand/5 p-4 text-[13px] leading-relaxed whitespace-pre-wrap text-ink-800 dark:text-ink-200 border border-brand/10">
-                {app.internal_notes}
-              </div>
-            )}
-          </section>
-
-          {/* History */}
-          <section className="card p-6">
-            <h3 className="section-title mb-4">Application History</h3>
-            {statusLog.length === 0 ? (
-              <p className="text-[13px] text-ink-500">No transitions logged.</p>
-            ) : (
-              <div className="relative space-y-4 before:absolute before:left-[7px] before:top-2 before:bottom-2 before:w-[2px] before:bg-ink-100 dark:before:bg-ink-800">
-                {statusLog.map((l: any) => (
-                  <div
-                    key={l.id}
-                    className="relative pl-7 flex items-start gap-3 text-[12.5px]"
-                  >
-                    <div className="absolute left-0 top-1 w-[16px] h-[16px] rounded-full bg-white dark:bg-ink-900 border-2 border-brand shrink-0" />
-                    <div className="min-w-0">
-                      <p className="font-bold text-ink-900 dark:text-ink-100 leading-tight">
-                        {l.to_status.replace(/_/g, " ").toUpperCase()}
-                        <span className="text-[11px] font-medium text-ink-400 ml-2">
-                          {l.actor_type}
-                        </span>
-                      </p>
-                      {l.notes && (
-                        <p className="text-ink-500 mt-1 italic">"{l.notes}"</p>
-                      )}
-                      <p className="text-ink-400 text-[11px] mt-1">
-                        {new Date(l.created_at).toLocaleString()}
-                      </p>
-                    </div>
-                  </div>
+          </div>
+          <div className="flex flex-col items-end gap-2">
+            <p className="text-[10px] uppercase tracking-widest font-black text-ink-400">
+              Actions
+            </p>
+            <div className="flex items-center gap-2">
+              <select
+                className="input py-1.5 text-[12px] w-44"
+                value={status}
+                onChange={(e) => {
+                  const s = e.target.value as ApplicationStatus;
+                  if (
+                    window.confirm(
+                      `Are you sure you want to change the status to ${s.replace(/_/g, " ")}?`,
+                    )
+                  ) {
+                    updateStatus.mutate(s);
+                  }
+                }}
+                disabled={updateStatus.isPending}
+              >
+                {STATUS_OPTIONS.map((s) => (
+                  <option key={s} value={s}>
+                    {s.replace(/_/g, " ")}
+                  </option>
                 ))}
-              </div>
-            )}
-          </section>
+              </select>
+              {(status === ApplicationStatus.SUBMITTED ||
+                status === ApplicationStatus.DOCUMENTS_UNDER_REVIEW) && (
+                <button
+                  className="btn-secondary py-1.5 px-3 text-[12px] border-red-200 text-red-600 hover:bg-red-50 flex items-center gap-1.5"
+                  onClick={() => {
+                    const reason = window.prompt(
+                      "Enter rejection reason (optional):",
+                    );
+                    if (reason !== null) {
+                      updateStatus.mutate(ApplicationStatus.DOCUMENTS_REJECTED);
+                      if (reason.trim()) {
+                        addNote.mutate(`REJECTION REASON: ${reason}`);
+                      }
+                    }
+                  }}
+                  disabled={updateStatus.isPending}
+                >
+                  <XCircle className="w-4 h-4" /> Reject Application
+                </button>
+              )}
+            </div>
+          </div>
         </div>
 
-        {/* RIGHT COLUMN: Document Verification (7/12) */}
-        <div className="xl:col-span-7 space-y-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mt-8">
+          <DetailTile
+            icon={Building2}
+            label="Faculty"
+            value={app.faculty_name ?? `#${app.faculty_id}`}
+          />
+          <DetailTile
+            icon={GraduationCap}
+            label="Department"
+            value={app.department_name ?? `#${app.department_id}`}
+          />
+          <DetailTile
+            icon={Calendar}
+            label="Intake"
+            value={app.intake ?? "—"}
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6 items-start">
+        {/* LEFT: Applicant Info + Documents */}
+        <div className="space-y-6">
+          {/* Personal Details */}
+          <section className="card p-6">
+            <SectionHeader
+              title="Personal Details"
+              sub="Identity and contact information."
+              icon={User}
+            />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mt-6">
+              <InfoGroup
+                label="Full Name"
+                value={`${app.first_name} ${app.last_name}`}
+              />
+              <InfoGroup label="Email" value={app.email} icon={Mail} />
+              <InfoGroup label="Phone" value={app.phone} icon={Phone} />
+              <InfoGroup label="Gender" value={app.gender} />
+              <InfoGroup
+                label="Date of Birth"
+                value={app.birthdate}
+                icon={CalendarDays}
+              />
+              <InfoGroup
+                label="Nationality"
+                value={app.nationality}
+                icon={MapPin}
+              />
+              <div className="sm:col-span-2">
+                <InfoGroup
+                  label="Address"
+                  value={app.address || "Not provided"}
+                  icon={MapPin}
+                />
+              </div>
+            </div>
+          </section>
+
+          {/* Academic Background */}
+          <section className="card p-6">
+            <SectionHeader
+              title="Academic Background"
+              sub="Previous education history."
+              icon={GraduationCap}
+            />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mt-6">
+              <InfoGroup label="Previous School" value={app.prev_school} />
+              <InfoGroup label="Qualification" value={app.prev_qualification} />
+              <InfoGroup label="Mean Grade" value={app.prev_grade} />
+              <InfoGroup
+                label="Graduation Year"
+                value={String(app.graduation_year ?? "—")}
+              />
+            </div>
+          </section>
+
+          {/* Document Verification Checklist */}
           <section className="card p-0 overflow-hidden border-brand/20">
             <div className="p-6 border-b border-ink-100 dark:border-ink-800 flex items-center justify-between flex-wrap gap-4 bg-brand/[0.02]">
-              <div>
-                <h3 className="section-title text-[18px]">
-                  Verification Checklist
-                </h3>
-                <p className="section-sub">
-                  Review each document for authenticity and readability.
-                </p>
-              </div>
+              <SectionHeader
+                title="Required Documents"
+                sub="Review each document for authenticity and readability."
+                icon={FileText}
+              />
               <div className="flex items-center gap-3">
                 <div className="text-right">
                   <p className="text-[10px] uppercase tracking-widest font-black text-ink-400">
                     Progress
                   </p>
                   <p className="text-[16px] font-black text-ink-900 dark:text-white">
-                    {verifiedDocs} / {docs.length}{" "}
+                    {
+                      docs.filter(
+                        (d: any) =>
+                          d.verification_status === VerificationStatus.VERIFIED,
+                      ).length
+                    }{" "}
+                    / {docs.length}{" "}
                     <span className="text-[12px] font-normal text-ink-500 ml-1">
                       Verified
                     </span>
                   </p>
                 </div>
-                <div className="w-12 h-12 rounded-full border-4 border-emerald-100 dark:border-emerald-900/30 flex items-center justify-center relative">
-                  <span className="text-[12px] font-black text-emerald-600">
-                    {Math.round((verifiedDocs / docs.length) * 100)}%
-                  </span>
-                </div>
+                {docs.length > 0 && (
+                  <div className="w-12 h-12 rounded-full border-4 border-emerald-100 dark:border-emerald-900/30 flex items-center justify-center">
+                    <span className="text-[12px] font-black text-emerald-600">
+                      {Math.round(
+                        (docs.filter(
+                          (d: any) =>
+                            d.verification_status ===
+                            VerificationStatus.VERIFIED,
+                        ).length /
+                          docs.length) *
+                          100,
+                      )}
+                      %
+                    </span>
+                  </div>
+                )}
+                {docs.length > 0 && (
+                  <button
+                    onClick={() => {
+                      setPreviewIndex(0);
+                      setIsPreviewOpen(true);
+                    }}
+                    className="btn-secondary ml-2 border-brand/20 text-brand hover:bg-brand/5"
+                  >
+                    <Eye className="w-4 h-4 mr-2" /> Preview All
+                  </button>
+                )}
+                {docs.length > 0 && (
+                  <Link
+                    to={`/admin/admissions/verifications/${app.id}/validate`}
+                    className="btn-primary ml-2 shadow-lg shadow-brand/20"
+                  >
+                    {docs.every(
+                      (d: any) =>
+                        d.verification_status !== VerificationStatus.PENDING,
+                    )
+                      ? "Review Validation"
+                      : "Start Validation"}{" "}
+                    <ChevronRight className="w-4 h-4 ml-1" />
+                  </Link>
+                )}
+                {docs.some(
+                  (d: any) =>
+                    d.verification_status === VerificationStatus.REJECTED,
+                ) &&
+                  app.status !== ApplicationStatus.DOCUMENTS_REJECTED && (
+                    <button
+                      className="btn-secondary ml-2 border-red-200 text-red-600 hover:bg-red-50"
+                      onClick={() => setIsRequestChangesOpen(true)}
+                    >
+                      <AlertCircle className="w-4 h-4 mr-2" />
+                      Request Changes
+                    </button>
+                  )}
               </div>
             </div>
 
@@ -384,29 +395,39 @@ export default function ApplicationDetailPage() {
               <div className="p-12 text-center">
                 <FileText className="w-12 h-12 text-ink-200 mx-auto mb-4" />
                 <p className="text-[14px] text-ink-500">
-                  No documents have been uploaded yet.
+                  No documents uploaded yet.
                 </p>
               </div>
             ) : (
               <div className="divide-y divide-ink-100 dark:divide-ink-800">
-                {docs.map((d: any) => (
+                {docs.map((d: any, idx: number) => (
                   <div
                     key={d.id}
-                    className={`p-5 transition-colors ${rejectingDocId === d.id ? "bg-red-50/30 dark:bg-red-900/10" : ""}`}
+                    className={`p-5 transition-all duration-300 ${
+                      d.verification_status === VerificationStatus.VERIFIED
+                        ? "bg-emerald-50/30 dark:bg-emerald-900/5"
+                        : d.verification_status === VerificationStatus.REJECTED
+                          ? "bg-red-50/5 dark:bg-red-900/5"
+                          : ""
+                    }`}
                   >
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex items-start gap-4 min-w-0">
                         <div
-                          className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${d.verification_status === "verified" ? "bg-emerald-50 text-emerald-600" : d.verification_status === "rejected" ? "bg-red-50 text-red-600" : "bg-ink-100 text-ink-500"}`}
+                          className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${d.verification_status === VerificationStatus.VERIFIED ? "bg-emerald-50 text-emerald-600" : d.verification_status === VerificationStatus.REJECTED ? "bg-red-50 text-red-600" : "bg-ink-100 text-ink-500"}`}
                         >
                           <FileText className="w-5 h-5" />
                         </div>
                         <div className="min-w-0">
-                          <p className="text-[14px] font-black text-ink-900 dark:text-white truncate">
-                            {d.document_type_name ??
+                          <p className="text-[14px] font-black text-ink-900 dark:text-white truncate flex items-center gap-2">
+                            {d.type_name ??
                               `Document Type #${d.document_type_id}`}
+                            {d.verification_status ===
+                              VerificationStatus.VERIFIED && (
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                            )}
                           </p>
-                          <div className="flex items-center gap-2 mt-1">
+                          <div className="flex items-center gap-2 mt-1 flex-wrap">
                             <span className="text-[12px] text-ink-500 truncate max-w-[200px]">
                               {d.file_original_name}
                             </span>
@@ -414,94 +435,81 @@ export default function ApplicationDetailPage() {
                             <span className="text-[11px] text-ink-400 font-medium uppercase">
                               {Math.ceil((d.file_size || 0) / 1024)} KB
                             </span>
+                            <DocStatusPill status={d.verification_status} />
                           </div>
                         </div>
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={() => {
+                            setPreviewIndex(idx);
+                            setIsPreviewOpen(true);
+                          }}
+                          className="p-2 rounded-lg hover:bg-ink-100 dark:hover:bg-ink-800 text-ink-500 transition-colors"
+                          title="Preview Document"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                        <Link
+                          to={`/admin/admissions/verifications/${app.id}/validate?index=${idx}`}
+                          className="p-2 rounded-lg hover:bg-brand/10 text-brand transition-colors"
+                          title="Update Validation Status"
+                        >
+                          <FileCheck2 className="w-4 h-4" />
+                        </Link>
                         <a
                           href={verificationService.downloadUrl(app.id, d.id)}
                           target="_blank"
                           rel="noreferrer"
                           className="p-2 rounded-lg hover:bg-ink-100 dark:hover:bg-ink-800 text-ink-500 transition-colors"
-                          title="View Full Document"
+                          title="Download Document"
                         >
-                          <ExternalLink className="w-4 h-4" />
+                          <Download className="w-4 h-4" />
                         </a>
-                        <div className="h-6 w-px bg-ink-200 dark:bg-ink-700 mx-1" />
-                        <button
-                          className={`btn-sm ${d.verification_status === "verified" ? "bg-emerald-600 text-white shadow-lg shadow-emerald-500/20" : "btn-secondary text-emerald-600 hover:bg-emerald-50"}`}
-                          onClick={() => handleApprove(d.id)}
-                          disabled={verify.isPending}
-                        >
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          {d.verification_status === "verified"
-                            ? "Verified"
-                            : "Verify"}
-                        </button>
-                        <button
-                          className={`btn-sm ${d.verification_status === "rejected" ? "bg-red-600 text-white shadow-lg shadow-red-500/20" : "btn-secondary text-red-600 hover:bg-red-50"}`}
-                          onClick={() =>
-                            rejectingDocId === d.id
-                              ? setRejectingDocId(null)
-                              : handleOpenReject(d.id)
-                          }
-                          disabled={verify.isPending}
-                        >
-                          <XCircle className="w-3.5 h-3.5" />
-                          {rejectingDocId === d.id ? "Cancel" : "Reject"}
-                        </button>
                       </div>
                     </div>
 
-                    {/* Rejection form/note */}
-                    {(d.rejection_notes || rejectingDocId === d.id) && (
+                    {d.verification_comment && (
                       <div className="mt-4 ml-14 animate-in fade-in slide-in-from-top-2 duration-300">
-                        {rejectingDocId === d.id ? (
-                          <div className="space-y-3 bg-white dark:bg-ink-900 rounded-2xl p-4 border-2 border-red-200 dark:border-red-900/50 shadow-sm">
-                            <p className="text-[12px] font-black uppercase tracking-widest text-red-600 flex items-center gap-2">
-                              <MessageSquarePlus className="w-3.5 h-3.5" />{" "}
-                              Specify Rejection Reason
-                            </p>
-                            <textarea
-                              className="input min-h-[80px] text-[13px] border-red-100 focus:border-red-400 focus:ring-red-50"
-                              placeholder="e.g. Image is blurry, name mismatch, document expired..."
-                              value={rejectNotes}
-                              onChange={(e) => setRejectNotes(e.target.value)}
-                              autoFocus
-                            />
-                            <div className="flex gap-2">
-                              <button
-                                className="btn-secondary btn-sm"
-                                onClick={() => setRejectingDocId(null)}
-                              >
-                                Close
-                              </button>
-                              <button
-                                className="btn-sm bg-red-600 text-white hover:bg-red-700 px-4"
-                                disabled={
-                                  verify.isPending || !rejectNotes.trim()
-                                }
-                                onClick={handleSubmitReject}
-                              >
-                                {verify.isPending ? (
-                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                ) : (
-                                  "Confirm Rejection"
-                                )}
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="bg-red-50 dark:bg-red-900/20 rounded-xl p-3 border border-red-100 dark:border-red-800/50">
-                            <p className="text-[12px] text-red-800 dark:text-red-300 leading-relaxed">
-                              <span className="font-black uppercase text-[10px] mr-2">
-                                Rejected:
-                              </span>{" "}
-                              {d.rejection_notes}
-                            </p>
-                          </div>
-                        )}
+                        <div
+                          className={`rounded-2xl p-4 border ${
+                            d.verification_status ===
+                            VerificationStatus.REJECTED
+                              ? "bg-red-50/50 dark:bg-red-900/10 border-red-100 dark:border-red-900/30"
+                              : "bg-emerald-50/50 dark:bg-emerald-900/10 border-emerald-100 dark:border-emerald-900/30"
+                          }`}
+                        >
+                          <p
+                            className={`text-[12px] font-black uppercase tracking-widest flex items-center gap-2 mb-1 ${
+                              d.verification_status ===
+                              VerificationStatus.REJECTED
+                                ? "text-red-600"
+                                : "text-emerald-600"
+                            }`}
+                          >
+                            {d.verification_status ===
+                            VerificationStatus.REJECTED ? (
+                              <AlertCircle className="w-3.5 h-3.5" />
+                            ) : (
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                            )}
+                            {d.verification_status ===
+                            VerificationStatus.REJECTED
+                              ? "Rejection Reason"
+                              : "Validator Comment"}
+                          </p>
+                          <p
+                            className={`text-[13px] font-medium ${
+                              d.verification_status ===
+                              VerificationStatus.REJECTED
+                                ? "text-red-700 dark:text-red-400"
+                                : "text-emerald-700 dark:text-emerald-400"
+                            }`}
+                          >
+                            {d.verification_comment}
+                          </p>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -509,54 +517,263 @@ export default function ApplicationDetailPage() {
               </div>
             )}
 
-            {/* Quick-navigate Footer */}
-            {docs.length > 0 && pendingDocs === 0 && nextApp && (
-              <div className="p-6 bg-emerald-50/50 dark:bg-emerald-900/10 border-t border-emerald-100 dark:border-emerald-900/30 flex items-center justify-between">
-                <div>
-                  <p className="text-[14px] font-black text-emerald-800 dark:text-emerald-300">
-                    All documents reviewed!
-                  </p>
-                  <p className="text-[12px] text-emerald-600/80">
-                    Ready to proceed with {nextApp.first_name}{" "}
-                    {nextApp.last_name}?
-                  </p>
+            {docs.length > 0 &&
+              docs.filter((d: any) => d.verification_status === "pending")
+                .length === 0 &&
+              nextApp && (
+                <div className="p-6 bg-emerald-50/50 dark:bg-emerald-900/10 border-t border-emerald-100 dark:border-emerald-900/30 flex items-center justify-between">
+                  <div>
+                    <p className="text-[14px] font-black text-emerald-800 dark:text-emerald-300">
+                      All documents reviewed!
+                    </p>
+                    <p className="text-[12px] text-emerald-600/80">
+                      Ready to proceed with {nextApp.first_name}{" "}
+                      {nextApp.last_name}?
+                    </p>
+                  </div>
+                  <button
+                    className="btn-primary px-6 py-2.5 rounded-xl shadow-lg shadow-emerald-500/20"
+                    onClick={() =>
+                      navigate(`/admin/admissions/applications/${nextApp.id}`)
+                    }
+                  >
+                    Review Next <ChevronRight className="w-4 h-4" />
+                  </button>
                 </div>
+              )}
+          </section>
+        </div>
+
+        {/* RIGHT: Status History + Internal Notes + Financing */}
+        <div className="space-y-6">
+          {/* Status History */}
+          <section className="card p-6">
+            <SectionHeader title="Status History" sub="Progress tracking." />
+            <div className="mt-6 space-y-4">
+              {statusLog.length > 0 ? (
+                <div className="relative pl-4 space-y-6 before:absolute before:left-0 before:top-2 before:bottom-2 before:w-0.5 before:bg-ink-100 dark:before:bg-ink-800">
+                  {statusLog.map((l: any, idx: number) => (
+                    <div key={idx} className="relative">
+                      <div className="absolute -left-[19px] top-1.5 w-2.5 h-2.5 rounded-full bg-brand ring-4 ring-white dark:ring-ink-900" />
+                      <p className="text-[12.5px] font-bold text-ink-900 dark:text-white capitalize">
+                        {l.to_status.replace(/_/g, " ")}
+                        <span className="text-[11px] font-medium text-ink-400 ml-2">
+                          {l.actor_type}
+                        </span>
+                      </p>
+                      <p className="text-[11px] text-ink-400 mt-0.5">
+                        {new Date(l.created_at).toLocaleString()}
+                      </p>
+                      {l.notes && (
+                        <p className="text-[12px] text-ink-500 mt-1 italic">
+                          "{l.notes}"
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-[12px] text-ink-400 text-center py-4">
+                  No history available.
+                </p>
+              )}
+            </div>
+          </section>
+
+          {/* Financing */}
+          <section className="card p-6">
+            <SectionHeader title="Financing" sub="" />
+            <div className="mt-4 p-4 rounded-xl bg-ink-50 dark:bg-ink-800/40 border border-ink-100 dark:border-ink-700">
+              <p className="text-[11px] uppercase tracking-wider text-ink-400 font-bold">
+                Funding Source
+              </p>
+              <p className="text-[15px] font-bold text-ink-900 dark:text-white capitalize mt-0.5">
+                {app.sponsorship}
+              </p>
+              {app.sponsor_name && (
+                <p className="text-[13px] text-ink-600 dark:text-ink-300 mt-1">
+                  {app.sponsor_name}
+                </p>
+              )}
+            </div>
+          </section>
+
+          {/* Internal Notes */}
+          <section className="card p-6 border-brand/20 shadow-sm">
+            <SectionHeader
+              title="Internal Review Notes"
+              sub="Admin-only — never shown to the applicant."
+              icon={MessageSquarePlus}
+            />
+            <div className="mt-4 space-y-3">
+              <textarea
+                className="input min-h-[100px] text-[13px] bg-brand/5 focus:bg-white transition-colors"
+                placeholder="Admin-only notes…"
+                value={noteInput}
+                onChange={(e) => setNoteInput(e.target.value)}
+              />
+              <div className="flex justify-end">
                 <button
-                  className="btn-primary px-6 py-2.5 rounded-xl shadow-lg shadow-emerald-500/20"
+                  className="btn-primary"
                   onClick={() =>
-                    navigate(`/admin/admissions/applications/${nextApp.id}`)
+                    noteInput.trim() && addNote.mutate(noteInput.trim())
                   }
+                  disabled={!noteInput.trim() || addNote.isPending}
                 >
-                  Review Next Applicant <ChevronRight className="w-4 h-4" />
+                  {addNote.isPending && (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  )}
+                  Save Note
                 </button>
               </div>
-            )}
+              {app.internal_notes && (
+                <div className="rounded-xl bg-brand/5 p-4 text-[13px] leading-relaxed whitespace-pre-wrap text-ink-800 dark:text-ink-200 border border-brand/10">
+                  {app.internal_notes}
+                </div>
+              )}
+            </div>
           </section>
         </div>
       </div>
+
+      <DocumentPreviewModal
+        isOpen={isPreviewOpen}
+        onClose={() => setIsPreviewOpen(false)}
+        documents={docs}
+        initialIndex={previewIndex}
+        applicationId={appId}
+      />
+      <RequestChangesModal
+        isOpen={isRequestChangesOpen}
+        onClose={() => setIsRequestChangesOpen(false)}
+        applicationId={appId}
+        documents={docs}
+        onSuccess={requestChangesSuccess}
+      />
     </div>
   );
 }
 
-function Row({
+/* ── Shared sub-components ─────────────────────────────────────── */
+
+function SectionHeader({
+  title,
+  sub,
   icon: Icon,
-  k,
-  v,
 }: {
-  icon: any;
-  k: string;
-  v: React.ReactNode;
+  title: string;
+  sub: string;
+  icon?: any;
 }) {
   return (
-    <div className="flex items-start gap-2.5">
-      <Icon className="w-3.5 h-3.5 text-ink-400 mt-0.5 shrink-0" />
-      <div className="min-w-0">
-        <span className="text-ink-500">{k}: </span>
-        <span className="text-ink-800 dark:text-ink-100 font-medium break-words">
-          {v || "—"}
-        </span>
+    <div className="flex items-center gap-3 mb-1">
+      {Icon && (
+        <div className="w-8 h-8 rounded-xl bg-brand/10 flex items-center justify-center text-brand shrink-0">
+          <Icon className="w-4 h-4" />
+        </div>
+      )}
+      <div>
+        <h3 className="text-[15px] font-black text-ink-900 dark:text-white leading-tight">
+          {title}
+        </h3>
+        {sub && <p className="text-[12px] text-ink-500 mt-0.5">{sub}</p>}
       </div>
     </div>
   );
 }
 
+function DetailTile({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: any;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="p-4 rounded-2xl bg-ink-50/50 dark:bg-ink-800/30 border border-ink-100 dark:border-ink-700/50 flex items-center gap-3">
+      <div className="w-10 h-10 rounded-xl bg-white dark:bg-ink-800 flex items-center justify-center text-brand shadow-sm">
+        <Icon className="w-5 h-5" />
+      </div>
+      <div className="min-w-0">
+        <p className="text-[10px] uppercase tracking-wider text-ink-400 font-bold">
+          {label}
+        </p>
+        <p className="text-[13.5px] font-bold text-ink-800 dark:text-ink-100 truncate">
+          {value || "—"}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function InfoGroup({
+  label,
+  value,
+  icon: Icon,
+}: {
+  label: string;
+  value?: string | null;
+  icon?: any;
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[11px] uppercase tracking-wider text-ink-400 font-bold mb-1">
+        {label}
+      </p>
+      <div className="flex items-center gap-2">
+        {Icon && <Icon className="w-3.5 h-3.5 text-ink-300 shrink-0" />}
+        <p className="text-[14px] text-ink-900 dark:text-white font-medium truncate">
+          {value || "—"}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function StatusPill({ status }: { status: string }) {
+  if (!status) return null;
+  const isOffer = status.includes("offer");
+  const isVerified =
+    status === ApplicationStatus.DOCUMENTS_VERIFIED ||
+    status === ApplicationStatus.ENROLLED;
+  return (
+    <span
+      className={`px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-tight ${
+        isVerified
+          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20"
+          : isOffer
+            ? "bg-amber-100 text-amber-700 dark:bg-amber-900/20"
+            : "bg-brand/10 text-brand"
+      }`}
+    >
+      {status.replace(/_/g, " ")}
+    </span>
+  );
+}
+
+function DocStatusPill({ status }: { status: string }) {
+  const configs: Record<string, { cls: string; label: string }> = {
+    [VerificationStatus.VERIFIED]: {
+      cls: "text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20",
+      label: "Verified",
+    },
+    [VerificationStatus.REJECTED]: {
+      cls: "text-red-600 bg-red-50 dark:bg-red-900/20",
+      label: "Rejected",
+    },
+    [VerificationStatus.PENDING]: {
+      cls: "text-amber-600 bg-amber-50 dark:bg-amber-900/20",
+      label: "Pending",
+    },
+  };
+  const cfg = configs[status] ?? configs.pending;
+  return (
+    <span
+      className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-tight ${cfg.cls}`}
+    >
+      {cfg.label}
+    </span>
+  );
+}

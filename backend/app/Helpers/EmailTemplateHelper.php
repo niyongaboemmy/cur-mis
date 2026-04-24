@@ -117,25 +117,38 @@ class EmailTemplateHelper
     /**
      * Template: one or more documents rejected — applicant must re-upload.
      *
-     * @param array $rejectedDocs  Array of ['type_name' => '...', 'rejection_notes' => '...']
+     * @param array $rejectedDocs  Array of ['type_name' => '...', 'verification_comment' => '...']
      */
-    public static function documentsRejectedTemplate(string $name, string $appNumber, array $rejectedDocs): string
+    public static function documentsRejectedTemplate(string $name, string $appNumber, array $rejectedDocs, string $adminMessage = ''): string
     {
         $safeName = htmlspecialchars($name);
         $safeAppNumber = htmlspecialchars($appNumber);
+        $safeAdminMessage = htmlspecialchars($adminMessage);
 
         $list = '';
         foreach ($rejectedDocs as $doc) {
             $typeName = htmlspecialchars($doc['type_name'] ?? 'Document');
-            $notes = htmlspecialchars($doc['rejection_notes'] ?? 'Please re-upload.');
+            $notes = htmlspecialchars($doc['verification_comment'] ?? 'Please re-upload.');
             $list .= "<li style='margin-bottom:8px;'><strong>{$typeName}</strong>: {$notes}</li>";
+        }
+
+        $messageHtml = "";
+        if ($safeAdminMessage) {
+            $messageHtml = "
+                <div style='background-color: #fef2f2; border: 1px solid #fee2e2; border-radius: 12px; padding: 20px; margin: 24px 0; color: #991b1b;'>
+                    <p style='margin: 0 0 10px 0; font-weight: 700; text-transform: uppercase; font-size: 11px; tracking: 0.1em;'>Message from Admissions Office:</p>
+                    <p style='margin: 0; font-size: 15px; line-height: 1.5;'>$safeAdminMessage</p>
+                </div>
+            ";
         }
 
         $content = "
             Hello $safeName,<br><br>
             We have reviewed the documents for your application <strong>$safeAppNumber</strong>.
-            Unfortunately, the following document(s) could not be accepted:<br><br>
-            <ul style='color:#374151;line-height:1.8;'>$list</ul>
+            Unfortunately, some of your documents could not be accepted.
+            $messageHtml
+            <strong>Required Corrections:</strong>
+            <ul style='color:#374151;line-height:1.8; margin-top: 15px;'>$list</ul>
             Please log in to the application portal and re-upload the affected documents.
             Once all required documents are verified, your application will proceed to the next stage.
         ";

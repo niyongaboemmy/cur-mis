@@ -101,12 +101,26 @@ export const admissionRequirementService = {
  * ─────────────────────────────────────────────────────────────── */
 export const applicationAdminService = {
   list: (
-    params: { page?: number; per_page?: number; status?: ApplicationStatus; department_id?: number; intake?: string; q?: string } = {},
+    params: { page?: number; per_page?: number; status?: ApplicationStatus; department_id?: number; intake?: string; search?: string; q?: string } = {},
     signal?: AbortSignal,
-  ) => api.get<PaginatedResponse<StudentApplication>>('/api/admin/applications', params, signal),
+  ) => {
+    const { q, ...rest } = params;
+    return api.get<PaginatedResponse<StudentApplication>>('/api/admin/applications', { ...rest, search: q ?? rest.search }, signal);
+  },
+  
+  getStats: (signal?: AbortSignal) =>
+    api.get<{ 
+      by_status: any[]; 
+      by_intake: any[]; 
+      by_dept: any[];
+      by_gender: any[];
+      trend: any[];
+      recent: any[]; 
+      total: number 
+    }>('/api/admin/applications/stats', {}, signal),
 
   show: (id: number, signal?: AbortSignal) =>
-    api.get<StudentApplication & { documents?: ApplicationDocument[]; status_log?: ApplicationStatusLog[] }>(
+    api.get<{ application: StudentApplication; documents?: ApplicationDocument[]; status_log?: ApplicationStatusLog[] }>(
       `/api/admin/applications/${id}`, {}, signal,
     ),
 
@@ -126,10 +140,14 @@ export const verificationService = {
     api.get<PaginatedResponse<StudentApplication>>('/api/admin/verifications', {}, signal),
 
   getApplicationDocuments: (applicationId: number, signal?: AbortSignal) =>
-    api.get<ApplicationDocument[]>(`/api/admin/verifications/${applicationId}/documents`, {}, signal),
+    api.get<{ application: StudentApplication; documents: ApplicationDocument[] }>(`/api/admin/verifications/${applicationId}/documents`, {}, signal),
 
-  verifyDocument: (applicationId: number, documentId: number, data: { verification_status: 'verified' | 'rejected'; rejection_notes?: string }) =>
+  verifyDocument: (applicationId: number, documentId: number, data: { verification_status: 'verified' | 'rejected'; comment?: string }) =>
     api.patch<null>(`/api/admin/verifications/${applicationId}/documents/${documentId}`, data),
+
+  /** Request document changes (sends email for all rejected documents) */
+  requestDocumentChanges: (applicationId: number, data: { message?: string; document_ids?: number[] } = {}) =>
+    api.post<null>(`/api/admin/verifications/${applicationId}/request-changes`, data),
 
   /** Returns the raw file server URL/redirect */
   downloadUrl: (applicationId: number, documentId: number) => {

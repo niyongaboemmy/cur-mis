@@ -36,11 +36,12 @@ export default function VerificationsPage() {
                 <th>Program</th>
                 <th>Submitted</th>
                 <th>Doc status</th>
+                <th>Validation Progress</th>
                 <th className="text-right">Action</th>
               </tr>
             </thead>
             <tbody>
-              {apps.map((a) => (
+              {apps.map((a: any) => (
                 <tr key={a.id}>
                   <td className="font-mono text-[12px]">{a.application_number}</td>
                   <td>
@@ -48,11 +49,17 @@ export default function VerificationsPage() {
                     <p className="text-[11.5px] text-ink-500">{a.email}</p>
                   </td>
                   <td>{a.department_name ?? `#${a.department_id}`}</td>
-                  <td>{a.submitted_at ?? a.created_at}</td>
-                  <td><span className="chip-warning">{a.document_status}</span></td>
+                  <td>{a.submitted_at ? new Date(a.submitted_at).toLocaleDateString() : new Date(a.created_at).toLocaleDateString()}</td>
+                  <td><span className="chip-warning">{a.document_status.replace(/_/g, " ")}</span></td>
+                  <td>
+                    <div className="flex gap-2 text-[12px] font-medium">
+                        <span className="text-amber-600 bg-amber-50 dark:bg-amber-900/20 px-2 rounded">{a.pending_docs_count || 0} Pending</span>
+                        <span className="text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 px-2 rounded">{a.verified_docs_count || 0} Verified</span>
+                    </div>
+                  </td>
                   <td className="text-right">
-                    <Link to={`/admin/admissions/applications/${a.id}`} className="btn-primary btn-sm">
-                      Review <ChevronRight className="w-3 h-3" />
+                    <Link to={`/admin/admissions/verifications/${a.id}/validate`} className="btn-primary btn-sm">
+                      Start Validation <ChevronRight className="w-3 h-3" />
                     </Link>
                   </td>
                 </tr>
