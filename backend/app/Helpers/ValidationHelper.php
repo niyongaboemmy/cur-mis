@@ -77,8 +77,10 @@ class ValidationHelper
     private static function validateMin(mixed $value, int $min): ?string
     {
         if ($value === null) return null;
-        if (is_numeric($value)) {
-            if ((float)$value < $min) {
+        // Use numeric comparison only for PHP int/float (JSON numbers decoded by json_decode).
+        // String values — including numeric strings like OTPs — use string-length check.
+        if (is_int($value) || is_float($value)) {
+            if ($value < $min) {
                 return "The %s field must be at least {$min}.";
             }
         } else {
@@ -92,8 +94,8 @@ class ValidationHelper
     private static function validateMax(mixed $value, int $max): ?string
     {
         if ($value === null) return null;
-        if (is_numeric($value)) {
-            if ((float)$value > $max) {
+        if (is_int($value) || is_float($value)) {
+            if ($value > $max) {
                 return "The %s field must not exceed {$max}.";
             }
         } else {
