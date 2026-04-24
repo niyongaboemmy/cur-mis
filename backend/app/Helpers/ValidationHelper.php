@@ -134,7 +134,7 @@ class ValidationHelper
     private static function validateIn(mixed $value, array $allowed): ?string
     {
         if ($value === null) return null;
-        if (!in_array($value, $allowed, true)) {
+        if (!in_array((string)$value, $allowed, true)) {
             return 'The %s field must be one of: ' . implode(', ', $allowed) . '.';
         }
         return null;

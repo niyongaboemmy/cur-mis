@@ -38,6 +38,14 @@ const IntakesManagementPage     = lazy(() => import('@/pages/admin/admissions/In
 const ApplicantOverviewPage   = lazy(() => import('@/pages/applicant/ApplicantOverviewPage'))
 const ApplicantDocumentsPage  = lazy(() => import('@/pages/applicant/ApplicantDocumentsPage'))
 
+// Modules Management Module
+const ModulesHub                   = lazy(() => import('@/pages/modules/ModulesHub'))
+const ModulesCatalogPage           = lazy(() => import('@/pages/modules/ModulesCatalogPage'))
+const ModulesSchedulePage          = lazy(() => import('@/pages/modules/ModulesSchedulePage'))
+const ModulesAssignmentsPage       = lazy(() => import('@/pages/modules/ModulesAssignmentsPage'))
+const ModulesRegistrationAdminPage = lazy(() => import('@/pages/modules/ModulesRegistrationAdminPage'))
+const MyRegistrationsPage          = lazy(() => import('@/pages/modules/MyRegistrationsPage'))
+
 // Placeholders still in use for modules not yet wired up
 const ProgramsPage   = lazy(() => import('@/pages/placeholders/ProgramsPage'))
 const FinancePage    = lazy(() => import('@/pages/placeholders/FinancePage'))
@@ -121,6 +129,27 @@ function App() {
               <Route element={<ProtectedRoute requiredPermissions={[PERMISSIONS.ACCESS_APPLICANT_PORTAL]} />}>
                 <Route path="/applicant"           element={<ApplicantOverviewPage />} />
                 <Route path="/applicant/documents" element={<ApplicantDocumentsPage />} />
+              </Route>
+
+              {/* Modules Management Module */}
+              <Route element={<ProtectedRoute requiredPermissions={[
+                PERMISSIONS.MANAGE_MODULES,
+                PERMISSIONS.MANAGE_MODULE_SCHEDULES,
+                PERMISSIONS.MANAGE_MODULE_ASSIGNMENTS,
+                PERMISSIONS.MANAGE_MODULE_REGISTRATIONS,
+              ]} />}>
+                <Route path="/modules" element={<ModulesHub />}>
+                  <Route index                  element={<ModulesCatalogPage />} />
+                  <Route path="catalog"         element={<ModulesCatalogPage />} />
+                  <Route path="scheduling"      element={<ModulesSchedulePage />} />
+                  <Route path="assignments"     element={<ModulesAssignmentsPage />} />
+                  <Route path="registrations"   element={<ModulesRegistrationAdminPage />} />
+                </Route>
+              </Route>
+
+              {/* Student self-service — My modules */}
+              <Route element={<ProtectedRoute requiredPermissions={PERMISSIONS.VIEW_MY_MODULES} />}>
+                <Route path="/my-modules" element={<MyRegistrationsPage />} />
               </Route>
 
               <Route element={<ProtectedRoute requiredPermissions={PERMISSIONS.MANAGE_ACADEMICS} />}>

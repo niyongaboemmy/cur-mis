@@ -28,6 +28,12 @@ class Permissions
     public const MANAGE_MODULES      = 'MANAGE_MODULES';
     public const MANAGE_SCHOOLS      = 'MANAGE_SCHOOLS';
 
+    // Modules Management Module
+    public const MANAGE_MODULE_SCHEDULES     = 'MANAGE_MODULE_SCHEDULES';
+    public const MANAGE_MODULE_ASSIGNMENTS   = 'MANAGE_MODULE_ASSIGNMENTS';
+    public const MANAGE_MODULE_REGISTRATIONS = 'MANAGE_MODULE_REGISTRATIONS';
+    public const VIEW_MY_MODULES             = 'VIEW_MY_MODULES';
+
     // HR Management
     public const VIEW_HR_EMPLOYEES   = 'VIEW_HR_EMPLOYEES';
     public const MANAGE_HR_EMPLOYEES = 'MANAGE_HR_EMPLOYEES';
@@ -68,6 +74,10 @@ class Permissions
             self::MANAGE_LEVELS,
             self::MANAGE_MODULES,
             self::MANAGE_SCHOOLS,
+            self::MANAGE_MODULE_SCHEDULES,
+            self::MANAGE_MODULE_ASSIGNMENTS,
+            self::MANAGE_MODULE_REGISTRATIONS,
+            self::VIEW_MY_MODULES,
             self::VIEW_HR_EMPLOYEES,
             self::MANAGE_HR_EMPLOYEES,
             self::MANAGE_LEAVE_TYPES,
