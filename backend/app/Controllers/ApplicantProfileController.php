@@ -193,18 +193,23 @@ class ApplicantProfileController extends BaseController
      */
     public function draftApplication(Request $request, Response $response): never
     {
-        $profile = $request->param('_applicant_profile');
+        $profile   = $request->param('_applicant_profile');
         $profileId = (int)$profile['id'];
+        $authUser  = $request->param('_auth_user');
 
-        // Allow multiple applications. We still link the MOST RECENT one to the profile for legacy single-app logic,
-        // but we return the list in getApplications.
+        $data   = $request->body();
+        $errors = ValidationHelper::validate($data, [
+            'faculty_id'    => 'required|numeric',
+            'department_id' => 'required|numeric',
+            'intake'        => 'required|string',
+        ]);
 
         if (!empty($errors)) {
             $this->error($response, 'Validation failed.', 422, $errors);
         }
 
         try {
-            $activeYear = $this->service->getActiveAcademicYear();
+            $activeYear     = $this->service->getActiveAcademicYear();
             $academicYearId = (int)$activeYear['id'];
         } catch (\RuntimeException $e) {
             $this->error($response, $e->getMessage(), 503);
@@ -212,8 +217,8 @@ class ApplicantProfileController extends BaseController
 
         // Duplicate check: Prevent multiple applications for the same faculty + intake + academic year
         $existing = $this->db->fetchOne(
-            "SELECT id FROM `student_applications` 
-             WHERE email = ? AND faculty_id = ? AND intake = ? AND academic_year_id = ? 
+            "SELECT id FROM `student_applications`
+             WHERE email = ? AND faculty_id = ? AND intake = ? AND academic_year_id = ?
              AND status NOT IN ('withdrawn', 'offer_declined') LIMIT 1",
             [$authUser['email'] ?? '', (int)$data['faculty_id'], $data['intake'], $academicYearId]
         );
@@ -223,11 +228,10 @@ class ApplicantProfileController extends BaseController
         }
 
         $appNumber = $this->service->generateApplicationNumber();
-        $authUser = $request->param('_auth_user');
 
         // Create draft application
-        $fullName = $authUser['full_name'] ?? '';
-        $nameParts = explode(' ', $fullName);
+        $fullName  = $authUser['full_name'] ?? '';
+        $nameParts = explode(' ', trim($fullName));
         $firstName = $nameParts[0] ?? 'Applicant';
         $lastName  = count($nameParts) > 1 ? implode(' ', array_slice($nameParts, 1)) : 'User';
 
@@ -459,6 +463,7 @@ class ApplicantProfileController extends BaseController
                 'file_original_name'  => $doc['file_original_name'],
                 'file_size'           => $doc['file_size'],
                 'verification_status' => $doc['verification_status'],
+                'file_mime'           => $doc['file_mime'],
                 'uploaded_at'         => $doc['uploaded_at'],
                 'rejection_notes'     => $doc['rejection_notes'],
             ];
@@ -480,6 +485,7 @@ class ApplicantProfileController extends BaseController
                 'verification_status' => $uploaded['verification_status'] ?? null,
                 'uploaded_at'         => $uploaded['uploaded_at']         ?? null,
                 'rejection_notes'     => $uploaded['rejection_notes']     ?? null,
+                'file_mime'           => $uploaded['file_mime']           ?? null,
             ];
         }, $requirements);
 
@@ -491,6 +497,10 @@ class ApplicantProfileController extends BaseController
              ORDER BY id ASC",
             [$appId]
         );
+
+        // Fetch offer if exists
+        $offerModel = new \App\Models\AdmissionOfferModel();
+        $offer = $offerModel->findByApplicationId($appId);
 
         $this->success($response, [
             'id'                 => $application['id'],
@@ -505,6 +515,7 @@ class ApplicantProfileController extends BaseController
             'merit_score'        => $application['merit_score'],
             'merit_rank'         => $application['merit_rank'],
             'submitted_at'       => $application['submitted_at'],
+            'offer'              => $offer,
             // Add other fields for editing
             'first_name'         => $application['first_name'],
             'last_name'          => $application['last_name'],
@@ -770,8 +781,9 @@ class ApplicantProfileController extends BaseController
      */
     public function uploadDocument(Request $request, Response $response): never
     {
-        $profile = $request->param('_applicant_profile');
-        $appId   = (int)$profile['application_id'];
+        $profile   = $request->param('_applicant_profile');
+        $profileId = (int)$profile['id'];
+        $appId     = (int)$profile['application_id'];
 
         $application = $this->appModel->find($appId);
         if (!$application) {
@@ -895,6 +907,77 @@ class ApplicantProfileController extends BaseController
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
+     * POST /api/applicant/application/:id/respond
+     * Accept or decline an admission offer.
+     */
+    public function respondToOffer(Request $request, Response $response): never
+    {
+        $appId = (int)$request->param('id');
+        $data  = $request->body();
+        $profile = $request->param('_applicant_profile');
+
+        $application = $this->appModel->find($appId);
+        if (!$application) {
+            $this->error($response, 'Application not found.', 404);
+        }
+
+        // Security: Ensure it belongs to the logged-in user
+        $authUser = $request->param('_auth_user');
+        if ($application['email'] !== $authUser['email']) {
+            $this->error($response, 'Unauthorized.', 403);
+        }
+
+        if ($application['status'] !== 'offered') {
+            $this->error($response, 'No active offer found for this application.', 422);
+        }
+
+        $errors = ValidationHelper::validate($data, [
+            'response' => 'required|in:accepted,declined',
+        ]);
+        if (!empty($errors)) {
+            $this->error($response, 'Validation failed.', 422, $errors);
+        }
+
+        $offer = (new \App\Models\AdmissionOfferModel())->findByApplicationId($appId);
+        if (!$offer) {
+            $this->error($response, 'Offer record not found.', 404);
+        }
+
+        if (strtotime($offer['expires_at']) < strtotime(date('Y-m-d'))) {
+            (new \App\Models\AdmissionOfferModel())->update((int)$offer['id'], ['status' => 'expired']);
+            $this->error($response, 'This offer has expired. Please contact the admissions office.', 422);
+        }
+
+        $action    = $data['response'];
+        $newStatus = $action === 'accepted' ? 'offer_accepted' : 'offer_declined';
+        $from      = $application['status'];
+
+        (new \App\Models\AdmissionOfferModel())->update((int)$offer['id'], [
+            'status'         => $action === 'accepted' ? 'accepted' : 'declined',
+            'responded_at'   => date('Y-m-d H:i:s'),
+            'response_notes' => $data['notes'] ?? null,
+        ]);
+
+        $this->appModel->update($appId, ['status' => $newStatus]);
+        $this->service->logStatusChange(
+            $appId, $from, $newStatus, null,
+            'applicant', "Applicant responded via portal: {$action}."
+        );
+
+        if ($action === 'accepted') {
+            // Fetch department name for email
+            $dept = $this->db->fetchOne("SELECT dep_name FROM `departements` WHERE dep_id = ?", [(int)$application['department_id']]);
+            $this->service->sendApplicationEmail('offer_accepted', [
+                'first_name' => $application['first_name'],
+                'last_name'  => $application['last_name'],
+                'email'      => $application['email'],
+            ], ['program_name' => $dept['dep_name'] ?? 'your selected program']);
+        }
+
+        $this->success($response, ['status' => $newStatus], 'Your response has been recorded successfully.');
+    }
+
+    /**
      * Format a raw profile row for API output — separating profile fields
      * from the joined application / user fields for clarity.
      */
@@ -964,10 +1047,18 @@ class ApplicantProfileController extends BaseController
             $this->error($response, $e->getMessage(), 502);
         }
 
-        header('Content-Type: ' . $fileData['mime']);
-        header('Content-Disposition: attachment; filename="' . addslashes($fileData['original_name']) . '"');
+        $mime = $fileData['mime'] ?? 'application/octet-stream';
+
+        // Use 'inline' so images and PDFs render inside browser preview / iframe.
+        // For other file types, fall back to 'attachment' (force download).
+        $isInlineable = str_starts_with($mime, 'image/') || $mime === 'application/pdf';
+        $disposition  = $isInlineable ? 'inline' : 'attachment';
+
+        header('Content-Type: ' . $mime);
+        header('Content-Disposition: ' . $disposition . '; filename="' . addslashes($fileData['original_name']) . '"');
         header('Content-Length: ' . strlen($fileData['content']));
         header('Cache-Control: private, no-store');
+        header('X-Content-Type-Options: nosniff');
 
         echo $fileData['content'];
         exit;

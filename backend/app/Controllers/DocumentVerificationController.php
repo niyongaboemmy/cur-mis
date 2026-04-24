@@ -189,10 +189,16 @@ class DocumentVerificationController extends BaseController
             $this->error($response, $e->getMessage(), 502);
         }
 
-        header('Content-Type: ' . $fileData['mime']);
-        header('Content-Disposition: attachment; filename="' . addslashes($fileData['original_name']) . '"');
+        $mime = $fileData['mime'] ?? 'application/octet-stream';
+
+        $isInlineable = str_starts_with($mime, 'image/') || $mime === 'application/pdf';
+        $disposition  = $isInlineable ? 'inline' : 'attachment';
+
+        header('Content-Type: ' . $mime);
+        header('Content-Disposition: ' . $disposition . '; filename="' . addslashes($fileData['original_name']) . '"');
         header('Content-Length: ' . strlen($fileData['content']));
         header('Cache-Control: private, no-store');
+        header('X-Content-Type-Options: nosniff');
 
         echo $fileData['content'];
         exit;

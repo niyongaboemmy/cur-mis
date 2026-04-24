@@ -48,6 +48,7 @@ $router->group('/api/applicant', function ($router) {
     $router->get('/application',      [ApplicantProfileController::class, 'getApplication']);
     $router->get('/application/:id',  [ApplicantProfileController::class, 'getApplicationDetails']);
     $router->put('/application/:id',  [ApplicantProfileController::class, 'updateApplication']);
+    $router->post('/application/:id/respond', [ApplicantProfileController::class, 'respondToOffer']);
 
     // ── Academic records ──────────────────────────────────────────────────────
     $router->get('/academic-records',                        [ApplicantProfileController::class, 'listAcademicRecords']);

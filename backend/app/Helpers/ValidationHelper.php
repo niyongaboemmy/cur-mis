@@ -77,9 +77,14 @@ class ValidationHelper
     private static function validateMin(mixed $value, int $min): ?string
     {
         if ($value === null) return null;
-        $len = is_string($value) ? mb_strlen($value) : (int)$value;
-        if ($len < $min) {
-            return "The %s field must be at least {$min} characters.";
+        if (is_numeric($value)) {
+            if ((float)$value < $min) {
+                return "The %s field must be at least {$min}.";
+            }
+        } else {
+            if (mb_strlen((string)$value) < $min) {
+                return "The %s field must be at least {$min} characters.";
+            }
         }
         return null;
     }
@@ -87,9 +92,14 @@ class ValidationHelper
     private static function validateMax(mixed $value, int $max): ?string
     {
         if ($value === null) return null;
-        $len = is_string($value) ? mb_strlen($value) : (int)$value;
-        if ($len > $max) {
-            return "The %s field must not exceed {$max} characters.";
+        if (is_numeric($value)) {
+            if ((float)$value > $max) {
+                return "The %s field must not exceed {$max}.";
+            }
+        } else {
+            if (mb_strlen((string)$value) > $max) {
+                return "The %s field must not exceed {$max} characters.";
+            }
         }
         return null;
     }

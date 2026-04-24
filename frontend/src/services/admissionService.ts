@@ -1,4 +1,5 @@
 import { api } from '@/services/api'
+import { useAuthStore } from '@/store/authStore'
 import type { PaginatedResponse } from '@/types'
 import type {
   Faculty, PortalDepartment, DocumentType, AdmissionRequirement,
@@ -131,8 +132,11 @@ export const verificationService = {
     api.patch<null>(`/api/admin/verifications/${applicationId}/documents/${documentId}`, data),
 
   /** Returns the raw file server URL/redirect */
-  downloadUrl: (applicationId: number, documentId: number) =>
-    `${import.meta.env.VITE_API_URL ?? ''}/api/admin/verifications/${applicationId}/documents/${documentId}/download`,
+  downloadUrl: (applicationId: number, documentId: number) => {
+    const token = useAuthStore.getState().token;
+    const base = import.meta.env.VITE_API_URL ?? "";
+    return `${base}/api/admin/verifications/${applicationId}/documents/${documentId}/download?token=${token}`;
+  },
 }
 
 /* ───────────────────────────────────────────────────────────────
@@ -255,8 +259,14 @@ export const applicantService = {
   deleteDocument: (id: number) =>
     api.delete<null>(`/api/applicant/documents/${id}`),
 
-  downloadUrl: (id: number) =>
-    `${import.meta.env.VITE_API_URL ?? ''}/api/applicant/documents/${id}/download`,
+  downloadUrl: (id: number) => {
+    const token = useAuthStore.getState().token;
+    const base = import.meta.env.VITE_API_URL ?? "";
+    return `${base}/api/applicant/documents/${id}/download?token=${token}`;
+  },
+
+  respondToOffer: (id: number, data: { response: 'accepted' | 'declined'; notes?: string }) =>
+    api.post<{ status: string }>(`/api/applicant/application/${id}/respond`, data),
 }
 
 /* ───────────────────────────────────────────────────────────────

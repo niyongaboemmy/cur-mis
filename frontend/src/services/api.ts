@@ -1,4 +1,5 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios'
+import toast from 'react-hot-toast'
 import { useAuthStore } from '@/store/authStore'
 import { API_TIMEOUT } from '@/constants'
 import { ApiResponse } from '@/types'
@@ -34,14 +35,12 @@ apiClient.interceptors.response.use(
                        error.config?.url?.includes('/auth/me'); // Don't reload on first /me failure
 
     if (error.response?.status === 401 && !isAuthPath) {
-      // Only clear and reload if we are truly unauthenticated on a protected route
       useAuthStore.getState().logout()
-      
-      // Build the login path respecting the subfolder base (e.g. /umsTest/login)
       const base      = (import.meta.env.VITE_BASE_PATH ?? '').replace(/\/$/, '')
       const loginPath = `${base}/login`
       if (!window.location.pathname.startsWith(loginPath)) {
-        window.location.href = loginPath
+        toast.error('Your session has expired. Please log in again.')
+        setTimeout(() => { window.location.href = loginPath }, 1500)
       }
     }
     return Promise.reject(error)
@@ -67,13 +66,12 @@ export const api = {
     apiClient.delete<ApiResponse<T>>(url, { signal }).then((r) => r.data),
 
   /** Multipart POST — pass a FormData body. Axios sets the correct
-   *  `multipart/form-data` boundary automatically when we leave Content-Type
-   *  unset here (overrides the client default of application/json). */
+   *  `multipart/form-data; boundary=...` automatically when Content-Type is omitted. */
   upload: <T>(url: string, form: FormData, signal?: AbortSignal) =>
     apiClient
       .post<ApiResponse<T>>(url, form, {
         signal,
-        headers: { 'Content-Type': 'multipart/form-data' },
+        headers: { 'Content-Type': undefined },
       })
       .then((r) => r.data),
 };

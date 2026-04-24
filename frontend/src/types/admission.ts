@@ -183,7 +183,15 @@ export interface AdmissionOffer {
   enrolled_at?:           string | null
   /* Enriched */
   applicant_name?:        string
-  department_name?:       string
+  first_name:             string
+  last_name:              string
+  email:                  string
+  phone?:                 string
+  department_name:        string
+  department_code?:       string
+  application_number:     string
+  application_status?:    string
+  intake?:                string
 }
 
 /* ── Applicant self-service ──────────────────────────────────────── */
