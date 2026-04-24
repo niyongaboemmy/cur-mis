@@ -29,6 +29,7 @@ export default function RequirementsPage() {
         faculty_id: Number(facultyId),
         academic_year_id: Number(yearId),
         ...d,
+        is_required: Boolean(d.is_required),
       }),
     onSuccess: () => { toast.success('Requirement added'); qc.invalidateQueries({ queryKey: ['admin', 'requirements'] }) },
     onError:   (e: any) => toast.error(e?.response?.data?.message ?? 'Failed'),

@@ -13,7 +13,7 @@ class AuthMiddleware
 {
     public function handle(Request $request, Response $response): void
     {
-        $token = $request->bearerToken();
+        $token = $request->bearerToken() ?? $request->query('token');
 
         if (!$token) {
             ResponseHelper::json(['success' => false, 'message' => 'Unauthorized. No token provided.'], 401);

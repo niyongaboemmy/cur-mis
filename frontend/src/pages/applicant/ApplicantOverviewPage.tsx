@@ -4,11 +4,14 @@ import toast from "react-hot-toast";
 import {
   Loader2,
   GraduationCap,
-  ArrowRight,
   FileText,
   CheckCircle2,
   AlertCircle,
   UploadCloud,
+  Clock,
+  Award,
+  ChevronRight,
+  Plus,
 } from "lucide-react";
 import { applicantService } from "@/services/admissionService";
 import Modal from "@/components/ui/Modal";
@@ -16,6 +19,7 @@ import VerificationStep from "@/components/admission/VerificationStep";
 import { Field } from "@/components/applicant/ApplicantPortalShared";
 import ApplicationDetailsView from "@/components/applicant/ApplicationDetailsView";
 import DocumentsUploader from "@/components/ui/DocumentsUploader";
+import AdmissionLetter from "@/components/admission/AdmissionLetter";
 
 export default function ApplicantOverviewPage() {
   const qc = useQueryClient();
@@ -73,77 +77,108 @@ export default function ApplicantOverviewPage() {
       </div>
     );
 
-  const selectedApp = selectedId
-    ? apps.find((a) => a.id === selectedId)
-    : apps[0];
+  const selectedApp = selectedId ? apps.find((a) => a.id === selectedId) : null;
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8 pb-12">
-      {/* 1. Group Cards Listing */}
-      <div className="space-y-3">
-        <h3 className="text-[12px] uppercase tracking-widest font-black text-ink-400 px-1 flex items-center gap-2">
-          <div className="w-4 h-1 bg-primary-500 rounded-full" /> My
-          Applications ({apps.length})
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+    <div className="max-w-7xl mx-auto space-y-8 pb-12">
+      {/* 1. Vertical List Listing */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between px-1">
+          <h3 className="text-[12px] uppercase tracking-widest font-black text-ink-400 flex items-center gap-2">
+            <div className="w-4 h-1 bg-primary-500 rounded-full" /> My
+            Applications ({apps.length})
+          </h3>
+          <a
+            href="/apply"
+            className="text-[12px] font-bold text-primary-600 hover:underline flex items-center gap-1"
+          >
+            <Plus className="w-3 h-3" /> New Application
+          </a>
+        </div>
+        <div className="space-y-3">
           {apps.map((a) => (
-            <ApplicationCard
+            <ApplicationListItem
               key={a.id}
               app={a}
-              active={selectedApp?.id === a.id}
               onSelect={() => setSelectedId(a.id)}
             />
           ))}
         </div>
       </div>
 
-      {/* 2. Focused View */}
-      {selectedApp && <ApplicationView app={selectedApp} />}
+      {/* 2. Modal View */}
+      {selectedApp && (
+        <Modal
+          open={!!selectedApp}
+          onClose={() => setSelectedId(null)}
+          title={`Application Details: ${selectedApp.application_number}`}
+          size="full"
+        >
+          <div className="p-1">
+            <ApplicationView app={selectedApp} />
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
 
-function ApplicationCard({
+function ApplicationListItem({
   app,
-  active,
   onSelect,
 }: {
   app: any;
-  active: boolean;
   onSelect: () => void;
 }) {
   const isDraft = app.status === "draft";
+  const isOffered = app.status === "offered";
 
   return (
     <button
       onClick={onSelect}
-      className={`relative w-full text-left p-5 rounded-3xl border-2 transition-all group overflow-hidden ${active ? "bg-white dark:bg-ink-800 border-primary-500 shadow-xl shadow-primary-500/10" : "bg-white dark:bg-ink-800 border-ink-100 dark:border-ink-700 hover:border-primary-200 dark:hover:border-primary-800"}`}
+      className="relative w-full text-left p-4 sm:p-5 rounded-2xl border border-ink-100 dark:border-ink-800 bg-white dark:bg-ink-900 hover:border-primary-300 dark:hover:border-primary-700 transition-all group flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6"
     >
-      {active && (
-        <div className="absolute top-0 right-0 p-3">
-          <CheckCircle2 className="w-4 h-4 text-primary-500" />
+      {isOffered && (
+        <div className="absolute -top-1 -right-1 z-10">
+          <div className="bg-amber-500 text-white text-[9px] font-black uppercase px-2 py-0.5 rounded-bl-lg shadow-sm animate-pulse">
+            New Offer
+          </div>
         </div>
       )}
 
-      <p className="text-[11px] font-bold text-ink-400 uppercase tracking-wider mb-2">
-        {app.application_number}
-      </p>
-      <h4 className="text-[16px] font-black text-ink-900 dark:text-white truncate mb-1">
-        {app.department_name}
-      </h4>
-      <p className="text-[13px] text-ink-500 truncate mb-4">
-        {app.faculty_name}
-      </p>
+      <div className="w-12 h-12 rounded-xl bg-primary-50 dark:bg-primary-900/30 flex items-center justify-center text-primary-600 shrink-0 group-hover:scale-110 transition-transform">
+        <GraduationCap className="w-6 h-6" />
+      </div>
 
-      <div className="flex items-center justify-between mt-auto pt-4 border-t border-ink-50 dark:border-ink-800">
-        <span
-          className={`text-[11px] font-bold px-2.5 py-1 rounded-lg uppercase tracking-tight ${isDraft ? "bg-amber-50 text-amber-600 dark:bg-amber-900/20" : "bg-primary-50 text-primary-700 dark:bg-primary-900/20"}`}
-        >
-          {app.status}
-        </span>
-        <div className="flex items-center gap-1 text-[12px] font-bold text-primary-600 opacity-0 group-hover:opacity-100 transition-opacity">
-          View <ArrowRight className="w-3.5 h-3.5" />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-0.5">
+          <span className="text-[11px] font-bold text-ink-400 uppercase tracking-wider">
+            {app.application_number}
+          </span>
+          <span className="w-1 h-1 rounded-full bg-ink-200" />
+          <span className="text-[11px] font-medium text-ink-400">
+            Applied {new Date(app.created_at).toLocaleDateString()}
+          </span>
         </div>
+        <h4 className="text-[16px] font-black text-ink-900 dark:text-white truncate">
+          {app.department_name}
+        </h4>
+        <p className="text-[13px] text-ink-500 truncate">{app.faculty_name}</p>
+      </div>
+
+      <div className="flex items-center justify-between sm:justify-end gap-4 shrink-0 mt-2 sm:mt-0 pt-3 sm:pt-0 border-t sm:border-0 border-ink-50 dark:border-ink-800">
+        <span
+          className={`text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest ${
+            isDraft
+              ? "bg-amber-50 text-amber-600 dark:bg-amber-900/20"
+              : isOffered
+                ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20"
+                : "bg-primary-50 text-primary-700 dark:bg-primary-900/20"
+          }`}
+        >
+          {app.status.replace(/_/g, " ")}
+        </span>
+        <ChevronRight className="w-4 h-4 text-ink-300 group-hover:text-primary-500 group-hover:translate-x-1 transition-all hidden sm:block" />
       </div>
     </button>
   );
@@ -153,8 +188,44 @@ function ApplicationView({ app }: { app: any }) {
   const [editing, setEditing] = useState(false);
   const qc = useQueryClient();
 
+  const detailsQ = useQuery({
+    queryKey: ["applicant", "application", app.id],
+    queryFn: () => applicantService.getApplicationDetails(app.id),
+  });
+  const details = detailsQ.data?.data;
+
   return (
-    <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="animate-in fade-in slide-in-from-bottom-2 duration-400 space-y-6">
+      {/* Offer Banner */}
+      {app.status === "offered" && details && (
+        <AdmissionOfferBanner
+          app={app}
+          details={details}
+          onRespond={() =>
+            qc.invalidateQueries({ queryKey: ["applicant", "applications"] })
+          }
+        />
+      )}
+
+      {/* Accepted Confirmation */}
+      {app.status === "offer_accepted" && (
+        <div className="p-6 bg-emerald-50 border-emerald-200 dark:bg-emerald-900/10 dark:border-emerald-900/50 rounded-2xl flex flex-col sm:flex-row items-center gap-6">
+          <div className="w-14 h-14 rounded-full bg-emerald-100 dark:bg-emerald-800 flex items-center justify-center shrink-0">
+            <CheckCircle2 className="w-7 h-7 text-emerald-600" />
+          </div>
+          <div className="text-center sm:text-left">
+            <h3 className="text-lg font-black text-emerald-900 dark:text-emerald-100 uppercase tracking-tight">
+              Admission Confirmed!
+            </h3>
+            <p className="text-[13px] text-emerald-800 dark:text-emerald-300 mt-1 leading-relaxed">
+              Congratulations! You have accepted the admission offer. Our
+              admissions team is now finalizing your enrollment. You will
+              receive your Student Registration Number via email shortly.
+            </p>
+          </div>
+        </div>
+      )}
+
       <ApplicationDetailsView
         application={app}
         onEdit={() => setEditing(true)}
@@ -174,6 +245,155 @@ function ApplicationView({ app }: { app: any }) {
         />
       )}
     </div>
+  );
+}
+
+function AdmissionOfferBanner({
+  app,
+  details,
+  onRespond,
+}: {
+  app: any;
+  details: any;
+  onRespond: () => void;
+}) {
+  const [viewingLetter, setViewingLetter] = useState(false);
+  const [responding, setResponding] = useState<"accepted" | "declined" | null>(
+    null,
+  );
+
+  const respond = useMutation({
+    mutationFn: (response: "accepted" | "declined") =>
+      applicantService.respondToOffer(app.id, { response }),
+    onSuccess: () => {
+      toast.success(
+        responding === "accepted"
+          ? "Admission Accepted! Welcome aboard."
+          : "Response recorded.",
+      );
+      setResponding(null);
+      onRespond();
+    },
+    onError: (e: any) =>
+      toast.error(e?.response?.data?.message ?? "Response failed"),
+  });
+
+  return (
+    <section className="card p-0 overflow-hidden border-2 border-amber-500 shadow-2xl shadow-amber-500/10 ring-4 ring-amber-500/5">
+      <div className="bg-gradient-to-r from-amber-500 to-amber-600 p-6 text-white flex flex-col md:flex-row items-center gap-6">
+        <div className="w-20 h-20 rounded-3xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0 border border-white/30 rotate-3 shadow-lg">
+          <Award className="w-10 h-10 text-white" />
+        </div>
+        <div className="flex-1 text-center md:text-left">
+          <p className="text-[12px] font-black uppercase tracking-[0.2em] opacity-80 leading-none mb-2">
+            Congratulations
+          </p>
+          <h2 className="text-2xl md:text-3xl font-black tracking-tight leading-tight">
+            You're Admitted!
+          </h2>
+          <p className="text-[14px] font-medium opacity-90 mt-1 max-w-lg">
+            We are pleased to offer you admission to the{" "}
+            <span className="font-bold underline decoration-white/30 underline-offset-4">
+              {app.department_name}
+            </span>{" "}
+            program. Please review your offer letter below.
+          </p>
+        </div>
+        <div className="flex flex-col gap-3 shrink-0">
+          <button
+            className="btn-white px-8 py-3 rounded-2xl font-black uppercase tracking-widest text-[12px] shadow-xl shadow-black/10 hover:-translate-y-0.5 transition-transform"
+            onClick={() => setViewingLetter(true)}
+          >
+            <FileText className="w-4 h-4 mr-2" /> View Offer Letter
+          </button>
+        </div>
+      </div>
+
+      <div className="p-6 bg-amber-50 dark:bg-amber-900/10 flex flex-col sm:flex-row items-center justify-between gap-6 border-t border-amber-200 dark:border-amber-900/50">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 text-[13px] font-bold text-amber-800 dark:text-amber-200">
+            <Clock className="w-4 h-4" /> Expires:{" "}
+            {new Date(details.offer?.expires_at).toLocaleDateString()}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            className="px-6 py-2.5 text-[13px] font-black uppercase tracking-widest text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors"
+            onClick={() => setResponding("declined")}
+            disabled={respond.isPending}
+          >
+            Decline
+          </button>
+          <button
+            className="btn-primary px-8 py-3 rounded-xl font-black uppercase tracking-widest text-[13px] shadow-lg shadow-primary-500/20"
+            onClick={() => setResponding("accepted")}
+            disabled={respond.isPending}
+          >
+            Accept Admission
+          </button>
+        </div>
+      </div>
+
+      {/* View Letter Modal */}
+      <Modal
+        open={viewingLetter}
+        onClose={() => setViewingLetter(false)}
+        title="Admission Letter"
+        size="lg"
+      >
+        <div className="bg-slate-100 p-8 rounded-2xl overflow-y-auto max-h-[70vh]">
+          {details.offer && (
+            <AdmissionLetter
+              offer={{
+                ...details.offer,
+                first_name: app.first_name,
+                last_name: app.last_name,
+                email: app.email,
+                application_number: app.application_number,
+                department_name: app.department_name,
+                offered_at: new Date().toISOString(), // Fallback
+              }}
+            />
+          )}
+        </div>
+      </Modal>
+
+      {/* Confirmation Modal */}
+      <Modal
+        open={!!responding}
+        onClose={() => setResponding(null)}
+        title={responding === "accepted" ? "Accept Admission" : "Decline Offer"}
+        footer={
+          <>
+            <button
+              className="btn-secondary"
+              onClick={() => setResponding(null)}
+            >
+              Cancel
+            </button>
+            <button
+              className={`btn-${responding === "accepted" ? "primary" : "danger"}`}
+              onClick={() => responding && respond.mutate(responding)}
+              disabled={respond.isPending}
+            >
+              {respond.isPending && (
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              )}
+              {responding === "accepted"
+                ? "Confirm Acceptance"
+                : "Confirm Decline"}
+            </button>
+          </>
+        }
+      >
+        <p className="text-[15px] leading-relaxed text-ink-700 dark:text-ink-300">
+          {responding === "accepted"
+            ? "By clicking confirm, you accept our offer of admission and agree to abide by the university's rules and regulations. This action is final."
+            : "Are you sure you want to decline this admission offer? This action cannot be undone."}
+        </p>
+      </Modal>
+    </section>
   );
 }
 
@@ -403,6 +623,7 @@ function EditApplicationModal({
                   file_original_name: i.file_original_name,
                   verification_status: i.verification_status,
                   rejection_notes: i.rejection_notes,
+                  file_mime: i.file_mime,
                 })) as any
             }
             onUpload={({ document_type_id, file }) =>
