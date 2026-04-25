@@ -130,7 +130,7 @@ class ApplicantProfileController extends BaseController
 
         // Update application personal info (allowed in early statuses)
         $application = $this->appModel->find($appId);
-        $editableStatuses = ['submitted', 'documents_under_review', 'documents_rejected'];
+        $editableStatuses = ['submitted', 'documents_under_review', 'documents_rejected', 'requested_changes'];
 
         if ($application && in_array($application['status'], $editableStatuses, true)) {
             $appFields = array_filter([
@@ -465,7 +465,7 @@ class ApplicantProfileController extends BaseController
                 'verification_status' => $doc['verification_status'],
                 'file_mime'           => $doc['file_mime'],
                 'uploaded_at'         => $doc['uploaded_at'],
-                'rejection_notes'     => $doc['rejection_notes'],
+                'verification_comment'     => $doc['verification_comment'],
             ];
         }
 
@@ -484,7 +484,7 @@ class ApplicantProfileController extends BaseController
                 'file_original_name'  => $uploaded['file_original_name']  ?? null,
                 'verification_status' => $uploaded['verification_status'] ?? null,
                 'uploaded_at'         => $uploaded['uploaded_at']         ?? null,
-                'rejection_notes'     => $uploaded['rejection_notes']     ?? null,
+                'verification_comment'     => $uploaded['verification_comment']     ?? null,
                 'file_mime'           => $uploaded['file_mime']           ?? null,
             ];
         }, $requirements);
@@ -531,6 +531,7 @@ class ApplicantProfileController extends BaseController
             'graduation_year'    => $application['graduation_year'],
             'sponsorship'        => $application['sponsorship'],
             'sponsor_name'       => $application['sponsor_name'],
+            'rejection_reason'   => $application['rejection_reason']    ?? null,
             'document_checklist' => $checklist,
             'status_log'         => $logRows,
         ], 'Application details fetched.');
@@ -557,7 +558,7 @@ class ApplicantProfileController extends BaseController
         }
 
         // Only allow editing if status is draft or submitted (not yet review_started or beyond)
-        $allowed = ['draft', 'submitted'];
+        $allowed = ['draft', 'submitted', 'requested_changes'];
         if (!in_array($application['status'], $allowed, true)) {
             $this->error($response, 'Application cannot be edited at this stage.', 422);
         }
@@ -790,7 +791,7 @@ class ApplicantProfileController extends BaseController
             $this->error($response, 'Application not found.', 404);
         }
 
-        $allowedStatuses = ['draft', 'submitted', 'documents_under_review', 'documents_rejected'];
+        $allowedStatuses = ['draft', 'submitted', 'documents_under_review', 'documents_rejected', 'requested_changes'];
         if (!in_array($application['status'], $allowedStatuses, true)) {
             $this->error($response, 'Documents cannot be uploaded at this stage of the application.', 422);
         }
@@ -851,7 +852,7 @@ class ApplicantProfileController extends BaseController
             'verification_status' => 'pending',
             'verified_by'         => null,
             'verified_at'         => null,
-            'rejection_notes'     => null,
+            'verification_comment'     => null,
         ], $appId);
 
         // Recalculate document completeness

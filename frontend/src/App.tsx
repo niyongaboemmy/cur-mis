@@ -7,7 +7,9 @@ import { useThemeStore }    from '@/store/themeStore'
 import { PERMISSIONS }      from '@/constants'
 
 // Lazy loaded pages
+const WelcomePage          = lazy(() => import('@/pages/WelcomePage'))
 const HomePage             = lazy(() => import('@/pages/HomePage'))
+const AdminDashboardPage   = lazy(() => import('@/pages/admin/AdminDashboardPage'))
 const ProfilePage          = lazy(() => import('@/pages/ProfilePage'))
 const LoginPage            = lazy(() => import('@/pages/LoginPage'))
 const RegisterPage         = lazy(() => import('@/pages/RegisterPage'))
@@ -38,6 +40,7 @@ const AdmissionsHub             = lazy(() => import('@/pages/admin/admissions/Ad
 const ApplicationsListPage      = lazy(() => import('@/pages/admin/admissions/ApplicationsListPage'))
 const ApplicationDetailPage     = lazy(() => import('@/pages/admin/admissions/ApplicationDetailPage'))
 const VerificationsPage         = lazy(() => import('@/pages/admin/admissions/VerificationsPage'))
+const DocumentValidationCarousel = lazy(() => import('@/pages/admin/admissions/DocumentValidationCarousel'))
 const MeritPage                 = lazy(() => import('@/pages/admin/admissions/MeritPage'))
 const OffersPage                = lazy(() => import('@/pages/admin/admissions/OffersPage'))
 const RequirementsPage          = lazy(() => import('@/pages/admin/admissions/RequirementsPage'))
@@ -94,7 +97,9 @@ function App() {
           {/* Protected — requires valid JWT in Zustand store */}
           <Route element={<ProtectedRoute />}>
             <Route element={<MainLayout />}>
-              <Route path="/"        element={<HomePage />} />
+              <Route path="/"          element={<WelcomePage />} />
+              <Route path="/dashboard" element={<AdminDashboardPage />} />
+              <Route path="/home"      element={<HomePage />} />
               <Route path="/profile" element={<ProfilePage />} />
               
               {/* Admin Routes with Permissions Protection */}
@@ -159,6 +164,7 @@ function App() {
                   <Route path="applications"     element={<ApplicationsListPage />} />
                   <Route path="applications/:id" element={<ApplicationDetailPage />} />
                   <Route path="verifications"    element={<VerificationsPage />} />
+                  <Route path="verifications/:id/validate" element={<DocumentValidationCarousel />} />
                   <Route path="merit"            element={<MeritPage />} />
                   <Route path="offers"           element={<OffersPage />} />
                   <Route path="requirements"     element={<RequirementsPage />} />

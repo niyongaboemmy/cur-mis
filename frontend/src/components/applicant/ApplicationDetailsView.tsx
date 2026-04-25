@@ -62,7 +62,7 @@ export default function ApplicationDetailsView({
             </div>
           </div>
           {onEdit &&
-            ["draft", "submitted", "documents_rejected"].includes(
+            ["draft", "submitted", "documents_rejected", "requested_changes"].includes(
               application.status,
             ) && (
               <button onClick={onEdit} className="btn-primary btn-sm">
@@ -149,7 +149,7 @@ export default function ApplicationDetailsView({
                 icon={FileText}
               />
               {onEdit &&
-                ["draft", "submitted", "documents_rejected"].includes(
+                ["draft", "submitted", "documents_rejected", "requested_changes"].includes(
                   application.status,
                 ) && (
                   <button
@@ -310,9 +310,16 @@ function StatusPillSmall({ status }: { status: string }) {
 function StatusPill({ status }: { status: string }) {
   const isDraft = status === "draft";
   const isOffer = status.includes("offer");
+  const isRejected = status === "requested_changes" || status === "documents_rejected";
+  
   return (
     <span
-      className={`px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-tight ${isDraft ? "bg-ink-100 text-ink-500" : isOffer ? "bg-emerald-100 text-emerald-700" : "bg-primary-100 text-primary-700"}`}
+      className={`px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-tight ${
+        isDraft ? "bg-ink-100 text-ink-500" : 
+        isOffer ? "bg-emerald-100 text-emerald-700" : 
+        isRejected ? "bg-red-100 text-red-700" :
+        "bg-primary-100 text-primary-700"
+      }`}
     >
       {status.replace(/_/g, " ")}
     </span>

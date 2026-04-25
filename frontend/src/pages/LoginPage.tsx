@@ -1,11 +1,16 @@
 import { GraduationCap } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import AuthLayout from "@/components/auth/AuthLayout";
 import LoginForm from "@/components/auth/LoginForm";
 import { useQuery } from "@tanstack/react-query";
 import { portalService } from "@/services/admissionService";
+import { useAuthStore } from "@/store/authStore";
 
 export default function LoginPage() {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+
+  if (isAuthenticated) return <Navigate to="/" replace />
+
   const { data: intakes } = useQuery({
     queryKey: ['portal-intakes'],
     queryFn: () => portalService.getIntakes(),

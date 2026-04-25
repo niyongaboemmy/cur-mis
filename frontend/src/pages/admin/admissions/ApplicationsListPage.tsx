@@ -5,7 +5,9 @@ import {
   Files, Search, ChevronRight, ArrowLeft, ArrowRight, Filter,
 } from 'lucide-react'
 import { applicationAdminService, intakeService } from '@/services/admissionService'
-import type { ApplicationStatus } from '@/types/admission'
+import { ApplicationStatus } from '@/types/admission'
+import SearchableSelect from '@/components/ui/SearchableSelect'
+import ApplicationsDashboard from './ApplicationsDashboard'
 
 const STATUSES: { value: ApplicationStatus | ''; label: string }[] = [
   { value: '',                       label: 'All statuses' },
@@ -40,6 +42,7 @@ export default function ApplicationsListPage() {
   const [status, setStatus] = useState<ApplicationStatus | ''>('')
   const [intake, setIntake] = useState('')
   const [q, setQ] = useState('')
+  const [activeTab, setActiveTab] = useState<'list' | 'dashboard'>('list')
 
   const intakesQ = useQuery({ queryKey: ['admin', 'intakes'], queryFn: () => intakeService.list() })
   const intakes = intakesQ.data?.data ?? []
@@ -59,9 +62,42 @@ export default function ApplicationsListPage() {
   const total = listQ.data?.data?.total ?? 0
   const last  = listQ.data?.data?.last_page ?? 1
 
+  const statusOptions = STATUSES.filter(s => s.value !== '').map(s => ({
+    value: s.value,
+    label: s.label
+  }))
+
   return (
-    <section className="card p-0 overflow-hidden">
-      {/* Toolbar */}
+    <div className="space-y-4">
+      {/* Tab Switcher */}
+      <div className="flex items-center gap-2 p-1 bg-ink-100 dark:bg-ink-800 rounded-xl w-fit">
+        <button
+          onClick={() => setActiveTab('dashboard')}
+          className={`px-6 py-2 text-[13px] font-bold rounded-lg transition-all ${
+            activeTab === 'dashboard'
+              ? 'bg-white dark:bg-ink-900 text-brand shadow-sm'
+              : 'text-ink-500 hover:text-ink-700'
+          }`}
+        >
+          Dashboard
+        </button>
+        <button
+          onClick={() => setActiveTab('list')}
+          className={`px-6 py-2 text-[13px] font-bold rounded-lg transition-all ${
+            activeTab === 'list'
+              ? 'bg-white dark:bg-ink-900 text-brand shadow-sm'
+              : 'text-ink-500 hover:text-ink-700'
+          }`}
+        >
+          Applications List
+        </button>
+      </div>
+
+      {activeTab === 'dashboard' ? (
+        <ApplicationsDashboard />
+      ) : (
+        <section className="card p-0 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
+          {/* Toolbar */}
       <div className="flex items-center gap-3 flex-wrap border-b border-ink-100 p-4">
         <div className="flex items-center gap-2">
           <Files className="w-5 h-5 text-brand" />
@@ -82,15 +118,14 @@ export default function ApplicationsListPage() {
             className="input pl-8 w-64"
           />
         </div>
-        <div className="relative">
-          <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-400 pointer-events-none" />
-          <select
-            className="input pl-8 w-48"
+        <div className="w-56">
+          <SearchableSelect
+            options={statusOptions}
             value={status}
-            onChange={(e) => { setStatus(e.target.value as any); setPage(1) }}
-          >
-            {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-          </select>
+            onChange={(val) => { setStatus(val as any); setPage(1) }}
+            allLabel="All statuses"
+            placeholder="Filter by status"
+          />
         </div>
         <div className="relative">
           <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-400 pointer-events-none" />
@@ -154,6 +189,8 @@ export default function ApplicationsListPage() {
         </>
       )}
     </section>
+      )}
+    </div>
   )
 }
 

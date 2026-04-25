@@ -8,8 +8,5 @@ interface ImportMetaEnv {
   readonly VITE_AUTH_STORAGE_KEY:   string
   /** Sub-folder base path for the app, e.g. /umsTest  (no trailing slash). Leave blank in dev. */
   readonly VITE_BASE_PATH:          string
-}
-
-interface ImportMeta {
-  readonly env: ImportMetaEnv
+  readonly VITE_API_DOCS_URL:       string
 }

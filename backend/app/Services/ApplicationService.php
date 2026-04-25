@@ -481,9 +481,13 @@ class ApplicationService
                     $subject = 'Application Received — ' . ($extra['application_number'] ?? '');
                     break;
 
+                case 'requested_changes':
                 case 'documents_rejected':
                     $html    = EmailTemplateHelper::documentsRejectedTemplate(
-                        $name, $extra['application_number'] ?? '', $extra['rejected_docs'] ?? []
+                        $name, 
+                        $extra['application_number'] ?? '', 
+                        $extra['rejected_docs'] ?? [],
+                        $extra['admin_message'] ?? ''
                     );
                     $subject = 'Action Required: Documents Need Attention';
                     break;
