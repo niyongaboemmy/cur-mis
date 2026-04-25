@@ -199,7 +199,10 @@ export default function ApplyPage() {
 
   const faculties = facultiesQ.data?.data ?? [];
   const departments = departmentsQ.data?.data ?? [];
-  const intakes = intakesQ.data?.data ?? [];
+  const rawIntakes = intakesQ.data?.data ?? [];
+  const intakes = rawIntakes.filter(
+    (it, idx, arr) => arr.findIndex((x) => x.name === it.name) === idx
+  );
 
   return (
     <Shell>
