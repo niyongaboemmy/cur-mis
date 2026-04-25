@@ -194,8 +194,12 @@ export default function ApplicationDetailPage() {
     onSuccess: (res: any) => {
       toast.success("Student enrolled and registration number generated!");
       qc.invalidateQueries({ queryKey: ["admin", "applications", appId] });
+      const studentId = res.data?.student_id;
       const regNo = res.data?.regnumber;
-      if (regNo) {
+      
+      if (studentId) {
+        navigate(`/students/${studentId}`);
+      } else if (regNo) {
         navigate(`/students?q=${encodeURIComponent(regNo)}`);
       }
     },
@@ -1012,8 +1016,12 @@ export default function ApplicationDetailPage() {
                       </p>
                       <button
                         onClick={() => {
-                          // Search by email to find the student in the registry
-                          navigate(`/students?q=${encodeURIComponent(app.email)}`);
+                          if (app.student_id) {
+                            navigate(`/students/${app.student_id}`);
+                          } else {
+                            // Fallback to search by email if ID not yet synced
+                            navigate(`/students?q=${encodeURIComponent(app.email)}`);
+                          }
                         }}
                         className="btn-secondary border-green-200 text-green-700 hover:bg-green-50 shadow-sm"
                       >

@@ -14,12 +14,20 @@ import {
   Loader2,
   Trash2,
   Pencil,
+  Sliders,
   type LucideIcon,
 } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 import { academicsMgmtService } from '@/services/academicsMgmtService'
 import type { AcMgmtEntity } from '@/types/academic'
 import { CalendarDays } from 'lucide-react'
+import AcademicSettingsPage from '@/pages/academic/AcademicSettingsPage'
+
+const SETTINGS_SLUG = 'academic-settings' as const
+type RailSlug = AcMgmtEntity | typeof SETTINGS_SLUG
+type RailItem =
+  | { kind: 'settings'; slug: typeof SETTINGS_SLUG; label: string; icon: LucideIcon }
+  | (EntityCfg & { kind: 'entity' })
 
 /* ─────────────────────────────────────────────────────────────
    Entity config — one row per endpoint we want to surface.
@@ -185,22 +193,34 @@ const ENTITIES: EntityCfg[] = [
 /* ───────────────────────────────────────────────────────────── */
 
 export default function AcademicsManagementPage() {
-  const [activeSlug, setActiveSlug] = useState<AcMgmtEntity>('degrees')
-  const active = useMemo(() => ENTITIES.find((e) => e.slug === activeSlug)!, [activeSlug])
+  const [activeSlug, setActiveSlug] = useState<RailSlug>('degrees')
+
+  const railItems = useMemo<RailItem[]>(
+    () => [
+      { kind: 'settings', slug: SETTINGS_SLUG, label: 'Academic settings', icon: Sliders },
+      ...ENTITIES.map<RailItem>((e) => ({ ...e, kind: 'entity' })),
+    ],
+    [],
+  )
+
+  const activeEntity = useMemo(
+    () => (activeSlug === SETTINGS_SLUG ? null : ENTITIES.find((e) => e.slug === activeSlug) ?? null),
+    [activeSlug],
+  )
 
   return (
     <div className="max-w-[1400px] mx-auto">
-      <div className="grid grid-cols-1 md:grid-cols-[220px_1fr] gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-[220px_1fr] gap-6 items-start">
         {/* Entity rail */}
-        <aside className="card p-2 h-fit md:sticky md:top-20">
+        <aside className="card p-2 self-start md:sticky md:top-0">
           <nav className="space-y-0.5">
-            {ENTITIES.map((e) => {
-              const Icon = e.icon
-              const isActive = e.slug === activeSlug
+            {railItems.map((item) => {
+              const Icon = item.icon
+              const isActive = item.slug === activeSlug
               return (
                 <button
-                  key={e.slug}
-                  onClick={() => setActiveSlug(e.slug)}
+                  key={item.slug}
+                  onClick={() => setActiveSlug(item.slug)}
                   className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] font-medium transition-colors ${
                     isActive
                       ? 'bg-brand/10 text-brand dark:bg-brand/25 dark:text-gold-400'
@@ -208,7 +228,7 @@ export default function AcademicsManagementPage() {
                   }`}
                 >
                   <Icon className="w-4 h-4" />
-                  <span className="truncate">{e.label}</span>
+                  <span className="truncate">{item.label}</span>
                 </button>
               )
             })}
@@ -216,7 +236,13 @@ export default function AcademicsManagementPage() {
         </aside>
 
         {/* Panel */}
-        <CrudPanel key={active.slug} entity={active} />
+        {activeEntity ? (
+          <CrudPanel key={activeEntity.slug} entity={activeEntity} />
+        ) : (
+          <div className="min-w-0">
+            <AcademicSettingsPage />
+          </div>
+        )}
       </div>
     </div>
   )
@@ -272,7 +298,7 @@ function CrudPanel({ entity }: { entity: EntityCfg }) {
   }
 
   return (
-    <section className="card p-6">
+    <section className="card p-6 min-h-[calc(100vh-8rem)]">
       <div className="flex items-start justify-between gap-4 flex-wrap mb-5">
         <div className="min-w-0 flex items-center gap-3">
           <div className="w-10 h-10 rounded-md bg-brand/10 text-brand dark:bg-brand/25 dark:text-gold-400 flex items-center justify-center shrink-0">

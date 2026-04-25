@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
-import { User, LogOut, Sun, Moon, ChevronDown, Settings } from "lucide-react";
+import { User, LogOut, Sun, Moon, ChevronDown } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useThemeStore } from "@/store/themeStore";
 import { useLogout } from "@/hooks/useAuth";
@@ -93,7 +93,6 @@ export default function UserDropdown() {
             {/* Menu */}
             <div className="p-1.5">
               <MenuItem icon={<User     className="h-4 w-4" />} onClick={() => go('/profile')}>My profile</MenuItem>
-              <MenuItem icon={<Settings className="h-4 w-4" />} onClick={() => go('/profile')}>Account settings</MenuItem>
 
               {/* Theme toggle */}
               <button
