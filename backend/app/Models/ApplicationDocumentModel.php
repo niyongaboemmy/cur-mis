@@ -10,16 +10,18 @@ class ApplicationDocumentModel extends BaseModel
     protected array  $fillable = [
         'applicant_profile_id', 'application_id', 'document_type_id', 'file_server_id',
         'file_original_name', 'file_size', 'file_mime',
-        'verification_status', 'verified_by', 'verified_at', 'rejection_notes',
+        'verification_status', 'verified_by', 'verified_at', 'verification_comment',
     ];
     protected array $hidden = [];
 
     public function getForApplication(int $applicationId): array
     {
         return $this->db->fetchAll(
-            "SELECT ad.*, dt.name AS type_name, dt.slug AS type_slug
+            "SELECT ad.*, dt.name AS type_name, dt.slug AS type_slug,
+                    u.full_name AS verifier_name
              FROM `application_documents` ad
              JOIN `document_types` dt ON dt.id = ad.document_type_id
+             LEFT JOIN `users` u ON u.id = ad.verified_by
              WHERE ad.application_id = ?
              ORDER BY dt.sort_order ASC, dt.id ASC",
             [$applicationId]

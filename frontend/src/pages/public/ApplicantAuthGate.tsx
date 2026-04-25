@@ -24,8 +24,9 @@ export default function ApplicantAuthGate({ onSuccess }: Props) {
     }
   };
 
-  const handleRegisterSuccess = (registeredEmail: string) => {
-    setEmail(registeredEmail);
+  const handleRegisterSuccess = (data: any) => {
+    setEmail(data.email);
+    setDevOtp(data.dev_otp);
     setShowOtp(true);
   };
 

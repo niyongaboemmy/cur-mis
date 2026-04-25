@@ -47,18 +47,26 @@ export interface AdmissionRequirement {
   allowed_extensions?: string
 }
 
-export type ApplicationStatus =
-  | 'draft'
-  | 'submitted'
-  | 'documents_under_review'
-  | 'documents_verified'
-  | 'documents_rejected'
-  | 'merit_listed'
-  | 'offered'
-  | 'offer_accepted'
-  | 'offer_declined'
-  | 'enrolled'
-  | 'withdrawn'
+export enum ApplicationStatus {
+  DRAFT = 'draft',
+  SUBMITTED = 'submitted',
+  DOCUMENTS_UNDER_REVIEW = 'documents_under_review',
+  DOCUMENTS_VERIFIED = 'documents_verified',
+  DOCUMENTS_REJECTED = 'documents_rejected',
+  REQUESTED_CHANGES = 'requested_changes',
+  MERIT_LISTED = 'merit_listed',
+  OFFERED = 'offered',
+  OFFER_ACCEPTED = 'offer_accepted',
+  OFFER_DECLINED = 'offer_declined',
+  ENROLLED = 'enrolled',
+  WITHDRAWN = 'withdrawn',
+}
+
+export enum VerificationStatus {
+  PENDING = 'pending',
+  VERIFIED = 'verified',
+  REJECTED = 'rejected',
+}
 
 export type DocStatus = 'incomplete' | 'under_review' | 'verified' | 'rejected'
 
@@ -120,14 +128,17 @@ export interface ApplicationDocument {
   file_original_name?:   string | null
   file_size?:            number | null
   file_mime?:            string | null
-  verification_status:   'pending' | 'verified' | 'rejected'
+  verification_status:   VerificationStatus
   verified_by?:          number | null
   verified_at?:          string | null
-  rejection_notes?:      string | null
+  verification_comment?:      string | null
   uploaded_at?:          string
   /* Enriched */
   document_type_name?:   string
   document_type_slug?:   string
+  type_name?:            string
+  type_slug?:            string
+  verifier_name?:       string
   usage?:                string[]
 }
 

@@ -39,11 +39,7 @@ export function useLogin(options?: { onSuccess?: (response: any) => void }) {
           setAuth(user, response.data.token)
           toast.success('Logged in successfully!')
           
-          if (user.is_applicant || user.role === 'applicant' || user.role_name === 'applicant') {
-            navigate('/applicant')
-          } else {
-            navigate('/')
-          }
+          navigate('/')
         }
       } else {
         toast.error(response.message || 'Login failed')
@@ -83,11 +79,7 @@ export function useVerifyOtp(options?: { onSuccess?: (response: any) => void }) 
         
         toast.success('Identity verified!')
         
-        if (u.is_applicant || u.role === 'applicant' || u.role_name === 'applicant') {
-          navigate('/applicant')
-        } else {
-          navigate('/')
-        }
+        navigate('/welcome')
       } else {
         toast.error(response.message || 'Verification failed')
       }

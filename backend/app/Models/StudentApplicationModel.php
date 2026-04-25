@@ -102,6 +102,10 @@ class StudentApplicationModel extends BaseModel
             $bindings[]   = (int)$filters['academic_year_id'];
         }
 
+        if (!empty($filters['has_pending_docs'])) {
+            $conditions[] = "EXISTS (SELECT 1 FROM `application_documents` ad WHERE ad.application_id = sa.id AND ad.verification_status = 'pending')";
+        }
+
         $where = $conditions ? 'WHERE ' . implode(' AND ', $conditions) : '';
 
         $total = (int)($this->db->fetchOne(
@@ -114,7 +118,10 @@ class StudentApplicationModel extends BaseModel
                     d.dep_name    AS department_name,
                     d.dep_acronym AS department_code,
                     f.fac_name AS faculty_name, f.fac_code AS faculty_code,
-                    ay.label   AS academic_year_label
+                    ay.label   AS academic_year_label,
+                    (SELECT COUNT(*) FROM application_documents WHERE application_id = sa.id AND verification_status = 'pending') AS pending_docs_count,
+                    (SELECT COUNT(*) FROM application_documents WHERE application_id = sa.id AND verification_status = 'verified') AS verified_docs_count,
+                    (SELECT COUNT(*) FROM application_documents WHERE application_id = sa.id AND verification_status = 'rejected') AS rejected_docs_count
              FROM `student_applications` sa
              LEFT JOIN `departements`   d  ON d.dep_id   = sa.department_id
              LEFT JOIN `faculty`        f  ON f.fac_id   = sa.faculty_id

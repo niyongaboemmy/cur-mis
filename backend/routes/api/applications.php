@@ -88,6 +88,7 @@ $router->group('/api/admin', function ($router) {
     // Permission: MANAGE_STUDENT_APPLICATIONS
     $router->group('/applications', function ($router) {
         $router->get('',              [ApplicationAdminController::class, 'index']);
+        $router->get('/stats',         [ApplicationAdminController::class, 'getDashboardStats']);
         $router->get('/:id',          [ApplicationAdminController::class, 'show']);
         $router->patch('/:id/status', [ApplicationAdminController::class, 'updateStatus']);
         $router->post('/:id/notes',   [ApplicationAdminController::class, 'addNote']);
@@ -109,6 +110,10 @@ $router->group('/api/admin', function ($router) {
         $router->get(
             '/:application_id/documents/:document_id/download',
             [DocumentVerificationController::class, 'downloadDocument']
+        );
+        $router->post(
+            '/:id/request-changes',
+            [DocumentVerificationController::class, 'requestChanges']
         );
     }, [new PermissionMiddleware(Permissions::VERIFY_DOCUMENTS)]);
 
