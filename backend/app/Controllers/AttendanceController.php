@@ -9,6 +9,7 @@ use Core\Response;
 use Core\Database;
 use App\Constants\Permissions;
 use App\Helpers\ValidationHelper;
+use App\Helpers\AttendanceReportPdf;
 
 /**
  * Attendance module controller.
@@ -688,5 +689,165 @@ class AttendanceController extends BaseController
             'by_module' => $byModule,
             'recent'    => $recent,
         ], 'Student attendance fetched.');
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════
+     * Reports — printable attendance sheet (per-session) and module summary
+     * ═══════════════════════════════════════════════════════════════════ */
+
+    /**
+     * GET /api/attendance/sessions/:id/report?format=pdf|csv
+     * Single-session attendance roster, formatted for print or spreadsheet.
+     */
+    public function sessionReport(Request $request, Response $response): never
+    {
+        $id     = (int)$request->param('id');
+        $format = strtolower((string)($request->query('format') ?? 'pdf'));
+
+        $session = $this->db->fetchOne(
+            "SELECT s.*, m.module_code, m.module_name, t.label AS term_label, u.full_name AS started_by_name
+             FROM attendance_sessions s
+             LEFT JOIN modules m         ON m.module_id = s.module_id
+             LEFT JOIN academic_terms t  ON t.id = s.academic_term_id
+             LEFT JOIN users u           ON u.id = s.started_by
+             WHERE s.id = ? LIMIT 1",
+            [$id]
+        );
+        if (!$session) $this->error($response, 'Session not found.', 404);
+
+        $moduleId = (int)$session['module_id'];
+        $termId   = (int)$session['academic_term_id'];
+
+        $roster = $this->db->fetchAll(
+            "SELECT st.regnumber, st.fname, st.lname,
+                    r.status AS record_status, r.remarks,
+                    (SELECT COUNT(*) FROM attendance_records ar
+                       JOIN attendance_sessions asx ON asx.id = ar.session_id
+                       WHERE asx.module_id = ? AND ar.student_regnumber = st.regnumber) AS total_sessions,
+                    (SELECT COUNT(*) FROM attendance_records ar
+                       JOIN attendance_sessions asx ON asx.id = ar.session_id
+                       WHERE asx.module_id = ? AND ar.student_regnumber = st.regnumber
+                         AND ar.status IN ('present','late')) AS present_sessions
+             FROM module_registrations mr
+             JOIN student st ON st.regnumber = mr.student_regnumber
+             LEFT JOIN attendance_records r ON r.session_id = ? AND r.student_regnumber = st.regnumber
+             WHERE mr.module_id = ? AND mr.academic_term_id = ? AND mr.status = 'registered'
+             ORDER BY st.lname, st.fname",
+            [$moduleId, $moduleId, $id, $moduleId, $termId]
+        );
+        foreach ($roster as &$r) {
+            $tot = (int)$r['total_sessions']; $pr = (int)$r['present_sessions'];
+            $r['attendance_pct'] = $tot > 0 ? (int)round(($pr / $tot) * 100) : 0;
+        }
+        unset($r);
+
+        $summary = ['total_roster' => count($roster), 'present' => 0, 'late' => 0, 'absent' => 0, 'excused' => 0];
+        foreach ($roster as $r) {
+            $s = $r['record_status'];
+            if ($s && isset($summary[$s])) $summary[$s]++;
+        }
+
+        $code = preg_replace('/[^A-Za-z0-9_-]+/', '', (string)($session['module_code'] ?? 'session'));
+        $date = (string)($session['session_date'] ?? date('Y-m-d'));
+
+        if ($format === 'csv') {
+            $csv = AttendanceReportPdf::buildSessionCsv($session, $roster, $summary);
+            AttendanceReportPdf::streamCsv($csv, "attendance-{$code}-{$date}.csv");
+        }
+        $html = AttendanceReportPdf::buildSessionHtml($session, $roster, $summary);
+        AttendanceReportPdf::streamPdf($html, "attendance-{$code}-{$date}.pdf");
+    }
+
+    /**
+     * GET /api/attendance/modules/:moduleId/report?academic_term_id=&format=pdf|csv
+     * Module-wide summary across all its sessions for the (optional) term.
+     */
+    public function moduleReport(Request $request, Response $response): never
+    {
+        $moduleId = (int)$request->param('moduleId');
+        $termId   = (int)($request->query('academic_term_id') ?? 0);
+        $format   = strtolower((string)($request->query('format') ?? 'pdf'));
+
+        $module = $this->db->fetchOne(
+            "SELECT module_id, module_code, module_name FROM modules WHERE module_id = ? LIMIT 1",
+            [$moduleId]
+        );
+        if (!$module) $this->error($response, 'Module not found.', 404);
+
+        $termClause  = $termId > 0 ? ' AND s.academic_term_id = ?' : '';
+        $termBind    = $termId > 0 ? [$termId] : [];
+
+        $termLabel = null;
+        if ($termId > 0) {
+            $row = $this->db->fetchOne("SELECT label FROM academic_terms WHERE id = ? LIMIT 1", [$termId]);
+            $termLabel = $row['label'] ?? null;
+        }
+
+        // Session list with per-status counts
+        $sessions = $this->db->fetchAll(
+            "SELECT s.id, s.session_date, s.session_type, s.status,
+                    (SELECT COUNT(*) FROM attendance_records r WHERE r.session_id = s.id) AS recorded_count,
+                    (SELECT COUNT(*) FROM attendance_records r WHERE r.session_id = s.id AND r.status = 'present') AS present_count,
+                    (SELECT COUNT(*) FROM attendance_records r WHERE r.session_id = s.id AND r.status = 'late')    AS late_count,
+                    (SELECT COUNT(*) FROM attendance_records r WHERE r.session_id = s.id AND r.status = 'absent')  AS absent_count,
+                    (SELECT COUNT(*) FROM attendance_records r WHERE r.session_id = s.id AND r.status = 'excused') AS excused_count
+             FROM attendance_sessions s
+             WHERE s.module_id = ?{$termClause}
+             ORDER BY s.session_date ASC, s.id ASC",
+            array_merge([$moduleId], $termBind)
+        );
+
+        // Per-student summary across all sessions of this module/term
+        $studentSummary = $this->db->fetchAll(
+            "SELECT st.regnumber, st.fname, st.lname,
+                    COUNT(*) AS total_records,
+                    SUM(CASE WHEN r.status = 'present' THEN 1 ELSE 0 END) AS present,
+                    SUM(CASE WHEN r.status = 'late'    THEN 1 ELSE 0 END) AS late,
+                    SUM(CASE WHEN r.status = 'absent'  THEN 1 ELSE 0 END) AS absent,
+                    SUM(CASE WHEN r.status = 'excused' THEN 1 ELSE 0 END) AS excused
+             FROM attendance_records r
+             JOIN attendance_sessions s ON s.id = r.session_id
+             JOIN student st            ON st.regnumber = r.student_regnumber
+             WHERE s.module_id = ?{$termClause}
+             GROUP BY st.regnumber, st.fname, st.lname
+             ORDER BY st.lname, st.fname",
+            array_merge([$moduleId], $termBind)
+        );
+        foreach ($studentSummary as &$s) {
+            $tot = (int)$s['total_records'];
+            $pr  = (int)$s['present'] + (int)$s['late'];
+            $s['attendance_pct'] = $tot > 0 ? (int)round(($pr / $tot) * 100) : 0;
+        }
+        unset($s);
+
+        $sessCount    = count($sessions);
+        $totalRecords = 0; $totPresent = 0; $totLate = 0; $totAbsent = 0; $totExcused = 0;
+        foreach ($sessions as $s) {
+            $totalRecords += (int)$s['recorded_count'];
+            $totPresent   += (int)$s['present_count'];
+            $totLate      += (int)$s['late_count'];
+            $totAbsent    += (int)$s['absent_count'];
+            $totExcused   += (int)$s['excused_count'];
+        }
+        $avgPct = $totalRecords > 0 ? (int)round((($totPresent + $totLate) / $totalRecords) * 100) : 0;
+        $totals = [
+            'sessions'       => $sessCount,
+            'records'        => $totalRecords,
+            'present'        => $totPresent,
+            'late'           => $totLate,
+            'absent'         => $totAbsent,
+            'excused'        => $totExcused,
+            'attendance_pct' => $avgPct,
+        ];
+
+        $code = preg_replace('/[^A-Za-z0-9_-]+/', '', (string)$module['module_code']);
+        $stamp = date('Y-m-d');
+
+        if ($format === 'csv') {
+            $csv = AttendanceReportPdf::buildModuleCsv($module, $termLabel, $sessions, $studentSummary, $totals);
+            AttendanceReportPdf::streamCsv($csv, "attendance-{$code}-{$stamp}.csv");
+        }
+        $html = AttendanceReportPdf::buildModuleHtml($module, $termLabel, $sessions, $studentSummary, $totals);
+        AttendanceReportPdf::streamPdf($html, "attendance-{$code}-{$stamp}.pdf");
     }
 }

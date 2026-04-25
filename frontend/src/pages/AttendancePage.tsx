@@ -28,7 +28,6 @@ import {
   CalendarDays,
   Check,
   Download,
-  Printer,
   FileText,
   X,
 } from 'lucide-react'
@@ -45,6 +44,7 @@ import {
   type CreateSessionPayload,
 } from '@/services/attendanceService'
 import { moduleScheduleService, moduleCatalogService, moduleRegistrationService } from '@/services/modulesService'
+import { apiClient } from '@/services/api'
 import { studentService } from '@/services/studentService'
 import { academicsMgmtService } from '@/services/academicsMgmtService'
 import { portalService } from '@/services/admissionService'
@@ -232,46 +232,26 @@ function ModuleHeaderBar({
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  const exportCSV = async () => {
+  const downloadReport = async (kind: 'pdf' | 'csv') => {
     setExporting(true); setExportOpen(false)
     try {
-      const res = await attendanceService.listSessions({
-        module_id: moduleId,
-        academic_term_id: termId || undefined,
-        per_page: 500,
+      const url = `/api/attendance/modules/${moduleId}/report`
+      const res = await apiClient.get(url, {
+        params: { academic_term_id: termId || 0, format: kind },
+        responseType: 'blob',
       })
-      const rows = res.data?.data ?? []
-      const header = ['Date', 'Type', 'Status', 'Recorded', 'Present', 'Locked', 'Notes', 'Started by']
-      const csv = [
-        `Module:,${csvEscape(pickedModule.module_code)} - ${csvEscape(pickedModule.module_name)}`,
-        `Term:,${csvEscape(activeTerm?.label ?? '')}`,
-        `Generated:,${new Date().toLocaleString()}`,
-        '',
-        header.join(','),
-        ...rows.map((r) => [
-          r.session_date,
-          r.session_type,
-          r.status,
-          r.recorded_count ?? 0,
-          r.present_count ?? 0,
-          r.is_locked ? 'Yes' : 'No',
-          csvEscape((r.notes ?? '') as string),
-          csvEscape(r.started_by_name ?? ''),
-        ].join(',')),
-      ].join('\n')
-      downloadFile(csv, `attendance-${pickedModule.module_code}-${todayISO()}.csv`, 'text/csv;charset=utf-8;')
-      toast.success(`Exported ${rows.length} sessions`)
+      const cd = res.headers['content-disposition'] as string | undefined
+      const match = cd?.match(/filename="?([^";]+)"?/i)
+      const safeCode = pickedModule.module_code.replace(/[^A-Za-z0-9_-]+/g, '')
+      const filename = match?.[1] ?? `attendance-${safeCode}-${todayISO()}.${kind}`
+      downloadBlob(res.data as Blob, filename)
+      toast.success(`Report downloaded`)
     } catch (e: any) {
-      toast.error(e?.response?.data?.message ?? 'Export failed')
+      const msg = e?.response?.data?.message ?? e?.message ?? 'Export failed'
+      toast.error(msg)
     } finally {
       setExporting(false)
     }
-  }
-
-  const exportPDF = () => {
-    setExportOpen(false)
-    // Use the browser's print dialog (Save as PDF). Reliable, no extra deps.
-    setTimeout(() => window.print(), 50)
   }
 
   return (
@@ -410,22 +390,24 @@ function ModuleHeaderBar({
           </button>
           {exportOpen && (
             <div className="absolute z-30 right-0 top-full mt-1 w-48 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-700 rounded-lg shadow-xl overflow-hidden">
+              <div className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wider text-ink-400 font-semibold">Module report</div>
               <button
                 type="button"
-                onClick={exportCSV}
+                onClick={() => downloadReport('pdf')}
                 className="w-full text-left px-3 py-2 text-[12.5px] hover:bg-ink-50 dark:hover:bg-ink-700/30 inline-flex items-center gap-2"
+              >
+                <FileText className="w-3.5 h-3.5 text-rose-600" />
+                <span className="flex-1">Download PDF</span>
+                <span className="text-[10px] text-ink-400">.pdf</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => downloadReport('csv')}
+                className="w-full text-left px-3 py-2 text-[12.5px] hover:bg-ink-50 dark:hover:bg-ink-700/30 inline-flex items-center gap-2 border-t border-ink-100 dark:border-ink-700/60"
               >
                 <FileText className="w-3.5 h-3.5 text-emerald-600" />
                 <span className="flex-1">Download CSV</span>
                 <span className="text-[10px] text-ink-400">.csv</span>
-              </button>
-              <button
-                type="button"
-                onClick={exportPDF}
-                className="w-full text-left px-3 py-2 text-[12.5px] hover:bg-ink-50 dark:hover:bg-ink-700/30 inline-flex items-center gap-2 border-t border-ink-100 dark:border-ink-700/60"
-              >
-                <Printer className="w-3.5 h-3.5 text-rose-600" />
-                <span className="flex-1">Print / Save PDF</span>
               </button>
             </div>
           )}
@@ -445,14 +427,8 @@ function ChevronDownIcon({ className }: { className?: string }) {
 }
 
 /** Escape a CSV field — wrap in quotes if it contains comma, quote, or newline. */
-function csvEscape(v: string): string {
-  if (/[",\n\r]/.test(v)) return `"${v.replace(/"/g, '""')}"`
-  return v
-}
-
-/** Trigger a browser download for the given content. */
-function downloadFile(content: string, filename: string, type: string) {
-  const blob = new Blob([content], { type })
+/** Trigger a browser download for an opaque Blob (e.g. PDF or CSV from API). */
+function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url; a.download = filename

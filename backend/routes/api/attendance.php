@@ -23,6 +23,8 @@ $router->group('/api/attendance', function ($router) {
         $r->get('/sessions',                   [AttendanceController::class, 'listSessions']);
         $r->get('/sessions/find',              [AttendanceController::class, 'findSession']);
         $r->get('/sessions/:id',               [AttendanceController::class, 'showSession']);
+        $r->get('/sessions/:id/report',        [AttendanceController::class, 'sessionReport']);
+        $r->get('/modules/:moduleId/report',   [AttendanceController::class, 'moduleReport']);
         $r->get('/overview',                   [AttendanceController::class, 'overview']);
         $r->get('/teachable-modules',          [AttendanceController::class, 'myTeachableModules']);
         $r->get('/students/:regnumber/summary',[AttendanceController::class, 'studentSummary']);

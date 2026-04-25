@@ -215,12 +215,37 @@ class ApplicantProfileController extends BaseController
             $this->error($response, $e->getMessage(), 503);
         }
 
+        $email = $authUser['email'] ?? '';
+
+        // Block creating another application when a draft already exists for this user.
+        // Return the existing draft so the frontend can let the applicant continue/edit it.
+        $existingDraft = $this->db->fetchOne(
+            "SELECT sa.id, sa.application_number, sa.faculty_id, sa.department_id, sa.intake,
+                    sa.academic_year_id, f.fac_name AS faculty_name, d.dep_name AS department_name
+             FROM `student_applications` sa
+             LEFT JOIN faculty f       ON sa.faculty_id    = f.fac_id
+             LEFT JOIN departements d  ON sa.department_id = d.dep_id
+             WHERE sa.email = ? AND sa.status = 'draft'
+             ORDER BY sa.created_at DESC
+             LIMIT 1",
+            [$email]
+        );
+
+        if ($existingDraft) {
+            $this->error(
+                $response,
+                'You already have an application in draft. Please continue or discard it before starting a new one.',
+                409,
+                ['draft' => $existingDraft]
+            );
+        }
+
         // Duplicate check: Prevent multiple applications for the same faculty + intake + academic year
         $existing = $this->db->fetchOne(
             "SELECT id FROM `student_applications`
              WHERE email = ? AND faculty_id = ? AND intake = ? AND academic_year_id = ?
              AND status NOT IN ('withdrawn', 'offer_declined') LIMIT 1",
-            [$authUser['email'] ?? '', (int)$data['faculty_id'], $data['intake'], $academicYearId]
+            [$email, (int)$data['faculty_id'], $data['intake'], $academicYearId]
         );
 
         if ($existing) {
@@ -574,6 +599,7 @@ class ApplicantProfileController extends BaseController
             'prev_school'        => $data['prev_school']        ?? null,
             'prev_qualification' => $data['prev_qualification'] ?? null,
             'prev_grade'         => $data['prev_grade']         ?? null,
+            'combination'        => $data['combination']        ?? null,
             'graduation_year'    => isset($data['graduation_year']) ? (int)$data['graduation_year'] : null,
             'sponsorship'        => $data['sponsorship']        ?? null,
             'sponsor_name'       => $data['sponsor_name']       ?? null,

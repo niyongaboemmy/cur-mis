@@ -82,6 +82,10 @@ class StudentApplicationModel extends BaseModel
         if (!empty($filters['status'])) {
             $conditions[] = 'sa.status = ?';
             $bindings[]   = $filters['status'];
+        } else {
+            // Drafts are applicant-side work-in-progress; never surface them
+            // to admin views unless explicitly filtered in.
+            $conditions[] = "sa.status <> 'draft'";
         }
 
         if (!empty($filters['faculty_id'])) {
