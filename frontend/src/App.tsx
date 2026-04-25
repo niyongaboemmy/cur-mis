@@ -30,6 +30,8 @@ const StaffListPage             = lazy(() => import('@/pages/hr/StaffListPage'))
 const StaffDetailPage           = lazy(() => import('@/pages/hr/StaffDetailPage'))
 const HrAttendancePage          = lazy(() => import('@/pages/hr/HrAttendancePage'))
 const HrDocumentsPage           = lazy(() => import('@/pages/hr/HrDocumentsPage'))
+const PayrollPage               = lazy(() => import('@/pages/hr/PayrollPage'))
+const PayrollSlipPage           = lazy(() => import('@/pages/hr/PayrollSlipPage'))
 const AcademicSettingsPage      = lazy(() => import('@/pages/academic/AcademicSettingsPage'))
 const AcademicsManagementPage   = lazy(() => import('@/pages/academic/AcademicsManagementPage'))
 
@@ -124,10 +126,12 @@ function App() {
 
               {/* HR Management */}
               <Route element={<ProtectedRoute requiredPermissions={PERMISSIONS.VIEW_HR_EMPLOYEES} />}>
-                <Route path="/hr/staff"       element={<StaffListPage />} />
-                <Route path="/hr/staff/:id"   element={<StaffDetailPage />} />
-                <Route path="/hr/attendance"  element={<HrAttendancePage />} />
-                <Route path="/hr/documents"   element={<HrDocumentsPage />} />
+                <Route path="/hr/staff"          element={<StaffListPage />} />
+                <Route path="/hr/staff/:id"      element={<StaffDetailPage />} />
+                <Route path="/hr/attendance"     element={<HrAttendancePage />} />
+                <Route path="/hr/documents"      element={<HrDocumentsPage />} />
+                <Route path="/hr/payroll"        element={<PayrollPage />} />
+                <Route path="/hr/payroll/:id"    element={<PayrollSlipPage />} />
               </Route>
 
               {/* Academic Settings — years & terms */}

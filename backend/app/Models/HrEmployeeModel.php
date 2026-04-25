@@ -6,11 +6,12 @@ namespace App\Models;
 
 class HrEmployeeModel extends BaseModel
 {
-    protected string $table = 'hr_employees';
+    protected string $table = 'employees';
+    protected string $primaryKey = 'employee_id';
     protected array $fillable = [
-        'emp_code', 'staff_id', 'full_name', 'gender',
-        'department', 'position', 'contract_type',
-        'start_date', 'end_date', 'salary',
-        'phone', 'email', 'status',
+        'employee_fname', 'employee_lname', 'employee_gender',
+        'employee_position', 'employee_post', 'employee_phone',
+        'employee_status', 'account_status', 'employee_reg_date',
+        'employee_bank', 'employee_account', 'faculty',
     ];
 }

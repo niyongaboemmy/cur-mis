@@ -99,9 +99,10 @@ const NAV_TREE: NavNode[] = [
     icon: Briefcase,
     permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES],
     children: [
-      { to: "/hr/staff", label: "All staff", permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },
+      { to: "/hr/staff",      label: "All staff",  permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },
+      { to: "/hr/payroll",    label: "Payroll",    permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },
       { to: "/hr/attendance", label: "Attendance", permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },
-      { to: "/hr/documents", label: "Documents", permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },
+      { to: "/hr/documents",  label: "Documents",  permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },
     ],
   },
   // ─── Admissions / Student Management Module ───
@@ -292,9 +293,10 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
   "/applicant/documents": { title: "Documents", sub: "Upload required files for your checklist." },
   "/students/new": { title: "Admissions", sub: "New student applications" },
   "/students/alumni": { title: "Alumni", sub: "CUR alumni directory" },
-  "/hr/staff": { title: "HR Management", sub: "Staff directory, roles and contracts" },
+  "/hr/staff":      { title: "HR Management",  sub: "Staff directory, roles and contracts" },
+  "/hr/payroll":    { title: "Payroll",        sub: "Monthly salary breakdown and payslips" },
   "/hr/attendance": { title: "Staff attendance", sub: "Daily attendance and timesheets" },
-  "/hr/documents": { title: "Staff documents", sub: "Contracts, IDs and HR files" },
+  "/hr/documents":  { title: "Staff documents", sub: "Contracts, IDs and HR files" },
   "/teachers": { title: "Teachers", sub: "Lecturers and faculty members" },
   "/teachers/schedules": {
     title: "Teacher schedules",
