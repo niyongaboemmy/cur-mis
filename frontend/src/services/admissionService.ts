@@ -201,8 +201,8 @@ export const offerService = {
   initiateEnrollment: (offerId: number) =>
     api.post<{ student_id: number }>(`/api/admin/admissions/offers/${offerId}/enroll`),
 
-  initiateEnrollmentByAppId: (appId: number) =>
-    api.post<{ student_id: number }>(`/api/admin/applications/${appId}/enroll`),
+  initiateEnrollmentByAppId: (appId: number, data?: { level_id: number }) =>
+    api.post<{ student_id: number }>(`/api/admin/applications/${appId}/enroll`, data || {}),
 
   sendLetter: (offerId: number) =>
     api.post<{ sent_to: string; letter_token: string; download_url: string }>(`/api/admin/admissions/offers/${offerId}/send-letter`),

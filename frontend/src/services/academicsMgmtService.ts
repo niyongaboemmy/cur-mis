@@ -8,7 +8,7 @@ import type { AcMgmtEntity } from '@/types/academic'
 export const academicsMgmtService = {
   list: <T = any>(
     entity: AcMgmtEntity,
-    params: { page?: number; per_page?: number } = {},
+    params: { page?: number; per_page?: number } & Record<string, unknown> = {},
     signal?: AbortSignal,
   ) => api.get<PaginatedResponse<T>>(`/api/academics-management/${entity}`, params, signal),
 

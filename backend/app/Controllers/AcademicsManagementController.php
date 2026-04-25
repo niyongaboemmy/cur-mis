@@ -63,9 +63,24 @@ class AcademicsManagementController extends BaseController
         }
 
         $page    = (int)($request->query('page')     ?? 1);
-        $perPage = (int)($request->query('per_page') ?? 20);
+        $perPage = (int)($request->query('per_page') ?? 1000); // use a larger limit if needed for dropdowns
 
-        $paginated = $this->models[$entity]->paginate($page, $perPage);
+        // Extract filters (e.g. ?department=1&level=1)
+        $whereClauses = [];
+        $bindings = [];
+        $allowedFilters = ['department', 'level', 'fac_id', 'department_id', 'program_level'];
+        
+        foreach ($allowedFilters as $filter) {
+            $val = $request->query($filter);
+            if ($val !== null && $val !== '') {
+                $whereClauses[] = "`{$filter}` = ?";
+                $bindings[] = $val;
+            }
+        }
+
+        $where = implode(' AND ', $whereClauses);
+
+        $paginated = $this->models[$entity]->paginate($page, $perPage, $where, $bindings);
         $this->success($response, $paginated, ucfirst($entity) . ' fetched.');
     }
 

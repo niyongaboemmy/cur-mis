@@ -369,7 +369,7 @@ class ApplicationService
     // Enrollment initiation
     // ─────────────────────────────────────────────────────────────────────────
 
-    public function initiateEnrollment(int $offerId, int $actorId): array
+    public function initiateEnrollment(int $offerId, int $actorId, int $levelId = 1): array
     {
         $offer = $this->offerModel->getWithApplication($offerId);
 
@@ -400,10 +400,20 @@ class ApplicationService
             'lname'             => $offer['last_name'],
             'email'             => $offer['email'],
             'phone'             => $offer['phone']        ?? '',
+            'gender'            => $offer['gender']       ?? '',
+            'birthdate'         => $offer['birthdate']    ?? null,
             'nationality'       => $offer['nationality']  ?? 'Rwandan',
-            'program'           => $offer['department_code'] ?? $offer['department_name'],
+            'faculty'           => $offer['faculty_name'] ?? '',
+            'department'        => $offer['department_code'] ?? '',
+            'program'           => $offer['department_name'] ?? $offer['department_code'],
+            'combination'       => $offer['combination']   ?? '',
+            'last_school'       => $offer['prev_school']   ?? '',
+            'sponsor'           => $offer['sponsorship']   ?? '',
+            'current_level'     => (string)$levelId,
             'registration_date' => date('Y-m-d'),
             'student_state'     => 'active',
+            'intake'            => $offer['intake'] ?? '',
+            'acc_year'          => $offer['academic_year_id'] ? (string)$offer['academic_year_id'] : '-',
         ];
 
         $studentId = (int)$this->studentModel->create($studentData);

@@ -26,13 +26,17 @@ class AdmissionOfferModel extends BaseModel
     public function getWithApplication(int $offerId): array|false
     {
         return $this->db->fetchOne(
-            "SELECT ao.*, sa.first_name, sa.last_name, sa.email, sa.phone,
+            "SELECT ao.*, sa.first_name, sa.last_name, sa.email, sa.phone, sa.gender, sa.birthdate, sa.nationality, sa.address,
+                    sa.prev_school, sa.prev_qualification, sa.prev_grade, sa.combination, sa.graduation_year,
+                    sa.sponsorship, sa.sponsor_name, sa.academic_year_id,
                     sa.application_number, sa.status AS application_status,
                     d.dep_name    AS department_name,
-                    d.dep_acronym AS department_code
+                    d.dep_acronym AS department_code,
+                    f.fac_name    AS faculty_name
              FROM `admission_offers` ao
              JOIN `student_applications` sa ON sa.id      = ao.application_id
              JOIN `departements`         d  ON d.dep_id   = sa.department_id
+             JOIN `faculty`              f  ON f.fac_id   = sa.faculty_id
              WHERE ao.id = ?
              LIMIT 1",
             [$offerId]

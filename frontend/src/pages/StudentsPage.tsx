@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useSearchParams } from 'react-router-dom'
 import {
   GraduationCap,
   Users,
@@ -21,10 +22,23 @@ type Tab = 'students' | 'employees'
 const PER_PAGE = 15
 
 export default function StudentsPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const initialQ = searchParams.get('q') || ''
+  
   const [tab, setTab]     = useState<Tab>('students')
-  const [q, setQ]         = useState('')
+  const [q, setQ]         = useState(initialQ)
   const [page, setPage]   = useState(1)
   const debouncedQ        = useDebounce(q, 350)
+
+  // Sync search state with URL for "auto-select" behavior
+  useEffect(() => {
+    if (debouncedQ) {
+      setSearchParams({ q: debouncedQ }, { replace: true })
+    } else {
+      searchParams.delete('q')
+      setSearchParams(searchParams, { replace: true })
+    }
+  }, [debouncedQ, setSearchParams])
 
   // Reset page on tab or search change
   const resetTo = (nextTab: Tab) => { setTab(nextTab); setPage(1); setQ('') }
