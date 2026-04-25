@@ -55,6 +55,8 @@ export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
   const [resetToken, setResetToken] = useState("");
 
+  const [devOtp, setDevOtp] = useState<string | undefined>();
+
   const forgotMutation = useForgotPassword();
   const verifyMutation = useVerifyResetOtp();
   const resetMutation = useResetPassword();
@@ -71,6 +73,7 @@ export default function ForgotPasswordPage() {
       const res = await forgotMutation.mutateAsync(data);
       if (res.success) {
         setEmail(data.email);
+        setDevOtp((res as any).data?.dev_otp);
         setStep("otp");
       }
     } catch (e) {
@@ -269,6 +272,18 @@ export default function ForgotPasswordPage() {
                     />
                   )}
                 />
+
+                <AnimatePresence>
+                  {devOtp && (
+                    <motion.p
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      className="mt-4 text-[11px] font-mono text-center text-blue-500 bg-blue-50 dark:bg-blue-900/20 py-1 rounded-md"
+                    >
+                      Dev OTP: {devOtp}
+                    </motion.p>
+                  )}
+                </AnimatePresence>
 
                 {otpForm.formState.errors.otp && (
                   <p className="error-text text-center mt-4">

@@ -90,6 +90,7 @@ function App() {
           <Route element={<ProtectedRoute />}>
             <Route element={<MainLayout />}>
               <Route path="/"          element={<WelcomePage />} />
+              <Route path="/welcome"   element={<WelcomePage />} />
               <Route path="/dashboard" element={<AdminDashboardPage />} />
               <Route path="/home"      element={<HomePage />} />
               <Route path="/profile" element={<ProfilePage />} />

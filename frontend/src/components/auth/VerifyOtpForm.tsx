@@ -68,9 +68,15 @@ export default function VerifyOtpForm({
   return (
     <div className="space-y-6">
       {devOtp && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-900/40 px-4 py-3 text-amber-800 dark:text-amber-200 text-xs">
-          <p className="font-semibold">Dev mode — SMTP unreachable</p>
-          <p className="mt-0.5">Pre-filled code: <span className="font-mono font-semibold">{devOtp}</span></p>
+        <div className="rounded-xl border border-blue-200 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-900/40 px-4 py-3 text-blue-800 dark:text-blue-200 text-xs mb-2">
+          <p className="font-semibold flex items-center gap-1.5">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+            </span>
+            Dev Mode — Verification Code
+          </p>
+          <p className="mt-0.5 ml-3.5">Auto-filled: <span className="font-mono font-bold tracking-widest">{devOtp}</span></p>
         </div>
       )}
 

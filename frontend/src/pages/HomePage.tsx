@@ -10,6 +10,7 @@ import {
   XCircle,
   Loader2,
   FileText,
+  AlertCircle,
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import AdminDashboardPage from '@/pages/admin/AdminDashboardPage'
@@ -28,6 +29,7 @@ const STATUS_CHIP: Record<ApplicationStatus, { label: string; cls: string; icon:
   offer_declined:         { label: 'Offer declined',    cls: 'chip-soft',    icon: XCircle      },
   enrolled:               { label: 'Enrolled',          cls: 'chip-success', icon: CheckCircle2 },
   withdrawn:              { label: 'Withdrawn',         cls: 'chip-soft',    icon: XCircle      },
+  requested_changes:      { label: 'Changes requested', cls: 'chip-warning', icon: AlertCircle    },
 }
 
 function ApplicantDashboard() {
