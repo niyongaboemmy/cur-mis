@@ -69,10 +69,30 @@ class ApplicationAdminController extends BaseController
         $documents = $this->docModel->getForApplication($id);
         $statusLog = $this->logModel->getForApplication($id);
 
+        // Fetch merit criteria for this application's context
+        $criteriaModel = new \App\Models\MeritCriteriaModel();
+        $meritCriteria = $criteriaModel->findForDeptIntake(
+            (int)$application['department_id'],
+            (string)$application['intake'],
+            (int)$application['academic_year_id']
+        );
+
+        // Fetch this applicant's ranking if a list was generated
+        $db = \Core\Database::getInstance();
+        $meritListing = $db->fetchOne(
+            "SELECT rank, merit_score, is_qualified, generated_at 
+             FROM `merit_lists` 
+             WHERE application_id = ? 
+             LIMIT 1",
+            [$id]
+        );
+
         $this->success($response, [
-            'application' => $application,
-            'documents'   => $documents,
-            'status_log'  => $statusLog,
+            'application'    => $application,
+            'documents'      => $documents,
+            'status_log'     => $statusLog,
+            'merit_criteria' => $meritCriteria ?: null,
+            'merit_listing'  => $meritListing  ?: null,
         ], 'Application details fetched.');
     }
 
