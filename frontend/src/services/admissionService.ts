@@ -129,6 +129,9 @@ export const applicationAdminService = {
 
   addNote: (id: number, data: { notes: string }) =>
     api.post<null>(`/api/admin/applications/${id}/notes`, data),
+
+  acceptOfferByAppId: (id: number) =>
+    api.post<{ offer_id: number }>(`/api/admin/applications/${id}/accept-offer`),
 }
 
 /* ───────────────────────────────────────────────────────────────
@@ -183,7 +186,7 @@ export const meritService = {
  * permission: MANAGE_ADMISSIONS
  * ─────────────────────────────────────────────────────────────── */
 export const offerService = {
-  list: (params: { status?: string } = {}, signal?: AbortSignal) =>
+  list: (params: { status?: string; department_id?: number; intake?: string; enrolled_only?: '0' | '1' } = {}, signal?: AbortSignal) =>
     api.get<PaginatedResponse<AdmissionOffer>>('/api/admin/admissions/offers', params, signal),
 
   create: (d: { application_id: number; expires_at: string; notes?: string }) =>
@@ -197,6 +200,37 @@ export const offerService = {
 
   initiateEnrollment: (offerId: number) =>
     api.post<{ student_id: number }>(`/api/admin/admissions/offers/${offerId}/enroll`),
+
+  initiateEnrollmentByAppId: (appId: number) =>
+    api.post<{ student_id: number }>(`/api/admin/applications/${appId}/enroll`),
+
+  sendLetter: (offerId: number) =>
+    api.post<{ sent_to: string; letter_token: string; download_url: string }>(`/api/admin/admissions/offers/${offerId}/send-letter`),
+
+  bulkSendLetters: (d: { department_id: number; intake: string; academic_year_id: number }) =>
+    api.post<{ total: number; sent: number; errors: string[] }>('/api/admin/admissions/letters/bulk-send', d),
+
+  /** Returns absolute URL for PDF download (admin, JWT-authenticated). */
+  letterPdfUrl: (offerId: number) => {
+    const token = useAuthStore.getState().token
+    const base  = import.meta.env.VITE_API_URL ?? ''
+    return `${base}/api/admin/admissions/offers/${offerId}/letter?token=${token}`
+  },
+
+  /** Returns absolute URL for applicant PDF download via token (no JWT). */
+  letterPublicUrl: (letterToken: string) => {
+    const base = import.meta.env.VITE_API_URL ?? ''
+    return `${base}/api/portal/admission-letter?token=${letterToken}`
+  },
+}
+
+/* ───────────────────────────────────────────────────────────────
+ * Manual admission
+ * permission: MANAGE_ADMISSIONS
+ * ─────────────────────────────────────────────────────────────── */
+export const manualAdmissionService = {
+  admit: (d: { application_id: number; reason?: string; notes?: string; expires_at?: string }) =>
+    api.post<{ offer_id: number; offer_letter_reference: string; expires_at: string }>('/api/admin/admissions/manual-admit', d),
 }
 
 /* ───────────────────────────────────────────────────────────────

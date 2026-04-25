@@ -26,8 +26,10 @@ const STATUS_GUIDANCE: Partial<Record<ApplicationStatus, string>> = {
   submitted:              'Your application is under review. We will notify you once your documents have been checked.',
   documents_under_review: 'Our team is reviewing your uploaded documents. This usually takes 2–5 business days.',
   documents_rejected:     'Some documents were rejected. Please check the feedback below and re-upload the corrected files.',
+  requested_changes:      'Changes to your documents have been requested. Please check the feedback below and re-upload.',
   documents_verified:     'Your documents have been verified. You will be notified when the merit list is published.',
   merit_listed:           'You are on the merit list. Admission offers will be sent out shortly.',
+
   offered:                'Congratulations! You have received an admission offer. Please respond before the deadline.',
   offer_accepted:         'You have accepted your offer. The enrollment team will contact you with next steps.',
   offer_declined:         'You have declined your admission offer. Contact admissions if you wish to reconsider.',
@@ -40,6 +42,7 @@ const STATUS_META: Record<ApplicationStatus, { label: string; tone: string; icon
   documents_under_review: { label: 'Documents under review',    tone: 'chip-warning', icon: Clock },
   documents_verified:     { label: 'Documents verified',        tone: 'chip-success', icon: CheckCircle2 },
   documents_rejected:     { label: 'Documents rejected',        tone: 'chip-danger',  icon: XCircle },
+  requested_changes:      { label: 'Changes requested',         tone: 'chip-warning', icon: AlertTriangle },
   merit_listed:           { label: 'On merit list',             tone: 'chip-primary', icon: CheckCircle2 },
   offered:                { label: 'Admission offered',         tone: 'chip-success', icon: CheckCircle2 },
   offer_accepted:         { label: 'Offer accepted',            tone: 'chip-success', icon: CheckCircle2 },

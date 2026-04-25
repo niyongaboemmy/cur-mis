@@ -1,49 +1,29 @@
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import { Files, FileCheck2, Award, Handshake, ListChecks, Layers, Calendar } from 'lucide-react'
-import { verificationService } from '@/services/admissionService'
-import { useAuthStore } from '@/store/authStore'
-import { PERMISSIONS } from '@/constants'
+import { Files, Handshake, ListChecks, Layers, Calendar } from 'lucide-react'
 
 const TABS = [
-  { to: '/admin/admissions/applications',   label: 'Applications',   icon: Files,       badge: false, permission: PERMISSIONS.MANAGE_STUDENT_APPLICATIONS },
-  { to: '/admin/admissions/verifications',  label: 'Verifications',  icon: FileCheck2,  badge: true,  permission: PERMISSIONS.VERIFY_DOCUMENTS },
-  { to: '/admin/admissions/merit',          label: 'Merit lists',    icon: Award,       badge: false, permission: PERMISSIONS.MANAGE_ADMISSIONS },
-  { to: '/admin/admissions/offers',         label: 'Offers',         icon: Handshake,   badge: false, permission: PERMISSIONS.MANAGE_ADMISSIONS },
-  { to: '/admin/admissions/requirements',   label: 'Requirements',   icon: ListChecks,  badge: false, permission: PERMISSIONS.MANAGE_ADMISSION_REQUIREMENTS },
-  { to: '/admin/admissions/document-types', label: 'Document types', icon: Layers,      badge: false, permission: PERMISSIONS.MANAGE_ADMISSION_REQUIREMENTS },
-  { to: '/admin/admissions/intakes',        label: 'Intakes',        icon: Calendar,    badge: false, permission: PERMISSIONS.MANAGE_ADMISSIONS },
+  { to: '/admin/admissions/applications',   label: 'Applications',   icon: Files      },
+  { to: '/admin/admissions/offers',         label: 'Offers',         icon: Handshake  },
+  { to: '/admin/admissions/requirements',   label: 'Requirements',   icon: ListChecks },
+  { to: '/admin/admissions/document-types', label: 'Document types', icon: Layers     },
+  { to: '/admin/admissions/intakes',        label: 'Intakes',        icon: Calendar   },
 ]
 
 export default function AdmissionsHub() {
-  const loc = useLocation()
-  const atIndex = loc.pathname === '/admin/admissions'
-  const user = useAuthStore((s) => s.user)
-
-  const visible = TABS.filter((t) => {
-    if (user?.role === 'superadmin') return true
-    return (user?.permissions ?? []).includes(t.permission)
-  })
-
-  const pendingQ = useQuery({
-    queryKey: ['admin', 'verifications', 'pending-count'],
-    queryFn: () => verificationService.getPendingApplications(),
-    refetchInterval: 30_000,
-    enabled: visible.some((t) => t.to.endsWith('/verifications')),
-  })
-  const pendingCount = pendingQ.data?.data?.total ?? 0
+  const loc    = useLocation()
+  const atRoot = loc.pathname === '/admin/admissions'
 
   return (
     <div className="max-w-[1400px] mx-auto space-y-4">
       <section className="card p-2">
         <div className="flex gap-1 overflow-x-auto no-scrollbar">
-          {visible.map((t) => (
+          {TABS.map((t) => (
             <NavLink
               key={t.to}
               to={t.to}
               className={({ isActive }) =>
                 `inline-flex items-center gap-1.5 px-3 py-2 text-[13px] rounded-md whitespace-nowrap transition-colors ${
-                  isActive || (atIndex && t.to.endsWith('/applications'))
+                  isActive || (atRoot && t.to.endsWith('/applications'))
                     ? 'bg-brand/10 text-brand dark:bg-brand/25 dark:text-gold-400 font-semibold'
                     : 'text-ink-600 hover:bg-ink-50 dark:text-ink-300 dark:hover:bg-ink-700/50'
                 }`
@@ -51,11 +31,6 @@ export default function AdmissionsHub() {
             >
               <t.icon className="w-3.5 h-3.5" />
               {t.label}
-              {t.badge && pendingCount > 0 && (
-                <span className="ml-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
-                  {pendingCount > 99 ? '99+' : pendingCount}
-                </span>
-              )}
             </NavLink>
           ))}
         </div>

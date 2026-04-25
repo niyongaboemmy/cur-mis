@@ -243,6 +243,57 @@ class EmailTemplateHelper
     }
 
     /**
+     * Template: admission letter dispatch — sent with PDF attached.
+     */
+    public static function admissionLetterEmailTemplate(
+        string $name,
+        string $appNumber,
+        string $programName,
+        string $offerRef,
+        string $downloadUrl,
+        string $expiresAt = ''
+    ): string {
+        $safeName       = htmlspecialchars($name);
+        $safeAppNumber  = htmlspecialchars($appNumber);
+        $safeProgram    = htmlspecialchars($programName);
+        $safeOfferRef   = htmlspecialchars($offerRef);
+        $safeDownload   = htmlspecialchars($downloadUrl);
+        $expiresHtml    = '';
+
+        if ($expiresAt) {
+            try {
+                $fmt = (new \DateTime($expiresAt))->format('j F Y');
+                $expiresHtml = "<p style='margin:0 0 8px 0;'><strong>Offer Expires:</strong> {$fmt}</p>";
+            } catch (\Exception $e) {}
+        }
+
+        $content = "
+            Dear $safeName,<br><br>
+            Congratulations! We are delighted to inform you that your <strong>Admission Letter</strong>
+            for admission to <strong>$safeProgram</strong> has been issued.<br><br>
+            <div style='background:#f0f4ff;border-left:4px solid #1e3a8a;border-radius:0 8px 8px 0;padding:16px 20px;margin:20px 0;'>
+                <p style='margin:0 0 8px 0;font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:#6b7280;font-family:Arial,sans-serif;'>Admission Details</p>
+                <p style='margin:0 0 8px 0;'><strong>Offer Reference:</strong> $safeOfferRef</p>
+                <p style='margin:0 0 8px 0;'><strong>Application Number:</strong> $safeAppNumber</p>
+                <p style='margin:0 0 8px 0;'><strong>Programme:</strong> $safeProgram</p>
+                $expiresHtml
+            </div>
+            Your official admission letter is <strong>attached to this email as a PDF</strong>.
+            You can also download it directly from the portal using the button below:<br>
+            <div style='text-align:center;margin:28px 0;'>
+                <a href='$safeDownload' style='display:inline-block;padding:14px 32px;background:#1e40af;color:#fff;text-decoration:none;border-radius:10px;font-weight:700;font-family:Arial,sans-serif;font-size:15px;letter-spacing:0.02em;'>
+                    Download Admission Letter (PDF)
+                </a>
+            </div>
+            Please log in to the Applicant Portal to formally <strong>accept or decline</strong> this offer before the expiry date.
+            Failure to respond by the deadline will result in automatic withdrawal of the offer.<br><br>
+            We look forward to welcoming you to our academic community!
+        ";
+
+        return self::wrap("Your Admission Letter — {$safeOfferRef}", $content);
+    }
+
+    /**
      * Template for Password Reset.
      */
     public static function passwordResetTemplate(string $name, string $link): string

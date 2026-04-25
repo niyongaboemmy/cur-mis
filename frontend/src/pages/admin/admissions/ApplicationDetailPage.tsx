@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import toast from "react-hot-toast";
 import {
   ArrowLeft,
@@ -15,7 +15,6 @@ import {
   FileText,
   Loader2,
   CheckCircle2,
-  XCircle,
   MessageSquarePlus,
   ChevronRight,
   Eye,
@@ -23,10 +22,14 @@ import {
   AlertCircle,
   Download,
   FileCheck2,
+  CreditCard,
+  UserPlus,
 } from "lucide-react";
 import {
   applicationAdminService,
   verificationService,
+  offerService,
+  manualAdmissionService,
 } from "@/services/admissionService";
 import { ApplicationStatus, VerificationStatus } from "@/types/admission";
 import DocumentPreviewModal from "./DocumentPreviewModal";
@@ -38,13 +41,74 @@ const STATUS_OPTIONS: ApplicationStatus[] = [
   ApplicationStatus.DOCUMENTS_VERIFIED,
   ApplicationStatus.DOCUMENTS_REJECTED,
   ApplicationStatus.REQUESTED_CHANGES,
-  ApplicationStatus.MERIT_LISTED,
   ApplicationStatus.OFFERED,
   ApplicationStatus.OFFER_ACCEPTED,
   ApplicationStatus.OFFER_DECLINED,
   ApplicationStatus.ENROLLED,
   ApplicationStatus.WITHDRAWN,
 ];
+
+
+function getStepForStatus(s: ApplicationStatus): number {
+  if ([ApplicationStatus.SUBMITTED, ApplicationStatus.DOCUMENTS_UNDER_REVIEW, ApplicationStatus.DOCUMENTS_REJECTED, ApplicationStatus.REQUESTED_CHANGES].includes(s)) return 1;
+  if ([ApplicationStatus.DOCUMENTS_VERIFIED].includes(s)) return 2;
+  if ([ApplicationStatus.OFFERED].includes(s)) return 3;
+  if ([ApplicationStatus.OFFER_ACCEPTED, ApplicationStatus.ENROLLED].includes(s)) return 4;
+  return 1;
+}
+
+function MultiStepBar({ maxStep, activeStep, setActiveStep }: { maxStep: number; activeStep: number; setActiveStep: (n: number) => void }) {
+  const steps = [
+    { id: 1, label: 'Document Validation' },
+    { id: 2, label: 'Accepted & Waiting Fee' },
+    { id: 3, label: 'Registration Fee Paid' },
+    { id: 4, label: 'Enrolled & Registered' },
+  ];
+
+  return (
+    <div className="card p-8 mb-8 bg-ink-50/30 dark:bg-ink-800/20 border-brand/10">
+      <div className="flex items-center justify-between relative px-8">
+        <div className="absolute top-5 left-16 right-16 h-0.5 bg-ink-100 dark:bg-ink-800 z-0" />
+        <div 
+            className="absolute top-5 left-16 h-0.5 bg-brand transition-all duration-1000 ease-out z-0" 
+            style={{ 
+              width: maxStep >= steps.length 
+                ? 'calc(100% - 128px)' 
+                : `calc(${((maxStep - 1) / (steps.length - 1)) * 100}%)` 
+            }}
+        />
+        {steps.map((step) => {
+          const isCompleted = maxStep > step.id;
+          const isActive = activeStep === step.id;
+          const isClickable = step.id <= maxStep;
+          return (
+            <div key={step.id} className="relative z-10 flex flex-col items-center">
+              <button 
+                onClick={() => isClickable && setActiveStep(step.id)}
+                disabled={!isClickable}
+                className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all duration-500 outline-none ${
+                isCompleted ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20 rotate-0 cursor-pointer hover:bg-emerald-600' : 
+                isActive ? 'bg-brand text-white shadow-xl shadow-brand/20 ring-4 ring-brand/10 scale-110 cursor-default' : 
+                isClickable ? 'bg-white dark:bg-ink-900 border-2 border-brand text-brand cursor-pointer hover:bg-brand/10' :
+                'bg-white dark:bg-ink-900 border-2 border-ink-200 dark:border-ink-700 text-ink-400 cursor-not-allowed opacity-60'
+              }`}>
+                {isCompleted ? <CheckCircle2 className="w-5 h-5" /> : 
+                 step.id === 3 ? <CreditCard className="w-5 h-5" /> :
+                 step.id === 4 ? <UserPlus className="w-5 h-5" /> :
+                 <span className="text-[14px] font-black">{step.id}</span>}
+              </button>
+              <p className={`mt-4 text-[10px] font-black uppercase tracking-[0.2em] text-center max-w-[120px] transition-colors duration-500 ${
+                isActive ? 'text-brand' : isCompleted ? 'text-emerald-600' : 'text-ink-400'
+              }`}>
+                {step.label}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 export default function ApplicationDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -57,6 +121,7 @@ export default function ApplicationDetailPage() {
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [previewIndex, setPreviewIndex] = useState(0);
   const [isRequestChangesOpen, setIsRequestChangesOpen] = useState(false);
+  const [activeStep, setActiveStep] = useState(1);
 
   const appQ = useQuery({
     queryKey: ["admin", "applications", appId],
@@ -79,8 +144,48 @@ export default function ApplicationDetailPage() {
     onSuccess: () => {
       toast.success("Status updated");
       qc.invalidateQueries({ queryKey: ["admin", "applications"] });
+      qc.invalidateQueries({ queryKey: ["admin", "applications", appId] });
     },
     onError: (e: any) => toast.error(e?.response?.data?.message ?? "Failed"),
+  });
+
+  const enroll = useMutation({
+    mutationFn: () => offerService.initiateEnrollmentByAppId(appId),
+    onSuccess: () => {
+      toast.success("Student enrolled and registration number generated!");
+      qc.invalidateQueries({ queryKey: ["admin", "applications", appId] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? "Failed"),
+  });
+
+  const issueOffer = useMutation({
+    mutationFn: () => {
+      // Calculate default expiry: 14 days from now
+      const expiry = new Date();
+      expiry.setDate(expiry.getDate() + 14);
+      const expiresAt = expiry.toISOString().slice(0, 10);
+      return manualAdmissionService.admit({
+        application_id: appId,
+        expires_at: expiresAt,
+        notes: 'Admitted via direct document approval',
+      });
+    },
+    onSuccess: () => {
+      toast.success('Admission offer created and applicant notified!');
+      qc.invalidateQueries({ queryKey: ['admin', 'applications', appId] });
+      qc.invalidateQueries({ queryKey: ['admin', 'applications'] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to issue offer'),
+  });
+
+  const confirmPayment = useMutation({
+    mutationFn: () => applicationAdminService.acceptOfferByAppId(appId),
+    onSuccess: () => {
+      toast.success('Fee payment confirmed — application is ready for enrollment.');
+      qc.invalidateQueries({ queryKey: ['admin', 'applications', appId] });
+      qc.invalidateQueries({ queryKey: ['admin', 'applications'] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed'),
   });
 
   const addNote = useMutation({
@@ -100,32 +205,40 @@ export default function ApplicationDetailPage() {
     qc.invalidateQueries({ queryKey: ["admin", "verifications"] });
   };
 
+  const appData = appQ.data?.data;
+  const app = appData?.application;
+  const status = (app?.status as ApplicationStatus) || ApplicationStatus.SUBMITTED;
+  const maxStep = getStepForStatus(status);
+
+  useEffect(() => {
+    if (status) {
+      setActiveStep(getStepForStatus(status));
+    }
+  }, [status]);
+
   if (appQ.isLoading)
     return (
       <p className="text-ink-500 text-[13px] flex items-center gap-2 p-4">
         <Loader2 className="w-4 h-4 animate-spin" /> Loading…
       </p>
     );
-  if (!appQ.data?.data)
+  if (!appData || !app)
     return (
       <p className="text-ink-500 text-[13px] p-4">Application not found.</p>
     );
 
-  const appData = appQ.data.data;
-  const app = appData.application;
   const docs = appData.documents ?? [];
   const statusLog = appData.status_log ?? [];
-  const status: string = app.status ?? "";
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       {/* Breadcrumb + queue navigation */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <Link
-          to="/admin/admissions/verifications"
+          to="/admin/admissions/applications"
           className="inline-flex items-center gap-1 text-[12.5px] text-ink-500 hover:text-brand"
         >
-          <ArrowLeft className="w-3.5 h-3.5" /> Back to queue
+          <ArrowLeft className="w-3.5 h-3.5" /> Back to list
         </Link>
         {queue.length > 0 && (
           <div className="flex items-center gap-2 text-[12.5px] text-ink-500">
@@ -158,6 +271,8 @@ export default function ApplicationDetailPage() {
         )}
       </div>
 
+      <MultiStepBar maxStep={getStepForStatus(status)} activeStep={activeStep} setActiveStep={setActiveStep} />
+
       {/* Application Header Card */}
       <div className="card p-6">
         <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -185,11 +300,11 @@ export default function ApplicationDetailPage() {
           </div>
           <div className="flex flex-col items-end gap-2">
             <p className="text-[10px] uppercase tracking-widest font-black text-ink-400">
-              Actions
+              Application Options
             </p>
             <div className="flex items-center gap-2">
               <select
-                className="input py-1.5 text-[12px] w-44"
+                className="input py-1.5 text-[12px] w-40"
                 value={status}
                 onChange={(e) => {
                   const s = e.target.value as ApplicationStatus;
@@ -203,32 +318,13 @@ export default function ApplicationDetailPage() {
                 }}
                 disabled={updateStatus.isPending}
               >
+                <option value="" disabled>Change Status</option>
                 {STATUS_OPTIONS.map((s) => (
                   <option key={s} value={s}>
                     {s.replace(/_/g, " ")}
                   </option>
                 ))}
               </select>
-              {(status === ApplicationStatus.SUBMITTED ||
-                status === ApplicationStatus.DOCUMENTS_UNDER_REVIEW) && (
-                <button
-                  className="btn-secondary py-1.5 px-3 text-[12px] border-red-200 text-red-600 hover:bg-red-50 flex items-center gap-1.5"
-                  onClick={() => {
-                    const reason = window.prompt(
-                      "Enter rejection reason (optional):",
-                    );
-                    if (reason !== null) {
-                      updateStatus.mutate(ApplicationStatus.DOCUMENTS_REJECTED);
-                      if (reason.trim()) {
-                        addNote.mutate(`REJECTION REASON: ${reason}`);
-                      }
-                    }
-                  }}
-                  disabled={updateStatus.isPending}
-                >
-                  <XCircle className="w-4 h-4" /> Reject Application
-                </button>
-              )}
             </div>
           </div>
         </div>
@@ -253,8 +349,11 @@ export default function ApplicationDetailPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6 items-start">
-        {/* LEFT: Applicant Info + Documents */}
+        {/* LEFT: Step Content */}
         <div className="space-y-6">
+          {activeStep === 1 && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div className="space-y-6">
           {/* Personal Details */}
           <section className="card p-6">
             <SectionHeader
@@ -542,6 +641,140 @@ export default function ApplicationDetailPage() {
                 </div>
               )}
           </section>
+        </div>
+              
+              {/* Step 1 Actions & Next */}
+              <div className="flex items-center justify-between mt-4">
+                <div className="flex gap-2">
+                  {(status === ApplicationStatus.SUBMITTED || status === ApplicationStatus.DOCUMENTS_UNDER_REVIEW) && (
+                    <>
+                      <button
+                        className="btn-primary py-2 px-6 shadow-lg shadow-brand/20"
+                        onClick={() => {
+                            if (docs.some(d => d.verification_status === VerificationStatus.PENDING)) {
+                                toast.error("Please review all documents first.");
+                                return;
+                            }
+                            if (window.confirm("Approve all documents and move to next step?")) {
+                                updateStatus.mutate(ApplicationStatus.DOCUMENTS_VERIFIED);
+                            }
+                        }}
+                        disabled={updateStatus.isPending}
+                      >
+                        <CheckCircle2 className="w-4 h-4 mr-2" /> Approve All Documents
+                      </button>
+                      <button
+                        className="btn-secondary py-2 px-6 border-red-200 text-red-600 hover:bg-red-50"
+                        onClick={() => setIsRequestChangesOpen(true)}
+                      >
+                        <AlertCircle className="w-4 h-4 mr-2" /> Request Changes
+                      </button>
+                    </>
+                  )}
+                </div>
+                {maxStep >= 2 && (
+                  <button className="btn-secondary ml-auto" onClick={() => setActiveStep(2)}>
+                    Proceed to Step 2 <ChevronRight className="w-4 h-4 ml-2" />
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeStep === 2 && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <section className="card p-8 text-center">
+                <Mail className="w-16 h-16 text-brand/20 mx-auto mb-4" />
+                <h3 className="text-xl font-black text-ink-900 dark:text-white mb-2">Admission Offer</h3>
+                <p className="text-ink-500 text-[14px] mb-8 max-w-sm mx-auto">
+                  Documents have been verified. You can now issue an admission offer to the applicant.
+                </p>
+                {status === ApplicationStatus.DOCUMENTS_VERIFIED ? (
+                  <button
+                    className="btn-primary py-3 px-8 text-[14px] flex items-center justify-center gap-2 mx-auto shadow-xl shadow-brand/20"
+                    onClick={() => {
+                      if (window.confirm("Generate admission offer and notify applicant?")) {
+                          issueOffer.mutate();
+                      }
+                    }}
+                    disabled={issueOffer.isPending}
+                  >
+                    <Mail className="w-5 h-5" /> Issue Admission Offer
+                  </button>
+                ) : (
+                   <div className="flex flex-col items-center">
+                     <p className="text-emerald-600 font-bold flex items-center gap-2 mb-4"><CheckCircle2 className="w-5 h-5"/> Admission Offer Issued</p>
+                     {maxStep >= 3 && (
+                        <button className="btn-secondary" onClick={() => setActiveStep(3)}>
+                          Proceed to Step 3 <ChevronRight className="w-4 h-4 ml-2" />
+                        </button>
+                     )}
+                   </div>
+                )}
+              </section>
+            </div>
+          )}
+
+          {activeStep === 3 && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <section className="card p-8 text-center">
+                <CreditCard className="w-16 h-16 text-emerald-500/20 mx-auto mb-4" />
+                <h3 className="text-xl font-black text-ink-900 dark:text-white mb-2">Registration Fee</h3>
+                <p className="text-ink-500 text-[14px] mb-8 max-w-sm mx-auto">
+                  Applicant has received the offer. Confirm fee payment to proceed.
+                </p>
+                {status === ApplicationStatus.OFFERED ? (
+                  <button
+                    className="btn-primary py-3 px-8 text-[14px] flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 shadow-xl shadow-emerald-500/20 mx-auto"
+                    onClick={() => {
+                      if (window.confirm("Simulate registration fee payment?")) {
+                          confirmPayment.mutate();
+                      }
+                    }}
+                    disabled={confirmPayment.isPending}
+                  >
+                    <CreditCard className="w-5 h-5" /> Confirm Fee Payment
+                  </button>
+                ) : (
+                   <div className="flex flex-col items-center">
+                     <p className="text-emerald-600 font-bold flex items-center gap-2 mb-4"><CheckCircle2 className="w-5 h-5"/> Fee Payment Confirmed</p>
+                     {maxStep >= 4 && (
+                        <button className="btn-secondary" onClick={() => setActiveStep(4)}>
+                          Proceed to Step 4 <ChevronRight className="w-4 h-4 ml-2" />
+                        </button>
+                     )}
+                   </div>
+                )}
+              </section>
+            </div>
+          )}
+
+          {activeStep === 4 && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <section className="card p-8 text-center">
+                <UserPlus className="w-16 h-16 text-indigo-500/20 mx-auto mb-4" />
+                <h3 className="text-xl font-black text-ink-900 dark:text-white mb-2">Finalize Enrollment</h3>
+                <p className="text-ink-500 text-[14px] mb-8 max-w-sm mx-auto">
+                  Fee payment is confirmed. Finalize the enrollment to generate a registration number and register the applicant into the students table.
+                </p>
+                {status === ApplicationStatus.OFFER_ACCEPTED ? (
+                  <button
+                    className="btn-primary py-3 px-8 text-[14px] flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 shadow-xl shadow-indigo-500/20 mx-auto"
+                    onClick={() => {
+                      if (window.confirm("Finalize registration and generate Registration Number?")) {
+                          enroll.mutate();
+                      }
+                    }}
+                    disabled={enroll.isPending}
+                  >
+                    <UserPlus className="w-5 h-5" /> Finalize Enrollment
+                  </button>
+                ) : status === ApplicationStatus.ENROLLED ? (
+                   <p className="text-indigo-600 font-bold flex items-center gap-2 justify-center"><CheckCircle2 className="w-5 h-5"/> Student is fully enrolled.</p>
+                ) : null}
+              </section>
+            </div>
+          )}
         </div>
 
         {/* RIGHT: Status History + Internal Notes + Financing */}
