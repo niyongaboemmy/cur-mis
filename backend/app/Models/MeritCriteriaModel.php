@@ -12,6 +12,7 @@ class MeritCriteriaModel extends BaseModel
         'grade_weight', 'combination_weight', 'other_weight',
         'min_grade', 'required_combinations', 'cutoff_score',
         'max_capacity', 'is_published', 'created_by',
+        'algorithm_type', 'algorithm_notes',
     ];
     protected array $hidden = [];
 

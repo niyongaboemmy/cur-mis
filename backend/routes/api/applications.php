@@ -52,6 +52,9 @@ $router->get('/api/portal/applications/:application_number',                    
 $router->post('/api/portal/applications/:application_number/documents',            [ApplicationPortalController::class, 'uploadDocument']);
 $router->post('/api/portal/applications/:application_number/respond',              [ApplicationPortalController::class, 'respondToOffer']);
 
+// Public token-based admission letter download (no auth)
+$router->get('/api/portal/admission-letter', [AdmissionController::class, 'downloadLetterByToken']);
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Admin routes — all require a valid JWT token
 // ─────────────────────────────────────────────────────────────────────────────
@@ -92,6 +95,8 @@ $router->group('/api/admin', function ($router) {
         $router->get('/:id',          [ApplicationAdminController::class, 'show']);
         $router->patch('/:id/status', [ApplicationAdminController::class, 'updateStatus']);
         $router->post('/:id/notes',   [ApplicationAdminController::class, 'addNote']);
+        $router->post('/:id/enroll',  [AdmissionController::class, 'initiateEnrollmentByAppId']);
+        $router->post('/:id/accept-offer', [AdmissionController::class, 'acceptOfferByAppId']);
     }, [new PermissionMiddleware(Permissions::MANAGE_STUDENT_APPLICATIONS)]);
 
     // ── 4. Document verification ──────────────────────────────────────────────
@@ -127,14 +132,18 @@ $router->group('/api/admin', function ($router) {
         $router->patch('/publish', [MeritListController::class, 'publishMeritList']);
     }, [new PermissionMiddleware(Permissions::MANAGE_ADMISSIONS)]);
 
-    // ── 6. Admission offers & enrollment ─────────────────────────────────────
+    // ── 6. Admission offers, enrollment & letters ─────────────────────────────
     // Permission: MANAGE_ADMISSIONS
     $router->group('/admissions', function ($router) {
-        $router->get('/offers',               [AdmissionController::class, 'listOffers']);
-        $router->post('/offers',              [AdmissionController::class, 'createOffer']);
-        $router->post('/offers/bulk',         [AdmissionController::class, 'bulkCreateOffers']);
-        $router->get('/offers/:offer_id',     [AdmissionController::class, 'getOfferDetails']);
-        $router->post('/offers/:offer_id/enroll', [AdmissionController::class, 'initiateEnrollment']);
+        $router->get('/offers',                        [AdmissionController::class, 'listOffers']);
+        $router->post('/offers',                       [AdmissionController::class, 'createOffer']);
+        $router->post('/offers/bulk',                  [AdmissionController::class, 'bulkCreateOffers']);
+        $router->get('/offers/:offer_id',              [AdmissionController::class, 'getOfferDetails']);
+        $router->post('/offers/:offer_id/enroll',      [AdmissionController::class, 'initiateEnrollment']);
+        $router->get('/offers/:offer_id/letter',       [AdmissionController::class, 'downloadLetter']);
+        $router->post('/offers/:offer_id/send-letter', [AdmissionController::class, 'sendLetter']);
+        $router->post('/letters/bulk-send',            [AdmissionController::class, 'bulkSendLetters']);
+        $router->post('/manual-admit',                 [AdmissionController::class, 'manualAdmit']);
     }, [new PermissionMiddleware(Permissions::MANAGE_ADMISSIONS)]);
 
     // ── 7. Intake management ──────────────────────────────────────────────────

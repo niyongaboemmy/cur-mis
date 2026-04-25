@@ -12,6 +12,7 @@ import {
   Award,
   ChevronRight,
   Plus,
+  Download,
 } from "lucide-react";
 import { applicantService } from "@/services/admissionService";
 import { ApplicationStatus } from "@/types/admission";
@@ -209,21 +210,31 @@ function ApplicationView({ app }: { app: any }) {
       )}
 
       {/* Accepted Confirmation */}
-      {app.status === "offer_accepted" && (
-        <div className="p-6 bg-emerald-50 border-emerald-200 dark:bg-emerald-900/10 dark:border-emerald-900/50 rounded-2xl flex flex-col sm:flex-row items-center gap-6">
+      {(app.status === "offer_accepted" || app.status === "enrolled") && (
+        <div className="p-6 bg-emerald-50 border border-emerald-200 dark:bg-emerald-900/10 dark:border-emerald-900/50 rounded-2xl flex flex-col sm:flex-row items-center gap-6">
           <div className="w-14 h-14 rounded-full bg-emerald-100 dark:bg-emerald-800 flex items-center justify-center shrink-0">
             <CheckCircle2 className="w-7 h-7 text-emerald-600" />
           </div>
-          <div className="text-center sm:text-left">
+          <div className="text-center sm:text-left flex-1">
             <h3 className="text-lg font-black text-emerald-900 dark:text-emerald-100 uppercase tracking-tight">
-              Admission Confirmed!
+              {app.status === "enrolled" ? "Enrollment Complete!" : "Admission Confirmed!"}
             </h3>
             <p className="text-[13px] text-emerald-800 dark:text-emerald-300 mt-1 leading-relaxed">
-              Congratulations! You have accepted the admission offer. Our
-              admissions team is now finalizing your enrollment. You will
-              receive your Student Registration Number via email shortly.
+              {app.status === "enrolled"
+                ? "Your enrollment is complete. Check your email for your Student Registration Number."
+                : "You have accepted the admission offer. Our admissions team is finalizing your enrollment."}
             </p>
           </div>
+          {(details as any)?.offer?.letter_token && (
+            <a
+              href={`${import.meta.env.VITE_API_URL ?? ''}/api/portal/admission-letter?token=${(details as any).offer.letter_token}`}
+              target="_blank"
+              rel="noreferrer"
+              className="shrink-0 flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[12px] font-black uppercase tracking-widest transition-colors"
+            >
+              <Download className="w-4 h-4" /> Download Letter
+            </a>
+          )}
         </div>
       )}
 
@@ -333,6 +344,16 @@ function AdmissionOfferBanner({
           >
             <FileText className="w-4 h-4 mr-2" /> View Offer Letter
           </button>
+          {details.offer?.letter_token && (
+            <a
+              href={`${import.meta.env.VITE_API_URL ?? ''}/api/portal/admission-letter?token=${details.offer.letter_token}`}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center justify-center gap-2 px-8 py-3 rounded-2xl font-black uppercase tracking-widest text-[12px] bg-white/20 hover:bg-white/30 text-white border border-white/30 transition-colors"
+            >
+              <Download className="w-4 h-4" /> Download PDF
+            </a>
+          )}
         </div>
       </div>
 

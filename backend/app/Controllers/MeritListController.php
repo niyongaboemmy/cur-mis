@@ -55,37 +55,46 @@ class MeritListController extends BaseController
         $data     = $request->body();
         $authUser = $request->param('_auth_user');
 
+        $algorithmType = $data['algorithm_type'] ?? 'merit_based';
+        $isMeritBased  = ($algorithmType === 'merit_based');
+
+        $weightRules = $isMeritBased ? 'required|numeric|min:0|max:100' : 'numeric|min:0|max:100';
+
         $errors = ValidationHelper::validate($data, [
             'department_id'       => 'required|numeric',
             'intake'              => 'required|string|min:3|max:20',
             'academic_year_id'    => 'required|numeric',
-            'grade_weight'        => 'required|numeric|min:0|max:100',
-            'combination_weight'  => 'required|numeric|min:0|max:100',
-            'other_weight'        => 'required|numeric|min:0|max:100',
+            'grade_weight'        => $weightRules,
+            'combination_weight'  => $weightRules,
+            'other_weight'        => $weightRules,
         ]);
 
         if (!empty($errors)) {
             $this->error($response, 'Validation failed.', 422, $errors);
         }
 
-        $total = (float)$data['grade_weight'] + (float)$data['combination_weight'] + (float)$data['other_weight'];
-        if (abs($total - 100.0) > 0.01) {
-            $this->error($response, 'grade_weight + combination_weight + other_weight must equal 100.', 422, [
-                'weights' => 'The three weights must sum to 100. Current sum: ' . $total,
-            ]);
+        if ($isMeritBased) {
+            $total = (float)($data['grade_weight'] ?? 0) + (float)($data['combination_weight'] ?? 0) + (float)($data['other_weight'] ?? 0);
+            if (abs($total - 100.0) > 0.01) {
+                $this->error($response, 'grade_weight + combination_weight + other_weight must equal 100.', 422, [
+                    'weights' => 'The three weights must sum to 100. Current sum: ' . $total,
+                ]);
+            }
         }
 
         $payload = [
             'department_id'         => (int)$data['department_id'],
             'intake'                => $data['intake'],
             'academic_year_id'      => (int)$data['academic_year_id'],
-            'grade_weight'          => (float)$data['grade_weight'],
-            'combination_weight'    => (float)$data['combination_weight'],
-            'other_weight'          => (float)$data['other_weight'],
+            'grade_weight'          => (float)($data['grade_weight']       ?? 0),
+            'combination_weight'    => (float)($data['combination_weight'] ?? 0),
+            'other_weight'          => (float)($data['other_weight']       ?? 0),
             'min_grade'             => $data['min_grade']             ?? null,
             'required_combinations' => $data['required_combinations'] ?? null,
             'cutoff_score'          => isset($data['cutoff_score'])   ? (float)$data['cutoff_score']   : null,
             'max_capacity'          => isset($data['max_capacity'])   ? (int)$data['max_capacity']     : null,
+            'algorithm_type'        => $algorithmType,
+            'algorithm_notes'       => $data['algorithm_notes'] ?? null,
             'created_by'            => (int)($authUser['id'] ?? 0),
         ];
 

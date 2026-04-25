@@ -11,6 +11,7 @@ class AdmissionOfferModel extends BaseModel
         'application_id', 'offer_letter_reference', 'offered_at', 'offered_by',
         'expires_at', 'status', 'responded_at', 'response_notes',
         'enrollment_initiated', 'student_id', 'enrolled_at',
+        'letter_sent_at', 'letter_sent_by', 'letter_token',
     ];
     protected array $hidden = [];
 

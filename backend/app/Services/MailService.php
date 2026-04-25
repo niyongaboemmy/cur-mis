@@ -83,4 +83,34 @@ class MailService
             return false;
         }
     }
+
+    /**
+     * Send an email with an in-memory binary attachment (e.g. PDF bytes).
+     */
+    public function sendWithAttachment($to, string $subject, string $body, string $altBody, string $binaryData, string $filename): bool
+    {
+        try {
+            $this->mailer->clearAddresses();
+            $this->mailer->clearAttachments();
+
+            if (is_array($to) && isset($to['email'])) {
+                $this->mailer->addAddress($to['email'], $to['name'] ?? '');
+            } elseif (is_string($to)) {
+                $this->mailer->addAddress($to);
+            }
+
+            $this->mailer->isHTML(true);
+            $this->mailer->Subject = $subject;
+            $this->mailer->Body    = $body;
+            $this->mailer->AltBody = $altBody ?: strip_tags($body);
+
+            // Attach from string
+            $this->mailer->addStringAttachment($binaryData, $filename, 'base64', 'application/pdf');
+
+            return (bool) $this->mailer->send();
+        } catch (Exception $e) {
+            error_log("Mailer Error (attachment): {$this->mailer->ErrorInfo}");
+            return false;
+        }
+    }
 }

@@ -11,6 +11,7 @@ use App\Models\StudentApplicationModel;
 use App\Models\MeritListModel;
 use App\Services\ApplicationService;
 use App\Helpers\ValidationHelper;
+use App\Helpers\AdmissionLetterPdf;
 use Core\Database;
 
 class AdmissionController extends BaseController
@@ -64,6 +65,11 @@ class AdmissionController extends BaseController
         if ($intake !== '') {
             $conditions[] = 'sa.intake = ?';
             $bindings[]   = $intake;
+        }
+
+        $enrolledOnly = $request->query('enrolled_only') === '1';
+        if ($enrolledOnly) {
+            $conditions[] = 'ao.enrollment_initiated = 1';
         }
 
         $where = $conditions ? 'WHERE ' . implode(' AND ', $conditions) : '';
@@ -123,9 +129,9 @@ class AdmissionController extends BaseController
             $this->error($response, 'Application not found.', 404);
         }
 
-        $allowedAppStatuses = ['documents_verified', 'merit_listed'];
+        $allowedAppStatuses = ['documents_verified'];
         if (!in_array($application['status'], $allowedAppStatuses, true)) {
-            $this->error($response, "An offer can only be made for applications with status 'documents_verified' or 'merit_listed'.", 422);
+            $this->error($response, "An offer can only be made for applications with 'documents_verified' status.", 422);
         }
 
         $existing = $this->offerModel->findByApplicationId($applicationId);
@@ -200,11 +206,10 @@ class AdmissionController extends BaseController
             "SELECT sa.id AS application_id, sa.application_number,
                     sa.first_name, sa.last_name, sa.email, sa.status AS application_status,
                     d.dep_name AS department_name
-             FROM `merit_lists` ml
-             JOIN `student_applications` sa ON sa.id    = ml.application_id
+             FROM `student_applications` sa
              JOIN `departements`         d  ON d.dep_id = sa.department_id
-             WHERE ml.department_id = ? AND ml.intake = ? AND ml.academic_year_id = ?
-             AND ml.is_qualified = 1
+             WHERE sa.department_id = ? AND sa.intake = ? AND sa.academic_year_id = ?
+             AND sa.status = 'documents_verified'
              AND sa.id NOT IN (
                  SELECT application_id FROM `admission_offers`
                  WHERE status IN ('pending', 'accepted')
@@ -288,5 +293,205 @@ class AdmissionController extends BaseController
         }
 
         $this->success($response, $result, 'Enrollment initiated successfully.', 201);
+    }
+
+    /**
+     * POST /api/admin/applications/:id/enroll
+     */
+    public function initiateEnrollmentByAppId(Request $request, Response $response): never
+    {
+        $appId    = (int)$request->param('id');
+        $authUser = $request->param('_auth_user');
+        $actorId  = (int)($authUser['id'] ?? 0);
+
+        $offer = $this->offerModel->findByApplicationId($appId);
+        if (!$offer) {
+            $this->error($response, 'No active admission offer found for this application.', 404);
+        }
+
+        try {
+            $result = $this->service->initiateEnrollment((int)$offer['id'], $actorId);
+        } catch (\RuntimeException $e) {
+            $this->error($response, $e->getMessage(), 422);
+        }
+
+        $this->success($response, $result, 'Enrollment initiated successfully.', 201);
+    }
+
+    /**
+     * POST /api/admin/applications/:id/accept-offer
+     * Simulates registration fee payment — marks the offer record as 'accepted'
+     * and sets the application status to 'offer_accepted'.
+     * Required before initiateEnrollment can proceed.
+     */
+    public function acceptOfferByAppId(Request $request, Response $response): never
+    {
+        $appId    = (int)$request->param('id');
+        $authUser = $request->param('_auth_user');
+        $actorId  = (int)($authUser['id'] ?? 0);
+
+        $offer = $this->offerModel->findByApplicationId($appId);
+        if (!$offer) {
+            $this->error($response, 'No admission offer found for this application.', 404);
+        }
+
+        if ($offer['status'] === 'accepted') {
+            $this->error($response, 'Offer has already been accepted.', 422);
+        }
+
+        $db = Database::getInstance();
+        $db->execute(
+            "UPDATE `admission_offers` SET status = 'accepted', responded_at = NOW(), updated_at = NOW() WHERE id = ?",
+            [(int)$offer['id']]
+        );
+        $db->execute(
+            "UPDATE `student_applications` SET status = 'offer_accepted', updated_at = NOW() WHERE id = ?",
+            [$appId]
+        );
+
+        $this->service->logStatusChange($appId, 'offered', 'offer_accepted', $actorId, 'admin', 'Registration fee payment confirmed (simulated).');
+
+        $this->success($response, ['offer_id' => (int)$offer['id']], 'Fee payment confirmed and offer accepted.');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Manual Admission
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * POST /api/admin/admissions/manual-admit
+     */
+    public function manualAdmit(Request $request, Response $response): never
+    {
+        $data     = $request->body();
+        $authUser = $request->param('_auth_user');
+        $actorId  = (int)($authUser['id'] ?? 0);
+
+        $errors = ValidationHelper::validate($data, [
+            'application_id' => 'required|numeric',
+        ]);
+
+        if (!empty($errors)) {
+            $this->error($response, 'Validation failed.', 422, $errors);
+        }
+
+        try {
+            $result = $this->service->manualAdmit(
+                (int)$data['application_id'],
+                $actorId,
+                (string)($data['reason'] ?? ''),
+                (string)($data['notes'] ?? ''),
+                !empty($data['expires_at']) ? (string)$data['expires_at'] : null
+            );
+        } catch (\RuntimeException $e) {
+            $this->error($response, $e->getMessage(), 422);
+        }
+
+        $this->success($response, $result, 'Application manually admitted.', 201);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Admission Letter
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * GET /api/admin/admissions/offers/:offer_id/letter
+     * Stream PDF admission letter to browser.
+     */
+    public function downloadLetter(Request $request, Response $response): never
+    {
+        $offerId = (int)$request->param('offer_id');
+
+        try {
+            $data = $this->service->getLetterData($offerId);
+        } catch (\RuntimeException $e) {
+            $this->error($response, $e->getMessage(), 404);
+        }
+
+        $filename = 'admission-letter-' . ($data['application_number'] ?? $offerId) . '.pdf';
+        AdmissionLetterPdf::streamPdf($data, $filename);
+    }
+
+    /**
+     * GET /api/portal/admission-letter
+     * Public token-based download (applicant, no JWT required).
+     */
+    public function downloadLetterByToken(Request $request, Response $response): never
+    {
+        $token = $request->query('token') ?? '';
+
+        if (strlen($token) < 20) {
+            $this->error($response, 'Invalid or missing token.', 400);
+        }
+
+        $db    = Database::getInstance();
+        $offer = $db->fetchOne(
+            "SELECT ao.id FROM `admission_offers` ao WHERE ao.letter_token = ? LIMIT 1",
+            [$token]
+        );
+
+        if (!$offer) {
+            $this->error($response, 'Letter not found or token is invalid.', 404);
+        }
+
+        try {
+            $data = $this->service->getLetterData((int)$offer['id']);
+        } catch (\RuntimeException $e) {
+            $this->error($response, $e->getMessage(), 404);
+        }
+
+        $filename = 'admission-letter-' . ($data['application_number'] ?? $offer['id']) . '.pdf';
+        AdmissionLetterPdf::streamPdf($data, $filename);
+    }
+
+    /**
+     * POST /api/admin/admissions/offers/:offer_id/send-letter
+     */
+    public function sendLetter(Request $request, Response $response): never
+    {
+        $offerId  = (int)$request->param('offer_id');
+        $authUser = $request->param('_auth_user');
+        $actorId  = (int)($authUser['id'] ?? 0);
+
+        try {
+            $result = $this->service->sendAdmissionLetter($offerId, $actorId);
+        } catch (\RuntimeException $e) {
+            $this->error($response, $e->getMessage(), 422);
+        }
+
+        $this->success($response, $result, 'Admission letter sent successfully.');
+    }
+
+    /**
+     * POST /api/admin/admissions/letters/bulk-send
+     */
+    public function bulkSendLetters(Request $request, Response $response): never
+    {
+        $data     = $request->body();
+        $authUser = $request->param('_auth_user');
+        $actorId  = (int)($authUser['id'] ?? 0);
+
+        $errors = ValidationHelper::validate($data, [
+            'department_id'    => 'required|numeric',
+            'intake'           => 'required|string',
+            'academic_year_id' => 'required|numeric',
+        ]);
+
+        if (!empty($errors)) {
+            $this->error($response, 'Validation failed.', 422, $errors);
+        }
+
+        try {
+            $result = $this->service->bulkSendAdmissionLetters(
+                (int)$data['department_id'],
+                (string)$data['intake'],
+                (int)$data['academic_year_id'],
+                $actorId
+            );
+        } catch (\RuntimeException $e) {
+            $this->error($response, $e->getMessage(), 422);
+        }
+
+        $this->success($response, $result, "Letters dispatched: {$result['sent']} sent, {$result['total']} total.");
     }
 }

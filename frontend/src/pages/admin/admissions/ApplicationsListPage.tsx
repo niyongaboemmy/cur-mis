@@ -10,17 +10,17 @@ import SearchableSelect from '@/components/ui/SearchableSelect'
 import ApplicationsDashboard from './ApplicationsDashboard'
 
 const STATUSES: { value: ApplicationStatus | ''; label: string }[] = [
-  { value: '',                       label: 'All statuses' },
-  { value: 'submitted',              label: 'Submitted' },
-  { value: 'documents_under_review', label: 'Docs under review' },
-  { value: 'documents_verified',     label: 'Docs verified' },
-  { value: 'documents_rejected',     label: 'Docs rejected' },
-  { value: 'merit_listed',           label: 'Merit listed' },
-  { value: 'offered',                label: 'Offered' },
-  { value: 'offer_accepted',         label: 'Accepted' },
-  { value: 'offer_declined',         label: 'Declined' },
-  { value: 'enrolled',               label: 'Enrolled' },
-  { value: 'withdrawn',              label: 'Withdrawn' },
+  { value: '',                                     label: 'All statuses' },
+  { value: ApplicationStatus.SUBMITTED,            label: 'Submitted' },
+  { value: ApplicationStatus.DOCUMENTS_UNDER_REVIEW, label: 'Docs under review' },
+  { value: ApplicationStatus.DOCUMENTS_VERIFIED,   label: 'Docs verified' },
+  { value: ApplicationStatus.DOCUMENTS_REJECTED,   label: 'Docs rejected' },
+  { value: ApplicationStatus.REQUESTED_CHANGES,    label: 'Changes requested' },
+  { value: ApplicationStatus.OFFERED,              label: 'Offered' },
+  { value: ApplicationStatus.OFFER_ACCEPTED,       label: 'Fee paid' },
+  { value: ApplicationStatus.OFFER_DECLINED,       label: 'Declined' },
+  { value: ApplicationStatus.ENROLLED,             label: 'Enrolled' },
+  { value: ApplicationStatus.WITHDRAWN,            label: 'Withdrawn' },
 ]
 
 const STATUS_TONE: Record<string, string> = {
@@ -28,7 +28,7 @@ const STATUS_TONE: Record<string, string> = {
   documents_under_review: 'chip-warning',
   documents_verified:     'chip-success',
   documents_rejected:     'chip-danger',
-  merit_listed:           'chip-primary',
+  requested_changes:      'chip-warning',
   offered:                'chip-success',
   offer_accepted:         'chip-success',
   offer_declined:         'chip-soft',
