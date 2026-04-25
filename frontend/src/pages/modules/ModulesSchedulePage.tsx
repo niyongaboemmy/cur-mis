@@ -10,7 +10,7 @@ import { portalService } from '@/services/admissionService'
 import type { Module, ModuleScheduleRow, ScheduleConflict, SchedulePayload } from '@/types/modules'
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-const EMPTY: SchedulePayload = { module_id: 0, academic_term_id: 0, room_id: 0, day_of_week: 1, start_time: '08:00', end_time: '10:00', session_type: 'lecture' }
+const EMPTY: SchedulePayload = { module_id: 0, academic_term_id: 0, room_id: 0, day_of_week: 1, start_time: '08:00', end_time: '10:00', session_type: 'lecture', start_date: '', end_date: '' }
 
 export default function ModulesSchedulePage() {
   const qc = useQueryClient()
@@ -84,7 +84,7 @@ export default function ModulesSchedulePage() {
   })
   const remove = useMutation({ mutationFn: (id: number) => moduleScheduleService.remove(id), onSuccess: () => { toast.success('Removed'); qc.invalidateQueries({ queryKey: ['modules', 'schedules', termId] }) } })
 
-  const editEntry = (row: ModuleScheduleRow) => { setEditingId(row.id); setDraft({ module_id: row.module_id, academic_term_id: row.academic_term_id, room_id: row.room_id, day_of_week: row.day_of_week, start_time: row.start_time.slice(0, 5), end_time: row.end_time.slice(0, 5), session_type: row.session_type, notes: row.notes ?? undefined }) }
+  const editEntry = (row: ModuleScheduleRow) => { setEditingId(row.id); setDraft({ module_id: row.module_id, academic_term_id: row.academic_term_id, room_id: row.room_id, day_of_week: row.day_of_week, start_time: row.start_time.slice(0, 5), end_time: row.end_time.slice(0, 5), start_date: row.start_date ?? '', end_date: row.end_date ?? '', session_type: row.session_type, notes: row.notes ?? undefined }) }
 
   const selectedModule = allModules.find((m) => m.module_id === draft.module_id)
   const canSubmit = draft.module_id > 0 && draft.room_id > 0 && draft.academic_term_id > 0 && draft.start_time < draft.end_time && conflicts.length === 0
@@ -224,6 +224,18 @@ export default function ModulesSchedulePage() {
               </select>
             </label>
 
+            <div className="grid grid-cols-2 gap-2">
+              <label className="block text-[13px]">
+                <span className="text-ink-600 block mb-1">Start date <span className="text-ink-400 font-normal">(optional)</span></span>
+                <input type="date" className="input input-sm w-full" value={draft.start_date ?? ''} onChange={(e) => setDraft({ ...draft, start_date: e.target.value || null })} />
+              </label>
+              <label className="block text-[13px]">
+                <span className="text-ink-600 block mb-1">End date <span className="text-ink-400 font-normal">(optional)</span></span>
+                <input type="date" className="input input-sm w-full" value={draft.end_date ?? ''} onChange={(e) => setDraft({ ...draft, end_date: e.target.value || null })} />
+              </label>
+              <p className="col-span-2 text-[11px] text-ink-400">Leave empty to run for the entire term.</p>
+            </div>
+
             {conflicts.length > 0 && (
               <div className="border border-amber-200 bg-amber-50 dark:bg-amber-500/10 rounded-md p-3 text-[12.5px]">
                 <div className="flex items-center gap-1.5 font-semibold text-amber-700 mb-1">
@@ -307,12 +319,13 @@ export default function ModulesSchedulePage() {
                   <th className="px-4 py-2 font-bold text-ink-400 text-[10px] uppercase">Time</th>
                   <th className="px-4 py-2 font-bold text-ink-400 text-[10px] uppercase">Room</th>
                   <th className="px-4 py-2 font-bold text-ink-400 text-[10px] uppercase">Type</th>
+                  <th className="px-4 py-2 font-bold text-ink-400 text-[10px] uppercase">Range</th>
                   <th className="px-4 py-2 font-bold text-ink-400 text-[10px] uppercase text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-ink-100 dark:divide-ink-700">
                 {filteredSchedules.length === 0 ? (
-                  <tr><td colSpan={7} className="p-6 text-center text-ink-400">No schedule entries{hasFilters ? ' match the filters' : ' yet'}.</td></tr>
+                  <tr><td colSpan={8} className="p-6 text-center text-ink-400">No schedule entries{hasFilters ? ' match the filters' : ' yet'}.</td></tr>
                 ) : filteredSchedules.sort((a, b) => a.day_of_week - b.day_of_week || a.start_time.localeCompare(b.start_time)).map((r) => {
                   const dept = deptMap.get(moduleDeptMap.get(r.module_id) ?? 0)
                   return (
@@ -323,6 +336,11 @@ export default function ModulesSchedulePage() {
                       <td className="px-4 py-2.5 font-mono">{r.start_time.slice(0, 5)}–{r.end_time.slice(0, 5)}</td>
                       <td className="px-4 py-2.5">{r.room_name}</td>
                       <td className="px-4 py-2.5 capitalize">{r.session_type}</td>
+                      <td className="px-4 py-2.5 text-[12px] text-ink-500">
+                        {r.start_date || r.end_date
+                          ? `${r.start_date ?? '…'} → ${r.end_date ?? '…'}`
+                          : <span className="text-ink-300">Full term</span>}
+                      </td>
                       <td className="px-4 py-2.5 text-right">
                         <div className="flex items-center justify-end gap-1">
                           <button className="icon-btn" onClick={() => editEntry(r)}><Pencil className="w-3.5 h-3.5" /></button>

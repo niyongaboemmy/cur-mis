@@ -33,6 +33,8 @@ export interface ModuleScheduleRow {
   day_of_week:          number
   start_time:           string
   end_time:             string
+  start_date?:          string | null   // YYYY-MM-DD — null means runs full term
+  end_date?:            string | null
   session_type:         'lecture' | 'lab' | 'tutorial' | 'seminar' | 'exam'
   notes?:               string | null
   // joined
@@ -113,6 +115,8 @@ export interface SchedulePayload {
   day_of_week:          number
   start_time:           string
   end_time:             string
+  start_date?:          string | null
+  end_date?:            string | null
   session_type?:        ModuleScheduleRow['session_type']
   module_assignment_id?: number | null
   notes?:               string | null
