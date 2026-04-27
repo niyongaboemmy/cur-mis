@@ -7,6 +7,7 @@ import {
   moduleRegistrationService,
   moduleScheduleService,
 } from '@/services/modulesService'
+import { marksService, type MyMarksRow, type MyMarksTotals } from '@/services/marksService'
 import { useSystemStore, selectActiveTerm } from '@/store/systemStore'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
@@ -15,7 +16,7 @@ import {
   ArrowLeft, Loader2, User, Mail, Phone, Calendar,
   GraduationCap, Globe2, Building2, BookOpen,
   CheckCircle, Clock, FileText, BarChart, Edit, Save, X,
-  Hash, Award, AlertTriangle, MapPin, Plus, Sparkles
+  Hash, Award, AlertTriangle, MapPin, Plus, Sparkles, Download, Percent
 } from 'lucide-react'
 
 const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -117,7 +118,7 @@ export default function StudentDetailsPage() {
         {tab === 'documents' && <PlaceholderTab icon={FileText} title="Student Documents" desc="Uploaded requirements, transcripts, and ID copies." />}
         {tab === 'modules' && <ModulesTab student={student} stats={stats} />}
         {tab === 'finance' && <PlaceholderTab icon={BarChart} title="Financial Overview" desc="Tuition fees, payments, and balances." />}
-        {tab === 'transcript' && <PlaceholderTab icon={FileText} title="Academic Transcript" desc="Detailed grades and academic history across all levels." />}
+        {tab === 'transcript' && <TranscriptTab student={student} />}
       </div>
 
       {isEditing && <EditStudentModal student={student} stats={stats} onClose={() => setIsEditing(false)} />}
@@ -207,8 +208,6 @@ function timeOverlap(a: ScheduleSlot, b: ScheduleSlot): boolean {
 
 function ModulesTab({ student, stats }: { student: any, stats: any }) {
   const qc = useQueryClient()
-  const departmentId = student.department ? Number(student.department) : null
-  const levelId = student.current_level ? Number(student.current_level) : null
   const regnumber = student.regnumber || ''
   const activeTerm = useSystemStore(selectActiveTerm)
   const termId = activeTerm?.id ? Number(activeTerm.id) : null
@@ -217,11 +216,19 @@ function ModulesTab({ student, stats }: { student: any, stats: any }) {
   const deptName = stats?.facets?.department?.find((f: any) => String(f.value) === String(student.department))?.label || student.department
   const levelName = stats?.facets?.current_level?.find((f: any) => String(f.value) === String(student.current_level))?.label || student.current_level
 
-  const canList = !!departmentId && !!levelId
+  // Show modules from the student's department (the curriculum they're
+  // enrolled in). If the department isn't set, fall back to "all modules" so
+  // an admin can still enroll them — but warn in the UI.
+  const studentDeptId = student?.department ? Number(student.department) : 0
+  const canList = true
 
   const modulesQ = useQuery({
-    queryKey: ['student-modules', departmentId, levelId],
-    queryFn: () => moduleCatalogService.list({ department: departmentId!, level: levelId!, per_page: 200 }),
+    queryKey: ['student-modules', studentDeptId || 'all'],
+    queryFn: () => moduleCatalogService.list(
+      studentDeptId > 0
+        ? { per_page: 500, status: 'active', department: studentDeptId }
+        : { per_page: 500, status: 'active' }
+    ),
     enabled: canList,
   })
 
@@ -243,7 +250,8 @@ function ModulesTab({ student, stats }: { student: any, stats: any }) {
         module_id: moduleId,
         student_regnumber: regnumber,
         academic_term_id: termId!,
-      }),
+        force: true,
+      } as any),
     onSuccess: () => {
       toast.success('Student enrolled in module')
       qc.invalidateQueries({ queryKey: ['student-registrations', regnumber] })
@@ -251,6 +259,25 @@ function ModulesTab({ student, stats }: { student: any, stats: any }) {
     onError: (e: any) =>
       toast.error(e?.response?.data?.message || 'Could not enroll'),
   })
+
+  const [bulkEnrolling, setBulkEnrolling] = useState(false)
+  const enrollAllAvailable = async (ids: number[]) => {
+    if (!termId || ids.length === 0) return
+    setBulkEnrolling(true)
+    let ok = 0, fail = 0, errMsg = ''
+    for (const id of ids) {
+      try {
+        await moduleRegistrationService.create({ module_id: id, student_regnumber: regnumber, academic_term_id: termId, force: true } as any)
+        ok++
+      } catch (e: any) {
+        fail++; errMsg = e?.response?.data?.message || errMsg
+      }
+    }
+    qc.invalidateQueries({ queryKey: ['student-registrations', regnumber] })
+    setBulkEnrolling(false)
+    if (ok > 0) toast.success(`Enrolled in ${ok} module${ok === 1 ? '' : 's'}${fail ? ` · ${fail} skipped` : ''}`)
+    else toast.error(`Could not enroll${errMsg ? ': ' + errMsg : ''}`)
+  }
 
   if (!canList) {
     return (
@@ -275,9 +302,23 @@ function ModulesTab({ student, stats }: { student: any, stats: any }) {
     )
   }
 
-  const modules: any[] = modulesQ.data?.data?.data ?? []
+  const rawModules: any[] = modulesQ.data?.data?.data ?? []
   const registrations: any[] = registrationsQ.data?.data ?? []
   const schedules: any[] = schedulesQ.data?.data ?? []
+
+  // Deduplicate by trimmed/normalized code+name. The catalog has stale import
+  // rows where the same module exists with a trailing tab (e.g. "CCU8111\t" vs
+  // "CCU8111") — keep the lowest module_id as canonical.
+  const seenKey = new Set<string>()
+  const modules: any[] = []
+  for (const m of [...rawModules].sort((a, b) => Number(a.module_id) - Number(b.module_id))) {
+    const code = String(m.module_code ?? '').replace(/\s+/g, '').toLowerCase()
+    const name = String(m.module_name ?? '').replace(/\s+/g, ' ').trim().toLowerCase()
+    const key  = `${code}|${name}|${m.level ?? ''}`
+    if (seenKey.has(key)) continue
+    seenKey.add(key)
+    modules.push(m)
+  }
 
   // Group schedules per module (only for active term)
   const schedulesByModule = new Map<number, ScheduleSlot[]>()
@@ -399,6 +440,29 @@ function ModulesTab({ student, stats }: { student: any, stats: any }) {
         title="Available to Enroll"
         count={available.length}
         hint={termId ? 'Modules with a schedule for the current term.' : 'Set an active term to enable enrollment.'}
+        action={
+          (() => {
+            const enrollable = available
+              .filter((m) => !findConflict(schedulesByModule.get(Number(m.module_id)) ?? []))
+              .map((m) => Number(m.module_id))
+            if (!termId || enrollable.length === 0) return null
+            return (
+              <button
+                type="button"
+                disabled={bulkEnrolling}
+                onClick={() => {
+                  if (confirm(`Enroll this student in all ${enrollable.length} available module${enrollable.length === 1 ? '' : 's'} (skipping any with schedule conflicts)?`)) {
+                    enrollAllAvailable(enrollable)
+                  }
+                }}
+                className="btn-primary btn-sm flex items-center gap-1.5"
+              >
+                {bulkEnrolling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                Enroll in all {enrollable.length}
+              </button>
+            )
+          })()
+        }
       />
       {available.length === 0 ? (
         <EmptyState icon={BookOpen} title="Nothing schedulable yet" desc="No catalog modules at this department/level are scheduled in the current term." />
@@ -474,8 +538,8 @@ function ModulesTab({ student, stats }: { student: any, stats: any }) {
   )
 }
 
-function SectionHeader({ icon: Icon, tone, title, count, hint }: {
-  icon: any; tone: 'brand' | 'emerald' | 'amber' | 'ink'; title: string; count: number; hint?: string
+function SectionHeader({ icon: Icon, tone, title, count, hint, action }: {
+  icon: any; tone: 'brand' | 'emerald' | 'amber' | 'ink'; title: string; count: number; hint?: string; action?: React.ReactNode
 }) {
   const toneClass = {
     brand: 'bg-brand/10 text-brand',
@@ -497,6 +561,7 @@ function SectionHeader({ icon: Icon, tone, title, count, hint }: {
         </h3>
         {hint && <p className="text-[12px] text-ink-500 mt-0.5">{hint}</p>}
       </div>
+      {action && <div className="shrink-0">{action}</div>}
     </div>
   )
 }
@@ -791,4 +856,154 @@ function EditStudentModal({ student, stats, onClose }: { student: any, stats: an
     </div>,
     document.body
   )
+}
+
+/* ─── Transcript tab ───────────────────────────────────────────────── */
+
+function TranscriptTab({ student }: { student: any }) {
+  const regnumber: string = student?.regnumber ?? ''
+
+  const marksQ = useQuery({
+    queryKey: ['student-marks', regnumber],
+    queryFn: () => marksService.studentMarks(regnumber),
+    enabled: !!regnumber,
+  })
+
+  const download = useMutation({
+    mutationFn: () => marksService.downloadStudentTranscript(regnumber),
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Could not download transcript'),
+  })
+
+  if (!regnumber) {
+    return (
+      <div className="card p-8 text-center text-ink-400">
+        This student has no registration number, so a transcript cannot be generated.
+      </div>
+    )
+  }
+
+  if (marksQ.isLoading) {
+    return <div className="card p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-brand" /></div>
+  }
+
+  const data = marksQ.data?.data
+  const rows: MyMarksRow[] = data?.rows ?? []
+  const totals: MyMarksTotals | undefined = data?.totals
+
+  if (rows.length === 0) {
+    return (
+      <div className="card p-8 text-center text-ink-400">
+        No marks have been recorded for this student yet. Once a lecturer or admin records marks under
+        <span className="font-mono mx-1">Modules → Marks</span>, they will appear here.
+      </div>
+    )
+  }
+
+  const byYear = new Map<string, MyMarksRow[]>()
+  for (const r of rows) {
+    const k = r.year_label ?? '—'
+    if (!byYear.has(k)) byYear.set(k, [])
+    byYear.get(k)!.push(r)
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Summary + download */}
+      <div className="card p-4 flex flex-wrap items-center gap-5">
+        <TStat icon={<BookOpen className="w-4 h-4" />}     label="Modules"          value={totals?.modules ?? 0} />
+        <TStat icon={<Award className="w-4 h-4" />}        label="Total credits"    value={totals?.total_credits ?? 0} />
+        <TStat icon={<Percent className="w-4 h-4" />}      label="Weighted avg"     value={totals?.weighted_average != null ? `${totals.weighted_average}%` : '—'} highlight />
+        <TStat icon={<GraduationCap className="w-4 h-4" />} label="Overall grade"    value={totals?.overall_grade ?? '—'} />
+        <TStat icon={<CheckCircle className="w-4 h-4" />}  label="Decision"         value={totals?.decision ?? '—'} tone={totals?.decision === 'Promoted' ? 'good' : totals?.decision === 'Repeat' ? 'bad' : undefined} />
+
+        <button
+          className="btn-primary btn-sm ml-auto"
+          disabled={download.isPending}
+          onClick={() => download.mutate()}
+        >
+          {download.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+          {download.isPending ? 'Preparing…' : 'Download transcript (PDF)'}
+        </button>
+      </div>
+
+      {/* Per-year tables */}
+      {Array.from(byYear.entries()).map(([year, list]) => (
+        <div key={year} className="card overflow-hidden">
+          <div className="px-4 py-2 border-b border-ink-100 dark:border-ink-700 bg-ink-50 dark:bg-ink-800/40 text-[12px] font-semibold text-ink-700 dark:text-ink-200">
+            Academic year: <span className="font-mono">{year}</span>
+          </div>
+          <table className="w-full text-left text-[13px]">
+            <thead>
+              <tr className="bg-ink-50/60 dark:bg-ink-800/30 border-b border-ink-100 dark:border-ink-700">
+                <th className="px-3 py-2 font-bold text-ink-400 text-[10px] uppercase">#</th>
+                <th className="px-3 py-2 font-bold text-ink-400 text-[10px] uppercase">Code</th>
+                <th className="px-3 py-2 font-bold text-ink-400 text-[10px] uppercase">Module</th>
+                <th className="px-3 py-2 font-bold text-ink-400 text-[10px] uppercase">Term</th>
+                <th className="px-3 py-2 font-bold text-ink-400 text-[10px] uppercase text-center">Credits</th>
+                <th className="px-3 py-2 font-bold text-ink-400 text-[10px] uppercase text-center">CAT</th>
+                <th className="px-3 py-2 font-bold text-ink-400 text-[10px] uppercase text-center">Assg</th>
+                <th className="px-3 py-2 font-bold text-ink-400 text-[10px] uppercase text-center">Exam</th>
+                <th className="px-3 py-2 font-bold text-ink-400 text-[10px] uppercase text-center">Marks/100</th>
+                <th className="px-3 py-2 font-bold text-ink-400 text-[10px] uppercase text-center">Grade</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-ink-100 dark:divide-ink-700">
+              {list.map((r, i) => (
+                <tr key={r.id} className="hover:bg-ink-50/50 dark:hover:bg-ink-700/20">
+                  <td className="px-3 py-2 text-ink-500">{i + 1}</td>
+                  <td className="px-3 py-2 font-mono">{r.module_code}</td>
+                  <td className="px-3 py-2">{r.module_name}</td>
+                  <td className="px-3 py-2 text-ink-500">{r.term_label}</td>
+                  <td className="px-3 py-2 text-center">{r.module_credits}</td>
+                  <td className="px-3 py-2 text-center">{tFmt(r.cat_marks)}<span className="text-ink-400 text-[11px]">/{Number(r.cat_max) || '—'}</span></td>
+                  <td className="px-3 py-2 text-center">{tFmt(r.assignment_marks)}<span className="text-ink-400 text-[11px]">/{Number(r.assignment_max) || '—'}</span></td>
+                  <td className="px-3 py-2 text-center">{tFmt(r.exam_marks)}<span className="text-ink-400 text-[11px]">/{Number(r.exam_max) || '—'}</span></td>
+                  <td className="px-3 py-2 text-center font-semibold">
+                    {r.percentage != null ? Math.round(Number(r.percentage)) : '—'}
+                  </td>
+                  <td className="px-3 py-2 text-center">
+                    {r.grade ? <TGradePill grade={r.grade} /> : <span className="text-ink-400">—</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function TStat({ icon, label, value, highlight, tone }: { icon: React.ReactNode; label: string; value: React.ReactNode; highlight?: boolean; tone?: 'good' | 'bad' }) {
+  const valueCls =
+    tone === 'good' ? 'text-emerald-600' :
+    tone === 'bad'  ? 'text-red-600' :
+    highlight       ? 'text-brand dark:text-gold-400' : 'text-ink-900 dark:text-white'
+  return (
+    <div className="flex items-center gap-2">
+      <div className="w-8 h-8 rounded-md bg-brand/10 text-brand dark:bg-brand/20 dark:text-gold-400 flex items-center justify-center">
+        {icon}
+      </div>
+      <div>
+        <div className="text-[10px] uppercase font-bold text-ink-400">{label}</div>
+        <div className={`text-base font-bold leading-tight ${valueCls}`}>{value}</div>
+      </div>
+    </div>
+  )
+}
+
+function TGradePill({ grade }: { grade: string }) {
+  const tone =
+    grade === 'A' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
+    : grade === 'B' ? 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300'
+    : grade === 'C' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300'
+    : grade === 'D' ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
+    : 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300'
+  return <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-bold ${tone}`}>{grade}</span>
+}
+
+function tFmt(v: string | number | null | undefined): string {
+  if (v === null || v === undefined || v === '') return '—'
+  const n = Number(v)
+  return Number.isFinite(n) ? String(n) : '—'
 }

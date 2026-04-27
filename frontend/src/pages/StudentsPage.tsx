@@ -29,6 +29,8 @@ import StatCard from "@/components/dashboard/StatCard";
 import DonutChart from "@/components/dashboard/DonutChart";
 import BarChart, { type BarDatum } from "@/components/dashboard/BarChart";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import { portalService } from "@/services/admissionService";
+import { academicsMgmtService } from "@/services/academicsMgmtService";
 import type { Student } from "@/types/academic";
 
 const PER_PAGE = 15;
@@ -511,6 +513,14 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
   // Academic year comes from the global topnav selector — not the URL.
   const selectedYear = useSystemStore((s) => s.selectedYearLabel);
 
+  // Entity data for cascading filters
+  const facultiesQ = useQuery({ queryKey: ['portal', 'faculties'], queryFn: () => portalService.getFaculties(), staleTime: 5 * 60_000 });
+  const allFaculties: any[] = facultiesQ.data?.data ?? [];
+  const deptsQ = useQuery({ queryKey: ['acmgmt', 'departments', 'all'], queryFn: () => academicsMgmtService.list<any>('departments', { per_page: 200 }), staleTime: 5 * 60_000 });
+  const allDepartments: any[] = deptsQ.data?.data?.data ?? [];
+  const programsQ = useQuery({ queryKey: ['acmgmt', 'options', 'all'], queryFn: () => academicsMgmtService.list<any>('options', { per_page: 500 }), staleTime: 5 * 60_000 });
+  const allPrograms: any[] = programsQ.data?.data?.data ?? [];
+
   const q = sp.get("q") ?? "";
   const gender = sp.get("gender") ?? "";
   const state = sp.get("student_state") ?? "active";
@@ -605,6 +615,30 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
     program,
   ].filter(Boolean).length;
 
+  /* ── Cascading lists (Faculty → Department → Program) ──
+     Backend filter expectations:
+       - faculty    → faculty.fac_id  (numeric, stored as varchar in `student`)
+       - department → departements.dep_id (numeric, stored as varchar)
+       - program    → program name (free-text in `student.program`) */
+  const facultyFacets: FacetOption[] = useMemo(() => {
+    if (allFaculties.length) return allFaculties.map((f: any) => ({ value: String(f.id), label: String(f.name) }));
+    return facets?.faculty ?? [];
+  }, [allFaculties, facets?.faculty]);
+
+  const departmentFacets: FacetOption[] = useMemo(() => {
+    if (!faculty) return [];
+    const facId = Number(faculty);
+    const deps = allDepartments.filter((d: any) => Number(d.fac_id) === facId);
+    return deps.map((d: any) => ({ value: String(d.dep_id), label: String(d.dep_name) }));
+  }, [faculty, allDepartments]);
+
+  const programFacets: FacetOption[] = useMemo(() => {
+    if (!department) return [];
+    const depId = Number(department);
+    const progs = allPrograms.filter((o: any) => Number(o.department_id) === depId);
+    return progs.map((o: any) => ({ value: String(o.name), label: String(o.name) }));
+  }, [department, allPrograms]);
+
   const clearAll = () =>
     setSp({ tab: "all", student_state: "active" }, { replace: false });
 
@@ -656,14 +690,17 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
           <FilterSelect
             label="Faculty"
             value={faculty}
-            onChange={(v) => update({ faculty: v })}
-            options={facets?.faculty}
+            onChange={(v) => update({ faculty: v, department: undefined, program: undefined })}
+            options={facultyFacets}
+            placeholder="Select faculty…"
           />
           <FilterSelect
             label="Department"
             value={department}
-            onChange={(v) => update({ department: v })}
-            options={facets?.department}
+            onChange={(v) => update({ department: v, program: undefined })}
+            options={departmentFacets}
+            disabled={!faculty}
+            placeholder={faculty ? "Select department…" : "Pick faculty first"}
           />
           <FilterSelect
             label="Level"
@@ -675,7 +712,9 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
             label="Program"
             value={program}
             onChange={(v) => update({ program: v })}
-            options={facets?.program}
+            options={programFacets}
+            disabled={!department}
+            placeholder={department ? "Select program…" : "Pick department first"}
           />
           <FilterSelect
             label="Gender"
@@ -914,24 +953,30 @@ function FilterSelect({
   value,
   onChange,
   options,
+  disabled,
+  placeholder,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   options?: FacetOption[];
+  disabled?: boolean;
+  placeholder?: string;
 }) {
   return (
     <div className="block">
-      <span className="text-[11px] uppercase tracking-wider text-ink-400 block mb-1">
+      <span className={`text-[11px] uppercase tracking-wider block mb-1 ${disabled ? 'text-ink-300' : 'text-ink-400'}`}>
         {label}
       </span>
-      <SearchableSelect
-        options={options ?? []}
-        value={value}
-        onChange={(v) => onChange(v === 0 || v === "" ? "" : String(v))}
-        allLabel="All"
-        placeholder="All"
-      />
+      <div className={disabled ? 'opacity-50 pointer-events-none' : ''}>
+        <SearchableSelect
+          options={options ?? []}
+          value={value}
+          onChange={(v) => onChange(v === 0 || v === "" ? "" : String(v))}
+          allLabel={placeholder ?? "All"}
+          placeholder={placeholder ?? "All"}
+        />
+      </div>
     </div>
   );
 }

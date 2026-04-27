@@ -55,6 +55,7 @@ const ModulesCatalogPage           = lazy(() => import('@/pages/modules/ModulesC
 const ModulesSchedulePage          = lazy(() => import('@/pages/modules/ModulesSchedulePage'))
 const ModulesAssignmentsPage       = lazy(() => import('@/pages/modules/ModulesAssignmentsPage'))
 const ModulesRegistrationAdminPage = lazy(() => import('@/pages/modules/ModulesRegistrationAdminPage'))
+const ModulesMarksPage             = lazy(() => import('@/pages/modules/ModulesMarksPage'))
 const MyRegistrationsPage          = lazy(() => import('@/pages/modules/MyRegistrationsPage'))
 
 // Placeholders still in use for modules not yet wired up
@@ -191,6 +192,9 @@ function App() {
                 PERMISSIONS.MANAGE_MODULE_SCHEDULES,
                 PERMISSIONS.MANAGE_MODULE_ASSIGNMENTS,
                 PERMISSIONS.MANAGE_MODULE_REGISTRATIONS,
+                PERMISSIONS.VIEW_MODULE_MARKS,
+                PERMISSIONS.RECORD_MODULE_MARKS,
+                PERMISSIONS.MANAGE_MODULE_MARKS,
               ]} />}>
                 <Route path="/modules" element={<ModulesHub />}>
                   <Route index                  element={<ModulesCatalogPage />} />
@@ -198,6 +202,7 @@ function App() {
                   <Route path="scheduling"      element={<ModulesSchedulePage />} />
                   <Route path="assignments"     element={<ModulesAssignmentsPage />} />
                   <Route path="registrations"   element={<ModulesRegistrationAdminPage />} />
+                  <Route path="marks"           element={<ModulesMarksPage />} />
                 </Route>
               </Route>
 

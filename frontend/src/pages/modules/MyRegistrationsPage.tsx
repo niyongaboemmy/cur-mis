@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, Loader2, GraduationCap, Calendar } from 'lucide-react'
+import { CheckCircle2, Loader2, GraduationCap, Calendar, ClipboardList, Download } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { myModulesService } from '@/services/modulesService'
 import { academicService } from '@/services/academicService'
+import { marksService } from '@/services/marksService'
 import type { ModuleRegistration } from '@/types/modules'
 
-type Tab = 'available' | 'mine'
+type Tab = 'available' | 'mine' | 'marks'
 
 export default function MyRegistrationsPage() {
   const qc = useQueryClient()
@@ -53,8 +54,22 @@ export default function MyRegistrationsPage() {
     onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Drop failed'),
   })
 
+  const marksQ = useQuery({
+    queryKey: ['my-marks'],
+    queryFn: () => marksService.myMarks(),
+    enabled: tab === 'marks',
+  })
+
+  const downloadTranscript = useMutation({
+    mutationFn: () => marksService.downloadTranscript(),
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Could not download transcript'),
+  })
+
   const eligible = eligibleQ.data?.data ?? []
   const mine: ModuleRegistration[] = mineQ.data?.data ?? []
+  const marksData = marksQ.data?.data
+  const marksRows = marksData?.rows ?? []
+  const marksTotals = marksData?.totals
 
   return (
     <div className="max-w-[1200px] mx-auto space-y-4 animate-fade-in">
@@ -87,9 +102,24 @@ export default function MyRegistrationsPage() {
         >
           <GraduationCap className="w-3.5 h-3.5 inline mr-1" /> My registrations
         </button>
+        <button
+          className={`px-3 py-1.5 text-[13px] rounded-md ${tab === 'marks' ? 'bg-brand/10 text-brand font-semibold' : 'text-ink-600'}`}
+          onClick={() => setTab('marks')}
+        >
+          <ClipboardList className="w-3.5 h-3.5 inline mr-1" /> My marks
+        </button>
       </div>
 
-      {!termId ? (
+      {tab === 'marks' ? (
+        <MyMarksTab
+          loading={marksQ.isLoading}
+          rows={marksRows}
+          totals={marksTotals}
+          downloading={downloadTranscript.isPending}
+          canDownload={(marksTotals?.modules ?? 0) > 0}
+          onDownload={() => downloadTranscript.mutate()}
+        />
+      ) : !termId ? (
         <div className="card p-8 text-center text-ink-400">Pick an academic term to continue.</div>
       ) : tab === 'available' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -176,4 +206,134 @@ export default function MyRegistrationsPage() {
       )}
     </div>
   )
+}
+
+/* ─── My Marks tab ───────────────────────────────────────────────────── */
+
+interface MyMarksTabProps {
+  loading:     boolean
+  rows:        import('@/services/marksService').MyMarksRow[]
+  totals?:     import('@/services/marksService').MyMarksTotals
+  downloading: boolean
+  canDownload: boolean
+  onDownload:  () => void
+}
+
+function MyMarksTab({ loading, rows, totals, downloading, canDownload, onDownload }: MyMarksTabProps) {
+  if (loading) {
+    return <div className="card p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-brand" /></div>
+  }
+
+  if (!rows.length) {
+    return (
+      <div className="card p-8 text-center text-ink-400">
+        No marks have been recorded yet. Once your lecturer records marks for a module you have studied, they will
+        appear here and you will be able to download your transcript.
+      </div>
+    )
+  }
+
+  // Group by year for a cleaner read.
+  const byYear = new Map<string, typeof rows>()
+  for (const r of rows) {
+    const k = r.year_label ?? '—'
+    if (!byYear.has(k)) byYear.set(k, [] as typeof rows)
+    byYear.get(k)!.push(r)
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Summary card */}
+      <div className="card p-4 flex flex-wrap items-center gap-4">
+        <SumStat label="Modules"          value={totals?.modules ?? 0} />
+        <SumStat label="Total credits"    value={totals?.total_credits ?? 0} />
+        <SumStat label="Weighted average" value={totals?.weighted_average != null ? `${totals.weighted_average}%` : '—'} highlight />
+        <SumStat label="Overall grade"    value={totals?.overall_grade ?? '—'} />
+        <SumStat label="Decision"         value={totals?.decision ?? '—'} tone={totals?.decision === 'Promoted' ? 'good' : totals?.decision === 'Repeat' ? 'bad' : undefined} />
+        <button
+          className="btn-primary btn-sm ml-auto"
+          disabled={!canDownload || downloading}
+          onClick={onDownload}
+          title={!canDownload ? 'No recorded marks to include in a transcript yet.' : undefined}
+        >
+          {downloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+          {downloading ? 'Preparing…' : 'Download transcript'}
+        </button>
+      </div>
+
+      {/* Per-year tables */}
+      {Array.from(byYear.entries()).map(([year, list]) => (
+        <div key={year} className="card overflow-hidden">
+          <div className="px-4 py-2 border-b border-ink-100 dark:border-ink-700 bg-ink-50 dark:bg-ink-800/40 text-[12px] font-semibold text-ink-700 dark:text-ink-200">
+            Academic year: <span className="font-mono">{year}</span>
+          </div>
+          <table className="w-full text-left text-[13px]">
+            <thead>
+              <tr className="bg-ink-50/60 dark:bg-ink-800/30 border-b border-ink-100 dark:border-ink-700">
+                <th className="px-3 py-2 font-bold text-ink-400 text-[10px] uppercase">#</th>
+                <th className="px-3 py-2 font-bold text-ink-400 text-[10px] uppercase">Code</th>
+                <th className="px-3 py-2 font-bold text-ink-400 text-[10px] uppercase">Module</th>
+                <th className="px-3 py-2 font-bold text-ink-400 text-[10px] uppercase">Term</th>
+                <th className="px-3 py-2 font-bold text-ink-400 text-[10px] uppercase text-center">Credits</th>
+                <th className="px-3 py-2 font-bold text-ink-400 text-[10px] uppercase text-center">CAT</th>
+                <th className="px-3 py-2 font-bold text-ink-400 text-[10px] uppercase text-center">Assg</th>
+                <th className="px-3 py-2 font-bold text-ink-400 text-[10px] uppercase text-center">Exam</th>
+                <th className="px-3 py-2 font-bold text-ink-400 text-[10px] uppercase text-center">Marks/100</th>
+                <th className="px-3 py-2 font-bold text-ink-400 text-[10px] uppercase text-center">Grade</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-ink-100 dark:divide-ink-700">
+              {list.map((r, i) => (
+                <tr key={r.id} className="hover:bg-ink-50/50 dark:hover:bg-ink-700/20">
+                  <td className="px-3 py-2 text-ink-500">{i + 1}</td>
+                  <td className="px-3 py-2 font-mono">{r.module_code}</td>
+                  <td className="px-3 py-2">{r.module_name}</td>
+                  <td className="px-3 py-2 text-ink-500">{r.term_label}</td>
+                  <td className="px-3 py-2 text-center">{r.module_credits}</td>
+                  <td className="px-3 py-2 text-center">{fmt(r.cat_marks)}<span className="text-ink-400 text-[11px]">/{Number(r.cat_max) || '—'}</span></td>
+                  <td className="px-3 py-2 text-center">{fmt(r.assignment_marks)}<span className="text-ink-400 text-[11px]">/{Number(r.assignment_max) || '—'}</span></td>
+                  <td className="px-3 py-2 text-center">{fmt(r.exam_marks)}<span className="text-ink-400 text-[11px]">/{Number(r.exam_max) || '—'}</span></td>
+                  <td className="px-3 py-2 text-center font-semibold">
+                    {r.percentage != null ? Math.round(Number(r.percentage)) : '—'}
+                  </td>
+                  <td className="px-3 py-2 text-center">
+                    {r.grade ? <GradePill grade={r.grade} /> : <span className="text-ink-400">—</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function SumStat({ label, value, highlight, tone }: { label: string; value: React.ReactNode; highlight?: boolean; tone?: 'good' | 'bad' }) {
+  const valueCls =
+    tone === 'good' ? 'text-emerald-600' :
+    tone === 'bad'  ? 'text-red-600' :
+    highlight       ? 'text-brand dark:text-gold-400' : 'text-ink-900 dark:text-white'
+  return (
+    <div>
+      <div className="text-[10px] uppercase font-bold text-ink-400">{label}</div>
+      <div className={`text-base font-bold ${valueCls}`}>{value}</div>
+    </div>
+  )
+}
+
+function GradePill({ grade }: { grade: string }) {
+  const tone =
+    grade === 'A' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
+    : grade === 'B' ? 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300'
+    : grade === 'C' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300'
+    : grade === 'D' ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
+    : 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300'
+  return <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-bold ${tone}`}>{grade}</span>
+}
+
+function fmt(v: string | number | null | undefined): string {
+  if (v === null || v === undefined || v === '') return '—'
+  const n = Number(v)
+  return Number.isFinite(n) ? String(n) : '—'
 }
