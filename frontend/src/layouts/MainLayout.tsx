@@ -104,8 +104,8 @@ const NAV_TREE: NavNode[] = [
       { to: "/hr/payments",   label: "Salary",           permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },
       { to: "/hr/leave",      label: "Leave",            permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },
       { to: "/hr/settings",   label: "Payroll Settings", permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },
-      { to: "/hr/attendance", label: "Attendance",         permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },
-      { to: "/hr/documents",  label: "Documents",        permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },
+      // { to: "/hr/attendance", label: "Attendance",         permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },
+      // { to: "/hr/documents",  label: "Documents",        permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },
     ],
   },
   // ─── Admissions / Student Management Module ───
