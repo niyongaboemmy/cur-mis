@@ -179,50 +179,52 @@ class ApplicationAdminController extends BaseController
     {
         $db = \Core\Database::getInstance();
         
-        // Count by status
+        // All admin-facing aggregates exclude `draft` applications since those
+        // are applicant-side work-in-progress and have not been submitted.
         $statusCounts = $db->fetchAll(
-            "SELECT status, COUNT(*) as cnt 
-             FROM student_applications 
+            "SELECT status, COUNT(*) as cnt
+             FROM student_applications
+             WHERE status <> 'draft'
              GROUP BY status"
         );
 
-        // Count by intake
         $intakeCounts = $db->fetchAll(
-            "SELECT intake, COUNT(*) as cnt 
-             FROM student_applications 
+            "SELECT intake, COUNT(*) as cnt
+             FROM student_applications
+             WHERE status <> 'draft'
              GROUP BY intake"
         );
 
-        // Departmental distribution
         $deptCounts = $db->fetchAll(
-            "SELECT d.dep_name as label, COUNT(*) as cnt 
+            "SELECT d.dep_name as label, COUNT(*) as cnt
              FROM student_applications sa
              JOIN departements d ON d.dep_id = sa.department_id
+             WHERE sa.status <> 'draft'
              GROUP BY sa.department_id
              ORDER BY cnt DESC"
         );
 
-        // Gender distribution
         $genderCounts = $db->fetchAll(
-            "SELECT gender as label, COUNT(*) as cnt 
-             FROM student_applications 
+            "SELECT gender as label, COUNT(*) as cnt
+             FROM student_applications
+             WHERE status <> 'draft'
              GROUP BY gender"
         );
 
-        // Submission trend (last 7 days)
         $trend = $db->fetchAll(
             "SELECT DATE(created_at) as date, COUNT(*) as cnt
              FROM student_applications
              WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+               AND status <> 'draft'
              GROUP BY DATE(created_at)
              ORDER BY date ASC"
         );
 
-        // Recent activity
         $recent = $db->fetchAll(
             "SELECT sa.application_number, sa.first_name, sa.last_name, sa.status, sa.created_at, d.dep_name as department_name
              FROM student_applications sa
              JOIN departements d ON d.dep_id = sa.department_id
+             WHERE sa.status <> 'draft'
              ORDER BY sa.id DESC
              LIMIT 8"
         );

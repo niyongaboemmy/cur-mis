@@ -80,6 +80,8 @@ export default function ApplicantOverviewPage() {
     );
 
   const selectedApp = selectedId ? apps.find((a) => a.id === selectedId) : null;
+  const hasDraft = apps.some((a) => a.status === "draft");
+  const hasSubmitted = apps.some((a) => a.status !== "draft");
 
   return (
     <div className="max-w-7xl mx-auto space-y-8 pb-12">
@@ -90,12 +92,21 @@ export default function ApplicantOverviewPage() {
             <div className="w-4 h-1 bg-primary-500 rounded-full" /> My
             Applications ({apps.length})
           </h3>
-          <a
-            href="/apply"
-            className="text-[12px] font-bold text-primary-600 hover:underline flex items-center gap-1"
-          >
-            <Plus className="w-3 h-3" /> New Application
-          </a>
+          {hasDraft ? (
+            <a
+              href="/apply"
+              className="text-[12px] font-bold text-primary-600 hover:underline flex items-center gap-1"
+            >
+              <ChevronRight className="w-3 h-3" /> Continue Draft
+            </a>
+          ) : !hasSubmitted ? (
+            <a
+              href="/apply"
+              className="text-[12px] font-bold text-primary-600 hover:underline flex items-center gap-1"
+            >
+              <Plus className="w-3 h-3" /> New Application
+            </a>
+          ) : null}
         </div>
         <div className="space-y-3">
           {apps.map((a) => (
@@ -137,7 +148,13 @@ function ApplicationListItem({
 
   return (
     <button
-      onClick={onSelect}
+      onClick={() => {
+        if (isDraft) {
+          window.location.href = "/apply";
+          return;
+        }
+        onSelect();
+      }}
       className="relative w-full text-left p-4 sm:p-5 rounded-2xl border border-ink-100 dark:border-ink-800 bg-white dark:bg-ink-900 hover:border-primary-300 dark:hover:border-primary-700 transition-all group flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6"
     >
       {isOffered && (
@@ -180,6 +197,11 @@ function ApplicationListItem({
         >
           {app.status.replace(/_/g, " ")}
         </span>
+        {isDraft && (
+          <span className="text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest bg-primary-600 text-white">
+            Continue
+          </span>
+        )}
         <ChevronRight className="w-4 h-4 text-ink-300 group-hover:text-primary-500 group-hover:translate-x-1 transition-all hidden sm:block" />
       </div>
     </button>

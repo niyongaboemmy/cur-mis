@@ -371,6 +371,17 @@ class ModulesManagementController extends BaseController
             if ($check['ok'] !== true) {
                 $this->error($response, $check['message'], 422, $check['details'] ?? null);
             }
+
+            // Block overlapping schedule with another already-registered module
+            $conflicts = $this->detectStudentScheduleClash($regnumber, $moduleId, $termId);
+            if (!empty($conflicts)) {
+                $this->error(
+                    $response,
+                    'Schedule overlaps with another module the student is registered for.',
+                    409,
+                    ['conflicts' => $conflicts]
+                );
+            }
         }
 
         $id = (int)$this->registrations->create([
