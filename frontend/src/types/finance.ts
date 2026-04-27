@@ -354,6 +354,7 @@ export interface ExpenseBudget {
   category_id:      number
   category_name?:   string
   amount:           number
+  spent?:           number
   notes?:           string
 }
 
@@ -434,4 +435,17 @@ export interface IncomeProjectionStructure {
 export interface IncomeProjection {
   structures:        IncomeProjectionStructure[]
   enrolled_students: number
+}
+
+// ─── Monthly Collections Trend ────────────────────────────────────────────────
+
+export interface MonthlyCollection {
+  month:       string   // e.g. "Jan"
+  month_num:   number
+  collected:   number
+  count:       number
+  tuition:     number
+  hostel:      number
+  other_fees:  number
+  expenses:    number
 }

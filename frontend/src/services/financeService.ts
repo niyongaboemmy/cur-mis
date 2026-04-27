@@ -26,6 +26,7 @@ import type {
   IncomeProjection,
   AccountBalance,
   BillingSummary,
+  MonthlyCollection,
 } from "@/types/finance";
 
 // ─── Fee Structures ───────────────────────────────────────────────────────────
@@ -136,6 +137,8 @@ export const bursaryService = {
     params?: {
       student_id?: string;
       academic_year_id?: number;
+      status?: 'pending' | 'confirmed' | 'cancelled';
+      bursary_type?: string;
       page?: number;
       per_page?: number;
     },
@@ -189,6 +192,13 @@ export const financeReportService = {
       { academic_year_id: academicYearId },
       signal,
     ),
+
+  getMonthlyCollections: (academicYearId: number, signal?: AbortSignal) =>
+    api.get<MonthlyCollection[]>(
+      "/api/finance/reports/monthly",
+      { academic_year_id: academicYearId },
+      signal,
+    ),
 };
 
 // ─── Account Balance ──────────────────────────────────────────────────────────
@@ -211,9 +221,10 @@ export const billingService = {
     faculty_id?: number;
     department_id?: number;
     keyword?: string;
+    balance_filter?: 'collected' | 'bursary' | 'pending' | 'partial' | 'overdue';
     page?: number;
     per_page?: number;
-  }) => api.get<BillingSummary[]>("/api/finance/billing/summary", params),
+  }) => api.get<BillingSummary[]>("/api/finance/billing/summary", params as Record<string, unknown>),
 
   bulkGenerate: (data: {
     academic_year_id: number;

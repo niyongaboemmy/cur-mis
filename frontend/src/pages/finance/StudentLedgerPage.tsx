@@ -27,27 +27,25 @@ export default function StudentLedgerPage() {
   const basics = useSystemStore((s) => s.basics)
   const selectedYearLabel = useSystemStore((s) => s.selectedYearLabel)
 
+  const resolveYearId = (label: string, b: typeof basics): number | string => {
+    if (label) {
+      const found = b?.years?.find((y) => y.label === label)
+      if (found) return found.id
+    }
+    return (b?.active_year as any)?.id ?? ''
+  }
+
   const [studentId, setStudentId]   = useState(urlId ?? '')
   const [studentName, setStudentName] = useState('')
-  const [yearId, setYearId]         = useState<number | string>('')
+  const [yearId, setYearId]         = useState<number | string>(() => resolveYearId(selectedYearLabel, basics))
   const [showGenerate, setShowGenerate] = useState(false)
   const [showNewInvoice, setShowNewInvoice] = useState(false)
   const [payingInvoice, setPayingInvoice] = useState<FeeInvoice | null>(null)
   const [viewingInvoice, setViewingInvoice] = useState<FeeInvoice | null>(null)
 
-
-  // Sync with global academic year
+  // Sync local yearId when the global selector changes
   useEffect(() => {
-    if (selectedYearLabel) {
-      const year = basics?.years?.find((y) => y.label === selectedYearLabel);
-      if (year) {
-        setYearId(year.id);
-      }
-    } else {
-      // Fallback to active year if "All years" is selected but we need a default
-      const active = basics?.active_year as any;
-      if (active?.id) setYearId(active.id);
-    }
+    setYearId(resolveYearId(selectedYearLabel, basics))
   }, [selectedYearLabel, basics?.years]);
 
 

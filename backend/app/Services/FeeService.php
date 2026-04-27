@@ -79,6 +79,7 @@ class FeeService
         $departmentId = $student['dept_id'] ? (int)$student['dept_id'] : null;
         $levelId      = $student['lvl_id']  ? (int)$student['lvl_id']  : null;
         $created      = 0;
+        $updated      = 0;
         $skipped      = 0;
         $invoiceIds   = [];
 
@@ -87,10 +88,10 @@ class FeeService
             $studentId, $academicYearId, $semester, 'TUITION',
             $departmentId, $levelId, $actorId
         );
-        $result['created'] ? $created++ : $skipped++;
-        if ($result['id']) {
-            $invoiceIds[] = $result['id'];
-        }
+        if ($result['created'])      $created++;
+        elseif ($result['updated'])  $updated++;
+        else                         $skipped++;
+        if ($result['id']) $invoiceIds[] = $result['id'];
 
         // STEP 2 — Registration fee (first-time students only)
         if ($this->isFirstYearStudent($student, $academicYearId)) {
@@ -98,10 +99,10 @@ class FeeService
                 $studentId, $academicYearId, null, 'REGISTRATION',
                 $departmentId, $levelId, $actorId
             );
-            $result['created'] ? $created++ : $skipped++;
-            if ($result['id']) {
-                $invoiceIds[] = $result['id'];
-            }
+            if ($result['created'])      $created++;
+            elseif ($result['updated'])  $updated++;
+            else                         $skipped++;
+            if ($result['id']) $invoiceIds[] = $result['id'];
         }
 
         // STEP 3 — Repeat module fees
@@ -157,7 +158,7 @@ class FeeService
         // STEP 5 — Apply bursaries (creates BURSARY_CREDIT lines)
         $this->applyBursaries($studentId, $academicYearId, $actorId);
 
-        return ['created' => $created, 'skipped' => $skipped, 'invoices' => $invoiceIds];
+        return ['created' => $created, 'updated' => $updated, 'skipped' => $skipped, 'invoices' => $invoiceIds];
     }
 
     /**
@@ -166,6 +167,7 @@ class FeeService
     public function bulkGenerateInvoices(array $studentIds, int $academicYearId, ?int $semester, int $actorId): array
     {
         $totalCreated = 0;
+        $totalUpdated = 0;
         $totalSkipped = 0;
         $processed    = 0;
 
@@ -173,10 +175,10 @@ class FeeService
             try {
                 $res = $this->autoGenerateInvoices($id, $academicYearId, $semester, $actorId);
                 $totalCreated += $res['created'];
+                $totalUpdated += $res['updated'] ?? 0;
                 $totalSkipped += $res['skipped'];
                 $processed++;
             } catch (\Throwable $e) {
-                // Skip failed ones but continue
                 error_log("Bulk Invoice Error [{$id}]: " . $e->getMessage());
             }
         }
@@ -184,7 +186,8 @@ class FeeService
         return [
             'processed_students' => $processed,
             'total_created'      => $totalCreated,
-            'total_skipped'      => $totalSkipped
+            'total_updated'      => $totalUpdated,
+            'total_skipped'      => $totalSkipped,
         ];
     }
 
@@ -193,6 +196,9 @@ class FeeService
      */
     public function bulkGenerateByFilters(array $filters, int $actorId): array
     {
+        set_time_limit(0);
+        ini_set('memory_limit', '256M');
+
         $yearId   = (int)($filters['academic_year_id'] ?? 0);
         $semester = !empty($filters['semester']) ? (int)$filters['semester'] : null;
         $faculty  = !empty($filters['faculty_id']) ? (int)$filters['faculty_id'] : null;
@@ -230,13 +236,14 @@ class FeeService
      */
     public function getGroupBillingSummary(array $filters): array
     {
-        $yearId   = (int)($filters['academic_year_id'] ?? 0);
-        $semester = !empty($filters['semester']) ? (int)$filters['semester'] : null;
-        $faculty  = !empty($filters['faculty_id']) ? (int)$filters['faculty_id'] : null;
-        $dept     = !empty($filters['department_id']) ? (int)$filters['department_id'] : null;
-        $keyword  = !empty($filters['keyword']) ? trim($filters['keyword']) : null;
-        $page     = (int)($filters['page'] ?? 1);
-        $perPage  = (int)($filters['per_page'] ?? 50);
+        $yearId        = (int)($filters['academic_year_id'] ?? 0);
+        $semester      = !empty($filters['semester']) ? (int)$filters['semester'] : null;
+        $faculty       = !empty($filters['faculty_id']) ? (int)$filters['faculty_id'] : null;
+        $dept          = !empty($filters['department_id']) ? (int)$filters['department_id'] : null;
+        $keyword       = !empty($filters['keyword']) ? trim($filters['keyword']) : null;
+        $balanceFilter = !empty($filters['balance_filter']) ? $filters['balance_filter'] : null; // collected|bursary|pending
+        $page          = (int)($filters['page'] ?? 1);
+        $perPage       = (int)($filters['per_page'] ?? 50);
 
         if (!$yearId) {
             throw new \InvalidArgumentException("Academic Year is required for billing summary.");
@@ -246,7 +253,7 @@ class FeeService
         $bindings = [$yearId]; // For the left join subquery
 
         if ($semester) {
-            $semSql = "AND (fi.semester = ? OR fi.semester IS NULL)";
+            $semSql = "AND (semester = ? OR semester IS NULL)";
             $bindings[] = $semester;
         } else {
             $semSql = "";
@@ -271,21 +278,57 @@ class FeeService
             $bindings[] = $k;
         }
 
+        // Base WHERE (no balance filter) — used for KPI aggregates so they stay stable
+        $whereBase = $where;
+        $whereSqlBase = implode(" AND ", $whereBase);
+
+        // Balance filter — references `sums.*`, so count/data queries must have the sums JOIN
+        $balanceCondition = match ($balanceFilter) {
+            'collected' => "COALESCE(sums.total_paid, 0) > 0",
+            'bursary'   => "COALESCE(sums.total_bursary, 0) > 0",
+            'pending'   => "COALESCE(sums.total_paid, 0) = 0 AND (COALESCE(sums.total_due, 0) - COALESCE(sums.total_bursary, 0)) > 0",
+            'partial'   => "COALESCE(sums.total_paid, 0) > 0 AND (COALESCE(sums.total_due, 0) - COALESCE(sums.total_paid, 0) - COALESCE(sums.total_bursary, 0)) > 0",
+            'overdue'   => "COALESCE(sums.total_paid, 0) < COALESCE(sums.total_due, 0) AND sums.min_due_date < CURDATE()",
+            default     => null,
+        };
+        if ($balanceCondition) {
+            $where[] = $balanceCondition;
+        }
+
         $whereSql = implode(" AND ", $where);
 
-        // 1. Get total count for pagination
-        $totalSql = "SELECT COUNT(*) AS cnt FROM `student` s WHERE {$whereSql}";
-        // The bindings for totalSql are the same as the main query AFTER the yearId/semester ones.
-        // Wait, whereSql bindings start AFTER $bindings[0] (yearId) and $bindings[1] (semester).
-        // Let's re-organize bindings.
-        
+        // Build the sums subquery fragment (reused in count query when balance filter is active)
+        $sumsJoin = "LEFT JOIN (
+                    SELECT student_id,
+                        SUM(amount_due) AS total_due,
+                        SUM(amount_paid) AS total_paid,
+                        SUM(bursary_applied) AS total_bursary,
+                        MIN(due_date) AS min_due_date
+                    FROM `fee_invoices`
+                    WHERE academic_year_id = ? AND fee_type != 'BURSARY_CREDIT' {$semSql}
+                    GROUP BY student_id
+                ) AS sums ON sums.student_id = s.regnumber";
+
+        // Bindings for the sums subquery in the count query (yearId + optional semester)
+        $sumsBindings = array_merge([$yearId], ($semester ? [$semester] : []));
+
+        // Re-organised where-only bindings (no join bindings)
         $whereBindings = [];
         if ($faculty) { $whereBindings[] = $faculty; $whereBindings[] = $faculty; }
-        if ($dept) { $whereBindings[] = $dept; $whereBindings[] = $dept; }
-
+        if ($dept)    { $whereBindings[] = $dept;    $whereBindings[] = $dept; }
         if ($keyword) { $k = "%{$keyword}%"; $whereBindings[] = $k; $whereBindings[] = $k; $whereBindings[] = $k; }
 
-        $totalRow = $this->db->fetchOne($totalSql, $whereBindings);
+        // 1. Get total count for pagination
+        if ($balanceCondition) {
+            // Need sums JOIN in count query so the balance condition can reference sums.*
+            $totalSql = "SELECT COUNT(*) AS cnt FROM `student` s {$sumsJoin} WHERE {$whereSql}";
+            $totalBindings = array_merge($sumsBindings, $whereBindings);
+        } else {
+            $totalSql = "SELECT COUNT(*) AS cnt FROM `student` s WHERE {$whereSql}";
+            $totalBindings = $whereBindings;
+        }
+
+        $totalRow = $this->db->fetchOne($totalSql, $totalBindings);
         $total = (int)($totalRow['cnt'] ?? 0);
 
         // 2. Get paginated data
@@ -317,14 +360,16 @@ class FeeService
                     COALESCE(sums.total_paid, 0) AS total_collected,
                     COALESCE(sums.total_bursary, 0) AS total_bursary,
                     (COALESCE(sums.total_due, 0) - COALESCE(sums.total_paid, 0) - COALESCE(sums.total_bursary, 0)) AS balance,
-                    -- Subquery to find the 'Ideal' expected amount from structure
-                    (SELECT amount FROM `fee_structures` fs 
-                     WHERE fs.academic_year_id = ? 
+                    (SELECT amount FROM `fee_structures` fs
+                     WHERE fs.academic_year_id = ?
                        AND fs.fee_type = 'TUITION'
-                       AND (fs.faculty_id = CAST(NULLIF(s.faculty, '') AS UNSIGNED) OR fs.faculty_id IS NULL)
+                       AND (fs.department_id = COALESCE(
+                               NULLIF(CAST(s.department AS UNSIGNED), 0),
+                               (SELECT dep_id FROM `departements` WHERE dep_acronym = s.department LIMIT 1)
+                           ) OR fs.department_id IS NULL)
                        AND (fs.semester = ? OR fs.semester IS NULL)
-                     ORDER BY 
-                        CASE WHEN fs.faculty_id IS NOT NULL THEN 0 ELSE 1 END,
+                     ORDER BY
+                        CASE WHEN fs.department_id IS NOT NULL THEN 0 ELSE 1 END,
                         CASE WHEN fs.semester IS NOT NULL THEN 0 ELSE 1 END
                      LIMIT 1
                     ) AS structure_tuition
@@ -338,11 +383,12 @@ class FeeService
                     (SELECT dep_id FROM `departements` WHERE dep_acronym = s.department LIMIT 1)
                 )
                 LEFT JOIN (
-                    SELECT 
+                    SELECT
                         student_id,
                         SUM(amount_due) AS total_due,
                         SUM(amount_paid) AS total_paid,
-                        SUM(bursary_applied) AS total_bursary
+                        SUM(bursary_applied) AS total_bursary,
+                        MIN(due_date) AS min_due_date
                     FROM `fee_invoices`
                     WHERE academic_year_id = ? AND fee_type != 'BURSARY_CREDIT' {$semSql}
                     GROUP BY student_id
@@ -355,14 +401,21 @@ class FeeService
 
 
 
-        // 3. Get global totals for this filter (to show in dashboard cards)
-        $totalsSql = "SELECT 
+        // 3. Get global totals (KPI cards) — always uses base WHERE without balance filter
+        $totalsSql = "SELECT
                         SUM(COALESCE(sums.total_due, 0)) AS global_expected,
                         SUM(COALESCE(sums.total_paid, 0)) AS global_collected,
-                        SUM(COALESCE(sums.total_bursary, 0)) AS global_bursary
+                        SUM(COALESCE(sums.total_bursary, 0)) AS global_bursary,
+                        SUM(CASE WHEN COALESCE(sums.total_paid, 0) > 0
+                                  AND (COALESCE(sums.total_due, 0) - COALESCE(sums.total_paid, 0) - COALESCE(sums.total_bursary, 0)) > 0
+                             THEN 1 ELSE 0 END) AS partial_count,
+                        SUM(CASE WHEN COALESCE(sums.total_paid, 0) > 0
+                                  AND (COALESCE(sums.total_due, 0) - COALESCE(sums.total_paid, 0) - COALESCE(sums.total_bursary, 0)) > 0
+                             THEN (COALESCE(sums.total_due, 0) - COALESCE(sums.total_paid, 0) - COALESCE(sums.total_bursary, 0))
+                             ELSE 0 END) AS partial_balance
                       FROM `student` s
                       LEFT JOIN (
-                          SELECT 
+                          SELECT
                               student_id,
                               SUM(amount_due) AS total_due,
                               SUM(amount_paid) AS total_paid,
@@ -371,8 +424,9 @@ class FeeService
                           WHERE academic_year_id = ? AND fee_type != 'BURSARY_CREDIT' {$semSql}
                           GROUP BY student_id
                       ) AS sums ON sums.student_id = s.regnumber
-                      WHERE {$whereSql}";
-        
+                      WHERE {$whereSqlBase}";
+
+        $totalsBindings = array_merge([$yearId], ($semester ? [$semester] : []), $whereBindings);
         $totalsRow = $this->db->fetchOne($totalsSql, $totalsBindings);
 
         return [
@@ -383,10 +437,12 @@ class FeeService
             'current_page' => $page,
             'last_page'    => (int)ceil($total / $perPage),
             'aggregates'   => [
-                'expected'  => (float)($totalsRow['global_expected'] ?? 0),
-                'collected' => (float)($totalsRow['global_collected'] ?? 0),
-                'bursary'   => (float)($totalsRow['global_bursary'] ?? 0),
-                'balance'   => (float)($totalsRow['global_expected'] ?? 0) - (float)($totalsRow['global_collected'] ?? 0) - (float)($totalsRow['global_bursary'] ?? 0),
+                'expected'        => (float)($totalsRow['global_expected'] ?? 0),
+                'collected'       => (float)($totalsRow['global_collected'] ?? 0),
+                'bursary'         => (float)($totalsRow['global_bursary'] ?? 0),
+                'balance'         => (float)($totalsRow['global_expected'] ?? 0) - (float)($totalsRow['global_collected'] ?? 0) - (float)($totalsRow['global_bursary'] ?? 0),
+                'partial_count'   => (int)($totalsRow['partial_count'] ?? 0),
+                'partial_balance' => (float)($totalsRow['partial_balance'] ?? 0),
             ]
         ];
     }
@@ -588,6 +644,57 @@ class FeeService
     }
 
     // ──────────────────────────────────────────────────────────────────────────
+    // Monthly collections trend
+    // ──────────────────────────────────────────────────────────────────────────
+
+    public function getMonthlyCollections(int $academicYearId): array
+    {
+        $monthly = $this->db->fetchAll(
+            "SELECT
+                MONTH(fp.paid_at)                AS month_num,
+                DATE_FORMAT(fp.paid_at, '%b')    AS month_label,
+                SUM(fp.amount)                   AS collected,
+                COUNT(DISTINCT fp.id)            AS payment_count,
+                SUM(CASE WHEN fi.fee_type = 'TUITION'    THEN fp.amount ELSE 0 END) AS tuition,
+                SUM(CASE WHEN fi.fee_type = 'HOSTEL'     THEN fp.amount ELSE 0 END) AS hostel,
+                SUM(CASE WHEN fi.fee_type NOT IN('TUITION','HOSTEL') THEN fp.amount ELSE 0 END) AS other_fees
+             FROM `fee_payments` fp
+             JOIN `fee_invoices` fi ON fi.id = fp.invoice_id
+             WHERE fi.academic_year_id = ? AND fp.status IN ('confirmed','approved')
+             GROUP BY MONTH(fp.paid_at), DATE_FORMAT(fp.paid_at, '%b')
+             ORDER BY MONTH(fp.paid_at) ASC",
+            [$academicYearId]
+        );
+
+        $monthlyExpenses = $this->db->fetchAll(
+            "SELECT MONTH(payment_date) AS month_num, SUM(amount) AS expenses
+             FROM `expenses` WHERE academic_year_id = ?
+             GROUP BY MONTH(payment_date)",
+            [$academicYearId]
+        );
+        $expenseMap = [];
+        foreach ($monthlyExpenses as $e) {
+            $expenseMap[(int)$e['month_num']] = (float)$e['expenses'];
+        }
+
+        $result = [];
+        foreach ($monthly as $m) {
+            $mn = (int)$m['month_num'];
+            $result[] = [
+                'month'      => $m['month_label'],
+                'month_num'  => $mn,
+                'collected'  => (float)$m['collected'],
+                'count'      => (int)$m['payment_count'],
+                'tuition'    => (float)$m['tuition'],
+                'hostel'     => (float)$m['hostel'],
+                'other_fees' => (float)$m['other_fees'],
+                'expenses'   => $expenseMap[$mn] ?? 0,
+            ];
+        }
+        return $result;
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
     // Private helpers
     // ──────────────────────────────────────────────────────────────────────────
 
@@ -600,19 +707,13 @@ class FeeService
         ?int   $levelId,
         int    $actorId
     ): array {
-        if ($this->invoiceModel->studentHasInvoice($studentId, $academicYearId, $feeType)) {
-            return ['created' => false, 'id' => null];
-        }
-
         $structure = $this->structureModel->findBestMatch(
             $academicYearId, $feeType, $departmentId, $levelId, $semester
         );
 
         if (!$structure) {
-            return ['created' => false, 'id' => null];
+            return ['created' => false, 'updated' => false, 'id' => null];
         }
-
-
 
         $label = match ($feeType) {
             'TUITION'      => 'Tuition fee',
@@ -622,6 +723,33 @@ class FeeService
         };
         if ($semester) {
             $label .= " (Semester {$semester})";
+        }
+
+        // Check for an existing system-generated invoice of this type
+        $existing = $this->db->fetchOne(
+            "SELECT id, amount_due, amount_paid, status FROM `fee_invoices`
+             WHERE student_id = ? AND academic_year_id = ? AND fee_type = ?
+               AND is_system_generated = 1
+             LIMIT 1",
+            [$studentId, $academicYearId, $feeType]
+        );
+
+        if ($existing) {
+            // Only update if the student has not yet made any payment on this invoice
+            if ((float)$existing['amount_paid'] == 0.0 && $existing['status'] === 'unpaid') {
+                $newAmount = (float)$structure['amount'];
+                if ((float)$existing['amount_due'] !== $newAmount) {
+                    $this->db->query(
+                        "UPDATE `fee_invoices`
+                         SET amount_due = ?, fee_structure_id = ?, description = ?, updated_at = NOW()
+                         WHERE id = ?",
+                        [$newAmount, (int)$structure['id'], $label, (int)$existing['id']]
+                    );
+                    return ['created' => false, 'updated' => true, 'id' => (int)$existing['id']];
+                }
+            }
+            // Has payment or amount unchanged — leave it alone
+            return ['created' => false, 'updated' => false, 'id' => (int)$existing['id']];
         }
 
         $invoiceId = $this->invoiceModel->create([
@@ -637,7 +765,7 @@ class FeeService
             'created_by'          => $actorId,
         ]);
 
-        return ['created' => true, 'id' => (int)$invoiceId];
+        return ['created' => true, 'updated' => false, 'id' => (int)$invoiceId];
     }
 
     private function isFirstYearStudent(array $student, int $academicYearId): bool
@@ -751,13 +879,13 @@ class FeeService
         // Expense breakdown by category
         try {
             $expenseByCategory = $this->db->fetchAll(
-                "SELECT ec.name AS category_name,
+                "SELECT ec.id AS category_id,
+                        ec.name AS category_name,
                         COALESCE(SUM(e.amount), 0) AS total
                  FROM `expense_categories` ec
                  LEFT JOIN `expenses` e ON e.category_id = ec.id
                                        AND e.academic_year_id = ?
                  GROUP BY ec.id, ec.name
-                 HAVING total > 0
                  ORDER BY total DESC",
                 [$yearId]
             );

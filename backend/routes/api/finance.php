@@ -25,6 +25,7 @@ $router->group('/api/finance', function ($router) {
         $r->get('/bursaries',                [FeeController::class, 'listBursaries']);
         $r->get('/summary',                  [FeeController::class, 'getSummary']);
         $r->get('/balance',                  [FeeController::class, 'getAccountBalance']);
+        $r->get('/reports/monthly',          [FeeController::class, 'getMonthlyCollections']);
         $r->get('/reports/revenue',          [FeeController::class, 'getRevenueReport']);
         $r->get('/reports/outstanding',      [FeeController::class, 'getOutstandingReport']);
         $r->get('/reports/projection',       [FeeController::class, 'getIncomeProjection']);
@@ -68,7 +69,6 @@ $router->group('/api/finance', function ($router) {
         $r->put('/expenses/:id',             [FeeController::class, 'updateExpense']);
         $r->delete('/expenses/:id',          [FeeController::class, 'deleteExpense']);
 
-        $r->get('/clearance/bulk',           [FeeController::class, 'getBulkClearance']);
         $r->post('/clearance',               [FeeController::class, 'grantClearance']);
         $r->post('/clearance/bulk',          [FeeController::class, 'runBulkClearance']);
         $r->post('/budgets',                 [FeeController::class, 'saveBudget']);

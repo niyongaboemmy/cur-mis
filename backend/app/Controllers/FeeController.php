@@ -280,6 +280,7 @@ class FeeController extends BaseController
             'faculty_id'       => $request->query('faculty_id') !== null ? (int)$request->query('faculty_id') : null,
             'department_id'    => $request->query('department_id') !== null ? (int)$request->query('department_id') : null,
             'keyword'          => $request->query('keyword') ?? null,
+            'balance_filter'   => $request->query('balance_filter') ?? null, // collected|bursary|pending|partial|overdue
             'page'             => (int)($request->query('page') ?? 1),
             'per_page'         => (int)($request->query('per_page') ?? 50),
         ];
@@ -491,6 +492,8 @@ class FeeController extends BaseController
         $filters = array_filter([
             'student_id'       => $request->query('student_id')       ?? '',
             'academic_year_id' => (int)($request->query('academic_year_id') ?? 0) ?: null,
+            'status'           => $request->query('status')            ?? '',
+            'bursary_type'     => $request->query('bursary_type')     ?? '',
         ], fn ($v) => $v !== '' && $v !== null);
 
         $page    = max(1, (int)($request->query('page') ?? 1));
@@ -650,6 +653,14 @@ class FeeController extends BaseController
             $this->error($response, 'academic_year_id is required.', 422);
         }
         $this->success($response, $this->service->getSummary($academicYearId), 'Summary retrieved.');
+    }
+
+    /** GET /api/finance/reports/monthly */
+    public function getMonthlyCollections(Request $request, Response $response): never
+    {
+        $yearId = (int)($request->query('academic_year_id') ?? 0);
+        if (!$yearId) $this->error($response, 'academic_year_id is required.', 422);
+        $this->success($response, $this->service->getMonthlyCollections($yearId), 'Monthly data retrieved.');
     }
 
     /**
@@ -817,12 +828,17 @@ class FeeController extends BaseController
         $actor = $request->param('_auth_user');
 
         $errors = ValidationHelper::validate($data, [
-            'category_id'  => 'required|numeric',
-            'title'        => 'required|string|max:150',
-            'amount'       => 'required|numeric',
-            'payment_date' => 'required|string',
+            'category_id'      => 'required|numeric',
+            'academic_year_id' => 'required|numeric',
+            'title'            => 'required|string|max:150',
+            'amount'           => 'required|numeric',
+            'payment_date'     => 'required|string',
         ]);
         if (!empty($errors)) $this->error($response, 'Validation failed.', 422, $errors);
+        if ((float)($data['amount'] ?? 0) <= 0)
+            $this->error($response, 'Amount must be greater than zero.', 422);
+        if (!\DateTime::createFromFormat('Y-m-d', $data['payment_date'] ?? ''))
+            $this->error($response, 'Invalid payment date format (YYYY-MM-DD required).', 422);
 
         $id = $this->expenseModel->create([
             'category_id'      => (int)$data['category_id'],
@@ -846,6 +862,10 @@ class FeeController extends BaseController
         $id   = (int)$request->param('id');
         $data = $request->body();
         if (!$this->expenseModel->find($id)) $this->error($response, 'Expense not found.', 404);
+        if (isset($data['amount']) && (float)$data['amount'] <= 0)
+            $this->error($response, 'Amount must be greater than zero.', 422);
+        if (isset($data['payment_date']) && !\DateTime::createFromFormat('Y-m-d', $data['payment_date']))
+            $this->error($response, 'Invalid payment date format (YYYY-MM-DD required).', 422);
 
         $this->expenseModel->update($id, array_filter([
             'category_id'      => isset($data['category_id'])  ? (int)$data['category_id']   : null,

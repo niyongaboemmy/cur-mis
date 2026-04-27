@@ -27,14 +27,35 @@ class FeeBursaryModel extends BaseModel
             $where[]    = 'fb.academic_year_id = ?';
             $bindings[] = (int)$filters['academic_year_id'];
         }
+        if (!empty($filters['status'])) {
+            $where[]    = 'fb.status = ?';
+            $bindings[] = $filters['status'];
+        }
+        if (!empty($filters['bursary_type'])) {
+            $where[]    = 'fb.bursary_type = ?';
+            $bindings[] = $filters['bursary_type'];
+        }
 
         $whereSql = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
         $offset   = ($page - 1) * $perPage;
 
-        $total = (int)($this->db->fetchOne(
-            "SELECT COUNT(*) AS cnt FROM `fee_bursaries` fb {$whereSql}",
+        $agg = $this->db->fetchOne(
+            "SELECT
+                COUNT(*)                                                       AS total_count,
+                COUNT(DISTINCT fb.student_id)                                  AS distinct_students,
+                COALESCE(SUM(fb.amount), 0)                                    AS total_amount,
+                COALESCE(SUM(CASE WHEN fb.status='confirmed' THEN fb.amount ELSE 0 END), 0) AS confirmed_amount,
+                COALESCE(SUM(CASE WHEN fb.status='pending'   THEN fb.amount ELSE 0 END), 0) AS pending_amount,
+                COALESCE(SUM(CASE WHEN fb.status='cancelled' THEN fb.amount ELSE 0 END), 0) AS cancelled_amount,
+                COUNT(CASE WHEN fb.status='confirmed' THEN 1 END)              AS confirmed_count,
+                COUNT(CASE WHEN fb.status='pending'   THEN 1 END)              AS pending_count,
+                COUNT(CASE WHEN fb.status='cancelled' THEN 1 END)              AS cancelled_count
+             FROM `fee_bursaries` fb
+             {$whereSql}",
             $bindings
-        )['cnt'] ?? 0);
+        );
+
+        $total = (int)($agg['total_count'] ?? 0);
 
         $rows = $this->db->fetchAll(
             "SELECT fb.*,
@@ -59,6 +80,17 @@ class FeeBursaryModel extends BaseModel
             'per_page'     => $perPage,
             'current_page' => $page,
             'last_page'    => (int)ceil($total / $perPage),
+            'aggregates'   => [
+                'total_count'        => $total,
+                'distinct_students'  => (int)($agg['distinct_students']  ?? 0),
+                'total_amount'       => (float)($agg['total_amount']      ?? 0),
+                'confirmed_amount'   => (float)($agg['confirmed_amount']  ?? 0),
+                'pending_amount'     => (float)($agg['pending_amount']    ?? 0),
+                'cancelled_amount'   => (float)($agg['cancelled_amount']  ?? 0),
+                'confirmed_count'    => (int)($agg['confirmed_count']     ?? 0),
+                'pending_count'      => (int)($agg['pending_count']       ?? 0),
+                'cancelled_count'    => (int)($agg['cancelled_count']     ?? 0),
+            ],
         ];
     }
 

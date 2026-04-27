@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Trash2, Loader2, X } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
+import { Plus, Trash2, Loader2, X, Users, CheckCircle2, Clock, XCircle, Wallet } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { bursaryService } from '@/services/financeService'
+import { bursaryService, ledgerService } from '@/services/financeService'
 import { academicService } from '@/services/academicService'
 import type { FeeBursary, CreateBursaryPayload } from '@/types/finance'
 import Pagination from '@/components/ui/Pagination'
@@ -22,6 +23,18 @@ const BURSARY_TYPES = [
   'Other',
 ]
 
+const STATUS_OPTIONS = [
+  { value: '',           label: 'All statuses' },
+  { value: 'pending',    label: 'Pending' },
+  { value: 'confirmed',  label: 'Confirmed' },
+  { value: 'cancelled',  label: 'Cancelled' },
+]
+
+const TYPE_OPTIONS = [
+  { value: '', label: 'All types' },
+  ...BURSARY_TYPES.map(t => ({ value: t, label: t })),
+]
+
 const PER_PAGE = 15
 
 export default function BursariesPage() {
@@ -29,25 +42,27 @@ export default function BursariesPage() {
   const basics = useSystemStore((s) => s.basics)
   const selectedYearLabel = useSystemStore((s) => s.selectedYearLabel)
 
-  const [yearId, setYearId]   = useState<number | string>('')
-  const [studentId, setStudentId] = useState('')
-  const [page, setPage]       = useState(1)
-  const [showForm, setShowForm] = useState(false)
-  const [viewingBursary, setViewingBursary] = useState<FeeBursary | null>(null)
-
-  // Sync with global academic year
-  useEffect(() => {
-    if (selectedYearLabel) {
-      const year = basics?.years?.find((y) => y.label === selectedYearLabel);
-      if (year) {
-        setYearId(year.id);
-      }
-    } else {
-      // Fallback to active year if "All years" is selected but we need a default
-      const active = basics?.active_year as any;
-      if (active?.id) setYearId(active.id);
+  const resolveYearId = (label: string, b: typeof basics): number | string => {
+    if (label) {
+      const y = b?.years?.find((y: any) => y.label === label)
+      if (y) return y.id
     }
-  }, [selectedYearLabel, basics?.years]);
+    return (b?.active_year as any)?.id ?? ''
+  }
+
+  const [yearId, setYearId]       = useState<number | string>(() => resolveYearId(selectedYearLabel, basics))
+  const [studentId, setStudentId] = useState('')
+  const [status, setStatus]       = useState('')
+  const [bursaryType, setBursaryType] = useState('')
+  const [page, setPage]           = useState(1)
+  const [showForm, setShowForm]   = useState(false)
+  const [viewingBursary, setViewingBursary] = useState<FeeBursary | null>(null)
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  useEffect(() => {
+    setYearId(resolveYearId(selectedYearLabel, basics))
+    setPage(1)
+  }, [selectedYearLabel, basics?.years])
 
 
   const yearsQ = useQuery({
@@ -58,10 +73,12 @@ export default function BursariesPage() {
   const yearOptions = years.map((y: any) => ({ value: y.id, label: y.label }))
 
   const bursariesQ = useQuery({
-    queryKey: ['finance', 'bursaries', yearId, studentId, page],
+    queryKey: ['finance', 'bursaries', yearId, studentId, status, bursaryType, page],
     queryFn: () => bursaryService.list({
-      ...(yearId  ? { academic_year_id: Number(yearId) } : {}),
-      ...(studentId ? { student_id: studentId } : {}),
+      ...(yearId      ? { academic_year_id: Number(yearId) } : {}),
+      ...(studentId   ? { student_id: studentId }  : {}),
+      ...(status      ? { status: status as any }   : {}),
+      ...(bursaryType ? { bursary_type: bursaryType } : {}),
       page,
       per_page: PER_PAGE,
     }),
@@ -69,9 +86,30 @@ export default function BursariesPage() {
 
   const paginatedData = bursariesQ.data?.data
   const rows: FeeBursary[] = (paginatedData as any)?.data ?? []
+
+  // Auto-open detail modal when navigated from dashboard with ?open=<id>
+  useEffect(() => {
+    const openId = searchParams.get('open')
+    if (!openId || rows.length === 0 || viewingBursary) return
+    const found = rows.find((b) => String(b.id) === openId)
+    if (found) {
+      setViewingBursary(found)
+      setSearchParams((p) => { p.delete('open'); return p }, { replace: true })
+    }
+  }, [rows, searchParams])
   const total     = (paginatedData as any)?.total     ?? 0
   const lastPage  = (paginatedData as any)?.last_page ?? 1
   const currentPg = (paginatedData as any)?.current_page ?? 1
+  const agg       = (paginatedData as any)?.aggregates ?? {}
+
+  const totalAmount      = (agg.total_amount      ?? 0) as number
+  const confirmedAmount  = (agg.confirmed_amount  ?? 0) as number
+  const pendingAmount    = (agg.pending_amount    ?? 0) as number
+  const cancelledAmount  = (agg.cancelled_amount  ?? 0) as number
+  const confirmedCount   = (agg.confirmed_count   ?? 0) as number
+  const pendingCount     = (agg.pending_count     ?? 0) as number
+  const cancelledCount   = (agg.cancelled_count   ?? 0) as number
+  const distinctStudents = (agg.distinct_students ?? 0) as number
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => bursaryService.delete(id),
@@ -110,8 +148,8 @@ export default function BursariesPage() {
       </div>
 
       {/* Filters */}
-      <div className="card p-3 flex gap-3 items-end flex-wrap">
-        <div className="min-w-[180px]">
+      <div className="card p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
+        <div>
           <label className="block text-xs text-ink-500 mb-1">Academic Year</label>
           <SearchableSelect
             options={yearOptions}
@@ -121,7 +159,7 @@ export default function BursariesPage() {
             allLabel="All years"
           />
         </div>
-        <div className="flex-1 min-w-[220px]">
+        <div>
           <label className="block text-xs text-ink-500 mb-1">Student</label>
           <StudentSearchSelect
             value={studentId}
@@ -129,6 +167,48 @@ export default function BursariesPage() {
             placeholder="Filter by student…"
           />
         </div>
+        <div>
+          <label className="block text-xs text-ink-500 mb-1">Status</label>
+          <SearchableSelect
+            options={STATUS_OPTIONS}
+            value={status}
+            onChange={v => { setStatus(String(v ?? '')); setPage(1) }}
+            placeholder="All statuses"
+            allLabel="All statuses"
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-ink-500 mb-1">Bursary Type</label>
+          <SearchableSelect
+            options={TYPE_OPTIONS}
+            value={bursaryType}
+            onChange={v => { setBursaryType(String(v ?? '')); setPage(1) }}
+            placeholder="All types"
+            allLabel="All types"
+          />
+        </div>
+      </div>
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        {[
+          { label: 'Total Allocated',    value: formatRWF(totalAmount),     sub: `${total} bursar${total !== 1 ? 'ies' : 'y'}`,         icon: Wallet,       color: 'text-brand',       bg: 'bg-brand/10' },
+          { label: 'Students Supported', value: String(distinctStudents),   sub: 'unique students',                                      icon: Users,        color: 'text-violet-600',  bg: 'bg-violet-50 dark:bg-violet-900/20' },
+          { label: 'Confirmed',          value: formatRWF(confirmedAmount), sub: `${confirmedCount} bursar${confirmedCount !== 1 ? 'ies' : 'y'}`, icon: CheckCircle2, color: 'text-green-600',   bg: 'bg-green-50 dark:bg-green-900/20' },
+          { label: 'Pending',            value: formatRWF(pendingAmount),   sub: `${pendingCount} bursar${pendingCount !== 1 ? 'ies' : 'y'}`,     icon: Clock,        color: 'text-yellow-600',  bg: 'bg-yellow-50 dark:bg-yellow-900/20' },
+          { label: 'Cancelled',          value: formatRWF(cancelledAmount), sub: `${cancelledCount} bursar${cancelledCount !== 1 ? 'ies' : 'y'}`, icon: XCircle,      color: 'text-red-500',     bg: 'bg-red-50 dark:bg-red-900/20' },
+        ].map((k) => (
+          <div key={k.label} className="card p-4 flex items-center gap-3 shadow-sm">
+            <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${k.bg}`}>
+              <k.icon className={`w-5 h-5 ${k.color}`} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-ink-400 truncate">{k.label}</p>
+              <p className={`text-base font-bold leading-tight ${k.color}`}>{k.value}</p>
+              <p className="text-[10px] text-ink-400 truncate">{k.sub}</p>
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* Table */}
@@ -368,8 +448,18 @@ function BursaryModal({ years, defaultYearId, onClose, onSaved }: {
   })
 
   const yearOptions = years.map((y: any) => ({ value: y.id, label: y.label }))
-
   const set = (k: keyof typeof form, v: any) => setForm((f: any) => ({ ...f, [k]: v }))
+
+  // Live balance for selected student + year
+  const balanceQ = useQuery({
+    queryKey: ['finance', 'ledger-totals', form.student_id, form.academic_year_id],
+    queryFn:  () => ledgerService.getStudentLedger(form.student_id, { academic_year_id: form.academic_year_id }),
+    enabled:  !!form.student_id && !!form.academic_year_id,
+    staleTime: 30_000,
+  })
+  const ledger  = balanceQ.data?.data
+  const totals  = ledger?.totals
+  const balance = totals ? Math.max(0, Number(totals.total_due ?? 0) - Number(totals.total_paid ?? 0) - Number(totals.total_bursary ?? 0)) : null
 
   const mutation = useMutation({
     mutationFn: () => bursaryService.create(form),
@@ -417,8 +507,33 @@ function BursaryModal({ years, defaultYearId, onClose, onSaved }: {
             </div>
 
             <div>
-              <label className="block text-xs text-ink-500 mb-1">Amount (RWF) *</label>
-              <input type="number" className="input input-sm w-full" value={form.amount} onChange={e => set('amount', Number(e.target.value))} />
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs text-ink-500">Amount (RWF) *</label>
+                {form.student_id && form.academic_year_id ? (
+                  balanceQ.isLoading ? (
+                    <span className="text-[10px] text-ink-400 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> loading balance…</span>
+                  ) : balance !== null ? (
+                    <button
+                      type="button"
+                      className="text-[10px] font-semibold text-brand hover:underline"
+                      onClick={() => set('amount', balance)}
+                      title="Click to fill with outstanding balance"
+                    >
+                      Outstanding: {formatRWF(balance)} ↑ use
+                    </button>
+                  ) : null
+                ) : null}
+              </div>
+              <input
+                type="number"
+                className="input input-sm w-full"
+                value={form.amount}
+                onChange={e => set('amount', Number(e.target.value))}
+                placeholder="0"
+              />
+              {balance !== null && form.amount > 0 && form.amount > balance && (
+                <p className="text-[10px] text-orange-500 mt-0.5">⚠ Amount exceeds outstanding balance ({formatRWF(balance)})</p>
+              )}
             </div>
 
             <div>
