@@ -33,6 +33,9 @@ class Permissions
     public const MANAGE_MODULE_ASSIGNMENTS   = 'MANAGE_MODULE_ASSIGNMENTS';
     public const MANAGE_MODULE_REGISTRATIONS = 'MANAGE_MODULE_REGISTRATIONS';
     public const VIEW_MY_MODULES             = 'VIEW_MY_MODULES';
+    public const VIEW_MODULE_MARKS           = 'VIEW_MODULE_MARKS';
+    public const RECORD_MODULE_MARKS         = 'RECORD_MODULE_MARKS';
+    public const MANAGE_MODULE_MARKS         = 'MANAGE_MODULE_MARKS';
 
     // HR Management
     public const VIEW_HR_EMPLOYEES   = 'VIEW_HR_EMPLOYEES';
@@ -93,6 +96,9 @@ class Permissions
             self::MANAGE_MODULE_ASSIGNMENTS,
             self::MANAGE_MODULE_REGISTRATIONS,
             self::VIEW_MY_MODULES,
+            self::VIEW_MODULE_MARKS,
+            self::RECORD_MODULE_MARKS,
+            self::MANAGE_MODULE_MARKS,
             self::VIEW_HR_EMPLOYEES,
             self::MANAGE_HR_EMPLOYEES,
             self::MANAGE_LEAVE_TYPES,
