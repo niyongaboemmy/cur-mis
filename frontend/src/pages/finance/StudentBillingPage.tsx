@@ -18,28 +18,51 @@ import toast from "react-hot-toast";
 import { billingService } from "@/services/financeService";
 import { academicService } from "@/services/academicService";
 import { api, apiClient } from "@/services/api";
-import { useSystemStore, selectActiveYear } from "@/store/systemStore";
+import { useSystemStore } from "@/store/systemStore";
 import { formatRWF } from "@/utils/formatCurrency";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import Pagination from "@/components/ui/Pagination";
 import type { BillingSummary } from "@/types/finance";
 
 export default function StudentBillingPage() {
-  const activeYear = useSystemStore(selectActiveYear);
+  const basics = useSystemStore((s) => s.basics);
+  const selectedYearLabel = useSystemStore((s) => s.selectedYearLabel);
+  const selectedTermId = useSystemStore((s) => s.selectedTermId);
 
   const [yearId, setYearId] = useState<string | number>("");
   const [semester, setSemester] = useState<string | number>("");
+
+  // Sync with global academic year
+  useEffect(() => {
+    if (selectedYearLabel) {
+      const year = basics?.years?.find((y) => y.label === selectedYearLabel);
+      if (year) {
+        setYearId(year.id);
+      }
+    } else {
+      // Fallback to active year if "All years" is selected but we need a default
+      const active = basics?.active_year as any;
+      if (active?.id) setYearId(active.id);
+    }
+  }, [selectedYearLabel, basics?.years]);
+
+  // Sync with global academic term
+  useEffect(() => {
+    if (selectedTermId !== null) {
+      setSemester(selectedTermId);
+    } else {
+      // Fallback to active term if "All terms" is selected
+      const active = basics?.active_term as any;
+      if (active?.id) setSemester(active.id);
+    }
+  }, [selectedTermId, basics?.active_term]);
+
   const [facultyId, setFacultyId] = useState<string | number>("");
   const [deptId, setDeptId] = useState<string | number>("");
   const [keyword, setKeyword] = useState("");
   const [debouncedKeyword, setDebouncedKeyword] = useState("");
   const [page, setPage] = useState(1);
 
-  useEffect(() => {
-    if (activeYear?.id && !yearId) setYearId(activeYear.id);
-  }, [activeYear?.id]); // eslint-disable-line
-
-  // Debounce search
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedKeyword(keyword);
@@ -109,23 +132,17 @@ export default function StudentBillingPage() {
   const students: BillingSummary[] = paginated?.data ?? [];
   const totalItems = paginated?.total ?? 0;
 
-  // Calculate top totals for current filtered view (ideally backend should return this too)
-  const totalExpected = students.reduce(
-    (sum, s) => sum + Number(s.total_expected),
-    0,
-  );
-  const totalCollected = students.reduce(
-    (sum, s) => sum + Number(s.total_collected),
-    0,
-  );
-  const totalBursary = students.reduce(
-    (sum, s) => sum + Number(s.total_bursary),
-    0,
-  );
-  const totalRemaining = students.reduce(
-    (sum, s) => sum + Number(s.balance),
-    0,
-  );
+  const aggregates = paginated?.aggregates ?? {
+    expected: 0,
+    collected: 0,
+    bursary: 0,
+    balance: 0,
+  };
+
+  const totalExpected = aggregates.expected;
+  const totalCollected = aggregates.collected;
+  const totalBursary = aggregates.bursary;
+  const totalRemaining = aggregates.balance;
 
   // ─── Bulk Actions ──────────────────────────────────────────────────────────
 
@@ -429,7 +446,10 @@ export default function StudentBillingPage() {
                     Dept / Faculty
                   </th>
                   <th className="px-5 py-4 text-right font-bold text-[11px] uppercase tracking-wider text-ink-400 border-b border-ink-50 dark:border-ink-800">
-                    Expected
+                    Structure
+                  </th>
+                  <th className="px-5 py-4 text-right font-bold text-[11px] uppercase tracking-wider text-ink-400 border-b border-ink-50 dark:border-ink-800">
+                    Invoiced
                   </th>
                   <th className="px-5 py-4 text-right font-bold text-[11px] uppercase tracking-wider text-ink-400 border-b border-ink-50 dark:border-ink-800">
                     Paid
@@ -437,6 +457,7 @@ export default function StudentBillingPage() {
                   <th className="px-5 py-4 text-right font-bold text-[11px] uppercase tracking-wider text-ink-400 border-b border-ink-50 dark:border-ink-800">
                     Remaining
                   </th>
+
                   <th className="px-5 py-4 text-center font-bold text-[11px] uppercase tracking-wider text-ink-400 border-b border-ink-50 dark:border-ink-800">
                     Action
                   </th>
@@ -472,9 +493,13 @@ export default function StudentBillingPage() {
                         {s.faculty}
                       </p>
                     </td>
-                    <td className="px-5 py-4 text-right font-mono text-xs text-ink-500">
+                    <td className="px-5 py-4 text-right font-mono text-xs text-ink-400">
+                      {formatRWF(s.structure_tuition || 0)}
+                    </td>
+                    <td className="px-5 py-4 text-right font-mono text-xs text-ink-900 dark:text-white font-bold">
                       {formatRWF(s.total_expected)}
                     </td>
+
                     <td className="px-5 py-4 text-right">
                       <span className="font-mono text-xs font-bold text-green-600">
                         {formatRWF(s.total_collected)}

@@ -7,7 +7,8 @@ import { academicService } from '@/services/academicService'
 import type { Expense, CreateExpensePayload } from '@/types/finance'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import Pagination from '@/components/ui/Pagination'
-import { useSystemStore, selectActiveYear } from '@/store/systemStore'
+import { useSystemStore } from '@/store/systemStore'
+
 import { formatRWF } from '@/utils/formatCurrency'
 
 const PAYMENT_METHODS = [
@@ -18,15 +19,33 @@ const PAYMENT_METHODS = [
 ]
 
 export default function ExpensesPage() {
-  const activeYear = useSystemStore(selectActiveYear)
+  const basics = useSystemStore((s) => s.basics)
+  const selectedYearLabel = useSystemStore((s) => s.selectedYearLabel)
   const qc = useQueryClient()
 
   const [tab,      setTab]      = useState<'list' | 'budgets'>('list')
-  const [yearId,   setYearId]   = useState<number | string>(activeYear?.id ?? '')
+  const [yearId,   setYearId]   = useState<number | string>('')
   const [catId,    setCatId]    = useState<number | string>('')
   const [page,     setPage]     = useState(1)
   const [showForm, setShowForm] = useState(false)
   const [editing,  setEditing]  = useState<Expense | null>(null)
+
+  // Sync with global academic year
+  useEffect(() => {
+    if (selectedYearLabel) {
+      const year = basics?.years?.find((y) => y.label === selectedYearLabel);
+      if (year) {
+        setYearId(year.id);
+      }
+    } else {
+      // Fallback to active year
+      const active = basics?.active_year as any;
+      if (active?.id) setYearId(active.id);
+    }
+  }, [selectedYearLabel, basics?.years]);
+
+  const activeYear = basics?.years?.find(y => y.id === Number(yearId)) || (basics?.active_year as any);
+
 
   const yearsQ = useQuery({ queryKey: ['academic-years'], queryFn: () => academicService.listYears() })
   const years  = yearsQ.data?.data ?? []

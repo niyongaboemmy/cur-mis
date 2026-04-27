@@ -9,7 +9,8 @@ import type { FeeStructure, CreateFeeStructurePayload } from '@/types/finance'
 import { FEE_TYPE_LABELS } from '@/types/finance'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import Pagination from '@/components/ui/Pagination'
-import { useSystemStore, selectActiveYear } from '@/store/systemStore'
+import { useSystemStore } from '@/store/systemStore'
+
 import { formatRWF } from '@/utils/formatCurrency'
 
 const FEE_TYPES: [string, string][] = Object.entries(FEE_TYPE_LABELS).filter(
@@ -20,16 +21,28 @@ const PER_PAGE = 15
 
 export default function FeeStructuresPage() {
   const qc = useQueryClient()
-  const activeYear = useSystemStore(selectActiveYear)
+  const basics = useSystemStore((s) => s.basics)
+  const selectedYearLabel = useSystemStore((s) => s.selectedYearLabel)
 
   const [yearId, setYearId]   = useState<number | string>('')
   const [page, setPage]       = useState(1)
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing]  = useState<FeeStructure | null>(null)
 
+  // Sync with global academic year
   useEffect(() => {
-    if (activeYear?.id && !yearId) setYearId(activeYear.id)
-  }, [activeYear?.id]) // eslint-disable-line
+    if (selectedYearLabel) {
+      const year = basics?.years?.find((y) => y.label === selectedYearLabel);
+      if (year) {
+        setYearId(year.id);
+      }
+    } else {
+      // Fallback to active year if "All years" is selected but we need a default
+      const active = basics?.active_year as any;
+      if (active?.id) setYearId(active.id);
+    }
+  }, [selectedYearLabel, basics?.years]);
+
 
   const yearsQ = useQuery({
     queryKey: ['academic-years'],

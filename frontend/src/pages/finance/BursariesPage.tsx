@@ -8,7 +8,8 @@ import type { FeeBursary, CreateBursaryPayload } from '@/types/finance'
 import Pagination from '@/components/ui/Pagination'
 import StudentSearchSelect from '@/components/finance/StudentSearchSelect'
 import SearchableSelect from '@/components/ui/SearchableSelect'
-import { useSystemStore, selectActiveYear } from '@/store/systemStore'
+import { useSystemStore } from '@/store/systemStore'
+
 import { formatRWF } from '@/utils/formatCurrency'
 
 const BURSARY_TYPES = [
@@ -25,7 +26,8 @@ const PER_PAGE = 15
 
 export default function BursariesPage() {
   const qc = useQueryClient()
-  const activeYear = useSystemStore(selectActiveYear)
+  const basics = useSystemStore((s) => s.basics)
+  const selectedYearLabel = useSystemStore((s) => s.selectedYearLabel)
 
   const [yearId, setYearId]   = useState<number | string>('')
   const [studentId, setStudentId] = useState('')
@@ -33,9 +35,20 @@ export default function BursariesPage() {
   const [showForm, setShowForm] = useState(false)
   const [viewingBursary, setViewingBursary] = useState<FeeBursary | null>(null)
 
+  // Sync with global academic year
   useEffect(() => {
-    if (activeYear?.id && !yearId) setYearId(activeYear.id)
-  }, [activeYear?.id]) // eslint-disable-line
+    if (selectedYearLabel) {
+      const year = basics?.years?.find((y) => y.label === selectedYearLabel);
+      if (year) {
+        setYearId(year.id);
+      }
+    } else {
+      // Fallback to active year if "All years" is selected but we need a default
+      const active = basics?.active_year as any;
+      if (active?.id) setYearId(active.id);
+    }
+  }, [selectedYearLabel, basics?.years]);
+
 
   const yearsQ = useQuery({
     queryKey: ['academic-years'],
@@ -213,7 +226,8 @@ export default function BursariesPage() {
       {showForm && (
         <BursaryModal
           years={years}
-          defaultYearId={yearId ? Number(yearId) : activeYear?.id}
+          defaultYearId={yearId ? Number(yearId) : (basics?.active_year as any)?.id}
+
           onClose={() => setShowForm(false)}
           onSaved={() => {
             setShowForm(false)

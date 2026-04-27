@@ -224,8 +224,9 @@ function App() {
               <Route element={<ProtectedRoute requiredPermissions={[PERMISSIONS.VIEW_FINANCE, PERMISSIONS.MANAGE_FINANCE]} />}>
                 <Route path="/finance" element={<FinanceHub />}>
                   <Route index element={<FinanceOverviewPage />} />
-                  <Route path="billing"            element={<StudentBillingPage />} />
-                  <Route path="billing/:studentId" element={<StudentLedgerPage />} />
+                  <Route path="billing" element={<StudentBillingPage />} />
+                  <Route path="billing/*" element={<StudentLedgerPage />} />
+
                   <Route path="approvals"  element={<PaymentApprovalsPage />} />
                   <Route path="structures" element={<FeeStructuresPage />} />
                   <Route path="bursaries"  element={<BursariesPage />} />

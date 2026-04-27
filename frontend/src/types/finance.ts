@@ -242,7 +242,9 @@ export interface BillingSummary {
   total_collected: number
   total_bursary:   number
   balance:         number
+  structure_tuition: number | null
 }
+
 
 // ─── Revenue Report ───────────────────────────────────────────────────────────
 

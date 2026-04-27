@@ -202,11 +202,13 @@ class FeeService
             throw new \InvalidArgumentException("Academic Year is required for bulk generation.");
         }
 
-        $where = ["student_state = 'active'"];
+        $where = ["s.student_state = 'active'"];
+
         $bindings = [];
 
         if ($faculty) {
-            $where[] = "faculty = (SELECT fac_name FROM `faculty` WHERE fac_id = ?)";
+            $where[] = "(s.faculty = CAST(? AS CHAR) OR s.faculty = (SELECT fac_name FROM `faculty` WHERE fac_id = ?))";
+            $bindings[] = $faculty;
             $bindings[] = $faculty;
         }
         if ($dept) {
@@ -216,7 +218,8 @@ class FeeService
         }
 
         $whereSql = implode(" AND ", $where);
-        $students = $this->db->fetchAll("SELECT regnumber FROM `student` WHERE {$whereSql}", $bindings);
+        $students = $this->db->fetchAll("SELECT s.regnumber FROM `student` s WHERE {$whereSql}", $bindings);
+
         $studentIds = array_column($students, 'regnumber');
 
         return $this->bulkGenerateInvoices($studentIds, $yearId, $semester, $actorId);
@@ -250,7 +253,8 @@ class FeeService
         }
 
         if ($faculty) {
-            $where[] = "s.faculty = (SELECT fac_name FROM `faculty` WHERE fac_id = ?)";
+            $where[] = "(s.faculty = CAST(? AS CHAR) OR s.faculty = (SELECT fac_name FROM `faculty` WHERE fac_id = ?))";
+            $bindings[] = $faculty;
             $bindings[] = $faculty;
         }
         if ($dept) {
@@ -276,8 +280,9 @@ class FeeService
         // Let's re-organize bindings.
         
         $whereBindings = [];
-        if ($faculty) { $whereBindings[] = $faculty; }
+        if ($faculty) { $whereBindings[] = $faculty; $whereBindings[] = $faculty; }
         if ($dept) { $whereBindings[] = $dept; $whereBindings[] = $dept; }
+
         if ($keyword) { $k = "%{$keyword}%"; $whereBindings[] = $k; $whereBindings[] = $k; $whereBindings[] = $k; }
 
         $totalRow = $this->db->fetchOne($totalSql, $whereBindings);
@@ -286,20 +291,52 @@ class FeeService
         // 2. Get paginated data
         $offset = ($page - 1) * $perPage;
         
-        // Final bindings: [yearId, (semester?), ...whereBindings]
-        $finalBindings = array_merge([$yearId], ($semester ? [$semester] : []), $whereBindings);
+        // Main bindings (with structure_tuition subquery)
+        $mainBindings = array_merge(
+            [$yearId, $semester], 
+            [$yearId], 
+            ($semester ? [$semester] : []), 
+            $whereBindings
+        );
+
+        // Totals bindings (without structure_tuition)
+        $totalsBindings = array_merge(
+            [$yearId], 
+            ($semester ? [$semester] : []), 
+            $whereBindings
+        );
+
 
         $sql = "SELECT 
                     s.regnumber,
                     s.fname,
                     s.lname,
-                    s.faculty,
-                    s.department,
+                    f.fac_name AS faculty,
+                    d.dep_name AS department,
                     COALESCE(sums.total_due, 0) AS total_expected,
                     COALESCE(sums.total_paid, 0) AS total_collected,
                     COALESCE(sums.total_bursary, 0) AS total_bursary,
-                    COALESCE(sums.total_due - sums.total_paid - sums.total_bursary, 0) AS balance
+                    (COALESCE(sums.total_due, 0) - COALESCE(sums.total_paid, 0) - COALESCE(sums.total_bursary, 0)) AS balance,
+                    -- Subquery to find the 'Ideal' expected amount from structure
+                    (SELECT amount FROM `fee_structures` fs 
+                     WHERE fs.academic_year_id = ? 
+                       AND fs.fee_type = 'TUITION'
+                       AND (fs.faculty_id = CAST(NULLIF(s.faculty, '') AS UNSIGNED) OR fs.faculty_id IS NULL)
+                       AND (fs.semester = ? OR fs.semester IS NULL)
+                     ORDER BY 
+                        CASE WHEN fs.faculty_id IS NOT NULL THEN 0 ELSE 1 END,
+                        CASE WHEN fs.semester IS NOT NULL THEN 0 ELSE 1 END
+                     LIMIT 1
+                    ) AS structure_tuition
                 FROM `student` s
+                LEFT JOIN `faculty` f ON f.fac_id = COALESCE(
+                    NULLIF(CAST(s.faculty AS UNSIGNED), 0),
+                    (SELECT fac_id FROM `faculty` WHERE fac_name = s.faculty LIMIT 1)
+                )
+                LEFT JOIN `departements` d ON d.dep_id = COALESCE(
+                    NULLIF(CAST(s.department AS UNSIGNED), 0),
+                    (SELECT dep_id FROM `departements` WHERE dep_acronym = s.department LIMIT 1)
+                )
                 LEFT JOIN (
                     SELECT 
                         student_id,
@@ -314,12 +351,43 @@ class FeeService
                 ORDER BY s.lname ASC, s.fname ASC
                 LIMIT {$perPage} OFFSET {$offset}";
 
+        $results = $this->db->fetchAll($sql, $mainBindings);
+
+
+
+        // 3. Get global totals for this filter (to show in dashboard cards)
+        $totalsSql = "SELECT 
+                        SUM(COALESCE(sums.total_due, 0)) AS global_expected,
+                        SUM(COALESCE(sums.total_paid, 0)) AS global_collected,
+                        SUM(COALESCE(sums.total_bursary, 0)) AS global_bursary
+                      FROM `student` s
+                      LEFT JOIN (
+                          SELECT 
+                              student_id,
+                              SUM(amount_due) AS total_due,
+                              SUM(amount_paid) AS total_paid,
+                              SUM(bursary_applied) AS total_bursary
+                          FROM `fee_invoices`
+                          WHERE academic_year_id = ? AND fee_type != 'BURSARY_CREDIT' {$semSql}
+                          GROUP BY student_id
+                      ) AS sums ON sums.student_id = s.regnumber
+                      WHERE {$whereSql}";
+        
+        $totalsRow = $this->db->fetchOne($totalsSql, $totalsBindings);
+
         return [
-            'data'         => $this->db->fetchAll($sql, $finalBindings),
+            'data'         => $results,
+
             'total'        => $total,
             'per_page'     => $perPage,
             'current_page' => $page,
-            'last_page'    => (int)ceil($total / $perPage)
+            'last_page'    => (int)ceil($total / $perPage),
+            'aggregates'   => [
+                'expected'  => (float)($totalsRow['global_expected'] ?? 0),
+                'collected' => (float)($totalsRow['global_collected'] ?? 0),
+                'bursary'   => (float)($totalsRow['global_bursary'] ?? 0),
+                'balance'   => (float)($totalsRow['global_expected'] ?? 0) - (float)($totalsRow['global_collected'] ?? 0) - (float)($totalsRow['global_bursary'] ?? 0),
+            ]
         ];
     }
 
@@ -543,6 +611,8 @@ class FeeService
         if (!$structure) {
             return ['created' => false, 'id' => null];
         }
+
+
 
         $label = match ($feeType) {
             'TUITION'      => 'Tuition fee',

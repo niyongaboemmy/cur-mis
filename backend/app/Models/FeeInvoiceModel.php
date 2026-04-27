@@ -87,6 +87,8 @@ class FeeInvoiceModel extends BaseModel
         }
 
         return (bool)$this->db->fetchOne($sql . ' LIMIT 1', $bindings);
+
+
     }
 
     /** Recalculate and save the status of an invoice after a payment. */

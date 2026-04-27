@@ -4,14 +4,30 @@ import { Loader2, TrendingUp, TrendingDown, Wallet, BarChart3 } from 'lucide-rea
 import { balanceService } from '@/services/financeService'
 import { academicService } from '@/services/academicService'
 import SearchableSelect from '@/components/ui/SearchableSelect'
-import { useSystemStore, selectActiveYear } from '@/store/systemStore'
+import { useSystemStore } from '@/store/systemStore'
+
 import { formatRWF } from '@/utils/formatCurrency'
 
 export default function AccountBalancePage() {
-  const activeYear = useSystemStore(selectActiveYear)
+  const basics = useSystemStore((s) => s.basics)
+  const selectedYearLabel = useSystemStore((s) => s.selectedYearLabel)
+
   const [yearId, setYearId] = useState<number | string>('')
 
-  useEffect(() => { if (activeYear?.id && !yearId) setYearId(activeYear.id) }, [activeYear?.id]) // eslint-disable-line
+  // Sync with global academic year
+  useEffect(() => {
+    if (selectedYearLabel) {
+      const year = basics?.years?.find((y) => y.label === selectedYearLabel);
+      if (year) {
+        setYearId(year.id);
+      }
+    } else {
+      // Fallback to active year
+      const active = basics?.active_year as any;
+      if (active?.id) setYearId(active.id);
+    }
+  }, [selectedYearLabel, basics?.years]);
+
 
   const yearsQ = useQuery({ queryKey: ['academic-years'], queryFn: () => academicService.listYears() })
   const years  = yearsQ.data?.data ?? []

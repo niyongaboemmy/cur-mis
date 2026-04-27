@@ -1,4 +1,6 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+
 import { useQuery } from "@tanstack/react-query";
 import {
   Loader2,
@@ -14,32 +16,53 @@ import {
   financeReportService,
   balanceService,
 } from "@/services/financeService";
-import { useSystemStore, selectActiveYear } from "@/store/systemStore";
+import { useSystemStore } from "@/store/systemStore";
+
 import { FEE_TYPE_LABELS, PAYMENT_METHOD_LABELS } from "@/types/finance";
 import type { RecentPayment, RevenueByType } from "@/types/finance";
 import { formatRWF } from "@/utils/formatCurrency";
 
 export default function FinanceOverviewPage() {
+  const basics = useSystemStore((s) => s.basics);
+  const selectedYearLabel = useSystemStore((s) => s.selectedYearLabel);
   const basicsLoading = useSystemStore((s) => s.loading);
-  const activeYear = useSystemStore(selectActiveYear);
+
+  const [yearId, setYearId] = useState<number | null>(null);
+
+  // Sync with global academic year
+  useEffect(() => {
+    if (selectedYearLabel) {
+      const year = basics?.years?.find((y) => y.label === selectedYearLabel);
+      if (year) {
+        setYearId(year.id);
+      }
+    } else {
+      // Fallback to active year
+      const active = basics?.active_year as any;
+      if (active?.id) setYearId(active.id);
+    }
+  }, [selectedYearLabel, basics?.years]);
+
+  const activeYear = basics?.years?.find(y => y.id === yearId) || (basics?.active_year as any);
 
   const summaryQ = useQuery({
-    queryKey: ["finance", "summary", activeYear?.id],
-    queryFn: () => financeReportService.getSummary(activeYear!.id),
-    enabled: !!activeYear?.id,
+    queryKey: ["finance", "summary", yearId],
+    queryFn: () => financeReportService.getSummary(yearId!),
+    enabled: !!yearId,
   });
 
   const revenueQ = useQuery({
-    queryKey: ["finance", "revenue-report", activeYear?.id],
-    queryFn: () => financeReportService.getRevenueByType(activeYear!.id),
-    enabled: !!activeYear?.id,
+    queryKey: ["finance", "revenue-report", yearId],
+    queryFn: () => financeReportService.getRevenueByType(yearId!),
+    enabled: !!yearId,
   });
 
   const balanceQ = useQuery({
-    queryKey: ["finance", "balance", activeYear?.id],
-    queryFn: () => balanceService.get(activeYear!.id),
-    enabled: !!activeYear?.id,
+    queryKey: ["finance", "balance", yearId],
+    queryFn: () => balanceService.get(yearId!),
+    enabled: !!yearId,
   });
+
 
   if (basicsLoading || (!activeYear && !summaryQ.isFetched)) {
     return (

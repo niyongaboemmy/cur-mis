@@ -38,6 +38,8 @@ import {
 } from "react";
 import UserDropdown from "@/components/layout/UserDropdown";
 import AcademicYearSelector from "@/components/layout/AcademicYearSelector";
+import AcademicTermSelector from "@/components/layout/AcademicTermSelector";
+
 import Logo from "@/components/brand/Logo";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { useSystemBasics } from "@/hooks/useSystemBasics";
@@ -661,7 +663,9 @@ export default function MainLayout() {
 
           <div className="flex items-center gap-2">
             <AcademicYearSelector />
+            <AcademicTermSelector />
             <RoundIconBtn label="Notifications" dot>
+
               <Bell className="w-[18px] h-[18px]" />
             </RoundIconBtn>
             <RoundIconBtn label="Messages">

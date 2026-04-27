@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Loader2, Download } from 'lucide-react'
 import { financeReportService, exportService } from '@/services/financeService'
@@ -7,9 +7,27 @@ import { FEE_TYPE_LABELS } from '@/types/finance'
 import type { RevenueByType } from '@/types/finance'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import { formatRWF } from '@/utils/formatCurrency'
+import { useSystemStore } from '@/store/systemStore'
 
 export default function RevenueReportPage() {
+  const basics = useSystemStore((s) => s.basics)
+  const selectedYearLabel = useSystemStore((s) => s.selectedYearLabel)
   const [yearId, setYearId] = useState('')
+
+  // Sync with global academic year
+  useEffect(() => {
+    if (selectedYearLabel) {
+      const year = basics?.years?.find((y) => y.label === selectedYearLabel);
+      if (year) {
+        setYearId(String(year.id));
+      }
+    } else {
+      // Fallback to active year if "All years" is selected but we need a default
+      const active = basics?.active_year as any;
+      if (active?.id) setYearId(String(active.id));
+    }
+  }, [selectedYearLabel, basics?.years]);
+
 
   const yearsQ = useQuery({
     queryKey: ['academic-years'],

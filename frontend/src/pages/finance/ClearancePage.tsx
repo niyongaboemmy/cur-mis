@@ -9,7 +9,8 @@ import { CLEARANCE_STATUS_LABELS, CLEARANCE_STATUS_COLORS } from '@/types/financ
 import StudentSearchSelect from '@/components/finance/StudentSearchSelect'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import Pagination from '@/components/ui/Pagination'
-import { useSystemStore, selectActiveYear } from '@/store/systemStore'
+import { useSystemStore } from '@/store/systemStore'
+
 import { formatRWF } from '@/utils/formatCurrency'
 
 const STATUS_ICON: Record<ClearanceStatus, React.FC<{ className?: string }>> = {
@@ -19,7 +20,8 @@ const STATUS_ICON: Record<ClearanceStatus, React.FC<{ className?: string }>> = {
 }
 
 export default function ClearancePage() {
-  const activeYear = useSystemStore(selectActiveYear)
+  const basics = useSystemStore((s) => s.basics)
+  const selectedYearLabel = useSystemStore((s) => s.selectedYearLabel)
 
   const [tab,        setTab]        = useState<'student' | 'bulk'>('student')
   const [studentId,  setStudentId]  = useState('')
@@ -28,7 +30,20 @@ export default function ClearancePage() {
   const [grantNotes, setGrantNotes] = useState('')
   const [showGrant,  setShowGrant]  = useState(false)
 
-  useEffect(() => { if (activeYear?.id && !yearId) setYearId(activeYear.id) }, [activeYear?.id]) // eslint-disable-line
+  // Sync with global academic year
+  useEffect(() => {
+    if (selectedYearLabel) {
+      const year = basics?.years?.find((y) => y.label === selectedYearLabel);
+      if (year) {
+        setYearId(year.id);
+      }
+    } else {
+      // Fallback to active year
+      const active = basics?.active_year as any;
+      if (active?.id) setYearId(active.id);
+    }
+  }, [selectedYearLabel, basics?.years]);
+
 
   const yearsQ = useQuery({ queryKey: ['academic-years'], queryFn: () => academicService.listYears() })
   const years  = yearsQ.data?.data ?? []
