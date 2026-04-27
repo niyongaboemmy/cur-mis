@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Trash2, Loader2, X, Receipt, Download } from 'lucide-react'
+import { Plus, Trash2, Loader2, X, Receipt, Download, AlertTriangle } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { expenseService, exportService, budgetService } from '@/services/financeService'
 import { academicService } from '@/services/academicService'
@@ -327,6 +327,7 @@ export default function ExpensesPage() {
           categories={cats}
           years={years}
           activeYearId={yearId ? Number(yearId) : (activeYear?.id ?? 0)}
+          budgets={budgets}
           onClose={() => { setShowForm(false); setEditing(null) }}
           onDone={() => { setShowForm(false); setEditing(null); qc.invalidateQueries({ queryKey: ['finance', 'expenses'] }) }}
         />
@@ -337,11 +338,12 @@ export default function ExpensesPage() {
 
 // ─── Expense Form Modal ───────────────────────────────────────────────────────
 
-function ExpenseFormModal({ initial, categories, years, activeYearId, onClose, onDone }: {
+function ExpenseFormModal({ initial, categories, years, activeYearId, budgets, onClose, onDone }: {
   initial:      Expense | null
   categories:   any[]
   years:        any[]
   activeYearId: number
+  budgets:      any[]
   onClose:      () => void
   onDone:       () => void
 }) {
@@ -428,6 +430,37 @@ function ExpenseFormModal({ initial, categories, years, activeYearId, onClose, o
               <label className="block text-xs text-ink-500 mb-1">Description</label>
               <textarea className="input input-sm w-full" rows={2} value={form.description ?? ''} onChange={e => set('description', e.target.value)} placeholder="Optional notes…" />
             </div>
+
+            {/* Budget Usage Alert */}
+            {(() => {
+              const catBudget = budgets.find((b: any) => b.category_id === form.category_id);
+              if (!catBudget || Number(catBudget.amount) <= 0) return null;
+              
+              const remaining = Number(catBudget.amount) - Number(catBudget.spent);
+              const usageAfter = ((Number(catBudget.spent) + form.amount) / Number(catBudget.amount)) * 100;
+              const isOver = usageAfter > 100;
+
+              return (
+                <div className={`col-span-2 p-3 rounded-lg border text-xs space-y-1 ${
+                  isOver ? 'bg-red-50 border-red-200 text-red-700' : 'bg-ink-50 border-ink-100 text-ink-600'
+                }`}>
+                  <div className="flex justify-between font-bold uppercase tracking-tight text-[10px]">
+                    <span>Category Budget: {formatRWF(catBudget.amount)}</span>
+                    <span>Remaining: {formatRWF(remaining)}</span>
+                  </div>
+                  <div className="h-1.5 w-full bg-white dark:bg-ink-900 rounded-full overflow-hidden">
+                    <div 
+                      className={`h-full transition-all ${isOver ? 'bg-red-500' : 'bg-brand'}`}
+                      style={{ width: `${Math.min(100, usageAfter)}%` }}
+                    />
+                  </div>
+                  <p className="flex justify-between items-center">
+                    <span>New Usage: {Math.round(usageAfter)}%</span>
+                    {isOver && <span className="font-bold flex items-center gap-1 animate-pulse"><AlertTriangle className="w-3 h-3" /> Exceeds Budget</span>}
+                  </p>
+                </div>
+              );
+            })()}
           </div>
 
           <div className="flex gap-2 justify-end pt-1">

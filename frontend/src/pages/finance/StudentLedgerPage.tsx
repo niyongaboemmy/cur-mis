@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
 import { FileText, Banknote, Loader2, X, Plus, AlertTriangle } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { ledgerService } from '@/services/financeService'
@@ -144,9 +145,18 @@ export default function StudentLedgerPage() {
 
           {/* Invoices */}
           <div className="card overflow-hidden">
-            <div className="px-4 py-3 border-b border-ink-100 dark:border-ink-700 font-medium text-sm flex items-center justify-between">
-              <span>Invoices</span>
-              <span className="text-xs text-ink-400">{invoices.length} record{invoices.length !== 1 ? 's' : ''}</span>
+            <div className="px-4 py-2.5 border-b border-ink-100 dark:border-ink-700 font-medium text-sm flex items-center justify-between bg-ink-50/50 dark:bg-ink-700/20">
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-ink-400" />
+                <span>Invoices</span>
+                <span className="text-[10px] bg-ink-100 dark:bg-ink-700 px-1.5 py-0.5 rounded text-ink-500 font-mono">{invoices.length}</span>
+              </div>
+              <button 
+                className="btn-ghost btn-xs text-brand flex items-center gap-1 hover:bg-brand/10"
+                onClick={() => setShowNewInvoice(true)}
+              >
+                <Plus className="w-3 h-3" /> Record Manual Fee
+              </button>
             </div>
             {invoices.length === 0 ? (
               <div className="text-center py-10 text-ink-400 text-sm">
@@ -240,9 +250,9 @@ export default function StudentLedgerPage() {
                         <td className="px-4 py-2.5 text-ink-500 text-xs">{p.paid_at ? new Date(p.paid_at).toLocaleDateString() : '—'}</td>
                         <td className="px-4 py-2.5 text-right font-mono font-semibold text-green-600">{formatRWF(p.amount)}</td>
                         <td className="px-4 py-2.5">
-                          <a href={`/finance/receipt/${p.id}`} target="_blank" rel="noreferrer" className="btn-ghost btn-xs text-brand">
+                          <Link to={`/finance/receipt/${p.id}`} target="_blank" rel="noreferrer" className="btn-ghost btn-xs text-brand">
                             <FileText className="w-3.5 h-3.5" /> Receipt
-                          </a>
+                          </Link>
                         </td>
                       </tr>
                     ))}

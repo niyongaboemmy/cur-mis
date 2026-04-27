@@ -69,6 +69,7 @@ const AccountBalancePage  = lazy(() => import('@/pages/finance/AccountBalancePag
 const ClearancePage       = lazy(() => import('@/pages/finance/ClearancePage'))
 const RevenueReportPage   = lazy(() => import('@/pages/finance/RevenueReportPage'))
 const ReceiptPdfPage      = lazy(() => import('@/pages/finance/ReceiptPdfPage'))
+const PaymentApprovalsPage = lazy(() => import('@/pages/finance/PaymentApprovalsPage'))
 const ExamsPage      = lazy(() => import('@/pages/placeholders/ExamsPage'))
 const LogsPage       = lazy(() => import('@/pages/placeholders/LogsPage'))
 const ComingSoonPage = lazy(() => import('@/pages/placeholders/ComingSoonPage'))
@@ -223,6 +224,7 @@ function App() {
                 <Route path="/finance" element={<FinanceHub />}>
                   <Route index element={<FinanceOverviewPage />} />
                   <Route path="billing"    element={<StudentLedgerPage />} />
+                  <Route path="approvals"  element={<PaymentApprovalsPage />} />
                   <Route path="structures" element={<FeeStructuresPage />} />
                   <Route path="bursaries"  element={<BursariesPage />} />
                   <Route path="expenses"   element={<ExpensesPage />} />

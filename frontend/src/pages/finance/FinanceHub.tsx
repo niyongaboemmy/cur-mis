@@ -11,6 +11,7 @@ import { paymentService } from '@/services/financeService'
 const TABS = [
   { to: '/finance',           label: 'Overview',   icon: LayoutDashboard, end: true,  permissions: [PERMISSIONS.VIEW_FINANCE, PERMISSIONS.MANAGE_FINANCE] },
   { to: '/finance/billing',   label: 'Billing',    icon: BookOpenCheck,   end: false, permissions: [PERMISSIONS.VIEW_FINANCE, PERMISSIONS.MANAGE_FINANCE] },
+  { to: '/finance/approvals', label: 'Approvals',  icon: ShieldCheck,     end: false, permissions: [PERMISSIONS.MANAGE_FINANCE] },
   { to: '/finance/structures',label: 'Fee Rates',  icon: Settings2,       end: false, permissions: [PERMISSIONS.MANAGE_FINANCE] },
   { to: '/finance/bursaries', label: 'Bursaries',  icon: Award,           end: false, permissions: [PERMISSIONS.MANAGE_FINANCE] },
   { to: '/finance/expenses',  label: 'Expenses',   icon: Receipt,         end: false, permissions: [PERMISSIONS.MANAGE_FINANCE] },
@@ -55,7 +56,7 @@ export default function FinanceHub() {
             >
               <t.icon className="w-3.5 h-3.5" />
               {t.label}
-              {t.to === '/finance/billing' && pendingCount > 0 && (
+              {t.to === '/finance/approvals' && pendingCount > 0 && (
                 <span className="ml-0.5 inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold bg-red-500 text-white rounded-full animate-pulse">
                   {pendingCount > 9 ? '9+' : pendingCount}
                 </span>
