@@ -16,10 +16,10 @@ import {
   X,
   Filter,
   Eye,
-  Briefcase,
-  Building2,
   UserPlus,
-  Plane,
+  Pencil,
+  Save,
+  CreditCard,
 } from 'lucide-react'
 import {
   hrService,
@@ -32,7 +32,6 @@ import {
 import { useDebounce } from '@/hooks/useDebounce'
 import { useAuthStore } from '@/store/authStore'
 import { PERMISSIONS } from '@/constants'
-import StatCard from '@/components/dashboard/StatCard'
 import DonutChart from '@/components/dashboard/DonutChart'
 import BarChart, { type BarDatum } from '@/components/dashboard/BarChart'
 import SearchableSelect from '@/components/ui/SearchableSelect'
@@ -125,31 +124,49 @@ function ActiveTab({
 
   return (
     <div className="space-y-5">
-      <section className="card p-6">
-        <div className="flex items-start justify-between gap-3 flex-wrap">
+
+      {/* ── Status summary cards ── */}
+      <section className="card p-5">
+        <div className="flex items-center justify-between gap-3 mb-4">
           <div>
-            <div className="flex items-center gap-2">
-              <span className="chip-success"><BadgeCheck className="w-3 h-3" /> Active staff</span>
-              <h2 className="text-[18px] font-semibold text-ink-900 dark:text-white tracking-tight">
-                Overview
-              </h2>
-            </div>
-            <p className="text-[12.5px] text-ink-500 mt-1">
-              Live metrics scoped to {fmt(activeTotal)} active staff member{activeTotal === 1 ? '' : 's'} only.
-              Click any card or chart to open the list pre-filtered.
-            </p>
+            <h2 className="text-[15px] font-semibold text-ink-900 dark:text-white">All staff</h2>
+            <p className="text-[12px] text-ink-500 mt-0.5">Click a card to view the filtered list.</p>
           </div>
           {(loading || fetching) && <Loader2 className="w-4 h-4 text-ink-400 animate-spin" />}
         </div>
-
-        <div className="mt-5 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
-          <ClickableStat label="Active staff"    value={fmt(activeTotal)}               icon={BadgeCheck} tone="mint"  onClick={() => onDrill({ status: 'Active' })} />
-          <ClickableStat label="Departments"     value={fmt(s?.active_departments)}     icon={Building2}  tone="sky" />
-          <ClickableStat label="Roles"           value={fmt(s?.active_positions)}       icon={Briefcase}  tone="lilac" />
-          <ClickableStat label="On leave today"  value={fmt(s?.active_on_leave_today)}  icon={Plane}      tone="sun" />
-          <ClickableStat label="New (last 30d)"  value={fmt(s?.active_joined_last_30d)} icon={UserPlus}   tone="peach"
-            onClick={() => onDrill({ status: 'Active', joined_last_30d: '1' })} />
-          <ClickableStat label="Male / Female"   value={s ? `${(s.active_male || 0).toLocaleString()} / ${(s.active_female || 0).toLocaleString()}` : '—'} icon={Users} tone="mint" />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <StatusSummaryCard
+            label="Total staff"
+            value={s?.total ?? 0}
+            color="#0A2A5E"
+            chipLabel="All"
+            chipCls="bg-brand/10 text-brand dark:bg-brand/20"
+            onClick={() => onDrill({})}
+          />
+          <StatusSummaryCard
+            label="Active"
+            value={s?.active ?? 0}
+            color="#10B981"
+            chipLabel="Active"
+            chipCls="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400"
+            onClick={() => onDrill({ status: 'Active' })}
+          />
+          <StatusSummaryCard
+            label="Inactive"
+            value={s?.inactive ?? 0}
+            color="#F59E0B"
+            chipLabel="Inactive"
+            chipCls="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400"
+            onClick={() => onDrill({ status: 'Inactive' })}
+          />
+          <StatusSummaryCard
+            label="Terminated"
+            value={s?.terminated ?? 0}
+            color="#EF4444"
+            chipLabel="Terminated"
+            chipCls="bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400"
+            onClick={() => onDrill({ status: 'Terminated' })}
+          />
         </div>
       </section>
 
@@ -395,9 +412,34 @@ function AllTab({ stats }: { stats: HrStats | null }) {
     return [...base, { value: 'unknown', label: 'Not specified' }]
   }
 
+  const STATUS_PILLS = [
+    { value: '',           label: 'All',        activeCls: 'bg-brand text-white shadow-sm' },
+    { value: 'Active',     label: 'Active',     activeCls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400' },
+    { value: 'Inactive',   label: 'Inactive',   activeCls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400' },
+    { value: 'Terminated', label: 'Terminated', activeCls: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400' },
+  ]
+
   return (
     <div className="space-y-5">
       <section className="card p-4">
+        {/* Status filter pills */}
+        <div className="flex items-center gap-1.5 flex-wrap mb-3">
+          <span className="text-[11px] uppercase tracking-wider text-ink-400 mr-1">Status</span>
+          {STATUS_PILLS.map((pill) => (
+            <button
+              key={pill.label}
+              onClick={() => update({ status: pill.value })}
+              className={`px-3 py-1 rounded-full text-[12px] font-medium transition-colors ${
+                status === pill.value
+                  ? pill.activeCls
+                  : 'text-ink-500 dark:text-ink-400 hover:bg-ink-100 dark:hover:bg-ink-700/40'
+              }`}
+            >
+              {pill.label}
+            </button>
+          ))}
+        </div>
+
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div className="flex flex-col md:flex-row items-center gap-2 w-full md:w-auto flex-1">
             <div className="relative w-full md:w-80">
@@ -408,19 +450,6 @@ function AllTab({ stats }: { stats: HrStats | null }) {
                 placeholder="Search name, code, email…"
                 className="input pl-9"
               />
-            </div>
-            <div className="flex items-center gap-2 w-full md:w-40 shrink-0">
-              <span className="text-[11px] uppercase tracking-wider text-ink-400 whitespace-nowrap">Status</span>
-              <select
-                value={status}
-                onChange={(e) => update({ status: e.target.value })}
-                className="input input-sm w-full bg-white dark:bg-ink-900 cursor-pointer text-ink-900 dark:text-white"
-              >
-                <option value="">All</option>
-                <option value="Active">Active</option>
-                <option value="Inactive">Inactive</option>
-                <option value="Terminated">Terminated</option>
-              </select>
             </div>
           </div>
 
@@ -496,8 +525,28 @@ function AllTab({ stats }: { stats: HrStats | null }) {
 }
 
 function EmployeeRow({ e }: { e: HrEmployee }) {
+  const qc = useQueryClient()
+  const { user } = useAuthStore()
+  const canManage = user?.role === 'superadmin' ||
+    (user?.permissions || []).includes(PERMISSIONS.MANAGE_HR_EMPLOYEES) ||
+    (user?.permissions || []).includes(PERMISSIONS.VIEW_HR_EMPLOYEES)
+  const [editOpen, setEditOpen] = useState(false)
+
   const initials = e.full_name?.split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase() || 'E'
-  const isActive = (e.status || '').toLowerCase() === 'active'
+  const currentStatus = e.status || ''
+  const isActive = currentStatus.toLowerCase() === 'active'
+  const isTerminated = !isActive && currentStatus.toLowerCase() !== 'inactive'
+
+  const statusMut = useMutation({
+    mutationFn: (s: string) => hrService.changeEmployeeStatus(e.id, s),
+    onSuccess: (_d, s) => {
+      toast.success(`Status changed to ${s}`)
+      qc.invalidateQueries({ queryKey: ['hr-employees'] })
+      qc.invalidateQueries({ queryKey: ['hr-stats'] })
+    },
+    onError: () => toast.error('Failed to update status'),
+  })
+
   return (
     <tr>
       <td>
@@ -537,17 +586,181 @@ function EmployeeRow({ e }: { e: HrEmployee }) {
         </div>
       </td>
       <td>
-        {isActive
-          ? <span className="chip-success"><BadgeCheck className="w-3 h-3" /> Active</span>
-          : <span className="chip-soft">{e.status || 'Unknown'}</span>}
+        {canManage ? (
+          <div className="flex items-center gap-1.5">
+            {statusMut.isPending
+              ? <Loader2 className="w-4 h-4 animate-spin text-ink-400" />
+              : isActive
+                ? <BadgeCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                : isTerminated
+                  ? <span className="w-2 h-2 rounded-full bg-red-400 shrink-0 inline-block" />
+                  : <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0 inline-block" />
+            }
+            <select
+              value={currentStatus}
+              onChange={(ev) => statusMut.mutate(ev.target.value)}
+              disabled={statusMut.isPending}
+              className={`input input-sm text-[12px] py-0.5 px-1.5 h-7 cursor-pointer ${
+                isActive
+                  ? 'text-emerald-700 dark:text-emerald-400'
+                  : isTerminated
+                    ? 'text-red-700 dark:text-red-400'
+                    : 'text-amber-700 dark:text-amber-400'
+              }`}
+            >
+              <option value="">Unknown</option>
+              <option value="Active">Active</option>
+              <option value="Inactive">Inactive</option>
+              <option value="Terminated">Terminated</option>
+            </select>
+          </div>
+        ) : (
+          isActive
+            ? <span className="chip-success"><BadgeCheck className="w-3 h-3" /> Active</span>
+            : <span className="chip-soft">{currentStatus || 'Unknown'}</span>
+        )}
       </td>
       <td>
-        <Link to={`/hr/staff/${e.id}`} className="btn-secondary btn-sm" title="View details">
-          <Eye className="w-3.5 h-3.5" />
-          View
-        </Link>
+        <div className="flex items-center gap-1">
+          {canManage && (
+            <button className="btn-secondary btn-sm" title="Edit" onClick={() => setEditOpen(true)}>
+              <Pencil className="w-3.5 h-3.5" />
+            </button>
+          )}
+          <Link to={`/hr/staff/${e.id}`} className="btn-secondary btn-sm" title="View details">
+            <Eye className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+        {editOpen && (
+          <EditStaffModal
+            employee={e}
+            onClose={() => setEditOpen(false)}
+            onSaved={() => setEditOpen(false)}
+          />
+        )}
       </td>
     </tr>
+  )
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Edit staff modal
+   ───────────────────────────────────────────────────────────── */
+function EditStaffModal({ employee, onClose, onSaved }: { employee: HrEmployee; onClose: () => void; onSaved: () => void }) {
+  const qc = useQueryClient()
+  const e = employee as any
+  const [form, setForm] = useState({
+    emp_code:      e.emp_code      ?? '',
+    first_name:    e.first_name    ?? e.full_name?.split(' ')[0] ?? '',
+    last_name:     e.last_name     ?? e.full_name?.split(' ').slice(1).join(' ') ?? '',
+    gender:        (e.gender as 'M' | 'F') || 'M',
+    department:    e.department    ?? '',
+    position:      e.position      ?? '',
+    contract_type: (e.contract_type as HrEmployeePayload['contract_type']) || 'Permanent',
+    start_date:    e.start_date    ?? '',
+    end_date:      e.end_date      ?? '',
+    salary:        e.salary        ?? 0,
+    phone:         e.phone         ?? '',
+    email:         e.email         ?? '',
+    status:        ((e.status || 'Active') as HrEmployeePayload['status']),
+    bank:          e.bank          ?? '',
+    bank_account:  e.bank_account  ?? '',
+  })
+
+  const set = <K extends keyof typeof form>(k: K, v: typeof form[K]) =>
+    setForm(prev => ({ ...prev, [k]: v }))
+
+  const mut = useMutation({
+    mutationFn: () => hrService.updateEmployee(employee.id, {
+      ...form,
+      salary:   Number(form.salary) || 0,
+      end_date: form.end_date || null,
+      phone:    form.phone   || null,
+      email:    form.email   || null,
+    } as any),
+    onSuccess: () => {
+      toast.success('Staff updated.')
+      qc.invalidateQueries({ queryKey: ['hr-employees'] })
+      qc.invalidateQueries({ queryKey: ['hr-stats'] })
+      onSaved()
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Save failed'),
+  })
+
+  const F = ({ label, required: req, children }: { label: string; required?: boolean; children: React.ReactNode }) => (
+    <label className="block">
+      <span className="text-[12px] font-medium text-ink-700 dark:text-ink-300 mb-1 block">
+        {label}{req && <span className="text-red-500 ml-1">*</span>}
+      </span>
+      {children}
+    </label>
+  )
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-ink-900/50 backdrop-blur-sm">
+      <div className="bg-white dark:bg-ink-800 rounded-xl shadow-xl w-full max-w-2xl max-h-[92vh] overflow-hidden flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-ink-100 dark:border-ink-700">
+          <div>
+            <h3 className="text-[15px] font-semibold text-ink-900 dark:text-white">Edit — {employee.full_name}</h3>
+            <p className="text-[12px] text-ink-500">Update information or change employment status</p>
+          </div>
+          <button onClick={onClose} className="icon-btn"><X className="w-4 h-4" /></button>
+        </div>
+        <form
+          onSubmit={e => { e.preventDefault(); mut.mutate() }}
+          className="flex-1 overflow-y-auto p-6 grid grid-cols-1 md:grid-cols-2 gap-4"
+        >
+          <F label="Employee code" required><input required className="input" value={form.emp_code} onChange={e => set('emp_code', e.target.value)} /></F>
+          <F label="Gender">
+            <select className="input" value={form.gender} onChange={e => set('gender', e.target.value as 'M' | 'F')}>
+              <option value="M">Male</option>
+              <option value="F">Female</option>
+            </select>
+          </F>
+          <F label="First name (surname)" required><input required className="input" value={form.first_name} onChange={e => set('first_name', e.target.value)} /></F>
+          <F label="Last name (given name)" required><input required className="input" value={form.last_name} onChange={e => set('last_name', e.target.value)} /></F>
+          <F label="Department" required><input required className="input" value={form.department} onChange={e => set('department', e.target.value)} /></F>
+          <F label="Position / Role" required><input required className="input" value={form.position} onChange={e => set('position', e.target.value)} /></F>
+          <F label="Contract type">
+            <select className="input" value={form.contract_type} onChange={e => set('contract_type', e.target.value as HrEmployeePayload['contract_type'])}>
+              <option value="Permanent">Permanent</option>
+              <option value="Temporal">Temporal</option>
+              <option value="Part-time">Part-time</option>
+            </select>
+          </F>
+          <F label="Start date"><input type="date" className="input" value={form.start_date} onChange={e => set('start_date', e.target.value)} /></F>
+          <F label="End date"><input type="date" className="input" value={form.end_date || ''} onChange={e => set('end_date', e.target.value)} /></F>
+          <F label="Salary (RWF)"><input type="number" min={0} className="input" value={form.salary} onChange={e => set('salary', Number(e.target.value))} /></F>
+          <F label="Status">
+            <select className="input" value={form.status} onChange={e => set('status', e.target.value as HrEmployeePayload['status'])}>
+              <option value="Active">Active</option>
+              <option value="Inactive">Inactive</option>
+              <option value="Terminated">Terminated</option>
+            </select>
+          </F>
+          <F label="Phone"><input className="input" placeholder="+250…" value={form.phone} onChange={e => set('phone', e.target.value)} /></F>
+          <F label="Email"><input type="email" className="input" value={form.email} onChange={e => set('email', e.target.value)} /></F>
+
+          <div className="md:col-span-2 pt-2 border-t border-ink-100 dark:border-ink-700">
+            <p className="text-[11px] font-semibold text-ink-500 uppercase tracking-wider flex items-center gap-1.5 mb-3">
+              <CreditCard className="w-3.5 h-3.5" /> Bank / Payment Info
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <F label="Bank name"><input className="input" placeholder="e.g. Bank of Kigali" value={form.bank} onChange={e => set('bank', e.target.value)} /></F>
+              <F label="Account number"><input className="input" placeholder="Account #" value={form.bank_account} onChange={e => set('bank_account', e.target.value)} /></F>
+            </div>
+          </div>
+
+          <div className="md:col-span-2 flex justify-end gap-2 pt-2 border-t border-ink-100 dark:border-ink-700">
+            <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+            <button type="submit" disabled={mut.isPending} className="btn-primary">
+              {mut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              Save changes
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   )
 }
 
@@ -558,7 +771,8 @@ function AddStaffModal({ onClose, onSaved }: { onClose: () => void; onSaved: () 
   const qc = useQueryClient()
   const [form, setForm] = useState<HrEmployeePayload>({
     emp_code:      '',
-    full_name:     '',
+    first_name:    '',
+    last_name:     '',
     gender:        'M',
     department:    '',
     position:      '',
@@ -615,16 +829,19 @@ function AddStaffModal({ onClose, onSaved }: { onClose: () => void; onSaved: () 
           <Field label="Employee code" required>
             <input required value={form.emp_code} onChange={(e) => update('emp_code', e.target.value)} className="input" placeholder="EMP-001" />
           </Field>
-          <Field label="Full name" required>
-            <input required value={form.full_name} onChange={(e) => update('full_name', e.target.value)} className="input" placeholder="Jane Doe" />
-          </Field>
-
           <Field label="Gender" required>
             <select value={form.gender} onChange={(e) => update('gender', e.target.value as 'M' | 'F')} className="input">
               <option value="M">Male</option>
               <option value="F">Female</option>
             </select>
           </Field>
+          <Field label="First name (surname)" required>
+            <input required value={form.first_name} onChange={(e) => update('first_name', e.target.value)} className="input" placeholder="NTAGANDA" />
+          </Field>
+          <Field label="Last name (given name)" required>
+            <input required value={form.last_name} onChange={(e) => update('last_name', e.target.value)} className="input" placeholder="Laurent" />
+          </Field>
+
           <Field label="Department" required>
             <input required value={form.department} onChange={(e) => update('department', e.target.value)} className="input" placeholder="Computer Science" />
           </Field>
@@ -715,25 +932,6 @@ function TabButton({
   )
 }
 
-function ClickableStat({
-  label, value, icon, tone, onClick,
-}: {
-  label: string
-  value: string
-  icon: React.ComponentType<{ className?: string }>
-  tone: 'lilac' | 'sky' | 'peach' | 'mint' | 'sun'
-  onClick?: () => void
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className="text-left hover:-translate-y-0.5 transition-transform focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 rounded-xl"
-      type="button"
-    >
-      <StatCard label={label} value={value} icon={icon as any} tone={tone} />
-    </button>
-  )
-}
 
 function LegendCard({
   label, value, percent, color, onClick,
@@ -807,6 +1005,36 @@ function PercentCard({
           style={{ width: `${percent}%`, backgroundColor: color }}
         />
       </div>
+    </button>
+  )
+}
+
+function StatusSummaryCard({
+  label, value, color, chipLabel, chipCls, onClick,
+}: {
+  label: string
+  value: number
+  color: string
+  chipLabel: string
+  chipCls: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="text-left w-full rounded-xl border border-ink-100 dark:border-ink-700 bg-white dark:bg-ink-800 p-4 hover:border-brand/40 hover:shadow-sm hover:-translate-y-0.5 transition-all"
+    >
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${chipCls}`}>
+          {chipLabel}
+        </span>
+        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+      </div>
+      <p className="text-[28px] font-bold text-ink-900 dark:text-white tabular-nums leading-none">
+        {value.toLocaleString()}
+      </p>
+      <p className="text-[12px] text-ink-500 mt-1">{label}</p>
     </button>
   )
 }

@@ -147,6 +147,8 @@ export interface HrEmployee {
   emp_code:       string
   staff_id?:      string | null
   full_name:      string
+  first_name?:    string
+  last_name?:     string
   gender?:        'M' | 'F' | string | null
   department?:    string
   position?:      string
@@ -157,6 +159,7 @@ export interface HrEmployee {
   phone?:         string | null
   email?:         string | null
   status?:        string
+  address?:       string | null
   created_at?:    string
   bank?:          string | null
   bank_account?:  string | null

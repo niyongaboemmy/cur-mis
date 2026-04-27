@@ -7,8 +7,9 @@ import {
   Pencil, Eye, X, Settings2, Info,
   Mail, Phone, CalendarDays, Briefcase, BadgeCheck, User,
   Building2, CreditCard, UserCheck, TrendingDown, Wallet,
-  UserPlus, Trash2, Save, Plus, CheckCircle, Copy, Banknote,
+  UserPlus, Trash2, Save, Plus, CheckCircle, Copy, Banknote, PlayCircle,
 } from 'lucide-react'
+import PayAllModal from './PayAllModal'
 import {
   hrService,
   type PayrollRow,
@@ -115,6 +116,7 @@ export default function PayrollPage() {
   const [deletingEmployee, setDelEmp]   = useState<PayrollRow | null>(null)
   const [deletingPayroll, setDelPayroll]= useState<PayrollRow | null>(null)
   const [payingPayroll, setPayingPayroll] = useState<PayrollRow | null>(null)
+  const [payAllOpen, setPayAllOpen]       = useState(false)
 
   /* period */
   const periodYear  = parseInt(sp.get('period_year')  || String(CUR_Y))
@@ -152,6 +154,17 @@ export default function PayrollPage() {
     queryFn:  () => hrService.payrollList(params),
     placeholderData: prev => prev,
   })
+
+  /* payments for the current period — used to determine alreadyPaidIds for Pay All */
+  const { data: paymentsRes } = useQuery({
+    queryKey: ['hr-payments', periodYear, periodMonth],
+    queryFn:  ({ signal }) => hrService.listPayments({ period_year: periodYear, period_month: periodMonth }, signal),
+    enabled:  payAllOpen,
+  })
+  const alreadyPaidIds = useMemo(() => {
+    const payments = (paymentsRes?.data ?? []) as import('@/services/hrService').SalaryPayment[]
+    return new Set(payments.filter(p => p.status === 'Processed').map(p => p.payroll_id))
+  }, [paymentsRes])
 
   const resp     = data?.data
   const rows     = resp?.data     ?? []
@@ -214,9 +227,11 @@ export default function PayrollPage() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Pay All */}
+          
           {/* Add employee */}
           {canManage && (
-            <button className="btn-primary btn-sm gap-1.5" onClick={() => setAddingEmp(true)}>
+            <button className="btn-secondary btn-sm gap-1.5" onClick={() => setAddingEmp(true)}>
               <UserPlus className="w-3.5 h-3.5" /> Add Employee
             </button>
           )}
@@ -227,11 +242,11 @@ export default function PayrollPage() {
             </button>
           )}
           {/* Formula settings */}
-          {canManage && (
+          {/* {canManage && (
             <button className="btn-secondary btn-sm gap-1.5" onClick={() => setShowFM(true)}>
               <Settings2 className="w-3.5 h-3.5" /> Formula settings
             </button>
-          )}
+          )} */}
           {/* Period nav */}
           <button className="icon-btn" onClick={prevMonth}><ChevronLeft className="w-4 h-4" /></button>
           <select className="input py-1.5 text-[13px] w-36" value={periodMonth}
@@ -564,6 +579,20 @@ export default function PayrollPage() {
           periodYear={periodYear}
           periodMonth={periodMonth}
           onClose={() => setPayingPayroll(null)}
+        />
+      )}
+
+      {payAllOpen && (
+        <PayAllModal
+          periodYear={periodYear}
+          periodMonth={periodMonth}
+          alreadyPaidIds={alreadyPaidIds}
+          onClose={() => setPayAllOpen(false)}
+          onDone={() => {
+            setPayAllOpen(false)
+            qc.invalidateQueries({ queryKey: ['hr-payroll'] })
+            qc.invalidateQueries({ queryKey: ['hr-payments'] })
+          }}
         />
       )}
 
@@ -1299,15 +1328,17 @@ function EmployeeFormModal({
   const [form, setForm] = useState({
     first_name:   (row?.full_name ?? '').split(' ')[0] ?? '',
     last_name:    (row?.full_name ?? '').split(' ').slice(1).join(' ') ?? '',
-    gender:       row?.gender       ?? '',
-    department:   row?.department   ?? '',
-    position:     row?.position     ?? '',
-    contract_type:row?.contract_type?? '',
-    phone:        row?.phone        ?? '',
-    emp_code:     row?.emp_code     ?? '',
-    start_date:   row?.start_date   ?? '',
-    status:       row?.status       ?? 'Active',
-    salary:       n0(row?.salary)   > 0 ? String(n0(row?.salary)) : '',
+    gender:       row?.gender        ?? '',
+    department:   row?.department    ?? '',
+    position:     row?.position      ?? '',
+    contract_type:row?.contract_type ?? '',
+    phone:        row?.phone         ?? '',
+    emp_code:     row?.emp_code      ?? '',
+    start_date:   row?.start_date    ?? '',
+    status:       row?.status        ?? 'Active',
+    salary:       n0(row?.salary) > 0 ? String(n0(row?.salary)) : '',
+    bank:         (row as any)?.bank         ?? '',
+    bank_account: (row as any)?.bank_account ?? '',
   })
 
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
@@ -1409,6 +1440,36 @@ function EmployeeFormModal({
               onChange={set('salary')}
               placeholder="e.g. 588,002"
             />
+          </div>
+
+          {/* ── Bank / Payment Info ── */}
+          <div className="pt-1">
+            <p className="text-[10px] font-bold text-ink-400 uppercase tracking-wider flex items-center gap-1.5 mb-3">
+              <CreditCard className="w-3.5 h-3.5" /> Bank / Payment Info
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[10px] font-bold text-ink-500 uppercase tracking-wider mb-1">Bank Name</label>
+                <input
+                  className="input"
+                  value={form.bank}
+                  onChange={set('bank')}
+                  placeholder="e.g. Bank of Kigali"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-ink-500 uppercase tracking-wider mb-1">Account Number</label>
+                <input
+                  className="input"
+                  value={form.bank_account}
+                  onChange={set('bank_account')}
+                  placeholder="e.g. 00040-0123456-78"
+                />
+              </div>
+            </div>
+            <p className="text-[11px] text-ink-400 mt-1.5">
+              Used as default when processing salary payments via Bank Transfer.
+            </p>
           </div>
         </div>
 

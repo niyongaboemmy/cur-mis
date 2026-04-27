@@ -35,9 +35,11 @@ class Permissions
     public const VIEW_MY_MODULES             = 'VIEW_MY_MODULES';
 
     // HR Management
-    public const VIEW_HR_EMPLOYEES   = 'VIEW_HR_EMPLOYEES';
-    public const MANAGE_HR_EMPLOYEES = 'MANAGE_HR_EMPLOYEES';
-    public const MANAGE_LEAVE_TYPES  = 'MANAGE_LEAVE_TYPES';
+    public const VIEW_HR_EMPLOYEES      = 'VIEW_HR_EMPLOYEES';
+    public const MANAGE_HR_EMPLOYEES    = 'MANAGE_HR_EMPLOYEES';
+    public const MANAGE_LEAVE_TYPES     = 'MANAGE_LEAVE_TYPES';
+    public const VIEW_LEAVE_REQUESTS    = 'VIEW_LEAVE_REQUESTS';
+    public const MANAGE_LEAVE_REQUESTS  = 'MANAGE_LEAVE_REQUESTS';
 
     // Finance
     public const MANAGE_FINANCE = 'MANAGE_FINANCE';
@@ -96,6 +98,8 @@ class Permissions
             self::VIEW_HR_EMPLOYEES,
             self::MANAGE_HR_EMPLOYEES,
             self::MANAGE_LEAVE_TYPES,
+            self::VIEW_LEAVE_REQUESTS,
+            self::MANAGE_LEAVE_REQUESTS,
             self::MANAGE_FINANCE,
             self::MANAGE_ADMISSION_REQUIREMENTS,
             self::MANAGE_STUDENT_APPLICATIONS,

@@ -68,19 +68,20 @@ export interface HrListParams {
 }
 
 export interface HrEmployeePayload {
-  emp_code: string
-  staff_id?: number | null
-  full_name: string
-  gender: 'M' | 'F'
-  department: string
-  position: string
+  emp_code:      string
+  staff_id?:     number | null
+  first_name:    string
+  last_name:     string
+  gender:        'M' | 'F'
+  department:    string
+  position:      string
   contract_type: 'Permanent' | 'Temporal' | 'Part-time'
-  start_date: string
-  end_date?: string | null
-  salary: number
-  phone?: string | null
-  email?: string | null
-  status?: 'Active' | 'Inactive' | 'Terminated'
+  start_date:    string
+  end_date?:     string | null
+  salary:        number
+  phone?:        string | null
+  email?:        string | null
+  status?:       'Active' | 'Inactive' | 'Terminated'
 }
 
 /* ── Payroll types ──────────────────────────────────────────────────────── */
@@ -145,6 +146,16 @@ export interface PayrollListParams extends HrListParams {
 
 /* ── Payroll Config types ───────────────────────────────────────────────── */
 
+export interface CustomDeduction {
+  id:            number
+  label:         string
+  description:   string | null
+  employee_rate: number
+  employer_rate: number
+  is_active:     number
+  sort_order:    number
+}
+
 export interface PayrollConfig {
   rssb_employee_rate:      number
   rssb_employer_rate:      number
@@ -152,6 +163,7 @@ export interface PayrollConfig {
   maternity_employer_rate: number
   cbhi_employee_rate:      number
   cbhi_employer_rate:      number
+  custom_deductions?:      CustomDeduction[]
 }
 
 /* ── Salary Payment types ───────────────────────────────────────────────── */
@@ -209,6 +221,9 @@ export const hrService = {
   toggleEmployeeStatus: (id: number | string) =>
     api.patch<{ status: string }>(`/api/employees/${id}/toggle-status`),
 
+  changeEmployeeStatus: (id: number | string, status: string) =>
+    api.put<void>(`/api/employees/${id}`, { status }),
+
   /* ── Payroll ─────────────────────────────────────────────────────────── */
 
   payrollList: (params: PayrollListParams = {}, signal?: AbortSignal) =>
@@ -252,4 +267,164 @@ export const hrService = {
 
   updatePayrollConfig: (data: Partial<PayrollConfig>) =>
     api.put<{ updated: number }>('/api/hr/config', data),
+
+  listCustomDeductions: (signal?: AbortSignal) =>
+    api.get<CustomDeduction[]>('/api/hr/config/deductions', {}, signal),
+
+  addCustomDeduction: (data: { label: string; description?: string; employee_rate: number; employer_rate: number }) =>
+    api.post<CustomDeduction>('/api/hr/config/deductions', data),
+
+  updateCustomDeduction: (id: number, data: { label: string; description?: string; employee_rate: number; employer_rate: number; is_active: number }) =>
+    api.put<CustomDeduction>(`/api/hr/config/deductions/${id}`, data),
+
+  deleteCustomDeduction: (id: number) =>
+    api.delete<void>(`/api/hr/config/deductions/${id}`),
+
+  /* ── Leave Management ───────────────────────────────────────────────── */
+
+  leaveStats: (signal?: AbortSignal) =>
+    api.get<LeaveStats>('/api/hr/leave/stats', {}, signal),
+
+  leaveTypes: (signal?: AbortSignal) =>
+    api.get<LeaveType[]>('/api/hr/leave/types', {}, signal),
+
+  createLeaveType: (data: LeaveTypePayload) =>
+    api.post<LeaveType>('/api/hr/leave/types', data),
+
+  updateLeaveType: (id: number, data: LeaveTypePayload) =>
+    api.put<LeaveType>(`/api/hr/leave/types/${id}`, data),
+
+  deleteLeaveType: (id: number) =>
+    api.delete<void>(`/api/hr/leave/types/${id}`),
+
+  leaveRequests: (params: LeaveRequestParams = {}, signal?: AbortSignal) =>
+    api.get<PaginatedResponse<LeaveRequest>>('/api/hr/leave/requests', params as Record<string, unknown>, signal),
+
+  showLeaveRequest: (id: number, signal?: AbortSignal) =>
+    api.get<LeaveRequest>(`/api/hr/leave/requests/${id}`, {}, signal),
+
+  submitLeaveRequest: (data: LeaveRequestPayload) =>
+    api.post<LeaveRequest>('/api/hr/leave/requests', data),
+
+  approveLeave: (id: number, comment?: string) =>
+    api.patch<void>(`/api/hr/leave/requests/${id}/approve`, { comment: comment ?? '' }),
+
+  rejectLeave: (id: number, comment: string) =>
+    api.patch<void>(`/api/hr/leave/requests/${id}/reject`, { comment }),
+
+  cancelLeave: (id: number) =>
+    api.delete<void>(`/api/hr/leave/requests/${id}`),
+
+  leaveBalances: (params: LeaveBalanceParams = {}, signal?: AbortSignal) =>
+    api.get<LeaveBalance[]>('/api/hr/leave/balances', params as Record<string, unknown>, signal),
+
+  upsertLeaveBalance: (data: UpsertLeaveBalancePayload) =>
+    api.post<void>('/api/hr/leave/balances', data),
+}
+
+/* ── Leave types ────────────────────────────────────────────────────────── */
+
+export interface LeaveType {
+  id:           number
+  name:         string
+  description:  string | null
+  days_allowed: number
+  is_paid:      number | boolean
+  color:        string
+  is_active:    number | boolean
+  created_at?:  string
+}
+
+export interface LeaveTypePayload {
+  name:         string
+  description?: string
+  days_allowed: number
+  is_paid:      boolean
+  color:        string
+  is_active:    boolean
+}
+
+/* ── Leave requests ──────────────────────────────────────────────────────── */
+
+export type LeaveStatus = 'Pending' | 'Approved' | 'Rejected' | 'Cancelled'
+
+export interface LeaveRequest {
+  id:               number
+  employee_id:      number
+  employee_name:    string
+  department:       string | null
+  position:         string | null
+  leave_type_id:    number
+  leave_type_name:  string
+  leave_type_color: string
+  is_paid:          number | boolean
+  start_date:       string
+  end_date:         string
+  days_requested:   number
+  reason:           string | null
+  status:           LeaveStatus
+  review_comment:   string | null
+  reviewed_at:      string | null
+  created_at:       string
+}
+
+export interface LeaveRequestPayload {
+  employee_id:   number
+  leave_type_id: number
+  start_date:    string
+  end_date:      string
+  reason?:       string
+}
+
+export interface LeaveRequestParams {
+  page?:           number
+  per_page?:       number
+  q?:              string
+  status?:         LeaveStatus | ''
+  employee_id?:    number
+  leave_type_id?:  number
+  year?:           number
+}
+
+/* ── Leave balances ──────────────────────────────────────────────────────── */
+
+export interface LeaveBalance {
+  id:              number
+  employee_id:     number
+  employee_name:   string
+  department:      string | null
+  leave_type_id:   number
+  leave_type_name: string
+  color:           string
+  year:            number
+  total_days:      number
+  used_days:       number
+  remaining_days:  number
+}
+
+export interface LeaveBalanceParams {
+  employee_id?:   number
+  leave_type_id?: number
+  year?:          number
+}
+
+export interface UpsertLeaveBalancePayload {
+  employee_id:   number
+  leave_type_id: number
+  year:          number
+  total_days:    number
+  used_days?:    number
+}
+
+/* ── Leave stats ─────────────────────────────────────────────────────────── */
+
+export interface LeaveStats {
+  pending:             number
+  approved:            number
+  rejected:            number
+  total:               number
+  on_leave_today:      number
+  approved_this_month: number
+  by_type:             { name: string; color: string; total: number; total_days: number }[]
+  monthly_trend:       { month: number; count: number }[]
 }
