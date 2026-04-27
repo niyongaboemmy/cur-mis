@@ -12,6 +12,7 @@ use App\Models\OptionModel;
 use App\Models\LevelModel;
 use App\Models\LeaveTypeModel;
 use App\Models\ModuleModel;
+use App\Models\FacultyModel;
 use App\Models\SchoolModel;
 use App\Models\IntakeModel;
 use App\Models\DegreeModel;
@@ -29,6 +30,7 @@ class AcademicsManagementController extends BaseController
         $this->models = [
             'facility'    => new RoomModel(),
             'departments' => new DepartmentModel(),
+            'faculties'   => new FacultyModel(),
             'options'     => new OptionModel(),
             'levels'      => new LevelModel(),
             'leave_types' => new LeaveTypeModel(),

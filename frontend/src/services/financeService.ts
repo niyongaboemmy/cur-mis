@@ -25,6 +25,7 @@ import type {
   StudentClearance,
   IncomeProjection,
   AccountBalance,
+  BillingSummary,
 } from "@/types/finance";
 
 // ─── Fee Structures ───────────────────────────────────────────────────────────
@@ -199,6 +200,33 @@ export const balanceService = {
       { academic_year_id: academicYearId },
       signal,
     ),
+};
+
+// ─── Billing Summary & Bulk Invoice ───────────────────────────────────────────
+
+export const billingService = {
+  getSummary: (params: {
+    academic_year_id: number;
+    semester?: number;
+    faculty_id?: number;
+    department_id?: number;
+    keyword?: string;
+    page?: number;
+    per_page?: number;
+  }) => api.get<BillingSummary[]>("/api/finance/billing/summary", params),
+
+  bulkGenerate: (data: {
+    academic_year_id: number;
+    semester?: number;
+    student_ids?: string[];
+    faculty_id?: number;
+    department_id?: number;
+  }) =>
+    api.post<{
+      processed_students: number;
+      total_created: number;
+      total_skipped: number;
+    }>("/api/finance/billing/bulk-generate", data),
 };
 
 // ─── Expenses ─────────────────────────────────────────────────────────────────

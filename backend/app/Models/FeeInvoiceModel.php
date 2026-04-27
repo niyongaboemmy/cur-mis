@@ -155,4 +155,13 @@ class FeeInvoiceModel extends BaseModel
             [$academicYearId]
         );
     }
+    /** Apply a confirmed payment amount to an invoice. */
+    public function applyPayment(int $invoiceId, float $amount): void
+    {
+        $this->db->execute(
+            "UPDATE `fee_invoices` SET amount_paid = amount_paid + ?, updated_at = NOW() WHERE id = ?",
+            [$amount, $invoiceId]
+        );
+        $this->recalculateStatus($invoiceId);
+    }
 }

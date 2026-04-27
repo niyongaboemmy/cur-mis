@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
-import { FileText, Banknote, Loader2, X, Plus, AlertTriangle } from 'lucide-react'
+import { Link, useParams, useNavigate } from 'react-router-dom'
+import { FileText, Banknote, Loader2, X, Plus, AlertTriangle, ArrowLeft } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { ledgerService } from '@/services/financeService'
 import { academicService } from '@/services/academicService'
@@ -19,9 +19,11 @@ import { formatRWF } from '@/utils/formatCurrency'
 const MANUAL_FEE_TYPES: FeeType[] = ['FINE', 'ACADEMIC_DOCUMENT', 'HOSTEL', 'ADMISSION']
 
 export default function StudentLedgerPage() {
+  const { studentId: urlId } = useParams()
+  const navigate = useNavigate()
   const activeYear = useSystemStore(selectActiveYear)
 
-  const [studentId, setStudentId]   = useState('')
+  const [studentId, setStudentId]   = useState(urlId ?? '')
   const [studentName, setStudentName] = useState('')
   const [yearId, setYearId]         = useState<number | string>('')
   const [showGenerate, setShowGenerate] = useState(false)
@@ -32,6 +34,10 @@ export default function StudentLedgerPage() {
   useEffect(() => {
     if (activeYear?.id && !yearId) setYearId(activeYear.id)
   }, [activeYear?.id]) // eslint-disable-line
+
+  useEffect(() => {
+    if (urlId) setStudentId(urlId)
+  }, [urlId])
 
   const yearsQ = useQuery({
     queryKey: ['academic-years'],
@@ -54,9 +60,17 @@ export default function StudentLedgerPage() {
   return (
     <div className="space-y-4 animate-fade-in">
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h2 className="text-lg font-bold text-ink-900 dark:text-white">Student Ledger</h2>
-          <p className="text-[13px] text-ink-500">View and manage fees, invoices and payments per student.</p>
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={() => navigate(-1)}
+            className="w-8 h-8 rounded-full border border-ink-200 dark:border-ink-700 flex items-center justify-center text-ink-400 hover:text-brand hover:border-brand transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+          <div>
+            <h2 className="text-lg font-bold text-ink-900 dark:text-white">Student Ledger</h2>
+            <p className="text-[13px] text-ink-500">View and manage fees, invoices and payments per student.</p>
+          </div>
         </div>
         {studentId && (
           <div className="flex gap-2">

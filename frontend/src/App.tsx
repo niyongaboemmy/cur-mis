@@ -61,15 +61,16 @@ const MyRegistrationsPage          = lazy(() => import('@/pages/modules/MyRegist
 const ProgramsPage   = lazy(() => import('@/pages/placeholders/ProgramsPage'))
 const FinanceHub          = lazy(() => import('@/pages/finance/FinanceHub'))
 const FinanceOverviewPage = lazy(() => import('@/pages/finance/FinanceOverviewPage'))
-const StudentLedgerPage   = lazy(() => import('@/pages/finance/StudentLedgerPage'))
-const FeeStructuresPage   = lazy(() => import('@/pages/finance/FeeStructuresPage'))
+const StudentLedgerPage    = lazy(() => import('@/pages/finance/StudentLedgerPage'))
+const StudentBillingPage   = lazy(() => import('@/pages/finance/StudentBillingPage'))
+const PaymentApprovalsPage = lazy(() => import('@/pages/finance/PaymentApprovalsPage'))
+const FeeStructuresPage    = lazy(() => import('@/pages/finance/FeeStructuresPage'))
 const BursariesPage       = lazy(() => import('@/pages/finance/BursariesPage'))
 const ExpensesPage        = lazy(() => import('@/pages/finance/ExpensesPage'))
 const AccountBalancePage  = lazy(() => import('@/pages/finance/AccountBalancePage'))
 const ClearancePage       = lazy(() => import('@/pages/finance/ClearancePage'))
 const RevenueReportPage   = lazy(() => import('@/pages/finance/RevenueReportPage'))
 const ReceiptPdfPage      = lazy(() => import('@/pages/finance/ReceiptPdfPage'))
-const PaymentApprovalsPage = lazy(() => import('@/pages/finance/PaymentApprovalsPage'))
 const ExamsPage      = lazy(() => import('@/pages/placeholders/ExamsPage'))
 const LogsPage       = lazy(() => import('@/pages/placeholders/LogsPage'))
 const ComingSoonPage = lazy(() => import('@/pages/placeholders/ComingSoonPage'))
@@ -223,7 +224,8 @@ function App() {
               <Route element={<ProtectedRoute requiredPermissions={[PERMISSIONS.VIEW_FINANCE, PERMISSIONS.MANAGE_FINANCE]} />}>
                 <Route path="/finance" element={<FinanceHub />}>
                   <Route index element={<FinanceOverviewPage />} />
-                  <Route path="billing"    element={<StudentLedgerPage />} />
+                  <Route path="billing"            element={<StudentBillingPage />} />
+                  <Route path="billing/:studentId" element={<StudentLedgerPage />} />
                   <Route path="approvals"  element={<PaymentApprovalsPage />} />
                   <Route path="structures" element={<FeeStructuresPage />} />
                   <Route path="bursaries"  element={<BursariesPage />} />

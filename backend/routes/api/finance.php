@@ -35,6 +35,9 @@ $router->group('/api/finance', function ($router) {
         $r->get('/clearance',                [FeeController::class, 'getClearanceStatus']);
         $r->get('/clearance/bulk',           [FeeController::class, 'getBulkClearance']);
         $r->get('/budgets',                  [FeeController::class, 'listBudgets']);
+        $r->get('/billing/summary',          [FeeController::class, 'listBillingSummary']);
+        $r->get('/billing/export',           [FeeController::class, 'exportBillingSummary']);
+
     }, [new MaybePermissionMiddleware([
         Permissions::VIEW_FINANCE,
         Permissions::MANAGE_FINANCE,
@@ -47,6 +50,8 @@ $router->group('/api/finance', function ($router) {
         $r->delete('/structures/:id',        [FeeController::class, 'deleteStructure']);
 
         $r->post('/students/generate',       [FeeController::class, 'generateInvoices']);
+        $r->post('/billing/bulk-generate',   [FeeController::class, 'bulkGenerateInvoices']);
+
         $r->post('/invoices',                [FeeController::class, 'createInvoice']);
         $r->put('/invoices/:id',             [FeeController::class, 'updateInvoice']);
 

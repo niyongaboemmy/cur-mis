@@ -230,6 +230,20 @@ export interface FinanceSummary {
   overdue_count:   number
 }
 
+// ─── Billing Summary ──────────────────────────────────────────────────────────
+
+export interface BillingSummary {
+  regnumber:       string
+  fname:           string
+  lname:           string
+  faculty:         string
+  department:      string
+  total_expected:  number
+  total_collected: number
+  total_bursary:   number
+  balance:         number
+}
+
 // ─── Revenue Report ───────────────────────────────────────────────────────────
 
 export interface RevenueByType {

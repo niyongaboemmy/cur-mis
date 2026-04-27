@@ -121,4 +121,11 @@ class FeePaymentModel extends BaseModel
         );
         return (float)($row['total'] ?? 0);
     }
+
+    /** Count payments awaiting approval. */
+    public function getPendingCount(): int
+    {
+        $row = $this->db->fetchOne("SELECT COUNT(*) AS cnt FROM `fee_payments` WHERE status = 'pending'", []);
+        return (int)($row['cnt'] ?? 0);
+    }
 }

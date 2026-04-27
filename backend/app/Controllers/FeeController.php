@@ -165,7 +165,7 @@ class FeeController extends BaseController
 
         $this->success($response, [
             'invoices' => $invoices,
-            'payments' => $payments['data'],
+            'payments' => $payments['data'] ?? [],
             'totals'   => $totals,
         ], 'Student ledger retrieved.');
     }
@@ -239,6 +239,91 @@ class FeeController extends BaseController
     }
 
     /**
+     * POST /api/finance/billing/bulk-generate
+     */
+    public function bulkGenerateInvoices(Request $request, Response $response): never
+    {
+        $data       = $request->body();
+        $actor      = $request->param('_auth_user');
+        $studentIds = $data['student_ids'] ?? [];
+        $yearId     = (int)($data['academic_year_id'] ?? 0);
+        $semester   = isset($data['semester']) ? (int)$data['semester'] : null;
+
+        if (!$yearId) {
+            $this->error($response, 'Academic Year is required.', 400);
+        }
+
+        if (empty($studentIds)) {
+            // Attempt to generate by filters
+            $filters = [
+                'academic_year_id' => $yearId,
+                'semester'         => $semester,
+                'faculty_id'       => $data['faculty_id'] ?? null,
+                'department_id'    => $data['department_id'] ?? null,
+            ];
+            $result = $this->service->bulkGenerateByFilters($filters, (int)$actor['id']);
+        } else {
+            $result = $this->service->bulkGenerateInvoices($studentIds, $yearId, $semester, (int)$actor['id']);
+        }
+
+        $this->success($response, $result, "Bulk generation complete: processed {$result['processed_students']} students.");
+    }
+
+    /**
+     * GET /api/finance/billing/summary
+     */
+    public function listBillingSummary(Request $request, Response $response): never
+    {
+        $filters = [
+            'academic_year_id' => (int)($request->query('academic_year_id') ?? 0),
+            'semester'         => $request->query('semester') !== null ? (int)$request->query('semester') : null,
+            'faculty_id'       => $request->query('faculty_id') !== null ? (int)$request->query('faculty_id') : null,
+            'department_id'    => $request->query('department_id') !== null ? (int)$request->query('department_id') : null,
+            'keyword'          => $request->query('keyword') ?? null,
+            'page'             => (int)($request->query('page') ?? 1),
+            'per_page'         => (int)($request->query('per_page') ?? 50),
+        ];
+
+        if (!$filters['academic_year_id']) {
+            $this->error($response, 'Academic Year is required.', 400);
+        }
+
+        try {
+            $summary = $this->service->getGroupBillingSummary($filters);
+            $this->success($response, $summary, 'Billing summary retrieved.');
+        } catch (\InvalidArgumentException $e) {
+            $this->error($response, $e->getMessage(), 400);
+        }
+    }
+
+    /**
+     * GET /api/finance/billing/export
+     */
+    public function exportBillingSummary(Request $request, Response $response): never
+    {
+        $filters = [
+            'academic_year_id' => (int)($request->query('academic_year_id') ?? 0),
+            'semester'         => $request->query('semester') !== null ? (int)$request->query('semester') : null,
+            'faculty_id'       => $request->query('faculty_id') !== null ? (int)$request->query('faculty_id') : null,
+            'department_id'    => $request->query('department_id') !== null ? (int)$request->query('department_id') : null,
+            'keyword'          => $request->query('keyword') ?? null,
+        ];
+
+        if (!$filters['academic_year_id']) {
+            $this->error($response, 'Academic Year is required for export.', 400);
+        }
+
+        $csv = $this->service->exportBillingSummary($filters);
+        
+        $filename = "billing_summary_" . date('Y-m-d_His') . ".csv";
+        header("Content-Type: text/csv");
+        header("Content-Disposition: attachment; filename=\"{$filename}\"");
+        echo $csv;
+        exit;
+    }
+
+
+    /**
      * PUT /api/finance/invoices/:id
      */
     public function updateInvoice(Request $request, Response $response): never
@@ -302,10 +387,9 @@ class FeeController extends BaseController
             $this->error($response, 'Validation failed.', 422, $errors);
         }
 
-        // Store payment_sub_method if provided
-        if (!empty($data['payment_sub_method'])) {
-            $data['payment_sub_method'] = $data['payment_sub_method'];
-        }
+        // Ensure payment_sub_method is present if provided
+        $data['payment_sub_method'] = $data['payment_sub_method'] ?? null;
+
 
         try {
             $result = $this->service->recordPayment($data, (int)$actor['id']);
@@ -354,13 +438,8 @@ class FeeController extends BaseController
         ]);
 
         // Now update invoice balance
-        $this->db->execute(
-            "UPDATE `fee_invoices`
-             SET amount_paid = amount_paid + ?, updated_at = NOW()
-             WHERE id = ?",
-            [(float)$payment['amount'], (int)$payment['invoice_id']]
-        );
-        $this->invoiceModel->recalculateStatus((int)$payment['invoice_id']);
+        $this->invoiceModel->applyPayment((int)$payment['invoice_id'], (float)$payment['amount']);
+
 
         // Send email receipt
         $this->service->sendPaymentConfirmationEmail($id);
@@ -396,11 +475,8 @@ class FeeController extends BaseController
      */
     public function getPendingPaymentCount(Request $request, Response $response): never
     {
-        $row = $this->db->fetchOne(
-            "SELECT COUNT(*) AS cnt FROM `fee_payments` WHERE status = 'pending'",
-            []
-        );
-        $this->success($response, ['count' => (int)($row['cnt'] ?? 0)], 'Pending count retrieved.');
+        $count = $this->paymentModel->getPendingCount();
+        $this->success($response, ['count' => $count], 'Pending count retrieved.');
     }
 
     // ──────────────────────────────────────────────────────────────────────────

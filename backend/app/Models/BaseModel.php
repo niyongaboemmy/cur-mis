@@ -109,7 +109,7 @@ abstract class BaseModel
     public function paginate(int $page = 1, int $perPage = 15, string $where = '', array $bindings = [], string $orderBy = '', string $direction = 'ASC'): array
     {
         $page    = max(1, $page);
-        $perPage = max(1, min(100, $perPage)); // Clamp between 1 and 100
+        $perPage = max(1, min(1000, $perPage)); // Clamp between 1 and 1000
         $offset  = ($page - 1) * $perPage;
         $dir     = strtoupper($direction) === 'DESC' ? 'DESC' : 'ASC';
         // Default order column is this model's primary key — subclasses may override `$primaryKey`.

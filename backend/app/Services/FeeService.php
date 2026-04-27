@@ -160,6 +160,188 @@ class FeeService
         return ['created' => $created, 'skipped' => $skipped, 'invoices' => $invoiceIds];
     }
 
+    /**
+     * Bulk generate invoices for a list of students.
+     */
+    public function bulkGenerateInvoices(array $studentIds, int $academicYearId, ?int $semester, int $actorId): array
+    {
+        $totalCreated = 0;
+        $totalSkipped = 0;
+        $processed    = 0;
+
+        foreach ($studentIds as $id) {
+            try {
+                $res = $this->autoGenerateInvoices($id, $academicYearId, $semester, $actorId);
+                $totalCreated += $res['created'];
+                $totalSkipped += $res['skipped'];
+                $processed++;
+            } catch (\Throwable $e) {
+                // Skip failed ones but continue
+                error_log("Bulk Invoice Error [{$id}]: " . $e->getMessage());
+            }
+        }
+
+        return [
+            'processed_students' => $processed,
+            'total_created'      => $totalCreated,
+            'total_skipped'      => $totalSkipped
+        ];
+    }
+
+    /**
+     * Bulk generate invoices for all students matching the given filters.
+     */
+    public function bulkGenerateByFilters(array $filters, int $actorId): array
+    {
+        $yearId   = (int)($filters['academic_year_id'] ?? 0);
+        $semester = !empty($filters['semester']) ? (int)$filters['semester'] : null;
+        $faculty  = !empty($filters['faculty_id']) ? (int)$filters['faculty_id'] : null;
+        $dept     = !empty($filters['department_id']) ? (int)$filters['department_id'] : null;
+
+        if (!$yearId) {
+            throw new \InvalidArgumentException("Academic Year is required for bulk generation.");
+        }
+
+        $where = ["student_state = 'active'"];
+        $bindings = [];
+
+        if ($faculty) {
+            $where[] = "faculty = (SELECT fac_name FROM `faculty` WHERE fac_id = ?)";
+            $bindings[] = $faculty;
+        }
+        if ($dept) {
+            $where[] = "(department = CAST(? AS CHAR) OR department = (SELECT dep_acronym FROM `departements` WHERE dep_id = ?))";
+            $bindings[] = $dept;
+            $bindings[] = $dept;
+        }
+
+        $whereSql = implode(" AND ", $where);
+        $students = $this->db->fetchAll("SELECT regnumber FROM `student` WHERE {$whereSql}", $bindings);
+        $studentIds = array_column($students, 'regnumber');
+
+        return $this->bulkGenerateInvoices($studentIds, $yearId, $semester, $actorId);
+    }
+
+    /**
+     * Get financial summary for a group of students.
+     */
+    public function getGroupBillingSummary(array $filters): array
+    {
+        $yearId   = (int)($filters['academic_year_id'] ?? 0);
+        $semester = !empty($filters['semester']) ? (int)$filters['semester'] : null;
+        $faculty  = !empty($filters['faculty_id']) ? (int)$filters['faculty_id'] : null;
+        $dept     = !empty($filters['department_id']) ? (int)$filters['department_id'] : null;
+        $keyword  = !empty($filters['keyword']) ? trim($filters['keyword']) : null;
+        $page     = (int)($filters['page'] ?? 1);
+        $perPage  = (int)($filters['per_page'] ?? 50);
+
+        if (!$yearId) {
+            throw new \InvalidArgumentException("Academic Year is required for billing summary.");
+        }
+
+        $where = ["s.student_state = 'active'"];
+        $bindings = [$yearId]; // For the left join subquery
+
+        if ($semester) {
+            $semSql = "AND (fi.semester = ? OR fi.semester IS NULL)";
+            $bindings[] = $semester;
+        } else {
+            $semSql = "";
+        }
+
+        if ($faculty) {
+            $where[] = "s.faculty = (SELECT fac_name FROM `faculty` WHERE fac_id = ?)";
+            $bindings[] = $faculty;
+        }
+        if ($dept) {
+            // Check both ID and Acronym for robustness
+            $where[] = "(s.department = CAST(? AS CHAR) OR s.department = (SELECT dep_acronym FROM `departements` WHERE dep_id = ?))";
+            $bindings[] = $dept;
+            $bindings[] = $dept;
+        }
+        if ($keyword) {
+            $where[] = "(s.regnumber LIKE ? OR s.fname LIKE ? OR s.lname LIKE ?)";
+            $k = "%{$keyword}%";
+            $bindings[] = $k;
+            $bindings[] = $k;
+            $bindings[] = $k;
+        }
+
+        $whereSql = implode(" AND ", $where);
+
+        // 1. Get total count for pagination
+        $totalSql = "SELECT COUNT(*) AS cnt FROM `student` s WHERE {$whereSql}";
+        // The bindings for totalSql are the same as the main query AFTER the yearId/semester ones.
+        // Wait, whereSql bindings start AFTER $bindings[0] (yearId) and $bindings[1] (semester).
+        // Let's re-organize bindings.
+        
+        $whereBindings = [];
+        if ($faculty) { $whereBindings[] = $faculty; }
+        if ($dept) { $whereBindings[] = $dept; $whereBindings[] = $dept; }
+        if ($keyword) { $k = "%{$keyword}%"; $whereBindings[] = $k; $whereBindings[] = $k; $whereBindings[] = $k; }
+
+        $totalRow = $this->db->fetchOne($totalSql, $whereBindings);
+        $total = (int)($totalRow['cnt'] ?? 0);
+
+        // 2. Get paginated data
+        $offset = ($page - 1) * $perPage;
+        
+        // Final bindings: [yearId, (semester?), ...whereBindings]
+        $finalBindings = array_merge([$yearId], ($semester ? [$semester] : []), $whereBindings);
+
+        $sql = "SELECT 
+                    s.regnumber,
+                    s.fname,
+                    s.lname,
+                    s.faculty,
+                    s.department,
+                    COALESCE(sums.total_due, 0) AS total_expected,
+                    COALESCE(sums.total_paid, 0) AS total_collected,
+                    COALESCE(sums.total_bursary, 0) AS total_bursary,
+                    COALESCE(sums.total_due - sums.total_paid - sums.total_bursary, 0) AS balance
+                FROM `student` s
+                LEFT JOIN (
+                    SELECT 
+                        student_id,
+                        SUM(amount_due) AS total_due,
+                        SUM(amount_paid) AS total_paid,
+                        SUM(bursary_applied) AS total_bursary
+                    FROM `fee_invoices`
+                    WHERE academic_year_id = ? AND fee_type != 'BURSARY_CREDIT' {$semSql}
+                    GROUP BY student_id
+                ) AS sums ON sums.student_id = s.regnumber
+                WHERE {$whereSql}
+                ORDER BY s.lname ASC, s.fname ASC
+                LIMIT {$perPage} OFFSET {$offset}";
+
+        return [
+            'data'         => $this->db->fetchAll($sql, $finalBindings),
+            'total'        => $total,
+            'per_page'     => $perPage,
+            'current_page' => $page,
+            'last_page'    => (int)ceil($total / $perPage)
+        ];
+    }
+
+    /**
+     * Export billing summary as CSV.
+     */
+    public function exportBillingSummary(array $filters): string
+    {
+        // Fetch ALL matching students (no pagination)
+        $filters['page'] = 1;
+        $filters['per_page'] = 5000; 
+        $result = $this->getGroupBillingSummary($filters);
+        $data = $result['data'] ?? [];
+
+        $output = "Reg Number,First Name,Last Name,Faculty,Department,Expected,Collected,Bursary,Balance\n";
+        foreach ($data as $row) {
+            $output .= "{$row['regnumber']},{$row['fname']},{$row['lname']},{$row['faculty']},{$row['department']},{$row['total_expected']},{$row['total_collected']},{$row['total_bursary']},{$row['balance']}\n";
+        }
+        return $output;
+    }
+
+
     // ──────────────────────────────────────────────────────────────────────────
     // Bursary distribution
     // ──────────────────────────────────────────────────────────────────────────
@@ -424,11 +606,13 @@ class FeeService
     private function calculateArrears(string $studentId, int $currentYearId): float
     {
         $row = $this->db->fetchOne(
-            "SELECT SUM(amount_due - amount_paid - bursary_applied) AS arrears
+            "SELECT 
+                SUM(CASE WHEN fee_type != 'ARREARS' THEN amount_due ELSE 0 END) - 
+                SUM(amount_paid) - 
+                SUM(bursary_applied) AS arrears
              FROM `fee_invoices`
              WHERE student_id = ?
                AND academic_year_id < ?
-               AND status IN ('unpaid', 'partial', 'overdue')
                AND fee_type != 'BURSARY_CREDIT'",
             [$studentId, $currentYearId]
         );

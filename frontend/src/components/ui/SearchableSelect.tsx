@@ -14,6 +14,7 @@ interface Props {
   placeholder?: string;
   allLabel?: string;
   className?: string;
+  disabled?: boolean;
 }
 
 export default function SearchableSelect({
@@ -23,6 +24,7 @@ export default function SearchableSelect({
   placeholder = "Select…",
   allLabel,
   className = "",
+  disabled = false,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -61,11 +63,13 @@ export default function SearchableSelect({
     <div ref={ref} className={`relative ${className}`}>
       <button
         type="button"
-        className="input input-sm w-full text-left flex items-center justify-between gap-1.5"
+        className={`input input-sm w-full text-left flex items-center justify-between gap-1.5 ${disabled ? 'opacity-50 cursor-not-allowed bg-ink-50 dark:bg-ink-800' : ''}`}
         onClick={() => {
+          if (disabled) return;
           setOpen(!open);
           setSearch("");
         }}
+        disabled={disabled}
       >
         <span
           className={
