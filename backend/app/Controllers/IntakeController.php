@@ -45,6 +45,11 @@ class IntakeController extends BaseController
             $this->error($response, 'Validation failed.', 422, $errors);
         }
 
+        $existing = $this->intakeModel->findBy('name', $data['name']);
+        if ($existing) {
+            $this->error($response, 'An intake with this name already exists.', 409);
+        }
+
         $id = $this->intakeModel->create([
             'name'       => $data['name'],
             'start_date' => $data['start_date'],

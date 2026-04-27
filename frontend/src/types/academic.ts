@@ -159,4 +159,6 @@ export interface HrEmployee {
   email?:         string | null
   status?:        string
   created_at?:    string
+  bank?:          string | null
+  bank_account?:  string | null
 }

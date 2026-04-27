@@ -12,12 +12,7 @@ interface AuthLayoutProps {
   subtitle: string;
 }
 
-const features = [
-  "Centralised student & staff records",
-  "Real-time academic reporting",
-  "Role-based access control",
-  "Secure, audit-ready data",
-];
+
 
 export default function AuthLayout({ children, title, subtitle }: AuthLayoutProps) {
   const isDev = import.meta.env.DEV;
@@ -28,7 +23,7 @@ export default function AuthLayout({ children, title, subtitle }: AuthLayoutProp
       <div className="hidden lg:flex lg:w-1/2 xl:w-[55%] relative flex-col justify-between overflow-hidden bg-brand dark:bg-brand-active p-12">
         {/* Hero photograph — swap the file at /public/login-hero.jpg to change the photo. */}
         <img
-          src={asset('login-hero.jpg')}
+          src="https://cur.ac.rw/mis/main/img/4c4eb882b016f9df1f03c4d661d37bb9.png"
           alt="Catholic University of Rwanda graduates"
           className="absolute inset-0 w-full h-full object-cover object-center opacity-90"
           loading="eager"
@@ -50,35 +45,20 @@ export default function AuthLayout({ children, title, subtitle }: AuthLayoutProp
             transition={{ delay: 0.1 }}
           >
             <h1 className="mt-5 text-[32px] xl:text-[40px] font-semibold text-white leading-[1.1] tracking-tight">
-              Faith. Learning. <br />
-              <span className="text-gold-400">Service to Rwanda.</span>
+              Message from the Rector
             </h1>
-            <p className="mt-4 text-primary-100 text-[14px] leading-relaxed max-w-md">
-              {APP_FULL_NAME} — {APP_TAGLINE}. Manage academics, students, staff
-              &amp; finance in one beautifully simple workspace.
+            <p className="mt-4 text-white/90 text-[15px] xl:text-[16px] leading-relaxed max-w-lg">
+              Welcome to our university. We are committed to providing a learning
+              environment that nurtures the holistic development of students. Our
+              institution prides itself on academic excellence, innovative research, and a
+              vibrant campus life that fosters both personal and professional growth. We
+              invite you to join our community where we strive to shape the future
+              leaders of tomorrow.
             </p>
           </motion.div>
-
-          <motion.ul
-            className="space-y-2.5"
-            initial="hidden"
-            animate="visible"
-            variants={{ visible: { transition: { staggerChildren: 0.06, delayChildren: 0.25 } } }}
-          >
-            {features.map((f) => (
-              <motion.li
-                key={f}
-                variants={{ hidden: { opacity: 0, x: -8 }, visible: { opacity: 1, x: 0 } }}
-                className="flex items-center gap-2.5 text-white/90 text-[13.5px]"
-              >
-                <CheckCircle2 className="w-4 h-4 text-gold-400 shrink-0" />
-                {f}
-              </motion.li>
-            ))}
-          </motion.ul>
         </div>
 
-        <p className="relative z-10 text-primary-200/80 text-[12px]">
+        <p className="relative z-10 text-primary-200/80 text-[12px] pb-10">
           © {new Date().getFullYear()} Catholic University of Rwanda. All rights reserved.
         </p>
       </div>
@@ -89,7 +69,7 @@ export default function AuthLayout({ children, title, subtitle }: AuthLayoutProp
           <ThemeToggle />
         </div>
 
-        <div className="flex-1 flex flex-col items-center justify-center px-6 py-12">
+        <div className="flex-1 flex flex-col items-center justify-center px-6 pt-12 pb-24">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -115,7 +95,7 @@ export default function AuthLayout({ children, title, subtitle }: AuthLayoutProp
         </div>
 
         {isDev && import.meta.env.VITE_API_DOCS_URL && (
-          <footer className="p-4 border-t border-ink-100 dark:border-ink-700 text-center bg-white/50 dark:bg-ink-900/50 backdrop-blur-sm">
+          <footer className="p-4 border-t border-ink-100 dark:border-ink-700 text-center bg-white/50 dark:bg-ink-900/50 backdrop-blur-sm pb-[52px]">
             <a
               href={import.meta.env.VITE_API_DOCS_URL}
               target="_blank"
@@ -127,6 +107,21 @@ export default function AuthLayout({ children, title, subtitle }: AuthLayoutProp
             </a>
           </footer>
         )}
+      </div>
+
+      {/* ── Account Info Banner ──────────────────────────────────── */}
+      <div className="fixed bottom-0 left-0 right-0 z-[100] bg-[#0c3966] py-2 px-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-sm sm:text-[14px] border-t-2 border-[#164e87] shadow-[0_-4px_10px_rgba(0,0,0,0.2)]">
+        <span className="text-xl">💳</span>
+        <div className="flex items-center flex-wrap justify-center gap-x-2">
+          <span className="text-gold-400 font-bold uppercase tracking-wider">Equity Bank:</span>
+          <span className="text-white font-bold tracking-wide">4009201274006</span>
+          <span className="text-white/60 mx-1 hidden sm:inline">|</span>
+          <span className="text-gold-400 font-bold uppercase tracking-wider">Bank of Kigali:</span>
+          <span className="text-white font-bold tracking-wide">100239674199</span>
+          <span className="text-white/60 mx-1 hidden sm:inline">|</span>
+          <span className="text-white font-bold tracking-wider">CUR-KIGALI-CAMPUS</span>
+        </div>
+        <span className="text-xl">💳</span>
       </div>
     </div>
   );

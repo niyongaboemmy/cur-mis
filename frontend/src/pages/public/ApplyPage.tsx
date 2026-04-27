@@ -202,7 +202,10 @@ export default function ApplyPage() {
 
   const faculties    = facultiesQ.data?.data ?? [];
   const departments  = departmentsQ.data?.data ?? [];
-  const intakes      = intakesQ.data?.data ?? [];
+  const rawIntakes   = intakesQ.data?.data ?? [];
+  const intakes      = rawIntakes.filter(
+    (it: any, idx: number, arr: any[]) => arr.findIndex((x: any) => x.name === it.name) === idx
+  );
 
   // Combinations allowed by the selected department (from allowed_combinations JSON column)
   const selectedDeptCombinations: string[] = (() => {
