@@ -668,6 +668,17 @@ class ModulesManagementController extends BaseController
         if (!empty($user['regnumber'])) {
             return (string)$user['regnumber'];
         }
+        // Most student accounts use the regnumber as their username.
+        $username = trim((string)($user['username'] ?? ''));
+        if ($username !== '') {
+            $row = $this->modules->db()->fetchOne(
+                'SELECT regnumber FROM `student` WHERE regnumber = ? LIMIT 1',
+                [$username]
+            );
+            if ($row && !empty($row['regnumber'])) {
+                return (string)$row['regnumber'];
+            }
+        }
         if (!empty($user['email'])) {
             $row = $this->modules->db()->fetchOne(
                 'SELECT regnumber FROM `student` WHERE email = ? LIMIT 1',
