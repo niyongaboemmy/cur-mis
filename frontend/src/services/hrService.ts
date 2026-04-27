@@ -143,6 +143,48 @@ export interface PayrollListParams extends HrListParams {
   period_month?: number
 }
 
+/* ── Payroll Config types ───────────────────────────────────────────────── */
+
+export interface PayrollConfig {
+  rssb_employee_rate:      number
+  rssb_employer_rate:      number
+  maternity_employee_rate: number
+  maternity_employer_rate: number
+  cbhi_employee_rate:      number
+  cbhi_employer_rate:      number
+}
+
+/* ── Salary Payment types ───────────────────────────────────────────────── */
+
+export type PaymentMethod = 'Bank Transfer' | 'Cash' | 'MoMo'
+
+export interface SalaryPayment {
+  id:             number
+  payroll_id:     number
+  emp_id:         number
+  full_name:      string
+  period_year:    number
+  period_month:   number
+  amount:         number
+  payment_method: PaymentMethod
+  bank_name:      string | null
+  account_number: string | null
+  reference:      string | null
+  notes:          string | null
+  paid_at:        string
+  status:         'Processed' | 'Cancelled'
+}
+
+export interface ProcessPaymentPayload {
+  payroll_id:      number
+  amount:          number
+  payment_method:  PaymentMethod
+  bank_name?:      string | null
+  account_number?: string | null
+  reference?:      string | null
+  notes?:          string | null
+}
+
 export const hrService = {
   listEmployees: (
     params: HrListParams = {},
@@ -180,4 +222,34 @@ export const hrService = {
 
   payrollDelete: (id: number) =>
     api.delete<void>(`/api/hr/payroll/${id}`),
+
+  payrollSetStatus: (id: number, status: 'Pending' | 'Paid' | 'Approved') =>
+    api.patch<void>(`/api/hr/payroll/${id}/status`, { status }),
+
+  payrollCopyPeriod: (params: { from_year: number; from_month: number; to_year: number; to_month: number }) =>
+    api.post<{ copied: number; skipped: number; period: string }>('/api/hr/payroll/copy-period', params),
+
+  payrollImportExcel: (params: { period_year: number; period_month: number; rows?: unknown[] }) =>
+    api.post<{ period: string; inserted: number; skipped: number; detail: { row: string; status: string; legacy_found?: boolean; gross?: number; paye?: number; net?: number; reason?: string }[] }>(
+      '/api/hr/payroll/import-excel', params
+    ),
+
+  /* ── Salary payments ─────────────────────────────────────────────────── */
+
+  listPayments: (params?: { period_year?: number; period_month?: number; emp_id?: number; payroll_id?: number }, signal?: AbortSignal) =>
+    api.get<SalaryPayment[]>('/api/hr/payroll/payments', (params ?? {}) as Record<string, unknown>, signal),
+
+  processPayment: (data: ProcessPaymentPayload) =>
+    api.post<{ id: number }>('/api/hr/payroll/payments', data),
+
+  cancelPayment: (id: number) =>
+    api.delete<void>(`/api/hr/payroll/payments/${id}`),
+
+  /* ── Payroll Config ──────────────────────────────────────────────────── */
+
+  getPayrollConfig: (signal?: AbortSignal) =>
+    api.get<PayrollConfig>('/api/hr/config', {}, signal),
+
+  updatePayrollConfig: (data: Partial<PayrollConfig>) =>
+    api.put<{ updated: number }>('/api/hr/config', data),
 }

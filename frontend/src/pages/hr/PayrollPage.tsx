@@ -7,13 +7,15 @@ import {
   Pencil, Eye, X, Settings2, Info,
   Mail, Phone, CalendarDays, Briefcase, BadgeCheck, User,
   Building2, CreditCard, UserCheck, TrendingDown, Wallet,
-  UserPlus, Trash2, Save,
+  UserPlus, Trash2, Save, Plus, CheckCircle, Copy, Banknote,
 } from 'lucide-react'
 import {
   hrService,
   type PayrollRow,
   type PayrollEntry,
   type PayrollListParams,
+  type PaymentMethod,
+  type PayrollConfig,
 } from '@/services/hrService'
 import { useDebounce } from '@/hooks/useDebounce'
 import { useAuthStore } from '@/store/authStore'
@@ -67,7 +69,6 @@ function calcPaye(gross: number, f: FormulaConfig): number {
 
 const MONTHS = ['January','February','March','April','May','June',
                 'July','August','September','October','November','December']
-const SHORT_M = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
 const now   = new Date()
 const CUR_Y = now.getFullYear()
@@ -92,6 +93,8 @@ const fmtDiff = (v: number) => {
   )
 }
 
+type DrawerRow = { row: PayrollRow; c: { effectiveGross: number; payeFormula: number; asPerHr: number; difference: number; toBeUsed: number; rssb: number; cbhi: number } }
+
 /* ══════════════════════════════════════════════════════════════════════
    MAIN PAGE
    ══════════════════════════════════════════════════════════════════════ */
@@ -99,15 +102,19 @@ const fmtDiff = (v: number) => {
 export default function PayrollPage() {
   const [sp, setSp]       = useSearchParams()
   const { user }          = useAuthStore()
-  const canManage         = user?.role === 'superadmin' || (user?.permissions ?? []).includes(PERMISSIONS.MANAGE_HR_EMPLOYEES)
+  const canManage         = ['superadmin', 'admin'].includes(user?.role ?? '') || (user?.permissions ?? []).includes(PERMISSIONS.MANAGE_HR_EMPLOYEES)
+  const qc                = useQueryClient()
 
   const [formula, setFormula]           = useState<FormulaConfig>(loadFormula)
   const [showFormulaModal, setShowFM]   = useState(false)
+  const [showCopyModal, setShowCopy]    = useState(false)
   const [editing, setEditing]           = useState<PayrollRow | null>(null)
-  const [drawerRow, setDrawerRow]       = useState<{ row: PayrollRow; c: ReturnType<typeof computed>[number] } | null>(null)
+  const [drawerRow, setDrawerRow]       = useState<DrawerRow | null>(null)
   const [addingEmployee, setAddingEmp]  = useState(false)
   const [editingEmployee, setEditingEmp]= useState<PayrollRow | null>(null)
   const [deletingEmployee, setDelEmp]   = useState<PayrollRow | null>(null)
+  const [deletingPayroll, setDelPayroll]= useState<PayrollRow | null>(null)
+  const [payingPayroll, setPayingPayroll] = useState<PayrollRow | null>(null)
 
   /* period */
   const periodYear  = parseInt(sp.get('period_year')  || String(CUR_Y))
@@ -183,6 +190,16 @@ export default function PayrollPage() {
     setShowFM(false)
   }, [])
 
+  const markPaidMutation = useMutation({
+    mutationFn: ({ id, status }: { id: number; status: 'Pending' | 'Paid' | 'Approved' }) =>
+      hrService.payrollSetStatus(id, status),
+    onSuccess: (_res, vars) => {
+      toast.success(`Payroll marked as ${vars.status}.`)
+      qc.invalidateQueries({ queryKey: ['hr-payroll'] })
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to update status'),
+  })
+
   /* ─────────────────────────────────────────────────────────────────── */
   return (
     <div className="space-y-4 animate-fade-in">
@@ -201,6 +218,12 @@ export default function PayrollPage() {
           {canManage && (
             <button className="btn-primary btn-sm gap-1.5" onClick={() => setAddingEmp(true)}>
               <UserPlus className="w-3.5 h-3.5" /> Add Employee
+            </button>
+          )}
+          {/* Copy to another period */}
+          {canManage && (
+            <button className="btn-secondary btn-sm gap-1.5" onClick={() => setShowCopy(true)}>
+              <Copy className="w-3.5 h-3.5" /> Copy to Period
             </button>
           )}
           {/* Formula settings */}
@@ -276,17 +299,18 @@ export default function PayrollPage() {
                 <th className="px-3 py-2.5 text-right">As per HR</th>
                 <th className="px-3 py-2.5 text-right">Difference</th>
                 <th className="px-3 py-2.5 text-right">To be used</th>
+                <th className="px-3 py-2.5 text-center">Status</th>
                 <th className="px-3 py-2.5 text-center">Actions</th>
               </tr>
             </thead>
 
             <tbody className="divide-y divide-ink-100 dark:divide-ink-700">
               {isLoading ? (
-                <tr><td colSpan={8} className="py-14 text-center">
+                <tr><td colSpan={9} className="py-14 text-center">
                   <Loader2 className="w-6 h-6 animate-spin mx-auto text-brand" />
                 </td></tr>
               ) : rows.length === 0 ? (
-                <tr><td colSpan={8} className="py-14 text-center text-ink-400">No employees found.</td></tr>
+                <tr><td colSpan={9} className="py-14 text-center text-ink-400">No employees found.</td></tr>
               ) : rows.map((row: PayrollRow, idx: number) => {
                 const c = computed[idx]
                 return (
@@ -346,18 +370,54 @@ export default function PayrollPage() {
                       {row.payroll_id ? fmt(c.toBeUsed) : <span className="text-ink-300 font-normal">—</span>}
                     </td>
 
-                    {/* Actions */}
-                    <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-center gap-1">
-                        {canManage && (
-                          <button className="icon-btn" title="Edit gross salary"
-                            onClick={() => setEditing(row)}>
-                            <Pencil className="w-3.5 h-3.5" />
+                    {/* Status */}
+                    <td className="px-3 py-2.5 text-center" onClick={(e) => e.stopPropagation()}>
+                      {row.payroll_id ? (
+                        <PayrollStatusBadge
+                          status={(row as any).payroll_status ?? 'Pending'}
+                          payrollId={row.payroll_id}
+                          canManage={canManage}
+                          onMark={(s) => markPaidMutation.mutate({ id: row.payroll_id!, status: s })}
+                          onPay={() => setPayingPayroll(row)}
+                        />
+                      ) : (
+                        <span className="text-ink-300 text-[11px]">—</span>
+                      )}
+                    </td>
+
+                    {/* CRUD Actions */}
+                    <td className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-center gap-1 flex-wrap">
+                        {canManage && !row.payroll_id && (
+                          <button
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold bg-emerald-500 hover:bg-emerald-600 text-white transition-colors"
+                            onClick={() => setEditing(row)}
+                          >
+                            <Plus className="w-3 h-3" /> Add
                           </button>
                         )}
-                        <Link to={`/hr/payroll/${row.id}`} className="icon-btn" title="View payslip history">
-                          <Eye className="w-3.5 h-3.5" />
+                        {canManage && row.payroll_id && (
+                          <button
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold bg-brand hover:bg-brand/90 text-white transition-colors"
+                            onClick={() => setEditing(row)}
+                          >
+                            <Pencil className="w-3 h-3" /> Edit
+                          </button>
+                        )}
+                        <Link
+                          to={`/hr/payroll/${row.id}`}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold bg-ink-100 hover:bg-ink-200 dark:bg-ink-700 dark:hover:bg-ink-600 text-ink-700 dark:text-ink-200 transition-colors"
+                        >
+                          <Eye className="w-3 h-3" /> View
                         </Link>
+                        {canManage && row.payroll_id && (
+                          <button
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold bg-red-50 hover:bg-red-100 dark:bg-red-500/10 dark:hover:bg-red-500/20 text-red-600 dark:text-red-400 transition-colors border border-red-200 dark:border-red-800"
+                            onClick={() => setDelPayroll(row)}
+                          >
+                            <Trash2 className="w-3 h-3" /> Delete
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -387,6 +447,7 @@ export default function PayrollPage() {
                   <td className="px-3 py-3 text-right tabular-nums text-emerald-700 dark:text-emerald-400">
                     {fmt(totals.toBeUsed)}
                   </td>
+                  <td />
                   <td />
                 </tr>
               </tfoot>
@@ -450,6 +511,8 @@ export default function PayrollPage() {
         onEdit={(row) => { setDrawerRow(null); setEditing(row) }}
         onEditEmployee={(row) => { setDrawerRow(null); setEditingEmp(row) }}
         onDelete={(row) => { setDrawerRow(null); setDelEmp(row) }}
+        onDeletePayroll={(row) => { setDrawerRow(null); setDelPayroll(row) }}
+        onPay={(row) => { setDrawerRow(null); setPayingPayroll(row) }}
       />
 
       {/* Add employee modal */}
@@ -467,13 +530,43 @@ export default function PayrollPage() {
         />
       )}
 
-      {/* Delete confirmation */}
+      {/* Delete employee confirmation */}
       {deletingEmployee && (
         <DeleteEmployeeModal
           row={deletingEmployee}
           onClose={() => setDelEmp(null)}
         />
       )}
+
+      {/* Delete payroll entry confirmation */}
+      {deletingPayroll && (
+        <DeletePayrollModal
+          row={deletingPayroll}
+          periodYear={periodYear}
+          periodMonth={periodMonth}
+          onClose={() => setDelPayroll(null)}
+        />
+      )}
+
+      {/* Copy payroll to another period */}
+      {showCopyModal && (
+        <CopyPeriodModal
+          fromYear={periodYear}
+          fromMonth={periodMonth}
+          onClose={() => setShowCopy(false)}
+        />
+      )}
+
+      {/* Process salary payment modal */}
+      {payingPayroll && (
+        <ProcessPaymentModal
+          row={payingPayroll}
+          periodYear={periodYear}
+          periodMonth={periodMonth}
+          onClose={() => setPayingPayroll(null)}
+        />
+      )}
+
     </div>
   )
 }
@@ -481,6 +574,12 @@ export default function PayrollPage() {
 /* ══════════════════════════════════════════════════════════════════════
    EDIT GROSS MODAL  — only gross is editable; PAYE auto-calculates
    ══════════════════════════════════════════════════════════════════════ */
+const DEFAULT_CONFIG: PayrollConfig = {
+  rssb_employee_rate: 6, rssb_employer_rate: 6,
+  maternity_employee_rate: 0.3, maternity_employer_rate: 0.3,
+  cbhi_employee_rate: 5, cbhi_employer_rate: 5,
+}
+
 function EditGrossModal({
   row, periodYear, periodMonth, formula, onClose,
 }: {
@@ -494,9 +593,20 @@ function EditGrossModal({
   const effectiveGross = n0(row.gross_salary) || n0(row.salary)
   const [gross, setGross] = useState(effectiveGross)
 
+  const { data: configRes } = useQuery({
+    queryKey: ['hr-payroll-config'],
+    queryFn:  ({ signal }) => hrService.getPayrollConfig(signal),
+    staleTime: 5 * 60 * 1000,
+  })
+  const cfg = configRes?.data ?? DEFAULT_CONFIG
+
+  const rssbRate    = (cfg.rssb_employee_rate + cfg.maternity_employee_rate) / 100
+  const cbhiRate    = cfg.cbhi_employee_rate / 100
+
   const payeFormula = calcPaye(gross, formula)
-  const rssb        = n0(row.rssb)
-  const cbhi        = n0(row.cbhi)
+  const rssb        = gross * rssbRate
+  const maternity   = gross * (cfg.maternity_employee_rate / 100)
+  const cbhi        = gross * cbhiRate
   const net         = Math.max(0, gross - payeFormula - rssb - cbhi)
 
   const save = useMutation({
@@ -510,10 +620,11 @@ function EditGrossModal({
       other_allowances:    n0(row.other_allowances),
       gross_salary:        gross,
       paye:                payeFormula,
-      rssb,
+      rssb:                rssb - maternity,
+      maternity,
       cbhi,
       net_salary:          net,
-    } as PayrollEntry),
+    } as PayrollEntry & { maternity: number }),
     onSuccess: () => {
       toast.success('Payroll updated.')
       qc.invalidateQueries({ queryKey: ['hr-payroll'] })
@@ -557,8 +668,16 @@ function EditGrossModal({
             </div>
             <div className="divide-y divide-ink-100 dark:divide-ink-700">
               <ComputedRow label="PAYE (TPR)" value={payeFormula} accent="text-red-600 dark:text-red-400" />
-              {rssb > 0 && <ComputedRow label="RSSB (existing)" value={rssb} accent="text-orange-600 dark:text-orange-400" />}
-              {cbhi > 0 && <ComputedRow label="CBHI (existing)" value={cbhi} accent="text-sky-600 dark:text-sky-400" />}
+              <ComputedRow
+                label={`RSSB (${cfg.rssb_employee_rate}% + ${cfg.maternity_employee_rate}% maternity)`}
+                value={rssb}
+                accent="text-orange-600 dark:text-orange-400"
+              />
+              <ComputedRow
+                label={`CBHI (${cfg.cbhi_employee_rate}%)`}
+                value={cbhi}
+                accent="text-sky-600 dark:text-sky-400"
+              />
               <div className="flex items-center justify-between px-4 py-2.5 bg-emerald-50 dark:bg-emerald-500/10">
                 <span className="text-[12px] font-bold text-emerald-700 dark:text-emerald-300">Net Salary</span>
                 <span className="font-bold text-[14px] text-emerald-800 dark:text-emerald-200 tabular-nums">{fmt(net)}</span>
@@ -566,9 +685,9 @@ function EditGrossModal({
             </div>
           </div>
 
-          {/* Formula note */}
+          {/* Deductions note */}
           <p className="text-[11px] text-ink-400 dark:text-ink-500 font-mono bg-ink-50 dark:bg-ink-700/20 rounded px-3 py-2">
-            PAYE = {payeFormula > 0 ? fmt(payeFormula, 2) : '0'} (from Rwanda progressive tax formula)
+            Net = Gross − PAYE − RSSB({cfg.rssb_employee_rate + cfg.maternity_employee_rate}%) − CBHI({cfg.cbhi_employee_rate}%)
           </p>
         </div>
 
@@ -731,10 +850,8 @@ function FormulaModal({
    STAFF DETAILS DRAWER
    ══════════════════════════════════════════════════════════════════════ */
 
-type DrawerRow = { row: PayrollRow; c: { effectiveGross: number; payeFormula: number; asPerHr: number; difference: number; toBeUsed: number; rssb: number; cbhi: number } }
-
 function StaffDrawer({
-  drawerRow, periodYear, periodMonth, canManage, onClose, onEdit, onEditEmployee, onDelete,
+  drawerRow, periodYear, periodMonth, canManage, onClose, onEdit, onEditEmployee, onDelete, onDeletePayroll, onPay,
 }: {
   drawerRow: DrawerRow | null
   periodYear: number
@@ -744,6 +861,8 @@ function StaffDrawer({
   onEdit: (row: PayrollRow) => void
   onEditEmployee: (row: PayrollRow) => void
   onDelete: (row: PayrollRow) => void
+  onDeletePayroll: (row: PayrollRow) => void
+  onPay: (row: PayrollRow) => void
 }) {
   const open = drawerRow !== null
   const row  = drawerRow?.row
@@ -894,6 +1013,7 @@ function StaffDrawer({
 
             {/* ── Footer actions ── */}
             <div className="px-5 py-4 border-t border-ink-100 dark:border-ink-700 space-y-2">
+              {/* Row 1: Edit Info + Edit Payroll / Add Payroll */}
               {canManage && (
                 <div className="flex gap-2">
                   <button
@@ -906,24 +1026,44 @@ function StaffDrawer({
                     className="btn-primary flex-1 gap-1.5 text-[12px]"
                     onClick={() => onEdit(row)}
                   >
-                    <Pencil className="w-3.5 h-3.5" /> Edit Payroll
+                    <Pencil className="w-3.5 h-3.5" />
+                    {row.payroll_id ? 'Edit Payroll' : 'Add Payroll'}
                   </button>
                 </div>
               )}
+              {/* Pay Salary button — shown when payroll exists and not yet Paid */}
+              {canManage && row.payroll_id && (row as any).payroll_status !== 'Paid' && (
+                <button
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-[13px] transition-colors"
+                  onClick={() => onPay(row)}
+                >
+                  <Banknote className="w-4 h-4" /> Pay Salary
+                </button>
+              )}
+              {/* Row 2: View history + Delete payroll + Delete employee */}
               <div className="flex gap-2">
                 <Link
                   to={`/hr/payroll/${row.id}`}
                   className="btn-secondary flex-1 gap-1.5 flex items-center justify-center text-[12px]"
                   onClick={onClose}
                 >
-                  <Eye className="w-3.5 h-3.5" /> Payslip History
+                  <Eye className="w-3.5 h-3.5" /> History
                 </Link>
+                {canManage && row.payroll_id && (
+                  <button
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors text-[12px] font-medium"
+                    onClick={() => onDeletePayroll(row)}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Del Payroll
+                  </button>
+                )}
                 {canManage && (
                   <button
-                    className="btn-sm flex items-center gap-1.5 px-3 rounded-lg border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors text-[12px]"
+                    className="inline-flex items-center justify-center gap-1 px-3 py-2 rounded-lg border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 hover:bg-red-100 transition-colors text-[12px] font-medium"
                     onClick={() => onDelete(row)}
+                    title="Delete employee entirely"
                   >
-                    <Trash2 className="w-3.5 h-3.5" /> Delete
+                    <Trash2 className="w-3.5 h-3.5" /> Del Employee
                   </button>
                 )}
               </div>
@@ -959,6 +1099,165 @@ function PayrollSummaryRow({
         <span className="text-[12px]">{label}</span>
       </div>
       <span className={`tabular-nums text-[13px] ${accent}`}>{value}</span>
+    </div>
+  )
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   PAYROLL STATUS BADGE + TOGGLE
+   ══════════════════════════════════════════════════════════════════════ */
+
+function PayrollStatusBadge({
+  status, payrollId, canManage, onMark, onPay,
+}: {
+  status: string
+  payrollId: number
+  canManage: boolean
+  onMark: (s: 'Pending' | 'Paid' | 'Approved') => void
+  onPay: () => void
+}) {
+  void payrollId
+  if (!canManage) {
+    return <StatusPill status={status} />
+  }
+  if (status === 'Paid') {
+    return (
+      <button
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-500/30 transition-colors"
+        title="Click to revert to Approved"
+        onClick={() => onMark('Approved')}
+      >
+        <CheckCircle className="w-3 h-3" /> Paid
+      </button>
+    )
+  }
+  return (
+    <div className="flex items-center justify-center gap-1">
+      <StatusPill status={status} />
+      {(status === 'Pending' || status === 'Approved') && (
+        <button
+          className="ml-1 inline-flex items-center gap-0.5 text-[10px] text-emerald-600 dark:text-emerald-400 hover:underline font-semibold"
+          title="Process salary payment"
+          onClick={onPay}
+        >
+          <Banknote className="w-3 h-3" /> Pay
+        </button>
+      )}
+    </div>
+  )
+}
+
+function StatusPill({ status }: { status: string }) {
+  const cls =
+    status === 'Paid'     ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300' :
+    status === 'Approved' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300' :
+                            'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300'
+  return (
+    <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide ${cls}`}>
+      {status}
+    </span>
+  )
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   COPY PAYROLL TO ANOTHER PERIOD MODAL
+   ══════════════════════════════════════════════════════════════════════ */
+
+function CopyPeriodModal({
+  fromYear, fromMonth, onClose,
+}: {
+  fromYear: number
+  fromMonth: number
+  onClose: () => void
+}) {
+  const qc = useQueryClient()
+
+  const initTarget = () => {
+    const d = new Date(fromYear, fromMonth, 1)   // first day of next month
+    return { year: d.getFullYear(), month: d.getMonth() + 1 }
+  }
+  const [target, setTarget] = useState(initTarget)
+
+  const copy = useMutation({
+    mutationFn: () => hrService.payrollCopyPeriod({
+      from_year: fromYear, from_month: fromMonth,
+      to_year: target.year, to_month: target.month,
+    }),
+    onSuccess: (res) => {
+      const d = res.data
+      toast.success(`Copied ${d?.copied ?? 0} payroll entries to ${d?.period ?? ''}. ${d?.skipped ?? 0} skipped (already exist).`)
+      qc.invalidateQueries({ queryKey: ['hr-payroll'] })
+      onClose()
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Copy failed'),
+  })
+
+  const yearOpts2  = Array.from({ length: 5 }, (_, i) => CUR_Y - 1 + i)
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/60 backdrop-blur-sm p-4">
+      <div className="bg-white dark:bg-ink-800 rounded-xl shadow-2xl w-full max-w-sm">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-ink-100 dark:border-ink-700">
+          <div>
+            <h3 className="font-bold text-[15px] text-ink-900 dark:text-white flex items-center gap-2">
+              <Copy className="w-4 h-4 text-ink-400" /> Copy Payroll to Period
+            </h3>
+            <p className="text-[12px] text-ink-500">
+              Duplicate all {MONTHS[fromMonth - 1]} {fromYear} payroll entries to another month
+            </p>
+          </div>
+          <button className="icon-btn" onClick={onClose}><X className="w-4 h-4" /></button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="block text-[10px] font-bold text-ink-500 uppercase tracking-wider mb-2">
+              Source Period
+            </label>
+            <div className="rounded-lg border border-ink-100 dark:border-ink-700 px-4 py-3 text-[13px] font-semibold text-ink-800 dark:text-ink-200 bg-ink-50 dark:bg-ink-700/30">
+              {MONTHS[fromMonth - 1]} {fromYear}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-bold text-ink-500 uppercase tracking-wider mb-2">
+              Destination Period
+            </label>
+            <div className="flex gap-2">
+              <select
+                className="input flex-1 py-2 text-[13px]"
+                value={target.month}
+                onChange={e => setTarget(t => ({ ...t, month: +e.target.value }))}
+              >
+                {MONTHS.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
+              </select>
+              <select
+                className="input w-24 py-2 text-[13px]"
+                value={target.year}
+                onChange={e => setTarget(t => ({ ...t, year: +e.target.value }))}
+              >
+                {yearOpts2.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div className="rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-700 px-4 py-3 text-[12px] text-amber-700 dark:text-amber-300">
+            Employees that already have a payroll entry for the destination period will be skipped.
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 px-5 py-4 border-t border-ink-100 dark:border-ink-700">
+          <button className="btn-secondary" onClick={onClose}>Cancel</button>
+          <button
+            className="btn-primary gap-1.5"
+            onClick={() => copy.mutate()}
+            disabled={copy.isPending || (target.year === fromYear && target.month === fromMonth)}
+          >
+            {copy.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Copy className="w-3.5 h-3.5" />}
+            Copy Payroll
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -1008,13 +1307,14 @@ function EmployeeFormModal({
     emp_code:     row?.emp_code     ?? '',
     start_date:   row?.start_date   ?? '',
     status:       row?.status       ?? 'Active',
+    salary:       n0(row?.salary)   > 0 ? String(n0(row?.salary)) : '',
   })
 
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm(prev => ({ ...prev, [k]: e.target.value }))
 
   const save = useMutation({
-    mutationFn: () => isEdit
+    mutationFn: (): Promise<any> => isEdit
       ? hrService.updateEmployee(row!.id, form as any)
       : hrService.createEmployee(form as any),
     onSuccess: () => {
@@ -1096,6 +1396,20 @@ function EmployeeFormModal({
             <label className="block text-[10px] font-bold text-ink-500 uppercase tracking-wider mb-1">Start Date</label>
             <input type="date" className="input" value={form.start_date} onChange={set('start_date')} />
           </div>
+
+          <div>
+            <label className="block text-[10px] font-bold text-ink-500 uppercase tracking-wider mb-1">
+              Base Gross Salary (RWF)
+              <span className="ml-1 text-[9px] font-normal text-ink-400 normal-case">saved permanently on employee record</span>
+            </label>
+            <input
+              type="number" min="0" step="1"
+              className="input text-right tabular-nums"
+              value={form.salary}
+              onChange={set('salary')}
+              placeholder="e.g. 588,002"
+            />
+          </div>
         </div>
 
         {/* footer */}
@@ -1104,7 +1418,7 @@ function EmployeeFormModal({
           <button
             className="btn-primary gap-1.5"
             onClick={() => save.mutate()}
-            disabled={save.isPending || !form.first_name || !form.last_name || !form.position}
+            disabled={save.isPending || !form.first_name || !form.last_name}
           >
             {save.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
             {isEdit ? 'Save Changes' : 'Create Employee'}
@@ -1153,6 +1467,242 @@ function DeleteEmployeeModal({ row, onClose }: { row: PayrollRow; onClose: () =>
           >
             {del.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
             Yes, Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   DELETE PAYROLL ENTRY MODAL
+   ══════════════════════════════════════════════════════════════════════ */
+function DeletePayrollModal({
+  row, periodYear, periodMonth, onClose,
+}: {
+  row: PayrollRow
+  periodYear: number
+  periodMonth: number
+  onClose: () => void
+}) {
+  const qc = useQueryClient()
+
+  const del = useMutation({
+    mutationFn: () => hrService.payrollDelete(row.payroll_id!),
+    onSuccess: () => {
+      toast.success('Payroll entry deleted.')
+      qc.invalidateQueries({ queryKey: ['hr-payroll'] })
+      onClose()
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Delete failed'),
+  })
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/60 backdrop-blur-sm p-4">
+      <div className="bg-white dark:bg-ink-800 rounded-xl shadow-2xl w-full max-w-sm">
+        <div className="p-6 text-center space-y-3">
+          <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-500/20 flex items-center justify-center mx-auto">
+            <Trash2 className="w-6 h-6 text-red-600 dark:text-red-400" />
+          </div>
+          <h3 className="font-bold text-[16px] text-ink-900 dark:text-white">Delete Payroll Entry?</h3>
+          <p className="text-[13px] text-ink-500">
+            Remove <span className="font-semibold text-ink-700 dark:text-ink-200">{row.full_name}</span>'s
+            payroll for <span className="font-semibold">{MONTHS[periodMonth - 1]} {periodYear}</span>.
+            The employee record stays; only this month's entry is deleted.
+          </p>
+        </div>
+        <div className="flex gap-2 px-5 py-4 border-t border-ink-100 dark:border-ink-700">
+          <button className="btn-secondary flex-1" onClick={onClose}>Cancel</button>
+          <button
+            className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold text-[13px] rounded-lg px-4 py-2 transition-colors flex items-center justify-center gap-1.5"
+            onClick={() => del.mutate()}
+            disabled={del.isPending}
+          >
+            {del.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            Yes, Delete Entry
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   PROCESS PAYMENT MODAL
+   Opens when HR clicks "Pay" on a payroll row.
+   Records the disbursement and marks payroll as Paid.
+   ══════════════════════════════════════════════════════════════════════ */
+function ProcessPaymentModal({
+  row, periodYear, periodMonth, onClose,
+}: {
+  row: PayrollRow
+  periodYear: number
+  periodMonth: number
+  onClose: () => void
+}) {
+  const qc = useQueryClient()
+
+  const netAmount = n0(row.net_salary) || Math.max(0, n0(row.gross_salary) - n0(row.paye))
+
+  const [method,  setMethod]  = useState<PaymentMethod>('Bank Transfer')
+  const [bankName,setBankName]= useState<string>((row as any).bank ?? '')
+  const [account, setAccount] = useState<string>((row as any).bank_account ?? '')
+  const [ref,     setRef]     = useState<string>('')
+  const [notes,   setNotes]   = useState<string>('')
+  const [amount,  setAmount]  = useState<number>(netAmount)
+
+  const pay = useMutation({
+    mutationFn: () => hrService.processPayment({
+      payroll_id:     row.payroll_id!,
+      amount,
+      payment_method: method,
+      bank_name:      bankName  || null,
+      account_number: account   || null,
+      reference:      ref       || null,
+      notes:          notes     || null,
+    }),
+    onSuccess: () => {
+      toast.success(`Payment of ${fmt(amount)} RWF processed for ${row.full_name}.`)
+      qc.invalidateQueries({ queryKey: ['hr-payroll'] })
+      onClose()
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Payment failed'),
+  })
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/60 backdrop-blur-sm p-4">
+      <div className="bg-white dark:bg-ink-800 rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-ink-100 dark:border-ink-700 shrink-0">
+          <div>
+            <h3 className="font-bold text-[15px] text-ink-900 dark:text-white flex items-center gap-2">
+              <Banknote className="w-4 h-4 text-emerald-600" /> Process Salary Payment
+            </h3>
+            <p className="text-[12px] text-ink-500">
+              {row.full_name} · {MONTHS[periodMonth - 1]} {periodYear}
+            </p>
+          </div>
+          <button className="icon-btn" onClick={onClose}><X className="w-4 h-4" /></button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {/* Summary pill */}
+          <div className="flex items-center justify-between rounded-lg bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-700 px-4 py-3">
+            <div>
+              <p className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider">Net Salary</p>
+              <p className="text-[11px] text-emerald-600 dark:text-emerald-400">
+                Gross {fmt(n0(row.gross_salary))} – PAYE {fmt(n0(row.paye))}
+              </p>
+            </div>
+            <span className="text-[20px] font-bold tabular-nums text-emerald-800 dark:text-emerald-200">
+              {fmt(netAmount)} <span className="text-[12px] font-normal">RWF</span>
+            </span>
+          </div>
+
+          {/* Payment amount */}
+          <div>
+            <label className="block text-[10px] font-bold text-ink-500 uppercase tracking-wider mb-1">
+              Amount to Pay (RWF)
+            </label>
+            <input
+              type="number" min="0" step="1"
+              className="input text-right tabular-nums text-[15px] font-semibold"
+              value={amount || ''}
+              onChange={e => setAmount(parseFloat(e.target.value) || 0)}
+            />
+          </div>
+
+          {/* Payment method */}
+          <div>
+            <label className="block text-[10px] font-bold text-ink-500 uppercase tracking-wider mb-1">
+              Payment Method
+            </label>
+            <div className="flex gap-2">
+              {(['Bank Transfer', 'Cash', 'MoMo'] as PaymentMethod[]).map(m => (
+                <button
+                  key={m}
+                  onClick={() => setMethod(m)}
+                  className={`flex-1 py-2 rounded-lg text-[12px] font-semibold border transition-colors ${
+                    method === m
+                      ? 'bg-brand border-brand text-white'
+                      : 'bg-white dark:bg-ink-700 border-ink-200 dark:border-ink-600 text-ink-600 dark:text-ink-300 hover:border-brand hover:text-brand'
+                  }`}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Bank fields — shown for Bank Transfer and MoMo */}
+          {method !== 'Cash' && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[10px] font-bold text-ink-500 uppercase tracking-wider mb-1">
+                  {method === 'MoMo' ? 'Provider' : 'Bank Name'}
+                </label>
+                <input
+                  className="input text-[13px]"
+                  value={bankName}
+                  onChange={e => setBankName(e.target.value)}
+                  placeholder={method === 'MoMo' ? 'e.g. MTN MoMo' : 'e.g. BK, Equity'}
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-ink-500 uppercase tracking-wider mb-1">
+                  {method === 'MoMo' ? 'Phone Number' : 'Account Number'}
+                </label>
+                <input
+                  className="input text-[13px]"
+                  value={account}
+                  onChange={e => setAccount(e.target.value)}
+                  placeholder={method === 'MoMo' ? '+250 7XX XXX XXX' : 'Account no.'}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Reference */}
+          <div>
+            <label className="block text-[10px] font-bold text-ink-500 uppercase tracking-wider mb-1">
+              Transaction Reference <span className="font-normal normal-case text-ink-400">(optional)</span>
+            </label>
+            <input
+              className="input text-[13px]"
+              value={ref}
+              onChange={e => setRef(e.target.value)}
+              placeholder="e.g. TXN-20260426-001"
+            />
+          </div>
+
+          {/* Notes */}
+          <div>
+            <label className="block text-[10px] font-bold text-ink-500 uppercase tracking-wider mb-1">
+              Notes <span className="font-normal normal-case text-ink-400">(optional)</span>
+            </label>
+            <textarea
+              className="input text-[13px] resize-none"
+              rows={2}
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              placeholder="Any remarks about this payment…"
+            />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-end gap-2 px-5 py-4 border-t border-ink-100 dark:border-ink-700 shrink-0">
+          <button className="btn-secondary" onClick={onClose}>Cancel</button>
+          <button
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-[13px] rounded-lg px-5 py-2 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+            onClick={() => pay.mutate()}
+            disabled={pay.isPending || amount <= 0 || !row.payroll_id}
+          >
+            {pay.isPending
+              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              : <Banknote className="w-3.5 h-3.5" />}
+            Confirm Payment
           </button>
         </div>
       </div>

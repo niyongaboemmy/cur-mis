@@ -34,8 +34,8 @@ class PermissionMiddleware
         // Ensure $user is an array (JWT decode might return stdClass)
         $user = (array) $user;
 
-        // Superadmin bypass
-        if (isset($user['role']) && $user['role'] === 'superadmin') {
+        // Superadmin and admin bypass — both roles have full access
+        if (isset($user['role']) && in_array($user['role'], ['superadmin', 'admin'], true)) {
             return;
         }
 
