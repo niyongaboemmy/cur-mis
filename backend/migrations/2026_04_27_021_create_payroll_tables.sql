@@ -61,6 +61,6 @@ INSERT IGNORE INTO `payroll_config` (`config_key`, `config_value`) VALUES
 
 -- 5. Ensure employees table has necessary columns for HR module
 -- (Using multiple ALTERs to be safer in case some exist)
-ALTER TABLE `employees` ADD COLUMN IF NOT EXISTS `salary` DECIMAL(15,2) NOT NULL DEFAULT 0;
-ALTER TABLE `employees` ADD COLUMN IF NOT EXISTS `employee_reg_date` DATE DEFAULT NULL;
-ALTER TABLE `employees` ADD COLUMN IF NOT EXISTS `account_status` ENUM('Active', 'Inactive') DEFAULT 'Active';
+ALTER TABLE `employees` ADD COLUMN `salary` DECIMAL(15,2) NOT NULL DEFAULT 0;
+ALTER TABLE `employees` ADD COLUMN `employee_reg_date` DATE DEFAULT NULL;
+ALTER TABLE `employees` ADD COLUMN `account_status` ENUM('Active', 'Inactive') DEFAULT 'Active';

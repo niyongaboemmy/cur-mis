@@ -50,9 +50,6 @@ $mappings = [
         Permissions::MANAGE_MODULE_ASSIGNMENTS,
         Permissions::MANAGE_MODULE_REGISTRATIONS,
         Permissions::VIEW_MY_MODULES,
-        Permissions::VIEW_MODULE_MARKS,
-        Permissions::RECORD_MODULE_MARKS,
-        Permissions::MANAGE_MODULE_MARKS,
     ],
     'HR Management' => [
         Permissions::VIEW_HR_EMPLOYEES,
