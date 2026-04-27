@@ -57,6 +57,8 @@ $mappings = [
         Permissions::MANAGE_LEAVE_TYPES,
         Permissions::VIEW_PAYROLL,
         Permissions::MANAGE_PAYROLL,
+        Permissions::VIEW_LEAVE_REQUESTS,
+        Permissions::MANAGE_LEAVE_REQUESTS,
     ],
     'Finance' => [
         Permissions::VIEW_FINANCE,
