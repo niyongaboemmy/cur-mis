@@ -42,7 +42,7 @@ export default function ProtectedRoute({ requiredPermissions, requiredRoles }: P
     }
   }
 
-  if (requiredPermissions && user?.role !== 'superadmin') {
+  if (requiredPermissions && !['superadmin', 'admin'].includes(user?.role ?? '')) {
     const required  = Array.isArray(requiredPermissions) ? requiredPermissions : [requiredPermissions]
     const userPerms = user?.permissions || []
 
