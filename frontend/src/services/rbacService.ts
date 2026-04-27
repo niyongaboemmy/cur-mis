@@ -5,6 +5,7 @@ export interface Role {
   name: string;
   description: string | null;
   permissions?: string[];
+  user_count?: number;
   created_at: string;
 }
 

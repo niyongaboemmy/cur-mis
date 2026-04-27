@@ -15,6 +15,8 @@ class Permissions
     public const MANAGE_ACADEMIC_YEARS = 'MANAGE_ACADEMIC_YEARS';
     public const MANAGE_ACADEMIC_TERMS = 'MANAGE_ACADEMIC_TERMS';
     public const VIEW_SYSTEM_BASICS    = 'VIEW_SYSTEM_BASICS';
+    public const VIEW_SETTINGS         = 'VIEW_SETTINGS';
+    public const MANAGE_SETTINGS       = 'MANAGE_SETTINGS';
 
     // Academic Registry
     public const VIEW_STUDENTS       = 'VIEW_STUDENTS';
@@ -27,6 +29,8 @@ class Permissions
     public const MANAGE_LEVELS       = 'MANAGE_LEVELS';
     public const MANAGE_MODULES      = 'MANAGE_MODULES';
     public const MANAGE_SCHOOLS      = 'MANAGE_SCHOOLS';
+    public const VIEW_TIMETABLE      = 'VIEW_TIMETABLE';
+    public const MANAGE_TIMETABLE    = 'MANAGE_TIMETABLE';
 
     // Modules Management Module
     public const MANAGE_MODULE_SCHEDULES     = 'MANAGE_MODULE_SCHEDULES';
@@ -38,6 +42,8 @@ class Permissions
     public const VIEW_HR_EMPLOYEES   = 'VIEW_HR_EMPLOYEES';
     public const MANAGE_HR_EMPLOYEES = 'MANAGE_HR_EMPLOYEES';
     public const MANAGE_LEAVE_TYPES  = 'MANAGE_LEAVE_TYPES';
+    public const VIEW_PAYROLL        = 'VIEW_PAYROLL';
+    public const MANAGE_PAYROLL      = 'MANAGE_PAYROLL';
 
     // Finance
     public const VIEW_FINANCE    = 'VIEW_FINANCE';
@@ -48,14 +54,21 @@ class Permissions
     public const MANAGE_STUDENT_APPLICATIONS   = 'MANAGE_STUDENT_APPLICATIONS';
     public const VERIFY_DOCUMENTS              = 'VERIFY_DOCUMENTS';
     public const MANAGE_ADMISSIONS             = 'MANAGE_ADMISSIONS';
+    public const VIEW_MERIT_LIST               = 'VIEW_MERIT_LIST';
+    public const MANAGE_MERIT_LIST             = 'MANAGE_MERIT_LIST';
 
     // Examinations
+    public const VIEW_EXAMS   = 'VIEW_EXAMS';
     public const MANAGE_EXAMS = 'MANAGE_EXAMS';
 
     // Attendance
     public const VIEW_ATTENDANCE   = 'VIEW_ATTENDANCE';
     public const RECORD_ATTENDANCE = 'RECORD_ATTENDANCE';
     public const MANAGE_ATTENDANCE = 'MANAGE_ATTENDANCE';
+
+    // Student Clearance
+    public const VIEW_CLEARANCE   = 'VIEW_CLEARANCE';
+    public const MANAGE_CLEARANCE = 'MANAGE_CLEARANCE';
 
     // External portals (role-bound permissions assigned via RBAC seed)
     public const ACCESS_APPLICANT_PORTAL = 'ACCESS_APPLICANT_PORTAL';
@@ -80,6 +93,8 @@ class Permissions
             self::MANAGE_ACADEMIC_YEARS,
             self::MANAGE_ACADEMIC_TERMS,
             self::VIEW_SYSTEM_BASICS,
+            self::VIEW_SETTINGS,
+            self::MANAGE_SETTINGS,
             self::VIEW_STUDENTS,
             self::MANAGE_STUDENTS,
             self::MANAGE_ACADEMICS,
@@ -90,6 +105,8 @@ class Permissions
             self::MANAGE_LEVELS,
             self::MANAGE_MODULES,
             self::MANAGE_SCHOOLS,
+            self::VIEW_TIMETABLE,
+            self::MANAGE_TIMETABLE,
             self::MANAGE_MODULE_SCHEDULES,
             self::MANAGE_MODULE_ASSIGNMENTS,
             self::MANAGE_MODULE_REGISTRATIONS,
@@ -97,16 +114,23 @@ class Permissions
             self::VIEW_HR_EMPLOYEES,
             self::MANAGE_HR_EMPLOYEES,
             self::MANAGE_LEAVE_TYPES,
+            self::VIEW_PAYROLL,
+            self::MANAGE_PAYROLL,
             self::VIEW_FINANCE,
             self::MANAGE_FINANCE,
             self::MANAGE_ADMISSION_REQUIREMENTS,
             self::MANAGE_STUDENT_APPLICATIONS,
             self::VERIFY_DOCUMENTS,
             self::MANAGE_ADMISSIONS,
+            self::VIEW_MERIT_LIST,
+            self::MANAGE_MERIT_LIST,
+            self::VIEW_EXAMS,
             self::MANAGE_EXAMS,
             self::VIEW_ATTENDANCE,
             self::RECORD_ATTENDANCE,
             self::MANAGE_ATTENDANCE,
+            self::VIEW_CLEARANCE,
+            self::MANAGE_CLEARANCE,
             self::ACCESS_APPLICANT_PORTAL,
             self::ACCESS_STUDENT_PORTAL,
             self::MANAGE_OWN_PROFILE,
