@@ -12,6 +12,14 @@ $pass = $_ENV['DB_PASSWORD'] ?? 'root';
 $dsn = "mysql:host=$host;port=$port;dbname=$db;charset=utf8mb4";
 $pdo = new PDO($dsn, $user, $pass, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 
-$stmt = $pdo->query("SHOW TABLES LIKE '%expense%'");
-$res = $stmt->fetchAll(PDO::FETCH_COLUMN);
-print_r($res);
+$tables = ['academic_years', 'expense_categories', 'users'];
+foreach ($tables as $t) {
+    $stmt = $pdo->query("DESCRIBE `$t`");
+    $res = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    echo "Table: $t\n";
+    foreach ($res as $col) {
+        if ($col['Key'] === 'PRI' || $col['Field'] === 'id') {
+            echo "  {$col['Field']}: {$col['Type']}\n";
+        }
+    }
+}

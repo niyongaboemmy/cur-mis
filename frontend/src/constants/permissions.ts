@@ -41,6 +41,7 @@ export const PERMISSIONS = {
   MANAGE_LEAVE_TYPES:  'MANAGE_LEAVE_TYPES',
 
   // Finance
+  VIEW_FINANCE:   'VIEW_FINANCE',
   MANAGE_FINANCE: 'MANAGE_FINANCE',
 
   // Admissions

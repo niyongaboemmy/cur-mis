@@ -40,7 +40,8 @@ class Permissions
     public const MANAGE_LEAVE_TYPES  = 'MANAGE_LEAVE_TYPES';
 
     // Finance
-    public const MANAGE_FINANCE = 'MANAGE_FINANCE';
+    public const VIEW_FINANCE    = 'VIEW_FINANCE';
+    public const MANAGE_FINANCE  = 'MANAGE_FINANCE';
 
     // Admissions
     public const MANAGE_ADMISSION_REQUIREMENTS = 'MANAGE_ADMISSION_REQUIREMENTS';
@@ -96,6 +97,7 @@ class Permissions
             self::VIEW_HR_EMPLOYEES,
             self::MANAGE_HR_EMPLOYEES,
             self::MANAGE_LEAVE_TYPES,
+            self::VIEW_FINANCE,
             self::MANAGE_FINANCE,
             self::MANAGE_ADMISSION_REQUIREMENTS,
             self::MANAGE_STUDENT_APPLICATIONS,

@@ -36,8 +36,9 @@ class AcademicController extends BaseController
         $data = $request->body();
         $errors = ValidationHelper::validate($data, [
             'label'      => ['required', 'regex:/^\d{4}\/\d{4}$/'], // e.g. 2024/2025
-            'start_date' => ['required', 'regex:/^\d{4}-\d{2}-\d{2}$/'], // YYYY-MM-DD
-            'end_date'   => ['required', 'regex:/^\d{4}-\d{2}-\d{2}$/']
+            'start_date'          => ['required', 'regex:/^\d{4}-\d{2}-\d{2}$/'], // YYYY-MM-DD
+            'end_date'            => ['required', 'regex:/^\d{4}-\d{2}-\d{2}$/'],
+            'clearance_threshold' => ['numeric']
         ]);
 
         if (!empty($errors)) {

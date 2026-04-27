@@ -59,7 +59,16 @@ const MyRegistrationsPage          = lazy(() => import('@/pages/modules/MyRegist
 
 // Placeholders still in use for modules not yet wired up
 const ProgramsPage   = lazy(() => import('@/pages/placeholders/ProgramsPage'))
-const FinancePage    = lazy(() => import('@/pages/placeholders/FinancePage'))
+const FinanceHub          = lazy(() => import('@/pages/finance/FinanceHub'))
+const FinanceOverviewPage = lazy(() => import('@/pages/finance/FinanceOverviewPage'))
+const StudentLedgerPage   = lazy(() => import('@/pages/finance/StudentLedgerPage'))
+const FeeStructuresPage   = lazy(() => import('@/pages/finance/FeeStructuresPage'))
+const BursariesPage       = lazy(() => import('@/pages/finance/BursariesPage'))
+const ExpensesPage        = lazy(() => import('@/pages/finance/ExpensesPage'))
+const AccountBalancePage  = lazy(() => import('@/pages/finance/AccountBalancePage'))
+const ClearancePage       = lazy(() => import('@/pages/finance/ClearancePage'))
+const RevenueReportPage   = lazy(() => import('@/pages/finance/RevenueReportPage'))
+const ReceiptPdfPage      = lazy(() => import('@/pages/finance/ReceiptPdfPage'))
 const ExamsPage      = lazy(() => import('@/pages/placeholders/ExamsPage'))
 const LogsPage       = lazy(() => import('@/pages/placeholders/LogsPage'))
 const ComingSoonPage = lazy(() => import('@/pages/placeholders/ComingSoonPage'))
@@ -210,8 +219,17 @@ function App() {
                 <Route path="/programs" element={<ProgramsPage />} />
               </Route>
 
-              <Route element={<ProtectedRoute requiredPermissions={PERMISSIONS.MANAGE_FINANCE} />}>
-                <Route path="/finance" element={<FinancePage />} />
+              <Route element={<ProtectedRoute requiredPermissions={[PERMISSIONS.VIEW_FINANCE, PERMISSIONS.MANAGE_FINANCE]} />}>
+                <Route path="/finance" element={<FinanceHub />}>
+                  <Route index element={<FinanceOverviewPage />} />
+                  <Route path="billing"    element={<StudentLedgerPage />} />
+                  <Route path="structures" element={<FeeStructuresPage />} />
+                  <Route path="bursaries"  element={<BursariesPage />} />
+                  <Route path="expenses"   element={<ExpensesPage />} />
+                  <Route path="balance"    element={<AccountBalancePage />} />
+                  <Route path="clearance"  element={<ClearancePage />} />
+                  <Route path="reports"    element={<RevenueReportPage />} />
+                </Route>
               </Route>
 
               <Route element={<ProtectedRoute requiredPermissions={PERMISSIONS.MANAGE_EXAMS} />}>
@@ -247,6 +265,11 @@ function App() {
               <Route path="/transport"        element={<ComingSoonPage />} />
               <Route path="/hostel"           element={<ComingSoonPage />} />
             </Route>
+          </Route>
+
+          {/* Finance receipt — standalone (no sidebar) for clean printing */}
+          <Route element={<ProtectedRoute requiredPermissions={[PERMISSIONS.VIEW_FINANCE, PERMISSIONS.MANAGE_FINANCE]} />}>
+            <Route path="/finance/receipt/:paymentId" element={<ReceiptPdfPage />} />
           </Route>
 
           {/* Catch-all */}

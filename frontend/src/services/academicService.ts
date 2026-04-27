@@ -2,9 +2,10 @@ import { api } from '@/services/api'
 import type { AcademicYear, AcademicTerm } from '@/types/academic'
 
 export interface CreateYearPayload {
-  label:      string
-  start_date: string
-  end_date:   string
+  label:               string
+  start_date:          string
+  end_date:            string
+  clearance_threshold?: number
 }
 
 export interface CreateTermPayload {

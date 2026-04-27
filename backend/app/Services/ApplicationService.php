@@ -17,6 +17,7 @@ use App\Models\StudentModel;
 use App\Helpers\EmailTemplateHelper;
 use App\Helpers\AdmissionLetterPdf;
 use App\Models\ManualAdmissionModel;
+use App\Services\FeeService;
 
 class ApplicationService
 {
@@ -500,6 +501,17 @@ class ApplicationService
             $letterResult = $this->sendAdmissionLetter($offerId, $actorId);
         } catch (\Exception $e) {
             $letterResult = ['error' => $e->getMessage()];
+        }
+
+        // Auto-generate admission + registration fee invoices for the new student
+        try {
+            $academicYearId = (int)($offer['academic_year_id'] ?? 0);
+            if ($academicYearId > 0) {
+                $feeService = new FeeService();
+                $feeService->autoGenerateInvoices($regNumber, $academicYearId, null, $actorId);
+            }
+        } catch (\Exception $e) {
+            // Non-blocking: enrollment succeeds even if fee generation fails
         }
 
         return [

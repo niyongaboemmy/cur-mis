@@ -2155,7 +2155,7 @@ function EnrollStudentModal({ moduleId, moduleCode, termId, onClose, onSuccess, 
                         <div className="flex items-center gap-2 mt-0.5">
                           <span className="font-mono text-[11px] text-ink-400 uppercase tracking-tighter">{reg || 'NO REG #'}</span>
                           <span className="w-1 h-1 rounded-full bg-ink-200 dark:bg-ink-700" />
-                          <span className="text-[11px] text-ink-500 truncate">{s.department_name || s.program || 'General'}</span>
+                          <span className="text-[11px] text-ink-500 truncate">{String(s.department_name || s.program || 'General')}</span>
                         </div>
                       </div>
                     </div>
