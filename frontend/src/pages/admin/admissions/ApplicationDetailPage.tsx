@@ -25,6 +25,11 @@ import {
   CreditCard,
   UserPlus,
   ExternalLink,
+  XCircle,
+  Cpu,
+  BarChart2,
+  ClipboardList,
+  UserCheck,
 } from "lucide-react";
 import {
   applicationAdminService,
@@ -112,9 +117,9 @@ function MultiStepBar({
                 disabled={!isClickable}
                 className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all duration-500 outline-none ${
                   isCompleted
-                    ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/20 rotate-0 cursor-pointer hover:bg-emerald-600"
+                    ? "bg-emerald-500 text-white shadow-emerald-500/20 rotate-0 cursor-pointer hover:bg-emerald-600"
                     : isActive
-                      ? "bg-brand text-white shadow-xl shadow-brand/20 ring-4 ring-brand/10 scale-110 cursor-default"
+                      ? "bg-brand text-white shadow-brand/20 ring-4 ring-brand/10 scale-110 cursor-default"
                       : isClickable
                         ? "bg-white dark:bg-ink-900 border-2 border-brand text-brand cursor-pointer hover:bg-brand/10"
                         : "bg-white dark:bg-ink-900 border-2 border-ink-200 dark:border-ink-700 text-ink-400 cursor-not-allowed opacity-60"
@@ -190,13 +195,14 @@ export default function ApplicationDetailPage() {
   });
 
   const enroll = useMutation({
-    mutationFn: (levelId: number) => offerService.initiateEnrollmentByAppId(appId, { level_id: levelId }),
+    mutationFn: (levelId: number) =>
+      offerService.initiateEnrollmentByAppId(appId, { level_id: levelId }),
     onSuccess: (res: any) => {
       toast.success("Student enrolled and registration number generated!");
       qc.invalidateQueries({ queryKey: ["admin", "applications", appId] });
       const studentId = res.data?.student_id;
       const regNo = res.data?.regnumber;
-      
+
       if (studentId) {
         navigate(`/students/${studentId}`);
       } else if (regNo) {
@@ -258,6 +264,8 @@ export default function ApplicationDetailPage() {
 
   const appData = appQ.data?.data;
   const app = appData?.application;
+  const criteria = appData?.merit_criteria;
+  const listing = appData?.merit_listing;
   const status =
     (app?.status as ApplicationStatus) || ApplicationStatus.SUBMITTED;
   const maxStep = getStepForStatus(status);
@@ -488,6 +496,144 @@ export default function ApplicationDetailPage() {
                       value={String(app.graduation_year ?? "—")}
                     />
                   </div>
+                </section>
+
+                {/* Admission Algorithm Considerations */}
+                <section className="card p-6 border-brand/20 bg-brand/[0.01]">
+                  <div className="flex items-center justify-between mb-6">
+                    <SectionHeader
+                      title="Admission Considerations"
+                      sub="How this applicant matches the department algorithm settings."
+                      icon={Cpu}
+                    />
+                    {criteria && (
+                      <div
+                        className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 ${
+                          criteria.algorithm_type === "merit_based"
+                            ? "bg-brand/10 text-brand"
+                            : criteria.algorithm_type ===
+                                "first_come_first_served"
+                              ? "bg-amber-100 text-amber-700"
+                              : "bg-emerald-100 text-emerald-700"
+                        }`}
+                      >
+                        {criteria.algorithm_type === "merit_based" ? (
+                          <BarChart2 className="w-3 h-3" />
+                        ) : criteria.algorithm_type ===
+                          "first_come_first_served" ? (
+                          <ClipboardList className="w-3 h-3" />
+                        ) : (
+                          <UserCheck className="w-3 h-3" />
+                        )}
+                        {criteria.algorithm_type.replace(/_/g, " ")}
+                      </div>
+                    )}
+                  </div>
+
+                  {!criteria ? (
+                    <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/50 flex items-center gap-3 text-[13px] text-amber-800 dark:text-amber-300">
+                      <AlertCircle className="w-5 h-5 shrink-0" />
+                      No admission algorithm has been configured for this
+                      department and intake yet.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-4">
+                      <div className="space-y-1">
+                        <ConsiderationRow
+                          label="Mean Grade"
+                          value={app.prev_grade}
+                          threshold={criteria.min_grade}
+                          met={(() => {
+                            if (!criteria.min_grade) return true;
+                            if (!app.prev_grade) return false;
+                            const appGrade = parseFloat(
+                              app.prev_grade.replace("%", ""),
+                            );
+                            const minGrade = parseFloat(
+                              criteria.min_grade.replace("%", ""),
+                            );
+                            return !isNaN(appGrade) && !isNaN(minGrade)
+                              ? appGrade >= minGrade
+                              : true;
+                          })()}
+                        />
+                        <ConsiderationRow
+                          label="Combination"
+                          value={app.combination || "General"}
+                          threshold={
+                            criteria.required_combinations
+                              ? JSON.parse(criteria.required_combinations).join(
+                                  ", ",
+                                )
+                              : "Any"
+                          }
+                          met={(() => {
+                            if (!criteria.required_combinations) return true;
+                            const allowed = JSON.parse(
+                              criteria.required_combinations,
+                            ).map((s: string) => s.toUpperCase());
+                            return allowed.includes(
+                              app.combination?.toUpperCase(),
+                            );
+                          })()}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <ConsiderationRow
+                          label="Ranking Status"
+                          value={
+                            listing
+                              ? `Ranked #${listing.rank}`
+                              : "Not Generated"
+                          }
+                          met={listing ? !!listing.is_qualified : undefined}
+                        />
+                        <ConsiderationRow
+                          label="Merit Score"
+                          value={
+                            listing
+                              ? `${Number(listing.merit_score).toFixed(2)}%`
+                              : app.merit_score
+                                ? `${Number(app.merit_score).toFixed(2)}%`
+                                : "—"
+                          }
+                          threshold={
+                            criteria.cutoff_score
+                              ? `${criteria.cutoff_score}%`
+                              : undefined
+                          }
+                          met={
+                            listing
+                              ? criteria.cutoff_score
+                                ? Number(listing.merit_score) >=
+                                  Number(criteria.cutoff_score)
+                                : true
+                              : undefined
+                          }
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {listing && (
+                    <div className="mt-6 pt-4 border-t border-ink-100 dark:border-ink-800 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div
+                          className={`w-2.5 h-2.5 rounded-full ${listing.is_qualified ? "bg-emerald-500 animate-pulse" : "bg-ink-300"}`}
+                        />
+                        <span className="text-[12px] font-black text-ink-600 dark:text-ink-400 uppercase tracking-widest">
+                          Result:{" "}
+                          {listing.is_qualified
+                            ? "QUALIFIED FOR ADMISSION"
+                            : "REJECTED BY ALGORITHM"}
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-ink-400 italic">
+                        Generated{" "}
+                        {new Date(listing.generated_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                  )}
                 </section>
 
                 {/* Document Verification Checklist */}
@@ -899,7 +1045,7 @@ export default function ApplicationDetailPage() {
                   </p>
 
                   {/* Enrollment Details Summary */}
-                  <div className="text-left bg-ink-50 dark:bg-ink-800/30 rounded-2xl p-6 border border-ink-100 dark:border-ink-800 mb-8 max-w-2xl mx-auto">
+                  <div className="text-left bg-ink-50 dark:bg-ink-800/30 rounded-2xl p-6 border border-ink-100 dark:border-ink-800 mb-8 max-w-3xl mx-auto">
                     <h4 className="text-[11px] font-black uppercase tracking-widest text-ink-400 mb-4 border-b border-ink-100 dark:border-ink-800 pb-2">
                       Program Details
                     </h4>
@@ -953,7 +1099,7 @@ export default function ApplicationDetailPage() {
                             modules...
                           </div>
                         ) : modules.length > 0 ? (
-                          <div className="bg-white dark:bg-ink-950/50 rounded-xl border border-ink-100 dark:border-ink-800 max-h-48 overflow-y-auto mt-2">
+                          <div className="bg-white dark:bg-ink-950/50 rounded-xl border border-ink-100 dark:border-ink-800 max-h-60 overflow-y-auto mt-2">
                             <ul className="divide-y divide-ink-100 dark:divide-ink-800">
                               {modules.map((m: any) => (
                                 <li
@@ -1012,7 +1158,8 @@ export default function ApplicationDetailPage() {
                   ) : status === ApplicationStatus.ENROLLED ? (
                     <div className="flex flex-col items-center gap-3">
                       <p className="text-green-600 font-bold flex items-center gap-2 justify-center">
-                        <CheckCircle2 className="w-5 h-5" /> Student is fully enrolled.
+                        <CheckCircle2 className="w-5 h-5" /> Student is fully
+                        enrolled.
                       </p>
                       <button
                         onClick={() => {
@@ -1020,12 +1167,15 @@ export default function ApplicationDetailPage() {
                             navigate(`/students/${app.student_id}`);
                           } else {
                             // Fallback to search by email if ID not yet synced
-                            navigate(`/students?q=${encodeURIComponent(app.email)}`);
+                            navigate(
+                              `/students?q=${encodeURIComponent(app.email)}`,
+                            );
                           }
                         }}
                         className="btn-secondary border-green-200 text-green-700 hover:bg-green-50 shadow-sm"
                       >
-                        <ExternalLink className="w-4 h-4 mr-2" /> View Student Profile
+                        <ExternalLink className="w-4 h-4 mr-2" /> View Student
+                        Profile
                       </button>
                     </div>
                   ) : null}
@@ -1146,6 +1296,47 @@ export default function ApplicationDetailPage() {
 }
 
 /* ── Shared sub-components ─────────────────────────────────────── */
+
+function ConsiderationRow({
+  label,
+  value,
+  threshold,
+  met,
+}: {
+  label: string;
+  value: any;
+  threshold?: any;
+  met?: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between py-2 border-b border-ink-100 dark:border-ink-800 last:border-0">
+      <div className="flex flex-col">
+        <span className="text-[11px] font-black uppercase tracking-wider text-ink-400">
+          {label}
+        </span>
+        <span className="text-[14px] font-bold text-ink-800 dark:text-ink-200">
+          {value || "—"}{" "}
+          {threshold && (
+            <span className="text-ink-400 font-medium ml-1">
+              · Target: {threshold}
+            </span>
+          )}
+        </span>
+      </div>
+      {met !== undefined && (
+        <div
+          className={`w-6 h-6 rounded-full flex items-center justify-center ${met ? "bg-emerald-100 text-emerald-600" : "bg-red-100 text-red-600"}`}
+        >
+          {met ? (
+            <CheckCircle2 className="w-4 h-4" />
+          ) : (
+            <XCircle className="w-4 h-4" />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function SectionHeader({
   title,

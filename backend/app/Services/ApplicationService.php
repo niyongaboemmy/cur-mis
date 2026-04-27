@@ -257,10 +257,15 @@ class ApplicationService
             throw new \RuntimeException('Merit criteria not configured for this department and intake.');
         }
 
+        $algoType = $criteria['algorithm_type'] ?? 'merit_based';
+
+        // 1. Fetch all eligible applications
         $applications = $this->db->fetchAll(
-            "SELECT * FROM `student_applications`
-             WHERE department_id = ? AND intake = ? AND academic_year_id = ?
-             AND status = 'documents_verified'",
+            "SELECT sa.*, 
+                    (SELECT MAX(verified_at) FROM `application_documents` WHERE application_id = sa.id) as last_verified_at
+             FROM `student_applications` sa
+             WHERE sa.department_id = ? AND sa.intake = ? AND sa.academic_year_id = ?
+             AND sa.status = 'documents_verified'",
             [$departmentId, $intake, $yearId]
         );
 
@@ -271,36 +276,62 @@ class ApplicationService
             );
         }
 
-        // Pre-compute minimum grade score once if a threshold is set
+        // 2. Filter by minimum grade if set
         $minGradeScore = null;
         if (!empty($criteria['min_grade'])) {
             $minGradeScore = $this->gradeToNumeric((string)$criteria['min_grade']);
         }
 
-        // Score every applicant; skip those below the minimum grade threshold
-        $scored = [];
+        $filtered = [];
         foreach ($applications as $app) {
             if ($minGradeScore !== null) {
                 $applicantGradeScore = $this->gradeToNumeric((string)($app['prev_grade'] ?? ''));
                 if ($applicantGradeScore < $minGradeScore) {
-                    continue; // Does not meet minimum grade requirement
+                    continue; // Below threshold
                 }
             }
+            $filtered[] = $app;
+        }
+
+        // 3. Score and Rank based on algorithm type
+        $scored = [];
+        foreach ($filtered as $app) {
+            $score = 0.0;
+            if ($algoType === 'merit_based') {
+                $score = $this->computeMeritScore($app, $criteria);
+            } else {
+                // For non-merit, we use a neutral score or 100
+                $score = 100.0;
+            }
+
             $scored[] = [
                 'application_id' => (int)$app['id'],
-                'merit_score'    => $this->computeMeritScore($app, $criteria),
+                'merit_score'    => $score,
                 'application'    => $app,
             ];
         }
 
-        // Sort by score descending, then by graduation_year ascending (earlier = priority)
-        usort($scored, function ($a, $b) {
-            if ($b['merit_score'] !== $a['merit_score']) {
-                return $b['merit_score'] <=> $a['merit_score'];
+        // Sorting logic based on type
+        usort($scored, function ($a, $b) use ($algoType) {
+            if ($algoType === 'merit_based') {
+                if ($b['merit_score'] !== $a['merit_score']) {
+                    return $b['merit_score'] <=> $a['merit_score'];
+                }
+                // Tie-breaker: earlier graduation year first
+                return $a['application']['graduation_year'] <=> $b['application']['graduation_year'];
+            } 
+            
+            if ($algoType === 'first_come_first_served') {
+                $ta = $a['application']['last_verified_at'] ?? $a['application']['created_at'];
+                $tb = $b['application']['last_verified_at'] ?? $b['application']['created_at'];
+                return $ta <=> $tb; // Earlier timestamp first
             }
-            return $a['application']['graduation_year'] <=> $b['application']['graduation_year'];
+
+            // Manual or unknown: default to submission order
+            return $a['application_id'] <=> $b['application_id'];
         });
 
+        // 4. Calculate qualification status based on capacity and cutoff
         $cutoff      = $criteria['cutoff_score'] !== null ? (float)$criteria['cutoff_score']  : null;
         $maxCapacity = $criteria['max_capacity']  !== null ? (int)$criteria['max_capacity']    : null;
         $now         = date('Y-m-d H:i:s');
@@ -311,11 +342,13 @@ class ApplicationService
             $rankNum     = $rank + 1;
             $isQualified = 1;
 
-            if ($cutoff !== null && $entry['merit_score'] < $cutoff) {
+            // Threshold checks only for merit-based (usually)
+            if ($algoType === 'merit_based' && $cutoff !== null && $entry['merit_score'] < $cutoff) {
                 $isQualified = 0;
             }
 
-            if ($maxCapacity !== null && $rankNum > $maxCapacity) {
+            // Capacity limit applies to all except 'manual'
+            if ($algoType !== 'manual' && $maxCapacity !== null && $rankNum > $maxCapacity) {
                 $isQualified = 0;
             }
 
@@ -331,7 +364,7 @@ class ApplicationService
             ];
         }
 
-        // Atomic: clear old list → insert new → update application scores
+        // 5. Save results to database (Atomic)
         $this->db->transaction(function () use ($rows, $departmentId, $intake, $yearId, $now, $actorId) {
             $this->meritListModel->clearForDeptIntake($departmentId, $intake, $yearId);
 
@@ -361,6 +394,7 @@ class ApplicationService
             'qualified_count' => $qualifiedCount,
             'cutoff_score'    => $cutoff,
             'max_capacity'    => $maxCapacity,
+            'algorithm_type'  => $algoType,
             'top_entries'     => array_slice($rows, 0, 5),
         ];
     }

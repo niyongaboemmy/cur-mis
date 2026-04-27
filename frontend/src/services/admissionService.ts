@@ -120,7 +120,13 @@ export const applicationAdminService = {
     }>('/api/admin/applications/stats', {}, signal),
 
   show: (id: number, signal?: AbortSignal) =>
-    api.get<{ application: StudentApplication; documents?: ApplicationDocument[]; status_log?: ApplicationStatusLog[] }>(
+    api.get<{ 
+      application: StudentApplication; 
+      documents?: ApplicationDocument[]; 
+      status_log?: ApplicationStatusLog[];
+      merit_criteria?: MeritCriteria | null;
+      merit_listing?: MeritListRow | null;
+    }>(
       `/api/admin/applications/${id}`, {}, signal,
     ),
 

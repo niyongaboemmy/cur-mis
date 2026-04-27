@@ -99,7 +99,7 @@ const ENTITIES: EntityCfg[] = [
       { key: 'dep_name',        label: 'Name',        type: 'text',     required: true },
       { key: 'dep_acronym',     label: 'Acronym',     type: 'text' },
       { key: 'dep_description', label: 'Description', type: 'textarea' },
-      { key: 'fac_id',          label: 'Faculty ID',  type: 'number' },
+      { key: 'fac_id',          label: 'Faculty ID',  type: 'number',   required: true },
     ],
   },
   {
@@ -114,11 +114,11 @@ const ENTITIES: EntityCfg[] = [
     fields: [
       { key: 'module_code',    label: 'Code',    type: 'text', required: true, placeholder: 'CSC1101' },
       { key: 'module_name',    label: 'Name',    type: 'text', required: true, placeholder: 'Introduction to Programming' },
-      { key: 'module_credits', label: 'Credits', type: 'number' },
+      { key: 'module_credits', label: 'Credits', type: 'number', required: true },
       { key: 'hours',          label: 'Hours',   type: 'number' },
-      { key: 'level',          label: 'Level',   type: 'number' },
+      { key: 'level',          label: 'Level',   type: 'number', required: true },
       { key: 'school_id',      label: 'School ID',type: 'number' },
-      { key: 'department',     label: 'Dept ID', type: 'number' },
+      { key: 'department',     label: 'Dept ID', type: 'number', required: true },
     ],
   },
   {
@@ -133,7 +133,7 @@ const ENTITIES: EntityCfg[] = [
     fields: [
       { key: 'name',      label: 'Name',      type: 'text',     required: true },
       { key: 'building',  label: 'Building',  type: 'text' },
-      { key: 'capacity',  label: 'Capacity',  type: 'number' },
+      { key: 'capacity',  label: 'Capacity',  type: 'number',   required: true },
       { key: 'room_type', label: 'Type',      type: 'text',     placeholder: 'lecture / lab' },
       { key: 'is_active', label: 'Active',    type: 'checkbox' },
     ],
@@ -147,7 +147,7 @@ const ENTITIES: EntityCfg[] = [
     ],
     fields: [
       { key: 'name',          label: 'Name',          type: 'text',     required: true },
-      { key: 'department_id', label: 'Department ID', type: 'number' },
+      { key: 'department_id', label: 'Department ID', type: 'number', required: true },
       { key: 'is_active',     label: 'Active',        type: 'checkbox' },
     ],
   },
@@ -169,7 +169,7 @@ const ENTITIES: EntityCfg[] = [
     ],
     fields: [
       { key: 'name',         label: 'Name',         type: 'text',     required: true, placeholder: 'Annual leave' },
-      { key: 'days_allowed', label: 'Days allowed', type: 'number' },
+      { key: 'days_allowed', label: 'Days allowed', type: 'number', required: true },
       { key: 'is_paid',      label: 'Paid',         type: 'checkbox' },
     ],
   },
