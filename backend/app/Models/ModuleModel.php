@@ -128,6 +128,10 @@ class ModuleModel extends BaseModel
 
         $level = !empty($student['current_level']) ? (int)$student['current_level'] : 999;
 
+        // Exclude modules the student has already engaged with — same-term
+        // registrations (any status), AND any completed/registered module
+        // across past terms (no point re-enrolling in something they already
+        // passed or are still in).
         $rows = $this->db->fetchAll(
             "SELECT m.*
              FROM `modules` m
@@ -135,7 +139,8 @@ class ModuleModel extends BaseModel
                AND m.level <= ?
                AND m.module_id NOT IN (
                    SELECT module_id FROM `module_registrations`
-                   WHERE student_regnumber = ? AND academic_term_id = ?
+                   WHERE student_regnumber = ?
+                     AND (academic_term_id = ? OR status IN ('registered','completed'))
                )",
             [$level, $regnumber, $termId]
         );

@@ -1,6 +1,6 @@
-import { useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { useSearchParams, Link } from 'react-router-dom'
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useSearchParams, Link } from "react-router-dom";
 import {
   Search,
   Loader2,
@@ -15,68 +15,96 @@ import {
   Filter,
   X,
   Eye,
-} from 'lucide-react'
-import { studentService, type StudentStats, type StudentListParams, type FacetOption, type BreakdownRow } from '@/services/studentService'
-import { useDebounce } from '@/hooks/useDebounce'
-import { useSystemStore } from '@/store/systemStore'
-import StatCard from '@/components/dashboard/StatCard'
-import DonutChart from '@/components/dashboard/DonutChart'
-import BarChart, { type BarDatum } from '@/components/dashboard/BarChart'
-import SearchableSelect from '@/components/ui/SearchableSelect'
-import type { Student } from '@/types/academic'
+} from "lucide-react";
+import {
+  studentService,
+  type StudentStats,
+  type StudentListParams,
+  type FacetOption,
+  type BreakdownRow,
+} from "@/services/studentService";
+import { useDebounce } from "@/hooks/useDebounce";
+import { useSystemStore } from "@/store/systemStore";
+import StatCard from "@/components/dashboard/StatCard";
+import DonutChart from "@/components/dashboard/DonutChart";
+import BarChart, { type BarDatum } from "@/components/dashboard/BarChart";
+import SearchableSelect from "@/components/ui/SearchableSelect";
+import { portalService } from "@/services/admissionService";
+import { academicsMgmtService } from "@/services/academicsMgmtService";
+import type { Student } from "@/types/academic";
 
-const PER_PAGE = 15
+const PER_PAGE = 15;
 
 /* ─────────────────────────────────────────────────────────────
    Tabs: Active students (default) and All students.
    URL-driven state — card clicks navigate with filter params.
    ───────────────────────────────────────────────────────────── */
-type Tab = 'active' | 'all'
+type Tab = "active" | "all";
 
 export default function StudentsPage() {
-  const [sp, setSp] = useSearchParams()
-  const tab = (sp.get('tab') as Tab) || 'active'
+  const [sp, setSp] = useSearchParams();
+  const tab = (sp.get("tab") as Tab) || "active";
 
   const setTab = (next: Tab) => {
-    const clone = new URLSearchParams(sp)
-    clone.set('tab', next)
+    const clone = new URLSearchParams(sp);
+    clone.set("tab", next);
     // Clear page on tab switch
-    clone.delete('page')
-    setSp(clone, { replace: true })
-  }
+    clone.delete("page");
+    setSp(clone, { replace: true });
+  };
 
   // Global academic year (topnav selector). Empty string = all years.
-  const selectedYear = useSystemStore((s) => s.selectedYearLabel)
+  const selectedYear = useSystemStore((s) => s.selectedYearLabel);
 
   // Shared stats — refetched when the global year changes so every metric
   // (counts, charts, breakdowns) re-scopes to the selected academic year.
   const statsQ = useQuery({
-    queryKey: ['student-stats', selectedYear || 'all'],
-    queryFn:  () => studentService.stats({ acc_year: selectedYear || undefined }),
+    queryKey: ["student-stats", selectedYear || "all"],
+    queryFn: () =>
+      studentService.stats({ acc_year: selectedYear || undefined }),
     staleTime: 60_000,
-  })
-  const stats: StudentStats | null = statsQ.data?.data ?? null
+  });
+  const stats: StudentStats | null = statsQ.data?.data ?? null;
 
   return (
     <div className="max-w-[1400px] mx-auto space-y-5">
       {/* ── Tabs ── */}
       <section className="card p-1.5">
         <div className="flex items-center gap-1">
-          <TabButton active={tab === 'active'} icon={BadgeCheck} label="Overview" onClick={() => setTab('active')} />
-          <TabButton active={tab === 'all'}    icon={GraduationCap} label="Students list"   onClick={() => setTab('all')} />
+          <TabButton
+            active={tab === "active"}
+            icon={BadgeCheck}
+            label="Overview"
+            onClick={() => setTab("active")}
+          />
+          <TabButton
+            active={tab === "all"}
+            icon={GraduationCap}
+            label="Students list"
+            onClick={() => setTab("all")}
+          />
         </div>
       </section>
 
-      {tab === 'active'
-        ? <ActiveTab stats={stats} loading={statsQ.isLoading} fetching={statsQ.isFetching} onDrill={(filters) => {
-            const next = new URLSearchParams()
-            next.set('tab', 'all')
-            Object.entries(filters).forEach(([k, v]) => { if (v) next.set(k, String(v)) })
-            setSp(next, { replace: false })
-          }} />
-        : <AllTab stats={stats} />}
+      {tab === "active" ? (
+        <ActiveTab
+          stats={stats}
+          loading={statsQ.isLoading}
+          fetching={statsQ.isFetching}
+          onDrill={(filters) => {
+            const next = new URLSearchParams();
+            next.set("tab", "all");
+            Object.entries(filters).forEach(([k, v]) => {
+              if (v) next.set(k, String(v));
+            });
+            setSp(next, { replace: false });
+          }}
+        />
+      ) : (
+        <AllTab stats={stats} />
+      )}
     </div>
-  )
+  );
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -89,20 +117,20 @@ function ActiveTab({
   fetching,
   onDrill,
 }: {
-  stats: StudentStats | null
-  loading: boolean
-  fetching: boolean
-  onDrill: (filters: Record<string, string | undefined>) => void
+  stats: StudentStats | null;
+  loading: boolean;
+  fetching: boolean;
+  onDrill: (filters: Record<string, string | undefined>) => void;
 }) {
-  const s = stats
+  const s = stats;
 
-  const activeTotal      = s?.active ?? 0
+  const activeTotal = s?.active ?? 0;
   // All buckets (including Unknown) sum to the full active total so nothing on this tab
   // exceeds the active count.
-  const activeGenderTot  = activeTotal
-  const activeNationTot  = activeTotal
-  const unknownGender    = s?.active_unknown_gender      ?? 0
-  const unknownNation    = s?.active_unknown_nationality ?? 0
+  const activeGenderTot = activeTotal;
+  const activeNationTot = activeTotal;
+  const unknownGender = s?.active_unknown_gender ?? 0;
+  const unknownNation = s?.active_unknown_nationality ?? 0;
 
   return (
     <div className="space-y-5">
@@ -110,24 +138,50 @@ function ActiveTab({
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
             <div className="flex items-center gap-2">
-              <span className="chip-success"><BadgeCheck className="w-3 h-3" /> Active students</span>
+              <span className="chip-success">
+                <BadgeCheck className="w-3 h-3" /> Active students
+              </span>
               <h2 className="text-[18px] font-semibold text-ink-900 dark:text-white tracking-tight">
                 Overview
               </h2>
             </div>
             <p className="text-[12.5px] text-ink-500 mt-1">
-              Live metrics scoped to {fmt(activeTotal)} active student{activeTotal === 1 ? '' : 's'} only.
-              Click any card or chart to open the list pre-filtered.
+              Live metrics scoped to {fmt(activeTotal)} active student
+              {activeTotal === 1 ? "" : "s"} only. Click any card or chart to
+              open the list pre-filtered.
             </p>
           </div>
-          {(loading || fetching) && <Loader2 className="w-4 h-4 text-ink-400 animate-spin" />}
+          {(loading || fetching) && (
+            <Loader2 className="w-4 h-4 text-ink-400 animate-spin" />
+          )}
         </div>
 
         <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-          <ClickableStat label="Active students" value={fmt(activeTotal)}              icon={BadgeCheck}    tone="mint"  onClick={() => onDrill({ student_state: 'active' })} />
-          <ClickableStat label="Faculties"       value={fmt(s?.active_faculties)}      icon={Building2}     tone="sky" />
-          <ClickableStat label="Departments"     value={fmt(s?.active_departments)}    icon={GraduationCap} tone="lilac" />
-          <ClickableStat label="Academic years"  value={fmt(s?.active_academic_years)} icon={Globe2}        tone="peach" />
+          <ClickableStat
+            label="Active students"
+            value={fmt(activeTotal)}
+            icon={BadgeCheck}
+            tone="mint"
+            onClick={() => onDrill({ student_state: "active" })}
+          />
+          <ClickableStat
+            label="Faculties"
+            value={fmt(s?.active_faculties)}
+            icon={Building2}
+            tone="sky"
+          />
+          <ClickableStat
+            label="Departments"
+            value={fmt(s?.active_departments)}
+            icon={GraduationCap}
+            tone="lilac"
+          />
+          <ClickableStat
+            label="Academic years"
+            value={fmt(s?.active_academic_years)}
+            icon={Globe2}
+            tone="peach"
+          />
         </div>
       </section>
 
@@ -173,12 +227,16 @@ function ActiveTab({
           <div className="flex items-start justify-between gap-3 flex-wrap mb-2">
             <div>
               <div className="flex items-center gap-2">
-                <span className="chip-success"><BadgeCheck className="w-3 h-3" /> Active students</span>
-                <h3 className="text-[15px] font-semibold text-ink-900 dark:text-white">Gender split</h3>
+                <span className="chip-success">
+                  <BadgeCheck className="w-3 h-3" /> Active students
+                </span>
+                <h3 className="text-[15px] font-semibold text-ink-900 dark:text-white">
+                  Gender split
+                </h3>
               </div>
               <p className="text-[12px] text-ink-500 mt-1">
-                Every active student is counted — including those with no recorded gender.
-                Click a card to open the filtered list.
+                Every active student is counted — including those with no
+                recorded gender. Click a card to open the filtered list.
               </p>
             </div>
           </div>
@@ -186,9 +244,9 @@ function ActiveTab({
           <div className="flex flex-col md:flex-row items-center gap-8">
             <DonutChart
               segments={[
-                { label: 'Male',    value: s.active_male,   color: '#0A2A5E' },
-                { label: 'Female',  value: s.active_female, color: '#F5C400' },
-                { label: 'Unknown', value: unknownGender,   color: '#94A3B8' },
+                { label: "Male", value: s.active_male, color: "#0A2A5E" },
+                { label: "Female", value: s.active_female, color: "#F5C400" },
+                { label: "Unknown", value: unknownGender, color: "#94A3B8" },
               ]}
               centerTop="Active"
               centerBig={activeGenderTot.toLocaleString()}
@@ -199,21 +257,27 @@ function ActiveTab({
                 value={s.active_male}
                 percent={pct(s.active_male, activeGenderTot)}
                 color="#0A2A5E"
-                onClick={() => onDrill({ student_state: 'active', gender: 'M' })}
+                onClick={() =>
+                  onDrill({ student_state: "active", gender: "M" })
+                }
               />
               <LegendCard
                 label="Female"
                 value={s.active_female}
                 percent={pct(s.active_female, activeGenderTot)}
                 color="#F5C400"
-                onClick={() => onDrill({ student_state: 'active', gender: 'F' })}
+                onClick={() =>
+                  onDrill({ student_state: "active", gender: "F" })
+                }
               />
               <LegendCard
                 label="Not specified"
                 value={unknownGender}
                 percent={pct(unknownGender, activeGenderTot)}
                 color="#94A3B8"
-                onClick={() => onDrill({ student_state: 'active', gender: 'unknown' })}
+                onClick={() =>
+                  onDrill({ student_state: "active", gender: "unknown" })
+                }
               />
             </div>
           </div>
@@ -224,11 +288,16 @@ function ActiveTab({
       {s && activeNationTot > 0 && (
         <section className="card p-6">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="chip-success"><BadgeCheck className="w-3 h-3" /> Active students</span>
-            <h3 className="text-[15px] font-semibold text-ink-900 dark:text-white">Nationality</h3>
+            <span className="chip-success">
+              <BadgeCheck className="w-3 h-3" /> Active students
+            </span>
+            <h3 className="text-[15px] font-semibold text-ink-900 dark:text-white">
+              Nationality
+            </h3>
           </div>
           <p className="text-[12px] text-ink-500 mt-1">
-            Share of active students by origin. Click a card to open the filtered list.
+            Share of active students by origin. Click a card to open the
+            filtered list.
           </p>
 
           <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -237,21 +306,27 @@ function ActiveTab({
               value={s.active_rwandan}
               percent={pct(s.active_rwandan, activeNationTot)}
               color="#10B981"
-              onClick={() => onDrill({ student_state: 'active', nationality: 'rwandan' })}
+              onClick={() =>
+                onDrill({ student_state: "active", nationality: "rwandan" })
+              }
             />
             <NationalityCard
               label="Foreign"
               value={s.active_foreign}
               percent={pct(s.active_foreign, activeNationTot)}
               color="#4FB4FF"
-              onClick={() => onDrill({ student_state: 'active', nationality: 'foreign' })}
+              onClick={() =>
+                onDrill({ student_state: "active", nationality: "foreign" })
+              }
             />
             <NationalityCard
               label="Not specified"
               value={unknownNation}
               percent={pct(unknownNation, activeNationTot)}
               color="#94A3B8"
-              onClick={() => onDrill({ student_state: 'active', nationality: 'unknown' })}
+              onClick={() =>
+                onDrill({ student_state: "active", nationality: "unknown" })
+              }
             />
           </div>
         </section>
@@ -262,12 +337,16 @@ function ActiveTab({
         <section className="card p-6 space-y-6">
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="chip-success"><BadgeCheck className="w-3 h-3" /> Active students</span>
-              <h3 className="text-[15px] font-semibold text-ink-900 dark:text-white">Breakdown</h3>
+              <span className="chip-success">
+                <BadgeCheck className="w-3 h-3" /> Active students
+              </span>
+              <h3 className="text-[15px] font-semibold text-ink-900 dark:text-white">
+                Breakdown
+              </h3>
             </div>
             <p className="text-[12px] text-ink-500 mt-1">
-              {fmt(s.active)} active student{s.active === 1 ? '' : 's'} only. Click a bar to open
-              the list pre-filtered.
+              {fmt(s.active)} active student{s.active === 1 ? "" : "s"} only.
+              Click a bar to open the list pre-filtered.
             </p>
           </div>
 
@@ -276,82 +355,102 @@ function ActiveTab({
               title="By faculty"
               rows={s.active_breakdown?.by_faculty}
               color="#0A2A5E"
-              cleanLabel={(l) => l.replace(/^faculty of\s+/i, '').trim()}
-              onPick={(r) => onDrill({ student_state: 'active', faculty: r.value })}
+              cleanLabel={(l) => l.replace(/^faculty of\s+/i, "").trim()}
+              onPick={(r) =>
+                onDrill({ student_state: "active", faculty: r.value })
+              }
             />
             <BreakdownChart
               title="By department"
               rows={s.active_breakdown?.by_department}
               color="#4FB4FF"
-              onPick={(r) => onDrill({ student_state: 'active', department: r.value })}
+              onPick={(r) =>
+                onDrill({ student_state: "active", department: r.value })
+              }
             />
             <BreakdownChart
               title="By level"
               rows={s.active_breakdown?.by_level}
               color="#F5C400"
               labelPrefix="Level "
-              onPick={(r) => onDrill({ student_state: 'active', current_level: r.value })}
+              onPick={(r) =>
+                onDrill({ student_state: "active", current_level: r.value })
+              }
             />
             <BreakdownChart
               title="By program"
               rows={s.active_breakdown?.by_program}
               color="#10B981"
-              onPick={(r) => onDrill({ student_state: 'active', program: r.value })}
+              onPick={(r) =>
+                onDrill({ student_state: "active", program: r.value })
+              }
             />
           </div>
         </section>
       )}
     </div>
-  )
+  );
 }
 
 function BreakdownChart({
-  title, rows, color, labelPrefix, cleanLabel, onPick,
+  title,
+  rows,
+  color,
+  labelPrefix,
+  cleanLabel,
+  onPick,
 }: {
-  title: string
-  rows?: BreakdownRow[]
-  color: string
-  labelPrefix?: string
-  cleanLabel?: (label: string) => string
-  onPick: (row: BreakdownRow) => void
+  title: string;
+  rows?: BreakdownRow[];
+  color: string;
+  labelPrefix?: string;
+  cleanLabel?: (label: string) => string;
+  onPick: (row: BreakdownRow) => void;
 }) {
   const data: BarDatum[] = (rows ?? []).map((r) => {
-    const rawLabel = (r.label && String(r.label).trim()) ? String(r.label) : r.value
-    const cleaned  = cleanLabel ? cleanLabel(rawLabel) : rawLabel
+    const rawLabel =
+      r.label && String(r.label).trim() ? String(r.label) : r.value;
+    const cleaned = cleanLabel ? cleanLabel(rawLabel) : rawLabel;
     return {
       value: r.value,
-      label: `${labelPrefix ?? ''}${cleaned}`,
+      label: `${labelPrefix ?? ""}${cleaned}`,
       total: Number(r.total) || 0,
       color,
-    }
-  })
+    };
+  });
 
   return (
     <div className="rounded-lg border border-ink-100 dark:border-ink-700 p-4 bg-white dark:bg-ink-800">
-      <h4 className="text-[13px] font-semibold text-ink-700 dark:text-ink-200 mb-3">{title}</h4>
+      <h4 className="text-[13px] font-semibold text-ink-700 dark:text-ink-200 mb-3">
+        {title}
+      </h4>
       {data.length === 0 ? (
         <p className="text-[12px] text-ink-400 py-8 text-center">No data.</p>
       ) : (
         <BarChart
           data={data}
           onPick={(d) => {
-            const original = (rows ?? []).find((r) => r.value === d.value)
-            if (original) onPick(original)
+            const original = (rows ?? []).find((r) => r.value === d.value);
+            if (original) onPick(original);
           }}
         />
       )}
     </div>
-  )
+  );
 }
 
 function LegendCard({
-  label, value, percent, color, onClick,
+  label,
+  value,
+  percent,
+  color,
+  onClick,
 }: {
-  label: string
-  value: number
-  percent: number
-  color: string
-  onClick?: () => void
+  label: string;
+  value: number;
+  percent: number;
+  color: string;
+  onClick?: () => void;
 }) {
   return (
     <button
@@ -361,25 +460,36 @@ function LegendCard({
       className="text-left rounded-lg border border-ink-100 dark:border-ink-700 px-4 py-3 bg-white dark:bg-ink-800 hover:border-brand/40 hover:bg-brand/5 transition-colors disabled:cursor-default"
     >
       <div className="flex items-center gap-2">
-        <span className="w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
-        <span className="text-[12.5px] font-medium text-ink-700 dark:text-ink-200">{label}</span>
-        <span className="ml-auto text-[11px] text-ink-400 tabular-nums">{percent}%</span>
+        <span
+          className="w-3 h-3 rounded-full"
+          style={{ backgroundColor: color }}
+        />
+        <span className="text-[12.5px] font-medium text-ink-700 dark:text-ink-200">
+          {label}
+        </span>
+        <span className="ml-auto text-[11px] text-ink-400 tabular-nums">
+          {percent}%
+        </span>
       </div>
       <p className="text-[22px] font-semibold text-ink-900 dark:text-white tabular-nums mt-1">
         {value.toLocaleString()}
       </p>
     </button>
-  )
+  );
 }
 
 function NationalityCard({
-  label, value, percent, color, onClick,
+  label,
+  value,
+  percent,
+  color,
+  onClick,
 }: {
-  label: string
-  value: number
-  percent: number
-  color: string
-  onClick?: () => void
+  label: string;
+  value: number;
+  percent: number;
+  color: string;
+  onClick?: () => void;
 }) {
   return (
     <button
@@ -391,7 +501,10 @@ function NationalityCard({
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
+            <span
+              className="w-2.5 h-2.5 rounded-full"
+              style={{ backgroundColor: color }}
+            />
             <span className="text-[12px] uppercase tracking-wider font-semibold text-ink-500">
               {label}
             </span>
@@ -418,96 +531,152 @@ function NationalityCard({
         />
       </div>
     </button>
-  )
+  );
 }
 
 function pct(part: number, total: number): number {
-  if (!total) return 0
-  return Math.round((part / total) * 100)
+  if (!total) return 0;
+  return Math.round((part / total) * 100);
 }
 
 /* ─────────────────────────────────────────────────────────────
    All students tab — search + filters + paginated table.
    ───────────────────────────────────────────────────────────── */
 function AllTab({ stats }: { stats: StudentStats | null }) {
-  const [sp, setSp] = useSearchParams()
-  const facets = stats?.facets
+  const [sp, setSp] = useSearchParams();
+  const facets = stats?.facets;
 
   // Academic year comes from the global topnav selector — not the URL.
-  const selectedYear = useSystemStore((s) => s.selectedYearLabel)
+  const selectedYear = useSystemStore((s) => s.selectedYearLabel);
 
-  const q             = sp.get('q') ?? ''
-  const gender        = sp.get('gender') ?? ''
-  const state         = sp.get('student_state') ?? 'active'
-  const nationality   = sp.get('nationality') ?? ''
-  const faculty       = sp.get('faculty') ?? ''
-  const department    = sp.get('department') ?? ''
-  const level         = sp.get('current_level') ?? ''
-  const program       = sp.get('program') ?? ''
-  const sort_by       = sp.get('sort_by') ?? ''
-  const sort_dir      = (sp.get('sort_dir') as 'asc' | 'desc') ?? 'desc'
-  const page          = Math.max(1, Number(sp.get('page') || 1))
+  // Entity data for cascading filters
+  const facultiesQ = useQuery({ queryKey: ['portal', 'faculties'], queryFn: () => portalService.getFaculties(), staleTime: 5 * 60_000 });
+  const allFaculties: any[] = facultiesQ.data?.data ?? [];
+  const deptsQ = useQuery({ queryKey: ['acmgmt', 'departments', 'all'], queryFn: () => academicsMgmtService.list<any>('departments', { per_page: 200 }), staleTime: 5 * 60_000 });
+  const allDepartments: any[] = deptsQ.data?.data?.data ?? [];
+  const programsQ = useQuery({ queryKey: ['acmgmt', 'options', 'all'], queryFn: () => academicsMgmtService.list<any>('options', { per_page: 500 }), staleTime: 5 * 60_000 });
+  const allPrograms: any[] = programsQ.data?.data?.data ?? [];
 
-  const debouncedQ = useDebounce(q, 350)
+  const q = sp.get("q") ?? "";
+  const gender = sp.get("gender") ?? "";
+  const state = sp.get("student_state") ?? "active";
+  const nationality = sp.get("nationality") ?? "";
+  const faculty = sp.get("faculty") ?? "";
+  const department = sp.get("department") ?? "";
+  const level = sp.get("current_level") ?? "";
+  const program = sp.get("program") ?? "";
+  const sort_by = sp.get("sort_by") ?? "";
+  const sort_dir = (sp.get("sort_dir") as "asc" | "desc") ?? "desc";
+  const page = Math.max(1, Number(sp.get("page") || 1));
+
+  const debouncedQ = useDebounce(q, 350);
 
   const update = (patch: Record<string, string | undefined>) => {
-    const next = new URLSearchParams(sp)
+    const next = new URLSearchParams(sp);
     Object.entries(patch).forEach(([k, v]) => {
-      if (v) next.set(k, v)
-      else next.delete(k)
-    })
-    next.delete('page')
-    setSp(next, { replace: false })
-  }
+      if (v) next.set(k, v);
+      else next.delete(k);
+    });
+    next.delete("page");
+    setSp(next, { replace: false });
+  };
 
   const setPage = (p: number) => {
-    const next = new URLSearchParams(sp)
-    next.set('page', String(p))
-    setSp(next, { replace: false })
-  }
+    const next = new URLSearchParams(sp);
+    next.set("page", String(p));
+    setSp(next, { replace: false });
+  };
 
   const handleSort = (field: string) => {
     if (sort_by === field) {
-      if (sort_dir === 'asc') {
-        update({ sort_by: field, sort_dir: 'desc' })
+      if (sort_dir === "asc") {
+        update({ sort_by: field, sort_dir: "desc" });
       } else {
-        update({ sort_by: '', sort_dir: '' })
+        update({ sort_by: "", sort_dir: "" });
       }
     } else {
-      update({ sort_by: field, sort_dir: 'asc' })
+      update({ sort_by: field, sort_dir: "asc" });
     }
-  }
+  };
 
-  const listParams: StudentListParams = useMemo(() => ({
-    page,
-    per_page: PER_PAGE,
-    q:             debouncedQ || undefined,
-    gender:        gender || undefined,
-    student_state: state === 'all' ? undefined : state,
-    nationality:   nationality || undefined,
-    faculty:       faculty || undefined,
-    department:    department || undefined,
-    current_level: level || undefined,
-    acc_year:      selectedYear || undefined,
-    program:       program || undefined,
-    sort_by:       sort_by || undefined,
-    sort_dir:      sort_dir || undefined,
-  }), [page, debouncedQ, gender, state, nationality, faculty, department, level, selectedYear, program, sort_by, sort_dir])
+  const listParams: StudentListParams = useMemo(
+    () => ({
+      page,
+      per_page: PER_PAGE,
+      q: debouncedQ || undefined,
+      gender: gender || undefined,
+      student_state: state === "all" ? undefined : state,
+      nationality: nationality || undefined,
+      faculty: faculty || undefined,
+      department: department || undefined,
+      current_level: level || undefined,
+      acc_year: selectedYear || undefined,
+      program: program || undefined,
+      sort_by: sort_by || undefined,
+      sort_dir: sort_dir || undefined,
+    }),
+    [
+      page,
+      debouncedQ,
+      gender,
+      state,
+      nationality,
+      faculty,
+      department,
+      level,
+      selectedYear,
+      program,
+      sort_by,
+      sort_dir,
+    ],
+  );
 
   const listQ = useQuery({
-    queryKey: ['students', listParams],
-    queryFn:  () => studentService.list(listParams),
+    queryKey: ["students", listParams],
+    queryFn: () => studentService.list(listParams),
     placeholderData: (prev) => prev,
-  })
+  });
 
-  const rows = listQ.data?.data?.data ?? []
-  const total = listQ.data?.data?.total ?? 0
-  const last  = listQ.data?.data?.last_page ?? 1
+  const rows = listQ.data?.data?.data ?? [];
+  const total = listQ.data?.data?.total ?? 0;
+  const last = listQ.data?.data?.last_page ?? 1;
 
-  const activeFilterCount = [gender, state === 'active' ? '' : state, nationality, faculty, department, level, program]
-    .filter(Boolean).length
+  const activeFilterCount = [
+    gender,
+    state === "active" ? "" : state,
+    nationality,
+    faculty,
+    department,
+    level,
+    program,
+  ].filter(Boolean).length;
 
-  const clearAll = () => setSp({ tab: 'all', student_state: 'active' }, { replace: false })
+  /* ── Cascading lists (Faculty → Department → Program) ──
+     Backend filter expectations:
+       - faculty    → faculty.fac_id  (numeric, stored as varchar in `student`)
+       - department → departements.dep_id (numeric, stored as varchar)
+       - program    → program name (free-text in `student.program`) */
+  const facultyFacets: FacetOption[] = useMemo(() => {
+    if (allFaculties.length) return allFaculties.map((f: any) => ({ value: String(f.id), label: String(f.name) }));
+    return facets?.faculty ?? [];
+  }, [allFaculties, facets?.faculty]);
+
+  const departmentFacets: FacetOption[] = useMemo(() => {
+    if (!faculty) return [];
+    const facId = Number(faculty);
+    const deps = allDepartments.filter((d: any) => Number(d.fac_id) === facId);
+    return deps.map((d: any) => ({ value: String(d.dep_id), label: String(d.dep_name) }));
+  }, [faculty, allDepartments]);
+
+  const programFacets: FacetOption[] = useMemo(() => {
+    if (!department) return [];
+    const depId = Number(department);
+    const progs = allPrograms.filter((o: any) => Number(o.department_id) === depId);
+    return progs.map((o: any) => ({ value: String(o.name), label: String(o.name) }));
+  }, [department, allPrograms]);
+
+  const clearAll = () =>
+    setSp({ tab: "all", student_state: "active" }, { replace: false });
 
   return (
     <div className="space-y-5">
@@ -525,7 +694,9 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
               />
             </div>
             <div className="flex items-center gap-2 w-full md:w-40 shrink-0">
-              <span className="text-[11px] uppercase tracking-wider text-ink-400 whitespace-nowrap">State</span>
+              <span className="text-[11px] uppercase tracking-wider text-ink-400 whitespace-nowrap">
+                State
+              </span>
               <select
                 value={state}
                 onChange={(e) => update({ student_state: e.target.value })}
@@ -540,7 +711,9 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
 
           <div className="flex items-center gap-2 text-[12.5px] text-ink-500 shrink-0">
             <Filter className="w-3.5 h-3.5" />
-            <span>{total.toLocaleString()} result{total === 1 ? '' : 's'}</span>
+            <span>
+              {total.toLocaleString()} result{total === 1 ? "" : "s"}
+            </span>
             {activeFilterCount > 0 && (
               <button onClick={clearAll} className="btn-secondary btn-sm">
                 <X className="w-3 h-3" /> Clear filters
@@ -550,18 +723,43 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
         </div>
 
         <div className="mt-3 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
-          <FilterSelect label="Faculty"     value={faculty}     onChange={(v) => update({ faculty:       v })} options={facets?.faculty} />
-          <FilterSelect label="Department"  value={department}  onChange={(v) => update({ department:    v })} options={facets?.department} />
-          <FilterSelect label="Level"       value={level}       onChange={(v) => update({ current_level: v })} options={facets?.current_level} />
-          <FilterSelect label="Program"     value={program}     onChange={(v) => update({ program:       v })} options={facets?.program} />
+          <FilterSelect
+            label="Faculty"
+            value={faculty}
+            onChange={(v) => update({ faculty: v, department: undefined, program: undefined })}
+            options={facultyFacets}
+            placeholder="Select faculty…"
+          />
+          <FilterSelect
+            label="Department"
+            value={department}
+            onChange={(v) => update({ department: v, program: undefined })}
+            options={departmentFacets}
+            disabled={!faculty}
+            placeholder={faculty ? "Select department…" : "Pick faculty first"}
+          />
+          <FilterSelect
+            label="Level"
+            value={level}
+            onChange={(v) => update({ current_level: v })}
+            options={facets?.current_level}
+          />
+          <FilterSelect
+            label="Program"
+            value={program}
+            onChange={(v) => update({ program: v })}
+            options={programFacets}
+            disabled={!department}
+            placeholder={department ? "Select program…" : "Pick department first"}
+          />
           <FilterSelect
             label="Gender"
             value={gender}
             onChange={(v) => update({ gender: v })}
             options={[
-              { value: 'M',       label: 'Male' },
-              { value: 'F',       label: 'Female' },
-              { value: 'unknown', label: 'Not specified' },
+              { value: "M", label: "Male" },
+              { value: "F", label: "Female" },
+              { value: "unknown", label: "Not specified" },
             ]}
           />
           <FilterSelect
@@ -569,9 +767,9 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
             value={nationality}
             onChange={(v) => update({ nationality: v })}
             options={[
-              { value: 'rwandan', label: 'Rwandan' },
-              { value: 'foreign', label: 'Foreign' },
-              { value: 'unknown', label: 'Not specified' },
+              { value: "rwandan", label: "Rwandan" },
+              { value: "foreign", label: "Foreign" },
+              { value: "unknown", label: "Not specified" },
             ]}
           />
         </div>
@@ -581,7 +779,7 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
       <section className="card p-0 overflow-hidden">
         <Header
           title="Student Registry"
-          sub={`${total.toLocaleString()} students${activeFilterCount ? ' · filtered' : ''}`}
+          sub={`${total.toLocaleString()} students${activeFilterCount ? " · filtered" : ""}`}
           loading={listQ.isLoading || listQ.isFetching}
         />
 
@@ -590,23 +788,61 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
         ) : listQ.isError ? (
           <Empty label="Failed to load students." />
         ) : rows.length === 0 ? (
-          <Empty label={q || activeFilterCount ? 'No students match your filters.' : 'No students yet.'} />
+          <Empty
+            label={
+              q || activeFilterCount
+                ? "No students match your filters."
+                : "No students yet."
+            }
+          />
         ) : (
           <>
             <div className="overflow-x-auto">
               <table className="data-table">
                 <thead>
                   <tr>
-                    <SortableHeader label="Student" field="fname" currentSort={sort_by} currentDir={sort_dir} onSort={handleSort} />
-                    <SortableHeader label="Reg / Index" field="regnumber" currentSort={sort_by} currentDir={sort_dir} onSort={handleSort} />
-                    <SortableHeader label="Contact" field="email" currentSort={sort_by} currentDir={sort_dir} onSort={handleSort} />
-                    <SortableHeader label="Gender" field="gender" currentSort={sort_by} currentDir={sort_dir} onSort={handleSort} />
-                    <SortableHeader label="Nationality" field="nationality" currentSort={sort_by} currentDir={sort_dir} onSort={handleSort} />
+                    <SortableHeader
+                      label="Student"
+                      field="fname"
+                      currentSort={sort_by}
+                      currentDir={sort_dir}
+                      onSort={handleSort}
+                    />
+                    <SortableHeader
+                      label="Reg / Index"
+                      field="regnumber"
+                      currentSort={sort_by}
+                      currentDir={sort_dir}
+                      onSort={handleSort}
+                    />
+                    <SortableHeader
+                      label="Contact"
+                      field="email"
+                      currentSort={sort_by}
+                      currentDir={sort_dir}
+                      onSort={handleSort}
+                    />
+                    <SortableHeader
+                      label="Gender"
+                      field="gender"
+                      currentSort={sort_by}
+                      currentDir={sort_dir}
+                      onSort={handleSort}
+                    />
+                    <SortableHeader
+                      label="Nationality"
+                      field="nationality"
+                      currentSort={sort_by}
+                      currentDir={sort_dir}
+                      onSort={handleSort}
+                    />
                     <th className="w-[60px]"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((s) => <StudentRow key={s.id} s={s} searchParams={sp} />)}
+                  {rows.map((s) => (
+                    <StudentRow key={s.id} s={s} searchParams={sp} />
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -615,15 +851,26 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
         )}
       </section>
     </div>
-  )
+  );
 }
 
 /* ─────────────────────────────────────────────────────────────
    Row + bits
    ───────────────────────────────────────────────────────────── */
-function StudentRow({ s, searchParams }: { s: Student; searchParams?: URLSearchParams }) {
-  const name     = [s.fname, s.lname].filter(Boolean).join(' ') || '—'
-  const initials = name.split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase()
+function StudentRow({
+  s,
+  searchParams,
+}: {
+  s: Student;
+  searchParams?: URLSearchParams;
+}) {
+  const name = [s.fname, s.lname].filter(Boolean).join(" ") || "—";
+  const initials = name
+    .split(" ")
+    .map((p) => p[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
   return (
     <tr>
       <td>
@@ -632,32 +879,46 @@ function StudentRow({ s, searchParams }: { s: Student; searchParams?: URLSearchP
             {initials}
           </div>
           <div className="min-w-0">
-            <p className="font-semibold text-ink-900 dark:text-ink-100 truncate">{name}</p>
+            <p className="font-semibold text-ink-900 dark:text-ink-100 truncate">
+              {name}
+            </p>
             <p className="text-[11.5px] text-ink-500 truncate">ID #{s.id}</p>
           </div>
         </div>
       </td>
       <td>
         <span className="font-mono text-[12px] text-ink-700 dark:text-ink-200">
-          {s.regnumber || s.index_number || s.index_file || '—'}
+          {s.regnumber || s.index_number || s.index_file || "—"}
         </span>
       </td>
       <td>
         <div className="flex flex-col gap-0.5">
-          {s.email && <span className="text-[12.5px] flex items-center gap-1 text-ink-700 dark:text-ink-200"><Mail className="w-3 h-3 shrink-0" /> {s.email}</span>}
-          {s.phone && <span className="text-[12px] flex items-center gap-1 text-ink-500"><Phone className="w-3 h-3 shrink-0" /> {s.phone}</span>}
+          {s.email && (
+            <span className="text-[12.5px] flex items-center gap-1 text-ink-700 dark:text-ink-200">
+              <Mail className="w-3 h-3 shrink-0" /> {s.email}
+            </span>
+          )}
+          {s.phone && (
+            <span className="text-[12px] flex items-center gap-1 text-ink-500">
+              <Phone className="w-3 h-3 shrink-0" /> {s.phone}
+            </span>
+          )}
           {!s.email && !s.phone && <span className="text-ink-400">—</span>}
         </div>
       </td>
       <td>
-        {s.gender
-          ? <span className="chip-soft uppercase">{String(s.gender).slice(0, 1)}</span>
-          : <span className="text-ink-400">—</span>}
+        {s.gender ? (
+          <span className="chip-soft uppercase">
+            {String(s.gender).slice(0, 1)}
+          </span>
+        ) : (
+          <span className="text-ink-400">—</span>
+        )}
       </td>
-      <td>{s.nationality || '—'}</td>
+      <td>{s.nationality || "—"}</td>
       <td className="text-right pr-4">
-        <Link 
-          to={`/students/${s.id}`} 
+        <Link
+          to={`/students/${s.id}`}
           state={{ fromSearch: searchParams?.toString() }}
           className="btn-secondary btn-sm px-3 py-1.5 rounded-md text-ink-600 dark:text-ink-300 hover:text-brand flex items-center gap-1.5 whitespace-nowrap"
           title="View Student"
@@ -667,43 +928,50 @@ function StudentRow({ s, searchParams }: { s: Student; searchParams?: URLSearchP
         </Link>
       </td>
     </tr>
-  )
+  );
 }
 
 /* ─────────────────────────────────────────────────────────────
    Shared UI bits
    ───────────────────────────────────────────────────────────── */
 function TabButton({
-  active, icon: Icon, label, onClick,
+  active,
+  icon: Icon,
+  label,
+  onClick,
 }: {
-  active: boolean
-  icon:   React.ComponentType<{ className?: string }>
-  label:  string
-  onClick: () => void
+  active: boolean;
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  onClick: () => void;
 }) {
   return (
     <button
       onClick={onClick}
       className={`inline-flex items-center gap-1.5 px-3 py-2 text-[13px] rounded-md transition-colors ${
         active
-          ? 'bg-brand text-white font-semibold shadow-sm'
-          : 'text-ink-600 dark:text-ink-300 hover:text-ink-900 hover:bg-ink-50 dark:hover:text-white dark:hover:bg-ink-700/40'
+          ? "bg-brand text-white font-semibold shadow-sm"
+          : "text-ink-600 dark:text-ink-300 hover:text-ink-900 hover:bg-ink-50 dark:hover:text-white dark:hover:bg-ink-700/40"
       }`}
     >
       <Icon className="w-3.5 h-3.5" />
       {label}
     </button>
-  )
+  );
 }
 
 function ClickableStat({
-  label, value, icon, tone, onClick,
+  label,
+  value,
+  icon,
+  tone,
+  onClick,
 }: {
-  label: string
-  value: string
-  icon: React.ComponentType<{ className?: string }>
-  tone: 'lilac' | 'sky' | 'peach' | 'mint' | 'sun'
-  onClick?: () => void
+  label: string;
+  value: string;
+  icon: React.ComponentType<{ className?: string }>;
+  tone: "lilac" | "sky" | "peach" | "mint" | "sun";
+  onClick?: () => void;
 }) {
   return (
     <button
@@ -713,32 +981,51 @@ function ClickableStat({
     >
       <StatCard label={label} value={value} icon={icon as any} tone={tone} />
     </button>
-  )
+  );
 }
 
 function FilterSelect({
-  label, value, onChange, options,
+  label,
+  value,
+  onChange,
+  options,
+  disabled,
+  placeholder,
 }: {
-  label: string
-  value: string
-  onChange: (v: string) => void
-  options?: FacetOption[]
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options?: FacetOption[];
+  disabled?: boolean;
+  placeholder?: string;
 }) {
   return (
     <div className="block">
-      <span className="text-[11px] uppercase tracking-wider text-ink-400 block mb-1">{label}</span>
-      <SearchableSelect
-        options={options ?? []}
-        value={value}
-        onChange={(v) => onChange(v === 0 || v === '' ? '' : String(v))}
-        allLabel="All"
-        placeholder="All"
-      />
+      <span className={`text-[11px] uppercase tracking-wider block mb-1 ${disabled ? 'text-ink-300' : 'text-ink-400'}`}>
+        {label}
+      </span>
+      <div className={disabled ? 'opacity-50 pointer-events-none' : ''}>
+        <SearchableSelect
+          options={options ?? []}
+          value={value}
+          onChange={(v) => onChange(v === 0 || v === "" ? "" : String(v))}
+          allLabel={placeholder ?? "All"}
+          placeholder={placeholder ?? "All"}
+        />
+      </div>
     </div>
-  )
+  );
 }
 
-function Header({ title, sub, loading }: { title: string; sub: string; loading: boolean }) {
+function Header({
+  title,
+  sub,
+  loading,
+}: {
+  title: string;
+  sub: string;
+  loading: boolean;
+}) {
   return (
     <div className="flex items-center justify-between gap-4 px-6 pt-5 pb-3 border-b border-ink-100 dark:border-ink-700">
       <div>
@@ -747,69 +1034,110 @@ function Header({ title, sub, loading }: { title: string; sub: string; loading: 
       </div>
       {loading && <Loader2 className="w-4 h-4 text-ink-400 animate-spin" />}
     </div>
-  )
+  );
 }
 
 function Empty({ label }: { label: string }) {
-  return <div className="p-10 text-center text-ink-500 text-[13px]">{label}</div>
+  return (
+    <div className="p-10 text-center text-ink-500 text-[13px]">{label}</div>
+  );
 }
 
 function Skel() {
   return (
     <div className="p-6 space-y-2">
       {Array.from({ length: 6 }).map((_, i) => (
-        <div key={i} className="h-10 rounded-md bg-ink-50 dark:bg-ink-700/30 animate-pulse" />
+        <div
+          key={i}
+          className="h-10 rounded-md bg-ink-50 dark:bg-ink-700/30 animate-pulse"
+        />
       ))}
     </div>
-  )
+  );
 }
 
-function Pager({ page, last, onPage }: { page: number; last: number; onPage: (p: number) => void }) {
-  if (last <= 1) return null
+function Pager({
+  page,
+  last,
+  onPage,
+}: {
+  page: number;
+  last: number;
+  onPage: (p: number) => void;
+}) {
+  if (last <= 1) return null;
   return (
     <div className="flex items-center justify-between px-6 py-3 border-t border-ink-100 dark:border-ink-700 text-[12.5px] text-ink-500">
-      <span>Page {page} of {last}</span>
+      <span>
+        Page {page} of {last}
+      </span>
       <div className="flex gap-1">
-        <button className="btn-secondary btn-sm" onClick={() => onPage(Math.max(1, page - 1))} disabled={page <= 1}>
+        <button
+          className="btn-secondary btn-sm"
+          onClick={() => onPage(Math.max(1, page - 1))}
+          disabled={page <= 1}
+        >
           <ArrowLeft className="w-3 h-3" /> Prev
         </button>
-        <button className="btn-secondary btn-sm" onClick={() => onPage(Math.min(last, page + 1))} disabled={page >= last}>
+        <button
+          className="btn-secondary btn-sm"
+          onClick={() => onPage(Math.min(last, page + 1))}
+          disabled={page >= last}
+        >
           Next <ArrowRight className="w-3 h-3" />
         </button>
       </div>
     </div>
-  )
+  );
 }
 
 function SortableHeader({
-  label, field, currentSort, currentDir, onSort
+  label,
+  field,
+  currentSort,
+  currentDir,
+  onSort,
 }: {
-  label: string
-  field: string
-  currentSort: string
-  currentDir: 'asc' | 'desc'
-  onSort: (field: string) => void
+  label: string;
+  field: string;
+  currentSort: string;
+  currentDir: "asc" | "desc";
+  onSort: (field: string) => void;
 }) {
-  const active = currentSort === field
+  const active = currentSort === field;
   return (
-    <th 
+    <th
       onClick={() => onSort(field)}
       className="cursor-pointer group hover:bg-ink-50/50 dark:hover:bg-ink-800/50 transition-colors select-none"
     >
       <div className="flex items-center gap-1.5">
         {label}
-        <span className={`flex flex-col text-[8px] leading-[8px] ${active ? 'text-brand' : 'text-ink-300 opacity-0 group-hover:opacity-100'}`}>
-          <span className={active && currentDir === 'asc' ? 'text-brand' : 'text-ink-300'}>▲</span>
-          <span className={active && currentDir === 'desc' ? 'text-brand' : 'text-ink-300'}>▼</span>
+        <span
+          className={`flex flex-col text-[8px] leading-[8px] ${active ? "text-brand" : "text-ink-300 opacity-0 group-hover:opacity-100"}`}
+        >
+          <span
+            className={
+              active && currentDir === "asc" ? "text-brand" : "text-ink-300"
+            }
+          >
+            ▲
+          </span>
+          <span
+            className={
+              active && currentDir === "desc" ? "text-brand" : "text-ink-300"
+            }
+          >
+            ▼
+          </span>
         </span>
       </div>
     </th>
-  )
+  );
 }
 
 function fmt(n?: number | null): string {
-  if (n === null || n === undefined) return '—'
-  const num = typeof n === 'string' ? Number(n) : n
-  if (Number.isNaN(num)) return '—'
-  return num.toLocaleString()
+  if (n === null || n === undefined) return "—";
+  const num = typeof n === "string" ? Number(n) : n;
+  if (Number.isNaN(num)) return "—";
+  return num.toLocaleString();
 }

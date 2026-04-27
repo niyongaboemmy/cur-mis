@@ -23,8 +23,9 @@ class RoleController extends BaseController
 
     public function index(Request $request, Response $response): never
     {
-        $roles = $this->roleModel->all();
-        // optionally attach permissions count or mapped IDs if needed
+        $roles = $this->roleModel->getWithUserCounts();
+        
+        // attach permissions slugs
         foreach ($roles as &$role) {
             $role['permissions'] = $this->rolePermModel->getSlugsForRole((int)$role['id']);
         }

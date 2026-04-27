@@ -87,6 +87,7 @@ export default function ApplyPage() {
     id: number;
     application_number: string;
   } | null>(null);
+  const [draftLoaded, setDraftLoaded] = useState(false);
   const { isAuthenticated, user } = useAuthStore();
   const navigate = useNavigate();
 
@@ -100,14 +101,62 @@ export default function ApplyPage() {
     mode: "onTouched",
   });
 
+  // Detect an existing draft on mount and resume it instead of starting a new one.
+  const draftsQ = useQuery({
+    queryKey: ["applicant", "applications", "for-apply"],
+    queryFn: () => applicantService.listApplications(),
+    enabled: isAuthenticated && !draftLoaded,
+  });
+
   useEffect(() => {
-    if (isAuthenticated && user && step === 2) {
+    if (draftLoaded || !draftsQ.data?.data) return;
+    const draft = draftsQ.data.data.find((a) => a.status === "draft");
+    if (!draft) {
+      setDraftLoaded(true);
+      return;
+    }
+
+    setDraftApp({ id: draft.id, application_number: draft.application_number });
+    form.reset({
+      faculty_id: draft.faculty_id,
+      department_id: draft.department_id,
+      intake: draft.intake,
+      first_name: draft.first_name || "",
+      last_name: draft.last_name || "",
+      email: draft.email || user?.email || "",
+      phone: draft.phone && draft.phone !== "0000000000" ? draft.phone : "",
+      gender: (draft.gender as any) || "M",
+      birthdate: draft.birthdate || "",
+      nationality: draft.nationality || "Rwandan",
+      address: draft.address || "",
+      prev_school: draft.prev_school && draft.prev_school !== "N/A" ? draft.prev_school : "",
+      prev_qualification:
+        draft.prev_qualification && draft.prev_qualification !== "N/A"
+          ? draft.prev_qualification
+          : "",
+      prev_grade: draft.prev_grade && draft.prev_grade !== "N/A" ? draft.prev_grade : "",
+      combination: (draft as any).combination || "",
+      graduation_year: draft.graduation_year || CURRENT_YEAR,
+      sponsorship: (draft.sponsorship as any) || "self",
+      sponsor_name: draft.sponsor_name || "",
+    });
+    const savedStep = Number(
+      localStorage.getItem(`apply_wizard_step:${draft.id}`) || "",
+    );
+    const resumeStep = savedStep >= 2 && savedStep <= 6 ? savedStep : 2;
+    setStep(resumeStep);
+    setDraftLoaded(true);
+    toast.success(`Resumed draft ${draft.application_number}`);
+  }, [draftsQ.data, draftLoaded, form, user]);
+
+  useEffect(() => {
+    if (isAuthenticated && user && step === 2 && !draftApp) {
       const names = (user.full_name || "").split(" ");
       form.setValue("first_name", names[0] || "");
       form.setValue("last_name", names.slice(1).join(" ") || "");
       form.setValue("email", user.email);
     }
-  }, [isAuthenticated, user, step, form]);
+  }, [isAuthenticated, user, step, form, draftApp]);
 
   const intakesQ = useQuery({
     queryKey: ["portal", "intakes"],
@@ -139,13 +188,22 @@ export default function ApplyPage() {
       setDraftApp(r.data);
       setStep(2);
     },
-    onError: (e: any) =>
-      toast.error(e?.response?.data?.message || "Failed to create draft"),
+    onError: (e: any) => {
+      // Server returned an existing draft → resume it instead of failing.
+      const existing = e?.response?.data?.errors?.draft;
+      if (existing?.id) {
+        toast.success(`Resuming your draft ${existing.application_number}`);
+        navigate("/applicant");
+        return;
+      }
+      toast.error(e?.response?.data?.message || "Failed to create draft");
+    },
   });
 
   const submitM = useMutation({
     mutationFn: (data: FormValues) => applicantService.submitApplication(data),
     onSuccess: () => {
+      if (draftApp) localStorage.removeItem(`apply_wizard_step:${draftApp.id}`);
       toast.success("Application submitted successfully!");
       navigate("/applicant");
     },
@@ -153,12 +211,66 @@ export default function ApplyPage() {
       toast.error(e?.response?.data?.message || "Submission failed"),
   });
 
+  // Per-step save: persist the current step's data on the draft so the user can resume.
+  const saveStepM = useMutation({
+    mutationFn: (payload: { id: number; data: Partial<FormValues> }) =>
+      applicantService.updateApplication(payload.id, payload.data as any),
+    onError: (e: any) =>
+      toast.error(e?.response?.data?.message || "Could not save progress"),
+  });
+
+  const STEP_FIELDS: Record<number, (keyof FormValues)[]> = {
+    2: [
+      "first_name",
+      "last_name",
+      "phone",
+      "gender",
+      "birthdate",
+      "nationality",
+      "address",
+    ],
+    3: [
+      "prev_school",
+      "prev_qualification",
+      "prev_grade",
+      "graduation_year",
+      "combination",
+    ],
+    4: ["sponsorship", "sponsor_name"],
+  };
+
+  const persistStep = async (currentStep: number, nextStep: number) => {
+    if (!draftApp) return;
+    const fields = STEP_FIELDS[currentStep];
+    if (fields) {
+      const values = form.getValues();
+      const payload = Object.fromEntries(
+        fields
+          .map((k) => [k, values[k]])
+          .filter(([, v]) => v !== undefined && v !== ""),
+      ) as Partial<FormValues>;
+      if (Object.keys(payload).length > 0) {
+        await saveStepM.mutateAsync({ id: draftApp.id, data: payload });
+      }
+    }
+    localStorage.setItem(
+      `apply_wizard_step:${draftApp.id}`,
+      String(nextStep),
+    );
+  };
+
   const goNext = async () => {
     if (step === 1) {
       const ok = await form.trigger(["faculty_id", "department_id", "intake"]);
       if (!ok) return;
       if (!isAuthenticated) {
         setShowAuthModal(true);
+        return;
+      }
+      // If a draft is already loaded for this user, just continue the wizard.
+      if (draftApp) {
+        localStorage.setItem(`apply_wizard_step:${draftApp.id}`, "2");
+        setStep(2);
         return;
       }
       draftM.mutate({
@@ -184,8 +296,14 @@ export default function ApplyPage() {
     const keys = stepKeys[step];
     if (keys) {
       const ok = await form.trigger(keys);
-      if (ok) setStep((s) => s + 1);
-    } else setStep((s) => s + 1);
+      if (!ok) return;
+    }
+    try {
+      await persistStep(step, step + 1);
+    } catch {
+      return;
+    }
+    setStep((s) => s + 1);
   };
 
   const handleAuthSuccess = () => {
@@ -491,7 +609,13 @@ export default function ApplyPage() {
             />
             <DocumentsStep
               appNumber={draftApp.application_number}
-              onFinish={() => setStep(6)}
+              onFinish={() => {
+                localStorage.setItem(
+                  `apply_wizard_step:${draftApp.id}`,
+                  "6",
+                );
+                setStep(6);
+              }}
             />
           </div>
         )}
@@ -572,9 +696,21 @@ export default function ApplyPage() {
                 type="button"
                 onClick={goNext}
                 className="btn-primary"
-                disabled={step === 1 && intakes.length === 0}
+                disabled={
+                  (step === 1 && intakes.length === 0) ||
+                  saveStepM.isPending ||
+                  draftM.isPending
+                }
               >
-                Next <ArrowRight className="w-4 h-4" />
+                {saveStepM.isPending || draftM.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" /> Saving…
+                  </>
+                ) : (
+                  <>
+                    Next <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
               </button>
             )}
           </div>

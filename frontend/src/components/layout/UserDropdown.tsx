@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
-import { User, LogOut, Sun, Moon, ChevronDown, Settings } from "lucide-react";
+import { User, LogOut, Sun, Moon, ChevronDown } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useThemeStore } from "@/store/themeStore";
 import { useLogout } from "@/hooks/useAuth";

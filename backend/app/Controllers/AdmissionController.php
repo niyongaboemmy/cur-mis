@@ -303,6 +303,8 @@ class AdmissionController extends BaseController
         $appId    = (int)$request->param('id');
         $authUser = $request->param('_auth_user');
         $actorId  = (int)($authUser['id'] ?? 0);
+        $data     = $request->body();
+        $levelId  = isset($data['level_id']) ? (int)$data['level_id'] : 1;
 
         $offer = $this->offerModel->findByApplicationId($appId);
         if (!$offer) {
@@ -310,7 +312,7 @@ class AdmissionController extends BaseController
         }
 
         try {
-            $result = $this->service->initiateEnrollment((int)$offer['id'], $actorId);
+            $result = $this->service->initiateEnrollment((int)$offer['id'], $actorId, $levelId);
         } catch (\RuntimeException $e) {
             $this->error($response, $e->getMessage(), 422);
         }

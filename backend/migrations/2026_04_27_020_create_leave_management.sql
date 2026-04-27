@@ -62,7 +62,4 @@ CREATE TABLE IF NOT EXISTS `leave_balances` (
     UNIQUE KEY `ux_lb_emp_type_year` (`employee_id`, `leave_type_id`, `year`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- ── 4. Seed new permissions ──────────────────────────────────
-INSERT IGNORE INTO `permissions` (`name`, `category`) VALUES
-('VIEW_LEAVE_REQUESTS',   'HR Management'),
-('MANAGE_LEAVE_REQUESTS', 'HR Management');
+-- ── 4. Permissions are handled via scripts/sync_permissions.php ─────────

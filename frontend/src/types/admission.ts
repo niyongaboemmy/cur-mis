@@ -117,6 +117,8 @@ export interface StudentApplication {
   department_name?:  string
   faculty_name?:     string
   academic_year_label?: string
+  student_id?:       number | null
+  offer_letter_reference?: string | null
 }
 
 export interface ApplicationDocument {
@@ -165,6 +167,7 @@ export interface MeritCriteria {
   required_combinations?: string | null  // JSON array as string
   cutoff_score?:          number | null
   max_capacity?:          number | null
+  algorithm_type:         'merit_based' | 'first_come_first_served' | 'manual'
   is_published?:          0 | 1
 }
 

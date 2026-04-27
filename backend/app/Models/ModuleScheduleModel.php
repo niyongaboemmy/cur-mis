@@ -9,7 +9,8 @@ class ModuleScheduleModel extends BaseModel
     protected string $table = 'module_schedules';
     protected array $fillable = [
         'module_id', 'module_assignment_id', 'academic_term_id', 'room_id',
-        'day_of_week', 'start_time', 'end_time', 'session_type', 'notes',
+        'day_of_week', 'start_time', 'end_time', 'start_date', 'end_date',
+        'session_type', 'notes',
     ];
 
     /**

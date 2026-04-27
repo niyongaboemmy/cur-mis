@@ -7,7 +7,7 @@ namespace App\Models;
 class AcademicYearModel extends BaseModel
 {
     protected string $table = 'academic_years';
-    protected array $fillable = ['label', 'start_date', 'end_date', 'is_current'];
+    protected array $fillable = ['label', 'start_date', 'end_date', 'is_current', 'clearance_threshold'];
 
     /**
      * Get the currently active academic year.

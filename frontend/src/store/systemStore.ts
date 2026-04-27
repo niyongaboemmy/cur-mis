@@ -23,8 +23,15 @@ interface SystemState {
   setLoading: (l: boolean) => void
   setError:  (e: string | null) => void
   setSelectedYearLabel: (label: string) => void
+  /**
+   * Globally-selected academic term ID (e.g. 1 for Sem 1).
+   * 0 or null means "All terms".
+   */
+  selectedTermId: number | null
+  setSelectedTermId: (id: number | null) => void
   clear:     () => void
 }
+
 
 /**
  * Holds the /api/system/basics payload — the "who are we, what term is it"
@@ -38,6 +45,8 @@ export const useSystemStore = create<SystemState>()((set) => ({
 
   selectedYearLabel:       '',
   selectedYearInitialized: false,
+  selectedTermId:          null,
+
 
   setBasics: (basics) => set((s) => {
     const nextLabel = s.selectedYearInitialized
@@ -45,21 +54,32 @@ export const useSystemStore = create<SystemState>()((set) => ({
       : (basics.active_year && typeof basics.active_year === 'object'
           ? (basics.active_year as AcademicYear).label ?? ''
           : '')
+    const nextTermId = s.selectedYearInitialized
+      ? s.selectedTermId
+      : (basics.active_term && typeof basics.active_term === 'object'
+          ? (basics.active_term as AcademicTerm).id ?? null
+          : null)
+
     return {
       basics,
       loadedAt: Date.now(),
       error: null,
       selectedYearLabel:       nextLabel,
       selectedYearInitialized: true,
+      selectedTermId:          nextTermId,
     }
+
   }),
   setLoading: (loading) => set({ loading }),
   setError:  (error) => set({ error }),
   setSelectedYearLabel: (label) => set({ selectedYearLabel: label, selectedYearInitialized: true }),
+  setSelectedTermId: (id) => set({ selectedTermId: id }),
   clear:     () => set({
     basics: null, loading: false, error: null, loadedAt: null,
     selectedYearLabel: '', selectedYearInitialized: false,
+    selectedTermId: null,
   }),
+
 }))
 
 /* ── Selectors ─────────────────────────────────────────────────────── */

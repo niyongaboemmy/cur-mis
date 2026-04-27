@@ -11,6 +11,7 @@ class StudentModel extends BaseModel
     protected array $fillable = [
         'regnumber', 'fname', 'lname', 'phone', 'email', 'gender', 
         'birthdate', 'nationality', 'program', 'faculty', 
-        'department', 'current_level', 'registration_date', 'student_state'
+        'department', 'current_level', 'registration_date', 'student_state',
+        'intake', 'acc_year', 'combination', 'last_school', 'sponsor'
     ];
 }

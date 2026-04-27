@@ -1,12 +1,13 @@
 /** Types for Academic Settings + Academics Management + System Basics. */
 
 export interface AcademicYear {
-  id:          number
-  label:       string
-  start_date:  string | null
-  end_date:    string | null
-  is_current:  0 | 1
-  created_at?: string
+  id:                  number
+  label:               string
+  start_date:          string | null
+  end_date:            string | null
+  is_current:          0 | 1
+  clearance_threshold: number
+  created_at?:         string
 }
 
 export interface AcademicTerm {

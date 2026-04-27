@@ -60,11 +60,23 @@ const ModulesCatalogPage           = lazy(() => import('@/pages/modules/ModulesC
 const ModulesSchedulePage          = lazy(() => import('@/pages/modules/ModulesSchedulePage'))
 const ModulesAssignmentsPage       = lazy(() => import('@/pages/modules/ModulesAssignmentsPage'))
 const ModulesRegistrationAdminPage = lazy(() => import('@/pages/modules/ModulesRegistrationAdminPage'))
+const ModulesMarksPage             = lazy(() => import('@/pages/modules/ModulesMarksPage'))
 const MyRegistrationsPage          = lazy(() => import('@/pages/modules/MyRegistrationsPage'))
 
 // Placeholders still in use for modules not yet wired up
 const ProgramsPage   = lazy(() => import('@/pages/placeholders/ProgramsPage'))
-const FinancePage    = lazy(() => import('@/pages/placeholders/FinancePage'))
+const FinanceHub          = lazy(() => import('@/pages/finance/FinanceHub'))
+const FinanceOverviewPage = lazy(() => import('@/pages/finance/FinanceOverviewPage'))
+const StudentLedgerPage    = lazy(() => import('@/pages/finance/StudentLedgerPage'))
+const StudentBillingPage   = lazy(() => import('@/pages/finance/StudentBillingPage'))
+const PaymentApprovalsPage = lazy(() => import('@/pages/finance/PaymentApprovalsPage'))
+const FeeStructuresPage    = lazy(() => import('@/pages/finance/FeeStructuresPage'))
+const BursariesPage       = lazy(() => import('@/pages/finance/BursariesPage'))
+const ExpensesPage        = lazy(() => import('@/pages/finance/ExpensesPage'))
+const AccountBalancePage  = lazy(() => import('@/pages/finance/AccountBalancePage'))
+const ClearancePage       = lazy(() => import('@/pages/finance/ClearancePage'))
+const RevenueReportPage   = lazy(() => import('@/pages/finance/RevenueReportPage'))
+const ReceiptPdfPage      = lazy(() => import('@/pages/finance/ReceiptPdfPage'))
 const ExamsPage      = lazy(() => import('@/pages/placeholders/ExamsPage'))
 const LogsPage       = lazy(() => import('@/pages/placeholders/LogsPage'))
 const ComingSoonPage = lazy(() => import('@/pages/placeholders/ComingSoonPage'))
@@ -204,6 +216,9 @@ function App() {
                 PERMISSIONS.MANAGE_MODULE_SCHEDULES,
                 PERMISSIONS.MANAGE_MODULE_ASSIGNMENTS,
                 PERMISSIONS.MANAGE_MODULE_REGISTRATIONS,
+                PERMISSIONS.VIEW_MODULE_MARKS,
+                PERMISSIONS.RECORD_MODULE_MARKS,
+                PERMISSIONS.MANAGE_MODULE_MARKS,
               ]} />}>
                 <Route path="/modules" element={<ModulesHub />}>
                   <Route index                  element={<ModulesCatalogPage />} />
@@ -211,6 +226,7 @@ function App() {
                   <Route path="scheduling"      element={<ModulesSchedulePage />} />
                   <Route path="assignments"     element={<ModulesAssignmentsPage />} />
                   <Route path="registrations"   element={<ModulesRegistrationAdminPage />} />
+                  <Route path="marks"           element={<ModulesMarksPage />} />
                 </Route>
               </Route>
 
@@ -223,8 +239,20 @@ function App() {
                 <Route path="/programs" element={<ProgramsPage />} />
               </Route>
 
-              <Route element={<ProtectedRoute requiredPermissions={PERMISSIONS.MANAGE_FINANCE} />}>
-                <Route path="/finance" element={<FinancePage />} />
+              <Route element={<ProtectedRoute requiredPermissions={[PERMISSIONS.VIEW_FINANCE, PERMISSIONS.MANAGE_FINANCE]} />}>
+                <Route path="/finance" element={<FinanceHub />}>
+                  <Route index element={<FinanceOverviewPage />} />
+                  <Route path="billing" element={<StudentBillingPage />} />
+                  <Route path="billing/*" element={<StudentLedgerPage />} />
+
+                  <Route path="approvals"  element={<PaymentApprovalsPage />} />
+                  <Route path="structures" element={<FeeStructuresPage />} />
+                  <Route path="bursaries"  element={<BursariesPage />} />
+                  <Route path="expenses"   element={<ExpensesPage />} />
+                  <Route path="balance"    element={<AccountBalancePage />} />
+                  <Route path="clearance"  element={<ClearancePage />} />
+                  <Route path="reports"    element={<RevenueReportPage />} />
+                </Route>
               </Route>
 
               <Route element={<ProtectedRoute requiredPermissions={PERMISSIONS.MANAGE_EXAMS} />}>
@@ -260,6 +288,11 @@ function App() {
               <Route path="/transport"        element={<ComingSoonPage />} />
               <Route path="/hostel"           element={<ComingSoonPage />} />
             </Route>
+          </Route>
+
+          {/* Finance receipt — standalone (no sidebar) for clean printing */}
+          <Route element={<ProtectedRoute requiredPermissions={[PERMISSIONS.VIEW_FINANCE, PERMISSIONS.MANAGE_FINANCE]} />}>
+            <Route path="/finance/receipt/:paymentId" element={<ReceiptPdfPage />} />
           </Route>
 
           {/* Catch-all */}

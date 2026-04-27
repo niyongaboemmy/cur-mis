@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import {
@@ -18,6 +18,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
+import SearchableSelect from '@/components/ui/SearchableSelect'
 import { academicsMgmtService } from '@/services/academicsMgmtService'
 import type { AcMgmtEntity } from '@/types/academic'
 import { CalendarDays } from 'lucide-react'
@@ -35,13 +36,15 @@ type RailItem =
    be added to `fields` later without changing the table itself.
    ───────────────────────────────────────────────────────────── */
 
-type FieldType = 'text' | 'number' | 'checkbox' | 'textarea'
+type FieldType = 'text' | 'number' | 'checkbox' | 'textarea' | 'select'
 interface FieldCfg {
   key:      string
   label:    string
   type:     FieldType
   required?: boolean
   placeholder?: string
+  /** For type='select': fetch options from another acmgmt entity. */
+  selectFrom?: { slug: AcMgmtEntity; valueKey: string; labelKey: string }
 }
 interface EntityCfg {
   slug:     AcMgmtEntity
@@ -49,7 +52,7 @@ interface EntityCfg {
   singular: string
   icon:     LucideIcon
   pk:       string
-  columns:  { key: string; label: string; render?: (row: any) => React.ReactNode }[]
+  columns:  { key: string; label: string; render?: (row: any, ctx?: { lookups: Record<string, Map<any, string>> }) => React.ReactNode }[]
   fields:   FieldCfg[]
 }
 
@@ -99,7 +102,7 @@ const ENTITIES: EntityCfg[] = [
       { key: 'dep_name',        label: 'Name',        type: 'text',     required: true },
       { key: 'dep_acronym',     label: 'Acronym',     type: 'text' },
       { key: 'dep_description', label: 'Description', type: 'textarea' },
-      { key: 'fac_id',          label: 'Faculty ID',  type: 'number' },
+      { key: 'fac_id',          label: 'Faculty ID',  type: 'number',   required: true },
     ],
   },
   {
@@ -114,11 +117,11 @@ const ENTITIES: EntityCfg[] = [
     fields: [
       { key: 'module_code',    label: 'Code',    type: 'text', required: true, placeholder: 'CSC1101' },
       { key: 'module_name',    label: 'Name',    type: 'text', required: true, placeholder: 'Introduction to Programming' },
-      { key: 'module_credits', label: 'Credits', type: 'number' },
+      { key: 'module_credits', label: 'Credits', type: 'number', required: true },
       { key: 'hours',          label: 'Hours',   type: 'number' },
-      { key: 'level',          label: 'Level',   type: 'number' },
+      { key: 'level',          label: 'Level',   type: 'number', required: true },
       { key: 'school_id',      label: 'School ID',type: 'number' },
-      { key: 'department',     label: 'Dept ID', type: 'number' },
+      { key: 'department',     label: 'Dept ID', type: 'number', required: true },
     ],
   },
   {
@@ -133,21 +136,21 @@ const ENTITIES: EntityCfg[] = [
     fields: [
       { key: 'name',      label: 'Name',      type: 'text',     required: true },
       { key: 'building',  label: 'Building',  type: 'text' },
-      { key: 'capacity',  label: 'Capacity',  type: 'number' },
+      { key: 'capacity',  label: 'Capacity',  type: 'number',   required: true },
       { key: 'room_type', label: 'Type',      type: 'text',     placeholder: 'lecture / lab' },
       { key: 'is_active', label: 'Active',    type: 'checkbox' },
     ],
   },
   {
-    slug: 'options', label: 'Options', singular: 'Option', icon: ListTree, pk: 'id',
+    slug: 'options', label: 'Programs', singular: 'Program', icon: ListTree, pk: 'id',
     columns: [
-      { key: 'name',          label: 'Name' },
-      { key: 'department_id', label: 'Department ID' },
+      { key: 'name',          label: 'Program' },
+      { key: 'department_id', label: 'Department', render: (r, ctx) => ctx?.lookups.departments?.get(Number(r.department_id)) ?? `#${r.department_id ?? '—'}` },
       { key: 'is_active',     label: 'Active', render: (r) => r.is_active ? 'Yes' : 'No' },
     ],
     fields: [
-      { key: 'name',          label: 'Name',          type: 'text',     required: true },
-      { key: 'department_id', label: 'Department ID', type: 'number' },
+      { key: 'name',          label: 'Program name',  type: 'text',   required: true, placeholder: 'Software Engineering' },
+      { key: 'department_id', label: 'Department',    type: 'select', required: true, selectFrom: { slug: 'departments', valueKey: 'dep_id', labelKey: 'dep_name' } },
       { key: 'is_active',     label: 'Active',        type: 'checkbox' },
     ],
   },
@@ -169,7 +172,7 @@ const ENTITIES: EntityCfg[] = [
     ],
     fields: [
       { key: 'name',         label: 'Name',         type: 'text',     required: true, placeholder: 'Annual leave' },
-      { key: 'days_allowed', label: 'Days allowed', type: 'number' },
+      { key: 'days_allowed', label: 'Days allowed', type: 'number', required: true },
       { key: 'is_paid',      label: 'Paid',         type: 'checkbox' },
     ],
   },
@@ -261,6 +264,42 @@ function CrudPanel({ entity }: { entity: EntityCfg }) {
     queryFn:  () => academicsMgmtService.list<any>(entity.slug, { page, per_page: 15 }),
   })
 
+  // Fetch any related entities referenced by select fields, so we can render
+  // their names in the table and in the form dropdowns.
+  const selectSources = useMemo(
+    () => Array.from(new Set(entity.fields.filter((f) => f.type === 'select' && f.selectFrom).map((f) => f.selectFrom!.slug))),
+    [entity],
+  )
+  const lookupsQs = useQuery({
+    queryKey: ['acmgmt', 'lookups', entity.slug, selectSources.join(',')],
+    queryFn: async () => {
+      const out: Record<string, any[]> = {}
+      for (const slug of selectSources) {
+        const res = await academicsMgmtService.list<any>(slug as AcMgmtEntity, { per_page: 500 })
+        out[slug] = (res.data?.data ?? []) as any[]
+      }
+      return out
+    },
+    enabled: selectSources.length > 0,
+  })
+  const sourceRows = lookupsQs.data ?? {}
+
+  // Map of valueKey → label, keyed by the field key (e.g. department_id → Map<id, name>)
+  const lookups = useMemo(() => {
+    const m: Record<string, Map<any, string>> = {}
+    for (const f of entity.fields) {
+      if (f.type === 'select' && f.selectFrom) {
+        const items = sourceRows[f.selectFrom.slug] ?? []
+        const map = new Map<any, string>()
+        items.forEach((it) => map.set(Number(it[f.selectFrom!.valueKey]), String(it[f.selectFrom!.labelKey] ?? '')))
+        // Index also by the entity's own slug for convenience (e.g. 'departments')
+        m[f.selectFrom.slug] = map
+        m[f.key] = map
+      }
+    }
+    return m
+  }, [entity, sourceRows])
+
   const rows   = listQ.data?.data?.data ?? []
   const total  = listQ.data?.data?.total ?? 0
   const last   = listQ.data?.data?.last_page ?? 1
@@ -339,7 +378,7 @@ function CrudPanel({ entity }: { entity: EntityCfg }) {
                   <tr key={r[entity.pk]}>
                     {entity.columns.map((c) => (
                       <td key={c.key} className="align-middle">
-                        {c.render ? c.render(r) : (r[c.key] ?? '—')}
+                        {c.render ? c.render(r, { lookups }) : (r[c.key] ?? '—')}
                       </td>
                     ))}
                     <td className="text-right">
@@ -396,6 +435,7 @@ function CrudPanel({ entity }: { entity: EntityCfg }) {
         initial={editing ?? undefined}
         onSubmit={submit}
         submitting={createM.isPending || updateM.isPending}
+        sourceRows={sourceRows}
       />
     </section>
   )
@@ -404,7 +444,7 @@ function CrudPanel({ entity }: { entity: EntityCfg }) {
 /* ───────────────────────────────────────────────────────────── */
 
 function EntityFormModal({
-  open, onClose, entity, initial, onSubmit, submitting,
+  open, onClose, entity, initial, onSubmit, submitting, sourceRows,
 }: {
   open: boolean
   onClose: () => void
@@ -412,12 +452,13 @@ function EntityFormModal({
   initial?: Record<string, any>
   onSubmit: (data: Record<string, any>) => void
   submitting: boolean
+  sourceRows: Record<string, any[]>
 }) {
   const [state, setState] = useState<Record<string, any>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   // Rebuild form state whenever we open
-  useMemo(() => {
+  useEffect(() => {
     if (!open) return
     const init: Record<string, any> = {}
     entity.fields.forEach((f) => {
@@ -446,7 +487,7 @@ function EntityFormModal({
     for (const f of entity.fields) {
       const v = state[f.key]
       if (f.type === 'checkbox') clean[f.key] = v ? '1' : '0'
-      else if (f.type === 'number') clean[f.key] = v === '' || v == null ? undefined : Number(v)
+      else if (f.type === 'number' || f.type === 'select') clean[f.key] = v === '' || v == null ? undefined : Number(v)
       else clean[f.key] = v === '' ? undefined : v
     }
     onSubmit(clean)
@@ -491,6 +532,17 @@ function EntityFormModal({
                 />
                 <span className="text-[13px] text-ink-700 dark:text-ink-200">Yes</span>
               </label>
+            ) : f.type === 'select' && f.selectFrom ? (
+              <SearchableSelect
+                options={(sourceRows[f.selectFrom.slug] ?? []).map((it: any) => ({
+                  value: Number(it[f.selectFrom!.valueKey]),
+                  label: String(it[f.selectFrom!.labelKey] ?? ''),
+                }))}
+                value={state[f.key] ? Number(state[f.key]) : 0}
+                onChange={(v) => setState({ ...state, [f.key]: v ? Number(v) : '' })}
+                placeholder={f.placeholder ?? `Select ${f.label.toLowerCase()}…`}
+                allLabel={`Select ${f.label.toLowerCase()}…`}
+              />
             ) : (
               <input
                 type={f.type === 'number' ? 'number' : 'text'}

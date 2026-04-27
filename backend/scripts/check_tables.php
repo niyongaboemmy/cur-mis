@@ -9,7 +9,9 @@ $db   = $_ENV['DB_DATABASE'] ?? 'curac_save';
 $user = $_ENV['DB_USERNAME'] ?? 'root';
 $pass = $_ENV['DB_PASSWORD'] ?? 'root';
 
-$pdo = new PDO("mysql:host=$host;port=$port;dbname=$db;charset=utf8mb4", $user, $pass);
-$stmt = $pdo->query("SHOW TABLES");
-$tables = $stmt->fetchAll(PDO::FETCH_COLUMN);
-echo implode("\n", $tables);
+$dsn = "mysql:host=$host;port=$port;dbname=$db;charset=utf8mb4";
+$pdo = new PDO($dsn, $user, $pass, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+
+$stmt = $pdo->query("SHOW TABLES LIKE '%expense%'");
+$res = $stmt->fetchAll(PDO::FETCH_COLUMN);
+print_r($res);

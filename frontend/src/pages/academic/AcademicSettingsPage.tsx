@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   Circle,
   Trash2,
+  Pencil,
   Loader2,
   AlertCircle,
 } from 'lucide-react'
@@ -41,6 +42,8 @@ export default function AcademicSettingsPage() {
   const qc = useQueryClient()
   const [yearModal, setYearModal] = useState(false)
   const [termModal, setTermModal] = useState(false)
+  const [editingYear, setEditingYear] = useState<AcademicYear | null>(null)
+  const [editingTerm, setEditingTerm] = useState<AcademicTerm | null>(null)
 
   // Make sure basics refresh in sync when we toggle active year/term
   useSystemBasics()
@@ -72,6 +75,12 @@ export default function AcademicSettingsPage() {
     onError:    (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to create year'),
   })
 
+  const updateYear = useMutation({
+    mutationFn: (v: { id: number; data: Partial<CreateYearPayload> }) => academicService.updateYear(v.id, v.data),
+    onSuccess:  () => { toast.success('Year updated'); setYearModal(false); setEditingYear(null); invalidate() },
+    onError:    (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to update year'),
+  })
+
   const activateYear = useMutation({
     mutationFn: (id: number) => academicService.activateYear(id),
     onSuccess:  () => { toast.success('Year activated'); invalidate() },
@@ -88,6 +97,12 @@ export default function AcademicSettingsPage() {
     mutationFn: (d: CreateTermPayload) => academicService.createTerm(d),
     onSuccess:  () => { toast.success('Term added'); setTermModal(false); invalidate() },
     onError:    (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to create term'),
+  })
+
+  const updateTerm = useMutation({
+    mutationFn: (v: { id: number; data: Partial<CreateTermPayload> }) => academicService.updateTerm(v.id, v.data),
+    onSuccess:  () => { toast.success('Term updated'); setTermModal(false); setEditingTerm(null); invalidate() },
+    onError:    (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to update term'),
   })
 
   const activateTerm = useMutation({
@@ -132,7 +147,7 @@ export default function AcademicSettingsPage() {
         <Header
           title="Academic years"
           sub="Manage the yearly cycles for CUR."
-          onAdd={() => setYearModal(true)}
+          onAdd={() => { setEditingYear(null); setYearModal(true) }}
           addLabel="Add year"
         />
 
@@ -159,6 +174,7 @@ export default function AcademicSettingsPage() {
                   year={y}
                   onActivate={() => activateYear.mutate(y.id)}
                   activating={activateYear.isPending && activateYear.variables === y.id}
+                  onEdit={() => { setEditingYear(y); setYearModal(true) }}
                   onDelete={() => {
                     if (confirm(`Delete academic year "${y.label}"?`)) deleteYear.mutate(y.id)
                   }}
@@ -175,7 +191,7 @@ export default function AcademicSettingsPage() {
         <Header
           title="Academic terms"
           sub="Semesters / trimesters inside each year."
-          onAdd={() => setTermModal(true)}
+          onAdd={() => { setEditingTerm(null); setTermModal(true) }}
           addLabel="Add term"
           disabled={years.length === 0}
           disabledHint={years.length === 0 ? 'Create an academic year first.' : undefined}
@@ -206,6 +222,7 @@ export default function AcademicSettingsPage() {
                   yearLabel={yearLabelById(t.academic_year_id)}
                   onActivate={() => activateTerm.mutate(t.id)}
                   activating={activateTerm.isPending && activateTerm.variables === t.id}
+                  onEdit={() => { setEditingTerm(t); setTermModal(true) }}
                   onDelete={() => {
                     if (confirm(`Delete term "${t.label}"?`)) deleteTerm.mutate(t.id)
                   }}
@@ -217,22 +234,28 @@ export default function AcademicSettingsPage() {
         </ListState>
       </section>
 
-      {/* ── Create year modal ── */}
+      {/* ── Year modal (create / edit) ── */}
       <YearModal
         open={yearModal}
-        onClose={() => setYearModal(false)}
-        onSubmit={(v) => createYear.mutate(v)}
-        submitting={createYear.isPending}
+        onClose={() => { setYearModal(false); setEditingYear(null) }}
+        initial={editingYear}
+        onSubmit={(v) => editingYear
+          ? updateYear.mutate({ id: editingYear.id, data: v })
+          : createYear.mutate(v)}
+        submitting={createYear.isPending || updateYear.isPending}
       />
 
-      {/* ── Create term modal ── */}
+      {/* ── Term modal (create / edit) ── */}
       <TermModal
         open={termModal}
-        onClose={() => setTermModal(false)}
+        onClose={() => { setTermModal(false); setEditingTerm(null) }}
         years={years}
         defaultYearId={activeYear?.id ?? years[0]?.id}
-        onSubmit={(v) => createTerm.mutate(v)}
-        submitting={createTerm.isPending}
+        initial={editingTerm}
+        onSubmit={(v) => editingTerm
+          ? updateTerm.mutate({ id: editingTerm.id, data: v })
+          : createTerm.mutate(v)}
+        submitting={createTerm.isPending || updateTerm.isPending}
       />
     </div>
   )
@@ -322,11 +345,12 @@ function ListState({
 }
 
 function YearRow({
-  year, onActivate, activating, onDelete, deleting,
+  year, onActivate, activating, onEdit, onDelete, deleting,
 }: {
   year: AcademicYear
   onActivate: () => void
   activating: boolean
+  onEdit:     () => void
   onDelete:   () => void
   deleting:   boolean
 }) {
@@ -349,6 +373,9 @@ function YearRow({
               Activate
             </button>
           )}
+          <button className="icon-btn" onClick={onEdit} aria-label="Edit year">
+            <Pencil className="w-3.5 h-3.5" />
+          </button>
           <button
             className="icon-btn text-red-500 hover:text-red-600 hover:bg-red-50"
             onClick={onDelete}
@@ -364,12 +391,13 @@ function YearRow({
 }
 
 function TermRow({
-  term, yearLabel, onActivate, activating, onDelete, deleting,
+  term, yearLabel, onActivate, activating, onEdit, onDelete, deleting,
 }: {
   term: AcademicTerm
   yearLabel: string
   onActivate: () => void
   activating: boolean
+  onEdit:     () => void
   onDelete:   () => void
   deleting:   boolean
 }) {
@@ -393,6 +421,9 @@ function TermRow({
               Activate
             </button>
           )}
+          <button className="icon-btn" onClick={onEdit} aria-label="Edit term">
+            <Pencil className="w-3.5 h-3.5" />
+          </button>
           <button
             className="icon-btn text-red-500 hover:text-red-600 hover:bg-red-50"
             onClick={onDelete}
@@ -409,22 +440,31 @@ function TermRow({
 
 /* ─── Year modal ─── */
 function YearModal({
-  open, onClose, onSubmit, submitting,
+  open, onClose, onSubmit, submitting, initial,
 }: {
   open: boolean
   onClose: () => void
   onSubmit: (v: CreateYearPayload) => void
   submitting: boolean
+  initial?: AcademicYear | null
 }) {
   const form = useForm<z.infer<typeof yearSchema>>({
     resolver: zodResolver(yearSchema),
     defaultValues: { label: '', start_date: '', end_date: '' },
   })
+  useEffect(() => {
+    if (!open) return
+    form.reset({
+      label:      initial?.label      ?? '',
+      start_date: initial?.start_date ?? '',
+      end_date:   initial?.end_date   ?? '',
+    })
+  }, [open, initial])
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title="New academic year"
+      title={initial ? 'Edit academic year' : 'New academic year'}
       footer={
         <>
           <button className="btn-secondary" onClick={onClose}>Cancel</button>
@@ -434,7 +474,7 @@ function YearModal({
             disabled={submitting}
           >
             {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-            Create
+            {initial ? 'Save changes' : 'Create'}
           </button>
         </>
       }
@@ -458,7 +498,7 @@ function YearModal({
 
 /* ─── Term modal ─── */
 function TermModal({
-  open, onClose, onSubmit, submitting, years, defaultYearId,
+  open, onClose, onSubmit, submitting, years, defaultYearId, initial,
 }: {
   open: boolean
   onClose: () => void
@@ -466,16 +506,26 @@ function TermModal({
   submitting: boolean
   years: AcademicYear[]
   defaultYearId?: number
+  initial?: AcademicTerm | null
 }) {
   const form = useForm<z.infer<typeof termSchema>>({
     resolver: zodResolver(termSchema),
     defaultValues: { label: '', academic_year_id: defaultYearId, start_date: '', end_date: '' },
   })
+  useEffect(() => {
+    if (!open) return
+    form.reset({
+      label:            initial?.label            ?? '',
+      academic_year_id: initial?.academic_year_id ?? defaultYearId,
+      start_date:       initial?.start_date       ?? '',
+      end_date:         initial?.end_date         ?? '',
+    })
+  }, [open, initial, defaultYearId])
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title="New academic term"
+      title={initial ? 'Edit academic term' : 'New academic term'}
       footer={
         <>
           <button className="btn-secondary" onClick={onClose}>Cancel</button>
@@ -490,7 +540,7 @@ function TermModal({
             disabled={submitting}
           >
             {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-            Create
+            {initial ? 'Save changes' : 'Create'}
           </button>
         </>
       }

@@ -371,6 +371,17 @@ class ModulesManagementController extends BaseController
             if ($check['ok'] !== true) {
                 $this->error($response, $check['message'], 422, $check['details'] ?? null);
             }
+
+            // Block overlapping schedule with another already-registered module
+            $conflicts = $this->detectStudentScheduleClash($regnumber, $moduleId, $termId);
+            if (!empty($conflicts)) {
+                $this->error(
+                    $response,
+                    'Schedule overlaps with another module the student is registered for.',
+                    409,
+                    ['conflicts' => $conflicts]
+                );
+            }
         }
 
         $id = (int)$this->registrations->create([
@@ -656,6 +667,17 @@ class ModulesManagementController extends BaseController
 
         if (!empty($user['regnumber'])) {
             return (string)$user['regnumber'];
+        }
+        // Most student accounts use the regnumber as their username.
+        $username = trim((string)($user['username'] ?? ''));
+        if ($username !== '') {
+            $row = $this->modules->db()->fetchOne(
+                'SELECT regnumber FROM `student` WHERE regnumber = ? LIMIT 1',
+                [$username]
+            );
+            if ($row && !empty($row['regnumber'])) {
+                return (string)$row['regnumber'];
+            }
         }
         if (!empty($user['email'])) {
             $row = $this->modules->db()->fetchOne(

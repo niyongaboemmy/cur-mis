@@ -33,6 +33,7 @@ $router->group('/api/academic', function ($router) {
 $entityPermissions = [
     'facility'           => Permissions::MANAGE_FACILITIES,
     'departments'        => Permissions::MANAGE_DEPARTMENTS,
+    'faculties'          => Permissions::MANAGE_ACADEMICS,
     'options'            => Permissions::MANAGE_OPTIONS,
     'levels'             => Permissions::MANAGE_LEVELS,
     'leave_types'        => Permissions::MANAGE_LEAVE_TYPES,
