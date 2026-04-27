@@ -131,7 +131,43 @@ function ActiveTab({
         </div>
       </section>
 
-      {/* Gender — pie chart with clickable legend (active-only; includes Unknown) */}
+      {/* All students — gender split donut */}
+      {s && s.total > 0 && (() => {
+        const allUnknown = Math.max(0, s.total - s.male - s.female)
+        return (
+          <section className="card p-6">
+            <div className="flex items-start justify-between gap-3 flex-wrap mb-2">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="chip-soft"><GraduationCap className="w-3 h-3" /> All students</span>
+                  <h3 className="text-[15px] font-semibold text-ink-900 dark:text-white">Gender split</h3>
+                </div>
+                <p className="text-[12px] text-ink-500 mt-1">
+                  Every enrolled student — active and inactive. Click a card to open the filtered list.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-col md:flex-row items-center gap-8">
+              <DonutChart
+                segments={[
+                  { label: 'Male',    value: s.male,      color: '#0A2A5E' },
+                  { label: 'Female',  value: s.female,    color: '#F5C400' },
+                  { label: 'Unknown', value: allUnknown,  color: '#94A3B8' },
+                ]}
+                centerTop="Total"
+                centerBig={s.total.toLocaleString()}
+              />
+              <div className="flex-1 w-full grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <LegendCard label="Male"          value={s.male}      percent={pct(s.male, s.total)}      color="#0A2A5E" onClick={() => onDrill({ student_state: 'all', gender: 'M' })} />
+                <LegendCard label="Female"        value={s.female}    percent={pct(s.female, s.total)}    color="#F5C400" onClick={() => onDrill({ student_state: 'all', gender: 'F' })} />
+                <LegendCard label="Not specified" value={allUnknown}  percent={pct(allUnknown, s.total)}  color="#94A3B8" onClick={() => onDrill({ student_state: 'all', gender: 'unknown' })} />
+              </div>
+            </div>
+          </section>
+        )
+      })()}
+
+      {/* Active students — gender split donut */}
       {s && activeGenderTot > 0 && (
         <section className="card p-6">
           <div className="flex items-start justify-between gap-3 flex-wrap mb-2">
