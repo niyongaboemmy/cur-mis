@@ -111,9 +111,7 @@ export default function HrSettingsPage() {
           <h2 className="text-lg font-bold text-ink-900 dark:text-white flex items-center gap-2">
             <Settings2 className="w-5 h-5 text-brand" /> Payroll Settings
           </h2>
-          <p className="text-[13px] text-ink-500">
-            Configure statutory deduction rates and custom payroll items
-          </p>
+         
         </div>
         <div className="flex gap-2">
           {dirty && (
