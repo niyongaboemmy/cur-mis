@@ -33,7 +33,8 @@ class FacultyModel extends BaseModel
     {
         return $this->db->fetchAll(
             "SELECT d.dep_id AS id, d.dep_name AS name, d.dep_acronym AS code,
-                    d.dep_description AS description, d.fac_id
+                    d.dep_description AS description, d.fac_id,
+                    d.allowed_combinations, d.program_level
              FROM `departements` d
              WHERE d.fac_id = ?
              ORDER BY d.dep_name ASC",

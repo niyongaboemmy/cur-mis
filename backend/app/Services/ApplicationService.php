@@ -15,6 +15,8 @@ use App\Models\AdmissionOfferModel;
 use App\Models\AcademicYearModel;
 use App\Models\StudentModel;
 use App\Helpers\EmailTemplateHelper;
+use App\Helpers\AdmissionLetterPdf;
+use App\Models\ManualAdmissionModel;
 
 class ApplicationService
 {
@@ -27,6 +29,7 @@ class ApplicationService
     private AdmissionOfferModel       $offerModel;
     private AcademicYearModel         $yearModel;
     private StudentModel              $studentModel;
+    private ManualAdmissionModel      $manualAdmissionModel;
     private MailService               $mailService;
     private Database                  $db;
 
@@ -45,17 +48,18 @@ class ApplicationService
 
     public function __construct()
     {
-        $this->applicationModel  = new StudentApplicationModel();
-        $this->documentModel     = new ApplicationDocumentModel();
-        $this->requirementModel  = new AdmissionRequirementModel();
-        $this->logModel          = new ApplicationStatusLogModel();
-        $this->criteriaModel     = new MeritCriteriaModel();
-        $this->meritListModel    = new MeritListModel();
-        $this->offerModel        = new AdmissionOfferModel();
-        $this->yearModel         = new AcademicYearModel();
-        $this->studentModel      = new StudentModel();
-        $this->mailService       = new MailService();
-        $this->db                = Database::getInstance();
+        $this->applicationModel      = new StudentApplicationModel();
+        $this->documentModel         = new ApplicationDocumentModel();
+        $this->requirementModel      = new AdmissionRequirementModel();
+        $this->logModel              = new ApplicationStatusLogModel();
+        $this->criteriaModel         = new MeritCriteriaModel();
+        $this->meritListModel        = new MeritListModel();
+        $this->offerModel            = new AdmissionOfferModel();
+        $this->yearModel             = new AcademicYearModel();
+        $this->studentModel          = new StudentModel();
+        $this->manualAdmissionModel  = new ManualAdmissionModel();
+        $this->mailService           = new MailService();
+        $this->db                    = Database::getInstance();
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -447,9 +451,18 @@ class ApplicationService
             'program_name' => $offer['department_name'],
         ]);
 
+        // Automatically dispatch the admission letter as part of enrollment
+        try {
+            $letterResult = $this->sendAdmissionLetter($offerId, $actorId);
+        } catch (\Exception $e) {
+            $letterResult = ['error' => $e->getMessage()];
+        }
+
         return [
-            'student_id' => $studentId,
-            'regnumber'  => $regNumber,
+            'student_id'   => $studentId,
+            'regnumber'    => $regNumber,
+            'letter_sent'  => !isset($letterResult['error']),
+            'letter_error' => $letterResult['error'] ?? null,
         ];
     }
 
@@ -481,9 +494,13 @@ class ApplicationService
                     $subject = 'Application Received — ' . ($extra['application_number'] ?? '');
                     break;
 
+                case 'requested_changes':
                 case 'documents_rejected':
                     $html    = EmailTemplateHelper::documentsRejectedTemplate(
-                        $name, $extra['application_number'] ?? '', $extra['rejected_docs'] ?? []
+                        $name, 
+                        $extra['application_number'] ?? '', 
+                        $extra['rejected_docs'] ?? [],
+                        $extra['admin_message'] ?? ''
                     );
                     $subject = 'Action Required: Documents Need Attention';
                     break;
@@ -518,6 +535,18 @@ class ApplicationService
                     $subject = 'Welcome — Your Registration Number';
                     break;
 
+                case 'admission_letter':
+                    $html    = EmailTemplateHelper::admissionLetterEmailTemplate(
+                        $name,
+                        $extra['application_number'] ?? '',
+                        $extra['program_name'] ?? '',
+                        $extra['offer_reference'] ?? '',
+                        $extra['download_url'] ?? '',
+                        $extra['expires_at'] ?? ''
+                    );
+                    $subject = 'Your Admission Letter — ' . ($extra['offer_reference'] ?? '');
+                    break;
+
                 default:
                     return;
             }
@@ -528,5 +557,220 @@ class ApplicationService
         } catch (\Throwable $e) {
             error_log('[ApplicationService] Email error (' . $template . '): ' . $e->getMessage());
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Manual Admission
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public function manualAdmit(int $applicationId, int $actorId, string $reason = '', string $notes = '', ?string $expiresAt = null): array
+    {
+        $application = $this->applicationModel->getWithDetails($applicationId);
+
+        if (!$application) {
+            throw new \RuntimeException('Application not found.');
+        }
+
+        $allowedStatuses = ['documents_verified', 'merit_listed', 'submitted', 'documents_under_review'];
+        if (!in_array($application['status'], $allowedStatuses, true)) {
+            throw new \RuntimeException(
+                'Manual admission is only available for applications with status: ' . implode(', ', $allowedStatuses) . '.'
+            );
+        }
+
+        // Check no existing offer
+        $existingOffer = $this->offerModel->findByApplicationId($applicationId);
+        if ($existingOffer) {
+            throw new \RuntimeException('An admission offer already exists for this application.');
+        }
+
+        $offerRef = $this->offerModel->generateOfferReference();
+        $offeredAt = date('Y-m-d H:i:s');
+        $expiryDate = $expiresAt ?? date('Y-m-d', strtotime('+30 days'));
+
+        $offerId = (int)$this->offerModel->create([
+            'application_id'       => $applicationId,
+            'offer_letter_reference' => $offerRef,
+            'offered_at'           => $offeredAt,
+            'offered_by'           => $actorId,
+            'expires_at'           => $expiryDate,
+            'status'               => 'pending',
+        ]);
+
+        $this->db->execute(
+            "UPDATE `student_applications` SET status = 'offered', updated_at = NOW() WHERE id = ?",
+            [$applicationId]
+        );
+
+        $this->manualAdmissionModel->create([
+            'application_id' => $applicationId,
+            'admitted_by'    => $actorId,
+            'reason'         => $reason,
+            'notes'          => $notes,
+            'offer_id'       => $offerId,
+        ]);
+
+        $this->logStatusChange($applicationId, $application['status'], 'offered', $actorId, 'admin', "Manual admission by admin. Reason: {$reason}");
+
+        // Notify applicant
+        $apiBase   = rtrim((string)(getenv('APP_URL') ?: 'http://localhost:8888/cur-mis/backend/public'), '/');
+        $portalUrl = $apiBase;
+        $this->sendApplicationEmail('admission_offer', $application, [
+            'application_number' => $application['application_number'],
+            'program_name'       => $application['department_name'] ?? '',
+            'offer_reference'    => $offerRef,
+            'expires_at'         => $expiryDate,
+            'portal_url'         => $portalUrl,
+        ]);
+
+        return [
+            'offer_id'               => $offerId,
+            'offer_letter_reference' => $offerRef,
+            'expires_at'             => $expiryDate,
+        ];
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Admission Letter: send + bulk send + get letter data
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public function getLetterData(int $offerId): array
+    {
+        $offer = $this->offerModel->getWithApplication($offerId);
+        if (!$offer) {
+            throw new \RuntimeException('Offer not found.');
+        }
+
+        $year = $this->db->fetchOne(
+            "SELECT ay.label AS academic_year
+             FROM `student_applications` sa
+             JOIN `academic_years` ay ON ay.id = sa.academic_year_id
+             WHERE sa.id = ?",
+            [$offer['application_id']]
+        );
+
+        $faculty = $this->db->fetchOne(
+            "SELECT f.fac_name AS faculty_name
+             FROM `student_applications` sa
+             JOIN `faculty` f ON f.fac_id = sa.faculty_id
+             WHERE sa.id = ?",
+            [$offer['application_id']]
+        );
+
+        $intake = $this->db->fetchOne(
+            "SELECT sa.intake FROM `student_applications` sa WHERE sa.id = ?",
+            [$offer['application_id']]
+        );
+
+        return [
+            'offer_letter_reference' => $offer['offer_letter_reference'],
+            'first_name'             => $offer['first_name'],
+            'last_name'              => $offer['last_name'],
+            'email'                  => $offer['email'],
+            'phone'                  => $offer['phone'] ?? '',
+            'application_number'     => $offer['application_number'],
+            'department_name'        => $offer['department_name'],
+            'faculty_name'           => $faculty['faculty_name'] ?? '',
+            'intake'                 => $intake['intake'] ?? '',
+            'academic_year'          => $year['academic_year'] ?? date('Y'),
+            'offered_at'             => $offer['offered_at'],
+            'expires_at'             => $offer['expires_at'],
+            'institution_name'       => getenv('INSTITUTION_NAME') ?: 'Catholic University of Rwanda',
+            'registrar_name'         => getenv('REGISTRAR_NAME') ?: 'The Registrar',
+            'registrar_title'        => getenv('REGISTRAR_TITLE') ?: 'Academic Registrar',
+        ];
+    }
+
+    public function sendAdmissionLetter(int $offerId, int $actorId): array
+    {
+        $offer = $this->offerModel->getWithApplication($offerId);
+        if (!$offer) {
+            throw new \RuntimeException('Offer not found.');
+        }
+
+        if (!in_array($offer['status'], ['pending', 'accepted'], true)) {
+            throw new \RuntimeException('Letter can only be sent for pending or accepted offers.');
+        }
+
+        $letterData = $this->getLetterData($offerId);
+        $token      = $offer['letter_token'] ?? bin2hex(random_bytes(32));
+
+        // Generate PDF binary
+        $pdfBinary = AdmissionLetterPdf::renderPdfBinary($letterData);
+
+        // Build download URL (token-based, no login required) — points to backend API directly
+        $apiBase     = rtrim((string)(getenv('APP_URL') ?: 'http://localhost:8888/cur-mis/backend/public'), '/');
+        $downloadUrl = $apiBase . '/api/portal/admission-letter?token=' . $token;
+
+        // Send email
+        $name = trim($letterData['first_name'] . ' ' . $letterData['last_name']);
+        $html = EmailTemplateHelper::admissionLetterEmailTemplate(
+            $name,
+            $letterData['application_number'],
+            $letterData['department_name'],
+            $letterData['offer_letter_reference'],
+            $downloadUrl,
+            $letterData['expires_at']
+        );
+        $subject = 'Your Admission Letter — ' . $letterData['offer_letter_reference'];
+
+        // Attach PDF if available
+        if ($pdfBinary) {
+            $this->mailService->sendWithAttachment(
+                $offer['email'], $subject, $html, strip_tags($html),
+                $pdfBinary, 'admission-letter-' . $letterData['application_number'] . '.pdf'
+            );
+        } else {
+            $this->mailService->send($offer['email'], $subject, $html, strip_tags($html));
+        }
+
+        // Record dispatch
+        $this->db->execute(
+            "UPDATE `admission_offers`
+             SET letter_sent_at = NOW(), letter_sent_by = ?, letter_token = ?, updated_at = NOW()
+             WHERE id = ?",
+            [$actorId, $token, $offerId]
+        );
+
+        return [
+            'sent_to'      => $offer['email'],
+            'letter_token' => $token,
+            'download_url' => $downloadUrl,
+        ];
+    }
+
+    public function bulkSendAdmissionLetters(int $departmentId, string $intake, int $yearId, int $actorId): array
+    {
+        $offers = $this->db->fetchAll(
+            "SELECT ao.id
+             FROM `admission_offers` ao
+             JOIN `student_applications` sa ON sa.id = ao.application_id
+             WHERE sa.department_id = ? AND sa.intake = ? AND sa.academic_year_id = ?
+               AND ao.status IN ('pending','accepted')
+               AND ao.letter_sent_at IS NULL",
+            [$departmentId, $intake, $yearId]
+        );
+
+        if (empty($offers)) {
+            throw new \RuntimeException('No unsent letters found for the selected department / intake / year.');
+        }
+
+        $sent  = 0;
+        $errors = [];
+
+        foreach ($offers as $row) {
+            try {
+                $this->sendAdmissionLetter((int)$row['id'], $actorId);
+                $sent++;
+            } catch (\Throwable $e) {
+                $errors[] = 'Offer #' . $row['id'] . ': ' . $e->getMessage();
+            }
+        }
+
+        return [
+            'total'  => count($offers),
+            'sent'   => $sent,
+            'errors' => $errors,
+        ];
     }
 }

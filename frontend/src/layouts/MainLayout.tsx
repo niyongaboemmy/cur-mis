@@ -2,7 +2,6 @@ import {
   Home,
   Menu,
   X,
-  Users,
   User as UserIcon,
   Settings,
   GraduationCap,
@@ -10,7 +9,6 @@ import {
   ClipboardList,
   BookOpen,
   Layers,
-  Sliders,
   Files,
   Activity,
   Search,
@@ -24,6 +22,7 @@ import {
   Megaphone,
   Bus,
   Building2,
+  Briefcase,
   ChevronDown,
   PanelLeftClose,
   PanelLeftOpen,
@@ -38,6 +37,7 @@ import {
   type ReactNode,
 } from "react";
 import UserDropdown from "@/components/layout/UserDropdown";
+import AcademicYearSelector from "@/components/layout/AcademicYearSelector";
 import Logo from "@/components/brand/Logo";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { useSystemBasics } from "@/hooks/useSystemBasics";
@@ -52,13 +52,19 @@ import { useAuthStore } from "@/store/authStore";
  * `children` expand when clicked.
  * ------------------------------------------------------------------ */
 
-type NavChild = { to: string; label: string; permissions?: string[] };
+type NavChild = { to: string; label: string; permissions?: string[]; roles?: string[] };
 type NavNode = {
   id: string;
   label: string;
   icon: LucideIcon;
   to?: string;
   permissions?: string[];
+  /**
+   * Restrict this node to a specific set of roles. Applied BEFORE the
+   * superadmin permission bypass, so role-bound items (e.g. "My Application"
+   * for `applicant` only) don't leak into other roles' sidebars.
+   */
+  roles?: string[];
   children?: NavChild[];
 };
 
@@ -68,6 +74,9 @@ const NAV_TREE: NavNode[] = [
     id: "applicant-dashboard",
     label: "My Application",
     icon: LayoutDashboard,
+    // Role-scoped: only self-registered applicants have their own application.
+    // Admins/superadmins do NOT see this even if they hold the permission.
+    roles: ["applicant"],
     permissions: [PERMISSIONS.ACCESS_APPLICANT_PORTAL],
     children: [
       { to: "/applicant", label: "Overview" },
@@ -75,50 +84,48 @@ const NAV_TREE: NavNode[] = [
     ],
   },
   {
-    id: "profile",
-    label: "My Profile",
-    icon: UserIcon,
-    to: "/profile",
-  },
-  {
     id: "students-group",
     label: "Students",
     icon: GraduationCap,
     permissions: [PERMISSIONS.VIEW_STUDENTS],
     children: [
-      { to: "/students", label: "All students" },
-      { to: "/students/new", label: "Admissions" },
-      { to: "/students/alumni", label: "Alumni" },
+      { to: "/students", label: "All students", permissions: [PERMISSIONS.VIEW_STUDENTS] },
+      { to: "/students/alumni", label: "Alumni", permissions: [PERMISSIONS.VIEW_STUDENTS] },
     ],
   },
-  // ─── Academic (promoted to top-level for visibility) ───
   {
-    id: "academic-settings",
-    label: "Academic settings",
-    icon: Sliders,
-    to: "/academic/settings",
-    permissions: [PERMISSIONS.MANAGE_ACADEMICS],
-  },
-  {
-    id: "academics-management",
-    label: "Academics management",
-    icon: Layers,
-    to: "/academic/management",
-    permissions: [PERMISSIONS.MANAGE_ACADEMICS],
+    id: "hr-management",
+    label: "HR Management",
+    icon: Briefcase,
+    permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES],
+    children: [
+      { to: "/hr/staff",      label: "All staff",        permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },
+      { to: "/hr/payroll",    label: "Payroll",          permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },
+      { to: "/hr/payments",   label: "Salary Payments",  permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },
+      { to: "/hr/attendance", label: "Attendance",       permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },
+      { to: "/hr/documents",  label: "Documents",        permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },
+      { to: "/hr/settings",   label: "HR Settings",      permissions: [PERMISSIONS.MANAGE_HR_EMPLOYEES] },
+    ],
   },
   // ─── Admissions / Student Management Module ───
   {
     id: "admissions",
     label: "Admissions",
     icon: Files,
-    permissions: [PERMISSIONS.MANAGE_ACADEMICS],
+    permissions: [
+      PERMISSIONS.MANAGE_STUDENT_APPLICATIONS,
+      PERMISSIONS.VERIFY_DOCUMENTS,
+      PERMISSIONS.MANAGE_ADMISSIONS,
+      PERMISSIONS.MANAGE_ADMISSION_REQUIREMENTS,
+    ],
     children: [
-      { to: "/admin/admissions/applications", label: "Applications" },
-      { to: "/admin/admissions/verifications", label: "Verifications" },
-      { to: "/admin/admissions/merit", label: "Merit lists" },
-      { to: "/admin/admissions/offers", label: "Offers" },
-      { to: "/admin/admissions/requirements", label: "Requirements" },
-      { to: "/admin/admissions/document-types", label: "Document types" },
+      { to: "/admin/admissions/applications",   label: "Applications",   permissions: [PERMISSIONS.MANAGE_STUDENT_APPLICATIONS] },
+      { to: "/admin/admissions/verifications",  label: "Verifications",  permissions: [PERMISSIONS.VERIFY_DOCUMENTS] },
+      { to: "/admin/admissions/merit",          label: "Merit lists",    permissions: [PERMISSIONS.MANAGE_ADMISSIONS] },
+      { to: "/admin/admissions/offers",         label: "Offers",         permissions: [PERMISSIONS.MANAGE_ADMISSIONS] },
+      { to: "/admin/admissions/requirements",   label: "Requirements",   permissions: [PERMISSIONS.MANAGE_ADMISSION_REQUIREMENTS] },
+      { to: "/admin/admissions/document-types", label: "Document types", permissions: [PERMISSIONS.MANAGE_ADMISSION_REQUIREMENTS] },
+      { to: "/admin/admissions/intakes",        label: "Intakes",        permissions: [PERMISSIONS.MANAGE_ADMISSIONS] },
     ],
   },
   // ─── Modules Management Module ───
@@ -131,50 +138,39 @@ const NAV_TREE: NavNode[] = [
       PERMISSIONS.MANAGE_MODULE_SCHEDULES,
       PERMISSIONS.MANAGE_MODULE_ASSIGNMENTS,
       PERMISSIONS.MANAGE_MODULE_REGISTRATIONS,
+      PERMISSIONS.VIEW_MY_MODULES,
     ],
     children: [
-      { to: "/modules/catalog", label: "Catalog" },
-      { to: "/modules/scheduling", label: "Scheduling" },
-      { to: "/modules/assignments", label: "Assignments" },
-      { to: "/modules/registrations", label: "Registrations" },
+      { to: "/my-modules", label: "My Registrations", permissions: [PERMISSIONS.VIEW_MY_MODULES] },
+      { to: "/modules/catalog", label: "Catalog", permissions: [PERMISSIONS.MANAGE_MODULES] },
+      { to: "/modules/scheduling", label: "Scheduling", permissions: [PERMISSIONS.MANAGE_MODULE_SCHEDULES] },
+      { to: "/modules/assignments", label: "Assignments", permissions: [PERMISSIONS.MANAGE_MODULE_ASSIGNMENTS] },
+      { to: "/modules/registrations", label: "Registrations", permissions: [PERMISSIONS.MANAGE_MODULE_REGISTRATIONS] },
     ],
   },
-  // ─── Student self-service ───
+  { id: "library", label: "Library", icon: BookMarked, to: "/library" },
   {
-    id: "my-modules",
-    label: "My Modules",
-    icon: BookOpen,
-    to: "/my-modules",
-    permissions: [PERMISSIONS.VIEW_MY_MODULES],
-  },
-  {
-    id: "teachers-group",
-    label: "Teachers",
-    icon: Users,
-    permissions: [PERMISSIONS.STAFF_ACCESS],
-    children: [
-      { to: "/teachers", label: "All teachers" },
-      { to: "/teachers/schedules", label: "Schedules" },
-    ],
-  },
-  { id: "library", label: "Library", icon: BookMarked, to: "/library", permissions: [PERMISSIONS.STAFF_ACCESS] },
-  {
-    id: "account",
-    label: "Account",
+    id: "finance",
+    label: "Finance",
     icon: CreditCard,
     permissions: [PERMISSIONS.MANAGE_FINANCE],
     children: [
-      { to: "/finance", label: "Finance" },
+      { to: "/finance", label: "Overview" },
       { to: "/account/billing", label: "Billing" },
       { to: "/account/salaries", label: "Salaries" },
     ],
   },
-  { id: "class", label: "Class", icon: LayoutGrid, to: "/class", permissions: [PERMISSIONS.STAFF_ACCESS] },
+  { id: "class", label: "Class", icon: LayoutGrid, to: "/class" },
   {
     id: "attendance",
     label: "Attendance",
     icon: ClipboardCheck,
     to: "/attendance",
+    permissions: [
+      PERMISSIONS.VIEW_ATTENDANCE,
+      PERMISSIONS.RECORD_ATTENDANCE,
+      PERMISSIONS.MANAGE_ATTENDANCE,
+    ],
   },
   {
     id: "exam",
@@ -214,6 +210,24 @@ const ADMIN_TREE: NavNode[] = [
     permissions: [PERMISSIONS.MANAGE_PERMISSIONS],
   },
   {
+    id: "academics-management",
+    label: "Academics management",
+    icon: Layers,
+    to: "/academic/management",
+    permissions: [
+      PERMISSIONS.MANAGE_ACADEMICS,
+      PERMISSIONS.MANAGE_DEGREES,
+      PERMISSIONS.MANAGE_FACILITIES,
+      PERMISSIONS.MANAGE_DEPARTMENTS,
+      PERMISSIONS.MANAGE_OPTIONS,
+      PERMISSIONS.MANAGE_LEVELS,
+      PERMISSIONS.MANAGE_SCHOOLS,
+      PERMISSIONS.MANAGE_LEAVE_TYPES,
+      PERMISSIONS.MANAGE_ACADEMIC_YEARS,
+      PERMISSIONS.MANAGE_ACADEMIC_TERMS,
+    ],
+  },
+  {
     id: "logs",
     label: "System logs",
     icon: Activity,
@@ -235,8 +249,8 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
   "/permissions": { title: "Permissions", sub: "Fine-grained access control" },
   "/logs": { title: "System logs", sub: "Audit trail across the platform" },
   "/students": {
-    title: "Students & Staff",
-    sub: "CUR student registry & HR employees",
+    title: "Students",
+    sub: "CUR student registry",
   },
   "/academic/settings": {
     title: "Academic settings",
@@ -281,6 +295,12 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
   "/applicant/documents": { title: "Documents", sub: "Upload required files for your checklist." },
   "/students/new": { title: "Admissions", sub: "New student applications" },
   "/students/alumni": { title: "Alumni", sub: "CUR alumni directory" },
+  "/hr/staff":      { title: "HR Management",    sub: "Staff directory, roles and contracts" },
+  "/hr/payroll":    { title: "Payroll",          sub: "Monthly salary breakdown and payslips" },
+  "/hr/payments":   { title: "Salary Payments",  sub: "Disbursement history and payment records" },
+  "/hr/attendance": { title: "Staff attendance", sub: "Daily attendance and timesheets" },
+  "/hr/documents":  { title: "Staff documents",  sub: "Contracts, IDs and HR files" },
+  "/hr/settings":   { title: "HR Settings",      sub: "Payroll deduction rate configuration" },
   "/teachers": { title: "Teachers", sub: "Lecturers and faculty members" },
   "/teachers/schedules": {
     title: "Teacher schedules",
@@ -294,7 +314,7 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
   "/exams/results": { title: "Exam results", sub: "All examination results" },
   "/library": { title: "Library", sub: "Books and digital resources" },
   "/class": { title: "Classes", sub: "Class schedules and rooms" },
-  "/attendance": { title: "Attendance", sub: "Student and staff attendance" },
+  "/attendance": { title: "Attendance", sub: "Record and review student attendance by module and session" },
   "/notice": { title: "Notice board", sub: "Announcements and circulars" },
   "/transport": { title: "Transport", sub: "Routes and vehicles" },
   "/hostel": { title: "Hostel", sub: "Accommodation management" },
@@ -394,20 +414,28 @@ export default function MainLayout() {
     (perms?: string[]) => {
       if (!perms || perms.length === 0) return true;
       if (user?.role === "superadmin") return true;
-      
-      // If ACCESS_APPLICANT_PORTAL is required, allow if role is applicant
-      if (perms.includes(PERMISSIONS.ACCESS_APPLICANT_PORTAL) && user?.role === 'applicant') {
-        return true;
-      }
-
-      // If STAFF_ACCESS is required, allow if role is NOT applicant
-      if (perms.includes(PERMISSIONS.STAFF_ACCESS) && user?.role !== 'applicant') {
-        return true;
-      }
-
       return perms.some((p) => (user?.permissions || []).includes(p));
     },
     [user],
+  );
+
+  /**
+   * Role gate — applied BEFORE `hasAccess`, so role-bound items like
+   * "My Application" (applicant-only) are hidden from every other role,
+   * including superadmin, regardless of what permissions they hold.
+   */
+  const matchesRoles = useCallback(
+    (roles?: string[]) => {
+      if (!roles || roles.length === 0) return true;
+      return roles.includes(user?.role ?? "");
+    },
+    [user],
+  );
+
+  const isVisible = useCallback(
+    (node: { roles?: string[]; permissions?: string[] }) =>
+      matchesRoles(node.roles) && hasAccess(node.permissions),
+    [matchesRoles, hasAccess],
   );
 
   const filtered = useMemo<NavNode[]>(() => {
@@ -415,10 +443,10 @@ export default function MainLayout() {
 
     const filterTree = (tree: NavNode[]) => {
       return tree
-        .filter((n) => hasAccess(n.permissions))
+        .filter((n) => isVisible(n))
         .map((n) => {
-          // If node has children, filter them by permissions first
-          let filteredChildren = n.children?.filter((c) => hasAccess(c.permissions));
+          // If node has children, filter them by role + permissions first
+          let filteredChildren = n.children?.filter((c) => isVisible(c));
 
           // Then filter by search query if exists
           if (q) {
@@ -633,6 +661,7 @@ export default function MainLayout() {
           </div>
 
           <div className="flex items-center gap-2">
+            <AcademicYearSelector />
             <RoundIconBtn label="Notifications" dot>
               <Bell className="w-[18px] h-[18px]" />
             </RoundIconBtn>

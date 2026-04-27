@@ -48,11 +48,26 @@ class Permissions
     public const VERIFY_DOCUMENTS              = 'VERIFY_DOCUMENTS';
     public const MANAGE_ADMISSIONS             = 'MANAGE_ADMISSIONS';
 
+    // Examinations
+    public const MANAGE_EXAMS = 'MANAGE_EXAMS';
+
+    // Attendance
+    public const VIEW_ATTENDANCE   = 'VIEW_ATTENDANCE';
+    public const RECORD_ATTENDANCE = 'RECORD_ATTENDANCE';
+    public const MANAGE_ATTENDANCE = 'MANAGE_ATTENDANCE';
+
+    // External portals (role-bound permissions assigned via RBAC seed)
+    public const ACCESS_APPLICANT_PORTAL = 'ACCESS_APPLICANT_PORTAL';
+    public const ACCESS_STUDENT_PORTAL   = 'ACCESS_STUDENT_PORTAL';
+
     // Applicant self-service
     public const MANAGE_OWN_PROFILE = 'MANAGE_OWN_PROFILE';
 
     /**
      * Get all predefined system permissions.
+     *
+     * This list is the single source of truth — both the backend RBAC middleware
+     * and the frontend `PERMISSIONS` constant must stay aligned with it.
      */
     public static function all(): array
     {
@@ -86,6 +101,12 @@ class Permissions
             self::MANAGE_STUDENT_APPLICATIONS,
             self::VERIFY_DOCUMENTS,
             self::MANAGE_ADMISSIONS,
+            self::MANAGE_EXAMS,
+            self::VIEW_ATTENDANCE,
+            self::RECORD_ATTENDANCE,
+            self::MANAGE_ATTENDANCE,
+            self::ACCESS_APPLICANT_PORTAL,
+            self::ACCESS_STUDENT_PORTAL,
             self::MANAGE_OWN_PROFILE,
         ];
     }

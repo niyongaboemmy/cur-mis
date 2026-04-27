@@ -6,8 +6,8 @@ import RegisterForm from "@/components/auth/RegisterForm";
 export default function RegisterPage() {
   const navigate = useNavigate();
 
-  const handleRegisterSuccess = (email: string) => {
-    navigate("/verify-otp", { state: { email } });
+  const handleRegisterSuccess = (data: any) => {
+    navigate("/verify-otp", { state: { email: data.email, devOtp: data.dev_otp } });
   };
 
   return (

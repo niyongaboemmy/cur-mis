@@ -114,7 +114,9 @@ export default function ApplyPage() {
     queryFn: () => portalService.getIntakes(),
   });
 
-  const facultyId = form.watch("faculty_id");
+  const facultyId    = form.watch("faculty_id");
+  const departmentId = form.watch("department_id");
+
   const facultiesQ = useQuery({
     queryKey: ["portal", "faculties"],
     queryFn: () => portalService.getFaculties(),
@@ -125,6 +127,7 @@ export default function ApplyPage() {
     queryFn: () => portalService.getFacultyDepartments(facultyId),
     enabled: !!facultyId,
   });
+
 
   const draftM = useMutation({
     mutationFn: (data: {
@@ -197,9 +200,18 @@ export default function ApplyPage() {
   const goPrev = () => setStep((s) => Math.max(s - 1, 1));
 
 
-  const faculties = facultiesQ.data?.data ?? [];
-  const departments = departmentsQ.data?.data ?? [];
-  const intakes = intakesQ.data?.data ?? [];
+  const faculties    = facultiesQ.data?.data ?? [];
+  const departments  = departmentsQ.data?.data ?? [];
+  const rawIntakes   = intakesQ.data?.data ?? [];
+  const intakes      = rawIntakes.filter(
+    (it: any, idx: number, arr: any[]) => arr.findIndex((x: any) => x.name === it.name) === idx
+  );
+
+  // Combinations allowed by the selected department (from allowed_combinations JSON column)
+  const selectedDeptCombinations: string[] = (() => {
+    const dept = (departments as any[]).find((d: any) => Number(d.id) === Number(departmentId));
+    try { return JSON.parse(dept?.allowed_combinations ?? '[]') } catch { return [] }
+  })();
 
   return (
     <Shell>
@@ -404,6 +416,43 @@ export default function ApplyPage() {
                 className="input"
                 {...form.register("graduation_year", { valueAsNumber: true })}
               />
+            </Field>
+            <Field
+              label="Subject Combination"
+              error={form.formState.errors.combination?.message}
+            >
+              {selectedDeptCombinations.length > 0 ? (
+                <div className="space-y-2">
+                  <div className="flex flex-wrap gap-2">
+                    {selectedDeptCombinations.map((c) => {
+                      const selected = form.watch("combination") === c
+                      return (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => form.setValue("combination", selected ? "" : c, { shouldValidate: true })}
+                          className={`px-4 py-2 rounded-xl text-[13px] font-black uppercase tracking-wider border-2 transition-all ${
+                            selected
+                              ? "border-brand bg-brand text-white shadow-md shadow-brand/20"
+                              : "border-ink-200 dark:border-ink-700 text-ink-600 dark:text-ink-300 hover:border-brand/50"
+                          }`}
+                        >
+                          {c}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <p className="text-[11px] text-ink-400">
+                    Select the subject combination you studied in secondary school.
+                  </p>
+                </div>
+              ) : (
+                <input
+                  className="input"
+                  placeholder="e.g. PCM, PCB, MCE, HEG"
+                  {...form.register("combination")}
+                />
+              )}
             </Field>
           </div>
         )}

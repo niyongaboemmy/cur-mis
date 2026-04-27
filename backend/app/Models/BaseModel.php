@@ -125,8 +125,8 @@ abstract class BaseModel
         )['cnt'] ?? 0);
 
         $rows = $this->db->fetchAll(
-            "SELECT * FROM `{$this->table}` {$whereSql} ORDER BY `{$orderBy}` {$dir} LIMIT ? OFFSET ?",
-            [...$bindings, $perPage, $offset]
+            "SELECT * FROM `{$this->table}` {$whereSql} ORDER BY `{$orderBy}` {$dir} LIMIT {$perPage} OFFSET {$offset}",
+            $bindings
         );
 
         return [

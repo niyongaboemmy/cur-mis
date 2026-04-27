@@ -117,25 +117,38 @@ class EmailTemplateHelper
     /**
      * Template: one or more documents rejected — applicant must re-upload.
      *
-     * @param array $rejectedDocs  Array of ['type_name' => '...', 'rejection_notes' => '...']
+     * @param array $rejectedDocs  Array of ['type_name' => '...', 'verification_comment' => '...']
      */
-    public static function documentsRejectedTemplate(string $name, string $appNumber, array $rejectedDocs): string
+    public static function documentsRejectedTemplate(string $name, string $appNumber, array $rejectedDocs, string $adminMessage = ''): string
     {
         $safeName = htmlspecialchars($name);
         $safeAppNumber = htmlspecialchars($appNumber);
+        $safeAdminMessage = htmlspecialchars($adminMessage);
 
         $list = '';
         foreach ($rejectedDocs as $doc) {
             $typeName = htmlspecialchars($doc['type_name'] ?? 'Document');
-            $notes = htmlspecialchars($doc['rejection_notes'] ?? 'Please re-upload.');
+            $notes = htmlspecialchars($doc['verification_comment'] ?? 'Please re-upload.');
             $list .= "<li style='margin-bottom:8px;'><strong>{$typeName}</strong>: {$notes}</li>";
+        }
+
+        $messageHtml = "";
+        if ($safeAdminMessage) {
+            $messageHtml = "
+                <div style='background-color: #fef2f2; border: 1px solid #fee2e2; border-radius: 12px; padding: 20px; margin: 24px 0; color: #991b1b;'>
+                    <p style='margin: 0 0 10px 0; font-weight: 700; text-transform: uppercase; font-size: 11px; tracking: 0.1em;'>Message from Admissions Office:</p>
+                    <p style='margin: 0; font-size: 15px; line-height: 1.5;'>$safeAdminMessage</p>
+                </div>
+            ";
         }
 
         $content = "
             Hello $safeName,<br><br>
             We have reviewed the documents for your application <strong>$safeAppNumber</strong>.
-            Unfortunately, the following document(s) could not be accepted:<br><br>
-            <ul style='color:#374151;line-height:1.8;'>$list</ul>
+            Unfortunately, some of your documents could not be accepted.
+            $messageHtml
+            <strong>Required Corrections:</strong>
+            <ul style='color:#374151;line-height:1.8; margin-top: 15px;'>$list</ul>
             Please log in to the application portal and re-upload the affected documents.
             Once all required documents are verified, your application will proceed to the next stage.
         ";
@@ -227,6 +240,57 @@ class EmailTemplateHelper
             Welcome to the institution. We wish you a successful academic journey!
         ";
         return self::wrap("Welcome — Your Registration Number is {$safeRegNumber}", $content);
+    }
+
+    /**
+     * Template: admission letter dispatch — sent with PDF attached.
+     */
+    public static function admissionLetterEmailTemplate(
+        string $name,
+        string $appNumber,
+        string $programName,
+        string $offerRef,
+        string $downloadUrl,
+        string $expiresAt = ''
+    ): string {
+        $safeName       = htmlspecialchars($name);
+        $safeAppNumber  = htmlspecialchars($appNumber);
+        $safeProgram    = htmlspecialchars($programName);
+        $safeOfferRef   = htmlspecialchars($offerRef);
+        $safeDownload   = htmlspecialchars($downloadUrl);
+        $expiresHtml    = '';
+
+        if ($expiresAt) {
+            try {
+                $fmt = (new \DateTime($expiresAt))->format('j F Y');
+                $expiresHtml = "<p style='margin:0 0 8px 0;'><strong>Offer Expires:</strong> {$fmt}</p>";
+            } catch (\Exception $e) {}
+        }
+
+        $content = "
+            Dear $safeName,<br><br>
+            Congratulations! We are delighted to inform you that your <strong>Admission Letter</strong>
+            for admission to <strong>$safeProgram</strong> has been issued.<br><br>
+            <div style='background:#f0f4ff;border-left:4px solid #1e3a8a;border-radius:0 8px 8px 0;padding:16px 20px;margin:20px 0;'>
+                <p style='margin:0 0 8px 0;font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:#6b7280;font-family:Arial,sans-serif;'>Admission Details</p>
+                <p style='margin:0 0 8px 0;'><strong>Offer Reference:</strong> $safeOfferRef</p>
+                <p style='margin:0 0 8px 0;'><strong>Application Number:</strong> $safeAppNumber</p>
+                <p style='margin:0 0 8px 0;'><strong>Programme:</strong> $safeProgram</p>
+                $expiresHtml
+            </div>
+            Your official admission letter is <strong>attached to this email as a PDF</strong>.
+            You can also download it directly from the portal using the button below:<br>
+            <div style='text-align:center;margin:28px 0;'>
+                <a href='$safeDownload' style='display:inline-block;padding:14px 32px;background:#1e40af;color:#fff;text-decoration:none;border-radius:10px;font-weight:700;font-family:Arial,sans-serif;font-size:15px;letter-spacing:0.02em;'>
+                    Download Admission Letter (PDF)
+                </a>
+            </div>
+            Please log in to the Applicant Portal to formally <strong>accept or decline</strong> this offer before the expiry date.
+            Failure to respond by the deadline will result in automatic withdrawal of the offer.<br><br>
+            We look forward to welcoming you to our academic community!
+        ";
+
+        return self::wrap("Your Admission Letter — {$safeOfferRef}", $content);
     }
 
     /**

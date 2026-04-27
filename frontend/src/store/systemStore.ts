@@ -7,9 +7,22 @@ interface SystemState {
   error:      string | null
   loadedAt:   number | null
 
+  /**
+   * Globally-selected academic year label (e.g. "2026-2027") — driven by the
+   * selector in the topnav. Empty string means "All years".
+   * Initialized from the active year once /system/basics resolves.
+   */
+  selectedYearLabel: string
+  /**
+   * True once we've seeded `selectedYearLabel` from the active year. Prevents
+   * the user's empty-string "All" choice from being overwritten every render.
+   */
+  selectedYearInitialized: boolean
+
   setBasics: (b: SystemBasics) => void
   setLoading: (l: boolean) => void
   setError:  (e: string | null) => void
+  setSelectedYearLabel: (label: string) => void
   clear:     () => void
 }
 
@@ -23,10 +36,30 @@ export const useSystemStore = create<SystemState>()((set) => ({
   error:    null,
   loadedAt: null,
 
-  setBasics: (basics) => set({ basics, loadedAt: Date.now(), error: null }),
+  selectedYearLabel:       '',
+  selectedYearInitialized: false,
+
+  setBasics: (basics) => set((s) => {
+    const nextLabel = s.selectedYearInitialized
+      ? s.selectedYearLabel
+      : (basics.active_year && typeof basics.active_year === 'object'
+          ? (basics.active_year as AcademicYear).label ?? ''
+          : '')
+    return {
+      basics,
+      loadedAt: Date.now(),
+      error: null,
+      selectedYearLabel:       nextLabel,
+      selectedYearInitialized: true,
+    }
+  }),
   setLoading: (loading) => set({ loading }),
   setError:  (error) => set({ error }),
-  clear:     () => set({ basics: null, loading: false, error: null, loadedAt: null }),
+  setSelectedYearLabel: (label) => set({ selectedYearLabel: label, selectedYearInitialized: true }),
+  clear:     () => set({
+    basics: null, loading: false, error: null, loadedAt: null,
+    selectedYearLabel: '', selectedYearInitialized: false,
+  }),
 }))
 
 /* ── Selectors ─────────────────────────────────────────────────────── */

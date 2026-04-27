@@ -74,11 +74,17 @@ class AuthService
             ];
         }
 
+        $debug = filter_var($_ENV['APP_DEBUG'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $responseData = ['email' => $email];
+        if ($debug) {
+            $responseData['dev_otp'] = $otp;
+        }
+
         return [
             'success'      => true,
             'message'      => 'Verification code sent to your email.',
             'otp_required' => true,
-            'data'         => ['email' => $email],
+            'data'         => $responseData,
         ];
     }
 
@@ -148,7 +154,13 @@ class AuthService
             ];
         }
 
-        return ['success' => true, 'message' => 'New verification code sent.', 'data' => null];
+        $debug = filter_var($_ENV['APP_DEBUG'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $responseData = ['email' => $email];
+        if ($debug) {
+            $responseData['dev_otp'] = $otp;
+        }
+
+        return ['success' => true, 'message' => 'New verification code sent.', 'data' => $responseData];
     }
 
     public function register(array $data): array
@@ -250,10 +262,15 @@ class AuthService
             ];
         }
 
+        $responseData = ['email' => $email];
+        if ($debug) {
+            $responseData['dev_otp'] = $otp;
+        }
+
         return [
             'success' => true,
             'message' => 'Account created. A verification code has been sent to your email.',
-            'data'    => ['email' => $email],
+            'data'    => $responseData,
         ];
     }
 
@@ -330,7 +347,19 @@ class AuthService
         $altBody   = "Your verification code is: $otp. It expires in 10 minutes.";
         $emailSent = $this->mailService->send($email, 'Verify Your Account', $htmlBody, $altBody);
 
+        $debug = filter_var($_ENV['APP_DEBUG'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $responseData = ['email' => $email];
+        
         if (!$emailSent) {
+            if ($debug) {
+                error_log("[DEV OTP] Application Registration OTP for {$email}: {$otp}");
+                $responseData['dev_otp'] = $otp;
+                return [
+                    'success' => true,
+                    'message' => 'Account created. OTP logged (dev mode).',
+                    'data'    => $responseData,
+                ];
+            }
             return [
                 'success' => false,
                 'code'    => 500,
@@ -339,10 +368,14 @@ class AuthService
             ];
         }
 
+        if ($debug) {
+            $responseData['dev_otp'] = $otp;
+        }
+
         return [
             'success' => true,
             'message' => 'Account created. A verification code has been sent to your email.',
-            'data'    => ['email' => $email],
+            'data'    => $responseData,
         ];
     }
 
@@ -370,7 +403,19 @@ class AuthService
 
         $emailSent = $this->mailService->send($email, 'Password Reset Code', $htmlBody, $altBody);
 
+        $debug = filter_var($_ENV['APP_DEBUG'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $responseData = ['email' => $email];
+
         if (!$emailSent) {
+            if ($debug) {
+                error_log("[DEV OTP] Reset OTP for {$email}: {$otp}");
+                $responseData['dev_otp'] = $otp;
+                return [
+                    'success' => true,
+                    'message' => 'OTP logged to error log (dev mode).',
+                    'data'    => $responseData,
+                ];
+            }
             return [
                 'success' => false,
                 'message' => 'Failed to send reset code. Please try again later.',
@@ -378,10 +423,14 @@ class AuthService
             ];
         }
 
+        if ($debug) {
+            $responseData['dev_otp'] = $otp;
+        }
+
         return [
             'success' => true,
             'message' => 'A password reset code has been sent to your email.',
-            'data'    => ['email' => $email],
+            'data'    => $responseData,
         ];
     }
 

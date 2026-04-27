@@ -22,7 +22,7 @@ const registerSchema = z.object({
 
 export type RegisterFormValues = z.infer<typeof registerSchema>;
 
-export default function RegisterForm({ onSuccess }: { onSuccess?: (email: string) => void }) {
+export default function RegisterForm({ onSuccess }: { onSuccess?: (data: any) => void }) {
   const {
     register,
     handleSubmit,
@@ -35,7 +35,7 @@ export default function RegisterForm({ onSuccess }: { onSuccess?: (email: string
       if (res.success && res.data) {
         toast.success(res.message || "Account created! Please verify your email.");
         if (onSuccess) {
-          onSuccess(data.email);
+          onSuccess(res.data);
         }
       } else {
         toast.error(res.message || "Registration failed");

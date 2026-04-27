@@ -101,12 +101,26 @@ export const admissionRequirementService = {
  * ─────────────────────────────────────────────────────────────── */
 export const applicationAdminService = {
   list: (
-    params: { page?: number; per_page?: number; status?: ApplicationStatus; department_id?: number; intake?: string; q?: string } = {},
+    params: { page?: number; per_page?: number; status?: ApplicationStatus; department_id?: number; intake?: string; search?: string; q?: string } = {},
     signal?: AbortSignal,
-  ) => api.get<PaginatedResponse<StudentApplication>>('/api/admin/applications', params, signal),
+  ) => {
+    const { q, ...rest } = params;
+    return api.get<PaginatedResponse<StudentApplication>>('/api/admin/applications', { ...rest, search: q ?? rest.search }, signal);
+  },
+  
+  getStats: (signal?: AbortSignal) =>
+    api.get<{ 
+      by_status: any[]; 
+      by_intake: any[]; 
+      by_dept: any[];
+      by_gender: any[];
+      trend: any[];
+      recent: any[]; 
+      total: number 
+    }>('/api/admin/applications/stats', {}, signal),
 
   show: (id: number, signal?: AbortSignal) =>
-    api.get<StudentApplication & { documents?: ApplicationDocument[]; status_log?: ApplicationStatusLog[] }>(
+    api.get<{ application: StudentApplication; documents?: ApplicationDocument[]; status_log?: ApplicationStatusLog[] }>(
       `/api/admin/applications/${id}`, {}, signal,
     ),
 
@@ -115,6 +129,9 @@ export const applicationAdminService = {
 
   addNote: (id: number, data: { notes: string }) =>
     api.post<null>(`/api/admin/applications/${id}/notes`, data),
+
+  acceptOfferByAppId: (id: number) =>
+    api.post<{ offer_id: number }>(`/api/admin/applications/${id}/accept-offer`),
 }
 
 /* ───────────────────────────────────────────────────────────────
@@ -126,10 +143,14 @@ export const verificationService = {
     api.get<PaginatedResponse<StudentApplication>>('/api/admin/verifications', {}, signal),
 
   getApplicationDocuments: (applicationId: number, signal?: AbortSignal) =>
-    api.get<ApplicationDocument[]>(`/api/admin/verifications/${applicationId}/documents`, {}, signal),
+    api.get<{ application: StudentApplication; documents: ApplicationDocument[] }>(`/api/admin/verifications/${applicationId}/documents`, {}, signal),
 
-  verifyDocument: (applicationId: number, documentId: number, data: { verification_status: 'verified' | 'rejected'; rejection_notes?: string }) =>
+  verifyDocument: (applicationId: number, documentId: number, data: { verification_status: 'verified' | 'rejected'; comment?: string }) =>
     api.patch<null>(`/api/admin/verifications/${applicationId}/documents/${documentId}`, data),
+
+  /** Request document changes (sends email for all rejected documents) */
+  requestDocumentChanges: (applicationId: number, data: { message?: string; document_ids?: number[] } = {}) =>
+    api.post<null>(`/api/admin/verifications/${applicationId}/request-changes`, data),
 
   /** Returns the raw file server URL/redirect */
   downloadUrl: (applicationId: number, documentId: number) => {
@@ -165,7 +186,7 @@ export const meritService = {
  * permission: MANAGE_ADMISSIONS
  * ─────────────────────────────────────────────────────────────── */
 export const offerService = {
-  list: (params: { status?: string } = {}, signal?: AbortSignal) =>
+  list: (params: { status?: string; department_id?: number; intake?: string; enrolled_only?: '0' | '1' } = {}, signal?: AbortSignal) =>
     api.get<PaginatedResponse<AdmissionOffer>>('/api/admin/admissions/offers', params, signal),
 
   create: (d: { application_id: number; expires_at: string; notes?: string }) =>
@@ -179,6 +200,37 @@ export const offerService = {
 
   initiateEnrollment: (offerId: number) =>
     api.post<{ student_id: number }>(`/api/admin/admissions/offers/${offerId}/enroll`),
+
+  initiateEnrollmentByAppId: (appId: number) =>
+    api.post<{ student_id: number }>(`/api/admin/applications/${appId}/enroll`),
+
+  sendLetter: (offerId: number) =>
+    api.post<{ sent_to: string; letter_token: string; download_url: string }>(`/api/admin/admissions/offers/${offerId}/send-letter`),
+
+  bulkSendLetters: (d: { department_id: number; intake: string; academic_year_id: number }) =>
+    api.post<{ total: number; sent: number; errors: string[] }>('/api/admin/admissions/letters/bulk-send', d),
+
+  /** Returns absolute URL for PDF download (admin, JWT-authenticated). */
+  letterPdfUrl: (offerId: number) => {
+    const token = useAuthStore.getState().token
+    const base  = import.meta.env.VITE_API_URL ?? ''
+    return `${base}/api/admin/admissions/offers/${offerId}/letter?token=${token}`
+  },
+
+  /** Returns absolute URL for applicant PDF download via token (no JWT). */
+  letterPublicUrl: (letterToken: string) => {
+    const base = import.meta.env.VITE_API_URL ?? ''
+    return `${base}/api/portal/admission-letter?token=${letterToken}`
+  },
+}
+
+/* ───────────────────────────────────────────────────────────────
+ * Manual admission
+ * permission: MANAGE_ADMISSIONS
+ * ─────────────────────────────────────────────────────────────── */
+export const manualAdmissionService = {
+  admit: (d: { application_id: number; reason?: string; notes?: string; expires_at?: string }) =>
+    api.post<{ offer_id: number; offer_letter_reference: string; expires_at: string }>('/api/admin/admissions/manual-admit', d),
 }
 
 /* ───────────────────────────────────────────────────────────────

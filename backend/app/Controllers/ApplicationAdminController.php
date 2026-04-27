@@ -93,7 +93,7 @@ class ApplicationAdminController extends BaseController
 
         $data   = $request->body();
         $errors = ValidationHelper::validate($data, [
-            'status' => 'required|in:documents_under_review,withdrawn',
+            'status' => 'required|in:submitted,documents_under_review,documents_verified,documents_rejected,requested_changes,withdrawn',
         ]);
 
         if (!empty($errors)) {
@@ -150,5 +150,71 @@ class ApplicationAdminController extends BaseController
         $this->appModel->update($id, ['notes' => $combined]);
 
         $this->success($response, ['notes' => $combined], 'Note added successfully.');
+    }
+    /**
+     * GET /api/admin/applications/stats
+     * Dashboard statistics.
+     */
+    public function getDashboardStats(Request $request, Response $response): never
+    {
+        $db = \Core\Database::getInstance();
+        
+        // Count by status
+        $statusCounts = $db->fetchAll(
+            "SELECT status, COUNT(*) as cnt 
+             FROM student_applications 
+             GROUP BY status"
+        );
+
+        // Count by intake
+        $intakeCounts = $db->fetchAll(
+            "SELECT intake, COUNT(*) as cnt 
+             FROM student_applications 
+             GROUP BY intake"
+        );
+
+        // Departmental distribution
+        $deptCounts = $db->fetchAll(
+            "SELECT d.dep_name as label, COUNT(*) as cnt 
+             FROM student_applications sa
+             JOIN departements d ON d.dep_id = sa.department_id
+             GROUP BY sa.department_id
+             ORDER BY cnt DESC"
+        );
+
+        // Gender distribution
+        $genderCounts = $db->fetchAll(
+            "SELECT gender as label, COUNT(*) as cnt 
+             FROM student_applications 
+             GROUP BY gender"
+        );
+
+        // Submission trend (last 7 days)
+        $trend = $db->fetchAll(
+            "SELECT DATE(created_at) as date, COUNT(*) as cnt
+             FROM student_applications
+             WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+             GROUP BY DATE(created_at)
+             ORDER BY date ASC"
+        );
+
+        // Recent activity
+        $recent = $db->fetchAll(
+            "SELECT sa.application_number, sa.first_name, sa.last_name, sa.status, sa.created_at, d.dep_name as department_name
+             FROM student_applications sa
+             JOIN departements d ON d.dep_id = sa.department_id
+             ORDER BY sa.id DESC
+             LIMIT 8"
+        );
+
+        $this->success($response, [
+            'by_status' => $statusCounts,
+            'by_intake' => $intakeCounts,
+            'by_dept'   => $deptCounts,
+            'by_gender' => $genderCounts,
+            'trend'     => $trend,
+            'recent'    => $recent,
+            'total'     => array_sum(array_column($statusCounts, 'cnt'))
+        ], 'Stats fetched.');
     }
 }

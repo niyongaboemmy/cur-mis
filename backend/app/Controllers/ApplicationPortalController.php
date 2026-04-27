@@ -264,7 +264,7 @@ class ApplicationPortalController extends BaseController
             $uploadedMap[(int)$doc['document_type_id']] = [
                 'verification_status' => $doc['verification_status'],
                 'uploaded_at'         => $doc['uploaded_at'],
-                'rejection_notes'     => $doc['rejection_notes'],
+                'verification_comment'     => $doc['verification_comment'],
             ];
         }
 
@@ -281,7 +281,7 @@ class ApplicationPortalController extends BaseController
                 'uploaded'            => $uploaded !== null,
                 'verification_status' => $uploaded['verification_status'] ?? null,
                 'uploaded_at'         => $uploaded['uploaded_at']         ?? null,
-                'rejection_notes'     => $uploaded['rejection_notes']     ?? null,
+                'verification_comment'     => $uploaded['verification_comment']     ?? null,
             ];
         }, $requirements);
 
@@ -422,7 +422,7 @@ class ApplicationPortalController extends BaseController
             'verification_status' => 'pending',
             'verified_by'         => null,
             'verified_at'         => null,
-            'rejection_notes'     => null,
+            'verification_comment'     => null,
         ]);
 
         $docStatus = $this->service->checkDocumentCompleteness($appId);
