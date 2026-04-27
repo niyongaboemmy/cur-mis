@@ -62,9 +62,11 @@ class HrEmployeeController extends BaseController
             $bindings   = array_merge($bindings, array_fill(0, 5, "%$search%"));
         }
 
-        // account_status filter
+        // account_status filter — 'Terminated' catches Terminated + NULL + any unknown value
         $statusVal = $request->query('status') ?? $request->query('account_status');
-        if ($statusVal !== null && $statusVal !== '') {
+        if ($statusVal === 'Terminated') {
+            $clauses[] = "(e.account_status IS NULL OR e.account_status NOT IN ('Active','Inactive'))";
+        } elseif ($statusVal !== null && $statusVal !== '') {
             $clauses[]  = "e.account_status = ?";
             $bindings[] = $statusVal;
         }
@@ -159,6 +161,7 @@ class HrEmployeeController extends BaseController
 
     /**
      * PUT /api/employees/:id
+     * Supports full and partial updates — missing fields keep existing DB values.
      */
     public function update(Request $request, Response $response): never
     {
@@ -169,13 +172,15 @@ class HrEmployeeController extends BaseController
             $this->error($response, 'Employee not found', 404);
         }
 
-        $data   = $request->body();
-        $errors = ValidationHelper::validate($data, [
-            'first_name' => ['required'],
-            'last_name'  => ['required'],
-            'position'   => ['required'],
-        ]);
+        $data = $request->body();
 
+        // Only reject a field that is explicitly provided but empty.
+        $errors = [];
+        foreach (['first_name', 'last_name', 'position'] as $field) {
+            if (array_key_exists($field, $data) && trim((string)($data[$field] ?? '')) === '') {
+                $errors[$field] = ["The {$field} field cannot be empty."];
+            }
+        }
         if (!empty($errors)) {
             $this->error($response, 'Validation failed', 422, $errors);
         }

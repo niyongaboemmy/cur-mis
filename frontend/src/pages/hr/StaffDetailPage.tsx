@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
+import toast from 'react-hot-toast'
 import {
   ArrowLeft,
   Mail,
@@ -15,8 +16,14 @@ import {
   FileText,
   Loader2,
   Sparkles,
+  Pencil,
+  X,
+  Save,
+  CreditCard,
 } from 'lucide-react'
-import { hrService } from '@/services/hrService'
+import { hrService, type HrEmployeePayload } from '@/services/hrService'
+import { useAuthStore } from '@/store/authStore'
+import { PERMISSIONS } from '@/constants'
 import type { HrEmployee } from '@/types/academic'
 
 type Tab = 'overview' | 'attendance' | 'documents'
@@ -24,6 +31,12 @@ type Tab = 'overview' | 'attendance' | 'documents'
 export default function StaffDetailPage() {
   const { id } = useParams<{ id: string }>()
   const [tab, setTab] = useState<Tab>('overview')
+  const [editOpen, setEditOpen] = useState(false)
+
+  const { user } = useAuthStore()
+  const canManage = user?.role === 'superadmin' ||
+    (user?.permissions || []).includes(PERMISSIONS.MANAGE_HR_EMPLOYEES) ||
+    (user?.permissions || []).includes(PERMISSIONS.VIEW_HR_EMPLOYEES)
 
   const empQ = useQuery({
     queryKey: ['hr-employee', id],
@@ -65,7 +78,7 @@ export default function StaffDetailPage() {
 
       {/* Profile header card */}
       <section className="card p-6">
-        <div className="flex flex-col md:flex-row gap-5 md:items-center">
+        <div className="flex flex-col md:flex-row gap-5 md:items-start">
           <div className="h-20 w-20 rounded-xl bg-brand/10 text-brand dark:bg-brand/25 dark:text-gold-400 flex items-center justify-center font-semibold text-2xl shrink-0">
             {initials}
           </div>
@@ -97,6 +110,11 @@ export default function StaffDetailPage() {
               )}
             </div>
           </div>
+          {canManage && (
+            <button className="btn-primary btn-sm shrink-0" onClick={() => setEditOpen(true)}>
+              <Pencil className="w-3.5 h-3.5" /> Edit staff
+            </button>
+          )}
         </div>
       </section>
 
@@ -114,6 +132,145 @@ export default function StaffDetailPage() {
           {tab === 'documents' && <ComingSoon icon={FileText} title="Staff documents" desc="Contracts, national IDs, qualifications, and HR uploads." />}
         </div>
       </section>
+
+      {editOpen && (
+        <EditStaffModal
+          employee={employee}
+          onClose={() => setEditOpen(false)}
+          onSaved={() => setEditOpen(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Edit Staff Modal
+   ───────────────────────────────────────────────────────────── */
+function EditStaffModal({
+  employee, onClose, onSaved,
+}: { employee: HrEmployee; onClose: () => void; onSaved: () => void }) {
+  const qc = useQueryClient()
+
+  const emp = employee as any
+  const [form, setForm] = useState({
+    emp_code:      emp.emp_code     ?? '',
+    first_name:    emp.first_name   ?? emp.full_name?.split(' ')[0]              ?? '',
+    last_name:     emp.last_name    ?? emp.full_name?.split(' ').slice(1).join(' ') ?? '',
+    gender:        (emp.gender as 'M' | 'F') || 'M',
+    department:    emp.department   ?? '',
+    position:      emp.position     ?? '',
+    contract_type: (emp.contract_type as HrEmployeePayload['contract_type']) || 'Permanent',
+    start_date:    emp.start_date   ?? '',
+    end_date:      emp.end_date     ?? '',
+    salary:        emp.salary       ?? 0,
+    phone:         emp.phone        ?? '',
+    email:         emp.email        ?? '',
+    status:        ((emp.status || 'Active') as HrEmployeePayload['status']),
+    bank:          emp.bank         ?? '',
+    bank_account:  emp.bank_account ?? '',
+  })
+
+  const set = <K extends keyof typeof form>(k: K, v: typeof form[K]) =>
+    setForm(prev => ({ ...prev, [k]: v }))
+
+  const mut = useMutation({
+    mutationFn: () => hrService.updateEmployee(employee.id, {
+      ...form,
+      salary:   Number(form.salary) || 0,
+      end_date: form.end_date || null,
+      phone:    form.phone   || null,
+      email:    form.email   || null,
+    } as any),
+    onSuccess: () => {
+      toast.success('Staff updated.')
+      qc.invalidateQueries({ queryKey: ['hr-employee', String(employee.id)] })
+      qc.invalidateQueries({ queryKey: ['hr-employees'] })
+      qc.invalidateQueries({ queryKey: ['hr-stats'] })
+      onSaved()
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Save failed'),
+  })
+
+  const F = ({ label, required: req, children }: { label: string; required?: boolean; children: React.ReactNode }) => (
+    <label className="block">
+      <span className="text-[12px] font-medium text-ink-700 dark:text-ink-300 mb-1 block">
+        {label} {req && <span className="text-red-500">*</span>}
+      </span>
+      {children}
+    </label>
+  )
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-ink-900/50 backdrop-blur-sm">
+      <div className="bg-white dark:bg-ink-800 rounded-xl shadow-xl w-full max-w-2xl max-h-[92vh] overflow-hidden flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-ink-100 dark:border-ink-700">
+          <div>
+            <h3 className="text-[15px] font-semibold text-ink-900 dark:text-white">Edit staff — {employee.full_name}</h3>
+            <p className="text-[12px] text-ink-500">Update information or change employment status</p>
+          </div>
+          <button onClick={onClose} className="icon-btn"><X className="w-4 h-4" /></button>
+        </div>
+
+        <form
+          onSubmit={e => { e.preventDefault(); mut.mutate() }}
+          className="flex-1 overflow-y-auto p-6 grid grid-cols-1 md:grid-cols-2 gap-4"
+        >
+          <F label="Employee code" required><input required className="input" value={form.emp_code} onChange={e => set('emp_code', e.target.value)} /></F>
+          <F label="Gender">
+            <select className="input" value={form.gender} onChange={e => set('gender', e.target.value as 'M' | 'F')}>
+              <option value="M">Male</option>
+              <option value="F">Female</option>
+            </select>
+          </F>
+          <F label="First name (surname)" required><input required className="input" value={form.first_name} onChange={e => set('first_name', e.target.value)} /></F>
+          <F label="Last name (given name)" required><input required className="input" value={form.last_name} onChange={e => set('last_name', e.target.value)} /></F>
+          <F label="Department" required><input required className="input" value={form.department} onChange={e => set('department', e.target.value)} /></F>
+
+          <F label="Position / Role" required><input required className="input" value={form.position} onChange={e => set('position', e.target.value)} /></F>
+          <F label="Contract type">
+            <select className="input" value={form.contract_type} onChange={e => set('contract_type', e.target.value as HrEmployeePayload['contract_type'])}>
+              <option value="Permanent">Permanent</option>
+              <option value="Temporal">Temporal</option>
+              <option value="Part-time">Part-time</option>
+            </select>
+          </F>
+
+          <F label="Start date"><input type="date" className="input" value={form.start_date} onChange={e => set('start_date', e.target.value)} /></F>
+          <F label="End date"><input type="date" className="input" value={form.end_date || ''} onChange={e => set('end_date', e.target.value)} /></F>
+
+          <F label="Salary (RWF)"><input type="number" min={0} className="input" value={form.salary} onChange={e => set('salary', Number(e.target.value))} /></F>
+          <F label="Status">
+            <select className="input" value={form.status} onChange={e => set('status', e.target.value as HrEmployeePayload['status'])}>
+              <option value="Active">Active</option>
+              <option value="Inactive">Inactive</option>
+              <option value="Terminated">Terminated</option>
+            </select>
+          </F>
+
+          <F label="Phone"><input className="input" placeholder="+250…" value={form.phone} onChange={e => set('phone', e.target.value)} /></F>
+          <F label="Email"><input type="email" className="input" value={form.email} onChange={e => set('email', e.target.value)} /></F>
+
+          {/* Bank info */}
+          <div className="md:col-span-2 pt-2 border-t border-ink-100 dark:border-ink-700">
+            <p className="text-[11px] font-semibold text-ink-500 uppercase tracking-wider flex items-center gap-1.5 mb-3">
+              <CreditCard className="w-3.5 h-3.5" /> Bank / Payment Info
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <F label="Bank name"><input className="input" placeholder="e.g. Bank of Kigali" value={form.bank} onChange={e => set('bank', e.target.value)} /></F>
+              <F label="Account number"><input className="input" placeholder="Account #" value={form.bank_account} onChange={e => set('bank_account', e.target.value)} /></F>
+            </div>
+          </div>
+
+          <div className="md:col-span-2 flex justify-end gap-2 pt-2 border-t border-ink-100 dark:border-ink-700">
+            <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
+            <button type="submit" disabled={mut.isPending} className="btn-primary">
+              {mut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              Save changes
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }

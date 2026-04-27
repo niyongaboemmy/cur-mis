@@ -34,6 +34,7 @@ const PayrollPage               = lazy(() => import('@/pages/hr/PayrollPage'))
 const PayrollSlipPage           = lazy(() => import('@/pages/hr/PayrollSlipPage'))
 const PaymentsPage              = lazy(() => import('@/pages/hr/PaymentsPage'))
 const HrSettingsPage            = lazy(() => import('@/pages/hr/HrSettingsPage'))
+const LeavePage                 = lazy(() => import('@/pages/hr/LeavePage'))
 const AcademicSettingsPage      = lazy(() => import('@/pages/academic/AcademicSettingsPage'))
 const AcademicsManagementPage   = lazy(() => import('@/pages/academic/AcademicsManagementPage'))
 
@@ -147,6 +148,7 @@ function App() {
                 <Route path="/hr/payroll"        element={<PayrollPage />} />
                 <Route path="/hr/payroll/:id"    element={<PayrollSlipPage />} />
                 <Route path="/hr/payments"       element={<PaymentsPage />} />
+                <Route path="/hr/leave"          element={<LeavePage />} />
               </Route>
               {/* HR Management — manage only */}
               <Route element={<ProtectedRoute requiredPermissions={PERMISSIONS.MANAGE_HR_EMPLOYEES} />}>

@@ -28,22 +28,26 @@ $router->group('/api/hr/payroll', function ($router) {
     $router->delete('/:id',          [HrPayrollController::class, 'destroy']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES)]);
 
-// Payroll config: read rates
+// Payroll config: read rates + custom deductions
 $router->group('/api/hr', function ($router) {
-    $router->get('/config', [PayrollConfigController::class, 'index']);
+    $router->get('/config',              [PayrollConfigController::class, 'index']);
+    $router->get('/config/deductions',   [PayrollConfigController::class, 'listDeductions']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::VIEW_HR_EMPLOYEES)]);
 
-// Payroll config: update rates
+// Payroll config: update rates + manage custom deductions
 $router->group('/api/hr', function ($router) {
-    $router->put('/config', [PayrollConfigController::class, 'update']);
+    $router->put('/config',                    [PayrollConfigController::class, 'update']);
+    $router->post('/config/deductions',        [PayrollConfigController::class, 'addDeduction']);
+    $router->put('/config/deductions/:id',     [PayrollConfigController::class, 'updateDeduction']);
+    $router->delete('/config/deductions/:id',  [PayrollConfigController::class, 'deleteDeduction']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES)]);
 
-// Salary payments: read
+// Salary: read
 $router->group('/api/hr/payroll/payments', function ($router) {
     $router->get('', [SalaryPaymentController::class, 'index']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::VIEW_HR_EMPLOYEES)]);
 
-// Salary payments: write
+// Salary: write
 $router->group('/api/hr/payroll/payments', function ($router) {
     $router->post('',     [SalaryPaymentController::class, 'process']);
     $router->delete('/:id', [SalaryPaymentController::class, 'destroy']);

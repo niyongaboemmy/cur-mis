@@ -103,10 +103,11 @@ const NAV_TREE: NavNode[] = [
     children: [
       { to: "/hr/staff",      label: "All staff",        permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },
       { to: "/hr/payroll",    label: "Payroll",          permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },
-      { to: "/hr/payments",   label: "Salary Payments",  permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },
-      { to: "/hr/attendance", label: "Attendance",       permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },
+      { to: "/hr/payments",   label: "Salary",           permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },
+      { to: "/hr/leave",      label: "Leave",            permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },
+      { to: "/hr/settings",   label: "Payroll Settings", permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },
+      { to: "/hr/attendance", label: "Attendance",         permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },
       { to: "/hr/documents",  label: "Documents",        permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },
-      { to: "/hr/settings",   label: "HR Settings",      permissions: [PERMISSIONS.MANAGE_HR_EMPLOYEES] },
     ],
   },
   // ─── Admissions / Student Management Module ───
@@ -302,9 +303,10 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
   "/hr/staff":      { title: "HR Management",    sub: "Staff directory, roles and contracts" },
   "/hr/payroll":    { title: "Payroll",          sub: "Monthly salary breakdown and payslips" },
   "/hr/payments":   { title: "Salary Payments",  sub: "Disbursement history and payment records" },
+  "/hr/leave":      { title: "Leave Management", sub: "Leave requests, approvals and balances" },
   "/hr/attendance": { title: "Staff attendance", sub: "Daily attendance and timesheets" },
   "/hr/documents":  { title: "Staff documents",  sub: "Contracts, IDs and HR files" },
-  "/hr/settings":   { title: "HR Settings",      sub: "Payroll deduction rate configuration" },
+  "/hr/settings":   { title: "Payroll Settings",  sub: "Deduction rates and custom payroll items" },
   "/teachers": { title: "Teachers", sub: "Lecturers and faculty members" },
   "/teachers/schedules": {
     title: "Teacher schedules",
