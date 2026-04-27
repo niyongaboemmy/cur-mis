@@ -1,14 +1,6 @@
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import {
-  Files,
-  FileCheck2,
-  Award,
-  Handshake,
-  ListChecks,
-  Layers,
-  Calendar,
-} from "lucide-react";
+import { Files, Handshake, ListChecks, Layers, Calendar } from "lucide-react";
 import { verificationService } from "@/services/admissionService";
 import { useAuthStore } from "@/store/authStore";
 import { PERMISSIONS } from "@/constants";
@@ -20,20 +12,6 @@ const TABS = [
     icon: Files,
     badge: false,
     permission: PERMISSIONS.MANAGE_STUDENT_APPLICATIONS,
-  },
-  {
-    to: "/admin/admissions/verifications",
-    label: "Verifications",
-    icon: FileCheck2,
-    badge: true,
-    permission: PERMISSIONS.VERIFY_DOCUMENTS,
-  },
-  {
-    to: "/admin/admissions/merit",
-    label: "Merit lists",
-    icon: Award,
-    badge: false,
-    permission: PERMISSIONS.MANAGE_ADMISSIONS,
   },
   {
     to: "/admin/admissions/offers",
