@@ -13,9 +13,11 @@ use App\Constants\Permissions;
 
 // Read-only: any user with VIEW_STUDENTS
 $router->group('/api/students', function ($router) {
-    $router->get('/stats', [StudentController::class, 'stats']);
-    $router->get('',       [StudentController::class, 'index']);
-    $router->get('/:id',   [StudentController::class, 'show']);
+    $router->get('/stats',                                [StudentController::class, 'stats']);
+    $router->get('',                                      [StudentController::class, 'index']);
+    $router->get('/:id',                                  [StudentController::class, 'show']);
+    $router->get('/:id/documents',                        [StudentController::class, 'documents']);
+    $router->get('/:id/documents/:document_id/download',  [StudentController::class, 'downloadDocument']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::VIEW_STUDENTS)]);
 
 // Write: requires MANAGE_STUDENTS

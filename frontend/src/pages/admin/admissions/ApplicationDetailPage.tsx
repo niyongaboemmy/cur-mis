@@ -194,6 +194,27 @@ export default function ApplicationDetailPage() {
     onError: (e: any) => toast.error(e?.response?.data?.message ?? "Failed"),
   });
 
+  const approveAllDocs = useMutation({
+    mutationFn: async (pendingDocIds: number[]) => {
+      for (const docId of pendingDocIds) {
+        await verificationService.verifyDocument(appId, docId, {
+          verification_status: "verified",
+        });
+      }
+      await applicationAdminService.updateStatus(appId, {
+        status: ApplicationStatus.DOCUMENTS_VERIFIED,
+      });
+    },
+    onSuccess: () => {
+      toast.success("All documents approved");
+      qc.invalidateQueries({ queryKey: ["admin", "applications"] });
+      qc.invalidateQueries({ queryKey: ["admin", "applications", appId] });
+      qc.invalidateQueries({ queryKey: ["admin", "verifications"] });
+    },
+    onError: (e: any) =>
+      toast.error(e?.response?.data?.message ?? "Failed to approve documents"),
+  });
+
   const enroll = useMutation({
     mutationFn: (levelId: number) =>
       offerService.initiateEnrollmentByAppId(appId, { level_id: levelId }),
@@ -896,23 +917,39 @@ export default function ApplicationDetailPage() {
                             docs.some(
                               (d) =>
                                 d.verification_status ===
-                                VerificationStatus.PENDING,
+                                VerificationStatus.REJECTED,
                             )
                           ) {
-                            toast.error("Please review all documents first.");
+                            toast.error(
+                              "Some documents are rejected. Use Request Changes instead.",
+                            );
                             return;
                           }
                           if (
-                            window.confirm(
+                            !window.confirm(
                               "Approve all documents and move to next step?",
                             )
                           ) {
+                            return;
+                          }
+                          const pendingIds = docs
+                            .filter(
+                              (d: any) =>
+                                d.verification_status ===
+                                VerificationStatus.PENDING,
+                            )
+                            .map((d: any) => d.id);
+                          if (pendingIds.length === 0) {
                             updateStatus.mutate(
                               ApplicationStatus.DOCUMENTS_VERIFIED,
                             );
+                          } else {
+                            approveAllDocs.mutate(pendingIds);
                           }
                         }}
-                        disabled={updateStatus.isPending}
+                        disabled={
+                          updateStatus.isPending || approveAllDocs.isPending
+                        }
                       >
                         <CheckCircle2 className="w-4 h-4 mr-2" /> Approve All
                         Documents

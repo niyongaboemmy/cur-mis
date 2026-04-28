@@ -116,7 +116,7 @@ class ApplicationPortalController extends BaseController
             $this->error($response, $e->getMessage(), 503);
         }
 
-        $requirements = $this->requirementModel->getForFacultyYear($facultyId, (int)$year['id']);
+        $requirements = $this->requirementModel->getForFaculty($facultyId);
 
         $this->success($response, [
             'academic_year' => ['id' => $year['id'], 'label' => $year['label']],
@@ -254,9 +254,8 @@ class ApplicationPortalController extends BaseController
         $documents = $this->docModel->getForApplication((int)$application['id']);
         $statusLog = $this->logModel->getForApplication((int)$application['id']);
 
-        $requirements = $this->requirementModel->getForFacultyYear(
-            (int)$application['faculty_id'],
-            (int)$application['academic_year_id']
+        $requirements = $this->requirementModel->getForFaculty(
+            (int)$application['faculty_id']
         );
 
         $uploadedMap = [];
@@ -373,14 +372,13 @@ class ApplicationPortalController extends BaseController
 
         $docTypeId = (int)$body['document_type_id'];
 
-        $requirements   = $this->requirementModel->getForFacultyYear(
-            (int)$application['faculty_id'],
-            (int)$application['academic_year_id']
+        $requirements   = $this->requirementModel->getForFaculty(
+            (int)$application['faculty_id']
         );
 
         $allowedTypeIds = array_column($requirements, 'document_type_id');
         if (!in_array((string)$docTypeId, $allowedTypeIds, true) && !in_array($docTypeId, $allowedTypeIds, true)) {
-            $this->error($response, 'This document type is not required for your selected faculty and academic year.', 422);
+            $this->error($response, 'This document type is not required for your selected faculty.', 422);
         }
 
         $file = $request->file('document');

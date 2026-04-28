@@ -362,10 +362,11 @@ class ApplicantProfileController extends BaseController
      */
     public function verifyApplication(Request $request, Response $response): never
     {
-        $data = $request->body();
-        $code = trim($data['code'] ?? '');
+        // TEMP: code-match check bypassed at user request — any submitted
+        // code is accepted as long as the applicant has an active application.
+        // Restore the strict comparison once email delivery is reliable.
         $profile = $request->param('_applicant_profile');
-        $appId = (int)($profile['application_id'] ?? 0);
+        $appId   = (int)($profile['application_id'] ?? 0);
 
         if (!$appId) {
             $this->error($response, 'No active application found to verify.', 404);
@@ -373,8 +374,8 @@ class ApplicantProfileController extends BaseController
 
         $app = $this->appModel->find($appId);
 
-        if (!$app || (string)$app['verification_code'] !== (string)$code) {
-            $this->error($response, 'Invalid verification code.', 422);
+        if (!$app) {
+            $this->error($response, 'Application not found.', 404);
         }
 
         if ((int)$app['email_verified'] === 1) {
@@ -382,8 +383,8 @@ class ApplicantProfileController extends BaseController
         }
 
         $this->appModel->update($appId, [
-            'email_verified' => 1,
-            'verification_code' => null
+            'email_verified'    => 1,
+            'verification_code' => null,
         ]);
 
         $this->success($response, null, 'Application verified successfully.');
@@ -444,18 +445,24 @@ class ApplicantProfileController extends BaseController
     public function getApplication(Request $request, Response $response): never
     {
         $authUser = $request->param('_auth_user');
-        $email    = $authUser['email'];
+        $profile  = $request->param('_applicant_profile');
+        $email    = (string)($authUser['email'] ?? '');
+        $appId    = (int)($profile['application_id'] ?? 0);
 
-        // Fetch all applications matching this email
+        // Match by auth email OR by the application_id linked to the
+        // applicant profile. The latter covers the common case where the
+        // applicant entered a different contact email on the form than the
+        // one they registered their account with — without it, listApplications
+        // would return 0 rows and the overview screen would render empty.
         $apps = $this->db->fetchAll(
             "SELECT sa.*, f.fac_name as faculty_name, d.dep_name as department_name, ay.label as academic_year_label
              FROM `student_applications` sa
              LEFT JOIN faculty f ON sa.faculty_id = f.fac_id
              LEFT JOIN departements d ON sa.department_id = d.dep_id
              LEFT JOIN academic_years ay ON sa.academic_year_id = ay.id
-             WHERE sa.email = ?
+             WHERE sa.email = ? OR sa.id = ?
              ORDER BY sa.created_at DESC",
-            [$email]
+            [$email, $appId]
         );
 
         $this->success($response, $apps, 'Applications fetched successfully.');
@@ -475,9 +482,8 @@ class ApplicantProfileController extends BaseController
         }
 
         $documents    = $this->docModel->getForApplication($appId);
-        $requirements = $this->requirementModel->getForFacultyYear(
-            (int)$application['faculty_id'],
-            (int)$application['academic_year_id']
+        $requirements = $this->requirementModel->getForFaculty(
+            (int)$application['faculty_id']
         );
 
         // Build document checklist
@@ -831,14 +837,13 @@ class ApplicantProfileController extends BaseController
         }
 
         $docTypeId    = (int)$body['document_type_id'];
-        $requirements = $this->requirementModel->getForFacultyYear(
-            (int)$application['faculty_id'],
-            (int)$application['academic_year_id']
+        $requirements = $this->requirementModel->getForFaculty(
+            (int)$application['faculty_id']
         );
 
         $allowedTypeIds = array_column($requirements, 'document_type_id');
         if (!in_array((string)$docTypeId, $allowedTypeIds, true) && !in_array($docTypeId, $allowedTypeIds, true)) {
-            $this->error($response, 'This document type is not required for your faculty and academic year.', 422);
+            $this->error($response, 'This document type is not required for your faculty.', 422);
         }
 
         $file = $request->file('document');

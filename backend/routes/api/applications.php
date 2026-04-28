@@ -70,16 +70,15 @@ $router->group('/api/admin', function ($router) {
         $router->delete('/:id', [DocumentTypeController::class, 'delete']);
     }, [new PermissionMiddleware(Permissions::MANAGE_ADMISSION_REQUIREMENTS)]);
 
-    // ── 2. Admission requirements (per-faculty, per-year document checklist) ──
+    // ── 2. Admission requirements (per-faculty document checklist) ──────────
     // Permission: MANAGE_ADMISSION_REQUIREMENTS
     $router->group('/admission-requirements', function ($router) {
         $router->get('',   [AdmissionRequirementController::class, 'index']);
         $router->post('',  [AdmissionRequirementController::class, 'create']);
-        $router->post('/copy', [AdmissionRequirementController::class, 'copyToYear']);
 
         $router->get(
-            '/faculty/:faculty_id/year/:year_id',
-            [AdmissionRequirementController::class, 'getForFacultyYear']
+            '/faculty/:faculty_id',
+            [AdmissionRequirementController::class, 'getForFaculty']
         );
 
         $router->get('/:id',    [AdmissionRequirementController::class, 'show']);

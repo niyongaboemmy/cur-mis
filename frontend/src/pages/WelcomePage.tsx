@@ -14,9 +14,11 @@ import {
   CalendarDays,
   Wallet,
   ClipboardList,
+  Briefcase,
   Sparkles,
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
+import { PERMISSIONS } from '@/constants'
 
 /* ─── animation variants ─────────────────────────────────────────── */
 const fadeUp = {
@@ -39,29 +41,185 @@ function formatNow(): string {
 }
 
 /* ─── quick-action cards ─────────────────────────────────────────── */
-interface QA { to: string; icon: React.ElementType; label: string; sub: string; accent: string }
+/**
+ * Each card declares which roles or permissions unlock it. The visible list
+ * is derived from the signed-in user — no hardcoded "everyone in group X
+ * sees the same thing" buckets.
+ *
+ *   - `roles`        → only these exact roles see the card (overrides perms)
+ *   - `permissions`  → ANY of these RBAC slugs grants access
+ *   - `hideForRoles` → explicit denylist for product-level decisions
+ *   - both undefined → visible to every authenticated user
+ */
+interface QA {
+  to: string
+  icon: React.ElementType
+  label: string
+  sub: string
+  accent: string
+  roles?: string[]
+  permissions?: string[]
+  hideForRoles?: string[]
+}
 
-const ADMIN_ACTIONS: QA[] = [
-  { to: '/dashboard',            icon: LayoutDashboard, label: 'Dashboard',        sub: 'Overview & key metrics',   accent: 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300' },
-  { to: '/admin/admissions',     icon: GraduationCap,   label: 'Admissions',       sub: 'Manage applications',      accent: 'bg-accent-sky text-sky-700 dark:bg-sky-900/30 dark:text-sky-300' },
-  { to: '/users',                icon: Users,           label: 'Users',            sub: 'Manage system users',      accent: 'bg-accent-peach text-orange-700 dark:bg-orange-900/30 dark:text-orange-300' },
-  { to: '/academic/management',  icon: BookOpen,        label: 'Academics',        sub: 'Degrees, programs & more', accent: 'bg-accent-mint text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' },
-  { to: '/finance',              icon: Wallet,          label: 'Finance',          sub: 'Fees & billing',           accent: 'bg-accent-lilac text-purple-700 dark:bg-purple-900/30 dark:text-purple-300' },
-  { to: '/roles',                icon: ShieldCheck,     label: 'Roles',            sub: 'Permissions & access',     accent: 'bg-gold-50 text-gold-700 dark:bg-yellow-900/30 dark:text-yellow-300' },
-]
+const QUICK_ACTIONS: QA[] = [
+  // Universal — every signed-in user
+  {
+    to: '/dashboard',
+    icon: LayoutDashboard,
+    label: 'Dashboard',
+    sub: 'Overview & key metrics',
+    accent: 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300',
+  },
 
-const APPLICANT_ACTIONS: QA[] = [
-  { to: '/applicant',            icon: ClipboardList,   label: 'My Application',   sub: 'View & edit details',      accent: 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300' },
-  { to: '/applicant/documents',  icon: Upload,          label: 'Documents',        sub: 'Upload required files',    accent: 'bg-accent-sky text-sky-700 dark:bg-sky-900/30 dark:text-sky-300' },
-  { to: '/apply/track',          icon: Search,          label: 'Track Status',     sub: 'Check your progress',      accent: 'bg-accent-mint text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' },
-  { to: '/apply',                icon: FileText,        label: 'New Application',  sub: 'Start fresh application',  accent: 'bg-accent-peach text-orange-700 dark:bg-orange-900/30 dark:text-orange-300' },
-]
+  // Applicant-only
+  {
+    to: '/applicant',
+    icon: ClipboardList,
+    label: 'My Application',
+    sub: 'View & edit details',
+    accent: 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300',
+    roles: ['applicant'],
+  },
+  {
+    to: '/applicant/documents',
+    icon: Upload,
+    label: 'Documents',
+    sub: 'Upload required files',
+    accent: 'bg-accent-sky text-sky-700 dark:bg-sky-900/30 dark:text-sky-300',
+    roles: ['applicant'],
+  },
+  {
+    to: '/apply/track',
+    icon: Search,
+    label: 'Track Status',
+    sub: 'Check your progress',
+    accent: 'bg-accent-mint text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+    roles: ['applicant'],
+  },
+  {
+    to: '/apply',
+    icon: FileText,
+    label: 'New Application',
+    sub: 'Start fresh application',
+    accent: 'bg-accent-peach text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
+    roles: ['applicant'],
+  },
 
-const STAFF_ACTIONS: QA[] = [
-  { to: '/dashboard',            icon: LayoutDashboard, label: 'Dashboard',        sub: 'Overview & metrics',       accent: 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300' },
-  { to: '/students',             icon: GraduationCap,   label: 'Students',         sub: 'Student registry',         accent: 'bg-accent-sky text-sky-700 dark:bg-sky-900/30 dark:text-sky-300' },
-  { to: '/modules',              icon: BookOpen,        label: 'Modules',          sub: 'Courses & scheduling',     accent: 'bg-accent-mint text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' },
-  { to: '/academic/management',  icon: CalendarDays,    label: 'Academic',         sub: 'Terms & programs',         accent: 'bg-accent-lilac text-purple-700 dark:bg-purple-900/30 dark:text-purple-300' },
+  // Admissions admins
+  {
+    to: '/admin/admissions',
+    icon: GraduationCap,
+    label: 'Admissions',
+    sub: 'Manage applications',
+    accent: 'bg-accent-sky text-sky-700 dark:bg-sky-900/30 dark:text-sky-300',
+    permissions: [
+      PERMISSIONS.MANAGE_STUDENT_APPLICATIONS,
+      PERMISSIONS.VERIFY_DOCUMENTS,
+      PERMISSIONS.MANAGE_ADMISSIONS,
+      PERMISSIONS.MANAGE_ADMISSION_REQUIREMENTS,
+    ],
+  },
+
+  // System admins
+  {
+    to: '/users',
+    icon: Users,
+    label: 'Users',
+    sub: 'Manage system users',
+    accent: 'bg-accent-peach text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
+    permissions: [PERMISSIONS.MANAGE_USERS],
+  },
+  {
+    to: '/roles',
+    icon: ShieldCheck,
+    label: 'Roles',
+    sub: 'Permissions & access',
+    accent: 'bg-gold-50 text-gold-700 dark:bg-yellow-900/30 dark:text-yellow-300',
+    permissions: [PERMISSIONS.MANAGE_ROLES],
+  },
+
+  // Academics — hidden from hr_manager (mirrors sidebar policy)
+  {
+    to: '/academic/management',
+    icon: BookOpen,
+    label: 'Academics',
+    sub: 'Degrees, programs & more',
+    accent: 'bg-accent-mint text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+    hideForRoles: ['hr_manager'],
+    permissions: [
+      PERMISSIONS.MANAGE_ACADEMICS,
+      PERMISSIONS.MANAGE_DEGREES,
+      PERMISSIONS.MANAGE_FACILITIES,
+      PERMISSIONS.MANAGE_DEPARTMENTS,
+      PERMISSIONS.MANAGE_OPTIONS,
+      PERMISSIONS.MANAGE_LEVELS,
+      PERMISSIONS.MANAGE_SCHOOLS,
+      PERMISSIONS.MANAGE_ACADEMIC_YEARS,
+      PERMISSIONS.MANAGE_ACADEMIC_TERMS,
+    ],
+  },
+
+  // Students registry
+  {
+    to: '/students',
+    icon: GraduationCap,
+    label: 'Students',
+    sub: 'Student registry',
+    accent: 'bg-accent-sky text-sky-700 dark:bg-sky-900/30 dark:text-sky-300',
+    permissions: [PERMISSIONS.VIEW_STUDENTS],
+  },
+
+  // Modules — anyone holding any module-level perm
+  {
+    to: '/modules',
+    icon: BookOpen,
+    label: 'Modules',
+    sub: 'Courses & scheduling',
+    accent: 'bg-accent-mint text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+    permissions: [
+      PERMISSIONS.MANAGE_MODULES,
+      PERMISSIONS.MANAGE_MODULE_SCHEDULES,
+      PERMISSIONS.MANAGE_MODULE_ASSIGNMENTS,
+      PERMISSIONS.MANAGE_MODULE_REGISTRATIONS,
+      PERMISSIONS.VIEW_MY_MODULES,
+    ],
+  },
+
+  // Calendar / academic terms (still useful as a shortcut for staff who set
+  // up year + term boundaries)
+  {
+    to: '/academic/settings',
+    icon: CalendarDays,
+    label: 'Academic settings',
+    sub: 'Years & terms',
+    accent: 'bg-accent-lilac text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
+    permissions: [
+      PERMISSIONS.MANAGE_ACADEMIC_YEARS,
+      PERMISSIONS.MANAGE_ACADEMIC_TERMS,
+      PERMISSIONS.VIEW_SYSTEM_BASICS,
+    ],
+  },
+
+  // HR
+  {
+    to: '/hr/staff',
+    icon: Briefcase,
+    label: 'HR',
+    sub: 'Staff & payroll',
+    accent: 'bg-accent-peach text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
+    permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES, PERMISSIONS.MANAGE_HR_EMPLOYEES],
+  },
+
+  // Finance
+  {
+    to: '/finance',
+    icon: Wallet,
+    label: 'Finance',
+    sub: 'Fees & billing',
+    accent: 'bg-accent-lilac text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
+    permissions: [PERMISSIONS.VIEW_FINANCE, PERMISSIONS.MANAGE_FINANCE],
+  },
 ]
 
 /* ─── quick-action card ──────────────────────────────────────────── */
@@ -89,16 +247,30 @@ function ActionCard({ qa, index }: { qa: QA; index: number }) {
 export default function WelcomePage() {
   const { user } = useAuthStore()
 
-  const isApplicant = user?.role === 'applicant' || user?.is_applicant
-  const isAdmin     = user?.role === 'admin' || user?.role_name === 'admin'
+  const role        = user?.role ?? ''
+  const userPerms   = user?.permissions ?? []
+  const isApplicant = role === 'applicant' || user?.is_applicant
+  const isSuperadmin = role === 'superadmin'
 
-  const firstName   = useMemo(() => user?.full_name?.split(' ')[0] ?? 'there', [user])
-  const roleLabel   = useMemo(() => {
+  const firstName = useMemo(() => user?.full_name?.split(' ')[0] ?? 'there', [user])
+  const roleLabel = useMemo(() => {
     if (isApplicant) return 'Applicant'
-    return user?.role_name ?? user?.role ?? 'Staff'
-  }, [user, isApplicant])
+    return user?.role_name ?? role ?? 'Staff'
+  }, [user, isApplicant, role])
 
-  const actions   = isApplicant ? APPLICANT_ACTIONS : isAdmin ? ADMIN_ACTIONS : STAFF_ACTIONS
+  // Per-role filter — same model as the sidebar in MainLayout.
+  const actions = useMemo(() => {
+    return QUICK_ACTIONS.filter((qa) => {
+      if (qa.hideForRoles?.includes(role)) return false
+      if (qa.roles && qa.roles.length > 0)  return qa.roles.includes(role)
+      // No permission requirement → universally visible
+      if (!qa.permissions || qa.permissions.length === 0) return true
+      // Superadmin sees every permission-gated card; everyone else needs a match
+      if (isSuperadmin) return true
+      return qa.permissions.some((p) => userPerms.includes(p))
+    })
+  }, [role, userPerms, isSuperadmin])
+
   const dashLink  = isApplicant ? '/applicant' : '/dashboard'
   const greeting  = getGreeting()
   const dateLabel = formatNow()
@@ -186,11 +358,17 @@ export default function WelcomePage() {
           </motion.div>
 
           {/* cards grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-            {actions.map((qa, i) => (
-              <ActionCard key={qa.to} qa={qa} index={i} />
-            ))}
-          </div>
+          {actions.length === 0 ? (
+            <p className="text-[13px] text-ink-500">
+              No shortcuts are configured for your role yet.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+              {actions.map((qa, i) => (
+                <ActionCard key={qa.to} qa={qa} index={i} />
+              ))}
+            </div>
+          )}
 
           {/* bottom strip */}
           <motion.div

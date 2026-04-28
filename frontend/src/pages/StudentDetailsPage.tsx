@@ -8,6 +8,7 @@ import {
   moduleScheduleService,
 } from '@/services/modulesService'
 import { marksService, type MyMarksRow, type MyMarksTotals } from '@/services/marksService'
+import { attendanceService, type AttendanceStatus } from '@/services/attendanceService'
 import { useSystemStore, selectActiveTerm } from '@/store/systemStore'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
@@ -16,7 +17,8 @@ import {
   ArrowLeft, Loader2, User, Mail, Phone, Calendar,
   GraduationCap, Globe2, Building2, BookOpen,
   CheckCircle, Clock, FileText, BarChart, Edit, Save, X,
-  Hash, Award, AlertTriangle, MapPin, Plus, Sparkles, Download, Percent
+  Hash, Award, AlertTriangle, MapPin, Plus, Sparkles, Download, Percent,
+  Eye, ShieldCheck, ShieldAlert, ShieldX
 } from 'lucide-react'
 
 const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -114,8 +116,8 @@ export default function StudentDetailsPage() {
       {/* Tab Content */}
       <div className="min-h-[400px]">
         {tab === 'overview' && <OverviewTab student={student} stats={stats} />}
-        {tab === 'attendance' && <PlaceholderTab icon={Clock} title="Attendance Records" desc="Student attendance logs and summaries will appear here." />}
-        {tab === 'documents' && <PlaceholderTab icon={FileText} title="Student Documents" desc="Uploaded requirements, transcripts, and ID copies." />}
+        {tab === 'attendance' && <AttendanceTab student={student} />}
+        {tab === 'documents' && <DocumentsTab student={student} />}
         {tab === 'modules' && <ModulesTab student={student} stats={stats} />}
         {tab === 'finance' && <PlaceholderTab icon={BarChart} title="Financial Overview" desc="Tuition fees, payments, and balances." />}
         {tab === 'transcript' && <TranscriptTab student={student} />}
@@ -674,6 +676,302 @@ function FilterPill({ icon: Icon, value }: { icon: any, value?: string | null })
       <Icon className="w-3.5 h-3.5" />
       {value || '—'}
     </span>
+  )
+}
+
+function AttendanceTab({ student }: { student: any }) {
+  const reg = student?.regnumber as string | undefined
+
+  const summaryQ = useQuery({
+    queryKey: ['student-attendance', reg],
+    queryFn: () => attendanceService.studentSummary(reg as string),
+    enabled: !!reg,
+  })
+
+  if (!reg) {
+    return (
+      <PlaceholderTab
+        icon={Clock}
+        title="No Registration Number"
+        desc="This student doesn't have a registration number yet, so attendance records cannot be loaded."
+      />
+    )
+  }
+
+  if (summaryQ.isLoading) {
+    return (
+      <div className="card p-12 flex items-center justify-center">
+        <Loader2 className="w-6 h-6 text-brand animate-spin" />
+      </div>
+    )
+  }
+
+  if (summaryQ.isError) {
+    return (
+      <PlaceholderTab
+        icon={Clock}
+        title="Failed to load attendance"
+        desc={(summaryQ.error as any)?.response?.data?.message ?? 'An error occurred while loading attendance records.'}
+      />
+    )
+  }
+
+  const data = summaryQ.data?.data
+  const totals = data?.totals
+  const byModule = data?.by_module ?? []
+  const records = data?.recent ?? []
+
+  const statusBadge = (s: AttendanceStatus) => {
+    const map: Record<AttendanceStatus, string> = {
+      present: 'bg-mint-100 text-mint-700',
+      late:    'bg-amber-100 text-amber-700',
+      absent:  'bg-red-100 text-red-700',
+      excused: 'bg-ink-100 text-ink-700',
+    }
+    return (
+      <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold uppercase ${map[s] || 'bg-ink-100 text-ink-700'}`}>
+        {s}
+      </span>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* KPI cards */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <KpiCard label="Total Records" value={totals?.records ?? 0} />
+        <KpiCard label="Present" value={totals?.present ?? 0} accent="text-mint-700" />
+        <KpiCard label="Late" value={totals?.late ?? 0} accent="text-amber-700" />
+        <KpiCard label="Absent" value={totals?.absent ?? 0} accent="text-red-700" />
+        <KpiCard label="Attendance %" value={`${totals?.attendance_pct ?? 0}%`} accent="text-brand" />
+      </div>
+
+      {/* Per-module breakdown */}
+      {byModule.length > 0 && (
+        <div className="card p-0 overflow-hidden">
+          <div className="px-4 py-3 border-b border-ink-100 dark:border-ink-800 flex items-center gap-2">
+            <BookOpen className="w-4 h-4 text-brand" />
+            <h3 className="text-sm font-semibold text-ink-900 dark:text-white">By Module</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-[13px]">
+              <thead className="bg-ink-50 dark:bg-ink-900/40">
+                <tr className="text-ink-500">
+                  <th className="px-4 py-2 font-semibold">Code</th>
+                  <th className="px-4 py-2 font-semibold">Module</th>
+                  <th className="px-4 py-2 font-semibold text-right">Records</th>
+                  <th className="px-4 py-2 font-semibold text-right">Present-like</th>
+                  <th className="px-4 py-2 font-semibold text-right">%</th>
+                </tr>
+              </thead>
+              <tbody>
+                {byModule.map((m) => (
+                  <tr key={m.module_id} className="border-t border-ink-100 dark:border-ink-800">
+                    <td className="px-4 py-2 font-mono text-ink-700 dark:text-ink-200">{m.module_code}</td>
+                    <td className="px-4 py-2 text-ink-900 dark:text-white">{m.module_name}</td>
+                    <td className="px-4 py-2 text-right">{m.records}</td>
+                    <td className="px-4 py-2 text-right">{m.present_like}</td>
+                    <td className="px-4 py-2 text-right font-semibold">{m.attendance_pct}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* All records */}
+      <div className="card p-0 overflow-hidden">
+        <div className="px-4 py-3 border-b border-ink-100 dark:border-ink-800 flex items-center gap-2">
+          <Clock className="w-4 h-4 text-brand" />
+          <h3 className="text-sm font-semibold text-ink-900 dark:text-white">
+            All Recorded Attendance ({records.length})
+          </h3>
+        </div>
+        {records.length === 0 ? (
+          <div className="p-12 text-center text-ink-500 text-[13px]">
+            No attendance records yet for this student.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-[13px]">
+              <thead className="bg-ink-50 dark:bg-ink-900/40">
+                <tr className="text-ink-500">
+                  <th className="px-4 py-2 font-semibold">Date</th>
+                  <th className="px-4 py-2 font-semibold">Module</th>
+                  <th className="px-4 py-2 font-semibold">Type</th>
+                  <th className="px-4 py-2 font-semibold">Status</th>
+                  <th className="px-4 py-2 font-semibold">Recorded At</th>
+                  <th className="px-4 py-2 font-semibold">Remarks</th>
+                </tr>
+              </thead>
+              <tbody>
+                {records.map((r, i) => (
+                  <tr key={`${r.session_date}-${r.module_code}-${i}`} className="border-t border-ink-100 dark:border-ink-800">
+                    <td className="px-4 py-2 text-ink-900 dark:text-white">{r.session_date}</td>
+                    <td className="px-4 py-2">
+                      <div className="font-mono text-ink-700 dark:text-ink-200">{r.module_code}</div>
+                      <div className="text-[11px] text-ink-500">{r.module_name}</div>
+                    </td>
+                    <td className="px-4 py-2 capitalize text-ink-700 dark:text-ink-200">{r.session_type}</td>
+                    <td className="px-4 py-2">{statusBadge(r.status)}</td>
+                    <td className="px-4 py-2 text-ink-500">{r.recorded_at ? new Date(r.recorded_at).toLocaleString() : '—'}</td>
+                    <td className="px-4 py-2 text-ink-500">{r.remarks || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function KpiCard({ label, value, accent }: { label: string, value: string | number, accent?: string }) {
+  return (
+    <div className="card p-4">
+      <div className="text-[11px] uppercase tracking-wide text-ink-500 font-semibold">{label}</div>
+      <div className={`text-2xl font-bold mt-1 ${accent ?? 'text-ink-900 dark:text-white'}`}>{value}</div>
+    </div>
+  )
+}
+
+function DocumentsTab({ student }: { student: any }) {
+  const studentId = student.id
+
+  const docsQ = useQuery({
+    queryKey: ['student-documents', studentId],
+    queryFn: () => studentService.listDocuments(studentId),
+    enabled: !!studentId,
+  })
+
+  if (docsQ.isLoading) {
+    return (
+      <div className="flex items-center justify-center p-20">
+        <Loader2 className="w-6 h-6 text-brand animate-spin" />
+      </div>
+    )
+  }
+
+  if (docsQ.isError) {
+    return (
+      <div className="card p-8 text-center text-rose-600">
+        Could not load documents.
+      </div>
+    )
+  }
+
+  const applicationId = docsQ.data?.data?.application_id ?? null
+  const documents = docsQ.data?.data?.documents ?? []
+
+  if (!applicationId) {
+    return (
+      <div className="card p-12 flex flex-col items-center justify-center text-center">
+        <div className="w-16 h-16 rounded-full bg-ink-100 dark:bg-ink-800 flex items-center justify-center text-ink-400 mb-4">
+          <FileText className="w-8 h-8" />
+        </div>
+        <h3 className="text-lg font-semibold text-ink-900 dark:text-white">No application on file</h3>
+        <p className="text-ink-500 max-w-md mt-2">
+          This student was not enrolled through the admissions portal, so there are no uploaded documents to display.
+        </p>
+      </div>
+    )
+  }
+
+  if (documents.length === 0) {
+    return (
+      <div className="card p-12 flex flex-col items-center justify-center text-center">
+        <div className="w-16 h-16 rounded-full bg-ink-100 dark:bg-ink-800 flex items-center justify-center text-ink-400 mb-4">
+          <FileText className="w-8 h-8" />
+        </div>
+        <h3 className="text-lg font-semibold text-ink-900 dark:text-white">No documents uploaded</h3>
+        <p className="text-ink-500 max-w-md mt-2">
+          This student's admission application does not have any documents attached.
+        </p>
+      </div>
+    )
+  }
+
+  const counts = documents.reduce(
+    (acc: any, d: any) => {
+      const s = String(d.verification_status || 'pending').toLowerCase()
+      acc[s] = (acc[s] ?? 0) + 1
+      return acc
+    },
+    { verified: 0, pending: 0, rejected: 0 } as Record<string, number>,
+  )
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <SummaryCard tone="ink"     icon={FileText}     label="Total"    value={documents.length} />
+        <SummaryCard tone="emerald" icon={ShieldCheck}  label="Verified" value={counts.verified ?? 0} />
+        <SummaryCard tone="amber"   icon={ShieldAlert}  label="Pending"  value={counts.pending ?? 0} />
+        <SummaryCard tone="brand"   icon={ShieldX}      label="Rejected" value={counts.rejected ?? 0} />
+      </div>
+
+      <div className="card divide-y divide-ink-100 dark:divide-ink-800 overflow-hidden">
+        {documents.map((d: any) => (
+          <DocumentRow key={d.id} doc={d} studentId={studentId} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function DocumentRow({ doc, studentId }: { doc: any; studentId: number }) {
+  const status = String(doc.verification_status || 'pending').toLowerCase()
+  const typeName = doc.type_name || doc.document_type_name || 'Document'
+  const fileName = doc.file_original_name || '—'
+  const hasFile = !!doc.file_server_id
+  const url = hasFile ? studentService.documentDownloadUrl(studentId, doc.id) : null
+
+  const sizeKb = doc.file_size ? Math.max(1, Math.round(Number(doc.file_size) / 1024)) : null
+  const sizeLabel = sizeKb
+    ? sizeKb >= 1024 ? `${(sizeKb / 1024).toFixed(1)} MB` : `${sizeKb} KB`
+    : null
+
+  const statusTone =
+    status === 'verified' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
+    : status === 'rejected' ? 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300'
+    : 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
+
+  const StatusIcon = status === 'verified' ? ShieldCheck : status === 'rejected' ? ShieldX : ShieldAlert
+
+  return (
+    <div className="flex items-center gap-4 p-4 hover:bg-ink-50/60 dark:hover:bg-ink-800/40 transition-colors">
+      <div className="w-10 h-10 rounded-lg bg-brand/10 text-brand flex items-center justify-center shrink-0">
+        <FileText className="w-5 h-5" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <h4 className="text-[13.5px] font-semibold text-ink-900 dark:text-white truncate">{typeName}</h4>
+          <span className={`inline-flex items-center gap-1 text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${statusTone}`}>
+            <StatusIcon className="w-3 h-3" />
+            {status}
+          </span>
+        </div>
+        <p className="text-[12px] text-ink-500 truncate mt-0.5">
+          {fileName}
+          {sizeLabel && <span className="text-ink-400"> · {sizeLabel}</span>}
+          {doc.uploaded_at && <span className="text-ink-400"> · Uploaded {new Date(doc.uploaded_at).toLocaleDateString()}</span>}
+        </p>
+        {doc.verification_comment && (
+          <p className="text-[11.5px] text-rose-600 mt-1 italic">"{doc.verification_comment}"</p>
+        )}
+      </div>
+      {url && (
+        <div className="flex items-center gap-2 shrink-0">
+          <a href={url} target="_blank" rel="noreferrer" className="btn-secondary btn-sm flex items-center gap-1.5">
+            <Eye className="w-3.5 h-3.5" /> View
+          </a>
+          <a href={url} download={fileName} className="btn-primary btn-sm flex items-center gap-1.5">
+            <Download className="w-3.5 h-3.5" /> Download
+          </a>
+        </div>
+      )}
+    </div>
   )
 }
 

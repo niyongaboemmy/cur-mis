@@ -713,6 +713,12 @@ class AttendanceController extends BaseController
         }
         unset($row);
 
+        $limitParam = $request->query('limit');
+        $limitClause = '';
+        if ($limitParam !== null && (int) $limitParam > 0) {
+            $limitClause = ' LIMIT ' . (int) $limitParam;
+        }
+
         $recent = $this->db->fetchAll(
             "SELECT r.status, r.remarks, r.recorded_at,
                     s.session_date, s.session_type,
@@ -722,7 +728,7 @@ class AttendanceController extends BaseController
              LEFT JOIN modules m ON m.module_id = s.module_id
              WHERE r.student_regnumber = ? $termClause
              ORDER BY s.session_date DESC, r.id DESC
-             LIMIT 20",
+             $limitClause",
             array_merge([$reg], $termBinding)
         );
 

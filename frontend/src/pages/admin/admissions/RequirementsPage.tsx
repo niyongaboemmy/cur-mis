@@ -1,25 +1,21 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { ListChecks, Plus, Trash2, Loader2, Copy } from 'lucide-react'
+import { ListChecks, Plus, Trash2, Loader2 } from 'lucide-react'
 import { admissionRequirementService, documentTypeService, portalService } from '@/services/admissionService'
-import { academicService } from '@/services/academicService'
-import Modal from '@/components/ui/Modal'
 
 export default function RequirementsPage() {
   const qc = useQueryClient()
 
   const facultiesQ = useQuery({ queryKey: ['portal', 'faculties'], queryFn: () => portalService.getFaculties() })
-  const yearsQ     = useQuery({ queryKey: ['academic', 'years'],   queryFn: () => academicService.listYears() })
   const docTypesQ  = useQuery({ queryKey: ['admin', 'doctypes'],   queryFn: () => documentTypeService.list() })
 
   const [facultyId, setFacultyId] = useState<number | ''>('')
-  const [yearId,    setYearId]    = useState<number | ''>('')
-  const canQuery = !!facultyId && !!yearId
+  const canQuery = !!facultyId
 
   const listQ = useQuery({
-    queryKey: ['admin', 'requirements', facultyId, yearId],
-    queryFn:  () => admissionRequirementService.getForFacultyYear(Number(facultyId), Number(yearId)),
+    queryKey: ['admin', 'requirements', facultyId],
+    queryFn:  () => admissionRequirementService.getForFaculty(Number(facultyId)),
     enabled:  canQuery,
   })
 
@@ -27,7 +23,6 @@ export default function RequirementsPage() {
     mutationFn: (d: { document_type_id: number; is_required: 0 | 1; notes?: string }) =>
       admissionRequirementService.create({
         faculty_id: Number(facultyId),
-        academic_year_id: Number(yearId),
         ...d,
         is_required: Boolean(d.is_required),
       }),
@@ -44,24 +39,6 @@ export default function RequirementsPage() {
   const rows      = listQ.data?.data?.requirements ?? []
   const docTypes  = docTypesQ.data?.data ?? []
   const faculties = facultiesQ.data?.data ?? []
-  const years     = yearsQ.data?.data ?? []
-
-  // Copy modal
-  const [copyOpen, setCopyOpen] = useState(false)
-  const [copyForm, setCopyForm] = useState({ from_year_id: '', to_year_id: '' })
-  const copy = useMutation({
-    mutationFn: () => admissionRequirementService.copyToYear({
-      from_year_id: Number(copyForm.from_year_id),
-      to_year_id:   Number(copyForm.to_year_id),
-      faculty_id:   facultyId ? Number(facultyId) : undefined,
-    }),
-    onSuccess: () => {
-      toast.success('Requirements copied')
-      setCopyOpen(false)
-      qc.invalidateQueries({ queryKey: ['admin', 'requirements'] })
-    },
-    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed'),
-  })
 
   return (
     <section className="card p-5">
@@ -69,15 +46,11 @@ export default function RequirementsPage() {
         <ListChecks className="w-5 h-5 text-brand" />
         <div>
           <h2 className="section-title">Admission requirements</h2>
-          <p className="section-sub">Per-faculty, per-academic-year document checklist.</p>
+          <p className="section-sub">Per-faculty document checklist — applies to every academic year.</p>
         </div>
-        <div className="flex-1" />
-        <button className="btn-secondary btn-sm" onClick={() => setCopyOpen(true)}>
-          <Copy className="w-3 h-3" /> Copy to year
-        </button>
       </div>
 
-      {/* Selector */}
+      {/* Faculty selector */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
         <div>
           <label className="label">Faculty</label>
@@ -86,19 +59,12 @@ export default function RequirementsPage() {
             {faculties.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
         </div>
-        <div>
-          <label className="label">Academic year</label>
-          <select className="input" value={yearId} onChange={(e) => setYearId(e.target.value ? Number(e.target.value) : '')}>
-            <option value="">— pick year —</option>
-            {years.map((y) => <option key={y.id} value={y.id}>{y.label}{y.is_current ? ' · current' : ''}</option>)}
-          </select>
-        </div>
       </div>
 
       {/* Table */}
       {!canQuery ? (
         <p className="rounded-md border border-dashed border-ink-200 p-6 text-center text-ink-500 text-[13px]">
-          Pick a faculty and year to see the checklist.
+          Pick a faculty to see the checklist.
         </p>
       ) : listQ.isLoading ? (
         <p className="text-[13px] text-ink-500 p-4">Loading…</p>
@@ -107,7 +73,7 @@ export default function RequirementsPage() {
           {/* Existing requirements */}
           {rows.length === 0 ? (
             <p className="rounded-md border border-dashed border-ink-200 p-6 text-center text-ink-500 text-[13px]">
-              No requirements for this faculty/year yet. Add one below.
+              No requirements for this faculty yet. Add one below.
             </p>
           ) : (
             <table className="data-table mb-5">
@@ -115,7 +81,12 @@ export default function RequirementsPage() {
               <tbody>
                 {rows.map((r) => (
                   <tr key={r.id}>
-                    <td className="font-medium text-ink-900 dark:text-ink-100">{r.document_type_name ?? `#${r.document_type_id}`}</td>
+                    <td className="font-medium text-ink-900 dark:text-ink-100">
+                      {r.document_type_name ?? `#${r.document_type_id}`}
+                      {r.document_type_active === 0 && (
+                        <span className="ml-2 chip-soft text-[10px]">inactive type</span>
+                      )}
+                    </td>
                     <td>{r.is_required ? <span className="chip-primary">Required</span> : <span className="chip-soft">Optional</span>}</td>
                     <td className="text-ink-500 text-[12.5px]">{r.notes || '—'}</td>
                     <td className="text-right">
@@ -142,41 +113,6 @@ export default function RequirementsPage() {
           </div>
         </>
       )}
-
-      {/* Copy modal */}
-      <Modal
-        open={copyOpen}
-        onClose={() => setCopyOpen(false)}
-        title="Copy requirements to another year"
-        footer={
-          <>
-            <button className="btn-secondary" onClick={() => setCopyOpen(false)}>Cancel</button>
-            <button className="btn-primary" onClick={() => copy.mutate()} disabled={copy.isPending}>
-              {copy.isPending && <Loader2 className="w-3 h-3 animate-spin" />} Copy
-            </button>
-          </>
-        }
-      >
-        <div className="space-y-3">
-          <p className="text-[12.5px] text-ink-500">
-            Copies the requirements {facultyId ? 'for this faculty' : 'for all faculties'} from one academic year to another.
-          </p>
-          <div>
-            <label className="label">From year</label>
-            <select className="input" value={copyForm.from_year_id} onChange={(e) => setCopyForm({ ...copyForm, from_year_id: e.target.value })}>
-              <option value="">—</option>
-              {years.map((y) => <option key={y.id} value={y.id}>{y.label}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="label">To year</label>
-            <select className="input" value={copyForm.to_year_id} onChange={(e) => setCopyForm({ ...copyForm, to_year_id: e.target.value })}>
-              <option value="">—</option>
-              {years.map((y) => <option key={y.id} value={y.id}>{y.label}</option>)}
-            </select>
-          </div>
-        </div>
-      </Modal>
     </section>
   )
 }

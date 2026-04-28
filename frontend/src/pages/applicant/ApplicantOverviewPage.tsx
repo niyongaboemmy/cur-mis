@@ -40,15 +40,20 @@ export default function ApplicantOverviewPage() {
       </div>
     );
 
-  // If there's an application that needs email verification
-  const primaryApp = apps.find(
-    (a) => Number(a.email_verified) === 0 && a.status !== "draft",
-  );
-  if (primaryApp) {
+  // Verification gate — only the MOST RECENT submitted application matters.
+  // Scanning every app would trap the user on the verify screen forever as
+  // soon as any old unverified row exists. Backend returns apps ordered by
+  // created_at DESC, so apps[0] is the latest one.
+  const latestApp = apps[0];
+  const needsVerification =
+    latestApp &&
+    Number(latestApp.email_verified) === 0 &&
+    latestApp.status !== "draft";
+  if (needsVerification) {
     return (
       <div className="max-w-xl mx-auto py-12 px-4">
         <VerificationStep
-          email={primaryApp.email}
+          email={latestApp.email}
           onSuccess={() =>
             qc.invalidateQueries({ queryKey: ["applicant", "applications"] })
           }

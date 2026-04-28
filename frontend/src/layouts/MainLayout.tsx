@@ -16,12 +16,7 @@ import {
   MessageSquare,
   ShieldCheck,
   LayoutDashboard,
-  LayoutGrid,
-  BookMarked,
   ClipboardCheck,
-  Megaphone,
-  Bus,
-  Building2,
   Briefcase,
   ChevronDown,
   PanelLeftClose,
@@ -54,7 +49,13 @@ import { useAuthStore } from "@/store/authStore";
  * `children` expand when clicked.
  * ------------------------------------------------------------------ */
 
-type NavChild = { to: string; label: string; permissions?: string[]; roles?: string[] };
+type NavChild = {
+  to: string;
+  label: string;
+  permissions?: string[];
+  roles?: string[];
+  hideForRoles?: string[];
+};
 type NavNode = {
   id: string;
   label: string;
@@ -67,11 +68,19 @@ type NavNode = {
    * for `applicant` only) don't leak into other roles' sidebars.
    */
   roles?: string[];
+  /**
+   * Hide this node from a specific set of roles even when permissions would
+   * normally allow it. Useful when a role technically holds an inherited perm
+   * but the product decision is to keep that area out of their workflow
+   * (e.g. hr_manager should not see Academics management).
+   */
+  hideForRoles?: string[];
   children?: NavChild[];
 };
 
 const NAV_TREE: NavNode[] = [
   { id: "home", label: "Home", icon: Home, to: "/" },
+  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, to: "/dashboard" },
   {
     id: "applicant-dashboard",
     label: "My Application",
@@ -151,7 +160,6 @@ const NAV_TREE: NavNode[] = [
       { to: "/modules/registrations", label: "Registrations", permissions: [PERMISSIONS.MANAGE_MODULE_REGISTRATIONS] },
     ],
   },
-  { id: "library", label: "Library", icon: BookMarked, to: "/library" },
   {
     id: "finance",
     label: "Finance",
@@ -165,7 +173,6 @@ const NAV_TREE: NavNode[] = [
       { to: "/finance/reports",    label: "Reports",     permissions: [PERMISSIONS.VIEW_FINANCE, PERMISSIONS.MANAGE_FINANCE] },
     ],
   },
-  { id: "class", label: "Class", icon: LayoutGrid, to: "/class" },
   {
     id: "attendance",
     label: "Attendance",
@@ -187,9 +194,6 @@ const NAV_TREE: NavNode[] = [
       { to: "/exams/results", label: "Results" },
     ],
   },
-  { id: "notice", label: "Notice", icon: Megaphone, to: "/notice" },
-  { id: "transport", label: "Transport", icon: Bus, to: "/transport" },
-  { id: "hostel", label: "Hostel", icon: Building2, to: "/hostel" },
 ];
 
 const ADMIN_TREE: NavNode[] = [
@@ -219,6 +223,7 @@ const ADMIN_TREE: NavNode[] = [
     label: "Academics management",
     icon: Layers,
     to: "/academic/management",
+    hideForRoles: ["hr_manager"],
     permissions: [
       PERMISSIONS.MANAGE_ACADEMICS,
       PERMISSIONS.MANAGE_DEGREES,
@@ -442,9 +447,11 @@ export default function MainLayout() {
   );
 
   const isVisible = useCallback(
-    (node: { roles?: string[]; permissions?: string[] }) =>
-      matchesRoles(node.roles) && hasAccess(node.permissions),
-    [matchesRoles, hasAccess],
+    (node: { roles?: string[]; permissions?: string[]; hideForRoles?: string[] }) => {
+      if (node.hideForRoles?.includes(user?.role ?? "")) return false;
+      return matchesRoles(node.roles) && hasAccess(node.permissions);
+    },
+    [matchesRoles, hasAccess, user],
   );
 
   const filtered = useMemo<NavNode[]>(() => {

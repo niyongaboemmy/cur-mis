@@ -208,6 +208,6 @@ export const attendanceService = {
   deleteSession: (id: number | string) =>
     api.delete<void>(`/api/attendance/sessions/${id}`),
 
-  studentSummary: (regnumber: string, params: { academic_term_id?: number | string } = {}) =>
+  studentSummary: (regnumber: string, params: { academic_term_id?: number | string; limit?: number } = {}) =>
     api.get<StudentAttendanceSummary>(`/api/attendance/students/${regnumber}/summary`, params as Record<string, unknown>),
 }

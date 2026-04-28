@@ -79,10 +79,11 @@ class ApplicationAdminController extends BaseController
 
         // Fetch this applicant's ranking if a list was generated
         $db = \Core\Database::getInstance();
+        // `rank` is a reserved keyword in MySQL 8 (window function); must be backticked.
         $meritListing = $db->fetchOne(
-            "SELECT rank, merit_score, is_qualified, generated_at 
-             FROM `merit_lists` 
-             WHERE application_id = ? 
+            "SELECT `rank`, merit_score, is_qualified, generated_at
+             FROM `merit_lists`
+             WHERE application_id = ?
              LIMIT 1",
             [$id]
         );

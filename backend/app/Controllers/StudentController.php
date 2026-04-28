@@ -7,15 +7,112 @@ namespace App\Controllers;
 use Core\Request;
 use Core\Response;
 use App\Models\StudentModel;
+use App\Models\ApplicationDocumentModel;
 use App\Helpers\ValidationHelper;
+use App\Helpers\FileServerClient;
 
 class StudentController extends BaseController
 {
     private StudentModel $studentModel;
+    private ApplicationDocumentModel $docModel;
 
     public function __construct()
     {
         $this->studentModel = new StudentModel();
+        $this->docModel     = new ApplicationDocumentModel();
+    }
+
+    /**
+     * Resolve the application_id linked to a student through their admission offer.
+     * Returns null if the student has no offer (e.g. manually created student).
+     */
+    private function resolveApplicationId(int $studentId): ?int
+    {
+        $row = $this->studentModel->db()->fetchOne(
+            "SELECT application_id FROM `admission_offers`
+             WHERE student_id = ?
+             ORDER BY id DESC LIMIT 1",
+            [$studentId]
+        );
+        return $row && !empty($row['application_id']) ? (int)$row['application_id'] : null;
+    }
+
+    /**
+     * GET /api/students/:id/documents
+     * All documents the student uploaded with their admission application.
+     */
+    public function documents(Request $request, Response $response): never
+    {
+        $id      = (int)$request->param('id');
+        $student = $this->studentModel->find($id);
+
+        if (!$student) {
+            $this->error($response, 'Student not found', 404);
+        }
+
+        $applicationId = $this->resolveApplicationId($id);
+        if (!$applicationId) {
+            $this->success($response, [
+                'application_id' => null,
+                'documents'      => [],
+            ], 'Student has no linked application.');
+        }
+
+        $documents = $this->docModel->getForApplication($applicationId);
+
+        $this->success($response, [
+            'application_id' => $applicationId,
+            'documents'      => $documents,
+        ], 'Documents fetched successfully.');
+    }
+
+    /**
+     * GET /api/students/:id/documents/:document_id/download
+     * Proxy-download a single document from the file server.
+     */
+    public function downloadDocument(Request $request, Response $response): never
+    {
+        $id         = (int)$request->param('id');
+        $documentId = (int)$request->param('document_id');
+
+        $student = $this->studentModel->find($id);
+        if (!$student) {
+            $this->error($response, 'Student not found', 404);
+        }
+
+        $applicationId = $this->resolveApplicationId($id);
+        if (!$applicationId) {
+            $this->error($response, 'Student has no linked application.', 404);
+        }
+
+        $document = $this->docModel->find($documentId);
+        if (!$document || (int)$document['application_id'] !== $applicationId) {
+            $this->error($response, 'Document not found.', 404);
+        }
+
+        if (empty($document['file_server_id'])) {
+            $this->error($response, 'No file associated with this document record.', 404);
+        }
+
+        try {
+            $client   = new FileServerClient();
+            $fileData = $client->download($document['file_server_id']);
+        } catch (\RuntimeException $e) {
+            $this->error($response, $e->getMessage(), 502);
+        }
+
+        $mime         = $fileData['mime'] ?? 'application/octet-stream';
+        $isInlineable = str_starts_with($mime, 'image/') || $mime === 'application/pdf';
+        $disposition  = $isInlineable ? 'inline' : 'attachment';
+
+        header('Content-Type: ' . $mime);
+        header('Content-Disposition: ' . $disposition . '; filename="' . addslashes($fileData['original_name']) . '"');
+        header('Content-Length: ' . strlen($fileData['content']));
+        header('Cache-Control: private, no-store');
+        header('X-Content-Type-Options: nosniff');
+
+        echo $fileData['content'];
+        exit;
     }
 
     /**

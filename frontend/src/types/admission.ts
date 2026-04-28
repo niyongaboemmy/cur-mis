@@ -32,19 +32,19 @@ export interface DocumentType {
 export interface AdmissionRequirement {
   id:                 number
   faculty_id:         number
-  academic_year_id:   number
   document_type_id:   number
   is_required:        boolean
   notes?:             string | null
   sort_order?:        number
   created_at?:        string
   /** Enriched fields some endpoints return */
-  document_type_name?: string
-  document_type_slug?: string
-  document_name?:      string
-  document_slug?:      string
-  faculty_name?:      string
-  allowed_extensions?: string
+  document_type_name?:   string
+  document_type_slug?:   string
+  document_type_active?: 0 | 1
+  document_name?:        string
+  document_slug?:        string
+  faculty_name?:         string
+  allowed_extensions?:   string
 }
 
 export enum ApplicationStatus {

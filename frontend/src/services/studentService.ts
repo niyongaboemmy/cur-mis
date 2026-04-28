@@ -1,6 +1,8 @@
 import { api } from '@/services/api'
 import type { PaginatedResponse } from '@/types'
 import type { Student } from '@/types/academic'
+import type { ApplicationDocument } from '@/types/admission'
+import { useAuthStore } from '@/store/authStore'
 
 export interface FacetOption {
   value: string
@@ -105,4 +107,15 @@ export const studentService = {
 
   remove: (id: number | string) =>
     api.delete<void>(`/api/students/${id}`),
+
+  listDocuments: (id: number | string, signal?: AbortSignal) =>
+    api.get<{ application_id: number | null; documents: ApplicationDocument[] }>(
+      `/api/students/${id}/documents`, {}, signal,
+    ),
+
+  documentDownloadUrl: (id: number | string, documentId: number | string) => {
+    const token = useAuthStore.getState().token
+    const base  = import.meta.env.VITE_API_URL ?? ''
+    return `${base}/api/students/${id}/documents/${documentId}/download?token=${token}`
+  },
 }

@@ -8,31 +8,39 @@ class AdmissionRequirementModel extends BaseModel
 {
     protected string $table    = 'admission_requirements';
     protected array  $fillable = [
-        'faculty_id', 'academic_year_id', 'document_type_id',
+        'faculty_id', 'document_type_id',
         'is_required', 'notes', 'sort_order', 'created_by',
     ];
     protected array $hidden = [];
 
     /**
-     * Get all document requirements for a faculty in a given academic year,
-     * joined with document_type details.
+     * Get all document requirements for a faculty, joined with document_type
+     * details. Requirements are no longer scoped per academic year — a faculty
+     * carries the same checklist across years.
+     *
+     * Uses LEFT JOIN with no `dt.is_active` filter so requirements remain
+     * visible even after their document type is deactivated or deleted; the
+     * admin can then either delete the stale row or re-activate the doc type.
      */
-    public function getForFacultyYear(int $facultyId, int $academicYearId): array
+    public function getForFaculty(int $facultyId): array
     {
         return $this->db->fetchAll(
-            "SELECT ar.*, dt.name AS document_type_name, dt.slug AS document_type_slug,
-                    dt.description AS document_description, dt.allowed_extensions
+            "SELECT ar.*,
+                    dt.name AS document_type_name,
+                    dt.slug AS document_type_slug,
+                    dt.description AS document_description,
+                    dt.allowed_extensions,
+                    COALESCE(dt.is_active, 0) AS document_type_active
              FROM `admission_requirements` ar
-             JOIN `document_types` dt ON dt.id = ar.document_type_id
-             WHERE ar.faculty_id = ? AND ar.academic_year_id = ?
-             AND dt.is_active = 1
+             LEFT JOIN `document_types` dt ON dt.id = ar.document_type_id
+             WHERE ar.faculty_id = ?
              ORDER BY ar.sort_order ASC, ar.id ASC",
-            [$facultyId, $academicYearId]
+            [$facultyId]
         );
     }
 
     /**
-     * Get requirements with faculty and academic year labels (for admin listing).
+     * Get requirements with faculty + document-type labels (admin listing).
      */
     public function paginateWithDetails(int $page, int $perPage, array $filters = []): array
     {
@@ -48,11 +56,6 @@ class AdmissionRequirementModel extends BaseModel
             $bindings[]   = (int)$filters['faculty_id'];
         }
 
-        if (!empty($filters['academic_year_id'])) {
-            $conditions[] = 'ar.academic_year_id = ?';
-            $bindings[]   = (int)$filters['academic_year_id'];
-        }
-
         $where = $conditions ? 'WHERE ' . implode(' AND ', $conditions) : '';
 
         $total = (int)($this->db->fetchOne(
@@ -63,14 +66,12 @@ class AdmissionRequirementModel extends BaseModel
         $rows = $this->db->fetchAll(
             "SELECT ar.*,
                     dt.name AS document_type_name, dt.slug AS document_type_slug,
-                    f.fac_name AS faculty_name, f.fac_code AS faculty_code,
-                    ay.label AS academic_year_label
+                    f.fac_name AS faculty_name, f.fac_code AS faculty_code
              FROM `admission_requirements` ar
              JOIN `document_types` dt ON dt.id = ar.document_type_id
              JOIN `faculty` f ON f.fac_id = ar.faculty_id
-             JOIN `academic_years` ay ON ay.id = ar.academic_year_id
              {$where}
-             ORDER BY f.fac_name ASC, ay.label DESC, ar.sort_order ASC
+             ORDER BY f.fac_name ASC, ar.sort_order ASC
              LIMIT ? OFFSET ?",
             [...$bindings, $perPage, $offset]
         );
@@ -85,13 +86,13 @@ class AdmissionRequirementModel extends BaseModel
     }
 
     /**
-     * Check if a requirement already exists for this faculty+year+type combination.
+     * Check if a requirement already exists for this (faculty, document_type).
      */
-    public function existsForFacultyYearType(int $facultyId, int $yearId, int $typeId, ?int $excludeId = null): bool
+    public function existsForFacultyType(int $facultyId, int $typeId, ?int $excludeId = null): bool
     {
         $sql      = "SELECT COUNT(*) AS cnt FROM `admission_requirements`
-                     WHERE faculty_id = ? AND academic_year_id = ? AND document_type_id = ?";
-        $bindings = [$facultyId, $yearId, $typeId];
+                     WHERE faculty_id = ? AND document_type_id = ?";
+        $bindings = [$facultyId, $typeId];
 
         if ($excludeId !== null) {
             $sql       .= " AND id != ?";
@@ -100,32 +101,5 @@ class AdmissionRequirementModel extends BaseModel
 
         $row = $this->db->fetchOne($sql, $bindings);
         return ($row['cnt'] ?? 0) > 0;
-    }
-
-    /**
-     * Copy all requirements from one academic year to another for the same faculty.
-     * Used when setting up a new admission round based on the previous year's requirements.
-     */
-    public function copyForNewYear(int $facultyId, int $fromYearId, int $toYearId, int $actorId): int
-    {
-        $existing = $this->getForFacultyYear($facultyId, $fromYearId);
-        $count    = 0;
-
-        foreach ($existing as $req) {
-            if (!$this->existsForFacultyYearType($facultyId, $toYearId, (int)$req['document_type_id'])) {
-                $this->create([
-                    'faculty_id'       => $facultyId,
-                    'academic_year_id' => $toYearId,
-                    'document_type_id' => (int)$req['document_type_id'],
-                    'is_required'      => (int)$req['is_required'],
-                    'notes'            => $req['notes'],
-                    'sort_order'       => (int)$req['sort_order'],
-                    'created_by'       => $actorId,
-                ]);
-                $count++;
-            }
-        }
-
-        return $count;
     }
 }

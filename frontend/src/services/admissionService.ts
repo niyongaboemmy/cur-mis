@@ -69,25 +69,21 @@ export const documentTypeService = {
 }
 
 /* ───────────────────────────────────────────────────────────────
- * Admin — admission requirements (per faculty per year)
+ * Admin — admission requirements (per-faculty document checklist)
  * ─────────────────────────────────────────────────────────────── */
 export const admissionRequirementService = {
-  list: (params: { faculty_id?: number; academic_year_id?: number } = {}, signal?: AbortSignal) =>
+  list: (params: { faculty_id?: number } = {}, signal?: AbortSignal) =>
     api.get<AdmissionRequirement[]>('/api/admin/admission-requirements', params, signal),
 
-  getForFacultyYear: (facultyId: number, yearId: number, signal?: AbortSignal) =>
+  getForFaculty: (facultyId: number, signal?: AbortSignal) =>
     api.get<{
       faculty:         { id: number; name: string; code: string }
-      academic_year:   { id: number; label: string }
       requirements:    AdmissionRequirement[]
       available_types: DocumentType[]
-    }>(`/api/admin/admission-requirements/faculty/${facultyId}/year/${yearId}`, {}, signal),
+    }>(`/api/admin/admission-requirements/faculty/${facultyId}`, {}, signal),
 
   create: (d: Partial<AdmissionRequirement>) =>
     api.post<{ id: number }>('/api/admin/admission-requirements', d),
-
-  copyToYear: (d: { from_year_id: number; to_year_id: number; faculty_id?: number }) =>
-    api.post<null>('/api/admin/admission-requirements/copy', d),
 
   update: (id: number, d: Partial<AdmissionRequirement>) =>
     api.put<null>(`/api/admin/admission-requirements/${id}`, d),

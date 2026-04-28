@@ -126,7 +126,7 @@ class ApplicationService
      * Returns: 'incomplete' | 'under_review' | 'verified' | 'rejected'
      *
      * Logic:
-     *   - Fetch required document types from admission_requirements for faculty + year
+     *   - Fetch required document types from admission_requirements for the faculty
      *   - If no requirements configured → 'verified' (no docs needed)
      *   - If any required type has no uploaded doc → 'incomplete'
      *   - If any uploaded required doc is 'rejected' → 'rejected'
@@ -141,14 +141,13 @@ class ApplicationService
         }
 
         $facultyId = (int)$application['faculty_id'];
-        $yearId    = (int)$application['academic_year_id'];
 
-        // Required document types configured for this faculty + year
+        // Required document types configured for this faculty
         $requirements = $this->db->fetchAll(
             "SELECT document_type_id, is_required
              FROM `admission_requirements`
-             WHERE faculty_id = ? AND academic_year_id = ? AND is_required = 1",
-            [$facultyId, $yearId]
+             WHERE faculty_id = ? AND is_required = 1",
+            [$facultyId]
         );
 
         if (empty($requirements)) {
@@ -373,7 +372,7 @@ class ApplicationService
                 $this->db->execute(
                     "INSERT INTO `merit_lists`
                          (department_id, intake, academic_year_id, application_id,
-                          merit_score, rank, is_qualified, generated_at, generated_by)
+                          merit_score, `rank`, is_qualified, generated_at, generated_by)
                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     [$departmentId, $intake, $yearId,
                      $row['application_id'], $row['merit_score'], $row['rank'],
