@@ -71,6 +71,18 @@ class HrEmployeeController extends BaseController
             $bindings[] = $statusVal;
         }
 
+        // gender filter — accepts M/Male and F/Female interchangeably; 'unknown' matches NULL/empty
+        $genderVal = $request->query('gender');
+        if ($genderVal !== null && $genderVal !== '') {
+            if ($genderVal === 'unknown') {
+                $clauses[] = "(e.employee_gender IS NULL OR e.employee_gender = '' OR e.employee_gender NOT IN ('Male','M','Female','F'))";
+            } elseif (in_array($genderVal, ['M', 'Male'], true)) {
+                $clauses[] = "e.employee_gender IN ('M','Male')";
+            } elseif (in_array($genderVal, ['F', 'Female'], true)) {
+                $clauses[] = "e.employee_gender IN ('F','Female')";
+            }
+        }
+
         $where  = $clauses ? 'WHERE ' . implode(' AND ', $clauses) : '';
         $offset = ($page - 1) * $perPage;
         $db     = $this->employeeModel->db();
@@ -233,10 +245,10 @@ class HrEmployeeController extends BaseController
               SUM(CASE WHEN account_status = 'Active'   THEN 1 ELSE 0 END)                  AS `active`,
               SUM(CASE WHEN account_status = 'Inactive' THEN 1 ELSE 0 END)                  AS `inactive`,
               SUM(CASE WHEN account_status IS NULL OR account_status NOT IN ('Active','Inactive') THEN 1 ELSE 0 END) AS `terminated`,
-              SUM(CASE WHEN employee_gender = 'Male'    THEN 1 ELSE 0 END)                  AS `male`,
-              SUM(CASE WHEN employee_gender = 'Female'  THEN 1 ELSE 0 END)                  AS `female`,
-              SUM(CASE WHEN account_status = 'Active' AND employee_gender = 'Male'   THEN 1 ELSE 0 END) AS active_male,
-              SUM(CASE WHEN account_status = 'Active' AND employee_gender = 'Female' THEN 1 ELSE 0 END) AS active_female,
+              SUM(CASE WHEN employee_gender IN ('Male','M')   THEN 1 ELSE 0 END)             AS `male`,
+              SUM(CASE WHEN employee_gender IN ('Female','F') THEN 1 ELSE 0 END)             AS `female`,
+              SUM(CASE WHEN account_status = 'Active' AND employee_gender IN ('Male','M')   THEN 1 ELSE 0 END) AS active_male,
+              SUM(CASE WHEN account_status = 'Active' AND employee_gender IN ('Female','F') THEN 1 ELSE 0 END) AS active_female,
               COUNT(DISTINCT employee_post) AS `departments`,
               COUNT(DISTINCT employee_position) AS `active_positions`
             FROM employees
@@ -278,7 +290,7 @@ class HrEmployeeController extends BaseController
             'departments'            => (int)($row['departments']     ?? 0),
             'active_male'            => (int)($row['active_male']     ?? 0),
             'active_female'          => (int)($row['active_female']   ?? 0),
-            'active_unknown_gender'  => 0,
+            'active_unknown_gender'  => max(0, (int)($row['active'] ?? 0) - (int)($row['active_male'] ?? 0) - (int)($row['active_female'] ?? 0)),
             'active_permanent'       => 0,
             'active_temporal'        => 0,
             'active_part_time'       => 0,

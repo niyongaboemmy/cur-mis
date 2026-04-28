@@ -125,102 +125,61 @@ function ActiveTab({
   return (
     <div className="space-y-5">
 
-      {/* ── Status summary cards ── */}
+      {/* ── Status + Gender split — single combined card ── */}
       <section className="card p-5">
+        {/* Header */}
         <div className="flex items-center justify-between gap-3 mb-4">
           <div>
             <h2 className="text-[15px] font-semibold text-ink-900 dark:text-white">All staff</h2>
-            <p className="text-[12px] text-ink-500 mt-0.5">Click a card to view the filtered list.</p>
+            <p className="text-[12px] text-ink-500 mt-0.5">Click a card or gender segment to view the filtered list.</p>
           </div>
           {(loading || fetching) && <Loader2 className="w-4 h-4 text-ink-400 animate-spin" />}
         </div>
+
+        {/* Status counts */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <StatusSummaryCard
-            label="Total staff"
-            value={s?.total ?? 0}
-            color="#0A2A5E"
-            chipLabel="All"
-            chipCls="bg-brand/10 text-brand dark:bg-brand/20"
-            onClick={() => onDrill({})}
-          />
-          <StatusSummaryCard
-            label="Active"
-            value={s?.active ?? 0}
-            color="#10B981"
-            chipLabel="Active"
-            chipCls="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400"
-            onClick={() => onDrill({ status: 'Active' })}
-          />
-          <StatusSummaryCard
-            label="Inactive"
-            value={s?.inactive ?? 0}
-            color="#F59E0B"
-            chipLabel="Inactive"
-            chipCls="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400"
-            onClick={() => onDrill({ status: 'Inactive' })}
-          />
-          <StatusSummaryCard
-            label="Terminated"
-            value={s?.terminated ?? 0}
-            color="#EF4444"
-            chipLabel="Terminated"
-            chipCls="bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400"
-            onClick={() => onDrill({ status: 'Terminated' })}
-          />
+          <StatusSummaryCard label="Total staff" value={s?.total ?? 0} color="#0A2A5E"
+            chipLabel="All"        chipCls="bg-brand/10 text-brand dark:bg-brand/20"
+            onClick={() => onDrill({})} />
+          <StatusSummaryCard label="Active"       value={s?.active ?? 0}     color="#10B981"
+            chipLabel="Active"     chipCls="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400"
+            onClick={() => onDrill({ status: 'Active' })} />
+          <StatusSummaryCard label="Inactive"     value={s?.inactive ?? 0}   color="#F59E0B"
+            chipLabel="Inactive"   chipCls="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400"
+            onClick={() => onDrill({ status: 'Inactive' })} />
+          <StatusSummaryCard label="Terminated"   value={s?.terminated ?? 0} color="#EF4444"
+            chipLabel="Terminated" chipCls="bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400"
+            onClick={() => onDrill({ status: 'Terminated' })} />
         </div>
-      </section>
 
-      {/* Gender — pie with clickable legend (active-only, Unknown included) */}
-      {s && activeTotal > 0 && (
-        <section className="card p-6">
-          <div className="flex items-start justify-between gap-3 flex-wrap mb-2">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="chip-success"><BadgeCheck className="w-3 h-3" /> Active staff</span>
-                <h3 className="text-[15px] font-semibold text-ink-900 dark:text-white">Gender split</h3>
+        {/* Divider + gender split (shown once data is available) */}
+        {s && activeTotal > 0 && (
+          <>
+            <div className="border-t border-ink-100 dark:border-ink-700 mt-5 mb-5" />
+            <div className="flex items-center gap-2 mb-3">
+              <span className="chip-success"><BadgeCheck className="w-3 h-3" /> Active staff</span>
+              <h3 className="text-[14px] font-semibold text-ink-900 dark:text-white">Gender split</h3>
+              <span className="text-[12px] text-ink-400 ml-1">— including those with no recorded gender</span>
+            </div>
+            <div className="flex flex-col md:flex-row items-center gap-8">
+              <DonutChart
+                segments={[
+                  { label: 'Male',    value: s.active_male,   color: '#0A2A5E' },
+                  { label: 'Female',  value: s.active_female, color: '#F5C400' },
+                  { label: 'Unknown', value: unknownGender,   color: '#94A3B8' },
+                ]}
+                centerTop="Active"
+                centerBig={activeTotal.toLocaleString()}
+              />
+              <div className="flex-1 w-full grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <LegendCard label="Male"          value={s.active_male}    percent={pct(s.active_male, activeTotal)}    color="#0A2A5E" onClick={() => onDrill({ status: 'Active', gender: 'M' })} />
+                <LegendCard label="Female"        value={s.active_female}  percent={pct(s.active_female, activeTotal)}  color="#F5C400" onClick={() => onDrill({ status: 'Active', gender: 'F' })} />
+                <LegendCard label="Not specified" value={unknownGender}    percent={pct(unknownGender, activeTotal)}    color="#94A3B8" onClick={() => onDrill({ status: 'Active', gender: 'unknown' })} />
               </div>
-              <p className="text-[12px] text-ink-500 mt-1">
-                Every active staff member is counted — including those with no recorded gender.
-              </p>
             </div>
-          </div>
-
-          <div className="flex flex-col md:flex-row items-center gap-8">
-            <DonutChart
-              segments={[
-                { label: 'Male',    value: s.active_male,   color: '#0A2A5E' },
-                { label: 'Female',  value: s.active_female, color: '#F5C400' },
-                { label: 'Unknown', value: unknownGender,   color: '#94A3B8' },
-              ]}
-              centerTop="Active"
-              centerBig={activeTotal.toLocaleString()}
-            />
-            <div className="flex-1 w-full grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <LegendCard
-                label="Male"
-                value={s.active_male}
-                percent={pct(s.active_male, activeTotal)}
-                color="#0A2A5E"
-                onClick={() => onDrill({ status: 'Active', gender: 'M' })}
-              />
-              <LegendCard
-                label="Female"
-                value={s.active_female}
-                percent={pct(s.active_female, activeTotal)}
-                color="#F5C400"
-                onClick={() => onDrill({ status: 'Active', gender: 'F' })}
-              />
-              <LegendCard
-                label="Not specified"
-                value={unknownGender}
-                percent={pct(unknownGender, activeTotal)}
-                color="#94A3B8"
-                onClick={() => onDrill({ status: 'Active', gender: 'unknown' })}
-              />
-            </div>
-          </div>
-        </section>
-      )}
+          </>
+        )}
+      </section>
 
       {/* Contract — percentage cards (active-only) */}
       {s && activeTotal > 0 && (
