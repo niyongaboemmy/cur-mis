@@ -2,7 +2,7 @@ import { Component, type ReactNode, type ErrorInfo } from 'react'
 import { AlertTriangle, RefreshCw } from 'lucide-react'
 
 interface Props {
-  children:  ReactNode
+  children: ReactNode
   fallback?: ReactNode
 }
 
@@ -10,14 +10,29 @@ interface State {
   error: Error | null
 }
 
+// sessionStorage key used to prevent infinite reload loops on persistent chunk errors
+const CHUNK_RELOAD_KEY = 'cur-mis-chunk-reload-attempted'
+
+function isChunkError(error: Error): boolean {
+  const msg = error.message ?? ''
+  return (
+    error.name === 'ChunkLoadError' ||
+    msg.includes('Loading chunk') ||
+    msg.includes('Failed to fetch dynamically imported module') ||
+    msg.includes('Importing a module script failed') ||
+    msg.includes('error loading dynamically imported module') ||
+    msg.includes('Unable to preload CSS for') ||
+    msg.includes('Loading CSS chunk')
+  )
+}
+
 /**
  * React error boundary — catches render errors in child tree and shows a
  * recovery UI instead of crashing the whole app.
  *
- * Usage:
- *   <ErrorBoundary>
- *     <SomeFeature />
- *   </ErrorBoundary>
+ * For chunk-load errors (lazy import failures caused by network hiccups or
+ * a stale browser cache after a new deployment) it automatically reloads
+ * the page once, which almost always resolves the issue.
  */
 export default class ErrorBoundary extends Component<Props, State> {
   state: State = { error: null }
@@ -27,11 +42,25 @@ export default class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    // Replace with a real logging service in production
     console.error('[ErrorBoundary]', error, info.componentStack)
+
+    // Chunk-load errors are usually transient (network blip or stale cache after
+    // a new deployment). Reload once automatically; guard against infinite loops
+    // with sessionStorage so we only retry once per browser session.
+    if (isChunkError(error)) {
+      const alreadyRetried = sessionStorage.getItem(CHUNK_RELOAD_KEY)
+      if (!alreadyRetried) {
+        sessionStorage.setItem(CHUNK_RELOAD_KEY, '1')
+        window.location.reload()
+        return
+      }
+    }
   }
 
-  reset = () => this.setState({ error: null })
+  reset = () => {
+    sessionStorage.removeItem(CHUNK_RELOAD_KEY)
+    this.setState({ error: null })
+  }
 
   render() {
     if (this.state.error) {
@@ -47,11 +76,11 @@ export default class ErrorBoundary extends Component<Props, State> {
             <p className="text-sm text-gray-500 mt-1 max-w-sm">
               An unexpected error occurred. Try refreshing the page.
             </p>
-            {import.meta.env.DEV && (
-              <pre className="mt-3 text-left text-xs bg-gray-100 text-gray-700 p-3 rounded overflow-auto max-w-md max-h-32">
-                {this.state.error.message}
-              </pre>
-            )}
+            {/* Always show the error message so it's visible in browser DevTools
+                and helps diagnose production issues */}
+            <pre className="mt-3 text-left text-xs bg-gray-100 text-gray-700 p-3 rounded overflow-auto max-w-md max-h-32">
+              {this.state.error.message}
+            </pre>
           </div>
           <button onClick={this.reset} className="btn-secondary text-sm">
             <RefreshCw className="h-4 w-4" />

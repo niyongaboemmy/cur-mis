@@ -36,15 +36,9 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: 'dist',
       emptyOutDir: true,
-      rollupOptions: {
-        output: {
-          manualChunks: {
-            vendor: ['react', 'react-dom', 'react-router-dom'],
-            query:  ['@tanstack/react-query'],
-            motion: ['framer-motion'],
-          },
-        },
-      },
+      // No manualChunks — bundle everything into one JS file.
+      // Eliminates "Failed to fetch dynamically imported module" errors on
+      // servers (cPanel) that cannot reliably serve many small chunk files.
     },
   }
 })
