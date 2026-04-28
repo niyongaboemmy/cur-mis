@@ -7,7 +7,7 @@ import {
   Pencil, Eye, X, Settings2, Info,
   Mail, Phone, CalendarDays, Briefcase, BadgeCheck, User,
   Building2, CreditCard, UserCheck, TrendingDown, Wallet,
-  UserPlus, Trash2, Save, Plus, CheckCircle, Copy, Banknote, PlayCircle,
+  UserPlus, Trash2, Save, Plus, CheckCircle, Copy, Banknote,
 } from 'lucide-react'
 import PayAllModal from './PayAllModal'
 import {

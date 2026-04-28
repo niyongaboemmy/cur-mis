@@ -1,10 +1,8 @@
 import { ReactNode } from "react";
-import { asset } from "@/utils/asset";
 import { motion } from "framer-motion";
-import { CheckCircle2, ExternalLink } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import Logo from "@/components/brand/Logo";
 import ThemeToggle from "../ui/ThemeToggle";
-import { APP_FULL_NAME, APP_TAGLINE } from "@/constants";
 
 interface AuthLayoutProps {
   children: ReactNode;
@@ -12,9 +10,11 @@ interface AuthLayoutProps {
   subtitle: string;
 }
 
-
-
-export default function AuthLayout({ children, title, subtitle }: AuthLayoutProps) {
+export default function AuthLayout({
+  children,
+  title,
+  subtitle,
+}: AuthLayoutProps) {
   const isDev = import.meta.env.DEV;
 
   return (
@@ -48,18 +48,19 @@ export default function AuthLayout({ children, title, subtitle }: AuthLayoutProp
               Message from the Rector
             </h1>
             <p className="mt-4 text-white/90 text-[15px] xl:text-[16px] leading-relaxed max-w-lg">
-              Welcome to our university. We are committed to providing a learning
-              environment that nurtures the holistic development of students. Our
-              institution prides itself on academic excellence, innovative research, and a
-              vibrant campus life that fosters both personal and professional growth. We
-              invite you to join our community where we strive to shape the future
-              leaders of tomorrow.
+              Welcome to our university. We are committed to providing a
+              learning environment that nurtures the holistic development of
+              students. Our institution prides itself on academic excellence,
+              innovative research, and a vibrant campus life that fosters both
+              personal and professional growth. We invite you to join our
+              community where we strive to shape the future leaders of tomorrow.
             </p>
           </motion.div>
         </div>
 
         <p className="relative z-10 text-primary-200/80 text-[12px] pb-10">
-          © {new Date().getFullYear()} Catholic University of Rwanda. All rights reserved.
+          © {new Date().getFullYear()} Catholic University of Rwanda. All rights
+          reserved.
         </p>
       </div>
 
@@ -113,13 +114,23 @@ export default function AuthLayout({ children, title, subtitle }: AuthLayoutProp
       <div className="fixed bottom-0 left-0 right-0 z-[100] bg-[#0c3966] py-2 px-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-sm sm:text-[14px] border-t-2 border-[#164e87] shadow-[0_-4px_10px_rgba(0,0,0,0.2)]">
         <span className="text-xl">💳</span>
         <div className="flex items-center flex-wrap justify-center gap-x-2">
-          <span className="text-gold-400 font-bold uppercase tracking-wider">Equity Bank:</span>
-          <span className="text-white font-bold tracking-wide">4009201274006</span>
+          <span className="text-gold-400 font-bold uppercase tracking-wider">
+            Equity Bank:
+          </span>
+          <span className="text-white font-bold tracking-wide">
+            4009201274006
+          </span>
           <span className="text-white/60 mx-1 hidden sm:inline">|</span>
-          <span className="text-gold-400 font-bold uppercase tracking-wider">Bank of Kigali:</span>
-          <span className="text-white font-bold tracking-wide">100239674199</span>
+          <span className="text-gold-400 font-bold uppercase tracking-wider">
+            Bank of Kigali:
+          </span>
+          <span className="text-white font-bold tracking-wide">
+            100239674199
+          </span>
           <span className="text-white/60 mx-1 hidden sm:inline">|</span>
-          <span className="text-white font-bold tracking-wider">CUR-KIGALI-CAMPUS</span>
+          <span className="text-white font-bold tracking-wider">
+            CUR-KIGALI-CAMPUS
+          </span>
         </div>
         <span className="text-xl">💳</span>
       </div>

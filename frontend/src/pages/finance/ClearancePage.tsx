@@ -49,8 +49,8 @@ export default function ClearancePage() {
     return (basics?.active_year as any)?.id ?? "";
   });
   const [page, setPage] = useState(1);
-  const [grantNotes, setGrantNotes] = useState("");
-  const [showGrant, setShowGrant] = useState(false);
+  // const [grantNotes, _setGrantNotes] = useState("");
+  // const [_showGrant, setShowGrant] = useState(false);
 
   const yearsQ = useQuery({
     queryKey: ["academic-years"],
@@ -66,20 +66,20 @@ export default function ClearancePage() {
   });
   const clearance = studentQ.data?.data;
 
-  const grantMut = useMutation({
-    mutationFn: () =>
-      clearanceService.grant({
-        student_id: studentId,
-        academic_year_id: Number(yearId),
-        notes: grantNotes,
-      }),
-    onSuccess: () => {
-      toast.success("Clearance granted");
-      studentQ.refetch();
-      setShowGrant(false);
-    },
-    onError: (e: any) => toast.error(e?.response?.data?.message ?? "Failed"),
-  });
+  // const _grantMut = useMutation({
+  //   mutationFn: () =>
+  //     clearanceService.grant({
+  //       student_id: studentId,
+  //       academic_year_id: Number(yearId),
+  //       notes: grantNotes,
+  //     }),
+  //   onSuccess: () => {
+  //     toast.success("Clearance granted");
+  //     studentQ.refetch();
+  //     setShowGrant(false);
+  //   },
+  //   onError: (e: any) => toast.error(e?.response?.data?.message ?? "Failed"),
+  // });
 
   // ─── Bulk tab ─────────────────────────────────────────────────────────────
   const bulkQ = useQuery({
