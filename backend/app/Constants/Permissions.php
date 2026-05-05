@@ -29,6 +29,7 @@ class Permissions
     public const MANAGE_LEVELS = 'MANAGE_LEVELS';
     public const MANAGE_MODULES = 'MANAGE_MODULES';
     public const MANAGE_SCHOOLS = 'MANAGE_SCHOOLS';
+    public const MANAGE_CAMPUSES = 'MANAGE_CAMPUSES';
     public const VIEW_TIMETABLE = 'VIEW_TIMETABLE';
     public const MANAGE_TIMETABLE = 'MANAGE_TIMETABLE';
 
@@ -110,6 +111,7 @@ class Permissions
             self::MANAGE_LEVELS,
             self::MANAGE_MODULES,
             self::MANAGE_SCHOOLS,
+            self::MANAGE_CAMPUSES,
             self::VIEW_TIMETABLE,
             self::MANAGE_TIMETABLE,
             self::MANAGE_MODULE_SCHEDULES,

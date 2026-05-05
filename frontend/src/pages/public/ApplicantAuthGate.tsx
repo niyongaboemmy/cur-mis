@@ -6,12 +6,18 @@ import VerifyOtpForm from '@/components/auth/VerifyOtpForm';
 
 interface Props {
   onSuccess: () => void;
+  /** Pre-fill register/login forms with details the user already typed earlier. */
+  prefill?: {
+    first_name?: string
+    last_name?: string
+    email?: string
+  };
 }
 
-export default function ApplicantAuthGate({ onSuccess }: Props) {
+export default function ApplicantAuthGate({ onSuccess, prefill }: Props) {
   const [mode, setMode] = useState<'login' | 'register'>('register');
   const [showOtp, setShowOtp] = useState(false);
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(prefill?.email ?? '');
   const [devOtp, setDevOtp] = useState<string | undefined>();
 
   const handleLoginSuccess = (response: any) => {
@@ -71,9 +77,9 @@ export default function ApplicantAuthGate({ onSuccess }: Props) {
           onSuccess={onSuccess} 
         />
       ) : mode === 'login' ? (
-        <LoginForm onSuccess={handleLoginSuccess} />
+        <LoginForm onSuccess={handleLoginSuccess} prefill={{ email: prefill?.email }} />
       ) : (
-        <RegisterForm onSuccess={handleRegisterSuccess} />
+        <RegisterForm onSuccess={handleRegisterSuccess} prefill={prefill} />
       )}
     </div>
   );

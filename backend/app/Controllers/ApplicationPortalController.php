@@ -104,6 +104,72 @@ class ApplicationPortalController extends BaseController
     }
 
     /**
+     * GET /api/portal/programs
+     * Returns every active program (option) with its department/faculty,
+     * the campuses it's offered on, and basic metadata. Used by the
+     * public apply wizard step 3 to render the program picker.
+     */
+    public function getPrograms(Request $request, Response $response): never
+    {
+        $db = Database::getInstance();
+
+        $programs = $db->fetchAll(
+            "SELECT o.id, o.name, o.is_active,
+                    o.department_id,
+                    d.dep_name AS department_name, d.dep_acronym AS department_code,
+                    d.fac_id AS faculty_id,
+                    f.fac_name AS faculty_name, f.fac_code AS faculty_code
+             FROM `options` o
+             LEFT JOIN `departements` d ON d.dep_id = o.department_id
+             LEFT JOIN `faculty` f       ON f.fac_id = d.fac_id
+             WHERE o.is_active = 1 OR o.is_active IS NULL
+             ORDER BY o.name ASC"
+        );
+
+        if (!empty($programs)) {
+            $ids = array_map(static fn($r) => (int)$r['id'], $programs);
+            $ph  = implode(',', array_fill(0, count($ids), '?'));
+            $links = $db->fetchAll(
+                "SELECT oc.option_id, oc.campus_id,
+                        c.name AS campus_name, c.code AS campus_code, c.location AS campus_location
+                 FROM `option_campuses` oc
+                 JOIN `campuses` c ON c.id = oc.campus_id
+                 WHERE oc.option_id IN ($ph)
+                   AND (c.is_active = 1 OR c.is_active IS NULL)
+                 ORDER BY c.name ASC",
+                $ids,
+            );
+            $byProgram = [];
+            foreach ($links as $l) {
+                $pid = (int)$l['option_id'];
+                $byProgram[$pid][] = [
+                    'id'       => (int)$l['campus_id'],
+                    'name'     => $l['campus_name'],
+                    'code'     => $l['campus_code'],
+                    'location' => $l['campus_location'],
+                ];
+            }
+            foreach ($programs as &$p) {
+                $p['campuses'] = $byProgram[(int)$p['id']] ?? [];
+            }
+            unset($p);
+        }
+
+        $this->success($response, $programs, 'Programs fetched successfully.');
+    }
+
+    /**
+     * GET /api/portal/levels
+     * Lookup list for the apply form.
+     */
+    public function getLevels(Request $request, Response $response): never
+    {
+        $db = Database::getInstance();
+        $rows = $db->fetchAll("SELECT id, name FROM `levels` ORDER BY id ASC");
+        $this->success($response, $rows, 'Levels fetched successfully.');
+    }
+
+    /**
      * GET /api/portal/faculties/:faculty_id/requirements
      */
     public function getFacultyRequirements(Request $request, Response $response): never

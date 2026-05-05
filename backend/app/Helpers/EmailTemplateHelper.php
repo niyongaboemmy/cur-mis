@@ -81,6 +81,56 @@ class EmailTemplateHelper
     }
 
     /**
+     * Template: application has been submitted — sent immediately on submit.
+     * Replaces the older OTP-verification flow. Includes CUR contact info
+     * so the applicant has a clear next-step channel.
+     */
+    public static function applicationSubmittedTemplate(
+        string $name,
+        string $appNumber,
+        string $programName = '',
+        string $intake = ''
+    ): string {
+        $safeName    = htmlspecialchars($name);
+        $safeApp     = htmlspecialchars($appNumber);
+        $safeProgram = htmlspecialchars($programName);
+        $safeIntake  = htmlspecialchars($intake);
+
+        $programLine = $safeProgram !== ''
+            ? "<p style='margin:0 0 6px 0;'><strong>Programme:</strong> {$safeProgram}</p>"
+            : '';
+        $intakeLine = $safeIntake !== ''
+            ? "<p style='margin:0;'><strong>Intake:</strong> {$safeIntake}</p>"
+            : '';
+
+        $content = "
+            Dear {$safeName},<br><br>
+            Your application to the <strong>Catholic University of Rwanda (CUR)</strong> has been received successfully.
+            Our admissions team will review your file and reach out to you with the next steps.<br><br>
+
+            <div style='background-color: #f0f9ff; border: 1px solid #bae6fd; border-radius: 12px; padding: 20px; margin: 20px 0;'>
+                <p style='margin: 0 0 8px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: #0369a1;'>Submitted Application</p>
+                <p style='margin: 0 0 6px 0; font-size: 18px; font-weight: 800; color: #0c4a6e; letter-spacing: 0.05em;'>{$safeApp}</p>
+                {$programLine}
+                {$intakeLine}
+            </div>
+
+            <p style='margin: 0 0 8px 0;'><strong>Need help?</strong> Reach out to our admissions office:</p>
+            <ul style='color:#374151; line-height:1.8; padding-left: 18px; margin: 8px 0 16px 0;'>
+                <li><strong>Email:</strong> <a href='mailto:admissions@cur.ac.rw' style='color:#1e40af;'>admissions@cur.ac.rw</a></li>
+                <li><strong>Phone:</strong> +250 788 351 906</li>
+                <li><strong>Website:</strong> <a href='https://www.cur.ac.rw' style='color:#1e40af;'>www.cur.ac.rw</a></li>
+                <li><strong>Address:</strong> Save Campus, Huye District, Southern Province, Rwanda</li>
+            </ul>
+
+            You can also track your application status anytime from the applicant portal.<br><br>
+            Thank you for choosing the <strong>Catholic University of Rwanda</strong>.
+        ";
+
+        return self::wrap("Application Submitted — {$safeApp}", $content);
+    }
+
+    /**
      * Template: application received confirmation sent to applicant.
      */
     public static function applicationReceivedTemplate(string $name, string $appNumber, string $programName, ?string $verificationCode = null): string

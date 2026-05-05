@@ -23,4 +23,16 @@ export const academicsMgmtService = {
 
   remove: (entity: AcMgmtEntity, id: number | string) =>
     api.delete<null>(`/api/academics-management/${entity}/${id}`),
+
+  /** Campuses linked to a program (`options`). */
+  listOptionCampuses: (optionId: number | string, signal?: AbortSignal) =>
+    api.get<{ option_id: number; campus_ids: number[]; campuses: Array<Record<string, any>> }>(
+      `/api/academics-management/options/${optionId}/campuses`, {}, signal,
+    ),
+
+  setOptionCampuses: (optionId: number | string, campusIds: number[]) =>
+    api.put<{ option_id: number; campus_ids: number[] }>(
+      `/api/academics-management/options/${optionId}/campuses`,
+      { campus_ids: campusIds },
+    ),
 }

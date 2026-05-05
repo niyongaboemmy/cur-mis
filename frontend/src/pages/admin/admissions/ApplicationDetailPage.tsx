@@ -427,7 +427,7 @@ export default function ApplicationDetailPage() {
                 </option>
                 {STATUS_OPTIONS.map((s) => (
                   <option key={s} value={s}>
-                    {s.replace(/_/g, " ")}
+                    {s === ApplicationStatus.SUBMITTED ? "Pending" : s.replace(/_/g, " ")}
                   </option>
                 ))}
               </select>
@@ -464,33 +464,51 @@ export default function ApplicationDetailPage() {
                 <section className="card p-6">
                   <SectionHeader
                     title="Personal Details"
-                    sub="Identity and contact information."
+                    sub="Identity, contact and parental info."
                     icon={User}
                   />
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mt-6">
-                    <InfoGroup
-                      label="Full Name"
-                      value={`${app.first_name} ${app.last_name}`}
-                    />
-                    <InfoGroup label="Email" value={app.email} icon={Mail} />
-                    <InfoGroup label="Phone" value={app.phone} icon={Phone} />
-                    <InfoGroup label="Gender" value={app.gender} />
-                    <InfoGroup
-                      label="Date of Birth"
-                      value={app.birthdate}
-                      icon={CalendarDays}
-                    />
-                    <InfoGroup
-                      label="Nationality"
-                      value={app.nationality}
-                      icon={MapPin}
-                    />
-                    <div className="sm:col-span-2">
-                      <InfoGroup
-                        label="Address"
-                        value={app.address || "Not provided"}
-                        icon={MapPin}
-                      />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5 mt-6">
+                    <InfoGroup label="Full Name" value={`${app.first_name ?? ''} ${app.last_name ?? ''}`.trim() || '—'} />
+                    <InfoGroup label="Father's Name" value={(app as any).father || '—'} />
+                    <InfoGroup label="Mother's Name" value={(app as any).mother || '—'} />
+                    <InfoGroup label="Gender" value={app.gender === 'M' ? 'Male' : app.gender === 'F' ? 'Female' : (app.gender || '—')} />
+                    <InfoGroup label="Date of Birth" value={app.birthdate} icon={CalendarDays} />
+                    <InfoGroup label="Marital Status" value={cap((app as any).marital_status) || '—'} />
+                    <InfoGroup label="National ID / Passport" value={(app as any).national_id || '—'} />
+                    <InfoGroup label="Nationality" value={app.nationality} icon={MapPin} />
+                    <InfoGroup label="Country of Residence" value={(app as any).country_of_residence || '—'} icon={MapPin} />
+                    <InfoGroup label="Disability" value={(app as any).disability || 'None'} />
+                  </div>
+                </section>
+
+                {/* Contact */}
+                <section className="card p-6">
+                  <SectionHeader
+                    title="Contact"
+                    sub="How we reach the applicant."
+                    icon={Phone}
+                  />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5 mt-6">
+                    <InfoGroup label="Phone" value={app.phone || '—'} icon={Phone} />
+                    <InfoGroup label="Reference Person Phone" value={(app as any).reference_phone || '—'} icon={Phone} />
+                    <InfoGroup label="Email" value={app.email || '—'} icon={Mail} />
+                  </div>
+                </section>
+
+                {/* Residency */}
+                <section className="card p-6">
+                  <SectionHeader
+                    title="Residency"
+                    sub="Where the applicant lives."
+                    icon={MapPin}
+                  />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5 mt-6">
+                    <InfoGroup label="Province" value={(app as any).province || '—'} />
+                    <InfoGroup label="District" value={(app as any).district || '—'} />
+                    <InfoGroup label="Sector" value={(app as any).sector || '—'} />
+                    <InfoGroup label="Residence District" value={(app as any).residence_district || '—'} />
+                    <div className="sm:col-span-2 lg:col-span-3">
+                      <InfoGroup label="Address" value={app.address || 'Not provided'} icon={MapPin} />
                     </div>
                   </div>
                 </section>
@@ -499,24 +517,86 @@ export default function ApplicationDetailPage() {
                 <section className="card p-6">
                   <SectionHeader
                     title="Academic Background"
-                    sub="Previous education history."
+                    sub="Secondary school transcript provided during application."
                     icon={GraduationCap}
                   />
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mt-6">
-                    <InfoGroup
-                      label="Previous School"
-                      value={app.prev_school}
-                    />
-                    <InfoGroup
-                      label="Qualification"
-                      value={app.prev_qualification}
-                    />
-                    <InfoGroup label="Mean Grade" value={app.prev_grade} />
-                    <InfoGroup
-                      label="Graduation Year"
-                      value={String(app.graduation_year ?? "—")}
-                    />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5 mt-6">
+                    <InfoGroup label="Attended Secondary School" value={app.prev_school || '—'} />
+                    <InfoGroup label="Combination / Section" value={(app as any).combination || '—'} />
+                    <InfoGroup label="A2 Grades" value={(app as any).a2_grades || '—'} />
+                    <InfoGroup label="Principal Passes" value={(app as any).principal_passes != null ? String((app as any).principal_passes) : '—'} />
+                    <InfoGroup label="Completion Year" value={app.graduation_year ? String(app.graduation_year) : '—'} />
+                    <InfoGroup label="Serial Number" value={(app as any).serial_number || '—'} />
+                    <InfoGroup label="Qualification" value={app.prev_qualification || '—'} />
+                    <InfoGroup label="Mean Grade" value={app.prev_grade || '—'} />
                   </div>
+                </section>
+
+                {/* Programme Selection */}
+                <section className="card p-6">
+                  <SectionHeader
+                    title="Programme Selection"
+                    sub="Programme, faculty, campus and intake."
+                    icon={GraduationCap}
+                  />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5 mt-6">
+                    <InfoGroup label="Program" value={(app as any).program_name ?? app.department_name ?? '—'} />
+                    <InfoGroup label="Faculty" value={app.faculty_name ?? '—'} />
+                    <InfoGroup label="Department" value={app.department_name ?? '—'} />
+                    <InfoGroup label="Campus" value={(app as any).campus_name ?? '—'} icon={Building2} />
+                    <InfoGroup label="Mode of Study" value={(app as any).mode_of_study ?? '—'} />
+                    <InfoGroup label="Level" value={(app as any).level_name ?? ((app as any).level_id ? `Level #${(app as any).level_id}` : '—')} />
+                    <InfoGroup label="Intake" value={app.intake ?? '—'} />
+                    <InfoGroup label="Academic Year" value={(app as any).academic_year_label ?? '—'} />
+                  </div>
+                </section>
+
+                {/* Application Fee Payment */}
+                <section className="card p-6">
+                  <SectionHeader
+                    title="Application Fee Payment"
+                    sub="Bank slip and transaction details."
+                    icon={CreditCard}
+                  />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5 mt-6">
+                    <InfoGroup label="Amount Paid" value={(app as any).payment_amount != null ? `${(app as any).payment_amount} ${(app as any).payment_currency ?? 'RWF'}` : '—'} icon={CreditCard} />
+                    <InfoGroup label="Transaction ID" value={(app as any).transaction_id || '—'} />
+                    <InfoGroup label="Paid At" value={(app as any).paid_at ? new Date((app as any).paid_at).toLocaleString() : '—'} />
+                  </div>
+                  {(app as any).payment_slip_file_id ? (
+                    <div className="mt-6 p-3 rounded-xl border border-ink-100 dark:border-ink-800 flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-9 h-9 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 flex items-center justify-center shrink-0">
+                          <FileText className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[13px] font-bold text-ink-900 dark:text-white">Payment Slip</p>
+                          <p className="text-[11px] text-ink-500">Uploaded with this application — click to preview.</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <a
+                          href={applicationAdminService.paymentSlipUrl(appId)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="p-1.5 rounded-lg hover:bg-ink-100 dark:hover:bg-ink-700 text-ink-500 transition-colors"
+                          title="Open payment slip"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </a>
+                        <a
+                          href={applicationAdminService.paymentSlipUrl(appId)}
+                          download
+                          className="p-1.5 rounded-lg hover:bg-ink-100 dark:hover:bg-ink-700 text-ink-500 transition-colors"
+                          title="Download payment slip"
+                        >
+                          <Download className="w-4 h-4" />
+                        </a>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="mt-6 text-[12px] text-ink-400 italic">No payment slip on file.</p>
+                  )}
                 </section>
 
                 {/* Admission Algorithm Considerations */}
@@ -1451,12 +1531,20 @@ function InfoGroup({
   );
 }
 
+function cap(s?: string | null) {
+  if (!s) return '';
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 function StatusPill({ status }: { status: string }) {
   if (!status) return null;
   const isOffer = status.includes("offer");
   const isVerified =
     status === ApplicationStatus.DOCUMENTS_VERIFIED ||
     status === ApplicationStatus.ENROLLED;
+  // On the admin side, frame `submitted` as "Pending" — that's the queue
+  // admins act on, not a state the applicant has finalised.
+  const label = status === ApplicationStatus.SUBMITTED ? "Pending" : status.replace(/_/g, " ");
   return (
     <span
       className={`px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-tight ${
@@ -1467,7 +1555,7 @@ function StatusPill({ status }: { status: string }) {
             : "bg-brand/10 text-brand"
       }`}
     >
-      {status.replace(/_/g, " ")}
+      {label}
     </span>
   );
 }

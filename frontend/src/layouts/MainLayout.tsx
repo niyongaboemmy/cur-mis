@@ -83,16 +83,13 @@ const NAV_TREE: NavNode[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, to: "/dashboard" },
   {
     id: "applicant-dashboard",
-    label: "My Application",
+    label: "Applications",
     icon: LayoutDashboard,
+    to: "/applicant",
     // Role-scoped: only self-registered applicants have their own application.
     // Admins/superadmins do NOT see this even if they hold the permission.
     roles: ["applicant"],
     permissions: [PERMISSIONS.ACCESS_APPLICANT_PORTAL],
-    children: [
-      { to: "/applicant", label: "Overview" },
-      { to: "/applicant/documents", label: "Documents" },
-    ],
   },
   {
     id: "students-group",
@@ -456,10 +453,13 @@ export default function MainLayout() {
 
   const filtered = useMemo<NavNode[]>(() => {
     const q = query.trim().toLowerCase();
+    const isApplicant = user?.role === "applicant";
+    const applicantNavIds = new Set(["home", "applicant-dashboard"]);
 
     const filterTree = (tree: NavNode[]) => {
       return tree
         .filter((n) => isVisible(n))
+        .filter((n) => !isApplicant || applicantNavIds.has(n.id))
         .map((n) => {
           // If node has children, filter them by role + permissions first
           let filteredChildren = n.children?.filter((c) => isVisible(c));
@@ -485,12 +485,14 @@ export default function MainLayout() {
     };
 
     return filterTree(NAV_TREE);
-  }, [query, hasAccess]);
+  }, [query, hasAccess, user]);
 
   const filteredAdmin = useMemo<NavNode[]>(() => {
     const q = query.trim().toLowerCase();
+    const isApplicant = user?.role === "applicant";
 
     const filterTree = (tree: NavNode[]) => {
+      if (isApplicant) return [];
       return tree
         .filter((n) => hasAccess(n.permissions))
         .map((n) => {
@@ -518,7 +520,7 @@ export default function MainLayout() {
     };
 
     return filterTree(ADMIN_TREE);
-  }, [query, hasAccess]);
+  }, [query, hasAccess, user]);
 
   const headerMeta = ROUTE_TITLES[location.pathname] ?? { title: "CUR-MIS" };
   const sidebarWidth = collapsed ? 72 : 240;
@@ -663,22 +665,28 @@ export default function MainLayout() {
                 {headerMeta.title}
               </h1>
             </div>
-            {/* Global pill search */}
-            <div className="hidden md:flex">
-              <div className="relative w-[280px] lg:w-[400px]">
-                <Search className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400 pointer-events-none" />
-                <input
-                  type="text"
-                  placeholder="What do you want to find?"
-                  className="w-full h-10 rounded-full bg-ink-50/80 dark:bg-ink-800 border border-ink-100 dark:border-ink-700 pl-5 pr-11 text-[13.5px] placeholder-ink-400 focus:outline-none focus:border-primary-300 focus:ring-2 focus:ring-primary-100 dark:focus:ring-primary-900/40 transition"
-                />
+            {/* Global pill search — hidden for applicants */}
+            {user?.role !== "applicant" && (
+              <div className="hidden md:flex">
+                <div className="relative w-[280px] lg:w-[400px]">
+                  <Search className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400 pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="What do you want to find?"
+                    className="w-full h-10 rounded-full bg-ink-50/80 dark:bg-ink-800 border border-ink-100 dark:border-ink-700 pl-5 pr-11 text-[13.5px] placeholder-ink-400 focus:outline-none focus:border-primary-300 focus:ring-2 focus:ring-primary-100 dark:focus:ring-primary-900/40 transition"
+                  />
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
-            <AcademicYearSelector />
-            <AcademicTermSelector />
+            {user?.role !== "applicant" && (
+              <>
+                <AcademicYearSelector />
+                <AcademicTermSelector />
+              </>
+            )}
             <RoundIconBtn label="Notifications" dot>
 
               <Bell className="w-[18px] h-[18px]" />

@@ -151,6 +151,64 @@ class ApplicantProfileController extends BaseController
      * POST /api/applicant/profile/photo
      * Upload or replace the profile photo.
      */
+    /**
+     * POST /api/applicant/application/payment
+     * Multipart: payment_slip (PDF/JPG/PNG) + transaction_id + amount?
+     * Stores the slip on the file server and writes the transaction id /
+     * amount onto the active draft application.
+     */
+    public function uploadPaymentSlip(Request $request, Response $response): never
+    {
+        $profile = $request->param('_applicant_profile');
+        $appId   = (int)($profile['application_id'] ?? 0);
+        if (!$appId) {
+            $this->error($response, 'No active application.', 404);
+        }
+
+        $body          = $request->body();
+        $transactionId = trim((string)($body['transaction_id'] ?? ''));
+        $amount        = isset($body['payment_amount']) ? (float)$body['payment_amount'] : null;
+        $currency      = (string)($body['payment_currency'] ?? 'RWF');
+
+        if ($transactionId === '') {
+            $this->error($response, 'Transaction ID is required.', 422);
+        }
+
+        $update = [
+            'transaction_id'    => $transactionId,
+            'payment_currency'  => $currency,
+            'paid_at'           => date('Y-m-d H:i:s'),
+        ];
+        if ($amount !== null) $update['payment_amount'] = $amount;
+
+        // The slip itself is optional on this endpoint — applicants can also
+        // submit it later via re-uploading; but the wizard sends it together.
+        $file = $request->file('payment_slip');
+        if ($file) {
+            $allowedMimes = ['application/pdf', 'image/jpeg', 'image/png'];
+            if (!in_array($file['type'] ?? '', $allowedMimes, true)) {
+                $this->error($response, 'Invalid file type. Only PDF, JPEG and PNG are allowed.', 422);
+            }
+            try {
+                $client   = new FileServerClient();
+                $uploaded = $client->upload($file);
+            } catch (\RuntimeException $e) {
+                $this->error($response, $e->getMessage(), 422);
+            }
+            $update['payment_slip_file_id'] = $uploaded['id'];
+            $update['payment_slip_mime']    = (string)($file['type'] ?? '');
+        }
+
+        $this->appModel->update($appId, $update);
+
+        $this->success($response, [
+            'transaction_id'       => $transactionId,
+            'payment_slip_file_id' => $update['payment_slip_file_id'] ?? null,
+            'payment_amount'       => $amount,
+            'payment_currency'     => $currency,
+        ], 'Payment recorded.');
+    }
+
     public function uploadPhoto(Request $request, Response $response): never
     {
         $profile   = $request->param('_applicant_profile');
@@ -199,13 +257,34 @@ class ApplicantProfileController extends BaseController
 
         $data   = $request->body();
         $errors = ValidationHelper::validate($data, [
-            'faculty_id'    => 'required|numeric',
-            'department_id' => 'required|numeric',
             'intake'        => 'required|string',
         ]);
 
         if (!empty($errors)) {
             $this->error($response, 'Validation failed.', 422, $errors);
+        }
+
+        // Accept either an explicit faculty/department pair OR a program_id
+        // (option). When program_id is supplied we look up the department and
+        // faculty from `options` so existing downstream queries keep working.
+        if (empty($data['program_id']) && (empty($data['faculty_id']) || empty($data['department_id']))) {
+            $this->error($response, 'Validation failed.', 422, [
+                'program_id' => 'Program (or faculty + department) is required.',
+            ]);
+        }
+        if (!empty($data['program_id'])) {
+            $opt = $this->db->fetchOne(
+                "SELECT o.id, o.department_id, d.fac_id
+                 FROM `options` o
+                 LEFT JOIN `departements` d ON d.dep_id = o.department_id
+                 WHERE o.id = ? LIMIT 1",
+                [(int)$data['program_id']]
+            );
+            if (!$opt) {
+                $this->error($response, 'Selected program does not exist.', 422);
+            }
+            $data['department_id'] = (int)$opt['department_id'];
+            $data['faculty_id']    = (int)($opt['fac_id'] ?? 0);
         }
 
         try {
@@ -260,7 +339,7 @@ class ApplicantProfileController extends BaseController
         $firstName = $nameParts[0] ?? 'Applicant';
         $lastName  = count($nameParts) > 1 ? implode(' ', array_slice($nameParts, 1)) : 'User';
 
-        $appId = (int)$this->appModel->create([
+        $createPayload = [
             'application_number' => $appNumber,
             'academic_year_id'   => $academicYearId,
             'faculty_id'         => (int)$data['faculty_id'],
@@ -281,7 +360,13 @@ class ApplicantProfileController extends BaseController
             'sponsorship'        => 'self',
             'ip_address'         => $_SERVER['REMOTE_ADDR'] ?? null,
             'email_verified'     => 0,
-        ]);
+        ];
+        if (!empty($data['program_id']))    $createPayload['program_id']    = (int)$data['program_id'];
+        if (!empty($data['campus_id']))     $createPayload['campus_id']     = (int)$data['campus_id'];
+        if (!empty($data['mode_of_study'])) $createPayload['mode_of_study'] = $data['mode_of_study'];
+        if (!empty($data['level_id']))      $createPayload['level_id']      = (int)$data['level_id'];
+
+        $appId = (int)$this->appModel->create($createPayload);
 
         // Link it to the profile
         $this->profileModel->update($profileId, ['application_id' => $appId]);
@@ -310,6 +395,14 @@ class ApplicantProfileController extends BaseController
 
         $data = $request->body();
         // Skip validation of basics here to save lines, assuming frontend validated it
+        $extendedKeys = [
+            'father', 'mother', 'reference_phone', 'marital_status',
+            'country_of_residence', 'national_id', 'disability', 'address',
+            'province', 'district', 'sector', 'residence_district',
+            'combination',
+            'a2_grades', 'principal_passes', 'serial_number',
+            'program_id', 'campus_id', 'mode_of_study', 'level_id',
+        ];
         $updateData = [
             'first_name'         => $data['first_name'] ?? $application['first_name'],
             'last_name'          => $data['last_name'] ?? $application['last_name'],
@@ -323,38 +416,57 @@ class ApplicantProfileController extends BaseController
             'prev_grade'         => $data['prev_grade'] ?? $application['prev_grade'],
             'graduation_year'    => (int)($data['graduation_year'] ?? $application['graduation_year']),
             'sponsorship'        => $data['sponsorship'] ?? $application['sponsorship'],
+            'sponsor_name'       => $data['sponsor_name'] ?? $application['sponsor_name'] ?? null,
             'status'             => 'submitted',
             'submitted_at'       => date('Y-m-d H:i:s'),
         ];
+        foreach ($extendedKeys as $k) {
+            if (array_key_exists($k, $data) && $data[$k] !== null && $data[$k] !== '') {
+                $updateData[$k] = $data[$k];
+            } elseif (!empty($application[$k])) {
+                $updateData[$k] = $application[$k];
+            }
+        }
 
-        // Generate verification code
-        $code = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
-        $updateData['verification_code'] = $code;
-        $updateData['email_verified'] = 0;
+        // No OTP step anymore — submission is final and the applicant gets a
+        // confirmation email instead. We mark email_verified=1 so downstream
+        // logic that gates on it (admin views, status filters) keeps working.
+        $updateData['verification_code'] = null;
+        $updateData['email_verified']    = 1;
 
         $this->appModel->update($appId, $updateData);
 
         $this->service->logStatusChange($appId, 'draft', 'submitted', null, 'applicant', 'Application submitted.');
 
-        // Send Email
-        // 6. Send verification email
-        $htmlBody = \App\Helpers\EmailTemplateHelper::otpTemplate(
-            $updateData['first_name'], 
-            $code, 
-            '15 minutes'
-        );
-        $mailService = new \App\Services\MailService();
-        $emailSent   = $mailService->send($updateData['email'], 'Verify Your Application', $htmlBody, "Verification Code: $code");
-
-        // If email fails and we are in debug mode, return the code in the response for testing
-        $debug = filter_var($_ENV['APP_DEBUG'] ?? false, FILTER_VALIDATE_BOOLEAN);
-        $extraData = [];
-        if (!$emailSent && $debug) {
-            $extraData['dev_code'] = $code;
-            error_log("[DEV] Application verification code for {$updateData['email']}: {$code}");
+        // Send a "thank you / submitted successfully" confirmation email,
+        // including CUR contact info so the applicant has a clear next step.
+        $appRow = $this->appModel->find($appId) ?: [];
+        $programName = '';
+        if (!empty($appRow['program_id'])) {
+            $opt = $this->db->fetchOne("SELECT name FROM `options` WHERE id = ? LIMIT 1", [(int)$appRow['program_id']]);
+            $programName = (string)($opt['name'] ?? '');
+        }
+        if ($programName === '' && !empty($appRow['department_id'])) {
+            $dep = $this->db->fetchOne("SELECT dep_name FROM `departements` WHERE dep_id = ? LIMIT 1", [(int)$appRow['department_id']]);
+            $programName = (string)($dep['dep_name'] ?? '');
         }
 
-        $this->success($response, array_merge(['status' => 'submitted'], $extraData), 'Application submitted. Please check your email for the verification code.');
+        $htmlBody = \App\Helpers\EmailTemplateHelper::applicationSubmittedTemplate(
+            $updateData['first_name'],
+            $appRow['application_number'] ?? '',
+            $programName,
+            $appRow['intake'] ?? ''
+        );
+        $subject  = 'Application Submitted — Catholic University of Rwanda';
+        $textBody = "Dear {$updateData['first_name']}, your application to the Catholic University of Rwanda has been submitted successfully. Application number: " . ($appRow['application_number'] ?? '') . ". For queries, contact admissions@cur.ac.rw or +250 788 351 906.";
+
+        $mailService = new \App\Services\MailService();
+        $mailService->send($updateData['email'], $subject, $htmlBody, $textBody);
+
+        $this->success($response, [
+            'status'             => 'submitted',
+            'application_number' => $appRow['application_number'] ?? null,
+        ], 'Application submitted successfully. A confirmation email has been sent.');
     }
 
     /**
@@ -476,9 +588,27 @@ class ApplicantProfileController extends BaseController
     {
         $appId = (int)$request->param('id');
         $application = $this->appModel->getWithDetails($appId);
-        
+
         if (!$application) {
             $this->error($response, 'Application not found.', 404);
+        }
+
+        // Enrich with human-readable labels for the choices the applicant
+        // made on step 3 (program / campus / level), so the details view
+        // doesn't have to make extra round-trips.
+        if (!empty($application['program_id'])) {
+            $row = $this->db->fetchOne("SELECT name FROM `options` WHERE id = ? LIMIT 1", [(int)$application['program_id']]);
+            $application['program_name'] = $row['name'] ?? null;
+        }
+        if (!empty($application['campus_id'])) {
+            $row = $this->db->fetchOne("SELECT name, code, location FROM `campuses` WHERE id = ? LIMIT 1", [(int)$application['campus_id']]);
+            $application['campus_name']     = $row['name'] ?? null;
+            $application['campus_code']     = $row['code'] ?? null;
+            $application['campus_location'] = $row['location'] ?? null;
+        }
+        if (!empty($application['level_id'])) {
+            $row = $this->db->fetchOne("SELECT name FROM `levels` WHERE id = ? LIMIT 1", [(int)$application['level_id']]);
+            $application['level_name'] = $row['name'] ?? null;
         }
 
         $documents    = $this->docModel->getForApplication($appId);
@@ -533,39 +663,19 @@ class ApplicantProfileController extends BaseController
         $offerModel = new \App\Models\AdmissionOfferModel();
         $offer = $offerModel->findByApplicationId($appId);
 
-        $this->success($response, [
-            'id'                 => $application['id'],
-            'application_number' => $application['application_number'],
+        // Spread the full application row so new columns (father, mother,
+        // marital_status, national_id, country_of_residence, reference_phone,
+        // a2_grades, principal_passes, serial_number, program_id/campus_id/
+        // mode_of_study/level_id, payment_*) are exposed without having to
+        // remember to add each one to a hand-picked map.
+        $payload = array_merge($application, [
             'academic_year'      => $application['academic_year_label'] ?? '',
-            'faculty_name'       => $application['faculty_name']        ?? '',
-            'program_name'       => $application['program_name']        ?? '',
-            'program_code'       => $application['program_code']        ?? '',
-            'intake'             => $application['intake'],
-            'status'             => $application['status'],
-            'document_status'    => $application['document_status'],
-            'merit_score'        => $application['merit_score'],
-            'merit_rank'         => $application['merit_rank'],
-            'submitted_at'       => $application['submitted_at'],
             'offer'              => $offer,
-            // Add other fields for editing
-            'first_name'         => $application['first_name'],
-            'last_name'          => $application['last_name'],
-            'email'              => $application['email'],
-            'phone'              => $application['phone'],
-            'gender'             => $application['gender'],
-            'birthdate'          => $application['birthdate'],
-            'nationality'        => $application['nationality'],
-            'address'            => $application['address'],
-            'prev_school'        => $application['prev_school'],
-            'prev_qualification' => $application['prev_qualification'],
-            'prev_grade'         => $application['prev_grade'],
-            'graduation_year'    => $application['graduation_year'],
-            'sponsorship'        => $application['sponsorship'],
-            'sponsor_name'       => $application['sponsor_name'],
-            'rejection_reason'   => $application['rejection_reason']    ?? null,
             'document_checklist' => $checklist,
             'status_log'         => $logRows,
-        ], 'Application details fetched.');
+        ]);
+
+        $this->success($response, $payload, 'Application details fetched.');
     }
 
     /**
@@ -595,20 +705,42 @@ class ApplicantProfileController extends BaseController
         }
 
         $fields = array_filter([
-            'first_name'         => $data['first_name']         ?? null,
-            'last_name'          => $data['last_name']          ?? null,
-            'phone'              => $data['phone']              ?? null,
-            'gender'             => $data['gender']             ?? null,
-            'birthdate'          => $data['birthdate']          ?? null,
-            'nationality'        => $data['nationality']        ?? null,
-            'address'            => $data['address']            ?? null,
-            'prev_school'        => $data['prev_school']        ?? null,
-            'prev_qualification' => $data['prev_qualification'] ?? null,
-            'prev_grade'         => $data['prev_grade']         ?? null,
-            'combination'        => $data['combination']        ?? null,
-            'graduation_year'    => isset($data['graduation_year']) ? (int)$data['graduation_year'] : null,
-            'sponsorship'        => $data['sponsorship']        ?? null,
-            'sponsor_name'       => $data['sponsor_name']       ?? null,
+            // Personal info
+            'first_name'           => $data['first_name']           ?? null,
+            'last_name'            => $data['last_name']            ?? null,
+            'father'               => $data['father']               ?? null,
+            'mother'               => $data['mother']               ?? null,
+            'phone'                => $data['phone']                ?? null,
+            'reference_phone'      => $data['reference_phone']      ?? null,
+            'gender'               => $data['gender']               ?? null,
+            'birthdate'            => $data['birthdate']            ?? null,
+            'marital_status'       => $data['marital_status']       ?? null,
+            'nationality'          => $data['nationality']          ?? null,
+            'country_of_residence' => $data['country_of_residence'] ?? null,
+            'national_id'          => $data['national_id']          ?? null,
+            'disability'           => $data['disability']           ?? null,
+            'address'              => $data['address']              ?? null,
+            'province'             => $data['province']             ?? null,
+            'district'             => $data['district']             ?? null,
+            'sector'               => $data['sector']               ?? null,
+            'residence_district'   => $data['residence_district']   ?? null,
+            // Academic
+            'prev_school'          => $data['prev_school']          ?? null,
+            'prev_qualification'   => $data['prev_qualification']   ?? null,
+            'prev_grade'           => $data['prev_grade']           ?? null,
+            'combination'          => $data['combination']          ?? null,
+            'graduation_year'      => isset($data['graduation_year']) ? (int)$data['graduation_year'] : null,
+            'a2_grades'            => $data['a2_grades']            ?? null,
+            'principal_passes'     => isset($data['principal_passes']) ? (int)$data['principal_passes'] : null,
+            'serial_number'        => $data['serial_number']        ?? null,
+            // Program selection
+            'program_id'           => isset($data['program_id'])    ? (int)$data['program_id']    : null,
+            'campus_id'            => isset($data['campus_id'])     ? (int)$data['campus_id']     : null,
+            'mode_of_study'        => $data['mode_of_study']        ?? null,
+            'level_id'             => isset($data['level_id'])      ? (int)$data['level_id']      : null,
+            // Sponsorship
+            'sponsorship'          => $data['sponsorship']          ?? null,
+            'sponsor_name'         => $data['sponsor_name']         ?? null,
         ], fn($v) => $v !== null);
 
         if (!empty($fields)) {
@@ -1054,6 +1186,53 @@ class ApplicantProfileController extends BaseController
             ],
         ];
     }
+    /**
+     * GET /api/applicant/application/:id/payment-slip
+     *
+     * Streams the payment slip uploaded against the applicant's application
+     * (PDF/JPG/PNG) inline so it can be previewed in the portal. Ownership
+     * is verified through `applicant_profiles.application_id`, since the
+     * student_applications table itself doesn't store the profile FK.
+     */
+    public function downloadPaymentSlip(Request $request, Response $response): never
+    {
+        $appId   = (int)$request->param('id');
+        $profile = $request->param('_applicant_profile');
+
+        $app = $this->appModel->find($appId);
+        if (!$app || (int)($profile['application_id'] ?? 0) !== $appId) {
+            $this->error($response, 'Application not found.', 404);
+        }
+
+        if (empty($app['payment_slip_file_id'])) {
+            $this->error($response, 'No payment slip uploaded for this application.', 404);
+        }
+
+        try {
+            $client   = new \App\Helpers\FileServerClient();
+            $fileData = $client->download($app['payment_slip_file_id']);
+        } catch (\RuntimeException $e) {
+            $this->error($response, $e->getMessage(), 502);
+        }
+
+        $mime = $app['payment_slip_mime']
+            ?? $fileData['mime']
+            ?? 'application/octet-stream';
+        $isInlineable = str_starts_with($mime, 'image/') || $mime === 'application/pdf';
+        $disposition  = $isInlineable ? 'inline' : 'attachment';
+
+        $filename = $fileData['original_name'] ?? 'payment-slip';
+
+        header('Content-Type: ' . $mime);
+        header('Content-Disposition: ' . $disposition . '; filename="' . addslashes($filename) . '"');
+        header('Content-Length: ' . strlen($fileData['content']));
+        header('Cache-Control: private, no-store');
+        header('X-Content-Type-Options: nosniff');
+
+        echo $fileData['content'];
+        exit;
+    }
+
     /**
      * GET /api/applicant/documents/:id/download
      */

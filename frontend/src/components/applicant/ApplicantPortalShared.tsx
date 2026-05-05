@@ -1,7 +1,7 @@
 import { Loader2 } from 'lucide-react'
 
-export function Card({ children }: { children: React.ReactNode }) { 
-  return <section className="card p-5">{children}</section> 
+export function Card({ children, className }: { children: React.ReactNode; className?: string }) {
+  return <section className={`card p-5 ${className ?? ''}`.trim()}>{children}</section>
 }
 
 export function Loading() { 

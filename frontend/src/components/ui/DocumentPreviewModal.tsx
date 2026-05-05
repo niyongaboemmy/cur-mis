@@ -1,4 +1,4 @@
-import { ExternalLink, Download, Loader2 } from "lucide-react";
+import { ExternalLink, Download } from "lucide-react";
 import Modal from "./Modal";
 
 interface DocumentPreviewModalProps {
@@ -16,7 +16,11 @@ export default function DocumentPreviewModal({
   title,
   mimeType,
 }: DocumentPreviewModalProps) {
-  // Determine if we can show it in an iframe or img
+  // Determine if we can show it as an image or a PDF directly. Anything
+  // else falls back to a generic iframe — modern browsers render both PDFs
+  // and images inline as long as the server responds with the matching
+  // Content-Type and `Content-Disposition: inline`, which our backend does
+  // for payment slips and uploaded documents.
   const isImage =
     mimeType?.startsWith("image/") || url.match(/\.(jpg|jpeg|png|webp|gif)$/i);
   const isPDF = mimeType === "application/pdf" || url.match(/\.pdf$/i);
@@ -60,21 +64,11 @@ export default function DocumentPreviewModal({
             title={title}
           />
         ) : (
-          <div className="text-center p-12">
-            <div className="w-16 h-16 rounded-full bg-ink-100 dark:bg-ink-800 flex items-center justify-center mx-auto mb-4">
-              <Loader2 className="w-8 h-8 text-ink-400 animate-spin" />
-            </div>
-            <p className="text-[14px] text-ink-600 dark:text-ink-400">
-              Document preview not available for this file type.
-            </p>
-            <a
-              href={url}
-              target="_blank"
-              className="text-primary-600 font-bold mt-2 inline-block hover:underline"
-            >
-              Download to View
-            </a>
-          </div>
+          <iframe
+            src={url}
+            className="w-full h-[600px] border-0 bg-white"
+            title={title}
+          />
         )}
       </div>
     </Modal>

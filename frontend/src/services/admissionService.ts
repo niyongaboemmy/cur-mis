@@ -25,6 +25,28 @@ export const portalService = {
   getFacultyDepartments: (facultyId: number, signal?: AbortSignal) =>
     api.get<PortalDepartment[]>(`/api/portal/faculties/${facultyId}/departments`, {}, signal),
 
+  getPrograms: (signal?: AbortSignal) =>
+    api.get<Array<{
+      id:               number
+      name:             string
+      department_id:    number
+      department_name:  string | null
+      department_code:  string | null
+      faculty_id:       number | null
+      faculty_name:     string | null
+      faculty_code:     string | null
+      is_active:        0 | 1 | null
+      campuses: Array<{
+        id:       number
+        name:     string
+        code:     string | null
+        location: string | null
+      }>
+    }>>('/api/portal/programs', {}, signal),
+
+  getLevels: (signal?: AbortSignal) =>
+    api.get<Array<{ id: number; name: string }>>('/api/portal/levels', {}, signal),
+
   getFacultyRequirements: (facultyId: number, signal?: AbortSignal) =>
     api.get<{ academic_year: { id: number; label: string }; faculty_id: number; requirements: AdmissionRequirement[] }>(`/api/portal/faculties/${facultyId}/requirements`, {}, signal),
 
@@ -97,7 +119,7 @@ export const admissionRequirementService = {
  * ─────────────────────────────────────────────────────────────── */
 export const applicationAdminService = {
   list: (
-    params: { page?: number; per_page?: number; status?: ApplicationStatus; department_id?: number; intake?: string; search?: string; q?: string } = {},
+    params: { page?: number; per_page?: number; status?: ApplicationStatus; department_id?: number; intake?: string; campus_id?: number; mode_of_study?: string; search?: string; q?: string } = {},
     signal?: AbortSignal,
   ) => {
     const { q, ...rest } = params;
@@ -134,6 +156,19 @@ export const applicationAdminService = {
 
   acceptOfferByAppId: (id: number) =>
     api.post<{ offer_id: number }>(`/api/admin/applications/${id}/accept-offer`),
+
+  paymentSlipUrl: (id: number) => {
+    const token = useAuthStore.getState().token;
+    const base = import.meta.env.VITE_API_URL ?? "";
+    return `${base}/api/admin/applications/${id}/payment-slip?token=${token}`;
+  },
+
+  exportUrl: (queryString: string) => {
+    const token = useAuthStore.getState().token;
+    const base = import.meta.env.VITE_API_URL ?? "";
+    const sep = queryString ? "&" : "";
+    return `${base}/api/admin/applications/export?${queryString}${sep}token=${token}`;
+  },
 }
 
 /* ───────────────────────────────────────────────────────────────
@@ -255,6 +290,25 @@ export const applicantService = {
     return api.upload<{ profile_photo_id: string; url: string | null }>('/api/applicant/profile/photo', form)
   },
 
+  uploadPaymentSlip: (data: {
+    transaction_id: string
+    payment_slip?: File | null
+    payment_amount?: number
+    payment_currency?: string
+  }) => {
+    const form = new FormData()
+    form.append('transaction_id', data.transaction_id)
+    if (data.payment_slip) form.append('payment_slip', data.payment_slip)
+    if (data.payment_amount != null) form.append('payment_amount', String(data.payment_amount))
+    if (data.payment_currency) form.append('payment_currency', data.payment_currency)
+    return api.upload<{
+      transaction_id:       string
+      payment_slip_file_id: string | null
+      payment_amount:       number | null
+      payment_currency:     string
+    }>('/api/applicant/application/payment', form)
+  },
+
   listApplications: (signal?: AbortSignal) =>
     api.get<StudentApplication[]>('/api/applicant/application', {}, signal),
 
@@ -317,6 +371,12 @@ export const applicantService = {
     const token = useAuthStore.getState().token;
     const base = import.meta.env.VITE_API_URL ?? "";
     return `${base}/api/applicant/documents/${id}/download?token=${token}`;
+  },
+
+  paymentSlipUrl: (applicationId: number) => {
+    const token = useAuthStore.getState().token;
+    const base = import.meta.env.VITE_API_URL ?? "";
+    return `${base}/api/applicant/application/${applicationId}/payment-slip?token=${token}`;
   },
 
   respondToOffer: (id: number, data: { response: 'accepted' | 'declined'; notes?: string }) =>

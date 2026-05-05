@@ -41,6 +41,7 @@ $entityPermissions = [
     'schools'            => Permissions::MANAGE_SCHOOLS,
     'degrees'            => Permissions::MANAGE_DEGREES,
     'intakes'            => Permissions::MANAGE_ADMISSIONS,
+    'campuses'           => Permissions::MANAGE_CAMPUSES,
 ];
 
 foreach ($entityPermissions as $entity => $permission) {
@@ -52,3 +53,11 @@ foreach ($entityPermissions as $entity => $permission) {
         $r->delete('/:id', [AcademicsManagementController::class, 'delete']);
     }, [AuthMiddleware::class, new PermissionMiddleware($permission)]);
 }
+
+// Program ↔ Campus association management. Read uses MANAGE_OPTIONS,
+// write requires MANAGE_OPTIONS too — the admin already managing the
+// catalogue is the same one assigning campuses.
+$router->group('/api/academics-management/options', function (Core\Router $r) {
+    $r->get('/:id/campuses', [AcademicsManagementController::class, 'listOptionCampuses']);
+    $r->put('/:id/campuses', [AcademicsManagementController::class, 'setOptionCampuses']);
+}, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_OPTIONS)]);

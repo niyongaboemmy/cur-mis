@@ -44,6 +44,8 @@ $router->get('/api/portal/intakes', [ApplicationPortalController::class, 'getInt
 $router->get('/api/portal/faculties',                            [ApplicationPortalController::class, 'getFaculties']);
 $router->get('/api/portal/faculties/:faculty_id/departments',     [ApplicationPortalController::class, 'getFacultyDepartments']);
 $router->get('/api/portal/faculties/:faculty_id/requirements',   [ApplicationPortalController::class, 'getFacultyRequirements']);
+$router->get('/api/portal/programs',                             [ApplicationPortalController::class, 'getPrograms']);
+$router->get('/api/portal/levels',                               [ApplicationPortalController::class, 'getLevels']);
 $router->get('/api/portal/document-types',                       [ApplicationPortalController::class, 'getDocumentTypes']);
 
 // Application lifecycle
@@ -91,7 +93,9 @@ $router->group('/api/admin', function ($router) {
     $router->group('/applications', function ($router) {
         $router->get('',              [ApplicationAdminController::class, 'index']);
         $router->get('/stats',         [ApplicationAdminController::class, 'getDashboardStats']);
+        $router->get('/export',        [ApplicationAdminController::class, 'export']);
         $router->get('/:id',          [ApplicationAdminController::class, 'show']);
+        $router->get('/:id/payment-slip', [ApplicationAdminController::class, 'downloadPaymentSlip']);
         $router->patch('/:id/status', [ApplicationAdminController::class, 'updateStatus']);
         $router->post('/:id/notes',   [ApplicationAdminController::class, 'addNote']);
         $router->post('/:id/enroll',  [AdmissionController::class, 'initiateEnrollmentByAppId']);

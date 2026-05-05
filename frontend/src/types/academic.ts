@@ -112,6 +112,7 @@ export type AcMgmtEntity =
   | 'options'
   | 'levels'
   | 'leave_types'
+  | 'campuses'
 
 export interface AcMgmtEntityMeta {
   slug:       AcMgmtEntity

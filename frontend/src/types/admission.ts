@@ -81,18 +81,44 @@ export interface StudentApplication {
 
   first_name:         string
   last_name:          string
+  father?:            string | null
+  mother?:            string | null
   email:              string
   phone:              string
+  reference_phone?:   string | null
   gender:             'M' | 'F' | 'Other'
   birthdate:          string
+  marital_status?:    'single' | 'married' | 'divorced' | 'widowed' | 'other' | null
   nationality:        string
+  country_of_residence?: string | null
+  national_id?:       string | null
+  disability?:        string | null
   address?:           string | null
+  province?:          string | null
+  district?:          string | null
+  sector?:            string | null
+  residence_district?: string | null
 
   prev_school:        string
   prev_qualification: string
   prev_grade:         string
   combination?:       string | null
   graduation_year:    number
+  a2_grades?:         string | null
+  principal_passes?:  number | null
+  serial_number?:     string | null
+
+  program_id?:        number | null
+  campus_id?:         number | null
+  mode_of_study?:     string | null
+  level_id?:          number | null
+
+  transaction_id?:       string | null
+  payment_slip_file_id?: string | null
+  payment_slip_mime?:    string | null
+  payment_amount?:       number | null
+  payment_currency?:     string | null
+  paid_at?:              string | null
 
   sponsorship:        'government' | 'self' | 'private' | 'scholarship'
   sponsor_name?:      string | null
@@ -119,6 +145,11 @@ export interface StudentApplication {
   academic_year_label?: string
   student_id?:       number | null
   offer_letter_reference?: string | null
+  program_name?:     string | null
+  campus_name?:      string | null
+  campus_code?:      string | null
+  campus_location?:  string | null
+  level_name?:       string | null
 }
 
 export interface ApplicationDocument {

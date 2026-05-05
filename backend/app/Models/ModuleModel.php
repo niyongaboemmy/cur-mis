@@ -16,15 +16,26 @@ class ModuleModel extends BaseModel
 
     /**
      * Paginated catalog with optional filters.
-     * Returns an extra `prerequisites` array on every row
-     * (list of { id, module_code, module_name } objects).
+     * Returns an extra `prerequisites` array AND a `programs` array on
+     * every row (list of { id, name } objects derived from
+     * `module_programs`).
      *
-     * @param array{department?:int,level?:int,status?:string,q?:string} $filters
+     * @param array{department?:int,program?:int,level?:int,status?:string,q?:string} $filters
      */
     public function listWithPrereqs(int $page = 1, int $perPage = 20, array $filters = []): array
     {
+        $joins    = '';
         $where    = [];
         $bindings = [];
+
+        // Optional join to filter by program — when set we restrict the row
+        // set to modules linked to that programme via the `module_programs`
+        // many-to-many table.
+        if (!empty($filters['program'])) {
+            $joins      .= ' INNER JOIN `module_programs` mp ON mp.module_id = m.module_id';
+            $where[]    = 'mp.option_id = ?';
+            $bindings[] = (int)$filters['program'];
+        }
 
         if (!empty($filters['department'])) {
             $where[]    = 'm.department = ?';
@@ -50,27 +61,30 @@ class ModuleModel extends BaseModel
         $offset   = ($page - 1) * $perPage;
 
         $totalRow = $this->db->fetchOne(
-            "SELECT COUNT(*) AS cnt FROM `modules` m {$whereSql}",
+            "SELECT COUNT(DISTINCT m.module_id) AS cnt FROM `modules` m {$joins} {$whereSql}",
             $bindings
         );
         $total = (int)($totalRow['cnt'] ?? 0);
 
         $rows = $this->db->fetchAll(
-            "SELECT m.*
+            "SELECT DISTINCT m.*
              FROM `modules` m
+             {$joins}
              {$whereSql}
              ORDER BY m.module_code ASC
              LIMIT ? OFFSET ?",
             [...$bindings, $perPage, $offset]
         );
 
-        $withPrereqs = array_map(function (array $row) {
+        $withRels = array_map(function (array $row) {
             $row['prerequisites'] = $this->prereqsFor((int)$row['module_id']);
+            $row['programs']      = $this->programsFor((int)$row['module_id']);
+            $row['levels']        = $this->levelsFor((int)$row['module_id']);
             return $row;
         }, $rows);
 
         return [
-            'data'         => $withPrereqs,
+            'data'         => $withRels,
             'total'        => $total,
             'per_page'     => $perPage,
             'current_page' => $page,
@@ -79,7 +93,7 @@ class ModuleModel extends BaseModel
     }
 
     /**
-     * Fetch the catalog row + prerequisites for a single id.
+     * Fetch the catalog row + prerequisites + programs + levels for a single id.
      */
     public function findWithPrereqs(int $id): array|false
     {
@@ -88,7 +102,74 @@ class ModuleModel extends BaseModel
             return false;
         }
         $row['prerequisites'] = $this->prereqsFor($id);
+        $row['programs']      = $this->programsFor($id);
+        $row['levels']        = $this->levelsFor($id);
         return $row;
+    }
+
+    /** @return array<int,array{id:int,name:string,department_id:int|null}> */
+    public function programsFor(int $moduleId): array
+    {
+        return $this->db->fetchAll(
+            "SELECT o.id, o.name, o.department_id
+             FROM `module_programs` mp
+             JOIN `options` o ON o.id = mp.option_id
+             WHERE mp.module_id = ?
+             ORDER BY o.name ASC",
+            [$moduleId]
+        );
+    }
+
+    /**
+     * Replace the set of programs linked to a module with the given ids.
+     * Pass an empty array to detach the module from every programme.
+     */
+    public function syncPrograms(int $moduleId, array $programIds): void
+    {
+        $programIds = array_values(array_unique(array_map('intval', $programIds)));
+        $this->db->execute(
+            'DELETE FROM `module_programs` WHERE module_id = ?',
+            [$moduleId]
+        );
+        foreach ($programIds as $pid) {
+            if ($pid <= 0) continue;
+            $this->db->execute(
+                'INSERT IGNORE INTO `module_programs` (`module_id`, `option_id`) VALUES (?, ?)',
+                [$moduleId, $pid]
+            );
+        }
+    }
+
+    /** @return array<int,array{id:int,name:string}> */
+    public function levelsFor(int $moduleId): array
+    {
+        return $this->db->fetchAll(
+            "SELECT l.id, l.name
+             FROM `module_levels` ml
+             JOIN `levels` l ON l.id = ml.level_id
+             WHERE ml.module_id = ?
+             ORDER BY l.id ASC",
+            [$moduleId]
+        );
+    }
+
+    /**
+     * Replace the set of levels linked to a module. Empty array detaches all.
+     */
+    public function syncLevels(int $moduleId, array $levelIds): void
+    {
+        $levelIds = array_values(array_unique(array_map('intval', $levelIds)));
+        $this->db->execute(
+            'DELETE FROM `module_levels` WHERE module_id = ?',
+            [$moduleId]
+        );
+        foreach ($levelIds as $lid) {
+            if ($lid <= 0) continue;
+            $this->db->execute(
+                'INSERT IGNORE INTO `module_levels` (`module_id`, `level_id`) VALUES (?, ?)',
+                [$moduleId, $lid]
+            );
+        }
     }
 
     /** @return array<int,array{id:int,module_code:string,module_name:string}> */

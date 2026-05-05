@@ -13,18 +13,22 @@ import {
   ChevronRight,
   Plus,
   Download,
+  Building2,
+  Calendar,
+  Sparkles,
+  ArrowRight,
+  Hash,
+  XCircle,
 } from "lucide-react";
 import { applicantService } from "@/services/admissionService";
 import { ApplicationStatus } from "@/types/admission";
 import Modal from "@/components/ui/Modal";
-import VerificationStep from "@/components/admission/VerificationStep";
 import { Field } from "@/components/applicant/ApplicantPortalShared";
 import ApplicationDetailsView from "@/components/applicant/ApplicationDetailsView";
 import DocumentsUploader from "@/components/ui/DocumentsUploader";
 import AdmissionLetter from "@/components/admission/AdmissionLetter";
 
 export default function ApplicantOverviewPage() {
-  const qc = useQueryClient();
   const q = useQuery({
     queryKey: ["applicant", "applications"],
     queryFn: () => applicantService.listApplications(),
@@ -39,28 +43,6 @@ export default function ApplicantOverviewPage() {
         <p className="text-ink-500 mt-4">Loading your applications...</p>
       </div>
     );
-
-  // Verification gate — only the MOST RECENT submitted application matters.
-  // Scanning every app would trap the user on the verify screen forever as
-  // soon as any old unverified row exists. Backend returns apps ordered by
-  // created_at DESC, so apps[0] is the latest one.
-  const latestApp = apps[0];
-  const needsVerification =
-    latestApp &&
-    Number(latestApp.email_verified) === 0 &&
-    latestApp.status !== "draft";
-  if (needsVerification) {
-    return (
-      <div className="max-w-xl mx-auto py-12 px-4">
-        <VerificationStep
-          email={latestApp.email}
-          onSuccess={() =>
-            qc.invalidateQueries({ queryKey: ["applicant", "applications"] })
-          }
-        />
-      </div>
-    );
-  }
 
   if (apps.length === 0)
     return (
@@ -88,57 +70,282 @@ export default function ApplicantOverviewPage() {
   const hasDraft = apps.some((a) => a.status === "draft");
   const hasSubmitted = apps.some((a) => a.status !== "draft");
 
+  const stats = computeStats(apps);
+
   return (
     <div className="max-w-7xl mx-auto space-y-8 pb-12">
-      {/* 1. Vertical List Listing */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between px-1">
-          <h3 className="text-[12px] uppercase tracking-widest font-black text-ink-400 flex items-center gap-2">
-            <div className="w-4 h-1 bg-primary-500 rounded-full" /> My
-            Applications ({apps.length})
-          </h3>
-          {hasDraft ? (
-            <a
-              href="/apply"
-              className="text-[12px] font-bold text-primary-600 hover:underline flex items-center gap-1"
-            >
-              <ChevronRight className="w-3 h-3" /> Continue Draft
-            </a>
-          ) : !hasSubmitted ? (
-            <a
-              href="/apply"
-              className="text-[12px] font-bold text-primary-600 hover:underline flex items-center gap-1"
-            >
-              <Plus className="w-3 h-3" /> New Application
-            </a>
-          ) : null}
-        </div>
-        <div className="space-y-3">
-          {apps.map((a) => (
-            <ApplicationListItem
-              key={a.id}
-              app={a}
-              onSelect={() => setSelectedId(a.id)}
-            />
-          ))}
-        </div>
-      </div>
-
-      {/* 2. Modal View */}
-      {selectedApp && (
-        <Modal
-          open={!!selectedApp}
-          onClose={() => setSelectedId(null)}
-          title={`Application Details: ${selectedApp.application_number}`}
-          size="full"
-        >
-          <div className="p-1">
-            <ApplicationView app={selectedApp} />
+      {selectedApp ? (
+        /* Detail view — replaces the list while one app is selected */
+        <ApplicationView
+          app={selectedApp}
+          onBack={() => setSelectedId(null)}
+        />
+      ) : (
+        /* List view */
+        <div className="space-y-6">
+          {/* Page header */}
+          <div className="flex items-end justify-between gap-4 flex-wrap">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.2em] font-bold text-primary-600 mb-1">
+                Applicant Portal
+              </p>
+              <h1 className="text-[26px] sm:text-[30px] font-black text-ink-900 dark:text-white tracking-tight leading-tight">
+                My Applications
+              </h1>
+              <p className="text-[13px] text-ink-500 mt-1">
+                Track your admission journey, respond to offers, and manage your application files.
+              </p>
+            </div>
+            {hasDraft ? (
+              <a
+                href="/apply"
+                className="btn-primary inline-flex items-center gap-1.5 whitespace-nowrap"
+              >
+                <ChevronRight className="w-3.5 h-3.5" /> Continue Draft
+              </a>
+            ) : !hasSubmitted ? (
+              <a
+                href="/apply"
+                className="btn-primary inline-flex items-center gap-1.5 whitespace-nowrap"
+              >
+                <Plus className="w-3.5 h-3.5" /> New Application
+              </a>
+            ) : null}
           </div>
-        </Modal>
+
+          {/* Stats strip */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <StatCard
+              icon={FileText}
+              label="Total"
+              value={stats.total}
+              accent="bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+            />
+            <StatCard
+              icon={Clock}
+              label="In Review"
+              value={stats.inReview}
+              accent="bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+            />
+            <StatCard
+              icon={Sparkles}
+              label="Offers"
+              value={stats.offers}
+              accent="bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+              highlight={stats.offers > 0}
+            />
+            <StatCard
+              icon={AlertCircle}
+              label="Action Needed"
+              value={stats.actionNeeded}
+              accent="bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300"
+              highlight={stats.actionNeeded > 0}
+            />
+          </div>
+
+          {/* Section heading */}
+          <div className="flex items-center justify-between px-0.5">
+            <h3 className="text-[12px] uppercase tracking-[0.2em] font-black text-ink-400 flex items-center gap-2">
+              <span className="w-5 h-[3px] bg-primary-500 rounded-full" />
+              Your applications
+              <span className="text-ink-300 font-bold">·</span>
+              <span className="text-ink-500 font-bold">{apps.length}</span>
+            </h3>
+          </div>
+
+          {/* Cards */}
+          <div className="space-y-3.5">
+            {apps.map((a) => (
+              <ApplicationListItem
+                key={a.id}
+                app={a}
+                onSelect={() => setSelectedId(a.id)}
+              />
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );
+}
+
+/* ─── stats ──────────────────────────────────────────────────────── */
+
+function computeStats(apps: any[]) {
+  let inReview = 0;
+  let offers = 0;
+  let actionNeeded = 0;
+  for (const a of apps) {
+    const s = a.status as ApplicationStatus | string;
+    if (s === "submitted" || s === "documents_under_review" || s === "documents_verified" || s === "merit_listed") {
+      inReview++;
+    }
+    if (s === "offered" || s === "offer_accepted" || s === "enrolled") {
+      offers++;
+    }
+    if (s === "draft" || s === "documents_rejected" || s === "requested_changes") {
+      actionNeeded++;
+    }
+  }
+  return { total: apps.length, inReview, offers, actionNeeded };
+}
+
+function StatCard({
+  icon: Icon,
+  label,
+  value,
+  accent,
+  highlight,
+}: {
+  icon: any;
+  label: string;
+  value: number;
+  accent: string;
+  highlight?: boolean;
+}) {
+  return (
+    <div
+      className={`p-4 rounded-2xl border flex items-center gap-3 transition-all ${
+        highlight
+          ? "border-primary-200 dark:border-primary-800 bg-white dark:bg-ink-900 shadow-sm"
+          : "border-ink-100 dark:border-ink-800 bg-white dark:bg-ink-900/40"
+      }`}
+    >
+      <span className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${accent}`}>
+        <Icon className="w-5 h-5" />
+      </span>
+      <div className="min-w-0">
+        <p className="text-[10.5px] uppercase tracking-wider font-bold text-ink-400">{label}</p>
+        <p className="text-[20px] font-black text-ink-900 dark:text-white leading-none mt-1">{value}</p>
+      </div>
+    </div>
+  );
+}
+
+/* ─── status presentation ───────────────────────────────────────── */
+
+const STATUS_PRESENT: Record<
+  string,
+  { label: string; tone: string; dot: string; icon: any; nextStep: string }
+> = {
+  draft: {
+    label: "Draft",
+    tone: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-900/40",
+    dot: "bg-amber-500",
+    icon: FileText,
+    nextStep: "Continue and submit your application",
+  },
+  submitted: {
+    label: "Submitted",
+    tone: "bg-primary-50 text-primary-700 border-primary-200 dark:bg-primary-900/20 dark:text-primary-300 dark:border-primary-900/40",
+    dot: "bg-primary-500",
+    icon: CheckCircle2,
+    nextStep: "Awaiting initial review by admissions",
+  },
+  documents_under_review: {
+    label: "Docs Under Review",
+    tone: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-900/40",
+    dot: "bg-amber-500",
+    icon: Clock,
+    nextStep: "Your documents are being verified",
+  },
+  documents_verified: {
+    label: "Docs Verified",
+    tone: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-900/40",
+    dot: "bg-emerald-500",
+    icon: CheckCircle2,
+    nextStep: "Awaiting merit list publication",
+  },
+  documents_rejected: {
+    label: "Docs Rejected",
+    tone: "bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-300 dark:border-red-900/40",
+    dot: "bg-red-500",
+    icon: XCircle,
+    nextStep: "Re-upload the requested documents",
+  },
+  requested_changes: {
+    label: "Changes Requested",
+    tone: "bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-300 dark:border-red-900/40",
+    dot: "bg-red-500",
+    icon: AlertCircle,
+    nextStep: "Review the message from admissions",
+  },
+  merit_listed: {
+    label: "Merit Listed",
+    tone: "bg-primary-50 text-primary-700 border-primary-200 dark:bg-primary-900/20 dark:text-primary-300 dark:border-primary-900/40",
+    dot: "bg-primary-500",
+    icon: Award,
+    nextStep: "Watch for an admission offer",
+  },
+  offered: {
+    label: "Offer Received",
+    tone: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-900/40",
+    dot: "bg-emerald-500",
+    icon: Sparkles,
+    nextStep: "Respond to your admission offer",
+  },
+  offer_accepted: {
+    label: "Offer Accepted",
+    tone: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-900/40",
+    dot: "bg-emerald-500",
+    icon: CheckCircle2,
+    nextStep: "Enrollment is being finalized",
+  },
+  offer_declined: {
+    label: "Offer Declined",
+    tone: "bg-ink-50 text-ink-600 border-ink-200 dark:bg-ink-800 dark:text-ink-300 dark:border-ink-700",
+    dot: "bg-ink-400",
+    icon: XCircle,
+    nextStep: "This offer was declined",
+  },
+  enrolled: {
+    label: "Enrolled",
+    tone: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-900/40",
+    dot: "bg-emerald-500",
+    icon: CheckCircle2,
+    nextStep: "Welcome to CUR",
+  },
+  withdrawn: {
+    label: "Withdrawn",
+    tone: "bg-ink-50 text-ink-600 border-ink-200 dark:bg-ink-800 dark:text-ink-300 dark:border-ink-700",
+    dot: "bg-ink-400",
+    icon: XCircle,
+    nextStep: "This application was withdrawn",
+  },
+};
+
+const STAGE_ORDER = [
+  "submitted",
+  "documents_under_review",
+  "merit_listed",
+  "offered",
+  "enrolled",
+] as const;
+
+function stageProgress(status: string): number {
+  switch (status) {
+    case "draft":
+      return 0;
+    case "submitted":
+      return 1;
+    case "documents_under_review":
+    case "documents_verified":
+    case "documents_rejected":
+    case "requested_changes":
+      return 2;
+    case "merit_listed":
+      return 3;
+    case "offered":
+    case "offer_accepted":
+    case "offer_declined":
+      return 4;
+    case "enrolled":
+      return 5;
+    case "withdrawn":
+      return 0;
+    default:
+      return 1;
+  }
 }
 
 function ApplicationListItem({
@@ -150,6 +357,12 @@ function ApplicationListItem({
 }) {
   const isDraft = app.status === "draft";
   const isOffered = app.status === "offered";
+  const isActionNeeded =
+    app.status === "documents_rejected" || app.status === "requested_changes";
+  const meta = STATUS_PRESENT[app.status] ?? STATUS_PRESENT.submitted;
+  const StatusIcon = meta.icon;
+  const progress = stageProgress(app.status);
+  const totalStages = STAGE_ORDER.length;
 
   return (
     <button
@@ -160,60 +373,136 @@ function ApplicationListItem({
         }
         onSelect();
       }}
-      className="relative w-full text-left p-4 sm:p-5 rounded-2xl border border-ink-100 dark:border-ink-800 bg-white dark:bg-ink-900 hover:border-primary-300 dark:hover:border-primary-700 transition-all group flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6"
+      className={`relative w-full text-left rounded-2xl border bg-white dark:bg-ink-900 transition-all group overflow-hidden hover:-translate-y-0.5 hover:shadow-lg ${
+        isOffered
+          ? "border-emerald-200 dark:border-emerald-800/60 ring-1 ring-emerald-200/40 dark:ring-emerald-900/40"
+          : isActionNeeded
+            ? "border-red-200 dark:border-red-800/60"
+            : "border-ink-100 dark:border-ink-800 hover:border-primary-300 dark:hover:border-primary-700"
+      }`}
     >
-      {isOffered && (
-        <div className="absolute -top-1 -right-1 z-10">
-          <div className="bg-amber-500 text-white text-[9px] font-black uppercase px-2 py-0.5 rounded-bl-lg shadow-sm animate-pulse">
-            New Offer
+      <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
+        {/* Icon block */}
+        <div className="flex items-start gap-4 flex-1 min-w-0">
+          <div
+            className={`w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-105 ${
+              isOffered
+                ? "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600"
+                : isActionNeeded
+                  ? "bg-red-50 dark:bg-red-900/30 text-red-600"
+                  : "bg-primary-50 dark:bg-primary-900/30 text-primary-600"
+            }`}
+          >
+            <GraduationCap className="w-6 h-6 sm:w-7 sm:h-7" />
+          </div>
+
+          {/* Title block */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              <span className="text-[10.5px] font-mono font-black text-primary-600 bg-primary-50 dark:bg-primary-900/20 px-2 py-0.5 rounded">
+                <Hash className="w-2.5 h-2.5 inline -mt-0.5" />
+                {app.application_number}
+              </span>
+              <span className="w-0.5 h-0.5 rounded-full bg-ink-200" />
+              <span className="text-[11px] font-medium text-ink-400 inline-flex items-center gap-1">
+                <Calendar className="w-3 h-3" />
+                {new Date(app.created_at).toLocaleDateString(undefined, {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })}
+              </span>
+              {isOffered && (
+                <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-500 text-white animate-pulse">
+                  New Offer
+                </span>
+              )}
+            </div>
+            <h4 className="text-[16px] sm:text-[17px] font-black text-ink-900 dark:text-white truncate">
+              {app.program_name ?? app.department_name ?? "—"}
+            </h4>
+            <div className="flex items-center gap-3 mt-0.5 text-[12.5px] text-ink-500 flex-wrap">
+              {app.faculty_name && (
+                <span className="truncate">{app.faculty_name}</span>
+              )}
+              {app.campus_name && (
+                <>
+                  <span className="w-0.5 h-0.5 rounded-full bg-ink-300 shrink-0" />
+                  <span className="inline-flex items-center gap-1 truncate">
+                    <Building2 className="w-3 h-3" />
+                    {app.campus_name}
+                  </span>
+                </>
+              )}
+              {app.intake && (
+                <>
+                  <span className="w-0.5 h-0.5 rounded-full bg-ink-300 shrink-0" />
+                  <span className="truncate">{app.intake}</span>
+                </>
+              )}
+            </div>
+            <p className="text-[12px] text-ink-400 mt-1.5 italic truncate">
+              {meta.nextStep}
+            </p>
+          </div>
+        </div>
+
+        {/* Status block */}
+        <div className="flex sm:flex-col items-center sm:items-end justify-between gap-3 shrink-0 pt-3 sm:pt-0 border-t sm:border-0 border-ink-100 dark:border-ink-800">
+          <span
+            className={`inline-flex items-center gap-1.5 text-[10.5px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest border ${meta.tone}`}
+          >
+            <StatusIcon className="w-3 h-3" />
+            {meta.label}
+          </span>
+
+          <div className="flex items-center gap-2">
+            {isDraft ? (
+              <span className="inline-flex items-center gap-1 text-[10.5px] font-black px-3 py-1.5 rounded-full uppercase tracking-widest bg-primary-600 text-white shadow-sm">
+                Continue <ArrowRight className="w-3 h-3" />
+              </span>
+            ) : (
+              <span className="hidden sm:inline-flex items-center gap-1 text-[11px] font-bold text-ink-500 group-hover:text-primary-600 transition-colors">
+                View details
+                <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Progress mini-tracker */}
+      {!isDraft && app.status !== "withdrawn" && (
+        <div className="px-4 sm:px-5 pb-4 sm:pb-5 -mt-1">
+          <div className="flex items-center gap-1">
+            {STAGE_ORDER.map((_, i) => {
+              const reached = i < progress;
+              const current = i === progress - 1;
+              return (
+                <span
+                  key={i}
+                  className={`h-1 flex-1 rounded-full transition-colors ${
+                    reached
+                      ? current
+                        ? `${meta.dot}`
+                        : "bg-emerald-400"
+                      : "bg-ink-100 dark:bg-ink-800"
+                  }`}
+                />
+              );
+            })}
+          </div>
+          <div className="flex items-center justify-between mt-1.5 text-[10.5px] text-ink-400 font-medium">
+            <span>Stage {progress} of {totalStages}</span>
+            <span className="capitalize">{STAGE_ORDER[Math.max(0, progress - 1)].replace(/_/g, " ")}</span>
           </div>
         </div>
       )}
-
-      <div className="w-12 h-12 rounded-xl bg-primary-50 dark:bg-primary-900/30 flex items-center justify-center text-primary-600 shrink-0 group-hover:scale-110 transition-transform">
-        <GraduationCap className="w-6 h-6" />
-      </div>
-
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-0.5">
-          <span className="text-[11px] font-bold text-ink-400 uppercase tracking-wider">
-            {app.application_number}
-          </span>
-          <span className="w-1 h-1 rounded-full bg-ink-200" />
-          <span className="text-[11px] font-medium text-ink-400">
-            Applied {new Date(app.created_at).toLocaleDateString()}
-          </span>
-        </div>
-        <h4 className="text-[16px] font-black text-ink-900 dark:text-white truncate">
-          {app.department_name}
-        </h4>
-        <p className="text-[13px] text-ink-500 truncate">{app.faculty_name}</p>
-      </div>
-
-      <div className="flex items-center justify-between sm:justify-end gap-4 shrink-0 mt-2 sm:mt-0 pt-3 sm:pt-0 border-t sm:border-0 border-ink-50 dark:border-ink-800">
-        <span
-          className={`text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest ${
-            isDraft
-              ? "bg-amber-50 text-amber-600 dark:bg-amber-900/20"
-              : isOffered
-                ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20"
-                : "bg-primary-50 text-primary-700 dark:bg-primary-900/20"
-          }`}
-        >
-          {app.status.replace(/_/g, " ")}
-        </span>
-        {isDraft && (
-          <span className="text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest bg-primary-600 text-white">
-            Continue
-          </span>
-        )}
-        <ChevronRight className="w-4 h-4 text-ink-300 group-hover:text-primary-500 group-hover:translate-x-1 transition-all hidden sm:block" />
-      </div>
     </button>
   );
 }
 
-function ApplicationView({ app }: { app: any }) {
+function ApplicationView({ app, onBack }: { app: any; onBack?: () => void }) {
   const [editing, setEditing] = useState(false);
   const qc = useQueryClient();
 
@@ -294,6 +583,7 @@ function ApplicationView({ app }: { app: any }) {
       <ApplicationDetailsView
         application={app}
         onEdit={() => setEditing(true)}
+        onBack={onBack}
       />
 
       {editing && (

@@ -19,7 +19,7 @@ return [
 
     'jwt' => [
         'secret' => $_ENV['JWT_SECRET'] ?? '',
-        'expiry' => (int)($_ENV['JWT_EXPIRY'] ?? 3600),
+        'expiry' => (int)($_ENV['JWT_EXPIRY'] ?? 86400),
     ],
 
     'cors' => [
