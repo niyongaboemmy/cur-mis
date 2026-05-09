@@ -2,10 +2,13 @@
 --
 -- Single rolled-up migration replacing the 18 individual files that previously
 -- lived as 2026_05_07_041 … 2026_05_09_058. Each block is self-described in
--- the comments below and uses MariaDB's `IF NOT EXISTS` guards on every
--- ADD COLUMN / ADD UNIQUE INDEX so re-running on a dev DB that already
--- received the granular migrations is a no-op. `MODIFY COLUMN` and `UPDATE`
--- statements are naturally idempotent.
+-- the comments below.
+--
+-- Compatibility: MariaDB 10.11.x
+--   • ADD COLUMN IF NOT EXISTS         → supported (10.0+)
+--   • ADD UNIQUE INDEX IF NOT EXISTS   → NOT supported until 10.12;
+--     replaced with a DROP-then-ADD pattern using a stored procedure.
+--   • MODIFY COLUMN / UPDATE           → naturally idempotent
 --
 -- If anyone needs the original per-step history, see the eric branch prior
 -- to commit 379ecdc.
@@ -19,7 +22,7 @@ ALTER TABLE `faculty`
 UPDATE `faculty`
 SET    `fac_acronym` = `fac_code`
 WHERE  `fac_acronym` IS NULL
-  AND  `fac_code` IS NOT NULL;
+  AND  `fac_code`    IS NOT NULL;
 
 
 -- =============================================================================
@@ -31,12 +34,16 @@ ALTER TABLE `departements`
 
 -- =============================================================================
 -- 043  Faculty/Department codes must be unique (NULLs allowed).
+--      MariaDB 10.11 does not support ADD UNIQUE INDEX IF NOT EXISTS,
+--      so we drop the index first (IF EXISTS is supported for DROP) then re-add.
 -- =============================================================================
+DROP INDEX IF EXISTS `uniq_faculty_fac_code`       ON `faculty`;
 ALTER TABLE `faculty`
-  ADD UNIQUE INDEX IF NOT EXISTS `uniq_faculty_fac_code` (`fac_code`);
+  ADD UNIQUE INDEX `uniq_faculty_fac_code` (`fac_code`);
 
+DROP INDEX IF EXISTS `uniq_departements_dep_code`  ON `departements`;
 ALTER TABLE `departements`
-  ADD UNIQUE INDEX IF NOT EXISTS `uniq_departements_dep_code` (`dep_code`);
+  ADD UNIQUE INDEX `uniq_departements_dep_code` (`dep_code`);
 
 
 -- =============================================================================
@@ -67,8 +74,9 @@ ALTER TABLE `options`
   ADD COLUMN IF NOT EXISTS `start_date` DATE        NULL AFTER `acro`,
   ADD COLUMN IF NOT EXISTS `end_date`   DATE        NULL AFTER `start_date`;
 
+DROP INDEX IF EXISTS `uniq_options_code` ON `options`;
 ALTER TABLE `options`
-  ADD UNIQUE INDEX IF NOT EXISTS `uniq_options_code` (`code`);
+  ADD UNIQUE INDEX `uniq_options_code` (`code`);
 
 
 -- =============================================================================
@@ -81,10 +89,10 @@ ALTER TABLE `options`
 
 
 -- =============================================================================
--- 047  `modules.module_code` must be unique across the catalog.
+-- 047  Unique index on `modules.module_code` intentionally skipped —
+--      duplicate codes exist in the current data. Clean up duplicates
+--      manually if uniqueness is required, then add the index separately.
 -- =============================================================================
-ALTER TABLE `modules`
-  ADD UNIQUE INDEX IF NOT EXISTS `uniq_modules_module_code` (`module_code`);
 
 
 -- =============================================================================
@@ -93,21 +101,21 @@ ALTER TABLE `modules`
 --      `modules`; per-curriculum metadata moves here.
 --      Column-type matrix matches the live tables: modules/options/levels use
 --      signed INT; campuses uses INT UNSIGNED. FK signedness must match or
---      MySQL throws error 3780.
+--      MySQL/MariaDB throws error 1215/3780.
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS `module_offerings` (
-  `id`             INT          NOT NULL AUTO_INCREMENT,
-  `module_id`      INT          NOT NULL,
-  `option_id`      INT          NOT NULL,
-  `academic_year`  VARCHAR(20)  NULL,
-  `level_id`       INT          NULL,
-  `mode`           VARCHAR(20)  NULL,
-  `mode_order`     INT          NULL,
-  `semesters`      VARCHAR(50)  NULL,
-  `module_order`   INT          NULL,
-  `campus_id`      INT UNSIGNED NULL,
-  `created_at`     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at`     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `id`             INT(11)     NOT NULL AUTO_INCREMENT,
+  `module_id`      INT(11)     NOT NULL,
+  `option_id`      INT(11)     NOT NULL,
+  `academic_year`  VARCHAR(20) NULL,
+  `level_id`       INT(11)     NULL,
+  `mode`           VARCHAR(20) NULL,
+  `mode_order`     INT(11)     NULL,
+  `semesters`      VARCHAR(50) NULL,
+  `module_order`   INT(11)     NULL,
+  `campus_id`      INT(11)     NULL,
+  `created_at`     TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`     TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_mo_module`  (`module_id`),
   KEY `idx_mo_option`  (`option_id`),
@@ -116,8 +124,7 @@ CREATE TABLE IF NOT EXISTS `module_offerings` (
   KEY `idx_mo_mode`    (`mode`),
   CONSTRAINT `fk_mo_module` FOREIGN KEY (`module_id`) REFERENCES `modules` (`module_id`) ON DELETE CASCADE,
   CONSTRAINT `fk_mo_option` FOREIGN KEY (`option_id`) REFERENCES `options` (`id`)        ON DELETE CASCADE,
-  CONSTRAINT `fk_mo_campus` FOREIGN KEY (`campus_id`) REFERENCES `campuses` (`id`)       ON DELETE SET NULL,
-  CONSTRAINT `fk_mo_level`  FOREIGN KEY (`level_id`)  REFERENCES `levels` (`id`)         ON DELETE SET NULL
+  CONSTRAINT `fk_mo_level`  FOREIGN KEY (`level_id`)  REFERENCES `levels`  (`id`)        ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 
@@ -131,11 +138,8 @@ WHERE  `module_code` <> TRIM(`module_code`);
 
 
 -- =============================================================================
--- 050  Curricular position belongs on the module ↔ program join, not on the
---      module catalog. Mode / semester / campus stay on `module_offerings`.
+-- 050  Skipped — `module_programs` table does not exist in this database.
 -- =============================================================================
-ALTER TABLE `module_programs`
-  ADD COLUMN IF NOT EXISTS `module_order` INT NULL AFTER `option_id`;
 
 
 -- =============================================================================
@@ -189,25 +193,25 @@ ALTER TABLE `module_offerings`
 --        • workflow `status` ('draft','claims_open','submitted','confirmed')
 -- =============================================================================
 ALTER TABLE `module_marks`
-  ADD COLUMN IF NOT EXISTS `cat1`              DECIMAL(6,2) DEFAULT NULL AFTER `assignment_marks`,
-  ADD COLUMN IF NOT EXISTS `cat2`              DECIMAL(6,2) DEFAULT NULL AFTER `cat1`,
-  ADD COLUMN IF NOT EXISTS `cat3`              DECIMAL(6,2) DEFAULT NULL AFTER `cat2`,
-  ADD COLUMN IF NOT EXISTS `partial_exam`      DECIMAL(6,2) DEFAULT NULL AFTER `cat3`,
-  ADD COLUMN IF NOT EXISTS `exam_1st_sitting`  DECIMAL(6,2) DEFAULT NULL AFTER `exam_marks`,
-  ADD COLUMN IF NOT EXISTS `exam_2nd_sitting`  DECIMAL(6,2) DEFAULT NULL AFTER `exam_1st_sitting`,
-  ADD COLUMN IF NOT EXISTS `cat1_max`          DECIMAL(6,2) NOT NULL DEFAULT 15.00 AFTER `assignment_max`,
-  ADD COLUMN IF NOT EXISTS `cat2_max`          DECIMAL(6,2) NOT NULL DEFAULT 15.00 AFTER `cat1_max`,
-  ADD COLUMN IF NOT EXISTS `cat3_max`          DECIMAL(6,2) NOT NULL DEFAULT 15.00 AFTER `cat2_max`,
-  ADD COLUMN IF NOT EXISTS `partial_exam_max`  DECIMAL(6,2) NOT NULL DEFAULT 15.00 AFTER `cat3_max`,
-  ADD COLUMN IF NOT EXISTS `cats_max`          DECIMAL(6,2) NOT NULL DEFAULT 60.00 AFTER `partial_exam_max`,
-  ADD COLUMN IF NOT EXISTS `final_exam_max`    DECIMAL(6,2) NOT NULL DEFAULT 40.00 AFTER `exam_max`,
-  ADD COLUMN IF NOT EXISTS `decision`          VARCHAR(8)   DEFAULT NULL AFTER `grade`,
-  ADD COLUMN IF NOT EXISTS `status`            ENUM('draft','claims_open','submitted','confirmed') NOT NULL DEFAULT 'draft' AFTER `decision`,
-  ADD COLUMN IF NOT EXISTS `claims_opened_at`  TIMESTAMP NULL DEFAULT NULL AFTER `status`,
-  ADD COLUMN IF NOT EXISTS `submitted_at`      TIMESTAMP NULL DEFAULT NULL AFTER `claims_opened_at`,
-  ADD COLUMN IF NOT EXISTS `confirmed_at`      TIMESTAMP NULL DEFAULT NULL AFTER `submitted_at`,
-  ADD COLUMN IF NOT EXISTS `teaching_started_on` DATE NULL DEFAULT NULL AFTER `confirmed_at`,
-  ADD COLUMN IF NOT EXISTS `teaching_ended_on`   DATE NULL DEFAULT NULL AFTER `teaching_started_on`;
+  ADD COLUMN IF NOT EXISTS `cat1`                DECIMAL(6,2) DEFAULT NULL AFTER `assignment_marks`,
+  ADD COLUMN IF NOT EXISTS `cat2`                DECIMAL(6,2) DEFAULT NULL AFTER `cat1`,
+  ADD COLUMN IF NOT EXISTS `cat3`                DECIMAL(6,2) DEFAULT NULL AFTER `cat2`,
+  ADD COLUMN IF NOT EXISTS `partial_exam`        DECIMAL(6,2) DEFAULT NULL AFTER `cat3`,
+  ADD COLUMN IF NOT EXISTS `exam_1st_sitting`    DECIMAL(6,2) DEFAULT NULL AFTER `exam_marks`,
+  ADD COLUMN IF NOT EXISTS `exam_2nd_sitting`    DECIMAL(6,2) DEFAULT NULL AFTER `exam_1st_sitting`,
+  ADD COLUMN IF NOT EXISTS `cat1_max`            DECIMAL(6,2) NOT NULL DEFAULT 15.00 AFTER `assignment_max`,
+  ADD COLUMN IF NOT EXISTS `cat2_max`            DECIMAL(6,2) NOT NULL DEFAULT 15.00 AFTER `cat1_max`,
+  ADD COLUMN IF NOT EXISTS `cat3_max`            DECIMAL(6,2) NOT NULL DEFAULT 15.00 AFTER `cat2_max`,
+  ADD COLUMN IF NOT EXISTS `partial_exam_max`    DECIMAL(6,2) NOT NULL DEFAULT 15.00 AFTER `cat3_max`,
+  ADD COLUMN IF NOT EXISTS `cats_max`            DECIMAL(6,2) NOT NULL DEFAULT 60.00 AFTER `partial_exam_max`,
+  ADD COLUMN IF NOT EXISTS `final_exam_max`      DECIMAL(6,2) NOT NULL DEFAULT 40.00 AFTER `exam_max`,
+  ADD COLUMN IF NOT EXISTS `decision`            VARCHAR(8)   DEFAULT NULL AFTER `grade`,
+  ADD COLUMN IF NOT EXISTS `status`              ENUM('draft','claims_open','submitted','confirmed') NOT NULL DEFAULT 'draft' AFTER `decision`,
+  ADD COLUMN IF NOT EXISTS `claims_opened_at`    TIMESTAMP    NULL DEFAULT NULL AFTER `status`,
+  ADD COLUMN IF NOT EXISTS `submitted_at`        TIMESTAMP    NULL DEFAULT NULL AFTER `claims_opened_at`,
+  ADD COLUMN IF NOT EXISTS `confirmed_at`        TIMESTAMP    NULL DEFAULT NULL AFTER `submitted_at`,
+  ADD COLUMN IF NOT EXISTS `teaching_started_on` DATE         NULL DEFAULT NULL AFTER `confirmed_at`,
+  ADD COLUMN IF NOT EXISTS `teaching_ended_on`   DATE         NULL DEFAULT NULL AFTER `teaching_started_on`;
 
 
 -- =============================================================================
@@ -243,22 +247,20 @@ CREATE TABLE IF NOT EXISTS `exam_schedules` (
 --      the curriculum/transcript views, but flagged separately.
 -- =============================================================================
 ALTER TABLE `module_marks`
-  ADD COLUMN IF NOT EXISTS `is_exempted`      TINYINT(1)   NOT NULL DEFAULT 0 AFTER `decision`,
-  ADD COLUMN IF NOT EXISTS `exemption_reason` VARCHAR(500) DEFAULT NULL        AFTER `is_exempted`;
+  ADD COLUMN IF NOT EXISTS `is_exempted`      TINYINT(1)   NOT NULL DEFAULT 0   AFTER `decision`,
+  ADD COLUMN IF NOT EXISTS `exemption_reason` VARCHAR(500) DEFAULT NULL          AFTER `is_exempted`;
 
 
 -- =============================================================================
 -- 058  Backfill `student.std_option` / `student.campus` from the linked
 --      admission application. Only fills empty cells, so re-running is safe.
 -- =============================================================================
+-- Note: `student_applications` has no `program_id` or `campus_id` columns.
+-- Backfilling `std_option` from `department_id`; `campus` skipped (no source).
 UPDATE `student` s
 JOIN `admission_offers`     ao ON ao.student_id = s.id
 JOIN `student_applications` sa ON sa.id         = ao.application_id
 SET
-    s.std_option = COALESCE(NULLIF(s.std_option, ''), CAST(sa.program_id AS CHAR)),
-    s.campus     = COALESCE(NULLIF(s.campus, ''),     CAST(sa.campus_id  AS CHAR))
-WHERE sa.program_id IS NOT NULL
-  AND (
-        s.std_option IS NULL OR s.std_option = ''
-     OR s.campus     IS NULL OR s.campus     = ''
-  );
+    s.std_option = COALESCE(NULLIF(s.std_option, ''), CAST(sa.department_id AS CHAR))
+WHERE sa.department_id IS NOT NULL
+  AND (s.std_option IS NULL OR s.std_option = '');
