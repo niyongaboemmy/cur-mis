@@ -7,7 +7,6 @@ import {
   Loader2,
   Download,
   Printer,
-  Plus,
   Pencil,
   Trash2,
   X,
@@ -90,7 +89,6 @@ export default function PayrollSlipPage() {
   const [toMonth, setToMonth] = useState<number>(CUR_M);
 
   const [editing, setEditing] = useState<PayrollEntry | null>(null);
-  const [addOpen, setAddOpen] = useState(false);
 
   const printRef = useRef<HTMLDivElement>(null);
 
@@ -122,6 +120,7 @@ export default function PayrollSlipPage() {
       paye: acc.paye + Number(s.paye),
       rssb: acc.rssb + Number(s.rssb),
       cbhi: acc.cbhi + Number(s.cbhi),
+      other_deductions: acc.other_deductions + Number(s.other_deductions ?? 0),
       net_salary: acc.net_salary + Number(s.net_salary),
     }),
     {
@@ -133,6 +132,7 @@ export default function PayrollSlipPage() {
       paye: 0,
       rssb: 0,
       cbhi: 0,
+      other_deductions: 0,
       net_salary: 0,
     },
   );
@@ -150,6 +150,7 @@ export default function PayrollSlipPage() {
       "PAYE(TPR)",
       "RSSB",
       "CBHI",
+      "Deductions",
       "Net Salary",
     ];
     const rows = slips.map((s, i) => [
@@ -163,6 +164,7 @@ export default function PayrollSlipPage() {
       s.paye,
       s.rssb,
       s.cbhi,
+      s.other_deductions ?? 0,
       s.net_salary,
     ]);
     const csv = [header, ...rows].map((r) => r.join(",")).join("\n");
@@ -192,6 +194,7 @@ export default function PayrollSlipPage() {
         <td class="num">${Number(s.paye).toLocaleString()}</td>
         <td class="num">${Number(s.rssb).toLocaleString()}</td>
         <td class="num">${Number(s.cbhi).toLocaleString()}</td>
+        <td class="num">${Number(s.other_deductions ?? 0) > 0 ? Number(s.other_deductions).toLocaleString() : "—"}</td>
         <td class="num"><strong>${Number(s.net_salary).toLocaleString()}</strong></td>
       </tr>
     `,
@@ -209,6 +212,7 @@ export default function PayrollSlipPage() {
         <td class="num"><strong>${totals.paye.toLocaleString()}</strong></td>
         <td class="num"><strong>${totals.rssb.toLocaleString()}</strong></td>
         <td class="num"><strong>${totals.cbhi.toLocaleString()}</strong></td>
+        <td class="num"><strong>${totals.other_deductions.toLocaleString()}</strong></td>
         <td class="num"><strong>${totals.net_salary.toLocaleString()}</strong></td>
       </tr>
     `;
@@ -242,7 +246,7 @@ export default function PayrollSlipPage() {
       <thead><tr>
         <th>No</th><th>Months</th><th>Basic Salary</th><th>Housing Allow.</th>
         <th>Transport Allow.</th><th>Other Allowances</th><th>Gross Salary</th>
-        <th>PAYE(TPR)</th><th>RSSB</th><th>CBHI</th><th>Net Salary</th>
+        <th>PAYE(TPR)</th><th>RSSB</th><th>CBHI</th><th>Deductions</th><th>Net Salary</th>
       </tr></thead>
       <tbody>${rows}${totRow}</tbody>
     </table>
@@ -318,14 +322,6 @@ export default function PayrollSlipPage() {
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {canManage && (
-            <button
-              className="btn-primary btn-sm"
-              onClick={() => setAddOpen(true)}
-            >
-              <Plus className="w-3.5 h-3.5" /> Add Entry
-            </button>
-          )}
           <button
             className="btn-secondary btn-sm"
             onClick={downloadCSV}
@@ -467,6 +463,7 @@ export default function PayrollSlipPage() {
                   "PAYE(TPR)",
                   "RSSB",
                   "CBHI",
+                  "Deductions",
                   "Net Salary",
                   "",
                 ].map((h) => (
@@ -482,16 +479,8 @@ export default function PayrollSlipPage() {
             <tbody className="divide-y divide-ink-100 dark:divide-ink-700">
               {slips.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="p-10 text-center text-ink-400">
+                  <td colSpan={13} className="p-10 text-center text-ink-400">
                     No payslip entries for this period.
-                    {canManage && (
-                      <button
-                        className="ml-2 text-brand hover:underline"
-                        onClick={() => setAddOpen(true)}
-                      >
-                        Add first entry
-                      </button>
-                    )}
                   </td>
                 </tr>
               ) : (
@@ -528,6 +517,11 @@ export default function PayrollSlipPage() {
                       </td>
                       <td className="px-3 py-3 text-right tabular-nums text-sky-600 dark:text-sky-400">
                         {fmt(slip.cbhi)}
+                      </td>
+                      <td className="px-3 py-3 text-right tabular-nums text-violet-600 dark:text-violet-400">
+                        {Number(slip.other_deductions ?? 0) > 0
+                          ? fmt(slip.other_deductions)
+                          : "—"}
                       </td>
                       <td className="px-3 py-3 text-right tabular-nums font-bold text-emerald-700 dark:text-emerald-400">
                         {fmt(slip.net_salary)}
@@ -585,6 +579,11 @@ export default function PayrollSlipPage() {
                     <td className="px-3 py-3 text-right tabular-nums text-sky-700 dark:text-sky-300">
                       {fmt(totals.cbhi)}
                     </td>
+                    <td className="px-3 py-3 text-right tabular-nums text-violet-700 dark:text-violet-300">
+                      {totals.other_deductions > 0
+                        ? fmt(totals.other_deductions)
+                        : "—"}
+                    </td>
                     <td className="px-3 py-3 text-right tabular-nums text-emerald-700 dark:text-emerald-300">
                       {fmt(totals.net_salary)}
                     </td>
@@ -597,15 +596,12 @@ export default function PayrollSlipPage() {
         </div>
       </div>
 
-      {/* Add / Edit modal */}
-      {(addOpen || editing) && (
+      {/* Edit modal */}
+      {editing && (
         <PayrollEntryModal
           empId={empId}
-          entry={editing ?? undefined}
-          onClose={() => {
-            setEditing(null);
-            setAddOpen(false);
-          }}
+          entry={editing}
+          onClose={() => setEditing(null)}
         />
       )}
     </div>
@@ -640,18 +636,43 @@ function PayrollEntryModal({
     notes: entry?.notes ?? "",
   });
 
+  // Live deductions for the selected period
+  const { data: dedRes } = useQuery({
+    queryKey: [
+      "employee-deductions-active",
+      empId,
+      form.period_year,
+      form.period_month,
+    ],
+    queryFn: ({ signal }) =>
+      hrService.activeEmployeeDeductions(
+        empId,
+        form.period_year!,
+        form.period_month!,
+        signal,
+      ),
+    staleTime: 30_000,
+  });
+  const activeDeds = dedRes?.data?.deductions ?? [];
+  const otherDedTotal =
+    dedRes?.data?.total ?? Number(entry?.other_deductions ?? 0);
+
   const gross =
     form.basic_salary +
     form.housing_allowance +
     form.transport_allowance +
     form.other_allowances;
-  const net = Math.max(0, gross - form.paye - form.rssb - form.cbhi);
+  const net = Math.max(
+    0,
+    gross - form.paye - form.rssb - form.cbhi - otherDedTotal,
+  );
 
   const save = useMutation({
     mutationFn: () =>
       hrService.payrollUpsert({
         ...form,
         gross_salary: gross,
+        other_deductions: otherDedTotal,
         net_salary: net,
       }),
     onSuccess: () => {
@@ -670,151 +691,177 @@ function PayrollEntryModal({
 
   return (
     <ModalPortal>
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/60 backdrop-blur-sm p-4">
-      <div className="bg-white dark:bg-ink-800 rounded-xl shadow-2xl w-full max-w-xl overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-ink-100 dark:border-ink-700">
-          <h3 className="font-bold text-ink-900 dark:text-white text-[15px]">
-            {entry ? "Edit Entry" : "Add Payroll Entry"}
-          </h3>
-          <button className="icon-btn" onClick={onClose}>
-            <X className="w-4 h-4" />
-          </button>
-        </div>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/60 backdrop-blur-sm p-4">
+        <div className="bg-white dark:bg-ink-800 rounded-xl shadow-2xl w-full max-w-xl overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-ink-100 dark:border-ink-700">
+            <h3 className="font-bold text-ink-900 dark:text-white text-[15px]">
+              {entry ? "Edit Entry" : "Add Payroll Entry"}
+            </h3>
+            <button className="icon-btn" onClick={onClose}>
+              <X className="w-4 h-4" />
+            </button>
+          </div>
 
-        <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
-          {/* Period */}
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Month">
-              <select
-                className="input text-[13px]"
-                value={form.period_month}
-                onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    period_month: parseInt(e.target.value),
-                  }))
-                }
-              >
-                {monthOptions.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
+          <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+            {/* Period */}
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Month">
+                <select
+                  className="input text-[13px]"
+                  value={form.period_month}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      period_month: parseInt(e.target.value),
+                    }))
+                  }
+                >
+                  {monthOptions.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Year">
+                <select
+                  className="input text-[13px]"
+                  value={form.period_year}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      period_year: parseInt(e.target.value),
+                    }))
+                  }
+                >
+                  {yearOptions.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+
+            <hr className="border-ink-100 dark:border-ink-700" />
+            <p className="text-[11px] font-bold text-ink-400 uppercase tracking-wider">
+              Salary components
+            </p>
+
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Basic Salary">
+                <NumInput
+                  value={form.basic_salary}
+                  onChange={n("basic_salary")}
+                />
+              </Field>
+              <Field label="Housing Allowance">
+                <NumInput
+                  value={form.housing_allowance}
+                  onChange={n("housing_allowance")}
+                />
+              </Field>
+              <Field label="Transport Allowance">
+                <NumInput
+                  value={form.transport_allowance}
+                  onChange={n("transport_allowance")}
+                />
+              </Field>
+              <Field label="Other Allowances">
+                <NumInput
+                  value={form.other_allowances}
+                  onChange={n("other_allowances")}
+                />
+              </Field>
+            </div>
+
+            <div className="rounded-lg bg-ink-50 dark:bg-ink-700/30 px-4 py-2.5 flex items-center justify-between">
+              <span className="text-[12px] font-semibold text-ink-600 dark:text-ink-300 flex items-center gap-1.5">
+                <Calculator className="w-3.5 h-3.5" /> Gross Salary
+              </span>
+              <span className="text-[14px] font-bold text-ink-900 dark:text-white tabular-nums">
+                {gross.toLocaleString("en-US")}
+              </span>
+            </div>
+
+            <hr className="border-ink-100 dark:border-ink-700" />
+            <p className="text-[11px] font-bold text-ink-400 uppercase tracking-wider">
+              Deductions
+            </p>
+
+            <div className="grid grid-cols-3 gap-3">
+              <Field label="PAYE (TPR)">
+                <NumInput value={form.paye} onChange={n("paye")} />
+              </Field>
+              <Field label="RSSB">
+                <NumInput value={form.rssb} onChange={n("rssb")} />
+              </Field>
+              <Field label="CBHI">
+                <NumInput value={form.cbhi} onChange={n("cbhi")} />
+              </Field>
+            </div>
+
+            {activeDeds.length > 0 && (
+              <div className="rounded-lg border border-violet-100 dark:border-violet-800 overflow-hidden">
+                <div className="px-3 py-1.5 bg-violet-50 dark:bg-violet-900/20 text-[10px] font-bold text-violet-500 uppercase tracking-wider">
+                  Employee deductions
+                </div>
+                {activeDeds.map((d) => (
+                  <div
+                    key={d.id}
+                    className="flex items-center justify-between px-3 py-2 border-t border-violet-100 dark:border-violet-800"
+                  >
+                    <span className="text-[12px] text-ink-600 dark:text-ink-300">
+                      {d.label}{" "}
+                      <span className="text-[10px] text-ink-400">
+                        ({d.deduction_type})
+                      </span>
+                    </span>
+                    <span className="text-[12px] font-semibold text-violet-700 dark:text-violet-300 tabular-nums">
+                      –{Number(d.monthly_amount).toLocaleString("en-US")}
+                    </span>
+                  </div>
                 ))}
-              </select>
-            </Field>
-            <Field label="Year">
-              <select
+              </div>
+            )}
+
+            <div className="rounded-lg bg-emerald-50 dark:bg-emerald-500/10 px-4 py-2.5 flex items-center justify-between">
+              <span className="text-[12px] font-semibold text-emerald-700 dark:text-emerald-300">
+                Net Salary
+              </span>
+              <span className="text-[14px] font-bold text-emerald-800 dark:text-emerald-200 tabular-nums">
+                {net.toLocaleString("en-US")}
+              </span>
+            </div>
+
+            <Field label="Notes (optional)">
+              <input
                 className="input text-[13px]"
-                value={form.period_year}
+                value={form.notes ?? ""}
                 onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    period_year: parseInt(e.target.value),
-                  }))
+                  setForm((f) => ({ ...f, notes: e.target.value }))
                 }
-              >
-                {yearOptions.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          </div>
-
-          <hr className="border-ink-100 dark:border-ink-700" />
-          <p className="text-[11px] font-bold text-ink-400 uppercase tracking-wider">
-            Salary components
-          </p>
-
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Basic Salary">
-              <NumInput
-                value={form.basic_salary}
-                onChange={n("basic_salary")}
-              />
-            </Field>
-            <Field label="Housing Allowance">
-              <NumInput
-                value={form.housing_allowance}
-                onChange={n("housing_allowance")}
-              />
-            </Field>
-            <Field label="Transport Allowance">
-              <NumInput
-                value={form.transport_allowance}
-                onChange={n("transport_allowance")}
-              />
-            </Field>
-            <Field label="Other Allowances">
-              <NumInput
-                value={form.other_allowances}
-                onChange={n("other_allowances")}
               />
             </Field>
           </div>
 
-          <div className="rounded-lg bg-ink-50 dark:bg-ink-700/30 px-4 py-2.5 flex items-center justify-between">
-            <span className="text-[12px] font-semibold text-ink-600 dark:text-ink-300 flex items-center gap-1.5">
-              <Calculator className="w-3.5 h-3.5" /> Gross Salary
-            </span>
-            <span className="text-[14px] font-bold text-ink-900 dark:text-white tabular-nums">
-              {gross.toLocaleString("en-US")}
-            </span>
+          <div className="flex justify-end gap-2 px-5 py-4 border-t border-ink-100 dark:border-ink-700">
+            <button className="btn-secondary" onClick={onClose}>
+              Cancel
+            </button>
+            <button
+              className="btn-primary"
+              onClick={() => save.mutate()}
+              disabled={save.isPending}
+            >
+              {save.isPending && (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              )}
+              Save
+            </button>
           </div>
-
-          <hr className="border-ink-100 dark:border-ink-700" />
-          <p className="text-[11px] font-bold text-ink-400 uppercase tracking-wider">
-            Deductions
-          </p>
-
-          <div className="grid grid-cols-3 gap-3">
-            <Field label="PAYE (TPR)">
-              <NumInput value={form.paye} onChange={n("paye")} />
-            </Field>
-            <Field label="RSSB">
-              <NumInput value={form.rssb} onChange={n("rssb")} />
-            </Field>
-            <Field label="CBHI">
-              <NumInput value={form.cbhi} onChange={n("cbhi")} />
-            </Field>
-          </div>
-
-          <div className="rounded-lg bg-emerald-50 dark:bg-emerald-500/10 px-4 py-2.5 flex items-center justify-between">
-            <span className="text-[12px] font-semibold text-emerald-700 dark:text-emerald-300">
-              Net Salary
-            </span>
-            <span className="text-[14px] font-bold text-emerald-800 dark:text-emerald-200 tabular-nums">
-              {net.toLocaleString("en-US")}
-            </span>
-          </div>
-
-          <Field label="Notes (optional)">
-            <input
-              className="input text-[13px]"
-              value={form.notes ?? ""}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, notes: e.target.value }))
-              }
-            />
-          </Field>
-        </div>
-
-        <div className="flex justify-end gap-2 px-5 py-4 border-t border-ink-100 dark:border-ink-700">
-          <button className="btn-secondary" onClick={onClose}>
-            Cancel
-          </button>
-          <button
-            className="btn-primary"
-            onClick={() => save.mutate()}
-            disabled={save.isPending}
-          >
-            {save.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-            Save
-          </button>
         </div>
       </div>
-    </div>
     </ModalPortal>
   );
 }
