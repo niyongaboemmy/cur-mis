@@ -436,6 +436,20 @@ class ApplicationService
         );
         $applicantUserId = $profile ? (int)$profile['user_id'] : 0;
 
+        // Resolve the academic year LABEL (e.g. "2025-2026"). The legacy
+        // `student.acc_year` column has always carried the human label; the
+        // student-list filter, the stats aggregator, and any join against
+        // `academic_years.label` all match on that string. Writing the raw
+        // year ID here would silently exclude the new student from every
+        // year-scoped query.
+        $accYearLabel = '-';
+        if (!empty($offer['academic_year_id'])) {
+            $year = $this->yearModel->find((int)$offer['academic_year_id']);
+            if ($year && !empty($year['label'])) {
+                $accYearLabel = str_replace('/', '-', (string)$year['label']);
+            }
+        }
+
         // Map application → student table columns. `std_option` carries the
         // option/program id selected on the application; the curriculum
         // endpoint joins on it to pull the program's modules.
@@ -461,7 +475,7 @@ class ApplicationService
             'registration_date' => date('Y-m-d'),
             'student_state'     => 'active',
             'intake'            => $offer['intake'] ?? '',
-            'acc_year'          => $offer['academic_year_id'] ? (string)$offer['academic_year_id'] : '-',
+            'acc_year'          => $accYearLabel,
         ];
 
         $studentId = (int)$this->studentModel->create($studentData);

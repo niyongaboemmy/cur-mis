@@ -1756,6 +1756,14 @@ class AcademicsManagementController extends BaseController
             $examOptStdIds = array_values(array_filter(array_map(
                 fn($r) => (string)($r['op_id'] ?? ''), $rows,
             ), fn($v) => $v !== ''));
+
+            // Students enrolled via the new admissions flow store
+            // `student.std_option = options.id` directly (not the legacy
+            // `dep_options.op_id` resolved above). Include the new id so
+            // the post-migration cohort isn't dropped from the roster.
+            if (!in_array((string)$examOptionId, $examOptStdIds, true)) {
+                $examOptStdIds[] = (string)$examOptionId;
+            }
         }
 
         // Roster comes ONLY from `module_registrations` — formally enrolled

@@ -1,20 +1,30 @@
 -- 2026_05_07_041_combined_academics_modules_marks.sql
 --
 -- Single rolled-up migration replacing the 18 individual files that previously
--- lived as 2026_05_07_041 … 2026_05_09_058. Each block is self-described in
--- the comments below and uses MariaDB's `IF NOT EXISTS` guards on every
--- ADD COLUMN / ADD UNIQUE INDEX so re-running on a dev DB that already
--- received the granular migrations is a no-op. `MODIFY COLUMN` and `UPDATE`
--- statements are naturally idempotent.
+-- lived as 2026_05_07_041 … 2026_05_09_058. Each block is described in the
+-- comments below.
 --
--- If anyone needs the original per-step history, see the eric branch prior
--- to commit 379ecdc.
+-- IDEMPOTENCY MODEL
+--   The migration runner aborts a file on the first SQL error, so every
+--   block has to be safe to re-execute on a DB that already received the
+--   granular migrations. We use a portable INFORMATION_SCHEMA + PREPARE
+--   pattern (works on both MySQL 8 and MariaDB) for ADD COLUMN / ADD UNIQUE
+--   INDEX. CREATE TABLE uses IF NOT EXISTS, MODIFY COLUMN is naturally
+--   idempotent, and UPDATE statements are guarded by their WHERE clauses.
+--
+-- If anyone needs the per-step history, see the eric branch prior to commit
+-- 379ecdc.
 
 -- =============================================================================
 -- 041  Faculty: add `fac_acronym`; backfill from existing `fac_code`.
 -- =============================================================================
-ALTER TABLE `faculty`
-  ADD COLUMN IF NOT EXISTS `fac_acronym` VARCHAR(50) NULL AFTER `fac_name`;
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE table_schema = DATABASE() AND table_name = 'faculty' AND column_name = 'fac_acronym'),
+  'SELECT 1',
+  'ALTER TABLE `faculty` ADD COLUMN `fac_acronym` VARCHAR(50) NULL AFTER `fac_name`'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 UPDATE `faculty`
 SET    `fac_acronym` = `fac_code`
@@ -25,18 +35,33 @@ WHERE  `fac_acronym` IS NULL
 -- =============================================================================
 -- 042  Departments: add `dep_code` (distinct from existing `dep_acronym`).
 -- =============================================================================
-ALTER TABLE `departements`
-  ADD COLUMN IF NOT EXISTS `dep_code` VARCHAR(50) NULL AFTER `dep_acronym`;
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE table_schema = DATABASE() AND table_name = 'departements' AND column_name = 'dep_code'),
+  'SELECT 1',
+  'ALTER TABLE `departements` ADD COLUMN `dep_code` VARCHAR(50) NULL AFTER `dep_acronym`'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 
 -- =============================================================================
 -- 043  Faculty/Department codes must be unique (NULLs allowed).
 -- =============================================================================
-ALTER TABLE `faculty`
-  ADD UNIQUE INDEX IF NOT EXISTS `uniq_faculty_fac_code` (`fac_code`);
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.STATISTICS
+         WHERE table_schema = DATABASE() AND table_name = 'faculty' AND index_name = 'uniq_faculty_fac_code'),
+  'SELECT 1',
+  'ALTER TABLE `faculty` ADD UNIQUE INDEX `uniq_faculty_fac_code` (`fac_code`)'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
-ALTER TABLE `departements`
-  ADD UNIQUE INDEX IF NOT EXISTS `uniq_departements_dep_code` (`dep_code`);
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.STATISTICS
+         WHERE table_schema = DATABASE() AND table_name = 'departements' AND index_name = 'uniq_departements_dep_code'),
+  'SELECT 1',
+  'ALTER TABLE `departements` ADD UNIQUE INDEX `uniq_departements_dep_code` (`dep_code`)'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 
 -- =============================================================================
@@ -61,14 +86,45 @@ ALTER TABLE `departements`
 -- =============================================================================
 -- 045  Programs (`options`) gain code/acronym/date columns + unique code.
 -- =============================================================================
-ALTER TABLE `options`
-  ADD COLUMN IF NOT EXISTS `code`       VARCHAR(50) NULL AFTER `name`,
-  ADD COLUMN IF NOT EXISTS `acro`       VARCHAR(50) NULL AFTER `code`,
-  ADD COLUMN IF NOT EXISTS `start_date` DATE        NULL AFTER `acro`,
-  ADD COLUMN IF NOT EXISTS `end_date`   DATE        NULL AFTER `start_date`;
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE table_schema = DATABASE() AND table_name = 'options' AND column_name = 'code'),
+  'SELECT 1',
+  'ALTER TABLE `options` ADD COLUMN `code` VARCHAR(50) NULL AFTER `name`'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
-ALTER TABLE `options`
-  ADD UNIQUE INDEX IF NOT EXISTS `uniq_options_code` (`code`);
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE table_schema = DATABASE() AND table_name = 'options' AND column_name = 'acro'),
+  'SELECT 1',
+  'ALTER TABLE `options` ADD COLUMN `acro` VARCHAR(50) NULL AFTER `code`'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE table_schema = DATABASE() AND table_name = 'options' AND column_name = 'start_date'),
+  'SELECT 1',
+  'ALTER TABLE `options` ADD COLUMN `start_date` DATE NULL AFTER `acro`'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE table_schema = DATABASE() AND table_name = 'options' AND column_name = 'end_date'),
+  'SELECT 1',
+  'ALTER TABLE `options` ADD COLUMN `end_date` DATE NULL AFTER `start_date`'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.STATISTICS
+         WHERE table_schema = DATABASE() AND table_name = 'options' AND index_name = 'uniq_options_code'),
+  'SELECT 1',
+  'ALTER TABLE `options` ADD UNIQUE INDEX `uniq_options_code` (`code`)'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 
 -- =============================================================================
@@ -83,8 +139,13 @@ ALTER TABLE `options`
 -- =============================================================================
 -- 047  `modules.module_code` must be unique across the catalog.
 -- =============================================================================
-ALTER TABLE `modules`
-  ADD UNIQUE INDEX IF NOT EXISTS `uniq_modules_module_code` (`module_code`);
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.STATISTICS
+         WHERE table_schema = DATABASE() AND table_name = 'modules' AND index_name = 'uniq_modules_module_code'),
+  'SELECT 1',
+  'ALTER TABLE `modules` ADD UNIQUE INDEX `uniq_modules_module_code` (`module_code`)'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 
 -- =============================================================================
@@ -134,8 +195,13 @@ WHERE  `module_code` <> TRIM(`module_code`);
 -- 050  Curricular position belongs on the module ↔ program join, not on the
 --      module catalog. Mode / semester / campus stay on `module_offerings`.
 -- =============================================================================
-ALTER TABLE `module_programs`
-  ADD COLUMN IF NOT EXISTS `module_order` INT NULL AFTER `option_id`;
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE table_schema = DATABASE() AND table_name = 'module_programs' AND column_name = 'module_order'),
+  'SELECT 1',
+  'ALTER TABLE `module_programs` ADD COLUMN `module_order` INT NULL AFTER `option_id`'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 
 -- =============================================================================
@@ -151,20 +217,58 @@ ALTER TABLE `modules`
 -- 052  Schedules tab: per-(program, mode) start/end calendar dates on the
 --      offering row.
 -- =============================================================================
-ALTER TABLE `module_offerings`
-  ADD COLUMN IF NOT EXISTS `start_date` DATE NULL AFTER `semesters`,
-  ADD COLUMN IF NOT EXISTS `end_date`   DATE NULL AFTER `start_date`;
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE table_schema = DATABASE() AND table_name = 'module_offerings' AND column_name = 'start_date'),
+  'SELECT 1',
+  'ALTER TABLE `module_offerings` ADD COLUMN `start_date` DATE NULL AFTER `semesters`'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE table_schema = DATABASE() AND table_name = 'module_offerings' AND column_name = 'end_date'),
+  'SELECT 1',
+  'ALTER TABLE `module_offerings` ADD COLUMN `end_date` DATE NULL AFTER `start_date`'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 
 -- =============================================================================
 -- 053  Schedules tab: weekly meeting time + assigned instructor on the
 --      offering row.
 -- =============================================================================
-ALTER TABLE `module_offerings`
-  ADD COLUMN IF NOT EXISTS `day_of_week`   TINYINT NULL AFTER `end_date`,
-  ADD COLUMN IF NOT EXISTS `start_time`    TIME    NULL AFTER `day_of_week`,
-  ADD COLUMN IF NOT EXISTS `end_time`      TIME    NULL AFTER `start_time`,
-  ADD COLUMN IF NOT EXISTS `instructor_id` INT     NULL AFTER `end_time`;
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE table_schema = DATABASE() AND table_name = 'module_offerings' AND column_name = 'day_of_week'),
+  'SELECT 1',
+  'ALTER TABLE `module_offerings` ADD COLUMN `day_of_week` TINYINT NULL AFTER `end_date`'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE table_schema = DATABASE() AND table_name = 'module_offerings' AND column_name = 'start_time'),
+  'SELECT 1',
+  'ALTER TABLE `module_offerings` ADD COLUMN `start_time` TIME NULL AFTER `day_of_week`'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE table_schema = DATABASE() AND table_name = 'module_offerings' AND column_name = 'end_time'),
+  'SELECT 1',
+  'ALTER TABLE `module_offerings` ADD COLUMN `end_time` TIME NULL AFTER `start_time`'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE table_schema = DATABASE() AND table_name = 'module_offerings' AND column_name = 'instructor_id'),
+  'SELECT 1',
+  'ALTER TABLE `module_offerings` ADD COLUMN `instructor_id` INT NULL AFTER `end_time`'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 
 -- =============================================================================
@@ -173,10 +277,29 @@ ALTER TABLE `module_offerings`
 --      rows that don't match `hr_employees`, and year-of-study within the
 --      program.
 -- =============================================================================
-ALTER TABLE `module_offerings`
-  ADD COLUMN IF NOT EXISTS `activity`        VARCHAR(20)  NULL AFTER `instructor_id`,
-  ADD COLUMN IF NOT EXISTS `instructor_name` VARCHAR(120) NULL AFTER `activity`,
-  ADD COLUMN IF NOT EXISTS `year_of_study`   TINYINT      NULL AFTER `instructor_name`;
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE table_schema = DATABASE() AND table_name = 'module_offerings' AND column_name = 'activity'),
+  'SELECT 1',
+  'ALTER TABLE `module_offerings` ADD COLUMN `activity` VARCHAR(20) NULL AFTER `instructor_id`'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE table_schema = DATABASE() AND table_name = 'module_offerings' AND column_name = 'instructor_name'),
+  'SELECT 1',
+  'ALTER TABLE `module_offerings` ADD COLUMN `instructor_name` VARCHAR(120) NULL AFTER `activity`'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE table_schema = DATABASE() AND table_name = 'module_offerings' AND column_name = 'year_of_study'),
+  'SELECT 1',
+  'ALTER TABLE `module_offerings` ADD COLUMN `year_of_study` TINYINT NULL AFTER `instructor_name`'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 
 -- =============================================================================
@@ -188,26 +311,157 @@ ALTER TABLE `module_offerings`
 --        • DECISION ('P' = Pass, 'F&R' = Fail & Repeat)
 --        • workflow `status` ('draft','claims_open','submitted','confirmed')
 -- =============================================================================
-ALTER TABLE `module_marks`
-  ADD COLUMN IF NOT EXISTS `cat1`              DECIMAL(6,2) DEFAULT NULL AFTER `assignment_marks`,
-  ADD COLUMN IF NOT EXISTS `cat2`              DECIMAL(6,2) DEFAULT NULL AFTER `cat1`,
-  ADD COLUMN IF NOT EXISTS `cat3`              DECIMAL(6,2) DEFAULT NULL AFTER `cat2`,
-  ADD COLUMN IF NOT EXISTS `partial_exam`      DECIMAL(6,2) DEFAULT NULL AFTER `cat3`,
-  ADD COLUMN IF NOT EXISTS `exam_1st_sitting`  DECIMAL(6,2) DEFAULT NULL AFTER `exam_marks`,
-  ADD COLUMN IF NOT EXISTS `exam_2nd_sitting`  DECIMAL(6,2) DEFAULT NULL AFTER `exam_1st_sitting`,
-  ADD COLUMN IF NOT EXISTS `cat1_max`          DECIMAL(6,2) NOT NULL DEFAULT 15.00 AFTER `assignment_max`,
-  ADD COLUMN IF NOT EXISTS `cat2_max`          DECIMAL(6,2) NOT NULL DEFAULT 15.00 AFTER `cat1_max`,
-  ADD COLUMN IF NOT EXISTS `cat3_max`          DECIMAL(6,2) NOT NULL DEFAULT 15.00 AFTER `cat2_max`,
-  ADD COLUMN IF NOT EXISTS `partial_exam_max`  DECIMAL(6,2) NOT NULL DEFAULT 15.00 AFTER `cat3_max`,
-  ADD COLUMN IF NOT EXISTS `cats_max`          DECIMAL(6,2) NOT NULL DEFAULT 60.00 AFTER `partial_exam_max`,
-  ADD COLUMN IF NOT EXISTS `final_exam_max`    DECIMAL(6,2) NOT NULL DEFAULT 40.00 AFTER `exam_max`,
-  ADD COLUMN IF NOT EXISTS `decision`          VARCHAR(8)   DEFAULT NULL AFTER `grade`,
-  ADD COLUMN IF NOT EXISTS `status`            ENUM('draft','claims_open','submitted','confirmed') NOT NULL DEFAULT 'draft' AFTER `decision`,
-  ADD COLUMN IF NOT EXISTS `claims_opened_at`  TIMESTAMP NULL DEFAULT NULL AFTER `status`,
-  ADD COLUMN IF NOT EXISTS `submitted_at`      TIMESTAMP NULL DEFAULT NULL AFTER `claims_opened_at`,
-  ADD COLUMN IF NOT EXISTS `confirmed_at`      TIMESTAMP NULL DEFAULT NULL AFTER `submitted_at`,
-  ADD COLUMN IF NOT EXISTS `teaching_started_on` DATE NULL DEFAULT NULL AFTER `confirmed_at`,
-  ADD COLUMN IF NOT EXISTS `teaching_ended_on`   DATE NULL DEFAULT NULL AFTER `teaching_started_on`;
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE table_schema = DATABASE() AND table_name = 'module_marks' AND column_name = 'cat1'),
+  'SELECT 1',
+  'ALTER TABLE `module_marks` ADD COLUMN `cat1` DECIMAL(6,2) DEFAULT NULL AFTER `assignment_marks`'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE table_schema = DATABASE() AND table_name = 'module_marks' AND column_name = 'cat2'),
+  'SELECT 1',
+  'ALTER TABLE `module_marks` ADD COLUMN `cat2` DECIMAL(6,2) DEFAULT NULL AFTER `cat1`'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE table_schema = DATABASE() AND table_name = 'module_marks' AND column_name = 'cat3'),
+  'SELECT 1',
+  'ALTER TABLE `module_marks` ADD COLUMN `cat3` DECIMAL(6,2) DEFAULT NULL AFTER `cat2`'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE table_schema = DATABASE() AND table_name = 'module_marks' AND column_name = 'partial_exam'),
+  'SELECT 1',
+  'ALTER TABLE `module_marks` ADD COLUMN `partial_exam` DECIMAL(6,2) DEFAULT NULL AFTER `cat3`'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE table_schema = DATABASE() AND table_name = 'module_marks' AND column_name = 'exam_1st_sitting'),
+  'SELECT 1',
+  'ALTER TABLE `module_marks` ADD COLUMN `exam_1st_sitting` DECIMAL(6,2) DEFAULT NULL AFTER `exam_marks`'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE table_schema = DATABASE() AND table_name = 'module_marks' AND column_name = 'exam_2nd_sitting'),
+  'SELECT 1',
+  'ALTER TABLE `module_marks` ADD COLUMN `exam_2nd_sitting` DECIMAL(6,2) DEFAULT NULL AFTER `exam_1st_sitting`'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE table_schema = DATABASE() AND table_name = 'module_marks' AND column_name = 'cat1_max'),
+  'SELECT 1',
+  'ALTER TABLE `module_marks` ADD COLUMN `cat1_max` DECIMAL(6,2) NOT NULL DEFAULT 15.00 AFTER `assignment_max`'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE table_schema = DATABASE() AND table_name = 'module_marks' AND column_name = 'cat2_max'),
+  'SELECT 1',
+  'ALTER TABLE `module_marks` ADD COLUMN `cat2_max` DECIMAL(6,2) NOT NULL DEFAULT 15.00 AFTER `cat1_max`'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE table_schema = DATABASE() AND table_name = 'module_marks' AND column_name = 'cat3_max'),
+  'SELECT 1',
+  'ALTER TABLE `module_marks` ADD COLUMN `cat3_max` DECIMAL(6,2) NOT NULL DEFAULT 15.00 AFTER `cat2_max`'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE table_schema = DATABASE() AND table_name = 'module_marks' AND column_name = 'partial_exam_max'),
+  'SELECT 1',
+  'ALTER TABLE `module_marks` ADD COLUMN `partial_exam_max` DECIMAL(6,2) NOT NULL DEFAULT 15.00 AFTER `cat3_max`'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE table_schema = DATABASE() AND table_name = 'module_marks' AND column_name = 'cats_max'),
+  'SELECT 1',
+  'ALTER TABLE `module_marks` ADD COLUMN `cats_max` DECIMAL(6,2) NOT NULL DEFAULT 60.00 AFTER `partial_exam_max`'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE table_schema = DATABASE() AND table_name = 'module_marks' AND column_name = 'final_exam_max'),
+  'SELECT 1',
+  'ALTER TABLE `module_marks` ADD COLUMN `final_exam_max` DECIMAL(6,2) NOT NULL DEFAULT 40.00 AFTER `exam_max`'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE table_schema = DATABASE() AND table_name = 'module_marks' AND column_name = 'decision'),
+  'SELECT 1',
+  'ALTER TABLE `module_marks` ADD COLUMN `decision` VARCHAR(8) DEFAULT NULL AFTER `grade`'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE table_schema = DATABASE() AND table_name = 'module_marks' AND column_name = 'status'),
+  'SELECT 1',
+  "ALTER TABLE `module_marks` ADD COLUMN `status` ENUM('draft','claims_open','submitted','confirmed') NOT NULL DEFAULT 'draft' AFTER `decision`"
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE table_schema = DATABASE() AND table_name = 'module_marks' AND column_name = 'claims_opened_at'),
+  'SELECT 1',
+  'ALTER TABLE `module_marks` ADD COLUMN `claims_opened_at` TIMESTAMP NULL DEFAULT NULL AFTER `status`'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE table_schema = DATABASE() AND table_name = 'module_marks' AND column_name = 'submitted_at'),
+  'SELECT 1',
+  'ALTER TABLE `module_marks` ADD COLUMN `submitted_at` TIMESTAMP NULL DEFAULT NULL AFTER `claims_opened_at`'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE table_schema = DATABASE() AND table_name = 'module_marks' AND column_name = 'confirmed_at'),
+  'SELECT 1',
+  'ALTER TABLE `module_marks` ADD COLUMN `confirmed_at` TIMESTAMP NULL DEFAULT NULL AFTER `submitted_at`'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE table_schema = DATABASE() AND table_name = 'module_marks' AND column_name = 'teaching_started_on'),
+  'SELECT 1',
+  'ALTER TABLE `module_marks` ADD COLUMN `teaching_started_on` DATE NULL DEFAULT NULL AFTER `confirmed_at`'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE table_schema = DATABASE() AND table_name = 'module_marks' AND column_name = 'teaching_ended_on'),
+  'SELECT 1',
+  'ALTER TABLE `module_marks` ADD COLUMN `teaching_ended_on` DATE NULL DEFAULT NULL AFTER `teaching_started_on`'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 
 -- =============================================================================
@@ -242,9 +496,21 @@ CREATE TABLE IF NOT EXISTS `exam_schedules` (
 --      from another institution. Stored on `module_marks` so they appear in
 --      the curriculum/transcript views, but flagged separately.
 -- =============================================================================
-ALTER TABLE `module_marks`
-  ADD COLUMN IF NOT EXISTS `is_exempted`      TINYINT(1)   NOT NULL DEFAULT 0 AFTER `decision`,
-  ADD COLUMN IF NOT EXISTS `exemption_reason` VARCHAR(500) DEFAULT NULL        AFTER `is_exempted`;
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE table_schema = DATABASE() AND table_name = 'module_marks' AND column_name = 'is_exempted'),
+  'SELECT 1',
+  'ALTER TABLE `module_marks` ADD COLUMN `is_exempted` TINYINT(1) NOT NULL DEFAULT 0 AFTER `decision`'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE table_schema = DATABASE() AND table_name = 'module_marks' AND column_name = 'exemption_reason'),
+  'SELECT 1',
+  'ALTER TABLE `module_marks` ADD COLUMN `exemption_reason` VARCHAR(500) DEFAULT NULL AFTER `is_exempted`'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 
 -- =============================================================================
@@ -262,3 +528,21 @@ WHERE sa.program_id IS NOT NULL
         s.std_option IS NULL OR s.std_option = ''
      OR s.campus     IS NULL OR s.campus     = ''
   );
+
+
+-- =============================================================================
+-- 059  Repair `student.acc_year` rows that were mistakenly stored as the
+--      academic year ID (e.g. "2") instead of the human label
+--      (e.g. "2025-2026"). Older enrollments wrote the FK directly, which
+--      breaks the student-list filter (driven by the topnav year label) and
+--      every join that matches `acc_year` against `academic_years.label`.
+--
+--      Match purely-numeric acc_year values back to academic_years.id and
+--      replace with the dash-form label. Re-running is a no-op once the
+--      labels are in place because no row will satisfy REGEXP '^[0-9]+$'
+--      anymore.
+-- =============================================================================
+UPDATE `student` s
+JOIN `academic_years` ay ON CAST(ay.id AS CHAR) = s.acc_year
+SET   s.acc_year = REPLACE(ay.label, '/', '-')
+WHERE s.acc_year REGEXP '^[0-9]+$';
