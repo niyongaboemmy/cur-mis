@@ -546,3 +546,53 @@ UPDATE `student` s
 JOIN `academic_years` ay ON CAST(ay.id AS CHAR) = s.acc_year
 SET   s.acc_year = REPLACE(ay.label, '/', '-')
 WHERE s.acc_year REGEXP '^[0-9]+$';
+
+
+-- =============================================================================
+-- 060  Add `student.user_id` so the student portal can resolve "the
+--      authenticated user's own record" without scanning by email. Some dev
+--      DBs predate the comprehensive_schema migration's CREATE TABLE and
+--      are missing the column entirely; add it here defensively.
+-- =============================================================================
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE table_schema = DATABASE() AND table_name = 'student' AND column_name = 'user_id'),
+  'SELECT 1',
+  'ALTER TABLE `student` ADD COLUMN `user_id` INT(10) UNSIGNED DEFAULT NULL AFTER `id`'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @sql := IF (
+  EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.STATISTICS
+         WHERE table_schema = DATABASE() AND table_name = 'student' AND index_name = 'idx_student_user_id'),
+  'SELECT 1',
+  'ALTER TABLE `student` ADD INDEX `idx_student_user_id` (`user_id`)'
+);
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+
+-- =============================================================================
+-- 061  Backfill `student.user_id` for previously-enrolled students.
+--
+--      First pass: walk admission_offers → applicant_profiles to recover the
+--      original applicant user. This is the authoritative link for anyone
+--      enrolled through the admissions flow.
+--
+--      Second pass: fall back to a case-insensitive email match against
+--      `users` for the (small) cohort of legacy students who were created
+--      manually and never had an applicant profile. Only fills NULLs, so
+--      re-running is idempotent.
+-- =============================================================================
+UPDATE `student` s
+JOIN `admission_offers`    ao ON ao.student_id    = s.id
+JOIN `applicant_profiles`  ap ON ap.application_id = ao.application_id
+SET   s.user_id = ap.user_id
+WHERE s.user_id IS NULL
+  AND ap.user_id IS NOT NULL;
+
+UPDATE `student` s
+JOIN `users` u ON LOWER(u.email) = LOWER(s.email)
+SET   s.user_id = u.id
+WHERE s.user_id IS NULL
+  AND s.email IS NOT NULL
+  AND s.email <> '';

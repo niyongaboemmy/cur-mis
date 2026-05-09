@@ -22,16 +22,27 @@ class StudentModel extends BaseModel
      * Tries `user_id` first (set during enrollment); falls back to a
      * case-insensitive email match so legacy student rows that pre-date the
      * user_id linkage can still be claimed by their owners.
+     *
+     * Defensive: some legacy DB snapshots predate the migration that adds
+     * `student.user_id`. We swallow the missing-column error so the email
+     * fallback still runs instead of bubbling a 500 to the portal.
      */
     public function findByUserId(int $userId, ?string $email = null): array|false
     {
-        $row = $this->db->fetchOne(
-            "SELECT * FROM `{$this->table}` WHERE `user_id` = ? LIMIT 1",
-            [$userId]
-        );
-
-        if ($row) {
-            return $row;
+        try {
+            $row = $this->db->fetchOne(
+                "SELECT * FROM `{$this->table}` WHERE `user_id` = ? LIMIT 1",
+                [$userId]
+            );
+            if ($row) {
+                return $row;
+            }
+        } catch (\PDOException $e) {
+            // SQLSTATE 42S22 = column not found. Anything else genuinely is
+            // an error worth surfacing to the caller.
+            if ($e->getCode() !== '42S22') {
+                throw $e;
+            }
         }
 
         if ($email !== null && $email !== '') {
