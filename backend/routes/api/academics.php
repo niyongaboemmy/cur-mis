@@ -44,13 +44,63 @@ $entityPermissions = [
     'campuses'           => Permissions::MANAGE_CAMPUSES,
 ];
 
+// Department- and option-specific helpers — registered BEFORE the generic
+// entity loop so the literal `/next-code` segment wins the route match
+// against the generic `/:id` pattern that follows.
+$router->group('/api/academics-management/departments', function (Core\Router $r) {
+    $r->get('/next-code', [AcademicsManagementController::class, 'nextDepartmentCode']);
+}, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_DEPARTMENTS)]);
+
+$router->group('/api/academics-management/options', function (Core\Router $r) {
+    $r->get('/next-code', [AcademicsManagementController::class, 'nextOptionCode']);
+}, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_OPTIONS)]);
+
+// Module imports — the simple per-program flow (program-import) is what
+// the Modules tab uses. The wide curriculum endpoints stay registered so
+// they can back the future Schedules feature without UI churn.
+$router->group('/api/academics-management/modules', function (Core\Router $r) {
+    $r->post('/program-import',    [AcademicsManagementController::class, 'programImport']);
+    $r->post('/curriculum-import', [AcademicsManagementController::class, 'curriculumImport']);
+    $r->get ('/curriculum-export', [AcademicsManagementController::class, 'curriculumExport']);
+}, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_MODULES)]);
+
+// Academic-settings Schedules: per-program, per-mode block scheduling.
+// Reuses the MANAGE_MODULE_SCHEDULES permission so it doesn't conflict
+// with the /modules/scheduling timetable feature.
+$router->group('/api/academics-management/schedules', function (Core\Router $r) {
+    $r->get   ('',                  [AcademicsManagementController::class, 'getSchedules']);
+    $r->post  ('',                  [AcademicsManagementController::class, 'saveSchedules']);
+    $r->post  ('/import-timetable', [AcademicsManagementController::class, 'timetableImport']);
+    $r->get   ('/export-timetable', [AcademicsManagementController::class, 'timetableExport']);
+    $r->delete('/:id',              [AcademicsManagementController::class, 'deleteScheduleBlock']);
+}, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_MODULE_SCHEDULES)]);
+
+// Instructor directory for the Scheduling tab's instructor selector.
+$router->group('/api/academics-management/instructors', function (Core\Router $r) {
+    $r->get('', [AcademicsManagementController::class, 'instructors']);
+}, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_MODULE_SCHEDULES)]);
+
+// Exam scheduling — per-module exam date/time, drives the Exams sub-tab
+// and the per-exam attendance sheet. Reuses MANAGE_MODULE_SCHEDULES so it
+// inherits the same admin role as the teaching schedule. The literal
+// `/scheduled-modules` route is registered before `/:id` so it wins.
+$router->group('/api/academics-management/exams', function (Core\Router $r) {
+    $r->get   ('/scheduled-modules',   [AcademicsManagementController::class, 'examScheduledModules']);
+    $r->get   ('/:id/attendance',      [AcademicsManagementController::class, 'examAttendance']);
+    $r->get   ('',                     [AcademicsManagementController::class, 'listExams']);
+    $r->post  ('',                     [AcademicsManagementController::class, 'createExam']);
+    $r->put   ('/:id',                 [AcademicsManagementController::class, 'updateExam']);
+    $r->delete('/:id',                 [AcademicsManagementController::class, 'deleteExam']);
+}, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_MODULE_SCHEDULES)]);
+
 foreach ($entityPermissions as $entity => $permission) {
     $router->group("/api/academics-management/{$entity}", function (Core\Router $r) {
-        $r->get('',       [AcademicsManagementController::class, 'index']);
-        $r->get('/:id',   [AcademicsManagementController::class, 'show']);
-        $r->post('',      [AcademicsManagementController::class, 'create']);
-        $r->put('/:id',   [AcademicsManagementController::class, 'update']);
-        $r->delete('/:id', [AcademicsManagementController::class, 'delete']);
+        $r->get('',              [AcademicsManagementController::class, 'index']);
+        $r->get('/:id',          [AcademicsManagementController::class, 'show']);
+        $r->post('',             [AcademicsManagementController::class, 'create']);
+        $r->post('/bulk-import', [AcademicsManagementController::class, 'bulkImport']);
+        $r->put('/:id',          [AcademicsManagementController::class, 'update']);
+        $r->delete('/:id',        [AcademicsManagementController::class, 'delete']);
     }, [AuthMiddleware::class, new PermissionMiddleware($permission)]);
 }
 

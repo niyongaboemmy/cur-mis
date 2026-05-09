@@ -21,6 +21,7 @@ export const moduleCatalogService = {
       page?:       number
       per_page?:   number
       department?: number
+      program?:    number
       level?:      number
       status?:     'draft' | 'active' | 'archived'
       q?:          string

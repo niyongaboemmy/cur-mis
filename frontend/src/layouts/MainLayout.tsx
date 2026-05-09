@@ -81,7 +81,23 @@ type NavNode = {
 
 const NAV_TREE: NavNode[] = [
   { id: "home", label: "Home", icon: Home, to: "/" },
-  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, to: "/dashboard" },
+  {
+    id: "dashboard",
+    label: "Dashboard",
+    icon: LayoutDashboard,
+    to: "/dashboard",
+    // Admin metrics only — hide from external portal roles.
+    hideForRoles: ["student", "applicant"],
+  },
+  {
+    id: "student-profile",
+    label: "Profile",
+    icon: UserIcon,
+    to: "/me/profile",
+    // Role-scoped: enrolled students see "My Profile" wired to /api/students/me.
+    roles: ["student"],
+    permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL],
+  },
   {
     id: "applicant-dashboard",
     label: "Applications",
@@ -98,8 +114,16 @@ const NAV_TREE: NavNode[] = [
     icon: GraduationCap,
     permissions: [PERMISSIONS.VIEW_STUDENTS],
     children: [
-      { to: "/students", label: "All students", permissions: [PERMISSIONS.VIEW_STUDENTS] },
-      { to: "/students/alumni", label: "Alumni", permissions: [PERMISSIONS.VIEW_STUDENTS] },
+      {
+        to: "/students",
+        label: "All students",
+        permissions: [PERMISSIONS.VIEW_STUDENTS],
+      },
+      {
+        to: "/students/alumni",
+        label: "Alumni",
+        permissions: [PERMISSIONS.VIEW_STUDENTS],
+      },
     ],
   },
   {
@@ -108,11 +132,31 @@ const NAV_TREE: NavNode[] = [
     icon: Briefcase,
     permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES],
     children: [
-      { to: "/hr/staff",      label: "All staff",        permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },
-      { to: "/hr/payroll",    label: "Payroll",          permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },
-      { to: "/hr/payments",   label: "Salary",           permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },
-      { to: "/hr/leave",      label: "Leave",            permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },
-      { to: "/hr/settings",   label: "Payroll Settings", permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },
+      {
+        to: "/hr/staff",
+        label: "All staff",
+        permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES],
+      },
+      {
+        to: "/hr/payroll",
+        label: "Payroll",
+        permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES],
+      },
+      {
+        to: "/hr/payments",
+        label: "Salary",
+        permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES],
+      },
+      {
+        to: "/hr/leave",
+        label: "Leave",
+        permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES],
+      },
+      {
+        to: "/hr/settings",
+        label: "Payroll Settings",
+        permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES],
+      },
       // { to: "/hr/attendance", label: "Attendance",         permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },
       // { to: "/hr/documents",  label: "Documents",        permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },
     ],
@@ -129,19 +173,47 @@ const NAV_TREE: NavNode[] = [
       PERMISSIONS.MANAGE_ADMISSION_REQUIREMENTS,
     ],
     children: [
-      { to: "/admin/admissions/applications",   label: "Applications",   permissions: [PERMISSIONS.MANAGE_STUDENT_APPLICATIONS] },
-      { to: "/admin/admissions/verifications",  label: "Verifications",  permissions: [PERMISSIONS.VERIFY_DOCUMENTS] },
-      { to: "/admin/admissions/merit",          label: "Merit lists",    permissions: [PERMISSIONS.MANAGE_ADMISSIONS] },
-      { to: "/admin/admissions/offers",         label: "Offers",         permissions: [PERMISSIONS.MANAGE_ADMISSIONS] },
-      { to: "/admin/admissions/requirements",   label: "Requirements",   permissions: [PERMISSIONS.MANAGE_ADMISSION_REQUIREMENTS] },
-      { to: "/admin/admissions/document-types", label: "Document types", permissions: [PERMISSIONS.MANAGE_ADMISSION_REQUIREMENTS] },
-      { to: "/admin/admissions/intakes",        label: "Intakes",        permissions: [PERMISSIONS.MANAGE_ADMISSIONS] },
+      {
+        to: "/admin/admissions/applications",
+        label: "Applications",
+        permissions: [PERMISSIONS.MANAGE_STUDENT_APPLICATIONS],
+      },
+      {
+        to: "/admin/admissions/verifications",
+        label: "Verifications",
+        permissions: [PERMISSIONS.VERIFY_DOCUMENTS],
+      },
+      {
+        to: "/admin/admissions/merit",
+        label: "Merit lists",
+        permissions: [PERMISSIONS.MANAGE_ADMISSIONS],
+      },
+      {
+        to: "/admin/admissions/offers",
+        label: "Offers",
+        permissions: [PERMISSIONS.MANAGE_ADMISSIONS],
+      },
+      {
+        to: "/admin/admissions/requirements",
+        label: "Requirements",
+        permissions: [PERMISSIONS.MANAGE_ADMISSION_REQUIREMENTS],
+      },
+      {
+        to: "/admin/admissions/document-types",
+        label: "Document types",
+        permissions: [PERMISSIONS.MANAGE_ADMISSION_REQUIREMENTS],
+      },
+      {
+        to: "/admin/admissions/intakes",
+        label: "Intakes",
+        permissions: [PERMISSIONS.MANAGE_ADMISSIONS],
+      },
     ],
   },
   // ─── Modules Management Module ───
   {
     id: "modules",
-    label: "Modules",
+    label: "Academics",
     icon: BookOpen,
     permissions: [
       PERMISSIONS.MANAGE_MODULES,
@@ -152,12 +224,45 @@ const NAV_TREE: NavNode[] = [
       PERMISSIONS.ACCESS_STUDENT_PORTAL,
     ],
     children: [
-      { to: "/my-finance", label: "My Finance", permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL] },
-      { to: "/my-modules", label: "My Registrations", permissions: [PERMISSIONS.VIEW_MY_MODULES] },
-      { to: "/modules/catalog", label: "Catalog", permissions: [PERMISSIONS.MANAGE_MODULES] },
-      { to: "/modules/scheduling", label: "Scheduling", permissions: [PERMISSIONS.MANAGE_MODULE_SCHEDULES] },
-      { to: "/modules/assignments", label: "Assignments", permissions: [PERMISSIONS.MANAGE_MODULE_ASSIGNMENTS] },
-      { to: "/modules/registrations", label: "Registrations", permissions: [PERMISSIONS.MANAGE_MODULE_REGISTRATIONS] },
+      {
+        to: "/my-finance",
+        label: "My Finance",
+        permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL],
+      },
+      {
+        to: "/my-modules",
+        label: "My Registrations",
+        permissions: [PERMISSIONS.VIEW_MY_MODULES],
+      },
+      {
+        to: "/modules/catalog",
+        label: "Catalog",
+        permissions: [PERMISSIONS.MANAGE_MODULES],
+      },
+      {
+        to: "/modules/scheduling",
+        label: "Scheduling",
+        permissions: [PERMISSIONS.MANAGE_MODULE_SCHEDULES],
+      },
+      {
+        to: "/modules/assignments",
+        label: "Assignments",
+        permissions: [PERMISSIONS.MANAGE_MODULE_ASSIGNMENTS],
+      },
+      {
+        to: "/modules/registrations",
+        label: "Registrations",
+        permissions: [PERMISSIONS.MANAGE_MODULE_REGISTRATIONS],
+      },
+
+      {
+        to: "/academic/settings",
+        label: "Academic settings",
+        permissions: [
+          PERMISSIONS.MANAGE_ACADEMIC_YEARS,
+          PERMISSIONS.MANAGE_ACADEMIC_TERMS,
+        ],
+      },
     ],
   },
   {
@@ -166,11 +271,31 @@ const NAV_TREE: NavNode[] = [
     icon: CreditCard,
     permissions: [PERMISSIONS.VIEW_FINANCE, PERMISSIONS.MANAGE_FINANCE],
     children: [
-      { to: "/finance",            label: "Overview",    permissions: [PERMISSIONS.VIEW_FINANCE, PERMISSIONS.MANAGE_FINANCE] },
-      { to: "/finance/billing",    label: "Billing",     permissions: [PERMISSIONS.VIEW_FINANCE, PERMISSIONS.MANAGE_FINANCE] },
-      { to: "/finance/structures", label: "Fee Rates",   permissions: [PERMISSIONS.MANAGE_FINANCE] },
-      { to: "/finance/bursaries",  label: "Bursaries",   permissions: [PERMISSIONS.MANAGE_FINANCE] },
-      { to: "/finance/reports",    label: "Reports",     permissions: [PERMISSIONS.VIEW_FINANCE, PERMISSIONS.MANAGE_FINANCE] },
+      {
+        to: "/finance",
+        label: "Overview",
+        permissions: [PERMISSIONS.VIEW_FINANCE, PERMISSIONS.MANAGE_FINANCE],
+      },
+      {
+        to: "/finance/billing",
+        label: "Billing",
+        permissions: [PERMISSIONS.VIEW_FINANCE, PERMISSIONS.MANAGE_FINANCE],
+      },
+      {
+        to: "/finance/structures",
+        label: "Fee Rates",
+        permissions: [PERMISSIONS.MANAGE_FINANCE],
+      },
+      {
+        to: "/finance/bursaries",
+        label: "Bursaries",
+        permissions: [PERMISSIONS.MANAGE_FINANCE],
+      },
+      {
+        to: "/finance/reports",
+        label: "Reports",
+        permissions: [PERMISSIONS.VIEW_FINANCE, PERMISSIONS.MANAGE_FINANCE],
+      },
     ],
   },
   {
@@ -220,7 +345,7 @@ const ADMIN_TREE: NavNode[] = [
   },
   {
     id: "academics-management",
-    label: "Academics management",
+    label: "Settings",
     icon: Layers,
     to: "/academic/management",
     hideForRoles: ["hr_manager"],
@@ -264,11 +389,11 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
   },
   "/academic/settings": {
     title: "Academic settings",
-    sub: "Academic years & terms",
+    sub: "Faculties, departments, programs, modules and academic years/terms",
   },
   "/academic/management": {
-    title: "Academics management",
-    sub: "Degrees, schools, departments, modules, facilities and more",
+    title: "Settings",
+    sub: "Schools, degrees, facilities, levels, leave types, campuses and intakes",
   },
 
   "/admin/admissions": {
@@ -300,46 +425,113 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
     sub: "Catalogue of possible admission documents",
   },
 
-  "/applicant": { title: "My Applications", sub: "Track your progress and respond to offers." },
-  "/applicant/records": { title: "Academic Records", sub: "Your high school and university transcripts." },
-  "/applicant/documents": { title: "Documents", sub: "Upload required files for your checklist." },
+  "/applicant": {
+    title: "My Applications",
+    sub: "Track your progress and respond to offers.",
+  },
+  "/applicant/records": {
+    title: "Academic Records",
+    sub: "Your high school and university transcripts.",
+  },
+  "/applicant/documents": {
+    title: "Documents",
+    sub: "Upload required files for your checklist.",
+  },
   "/students/new": { title: "Admissions", sub: "New student applications" },
   "/students/alumni": { title: "Alumni", sub: "CUR alumni directory" },
-  "/hr/staff":      { title: "HR Management",    sub: "Staff directory, roles and contracts" },
-  "/hr/payroll":    { title: "Payroll",          sub: "Monthly salary breakdown and payslips" },
-  "/hr/payments":   { title: "Salary Payments",  sub: "Disbursement history and payment records" },
-  "/hr/leave":      { title: "Leave Management", sub: "Leave requests, approvals and balances" },
-  "/hr/attendance": { title: "Staff attendance", sub: "Daily attendance and timesheets" },
-  "/hr/documents":  { title: "Staff documents",  sub: "Contracts, IDs and HR files" },
-  "/hr/settings":   { title: "Payroll Settings",  sub: "Deduction rates and custom payroll items" },
+  "/hr/staff": {
+    title: "HR Management",
+    sub: "Staff directory, roles and contracts",
+  },
+  "/hr/payroll": {
+    title: "Payroll",
+    sub: "Monthly salary breakdown and payslips",
+  },
+  "/hr/payments": {
+    title: "Salary Payments",
+    sub: "Disbursement history and payment records",
+  },
+  "/hr/leave": {
+    title: "Leave Management",
+    sub: "Leave requests, approvals and balances",
+  },
+  "/hr/attendance": {
+    title: "Staff attendance",
+    sub: "Daily attendance and timesheets",
+  },
+  "/hr/documents": {
+    title: "Staff documents",
+    sub: "Contracts, IDs and HR files",
+  },
+  "/hr/settings": {
+    title: "Payroll Settings",
+    sub: "Deduction rates and custom payroll items",
+  },
   "/teachers": { title: "Teachers", sub: "Lecturers and faculty members" },
   "/teachers/schedules": {
     title: "Teacher schedules",
     sub: "Weekly teaching assignments",
   },
   "/programs": { title: "Programs", sub: "Academic programs & curriculum" },
-  "/finance":            { title: "Finance",    sub: "Fees, payments and billing" },
-  "/finance/billing":    { title: "Billing",    sub: "Student ledger and invoice management" },
-  "/finance/structures": { title: "Fee Rates",  sub: "Configure fee amounts per type, year and department" },
-  "/finance/bursaries":  { title: "Bursaries",  sub: "Scholarship and bursary allocations" },
-  "/finance/reports":    { title: "Revenue",    sub: "Fee collection breakdown by category" },
-  "/account/salaries":   { title: "Salaries",   sub: "Staff payroll" },
+  "/finance": { title: "Finance", sub: "Fees, payments and billing" },
+  "/finance/billing": {
+    title: "Billing",
+    sub: "Student ledger and invoice management",
+  },
+  "/finance/structures": {
+    title: "Fee Rates",
+    sub: "Configure fee amounts per type, year and department",
+  },
+  "/finance/bursaries": {
+    title: "Bursaries",
+    sub: "Scholarship and bursary allocations",
+  },
+  "/finance/reports": {
+    title: "Revenue",
+    sub: "Fee collection breakdown by category",
+  },
+  "/account/salaries": { title: "Salaries", sub: "Staff payroll" },
   "/exams": { title: "Examinations", sub: "Exams, results and transcripts" },
   "/exams/results": { title: "Exam results", sub: "All examination results" },
   "/library": { title: "Library", sub: "Books and digital resources" },
   "/class": { title: "Classes", sub: "Class schedules and rooms" },
-  "/attendance": { title: "Attendance", sub: "Record and review student attendance by module and session" },
+  "/attendance": {
+    title: "Attendance",
+    sub: "Record and review student attendance by module and session",
+  },
   "/notice": { title: "Notice board", sub: "Announcements and circulars" },
   "/transport": { title: "Transport", sub: "Routes and vehicles" },
   "/hostel": { title: "Hostel", sub: "Accommodation management" },
 
   // Modules Management Module
-  "/modules": { title: "Modules", sub: "Module catalog, scheduling, assignments & registrations" },
-  "/modules/catalog": { title: "Module Catalog", sub: "Browse and manage course modules" },
-  "/modules/scheduling": { title: "Module Scheduling", sub: "Timetable entries and conflict detection" },
-  "/modules/assignments": { title: "Module Assignments", sub: "Faculty-to-module assignments and workload" },
-  "/modules/registrations": { title: "Module Registrations", sub: "Admin view of student module registrations" },
-  "/my-modules": { title: "My Modules", sub: "Register for modules and track your courses" },
+  "/modules": {
+    title: "Modules",
+    sub: "Module catalog, scheduling, assignments & registrations",
+  },
+  "/modules/catalog": {
+    title: "Module Catalog",
+    sub: "Browse and manage course modules",
+  },
+  "/modules/scheduling": {
+    title: "Module Scheduling",
+    sub: "Timetable entries and conflict detection",
+  },
+  "/modules/assignments": {
+    title: "Module Assignments",
+    sub: "Faculty-to-module assignments and workload",
+  },
+  "/modules/registrations": {
+    title: "Module Registrations",
+    sub: "Admin view of student module registrations",
+  },
+  "/modules/marks": {
+    title: "Module Marks",
+    sub: "Record CAT, partial and final exam marks per module",
+  },
+  "/my-modules": {
+    title: "My Modules",
+    sub: "Register for modules and track your courses",
+  },
 };
 
 const STORAGE_KEY = "cur-mis-sidebar-collapsed";
@@ -447,7 +639,11 @@ export default function MainLayout() {
   );
 
   const isVisible = useCallback(
-    (node: { roles?: string[]; permissions?: string[]; hideForRoles?: string[] }) => {
+    (node: {
+      roles?: string[];
+      permissions?: string[];
+      hideForRoles?: string[];
+    }) => {
       if (node.hideForRoles?.includes(user?.role ?? "")) return false;
       return matchesRoles(node.roles) && hasAccess(node.permissions);
     },
@@ -474,7 +670,10 @@ export default function MainLayout() {
               c.label.toLowerCase().includes(q),
             );
 
-            if (!matchesParent && (!matchingChildren || matchingChildren.length === 0)) {
+            if (
+              !matchesParent &&
+              (!matchingChildren || matchingChildren.length === 0)
+            ) {
               return null;
             }
             if (matchingChildren) {
@@ -500,7 +699,9 @@ export default function MainLayout() {
         .filter((n) => hasAccess(n.permissions))
         .map((n) => {
           // If node has children, filter them by permissions first
-          let filteredChildren = n.children?.filter((c) => hasAccess(c.permissions));
+          let filteredChildren = n.children?.filter((c) =>
+            hasAccess(c.permissions),
+          );
 
           // Then filter by search query if exists
           if (q) {
@@ -509,7 +710,10 @@ export default function MainLayout() {
               c.label.toLowerCase().includes(q),
             );
 
-            if (!matchesParent && (!matchingChildren || matchingChildren.length === 0)) {
+            if (
+              !matchesParent &&
+              (!matchingChildren || matchingChildren.length === 0)
+            ) {
               return null;
             }
             if (matchingChildren) {
@@ -684,7 +888,6 @@ export default function MainLayout() {
               </>
             )}
             <RoundIconBtn label="Notifications" dot>
-
               <Bell className="w-[18px] h-[18px]" />
             </RoundIconBtn>
             <RoundIconBtn label="Messages">

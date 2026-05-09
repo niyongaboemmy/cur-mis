@@ -8,7 +8,7 @@ class FacultyModel extends BaseModel
 {
     protected string $table      = 'faculty';
     protected string $primaryKey = 'fac_id';
-    protected array  $fillable   = ['fac_name', 'fac_code', 'fac_descript', 'fac_reg_date', 'school_id'];
+    protected array  $fillable   = ['fac_name', 'fac_acronym', 'fac_code', 'fac_descript', 'fac_reg_date', 'school_id'];
     protected array  $hidden     = [];
 
     /**
@@ -17,7 +17,8 @@ class FacultyModel extends BaseModel
     public function getAllWithSchool(): array
     {
         return $this->db->fetchAll(
-            "SELECT f.fac_id AS id, f.fac_name AS name, f.fac_code AS code,
+            "SELECT f.fac_id AS id, f.fac_name AS name,
+                    f.fac_acronym AS acronym, f.fac_code AS code,
                     f.fac_descript AS description, f.school_id,
                     s.school_name
              FROM `faculty` f

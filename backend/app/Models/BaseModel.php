@@ -55,6 +55,18 @@ abstract class BaseModel
         return $this->db;
     }
 
+    /** Table name backing this model. */
+    public function table(): string
+    {
+        return $this->table;
+    }
+
+    /** Primary-key column name. */
+    public function primaryKey(): string
+    {
+        return $this->primaryKey;
+    }
+
     // ──────────────────────────────────────────────────────────
     // Read
     // ──────────────────────────────────────────────────────────

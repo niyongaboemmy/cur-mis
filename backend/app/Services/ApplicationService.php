@@ -427,8 +427,20 @@ class ApplicationService
         $seq       = ((int)($row['max_id'] ?? 0)) + 1;
         $regNumber = sprintf('STD/%s/%05d', $year, $seq);
 
-        // Map application → student table columns
+        // Resolve the user account that owns this application up front so the
+        // student row can be linked back to it via `user_id`. Without that
+        // link the student portal can't load "My Profile".
+        $profile = $this->db->fetchOne(
+            "SELECT user_id FROM `applicant_profiles` WHERE application_id = ? LIMIT 1",
+            [$applicationId]
+        );
+        $applicantUserId = $profile ? (int)$profile['user_id'] : 0;
+
+        // Map application → student table columns. `std_option` carries the
+        // option/program id selected on the application; the curriculum
+        // endpoint joins on it to pull the program's modules.
         $studentData = [
+            'user_id'           => $applicantUserId > 0 ? $applicantUserId : null,
             'regnumber'         => $regNumber,
             'fname'             => $offer['first_name'],
             'lname'             => $offer['last_name'],
@@ -440,6 +452,8 @@ class ApplicationService
             'faculty'           => $offer['faculty_name'] ?? '',
             'department'        => $offer['department_code'] ?? '',
             'program'           => $offer['department_name'] ?? $offer['department_code'],
+            'std_option'        => !empty($offer['program_id']) ? (string)(int)$offer['program_id'] : null,
+            'campus'            => !empty($offer['campus_id'])  ? (string)(int)$offer['campus_id']  : null,
             'combination'       => $offer['combination']   ?? '',
             'last_school'       => $offer['prev_school']   ?? '',
             'sponsor'           => $offer['sponsorship']   ?? '',
@@ -467,16 +481,14 @@ class ApplicationService
         );
 
         // Convert user account from Applicant to Student
-        $profile = $this->db->fetchOne("SELECT user_id FROM `applicant_profiles` WHERE application_id = ? LIMIT 1", [$applicationId]);
-        if ($profile) {
-            $userId    = (int)$profile['user_id'];
-            $roleModel = new \App\Models\RoleModel();
+        if ($applicantUserId > 0) {
+            $roleModel     = new \App\Models\RoleModel();
             $studentRoleId = $roleModel->getIdByName('student');
-            
+
             if ($studentRoleId) {
                 $this->db->execute(
                     "UPDATE `users` SET role_id = ?, updated_at = NOW() WHERE id = ?",
-                    [$studentRoleId, $userId]
+                    [$studentRoleId, $applicantUserId]
                 );
             }
         }

@@ -298,15 +298,21 @@ export default function ApplicationDetailPage() {
   });
   const levels = levelsQ.data?.data?.data || [];
 
+  // Selected program (option) the applicant chose. Falls back to department
+  // when older applications didn't capture program_id, so the screen still
+  // renders something sensible.
+  const programId = (app as any)?.program_id ?? null;
+
   const modulesQ = useQuery({
-    queryKey: ["acmgmt", "modules", app?.department_id, selectedLevelId],
+    queryKey: ["acmgmt", "modules", "byProgram", programId, app?.department_id],
     queryFn: () =>
       academicsMgmtService.list("modules", {
-        department: app?.department_id,
-        level: selectedLevelId,
-        per_page: 100,
+        ...(programId
+          ? { program: programId }
+          : { department: app?.department_id }),
+        per_page: 500,
       }),
-    enabled: !!app?.department_id && !!selectedLevelId,
+    enabled: !!programId || !!app?.department_id,
   });
   const modules = modulesQ.data?.data?.data || [];
 
@@ -1167,6 +1173,14 @@ export default function ApplicationDetailPage() {
                       Program Details
                     </h4>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                      <InfoGroup
+                        label="Program"
+                        value={
+                          (app as any).program_name ??
+                          app.department_name ??
+                          "—"
+                        }
+                      />
                       <InfoGroup label="Faculty" value={app.faculty_name} />
                       <InfoGroup
                         label="Department"
@@ -1180,12 +1194,18 @@ export default function ApplicationDetailPage() {
 
                       <div className="sm:col-span-2 pt-2 border-t border-ink-100 dark:border-ink-800">
                         <div className="flex items-center justify-between mb-3">
-                          <p className="text-[11px] uppercase tracking-wider text-indigo-400 font-bold">
-                            Subjects & Modules
-                          </p>
+                          <div>
+                            <p className="text-[11px] uppercase tracking-wider text-indigo-400 font-bold">
+                              Subjects & Modules
+                            </p>
+                            <p className="text-[11px] text-ink-400 mt-0.5">
+                              {modules.length} module
+                              {modules.length === 1 ? "" : "s"} in this program
+                            </p>
+                          </div>
                           <div className="flex items-center gap-2">
                             <label className="text-[11px] font-bold text-ink-500 uppercase">
-                              Assign Level:
+                              Start Level:
                             </label>
                             <select
                               className="input py-1 px-2 text-[12px] min-w-[120px]"
@@ -1203,11 +1223,13 @@ export default function ApplicationDetailPage() {
                           </div>
                         </div>
                         <p className="text-[13px] text-indigo-900 dark:text-indigo-200 leading-relaxed mb-3">
-                          Upon enrollment, the student will be assigned to the
-                          standard curriculum for{" "}
-                          <strong>{app.department_name}</strong> at the selected
-                          level. The following core subjects will be registered
-                          automatically.
+                          Upon enrollment, the student will be admitted to{" "}
+                          <strong>
+                            {(app as any).program_name ??
+                              app.department_name}
+                          </strong>
+                          . The full curriculum below is registered against the
+                          program; the student starts at the selected level.
                         </p>
 
                         {modulesQ.isLoading ? (
@@ -1216,34 +1238,68 @@ export default function ApplicationDetailPage() {
                             modules...
                           </div>
                         ) : modules.length > 0 ? (
-                          <div className="bg-white dark:bg-ink-950/50 rounded-xl border border-ink-100 dark:border-ink-800 max-h-60 overflow-y-auto mt-2">
-                            <ul className="divide-y divide-ink-100 dark:divide-ink-800">
-                              {modules.map((m: any) => (
-                                <li
-                                  key={m.id}
-                                  className="p-3 flex items-start gap-3"
-                                >
-                                  <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center shrink-0">
-                                    <FileText className="w-3.5 h-3.5 text-indigo-500" />
+                          <div className="bg-white dark:bg-ink-950/50 rounded-xl border border-ink-100 dark:border-ink-800 max-h-72 overflow-y-auto mt-2">
+                            {(() => {
+                              const groups = new Map<
+                                string | number,
+                                any[]
+                              >();
+                              for (const m of modules as any[]) {
+                                const key = m.level ?? "—";
+                                if (!groups.has(key)) groups.set(key, []);
+                                groups.get(key)!.push(m);
+                              }
+                              const sortedKeys = Array.from(
+                                groups.keys(),
+                              ).sort((a, b) => {
+                                if (a === "—") return 1;
+                                if (b === "—") return -1;
+                                return Number(a) - Number(b);
+                              });
+                              return sortedKeys.map((lvlKey) => {
+                                const lvlLabel =
+                                  lvlKey === "—"
+                                    ? "Unassigned Level"
+                                    : levels.find(
+                                        (l: any) => l.id === Number(lvlKey),
+                                      )?.name || `Level ${lvlKey}`;
+                                const items = groups.get(lvlKey)!;
+                                return (
+                                  <div key={String(lvlKey)}>
+                                    <div className="sticky top-0 bg-ink-50 dark:bg-ink-900/80 backdrop-blur px-3 py-1.5 text-[10px] uppercase tracking-widest font-black text-ink-500 border-b border-ink-100 dark:border-ink-800">
+                                      {lvlLabel} · {items.length} module
+                                      {items.length === 1 ? "" : "s"}
+                                    </div>
+                                    <ul className="divide-y divide-ink-100 dark:divide-ink-800">
+                                      {items.map((m: any) => (
+                                        <li
+                                          key={m.module_id}
+                                          className="p-3 flex items-start gap-3"
+                                        >
+                                          <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center shrink-0">
+                                            <FileText className="w-3.5 h-3.5 text-indigo-500" />
+                                          </div>
+                                          <div>
+                                            <p className="text-[12px] font-black text-ink-900 dark:text-white leading-tight">
+                                              {m.module_name}
+                                            </p>
+                                            <p className="text-[11px] text-ink-400 font-mono mt-0.5">
+                                              {m.module_code} ·{" "}
+                                              {m.module_credits} Credits
+                                            </p>
+                                          </div>
+                                        </li>
+                                      ))}
+                                    </ul>
                                   </div>
-                                  <div>
-                                    <p className="text-[12px] font-black text-ink-900 dark:text-white leading-tight">
-                                      {m.module_name}
-                                    </p>
-                                    <p className="text-[11px] text-ink-400 font-mono mt-0.5">
-                                      {m.module_code} · {m.module_credits}{" "}
-                                      Credits
-                                    </p>
-                                  </div>
-                                </li>
-                              ))}
-                            </ul>
+                                );
+                              });
+                            })()}
                           </div>
                         ) : (
                           <div className="p-4 rounded-xl border border-dashed border-ink-200 dark:border-ink-800 text-center">
                             <p className="text-[12px] text-ink-500">
-                              No modules found for this department at the
-                              selected level.
+                              No modules are linked to this program yet.
                             </p>
                           </div>
                         )}
