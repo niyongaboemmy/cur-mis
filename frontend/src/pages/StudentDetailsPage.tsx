@@ -2,6 +2,7 @@ import { useParams, Link, useLocation } from 'react-router-dom'
 import { createPortal } from 'react-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { studentService } from '@/services/studentService'
+import { authService } from '@/services/authService'
 import { marksService, type MyMarksRow, type MyMarksTotals } from '@/services/marksService'
 import { academicService } from '@/services/academicService'
 import { attendanceService, type StudentAttendanceStatus } from '@/services/attendanceService'
@@ -18,7 +19,7 @@ import {
   Sparkles, Trash2, MapPin, CreditCard, CalendarDays,
   Heart, Accessibility, Users as UsersIcon,
   CalendarClock, CalendarOff, Camera,
-  PlusCircle, MinusCircle,
+  PlusCircle, MinusCircle, Lock, EyeOff,
 } from 'lucide-react'
 
 type Tab = 'overview' | 'attendance' | 'documents' | 'curriculum' | 'finance' | 'transcript'
@@ -190,30 +191,27 @@ function OverviewTab({ student, stats, selfMode = false }: { student: any, stats
   return (
     <div className="space-y-6">
       {/* Hero profile card */}
-      <section className="relative overflow-hidden rounded-2xl border border-ink-200 dark:border-ink-800 bg-white dark:bg-ink-900">
-        {/* gradient banner */}
-        <div className="h-28 bg-gradient-to-r from-brand/90 via-brand to-brand/70 dark:from-brand/60 dark:via-brand/70 dark:to-brand/50" />
-
-        <div className="px-6 pb-6 -mt-16 flex flex-col md:flex-row gap-6 md:items-end">
+      <section className="rounded-2xl border border-ink-200 dark:border-ink-800 bg-white dark:bg-ink-900 p-6 sm:p-8">
+        <div className="flex flex-col md:flex-row gap-8 items-start">
           {/* large editable photo */}
           <ProfileHeroPhoto student={student} initials={initials} selfMode={selfMode} />
 
-          <div className="flex-1 min-w-0 md:pb-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-2xl font-bold text-ink-900 dark:text-white truncate">{fullName}</h2>
-              <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ring-1 ${stateClass}`}>
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-wrap items-center gap-3">
+              <h2 className="text-3xl font-bold text-ink-900 dark:text-white">{fullName}</h2>
+              <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold ring-1 ${stateClass}`}>
                 {String(student.student_state || 'Unknown').toUpperCase()}
               </span>
             </div>
-            <p className="mt-2 flex flex-wrap items-center gap-2 text-sm text-ink-500">
-              <span className="font-mono bg-ink-100 dark:bg-ink-800 px-2 py-0.5 rounded text-ink-700 dark:text-ink-200">
+            <p className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-ink-500">
+              <span className="font-mono bg-ink-100 dark:bg-ink-800 px-2.5 py-1 rounded text-ink-800 dark:text-ink-100 font-semibold">
                 {student.regnumber || student.index_number || 'No ID'}
               </span>
-              {programName && <span className="inline-flex items-center gap-1"><BookOpen className="w-3.5 h-3.5" /> {programName}</span>}
-              {levelName && <span className="inline-flex items-center gap-1"><GraduationCap className="w-3.5 h-3.5" /> Level {levelName}</span>}
+              {programName && <span className="inline-flex items-center gap-1.5"><BookOpen className="w-4 h-4 text-brand" /> {programName}</span>}
+              {levelName && <span className="inline-flex items-center gap-1.5"><GraduationCap className="w-4 h-4 text-brand" /> Level {levelName}</span>}
             </p>
 
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-5 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
               {facultyName && <Chip icon={Building2} label="Faculty" value={facultyName} />}
               {deptName    && <Chip icon={GraduationCap} label="Department" value={deptName} />}
               {academicYear && <Chip icon={Calendar} label="Year" value={academicYear} />}
@@ -226,32 +224,14 @@ function OverviewTab({ student, stats, selfMode = false }: { student: any, stats
 
       {/* Two-column responsive layout */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <section className="card p-6">
-          <SectionHeader title="Personal Details" sub="Identity and parental information." icon={User} />
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5 mt-6">
-            <InfoGroup label="Full Name" value={fullName} icon={User} />
-            <InfoGroup label="Gender" value={genderLabel} />
-            <InfoGroup label="Date of Birth" value={pick(student.birthdate, app?.birthdate)} icon={CalendarDays} />
-            <InfoGroup label="Marital Status" value={cap(pick(app?.marital_status))} icon={Heart} />
-            <InfoGroup label="National ID / Passport" value={pick(student.id_card, app?.national_id)} icon={CreditCard} />
-            <InfoGroup label="Nationality" value={pick(student.nationality, app?.nationality)} icon={Globe2} />
-            <InfoGroup label="Father's Name" value={pick(student.father, app?.father)} icon={UsersIcon} />
-            <InfoGroup label="Mother's Name" value={pick(student.mother, app?.mother)} icon={UsersIcon} />
-            <InfoGroup label="Country of Residence" value={pick(app?.country_of_residence)} icon={MapPin} />
-            <InfoGroup label="Disability" value={pick(app?.disability) ?? 'None'} icon={Accessibility} />
-          </div>
-        </section>
-
-        <section className="card p-6">
-          <SectionHeader title="Contact" sub="How we reach the student." icon={Phone} />
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5 mt-6">
-            <InfoGroup label="Phone" value={pick(student.phone, app?.phone)} icon={Phone} />
-            <InfoGroup label="Reference Person Phone" value={pick(app?.reference_phone)} icon={Phone} />
-            <div className="sm:col-span-2">
-              <InfoGroup label="Email" value={pick(student.email, app?.email)} icon={Mail} />
-            </div>
-          </div>
-        </section>
+        <PersonalDetailsSection
+          student={student}
+          app={app}
+          fullName={fullName}
+          genderLabel={genderLabel}
+          selfMode={selfMode}
+        />
+        <ContactSection student={student} app={app} selfMode={selfMode} />
       </div>
 
       {/* Programme — full width */}
@@ -272,19 +252,8 @@ function OverviewTab({ student, stats, selfMode = false }: { student: any, stats
 
       {/* Residency + Academic Background — side by side when both exist */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {app && (app.province || app.district || app.sector || app.residence_district || app.address) && (
-          <section className="card p-6">
-            <SectionHeader title="Residency" sub="Where the student lives." icon={MapPin} />
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5 mt-6">
-              <InfoGroup label="Province" value={pick(app?.province)} />
-              <InfoGroup label="District" value={pick(app?.district)} />
-              <InfoGroup label="Sector" value={pick(app?.sector)} />
-              <InfoGroup label="Residence District" value={pick(app?.residence_district)} />
-              <div className="sm:col-span-2">
-                <InfoGroup label="Address" value={pick(app?.address) ?? 'Not provided'} icon={MapPin} />
-              </div>
-            </div>
-          </section>
+        {(selfMode || (app && (student.province || student.district || student.sector || app.province || app.district || app.sector || app.residence_district || app.address))) && (
+          <ResidencySection student={student} app={app} selfMode={selfMode} />
         )}
 
         {app && (
@@ -312,17 +281,469 @@ function OverviewTab({ student, stats, selfMode = false }: { student: any, stats
           <p className="text-sm">Comprehensive stats and GPA calculations are currently being processed.</p>
         </div>
       </section>
+
+      {selfMode && <ChangePasswordSection />}
+    </div>
+  )
+}
+
+/**
+ * Personal Details — read-only by default. In selfMode the section can be
+ * flipped into edit mode, where only the marital_status field is writable.
+ * Everything else (name, gender, DOB, ID, nationality, parents) stays
+ * locked because those belong to the legal/academic identity captured at
+ * enrollment and are admin-only.
+ */
+function PersonalDetailsSection({
+  student, app, fullName, genderLabel, selfMode,
+}: { student: any; app: any; fullName: string; genderLabel: string | null; selfMode: boolean }) {
+  const qc = useQueryClient()
+  const [editing, setEditing] = useState(false)
+
+  const pick = (...vals: any[]) =>
+    vals.find(v => v !== undefined && v !== null && v !== '') ?? null
+
+  const initialMarital = (pick(student.marital_status, app?.marital_status) ?? '') as string
+  const [marital, setMarital] = useState<string>(initialMarital.toLowerCase())
+  useEffect(() => { setMarital((pick(student.marital_status, app?.marital_status) ?? '').toString().toLowerCase()) }, [student.marital_status, app?.marital_status])
+
+  const save = useMutation({
+    mutationFn: () => studentService.updateMe({ marital_status: marital || null }),
+    onSuccess: () => {
+      toast.success('Personal details updated.')
+      qc.invalidateQueries({ queryKey: ['student', 'me'] })
+      setEditing(false)
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to update profile'),
+  })
+
+  return (
+    <section className="card p-6">
+      <div className="flex items-start justify-between gap-3">
+        <SectionHeader title="Personal Details" sub="Identity and parental information." icon={User} />
+        {selfMode && !editing && (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="btn-secondary btn-sm flex items-center gap-1.5 h-7 px-2.5 shrink-0"
+          >
+            <Edit className="w-3.5 h-3.5" />
+            <span>Edit</span>
+          </button>
+        )}
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5 mt-6">
+        <InfoGroup label="Full Name" value={fullName} icon={User} />
+        <InfoGroup label="Gender" value={genderLabel} />
+        <InfoGroup label="Date of Birth" value={pick(student.birthdate, app?.birthdate)} icon={CalendarDays} />
+
+        {editing ? (
+          <FieldGroup label="Marital Status" icon={Heart}>
+            <select
+              value={marital}
+              onChange={(e) => setMarital(e.target.value)}
+              className="w-full h-9 px-3 rounded-md border border-ink-200 dark:border-ink-700 bg-white dark:bg-ink-900 text-sm focus:border-brand focus:ring-1 focus:ring-brand outline-none"
+            >
+              <option value="">— Select —</option>
+              <option value="single">Single</option>
+              <option value="married">Married</option>
+              <option value="divorced">Divorced</option>
+              <option value="widowed">Widowed</option>
+            </select>
+          </FieldGroup>
+        ) : (
+          <InfoGroup label="Marital Status" value={cap(pick(student.marital_status, app?.marital_status))} icon={Heart} />
+        )}
+
+        <InfoGroup label="National ID / Passport" value={pick(student.id_card, app?.national_id)} icon={CreditCard} />
+        <InfoGroup label="Nationality" value={pick(student.nationality, app?.nationality)} icon={Globe2} />
+        <InfoGroup label="Father's Name" value={pick(student.father, app?.father)} icon={UsersIcon} />
+        <InfoGroup label="Mother's Name" value={pick(student.mother, app?.mother)} icon={UsersIcon} />
+        <InfoGroup label="Country of Residence" value={pick(app?.country_of_residence)} icon={MapPin} />
+        <InfoGroup label="Disability" value={pick(app?.disability) ?? 'None'} icon={Accessibility} />
+      </div>
+
+      {editing && (
+        <div className="mt-6 flex items-center justify-end gap-2 pt-4 border-t border-ink-100 dark:border-ink-800">
+          <button
+            type="button"
+            onClick={() => { setMarital(initialMarital.toLowerCase()); setEditing(false) }}
+            disabled={save.isPending}
+            className="btn-secondary btn-sm flex items-center gap-1.5 h-8 px-3"
+          >
+            <X className="w-3.5 h-3.5" /> Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => save.mutate()}
+            disabled={save.isPending}
+            className="btn-primary btn-sm flex items-center gap-1.5 h-8 px-3"
+          >
+            {save.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+            Save
+          </button>
+        </div>
+      )}
+    </section>
+  )
+}
+
+/**
+ * Contact section — phone is the only field a student is allowed to edit.
+ * Email is the login identifier (changing it server-side would risk locking
+ * the user out) and reference phone belongs to the application record, so
+ * both stay read-only.
+ */
+function ContactSection({ student, app, selfMode }: { student: any; app: any; selfMode: boolean }) {
+  const qc = useQueryClient()
+  const [editing, setEditing] = useState(false)
+
+  const pick = (...vals: any[]) =>
+    vals.find(v => v !== undefined && v !== null && v !== '') ?? null
+
+  const initialPhone = (pick(student.phone, app?.phone) ?? '') as string
+  const [phone, setPhone] = useState<string>(initialPhone)
+  useEffect(() => { setPhone((pick(student.phone, app?.phone) ?? '') as string) }, [student.phone, app?.phone])
+
+  const save = useMutation({
+    mutationFn: () => studentService.updateMe({ phone: phone.trim() || null }),
+    onSuccess: () => {
+      toast.success('Contact updated.')
+      qc.invalidateQueries({ queryKey: ['student', 'me'] })
+      setEditing(false)
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to update contact'),
+  })
+
+  return (
+    <section className="card p-6">
+      <div className="flex items-start justify-between gap-3">
+        <SectionHeader title="Contact" sub="How we reach the student." icon={Phone} />
+        {selfMode && !editing && (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="btn-secondary btn-sm flex items-center gap-1.5 h-7 px-2.5 shrink-0"
+          >
+            <Edit className="w-3.5 h-3.5" />
+            <span>Edit</span>
+          </button>
+        )}
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5 mt-6">
+        {editing ? (
+          <FieldGroup label="Phone" icon={Phone}>
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="+250 7XX XXX XXX"
+              className="w-full h-9 px-3 rounded-md border border-ink-200 dark:border-ink-700 bg-white dark:bg-ink-900 text-sm focus:border-brand focus:ring-1 focus:ring-brand outline-none"
+            />
+          </FieldGroup>
+        ) : (
+          <InfoGroup label="Phone" value={pick(student.phone, app?.phone)} icon={Phone} />
+        )}
+        <InfoGroup label="Reference Person Phone" value={pick(app?.reference_phone)} icon={Phone} />
+        <div className="sm:col-span-2">
+          <InfoGroup label="Email" value={pick(student.email, app?.email)} icon={Mail} />
+        </div>
+      </div>
+
+      {editing && (
+        <div className="mt-6 flex items-center justify-end gap-2 pt-4 border-t border-ink-100 dark:border-ink-800">
+          <button
+            type="button"
+            onClick={() => { setPhone(initialPhone); setEditing(false) }}
+            disabled={save.isPending}
+            className="btn-secondary btn-sm flex items-center gap-1.5 h-8 px-3"
+          >
+            <X className="w-3.5 h-3.5" /> Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => save.mutate()}
+            disabled={save.isPending}
+            className="btn-primary btn-sm flex items-center gap-1.5 h-8 px-3"
+          >
+            {save.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+            Save
+          </button>
+        </div>
+      )}
+    </section>
+  )
+}
+
+/**
+ * Residency — province/district/sector/cell/village live on the student
+ * record itself, so students can self-edit them. Address and residence
+ * district stay read-only (admin-only on the application record).
+ */
+function ResidencySection({ student, app, selfMode }: { student: any; app: any; selfMode: boolean }) {
+  const qc = useQueryClient()
+  const [editing, setEditing] = useState(false)
+
+  const pick = (...vals: any[]) =>
+    vals.find(v => v !== undefined && v !== null && v !== '') ?? null
+
+  const initial = {
+    province: (pick(student.province, app?.province) ?? '') as string,
+    district: (pick(student.district, app?.district) ?? '') as string,
+    sector:   (pick(student.sector,   app?.sector)   ?? '') as string,
+    cell:     (pick(student.cell)                    ?? '') as string,
+    village:  (pick(student.village)                 ?? '') as string,
+  }
+  const [form, setForm] = useState(initial)
+  useEffect(() => { setForm({
+    province: (pick(student.province, app?.province) ?? '') as string,
+    district: (pick(student.district, app?.district) ?? '') as string,
+    sector:   (pick(student.sector,   app?.sector)   ?? '') as string,
+    cell:     (pick(student.cell)                    ?? '') as string,
+    village:  (pick(student.village)                 ?? '') as string,
+  }) }, [student.province, student.district, student.sector, student.cell, student.village, app?.province, app?.district, app?.sector])
+
+  const save = useMutation({
+    mutationFn: () => studentService.updateMe({
+      province: form.province.trim() || null,
+      district: form.district.trim() || null,
+      sector:   form.sector.trim()   || null,
+      cell:     form.cell.trim()     || null,
+      village:  form.village.trim()  || null,
+    }),
+    onSuccess: () => {
+      toast.success('Residency updated.')
+      qc.invalidateQueries({ queryKey: ['student', 'me'] })
+      setEditing(false)
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to update residency'),
+  })
+
+  const set = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setForm(f => ({ ...f, [key]: e.target.value }))
+
+  return (
+    <section className="card p-6">
+      <div className="flex items-start justify-between gap-3">
+        <SectionHeader title="Residency" sub="Where the student lives." icon={MapPin} />
+        {selfMode && !editing && (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="btn-secondary btn-sm flex items-center gap-1.5 h-7 px-2.5 shrink-0"
+          >
+            <Edit className="w-3.5 h-3.5" />
+            <span>Edit</span>
+          </button>
+        )}
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5 mt-6">
+        {editing ? (
+          <>
+            <FieldGroup label="Province"><TextInput value={form.province} onChange={set('province')} placeholder="e.g. Kigali City" /></FieldGroup>
+            <FieldGroup label="District"><TextInput value={form.district} onChange={set('district')} placeholder="e.g. Gasabo" /></FieldGroup>
+            <FieldGroup label="Sector"><TextInput value={form.sector} onChange={set('sector')} placeholder="e.g. Remera" /></FieldGroup>
+            <FieldGroup label="Cell"><TextInput value={form.cell} onChange={set('cell')} placeholder="e.g. Rukiri I" /></FieldGroup>
+            <FieldGroup label="Village"><TextInput value={form.village} onChange={set('village')} placeholder="e.g. Amahoro" /></FieldGroup>
+          </>
+        ) : (
+          <>
+            <InfoGroup label="Province" value={pick(student.province, app?.province)} />
+            <InfoGroup label="District" value={pick(student.district, app?.district)} />
+            <InfoGroup label="Sector"   value={pick(student.sector,   app?.sector)} />
+            <InfoGroup label="Cell"     value={pick(student.cell)} />
+            <InfoGroup label="Village"  value={pick(student.village)} />
+          </>
+        )}
+
+        {/* Application-level fields stay read-only on the student side. */}
+        {pick(app?.residence_district) && (
+          <InfoGroup label="Residence District" value={pick(app?.residence_district)} />
+        )}
+        {(pick(app?.address) || !editing) && (
+          <div className="sm:col-span-2">
+            <InfoGroup label="Address" value={pick(app?.address) ?? 'Not provided'} icon={MapPin} />
+          </div>
+        )}
+      </div>
+
+      {editing && (
+        <div className="mt-6 flex items-center justify-end gap-2 pt-4 border-t border-ink-100 dark:border-ink-800">
+          <button
+            type="button"
+            onClick={() => { setForm(initial); setEditing(false) }}
+            disabled={save.isPending}
+            className="btn-secondary btn-sm flex items-center gap-1.5 h-8 px-3"
+          >
+            <X className="w-3.5 h-3.5" /> Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => save.mutate()}
+            disabled={save.isPending}
+            className="btn-primary btn-sm flex items-center gap-1.5 h-8 px-3"
+          >
+            {save.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+            Save
+          </button>
+        </div>
+      )}
+    </section>
+  )
+}
+
+/** Plain text input styled to match the FieldGroup wrapper. */
+function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <input
+      type="text"
+      {...props}
+      className={`w-full h-9 px-3 rounded-md border border-ink-200 dark:border-ink-700 bg-white dark:bg-ink-900 text-sm focus:border-brand focus:ring-1 focus:ring-brand outline-none ${props.className ?? ''}`}
+    />
+  )
+}
+
+/**
+ * Change Password card. Requires the current password before persisting,
+ * mirrors the server's 8-char minimum, and clears the form on success.
+ */
+function ChangePasswordSection() {
+  const [show, setShow] = useState({ current: false, next: false, confirm: false })
+  const [form, setForm] = useState({ current: '', next: '', confirm: '' })
+  const [err, setErr] = useState<string | null>(null)
+
+  const submit = useMutation({
+    mutationFn: () => authService.changePassword({
+      current_password: form.current,
+      new_password:     form.next,
+    }),
+    onSuccess: () => {
+      toast.success('Password updated.')
+      setForm({ current: '', next: '', confirm: '' })
+      setErr(null)
+    },
+    onError: (e: any) => {
+      const msg = e?.response?.data?.message ?? 'Failed to update password'
+      setErr(msg)
+      toast.error(msg)
+    },
+  })
+
+  const onSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    setErr(null)
+    if (form.next.length < 8) { setErr('New password must be at least 8 characters.'); return }
+    if (form.next !== form.confirm) { setErr('New password and confirmation do not match.'); return }
+    submit.mutate()
+  }
+
+  const togglePill = (key: keyof typeof show) => (
+    <button
+      type="button"
+      onClick={() => setShow(s => ({ ...s, [key]: !s[key] }))}
+      className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-400 hover:text-ink-700 dark:hover:text-ink-200"
+      tabIndex={-1}
+    >
+      {show[key] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+    </button>
+  )
+
+  return (
+    <section className="card p-6">
+      <SectionHeader title="Change Password" sub="Update the password you use to sign in." icon={Lock} />
+      <form onSubmit={onSubmit} className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl">
+        <div>
+          <label className="text-[11px] uppercase tracking-wider text-ink-400 font-bold block mb-1.5">Current password</label>
+          <div className="relative">
+            <input
+              type={show.current ? 'text' : 'password'}
+              value={form.current}
+              onChange={(e) => setForm(f => ({ ...f, current: e.target.value }))}
+              autoComplete="current-password"
+              className="w-full h-9 pl-3 pr-9 rounded-md border border-ink-200 dark:border-ink-700 bg-white dark:bg-ink-900 text-sm focus:border-brand focus:ring-1 focus:ring-brand outline-none"
+              required
+            />
+            {togglePill('current')}
+          </div>
+        </div>
+        <div>
+          <label className="text-[11px] uppercase tracking-wider text-ink-400 font-bold block mb-1.5">New password</label>
+          <div className="relative">
+            <input
+              type={show.next ? 'text' : 'password'}
+              value={form.next}
+              onChange={(e) => setForm(f => ({ ...f, next: e.target.value }))}
+              autoComplete="new-password"
+              minLength={8}
+              className="w-full h-9 pl-3 pr-9 rounded-md border border-ink-200 dark:border-ink-700 bg-white dark:bg-ink-900 text-sm focus:border-brand focus:ring-1 focus:ring-brand outline-none"
+              required
+            />
+            {togglePill('next')}
+          </div>
+        </div>
+        <div>
+          <label className="text-[11px] uppercase tracking-wider text-ink-400 font-bold block mb-1.5">Confirm new password</label>
+          <div className="relative">
+            <input
+              type={show.confirm ? 'text' : 'password'}
+              value={form.confirm}
+              onChange={(e) => setForm(f => ({ ...f, confirm: e.target.value }))}
+              autoComplete="new-password"
+              minLength={8}
+              className="w-full h-9 pl-3 pr-9 rounded-md border border-ink-200 dark:border-ink-700 bg-white dark:bg-ink-900 text-sm focus:border-brand focus:ring-1 focus:ring-brand outline-none"
+              required
+            />
+            {togglePill('confirm')}
+          </div>
+        </div>
+
+        {err && (
+          <div className="sm:col-span-3 text-[12px] text-red-600 dark:text-red-400 flex items-center gap-1.5">
+            <AlertTriangle className="w-3.5 h-3.5" /> {err}
+          </div>
+        )}
+
+        <div className="sm:col-span-3 pt-1">
+          <button
+            type="submit"
+            disabled={submit.isPending}
+            className="btn-primary flex items-center gap-1.5 h-9 px-4"
+          >
+            {submit.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Lock className="w-3.5 h-3.5" />}
+            Update password
+          </button>
+        </div>
+      </form>
+    </section>
+  )
+}
+
+/** Wraps an editable form input with the same label styling as InfoGroup. */
+function FieldGroup({ label, icon: Icon, children }: { label: string; icon?: any; children: React.ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[11px] uppercase tracking-wider text-ink-400 font-bold mb-1.5">{label}</p>
+      <div className="flex items-center gap-2">
+        {Icon && <Icon className="w-3.5 h-3.5 text-ink-300 shrink-0" />}
+        <div className="flex-1 min-w-0">{children}</div>
+      </div>
     </div>
   )
 }
 
 function Chip({ icon: Icon, label, value }: { icon?: any; label: string; value: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-ink-50 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 text-[12px]">
-      {Icon && <Icon className="w-3.5 h-3.5 text-brand shrink-0" />}
-      <span className="text-ink-400 font-medium">{label}:</span>
-      <span className="text-ink-900 dark:text-white font-semibold truncate max-w-[180px]" title={value}>{value}</span>
-    </span>
+    <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-ink-50 dark:bg-ink-800/60 border border-ink-200 dark:border-ink-700 min-w-0">
+      {Icon && (
+        <div className="w-7 h-7 rounded-md bg-brand/10 text-brand flex items-center justify-center shrink-0 mt-0.5">
+          <Icon className="w-3.5 h-3.5" />
+        </div>
+      )}
+      <div className="min-w-0">
+        <p className="text-[10px] uppercase tracking-wider text-ink-400 font-bold leading-none">{label}</p>
+        <p className="text-[13px] text-ink-900 dark:text-white font-semibold truncate mt-0.5" title={value}>{value}</p>
+      </div>
+    </div>
   )
 }
 
@@ -331,11 +752,20 @@ function Chip({ icon: Icon, label, value }: { icon?: any; label: string; value: 
  * route uploads/downloads through `/api/students/me/photo`, which doesn't
  * require admin permissions, so a logged-in student can update their own
  * picture from /me/profile.
+ *
+ * Shows a local object-URL preview as soon as the file is picked, so the user
+ * sees the new image immediately without waiting for the round-trip.
  */
 function ProfileHeroPhoto({ student, initials, selfMode }: { student: any; initials: string; selfMode: boolean }) {
   const qc = useQueryClient()
   const fileRef = useRef<HTMLInputElement | null>(null)
+  // Cache-buster bumped after a successful upload — forces the cached <img>
+  // to refetch even when student.photo arrives in a later refetch.
   const [v, setV] = useState(0)
+  // Local object-URL preview shown as soon as the user picks a file. Cleared
+  // once the server confirms; revoked on unmount to avoid leaking blobs.
+  const [preview, setPreview] = useState<string | null>(null)
+  useEffect(() => () => { if (preview) URL.revokeObjectURL(preview) }, [preview])
 
   const upload = useMutation({
     mutationFn: (f: File) =>
@@ -347,7 +777,17 @@ function ProfileHeroPhoto({ student, initials, selfMode }: { student: any; initi
       setV(n => n + 1)
       qc.invalidateQueries({ queryKey: selfMode ? ['student', 'me'] : ['student', String(student.id)] })
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to upload photo'),
+    onError: (e: any) => {
+      // Drop the optimistic preview on failure so the old photo comes back.
+      if (preview) { URL.revokeObjectURL(preview); setPreview(null) }
+      toast.error(e?.response?.data?.message ?? 'Failed to upload photo')
+    },
+    onSettled: () => {
+      // Keep the preview visible briefly until the refetch lands, then drop it.
+      setTimeout(() => {
+        setPreview(p => { if (p) URL.revokeObjectURL(p); return null })
+      }, 1500)
+    },
   })
 
   const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -358,40 +798,53 @@ function ProfileHeroPhoto({ student, initials, selfMode }: { student: any; initi
       toast.error('Photo must be 5 MB or smaller.')
       return
     }
+    if (preview) URL.revokeObjectURL(preview)
+    setPreview(URL.createObjectURL(f))
     upload.mutate(f)
   }
 
-  const photoSrc = student.photo
-    ? (selfMode
-        ? studentService.myPhotoUrl(`${student.photo}-${v}`)
-        : studentService.photoUrl(student.id, `${student.photo}-${v}`))
-    : null
+  const photoSrc = preview
+    ?? (student.photo
+        ? (selfMode
+            ? studentService.myPhotoUrl(`${student.photo}-${v}`)
+            : studentService.photoUrl(student.id, `${student.photo}-${v}`))
+        : null)
 
   return (
-    <div className="relative shrink-0">
-      <div className="w-32 h-32 sm:w-40 sm:h-40 rounded-2xl overflow-hidden bg-white dark:bg-ink-800 ring-4 ring-white dark:ring-ink-900 shadow-lg flex items-center justify-center">
-        {photoSrc ? (
-          <img
-            src={photoSrc}
-            alt={`${student.fname ?? ''} ${student.lname ?? ''}`.trim() || 'Student photo'}
-            className="w-full h-full object-cover"
-            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
-          />
-        ) : (
-          <span className="text-4xl font-bold text-brand">{initials}</span>
-        )}
+    <div className="shrink-0 w-full sm:w-auto flex flex-col items-center sm:items-start gap-3">
+      <div className="relative group">
+        <div className="w-48 h-48 sm:w-56 sm:h-56 rounded-2xl overflow-hidden bg-ink-100 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 shadow-sm flex items-center justify-center">
+          {photoSrc ? (
+            <img
+              src={photoSrc}
+              alt={`${student.fname ?? ''} ${student.lname ?? ''}`.trim() || 'Student photo'}
+              className="w-full h-full object-cover"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+            />
+          ) : (
+            <span className="text-6xl font-bold text-ink-400">{initials}</span>
+          )}
+
+          {upload.isPending && (
+            <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+              <Loader2 className="w-8 h-8 text-white animate-spin" />
+            </div>
+          )}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => !upload.isPending && fileRef.current?.click()}
+          disabled={upload.isPending}
+          className="absolute bottom-2 right-2 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-brand text-white text-xs font-semibold shadow-md hover:bg-brand/90 transition-colors disabled:opacity-60 outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 ring-offset-white dark:ring-offset-ink-900"
+          aria-label="Change profile photo"
+        >
+          <Camera className="w-3.5 h-3.5" />
+          <span>Change</span>
+        </button>
       </div>
 
-      <button
-        type="button"
-        onClick={() => !upload.isPending && fileRef.current?.click()}
-        disabled={upload.isPending}
-        className="absolute -bottom-1 -right-1 w-10 h-10 rounded-full bg-brand text-white shadow-md flex items-center justify-center hover:bg-brand/90 transition-colors disabled:opacity-60 outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 ring-offset-white dark:ring-offset-ink-900"
-        title="Change profile photo"
-        aria-label="Change profile photo"
-      >
-        {upload.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
-      </button>
+      <p className="text-[11px] text-ink-400 text-center sm:text-left">JPEG, PNG or WebP · max 5 MB</p>
 
       <input
         ref={fileRef}

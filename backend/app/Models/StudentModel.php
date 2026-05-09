@@ -13,7 +13,9 @@ class StudentModel extends BaseModel
         'regnumber', 'fname', 'lname', 'phone', 'email', 'gender',
         'birthdate', 'nationality', 'program', 'std_option', 'faculty',
         'department', 'current_level', 'registration_date', 'student_state',
-        'intake', 'acc_year', 'combination', 'last_school', 'sponsor'
+        'intake', 'acc_year', 'combination', 'last_school', 'sponsor',
+        'photo', 'marital_status',
+        'province', 'district', 'sector', 'cell', 'village',
     ];
 
     /**

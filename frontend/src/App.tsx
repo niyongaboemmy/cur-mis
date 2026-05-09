@@ -10,7 +10,6 @@ import { PERMISSIONS }      from '@/constants'
 const WelcomePage          = lazy(() => import('@/pages/WelcomePage'))
 const HomePage             = lazy(() => import('@/pages/HomePage'))
 const AdminDashboardPage   = lazy(() => import('@/pages/admin/AdminDashboardPage'))
-const ProfilePage          = lazy(() => import('@/pages/ProfilePage'))
 const LoginPage            = lazy(() => import('@/pages/LoginPage'))
 const RegisterPage         = lazy(() => import('@/pages/RegisterPage'))
 const VerifyOtpPage        = lazy(() => import('@/pages/VerifyOtpPage'))
@@ -77,7 +76,8 @@ const AccountBalancePage  = lazy(() => import('@/pages/finance/AccountBalancePag
 const ClearancePage       = lazy(() => import('@/pages/finance/ClearancePage'))
 const RevenueReportPage   = lazy(() => import('@/pages/finance/RevenueReportPage'))
 const ReceiptPdfPage      = lazy(() => import('@/pages/finance/ReceiptPdfPage'))
-const ExamsPage      = lazy(() => import('@/pages/placeholders/ExamsPage'))
+const ExamSchedulesPage = lazy(() => import('@/pages/exam/ExamSchedulesPage'))
+const ExamResultsPage   = lazy(() => import('@/pages/exam/ExamResultsPage'))
 const LogsPage       = lazy(() => import('@/pages/placeholders/LogsPage'))
 const ComingSoonPage = lazy(() => import('@/pages/placeholders/ComingSoonPage'))
 
@@ -118,8 +118,7 @@ function App() {
               <Route path="/welcome"   element={<WelcomePage />} />
               <Route path="/dashboard" element={<AdminDashboardPage />} />
               <Route path="/home"      element={<HomePage />} />
-              <Route path="/profile" element={<ProfilePage />} />
-              
+
               {/* Admin Routes with Permissions Protection */}
               <Route element={<ProtectedRoute requiredPermissions={PERMISSIONS.MANAGE_ROLES} />}>
                 <Route path="/roles" element={<RolesManagementPage />} />
@@ -261,8 +260,19 @@ function App() {
                 </Route>
               </Route>
 
-              <Route element={<ProtectedRoute requiredPermissions={PERMISSIONS.MANAGE_EXAMS} />}>
-                <Route path="/exams" element={<ExamsPage />} />
+              <Route element={<ProtectedRoute requiredPermissions={[
+                PERMISSIONS.MANAGE_EXAMS,
+                PERMISSIONS.MANAGE_MODULE_SCHEDULES,
+              ]} />}>
+                <Route path="/exams" element={<ExamSchedulesPage />} />
+              </Route>
+              <Route element={<ProtectedRoute requiredPermissions={[
+                PERMISSIONS.MANAGE_EXAMS,
+                PERMISSIONS.VIEW_MODULE_MARKS,
+                PERMISSIONS.RECORD_MODULE_MARKS,
+                PERMISSIONS.MANAGE_MODULE_MARKS,
+              ]} />}>
+                <Route path="/exams/results" element={<ExamResultsPage />} />
               </Route>
 
               <Route element={<ProtectedRoute requiredPermissions={PERMISSIONS.VIEW_SYSTEM_LOGS} />}>
@@ -289,7 +299,6 @@ function App() {
                 <Route path="/attendance" element={<AttendancePage />} />
               </Route>
 
-              <Route path="/exams/results"    element={<ComingSoonPage />} />
               <Route path="/notice"           element={<ComingSoonPage />} />
               <Route path="/transport"        element={<ComingSoonPage />} />
               <Route path="/hostel"           element={<ComingSoonPage />} />

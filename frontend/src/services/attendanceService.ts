@@ -105,29 +105,46 @@ export interface OverviewPayload {
   }>
 }
 
+/** Status returned by the per-student summary; `not_recorded` marks a
+ * session that exists in a registered module but was never marked for
+ * the student (so the full class timeline still surfaces). */
+export type StudentAttendanceStatus = AttendanceStatus | 'not_recorded'
+
 export interface StudentAttendanceSummary {
   totals: {
+    sessions:       number
     records:        number
     present:        number
     late:           number
     absent:         number
     excused:        number
+    not_recorded:   number
     attendance_pct: number
   }
   by_module: Array<{
-    module_id:      number
-    module_code:    string
-    module_name:    string
-    records:        number | string
-    present_like:   number | string
-    attendance_pct: number
+    module_id:           number
+    module_code:         string
+    module_name:         string
+    academic_term_id:    number
+    registration_status: 'registered' | 'completed' | 'dropped' | 'failed'
+    sessions:            number | string
+    records:             number | string
+    present:             number | string
+    late:                number | string
+    absent:              number | string
+    excused:             number | string
+    present_like:        number | string
+    not_recorded:        number | string
+    attendance_pct:      number
   }>
   recent: Array<{
-    status:       AttendanceStatus
+    status:       StudentAttendanceStatus
     remarks:      string | null
-    recorded_at:  string
+    recorded_at:  string | null
+    session_id:   number
     session_date: string
     session_type: SessionType
+    module_id:    number
     module_code:  string
     module_name:  string
   }>

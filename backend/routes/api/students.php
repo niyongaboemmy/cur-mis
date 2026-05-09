@@ -17,6 +17,7 @@ use App\Constants\Permissions;
 // the `/:id` matchers.
 $router->group('/api/students', function ($router) {
     $router->get('/me',                                 [StudentController::class, 'me']);
+    $router->put('/me',                                 [StudentController::class, 'updateMe']);
     $router->get('/me/photo',                           [StudentController::class, 'downloadMyPhoto']);
     $router->post('/me/photo',                          [StudentController::class, 'uploadMyPhoto']);
     $router->get('/me/documents',                       [StudentController::class, 'meDocuments']);

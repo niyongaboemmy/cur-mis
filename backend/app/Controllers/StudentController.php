@@ -181,6 +181,54 @@ class StudentController extends BaseController
                     $ph = implode(',', array_fill(0, count($variants), '?'));
                     $clauses[] = "acc_year IN ($ph)";
                     foreach ($variants as $v) { $bindings[] = $v; }
+                } elseif ($col === 'std_option') {
+                    // Programme scoping. Match the option through every place
+                    // a programme link can live for a student row — but never
+                    // widen to the option's *department*, otherwise every
+                    // programme in the same department returns the same
+                    // cohort and switching programmes appears to do nothing.
+                    $optionId = (int)$val;
+                    $opt      = null;
+                    if ($optionId > 0) {
+                        $opt = $this->studentModel->db()->fetchOne(
+                            'SELECT id, name, code, acro, department_id
+                             FROM `options` WHERE id = ? LIMIT 1',
+                            [$optionId]
+                        );
+                    }
+
+                    $aliases = [(string)$val];
+                    foreach (['name', 'code', 'acro'] as $f) {
+                        $v = trim((string)($opt[$f] ?? ''));
+                        if ($v !== '') $aliases[] = $v;
+                    }
+                    $aliases = array_values(array_unique($aliases));
+
+                    $sub = [];
+                    foreach ($aliases as $a) {
+                        $sub[] = 'LOWER(TRIM(std_option)) = LOWER(?)';
+                        $bindings[] = $a;
+                        $sub[] = 'LOWER(TRIM(program)) = LOWER(?)';
+                        $bindings[] = $a;
+                    }
+                    if ($optionId > 0) {
+                        $sub[] = 'id IN (
+                            SELECT ao.student_id
+                            FROM `admission_offers` ao
+                            JOIN `student_applications` sa ON sa.id = ao.application_id
+                            WHERE sa.program_id = ?
+                        )';
+                        $bindings[] = $optionId;
+
+                        $sub[] = 'user_id IN (
+                            SELECT ap.user_id
+                            FROM `applicant_profiles` ap
+                            JOIN `student_applications` sa2 ON sa2.id = ap.application_id
+                            WHERE sa2.program_id = ? AND ap.user_id IS NOT NULL
+                        )';
+                        $bindings[] = $optionId;
+                    }
+                    $clauses[] = '(' . implode(' OR ', $sub) . ')';
                 } else {
                     $clauses[]  = "`$col` = ?";
                     $bindings[] = $val;
@@ -609,6 +657,58 @@ class StudentController extends BaseController
         $student = $this->resolveAuthStudent($request, $response);
         $request->setRouteParams(['id' => (string)$student['id']]);
         $this->downloadPhoto($request, $response);
+    }
+
+    /**
+     * PUT /api/students/me
+     * Self-service field update. Strictly whitelists what students may change
+     * about their own record — name, gender, DOB, ID, faculty/department,
+     * etc. remain admin-only because they are part of the legal/academic
+     * identity captured at enrollment.
+     */
+    public function updateMe(Request $request, Response $response): never
+    {
+        $student = $this->resolveAuthStudent($request, $response);
+        $body    = $request->body();
+
+        // Whitelist of self-editable columns. Anything else in the payload is
+        // silently dropped so a malicious client can't promote themselves to a
+        // different program / level / faculty.
+        $editable = [
+            'phone', 'marital_status',
+            // Residency — student-controlled location data. `address` and
+            // `residence_district` live on the application record and stay
+            // admin-only on purpose.
+            'province', 'district', 'sector', 'cell', 'village',
+        ];
+
+        $patch = [];
+        foreach ($editable as $col) {
+            if (array_key_exists($col, $body)) {
+                $val = $body[$col];
+                $patch[$col] = is_string($val) ? trim($val) : $val;
+            }
+        }
+
+        $errors = ValidationHelper::validate($patch, [
+            'phone'          => ['min:6', 'max:30'],
+            'marital_status' => ['in:single,married,divorced,widowed'],
+            'province'       => ['max:50'],
+            'district'       => ['max:50'],
+            'sector'         => ['max:100'],
+            'cell'           => ['max:50'],
+            'village'        => ['max:50'],
+        ]);
+        if (!empty($errors)) {
+            $this->error($response, 'Validation failed.', 422, $errors);
+        }
+
+        if (!empty($patch)) {
+            $this->studentModel->update((int)$student['id'], $patch);
+        }
+
+        $fresh = $this->studentModel->find((int)$student['id']);
+        $this->success($response, $fresh, 'Profile updated.');
     }
 
     /**

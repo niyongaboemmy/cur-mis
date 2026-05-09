@@ -17,6 +17,7 @@ $router->post('/api/auth/verify-reset-otp',   [AuthController::class, 'verifyRes
 $router->post('/api/auth/reset-password',     [AuthController::class, 'resetPassword'],      [RateLimitMiddleware::class]);
 $router->post('/api/auth/logout',             [AuthController::class, 'logout'],             [AuthMiddleware::class]);
 $router->get('/api/auth/me',                  [AuthController::class, 'me'],                 [AuthMiddleware::class]);
+$router->post('/api/auth/change-password',    [AuthController::class, 'changePassword'],     [AuthMiddleware::class, RateLimitMiddleware::class]);
 
 // Applicant self-registration — public endpoint, rate-limited
 $router->post('/api/auth/applicant/register', [AuthController::class, 'registerApplicant'],  [RateLimitMiddleware::class]);

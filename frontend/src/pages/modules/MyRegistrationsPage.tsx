@@ -127,7 +127,7 @@ export default function MyRegistrationsPage() {
             <div className="col-span-full card p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-brand" /></div>
           ) : eligible.length === 0 ? (
             <div className="col-span-full card p-8 text-center text-ink-400">
-              No modules are currently available to you. Check your prerequisites and year of study.
+              No modules are currently available to you. You can only register for modules that have been scheduled for this term — check back once your registrar publishes the timetable, and verify your year of study and prerequisites.
             </div>
           ) : eligible.map((m: any) => (
             <div key={m.module_id} className="card p-4">

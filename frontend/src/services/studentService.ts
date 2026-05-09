@@ -78,6 +78,8 @@ export interface StudentListParams {
   nationality?:   string
   acc_year?:      string
   program?:       string
+  /** Catalog program (options.id) the student is assigned to. */
+  std_option?:    string | number
   sort_by?:       string
   sort_dir?:      'asc' | 'desc'
 }
@@ -200,6 +202,19 @@ export const studentService = {
   /** Self-service: returns the authenticated user's own student record. */
   me: (signal?: AbortSignal) =>
     api.get<Student>(`/api/students/me`, {}, signal),
+
+  /** Self-service: patch the caller's own student record. The server
+   *  whitelists which columns are actually writable; anything else in the
+   *  payload is silently dropped. */
+  updateMe: (data: Partial<{
+    phone:          string | null
+    marital_status: string | null
+    province:       string | null
+    district:       string | null
+    sector:         string | null
+    cell:           string | null
+    village:        string | null
+  }>) => api.put<Student>(`/api/students/me`, data),
 
   /** Self-service: documents the authenticated student uploaded with their application. */
   meDocuments: (signal?: AbortSignal) =>

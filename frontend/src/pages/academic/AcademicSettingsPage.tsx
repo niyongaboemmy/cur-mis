@@ -17,7 +17,6 @@ import {
   Loader2,
   AlertCircle,
   CalendarClock,
-  ClipboardList,
   GraduationCap,
   Save,
   Upload,
@@ -34,9 +33,7 @@ import { useSystemBasics } from '@/hooks/useSystemBasics'
 import { useSessionStorage } from '@/hooks/useSessionStorage'
 import type { AcademicYear, AcademicTerm, AcMgmtEntity } from '@/types/academic'
 import { EntityCrudTabs, ENTITIES, type ExtraTab } from '@/components/academic/EntityCrudTabs'
-import ExamsPanel from '@/components/academic/ExamsPanel'
 import RegistrationsPanel from '@/components/academic/RegistrationsPanel'
-import ModulesMarksPage from '@/pages/modules/ModulesMarksPage'
 
 /* ─────────────────────────────────────────────────────────────── */
 
@@ -78,18 +75,6 @@ export default function AcademicSettingsPage() {
         label: 'Registrations',
         icon: GraduationCap,
         render: () => <RegistrationsPanel />,
-      },
-      {
-        slug: 'exams',
-        label: 'Exams',
-        icon: ClipboardList,
-        render: () => <ExamsPanel />,
-      },
-      {
-        slug: 'marks',
-        label: 'Marks',
-        icon: ClipboardList,
-        render: () => <ModulesMarksPage />,
       },
       {
         slug: 'years-terms',
