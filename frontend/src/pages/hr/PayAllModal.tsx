@@ -6,6 +6,7 @@ import {
   Building2, Phone, CreditCard,
 } from 'lucide-react'
 import { hrService, type PaymentMethod, type PayrollRow } from '@/services/hrService'
+import ModalPortal from '@/components/ui/ModalPortal'
 
 const MONTHS = ['January','February','March','April','May','June',
                 'July','August','September','October','November','December']
@@ -132,6 +133,7 @@ export default function PayAllModal({
   }
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/60 backdrop-blur-sm p-4">
       <div className="bg-white dark:bg-ink-800 rounded-xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]">
 
@@ -286,5 +288,6 @@ export default function PayAllModal({
 
       </div>
     </div>
+    </ModalPortal>
   )
 }

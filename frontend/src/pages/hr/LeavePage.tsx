@@ -24,6 +24,7 @@ import {
 } from "@/services/hrService";
 import { useAuthStore } from "@/store/authStore";
 import { PERMISSIONS } from "@/constants";
+import ModalPortal from "@/components/ui/ModalPortal";
 
 /* ── helpers ── */
 const fmt = (d: string) =>
@@ -849,6 +850,7 @@ function ModalShell({
   size?: "sm" | "md";
 }) {
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/60 backdrop-blur-sm p-4">
       <div
         className={`bg-white dark:bg-ink-800 rounded-xl shadow-2xl w-full ${size === "sm" ? "max-w-sm" : "max-w-lg"}`}
@@ -864,5 +866,6 @@ function ModalShell({
         <div className="px-5 py-4">{children}</div>
       </div>
     </div>
+    </ModalPortal>
   );
 }

@@ -6,6 +6,7 @@ import {
 } from "@/services/rbacService";
 import { Lock, Plus, Settings, X, Edit2, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
+import ModalPortal from "@/components/ui/ModalPortal";
 
 export default function PermissionsManagementPage() {
   const [categories, setCategories] = useState<PermissionCategory[]>([]);
@@ -236,6 +237,7 @@ export default function PermissionsManagementPage() {
 
       {/* Category Modal */}
       {isCatModalOpen && (
+        <ModalPortal>
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-gray-800/50">
@@ -295,10 +297,12 @@ export default function PermissionsManagementPage() {
             </form>
           </div>
         </div>
+        </ModalPortal>
       )}
 
       {/* Permission Modal */}
       {isPermModalOpen && (
+        <ModalPortal>
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-gray-800/50">
@@ -380,6 +384,7 @@ export default function PermissionsManagementPage() {
             </form>
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   );

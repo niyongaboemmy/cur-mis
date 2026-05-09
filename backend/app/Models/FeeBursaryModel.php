@@ -9,7 +9,7 @@ class FeeBursaryModel extends BaseModel
     protected string $table = 'fee_bursaries';
     protected array $fillable = [
         'student_id', 'academic_year_id', 'bursary_type',
-        'amount', 'coverage_pct', 'approved_by', 'notes',
+        'amount', 'coverage_pct', 'approved_by', 'notes', 'sponsor_id',
         'status', 'confirmed_at', 'confirmed_by',
     ];
 
@@ -35,6 +35,15 @@ class FeeBursaryModel extends BaseModel
             $where[]    = 'fb.bursary_type = ?';
             $bindings[] = $filters['bursary_type'];
         }
+        if (isset($filters['sponsor_id']) && $filters['sponsor_id'] !== '' && $filters['sponsor_id'] !== null) {
+            $sid = $filters['sponsor_id'];
+            if ($sid === 'unassigned' || $sid === 'none' || $sid === '0' || $sid === 0) {
+                $where[] = '(fb.sponsor_id IS NULL OR fb.sponsor_id = 0)';
+            } else {
+                $where[]    = 'fb.sponsor_id = ?';
+                $bindings[] = (int)$sid;
+            }
+        }
 
         $whereSql = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
         $offset   = ($page - 1) * $perPage;
@@ -59,15 +68,17 @@ class FeeBursaryModel extends BaseModel
 
         $rows = $this->db->fetchAll(
             "SELECT fb.*,
-                    s.fname AS student_fname, s.lname AS student_lname,
+                    s.fname  AS student_fname, s.lname AS student_lname,
                     ay.label AS academic_year_label,
-                    u.full_name   AS approved_by_name,
-                    u2.full_name  AS confirmed_by_name
+                    u.full_name  AS approved_by_name,
+                    u2.full_name AS confirmed_by_name,
+                    sp.name      AS sponsor_name
              FROM `fee_bursaries` fb
-             LEFT JOIN `student`       s  ON s.regnumber = fb.student_id
-             LEFT JOIN `academic_years` ay ON ay.id = fb.academic_year_id
-             LEFT JOIN `users`         u  ON u.id = fb.approved_by
-             LEFT JOIN `users`         u2 ON u2.id = fb.confirmed_by
+             LEFT JOIN `student`        s  ON s.regnumber = fb.student_id
+             LEFT JOIN `academic_years` ay ON ay.id       = fb.academic_year_id
+             LEFT JOIN `users`          u  ON u.id        = fb.approved_by
+             LEFT JOIN `users`          u2 ON u2.id       = fb.confirmed_by
+             LEFT JOIN `sponsors`       sp ON sp.id       = fb.sponsor_id
              {$whereSql}
              ORDER BY fb.created_at DESC
              LIMIT {$perPage} OFFSET {$offset}",
@@ -103,5 +114,20 @@ class FeeBursaryModel extends BaseModel
             [$studentId, $academicYearId]
         );
         return (float)($row['total'] ?? 0);
+    }
+
+    /** Summary of bursaries not linked to any sponsor for a given year. */
+    public function getUnassignedSummary(int $academicYearId): array
+    {
+        return $this->db->fetchOne(
+            "SELECT 
+                COALESCE(SUM(amount), 0) AS total_amount,
+                COALESCE(SUM(CASE WHEN status='confirmed' THEN amount ELSE 0 END), 0) AS confirmed_amount,
+                COUNT(id) AS bursary_count,
+                COUNT(DISTINCT student_id) AS student_count
+             FROM `fee_bursaries`
+             WHERE academic_year_id = ? AND (sponsor_id IS NULL OR sponsor_id = 0)",
+            [$academicYearId]
+        );
     }
 }

@@ -25,6 +25,7 @@ import { hrService, type HrEmployeePayload } from '@/services/hrService'
 import { useAuthStore } from '@/store/authStore'
 import { PERMISSIONS } from '@/constants'
 import type { HrEmployee } from '@/types/academic'
+import ModalPortal from '@/components/ui/ModalPortal'
 
 type Tab = 'overview' | 'attendance' | 'documents'
 
@@ -202,6 +203,7 @@ function EditStaffModal({
   )
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-ink-900/50 backdrop-blur-sm">
       <div className="bg-white dark:bg-ink-800 rounded-xl shadow-xl w-full max-w-2xl max-h-[92vh] overflow-hidden flex flex-col">
         <div className="flex items-center justify-between px-6 py-4 border-b border-ink-100 dark:border-ink-700">
@@ -272,6 +274,7 @@ function EditStaffModal({
         </form>
       </div>
     </div>
+    </ModalPortal>
   )
 }
 

@@ -17,6 +17,7 @@ import { hrService, type PayrollEntry } from "@/services/hrService";
 import type { HrEmployee } from "@/types/academic";
 import { useAuthStore } from "@/store/authStore";
 import { PERMISSIONS } from "@/constants";
+import ModalPortal from "@/components/ui/ModalPortal";
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
 
@@ -668,6 +669,7 @@ function PayrollEntryModal({
       setForm((f) => ({ ...f, [field]: parseFloat(e.target.value) || 0 }));
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/60 backdrop-blur-sm p-4">
       <div className="bg-white dark:bg-ink-800 rounded-xl shadow-2xl w-full max-w-xl overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-ink-100 dark:border-ink-700">
@@ -813,6 +815,7 @@ function PayrollEntryModal({
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }
 

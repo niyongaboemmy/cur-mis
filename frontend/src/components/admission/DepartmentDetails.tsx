@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { createPortal } from 'react-dom'
+import ModalPortal from '@/components/ui/ModalPortal'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
@@ -634,7 +634,7 @@ export default function DepartmentDetails({ dept, open, onClose, onUpdated }: Pr
     </AnimatePresence>
   )
 
-  return createPortal(panel, document.body)
+  return <ModalPortal>{panel}</ModalPortal>
 }
 
 /* ── small sub-components ────────────────────────────────────────────────── */

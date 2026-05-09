@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { X, ChevronLeft, ChevronRight, Loader2, Download, Maximize2 } from "lucide-react";
 import { verificationService } from "@/services/admissionService";
+import ModalPortal from "@/components/ui/ModalPortal";
 
 interface DocumentPreviewModalProps {
   isOpen: boolean;
@@ -37,6 +38,7 @@ export default function DocumentPreviewModal({
   const fileUrl = verificationService.downloadUrl(applicationId, currentDoc.id);
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-sm animate-in fade-in duration-300">
       {/* Header */}
       <div className="absolute top-0 inset-x-0 p-6 flex items-center justify-between z-10 bg-gradient-to-b from-black/50 to-transparent">
@@ -154,5 +156,6 @@ export default function DocumentPreviewModal({
          </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }

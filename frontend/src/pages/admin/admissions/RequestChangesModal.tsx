@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import type { ApplicationDocument } from "@/types/admission";
 import { verificationService } from "@/services/admissionService";
+import ModalPortal from "@/components/ui/ModalPortal";
 
 interface RequestChangesModalProps {
   isOpen: boolean;
@@ -74,6 +75,7 @@ export default function RequestChangesModal({
   };
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-6">
       <div
         className="absolute inset-0 bg-ink-950/60 backdrop-blur-sm"
@@ -288,5 +290,6 @@ export default function RequestChangesModal({
         )}
       </div>
     </div>
+    </ModalPortal>
   );
 }

@@ -21,6 +21,7 @@ import {
 import { useDebounce } from '@/hooks/useDebounce'
 import { useAuthStore } from '@/store/authStore'
 import { PERMISSIONS } from '@/constants'
+import ModalPortal from '@/components/ui/ModalPortal'
 
 /* ══════════════════════════════════════════════════════════════════════
    PAYE FORMULA  (Rwanda Income Tax brackets — configurable)
@@ -663,6 +664,7 @@ function EditGrossModal({
   })
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/60 backdrop-blur-sm p-4">
       <div className="bg-white dark:bg-ink-800 rounded-xl shadow-2xl w-full max-w-md">
         {/* header */}
@@ -729,6 +731,7 @@ function EditGrossModal({
         </div>
       </div>
     </div>
+    </ModalPortal>
   )
 }
 
@@ -752,6 +755,7 @@ function FormulaModal({
   const reset = () => setF({ ...DEFAULT_FORMULA })
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/60 backdrop-blur-sm p-4">
       <div className="bg-white dark:bg-ink-800 rounded-xl shadow-2xl w-full max-w-lg">
         <div className="flex items-center justify-between px-5 py-4 border-b border-ink-100 dark:border-ink-700">
@@ -872,6 +876,7 @@ function FormulaModal({
         </div>
       </div>
     </div>
+    </ModalPortal>
   )
 }
 
@@ -904,7 +909,7 @@ function StaffDrawer({
     : 0
 
   return (
-    <>
+    <ModalPortal>
       {/* Backdrop */}
       <div
         className={`fixed inset-0 z-40 bg-ink-900/40 backdrop-blur-[2px] transition-opacity duration-300 ${
@@ -1100,7 +1105,7 @@ function StaffDrawer({
           </>
         ) : null}
       </div>
-    </>
+    </ModalPortal>
   )
 }
 
@@ -1224,6 +1229,7 @@ function CopyPeriodModal({
   const yearOpts2  = Array.from({ length: 5 }, (_, i) => CUR_Y - 1 + i)
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/60 backdrop-blur-sm p-4">
       <div className="bg-white dark:bg-ink-800 rounded-xl shadow-2xl w-full max-w-sm">
         <div className="flex items-center justify-between px-5 py-4 border-b border-ink-100 dark:border-ink-700">
@@ -1288,6 +1294,7 @@ function CopyPeriodModal({
         </div>
       </div>
     </div>
+    </ModalPortal>
   )
 }
 
@@ -1357,6 +1364,7 @@ function EmployeeFormModal({
   })
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/60 backdrop-blur-sm p-4">
       <div className="bg-white dark:bg-ink-800 rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
         {/* header */}
@@ -1487,6 +1495,7 @@ function EmployeeFormModal({
         </div>
       </div>
     </div>
+    </ModalPortal>
   )
 }
 
@@ -1507,6 +1516,7 @@ function DeleteEmployeeModal({ row, onClose }: { row: PayrollRow; onClose: () =>
   })
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/60 backdrop-blur-sm p-4">
       <div className="bg-white dark:bg-ink-800 rounded-xl shadow-2xl w-full max-w-sm">
         <div className="p-6 text-center space-y-3">
@@ -1532,6 +1542,7 @@ function DeleteEmployeeModal({ row, onClose }: { row: PayrollRow; onClose: () =>
         </div>
       </div>
     </div>
+    </ModalPortal>
   )
 }
 
@@ -1559,6 +1570,7 @@ function DeletePayrollModal({
   })
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/60 backdrop-blur-sm p-4">
       <div className="bg-white dark:bg-ink-800 rounded-xl shadow-2xl w-full max-w-sm">
         <div className="p-6 text-center space-y-3">
@@ -1585,6 +1597,7 @@ function DeletePayrollModal({
         </div>
       </div>
     </div>
+    </ModalPortal>
   )
 }
 
@@ -1631,6 +1644,7 @@ function ProcessPaymentModal({
   })
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/60 backdrop-blur-sm p-4">
       <div className="bg-white dark:bg-ink-800 rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col">
         {/* Header */}
@@ -1768,5 +1782,6 @@ function ProcessPaymentModal({
         </div>
       </div>
     </div>
+    </ModalPortal>
   )
 }

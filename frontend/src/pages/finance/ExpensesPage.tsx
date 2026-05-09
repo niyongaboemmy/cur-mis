@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Plus, Trash2, Loader2, X, Receipt, Download,
-  AlertTriangle, CheckCircle2, TrendingDown, BarChart3, Calendar,
+  AlertTriangle, CheckCircle2, TrendingDown, BarChart3, Calendar, Tag
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { expenseService, exportService, budgetService } from '@/services/financeService'
@@ -12,6 +13,7 @@ import SearchableSelect from '@/components/ui/SearchableSelect'
 import Pagination from '@/components/ui/Pagination'
 import { useSystemStore } from '@/store/systemStore'
 import { formatRWF } from '@/utils/formatCurrency'
+import ModalPortal from '@/components/ui/ModalPortal'
 
 const PAYMENT_METHODS = [
   { value: 'BANK_TRANSFER', label: 'Bank Transfer' },
@@ -40,6 +42,7 @@ export default function ExpensesPage() {
   const basics = useSystemStore((s) => s.basics)
   const selectedYearLabel = useSystemStore((s) => s.selectedYearLabel)
   const qc = useQueryClient()
+  const navigate = useNavigate()
 
   const [tab,       setTab]       = useState<'list' | 'budgets'>('list')
   const [yearId,    setYearId]    = useState<number | string>(() => resolveYearId(selectedYearLabel, basics))
@@ -162,6 +165,9 @@ export default function ExpensesPage() {
             </button>
           </div>
           <div className="w-px bg-ink-100 dark:bg-ink-700" />
+          <button className="btn-ghost btn-sm" onClick={() => navigate('/finance/expenses/categories')}>
+            <Tag className="w-3.5 h-3.5" /> Manage Categories
+          </button>
           <button className="btn-ghost btn-sm" onClick={() => exportService.downloadCSV('expenses', yearId ? Number(yearId) : undefined)}>
             <Download className="w-3.5 h-3.5" /> Export CSV
           </button>
@@ -531,6 +537,7 @@ export default function ExpensesPage() {
 
       {/* Delete confirmation */}
       {deleteId !== null && (
+        <ModalPortal>
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-ink-800 rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
             <div className="flex items-center gap-3">
@@ -555,6 +562,7 @@ export default function ExpensesPage() {
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
 
       {showForm && (
@@ -603,6 +611,9 @@ function ExpenseFormModal({ initial, categories, years, activeYearId, budgets, o
   })
   const [errors,       setErrors]       = useState<FormErrors>({})
   const [overBudgetOk, setOverBudgetOk] = useState(false)
+  const [showAddCat,   setShowAddCat]   = useState(false)
+
+  const qc = useQueryClient()
 
   const set = (k: keyof CreateExpensePayload, v: any) => {
     setForm(f => ({ ...f, [k]: v }))
@@ -651,6 +662,7 @@ function ExpenseFormModal({ initial, categories, years, activeYearId, budgets, o
   }
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50">
       <div className="flex min-h-full items-center justify-center p-4">
         <div className="bg-white dark:bg-ink-800 rounded-xl shadow-xl w-full max-w-md">
@@ -678,8 +690,15 @@ function ExpenseFormModal({ initial, categories, years, activeYearId, budgets, o
 
               {/* Category */}
               <div>
-                <label className="block text-xs font-medium text-ink-600 dark:text-ink-400 mb-1">
-                  Category <span className="text-red-500">*</span>
+                <label className="block text-xs font-medium text-ink-600 dark:text-ink-400 mb-1 flex justify-between items-center">
+                  <span>Category <span className="text-red-500">*</span></span>
+                  <button 
+                    type="button" 
+                    onClick={() => setShowAddCat(true)}
+                    className="text-[10px] text-brand hover:underline flex items-center gap-0.5"
+                  >
+                    <Plus className="w-2.5 h-2.5" /> Quick Add
+                  </button>
                 </label>
                 <SearchableSelect
                   options={categories.map(c => ({ value: c.id, label: c.name }))}
@@ -860,6 +879,63 @@ function ExpenseFormModal({ initial, categories, years, activeYearId, budgets, o
           </div>
         </div>
       </div>
+
+      {showAddCat && (
+        <QuickCreateCategoryModal 
+          onClose={() => setShowAddCat(false)}
+          onCreated={(newCatId) => {
+            qc.invalidateQueries({ queryKey: ['finance', 'expense-cats'] })
+            set('category_id', newCatId)
+            setShowAddCat(false)
+          }}
+        />
+      )}
     </div>
+    </ModalPortal>
+  )
+}
+
+function QuickCreateCategoryModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: number) => void }) {
+  const [name, setName] = useState('')
+  const mutation = useMutation({
+    mutationFn: (data: { name: string }) => expenseService.createCategory(data),
+    onSuccess: (res: any) => {
+      toast.success('Category created')
+      onCreated(res.data.id)
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to create category')
+  })
+
+  return (
+    <ModalPortal>
+    <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4">
+      <div className="bg-white dark:bg-ink-800 rounded-xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+        <div className="flex justify-between items-center">
+          <h3 className="font-bold">New Category</h3>
+          <button onClick={onClose}><X className="w-4 h-4" /></button>
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs text-ink-500">Name</label>
+          <input 
+            autoFocus
+            className="input input-sm w-full" 
+            placeholder="e.g. Refreshments"
+            value={name}
+            onChange={e => setName(e.target.value)}
+          />
+        </div>
+        <div className="flex gap-2 pt-2">
+          <button className="btn-ghost btn-sm flex-1" onClick={onClose}>Cancel</button>
+          <button 
+            className="btn-primary btn-sm flex-1" 
+            disabled={!name.trim() || mutation.isPending}
+            onClick={() => mutation.mutate({ name })}
+          >
+            {mutation.isPending ? 'Saving...' : 'Create Category'}
+          </button>
+        </div>
+      </div>
+    </div>
+    </ModalPortal>
   )
 }

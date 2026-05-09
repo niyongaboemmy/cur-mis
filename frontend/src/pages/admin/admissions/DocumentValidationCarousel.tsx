@@ -17,6 +17,7 @@ import {
   MessageSquare,
   FileCheck2,
 } from "lucide-react";
+import ModalPortal from "@/components/ui/ModalPortal";
 
 export default function DocumentValidationCarousel() {
   const { id } = useParams<{ id: string }>();
@@ -105,15 +106,18 @@ export default function DocumentValidationCarousel() {
 
   if (appQ.isLoading) {
     return (
+      <ModalPortal>
       <div className="fixed inset-0 z-50 bg-white dark:bg-ink-950 flex flex-col items-center justify-center">
         <Loader2 className="w-12 h-12 text-brand animate-spin mb-4" />
         <p className="text-ink-500 font-medium">Loading documents...</p>
       </div>
+      </ModalPortal>
     );
   }
 
   if (!app || docs.length === 0) {
     return (
+      <ModalPortal>
       <div className="fixed inset-0 z-50 bg-white dark:bg-ink-950 flex flex-col items-center justify-center p-6 text-center">
         <div className="w-20 h-20 rounded-3xl bg-ink-100 dark:bg-ink-900 flex items-center justify-center mb-6 text-ink-300">
            <FileText className="w-10 h-10" />
@@ -124,12 +128,14 @@ export default function DocumentValidationCarousel() {
           <ArrowLeft className="w-4 h-4 mr-2" /> Back to Application
         </Link>
       </div>
+      </ModalPortal>
     );
   }
 
   const docUrl = currentDoc ? verificationService.downloadUrl(Number(id), currentDoc.id) : "";
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-50 bg-[rgb(var(--bg-app))] dark:bg-ink-950 flex flex-col overflow-hidden animate-in fade-in duration-300">
       {/* Top Header */}
       <header className="h-16 shrink-0 bg-white dark:bg-ink-900 border-b border-ink-200 dark:border-ink-800 flex items-center justify-between px-6 shadow-sm z-10">
@@ -357,5 +363,6 @@ export default function DocumentValidationCarousel() {
         onSuccess={requestChangesSuccess}
       />
     </div>
+    </ModalPortal>
   );
 }

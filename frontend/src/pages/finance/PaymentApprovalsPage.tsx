@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle, XCircle, Loader2, AlertCircle } from 'lucide-react'
+import { CheckCircle, XCircle, Loader2, AlertCircle, Pencil, X } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { paymentService } from '@/services/financeService'
-import type { FeePayment } from '@/types/finance'
+import { paymentService, ledgerService } from '@/services/financeService'
+import type { FeePayment, FeeInvoice } from '@/types/finance'
 import { PAYMENT_METHOD_LABELS, FEE_TYPE_LABELS } from '@/types/finance'
 import { formatRWF } from '@/utils/formatCurrency'
 import Pagination from '@/components/ui/Pagination'
+import ModalPortal from '@/components/ui/ModalPortal'
 
 const PER_PAGE = 20
 
@@ -59,6 +60,8 @@ export default function PaymentApprovalsPage() {
   const [approvingPayment, setApprovingPayment] = useState<FeePayment | null>(null)
   const [rejectingPayment, setRejectingPayment] = useState<FeePayment | null>(null)
   const [rejectReason,     setRejectReason]     = useState('')
+  const [showEditInvoice,  setShowEditInvoice]  = useState(false)
+  const [overrideInvoiceId, setOverrideInvoiceId] = useState<number | null>(null)
 
   const paymentsQ = useQuery({
     queryKey: ['finance', 'payments', 'approvals', filterStatus, page],
@@ -72,13 +75,26 @@ export default function PaymentApprovalsPage() {
   const lastPage  = paginatedData?.last_page ?? 1
   const currentPg = paginatedData?.current_page ?? 1
 
+  // Load the student's invoices for reassignment when the edit-invoice panel is open
+  const studentInvoicesQ = useQuery({
+    queryKey: ['finance', 'student-invoices-for-approval', approvingPayment?.student_id, approvingPayment?.academic_year_id],
+    queryFn: () => ledgerService.getStudentLedger(approvingPayment!.student_id, {
+      academic_year_id: approvingPayment!.academic_year_id,
+    }),
+    enabled: showEditInvoice && !!approvingPayment?.student_id,
+  })
+  const studentInvoices: FeeInvoice[] = (studentInvoicesQ.data?.data as any)?.invoices ?? []
+
   const approveMut = useMutation({
-    mutationFn: (id: number) => paymentService.approve(id),
+    mutationFn: (id: number) =>
+      paymentService.approve(id, overrideInvoiceId ? { invoice_id: overrideInvoiceId } : undefined),
     onSuccess: () => {
       toast.success('Payment approved — invoice updated')
       qc.invalidateQueries({ queryKey: ['finance', 'payments'] })
       qc.invalidateQueries({ queryKey: ['finance', 'ledger'] })
       setApprovingPayment(null)
+      setShowEditInvoice(false)
+      setOverrideInvoiceId(null)
     },
     onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Approval failed'),
   })
@@ -227,6 +243,7 @@ export default function PaymentApprovalsPage() {
 
       {/* ── Approve Modal ── */}
       {approvingPayment !== null && (
+        <ModalPortal>
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 p-4">
           <div className="bg-white dark:bg-ink-800 rounded-2xl shadow-2xl border border-ink-100 dark:border-ink-700 w-full max-w-lg flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
             {/* Header */}
@@ -241,17 +258,83 @@ export default function PaymentApprovalsPage() {
             </div>
 
             {/* Details */}
-            <div className="p-6 overflow-y-auto flex-1">
+            <div className="p-6 overflow-y-auto flex-1 space-y-4">
               <PaymentDetailGrid p={approvingPayment} />
 
-              <div className="mt-4 p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/50 text-xs text-green-800 dark:text-green-300">
+              {/* Edit Invoice / Category section */}
+              <div className="border border-ink-200 dark:border-ink-700 rounded-xl overflow-hidden">
+                <button
+                  className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-semibold text-ink-600 dark:text-ink-300 bg-ink-50 dark:bg-ink-700/40 hover:bg-ink-100 dark:hover:bg-ink-700/60 transition-colors"
+                  onClick={() => {
+                    setShowEditInvoice(v => !v)
+                    if (!showEditInvoice) setOverrideInvoiceId(null)
+                  }}
+                >
+                  <span className="flex items-center gap-2">
+                    <Pencil className="w-3.5 h-3.5" />
+                    Reassign to a different invoice
+                  </span>
+                  <span className="text-ink-400">{showEditInvoice ? '▲' : '▼'}</span>
+                </button>
+
+                {showEditInvoice && (
+                  <div className="p-4 space-y-2">
+                    {studentInvoicesQ.isLoading && (
+                      <div className="flex items-center gap-2 text-xs text-ink-400">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading invoices…
+                      </div>
+                    )}
+                    {!studentInvoicesQ.isLoading && studentInvoices.length === 0 && (
+                      <p className="text-xs text-ink-400">No invoices found for this student.</p>
+                    )}
+                    {studentInvoices.filter(inv => inv.fee_type !== 'BURSARY_CREDIT').map((inv: FeeInvoice) => (
+                      <label
+                        key={inv.id}
+                        className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer border transition-colors ${
+                          (overrideInvoiceId ?? approvingPayment.invoice_id) === inv.id
+                            ? 'border-brand bg-brand/5'
+                            : 'border-transparent hover:border-ink-200 dark:hover:border-ink-600'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="invoice-reassign"
+                          checked={(overrideInvoiceId ?? approvingPayment.invoice_id) === inv.id}
+                          onChange={() => setOverrideInvoiceId(inv.id === approvingPayment.invoice_id ? null : inv.id)}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium font-mono">{inv.invoice_number}</p>
+                          <p className="text-[10px] text-ink-500 truncate">{inv.description}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-xs font-semibold">{formatRWF(inv.amount_due)}</p>
+                          <p className={`text-[10px] ${
+                            inv.status === 'paid' ? 'text-green-600' :
+                            inv.status === 'partial' ? 'text-yellow-600' : 'text-red-500'
+                          }`}>{inv.status}</p>
+                        </div>
+                      </label>
+                    ))}
+                    {overrideInvoiceId && overrideInvoiceId !== approvingPayment.invoice_id && (
+                      <div className="flex items-center justify-between mt-1 p-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg text-xs text-amber-700 dark:text-amber-300">
+                        <span>Invoice will be reassigned on approval.</span>
+                        <button className="ml-2" onClick={() => setOverrideInvoiceId(null)}>
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/50 text-xs text-green-800 dark:text-green-300">
                 Approving this payment will mark the invoice as paid and update the student's financial ledger. This action cannot be undone.
               </div>
             </div>
 
             {/* Footer */}
             <div className="px-6 py-4 border-t border-ink-100 dark:border-ink-700 flex justify-between items-center bg-ink-50 dark:bg-ink-900 rounded-b-2xl">
-              <button className="btn-ghost" onClick={() => setApprovingPayment(null)}>Cancel</button>
+              <button className="btn-ghost" onClick={() => { setApprovingPayment(null); setShowEditInvoice(false); setOverrideInvoiceId(null) }}>Cancel</button>
               <button
                 className="btn-primary bg-green-600 hover:bg-green-700 text-white rounded-xl px-5 flex items-center gap-2 disabled:opacity-50 transition-transform active:scale-95"
                 disabled={approveMut.isPending}
@@ -263,10 +346,12 @@ export default function PaymentApprovalsPage() {
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
 
       {/* ── Reject Modal ── */}
       {rejectingPayment !== null && (
+        <ModalPortal>
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 p-4">
           <div className="bg-white dark:bg-ink-800 rounded-2xl shadow-2xl border border-ink-100 dark:border-ink-700 w-full max-w-lg flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
             {/* Header */}
@@ -314,6 +399,7 @@ export default function PaymentApprovalsPage() {
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   )

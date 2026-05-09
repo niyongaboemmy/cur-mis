@@ -7,6 +7,7 @@ import { FEE_TYPE_LABELS } from '@/types/finance'
 import { formatRWF } from '@/utils/formatCurrency'
 import RecordPaymentModal from '@/pages/finance/RecordPaymentModal'
 import InvoiceStatusBadge from '@/components/finance/InvoiceStatusBadge'
+import ModalPortal from '@/components/ui/ModalPortal'
 
 interface Props {
   studentId:      string
@@ -43,6 +44,7 @@ export default function RecordPaymentStudentModal({
   }
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm">
       <div className="flex min-h-full items-center justify-center p-4">
         <div className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-2xl shadow-2xl w-full max-w-md animate-in fade-in slide-in-from-bottom-4 duration-300 overflow-hidden">
@@ -116,5 +118,6 @@ export default function RecordPaymentStudentModal({
         </div>
       </div>
     </div>
+    </ModalPortal>
   )
 }

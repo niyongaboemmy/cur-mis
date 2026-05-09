@@ -83,6 +83,9 @@ import ExpensesPage from "@/pages/finance/ExpensesPage";
 import AccountBalancePage from "@/pages/finance/AccountBalancePage";
 import ClearancePage from "@/pages/finance/ClearancePage";
 import RevenueReportPage from "@/pages/finance/RevenueReportPage";
+import RefundsPage from "@/pages/finance/RefundsPage";
+import SponsorsPage from "@/pages/finance/SponsorsPage";
+import ExpenseCategoriesPage from "@/pages/finance/ExpenseCategoriesPage";
 import ReceiptPdfPage from "@/pages/finance/ReceiptPdfPage";
 
 function App() {
@@ -344,9 +347,12 @@ function App() {
                   <Route path="approvals" element={<PaymentApprovalsPage />} />
                   <Route path="structures" element={<FeeStructuresPage />} />
                   <Route path="bursaries" element={<BursariesPage />} />
+                  <Route path="sponsors" element={<SponsorsPage />} />
                   <Route path="expenses" element={<ExpensesPage />} />
+                  <Route path="expenses/categories" element={<ExpenseCategoriesPage />} />
                   <Route path="balance" element={<AccountBalancePage />} />
                   <Route path="clearance" element={<ClearancePage />} />
+                  <Route path="refunds" element={<RefundsPage />} />
                   <Route path="reports" element={<RevenueReportPage />} />
                 </Route>
               </Route>

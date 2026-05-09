@@ -4,6 +4,7 @@ import { Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { ledgerService } from '@/services/financeService'
 import SearchableSelect from '@/components/ui/SearchableSelect'
+import ModalPortal from '@/components/ui/ModalPortal'
 
 interface Props {
   studentId:      string
@@ -34,6 +35,7 @@ export default function GenerateInvoicesModal({ studentId, years, defaultYearId,
   })
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50">
       <div className="flex min-h-full items-center justify-center p-4">
         <div className="bg-white dark:bg-ink-800 rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
@@ -69,8 +71,10 @@ export default function GenerateInvoicesModal({ studentId, years, defaultYearId,
           </div>
 
           <p className="text-xs text-ink-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 rounded p-2">
-            This will create tuition, registration, repeat-module, and arrears invoices as applicable.
-            Existing invoices for the same type/year will be skipped.
+            Generates all applicable invoices respecting each fee structure's payment plan:
+            <strong> per-semester</strong> structures produce two invoices (S1 + S2),
+            <strong> installment</strong> structures produce one invoice per installment.
+            Existing invoices are skipped. Select a semester to generate only that semester's invoices.
           </p>
 
           <div className="flex gap-2 justify-end">
@@ -87,5 +91,6 @@ export default function GenerateInvoicesModal({ studentId, years, defaultYearId,
         </div>
       </div>
     </div>
+    </ModalPortal>
   )
 }

@@ -36,6 +36,7 @@ import DonutChart from '@/components/dashboard/DonutChart'
 import BarChart, { type BarDatum } from '@/components/dashboard/BarChart'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import type { HrEmployee } from '@/types/academic'
+import ModalPortal from '@/components/ui/ModalPortal'
 
 const PER_PAGE = 15
 
@@ -656,6 +657,7 @@ function EditStaffModal({ employee, onClose, onSaved }: { employee: HrEmployee; 
   )
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-ink-900/50 backdrop-blur-sm">
       <div className="bg-white dark:bg-ink-800 rounded-xl shadow-xl w-full max-w-2xl max-h-[92vh] overflow-hidden flex flex-col">
         <div className="flex items-center justify-between px-6 py-4 border-b border-ink-100 dark:border-ink-700">
@@ -720,6 +722,7 @@ function EditStaffModal({ employee, onClose, onSaved }: { employee: HrEmployee; 
         </form>
       </div>
     </div>
+    </ModalPortal>
   )
 }
 
@@ -774,6 +777,7 @@ function AddStaffModal({ onClose, onSaved }: { onClose: () => void; onSaved: () 
   }
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-ink-900/50 backdrop-blur-sm">
       <div className="bg-white dark:bg-ink-800 rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
         <div className="flex items-center justify-between px-6 py-4 border-b border-ink-100 dark:border-ink-700">
@@ -851,6 +855,7 @@ function AddStaffModal({ onClose, onSaved }: { onClose: () => void; onSaved: () 
         </form>
       </div>
     </div>
+    </ModalPortal>
   )
 }
 

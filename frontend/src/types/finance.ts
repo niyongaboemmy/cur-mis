@@ -10,6 +10,7 @@ export type FeeType =
   | 'REPEAT_MODULE'
   | 'ARREARS'
   | 'BURSARY_CREDIT'
+  | 'MODULE_FEE'
 
 export type InvoiceStatus = 'unpaid' | 'partial' | 'paid' | 'overdue' | 'waived'
 
@@ -19,18 +20,24 @@ export type PaymentStatus = 'pending' | 'confirmed' | 'rejected'
 
 // ─── Fee Structures ───────────────────────────────────────────────────────────
 
+export type PaymentPlan = 'full_year' | 'per_semester' | 'per_installment'
+
 export interface FeeStructure {
   id:                   number
   academic_year_id:     number
   academic_year_label?: string
   department_id:        number | null
   department_name?:     string | null
+  /** comma-separated department IDs from fee_structure_departments join */
+  dept_ids?:            string | null
   level_id:             number | null
   level_name?:          string | null
   fee_type:             Exclude<FeeType, 'ARREARS' | 'BURSARY_CREDIT'>
   label:                string
   amount:               number
   semester:             1 | 2 | null
+  payment_plan?:        PaymentPlan
+  installment_count?:   number | null
   is_active:            0 | 1
   created_by:           number
   created_at:           string
@@ -38,13 +45,16 @@ export interface FeeStructure {
 }
 
 export interface CreateFeeStructurePayload {
-  academic_year_id: number
-  department_id?:   number | null
-  level_id?:        number | null
-  fee_type:         string
-  label:            string
-  amount:           number
-  semester?:        1 | 2 | null
+  academic_year_id:   number
+  department_id?:     number | null
+  department_ids?:    number[]
+  level_id?:          number | null
+  fee_type:           string
+  label:              string
+  amount:             number
+  semester?:          1 | 2 | null
+  payment_plan?:      PaymentPlan
+  installment_count?: number | null
 }
 
 // ─── Invoices ─────────────────────────────────────────────────────────────────
@@ -74,13 +84,14 @@ export interface FeeInvoice {
 }
 
 export interface CreateInvoicePayload {
-  student_id:        string
-  academic_year_id:  number
-  semester?:         1 | 2 | null
-  fee_type:          FeeType
-  description:       string
-  amount_due:        number
-  due_date?:         string | null
+  student_id:         string
+  academic_year_id:   number
+  fee_structure_id?:  number | null
+  semester?:          1 | 2 | null
+  fee_type:           FeeType
+  description:        string
+  amount_due:         number
+  due_date?:          string | null
 }
 
 export interface GenerateInvoicesPayload {
@@ -173,6 +184,8 @@ export interface FeeBursary {
   confirmed_by?:       number | null
   confirmed_by_name?:  string
   confirmed_at?:       string | null
+  sponsor_id?:         number | null
+  sponsor_name?:       string | null
   notes:               string | null
   created_at:          string
 }
@@ -183,6 +196,7 @@ export interface CreateBursaryPayload {
   bursary_type:      string
   amount:            number
   coverage_pct?:     number | null
+  sponsor_id?:       number | null
   notes?:            string
   status?:           BursaryStatus
 }
@@ -198,6 +212,7 @@ export interface LedgerTotals {
 }
 
 export interface StudentLedger {
+  student?:  any
   invoices: FeeInvoice[]
   payments: FeePayment[]
   totals:   LedgerTotals
@@ -268,6 +283,7 @@ export const FEE_TYPE_LABELS: Record<FeeType, string> = {
   REPEAT_MODULE:     'Repeat Module',
   ARREARS:           'Arrears',
   BURSARY_CREDIT:    'Bursary Credit',
+  MODULE_FEE:        'Module Fee',
 }
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
@@ -409,6 +425,38 @@ export interface ClearanceResult {
   totals?:   Record<string, number>
 }
 
+// ─── Exam Eligibility ─────────────────────────────────────────────────────────
+
+export interface ExamInstallment {
+  label:      string
+  amount:     number
+  cumulative: number
+  for_exam_s: 1 | 2
+  covered:    boolean
+}
+
+export interface ExamEligibilityItem {
+  fee_type:          string
+  label:             string
+  payment_plan:      PaymentPlan
+  installment_count: number
+  total_billed:      number
+  min_required:      number
+  total_covered:     number
+  shortfall:         number
+  eligible:          boolean
+  schedule:          ExamInstallment[]
+}
+
+export interface ExamEligibility {
+  semester:        1 | 2
+  eligible:        boolean
+  total_required:  number
+  total_covered:   number
+  total_shortfall: number
+  items:           ExamEligibilityItem[]
+}
+
 export const CLEARANCE_STATUS_LABELS: Record<ClearanceStatus, string> = {
   cleared:     'Cleared',
   not_cleared: 'Not Cleared',
@@ -419,6 +467,41 @@ export const CLEARANCE_STATUS_COLORS: Record<ClearanceStatus, string> = {
   cleared:     'text-green-700 bg-green-50 dark:bg-green-900/30 dark:text-green-400',
   not_cleared: 'text-red-700 bg-red-50 dark:bg-red-900/30 dark:text-red-400',
   conditional: 'text-orange-700 bg-orange-50 dark:bg-orange-900/30 dark:text-orange-400',
+}
+
+// ─── Clearance Report ─────────────────────────────────────────────────────────
+
+export type ClearanceReportStudentStatus = 'cleared' | 'partial' | 'not_paid'
+
+export interface ClearanceReportStudent {
+  student_id:           string
+  regnumber:            string
+  fname:                string
+  lname:                string
+  department_name:      string | null
+  amount_billed:        number
+  amount_paid:          number
+  bursary_applied:      number
+  total_covered:        number
+  required_this_period: number
+  shortfall:            number
+  status:               ClearanceReportStudentStatus
+}
+
+export interface ClearanceReport {
+  fee_structure:   FeeStructure
+  period:          string
+  period_label:    string
+  required_amount: number
+  summary: {
+    total:           number
+    cleared:         number
+    partial:         number
+    not_paid:        number
+    total_billed:    number
+    total_collected: number
+  }
+  students: ClearanceReportStudent[]
 }
 
 // ─── Income Projection ────────────────────────────────────────────────────────
@@ -448,4 +531,100 @@ export interface MonthlyCollection {
   hostel:      number
   other_fees:  number
   expenses:    number
+}
+
+// ─── Sponsors ─────────────────────────────────────────────────────────────────
+
+export interface Sponsor {
+  id:         number
+  name:       string
+  email:      string | null
+  phone:      string | null
+  is_active:  0 | 1
+  created_at: string
+  updated_at: string
+}
+
+export interface CreateSponsorPayload {
+  name:       string
+  email?:     string | null
+  phone?:     string | null
+  is_active?: 0 | 1
+}
+
+// ─── Student Fee Overrides ────────────────────────────────────────────────────
+
+export type OverrideFeeType = Exclude<FeeType, 'ARREARS' | 'BURSARY_CREDIT' | 'MODULE_FEE'>
+
+export interface StudentFeeOverride {
+  id:                number
+  student_id:        string
+  academic_year_id:  number
+  fee_type:          OverrideFeeType
+  amount:            number
+  reason:            string
+  created_by:        number
+  created_by_name?:  string
+  created_at:        string
+}
+
+export interface CreateOverridePayload {
+  student_id:       string
+  academic_year_id: number
+  fee_type:         OverrideFeeType
+  amount:           number
+  reason?:          string
+}
+
+// ─── Refunds ──────────────────────────────────────────────────────────────────
+
+export type RefundCategory = 'REFUND' | 'CAUTION' | 'OVERPAYMENT'
+export type RefundStatus   = 'pending' | 'processed' | 'rejected'
+
+export interface FeeRefund {
+  id:                  number
+  student_id:          string
+  student_fname?:      string
+  student_lname?:      string
+  amount:              number
+  category:            RefundCategory
+  reason:              string
+  status:              RefundStatus
+  processed_by:        number | null
+  processed_by_name?:  string | null
+  notes:               string | null
+  created_at:          string
+  updated_at:          string
+}
+
+export interface CreateRefundPayload {
+  student_id:  string
+  payment_id:  number
+  amount:      number
+  category:    RefundCategory
+  reason:      string
+  notes?:      string
+}
+
+export const REFUND_CATEGORY_LABELS: Record<RefundCategory, string> = {
+  REFUND:      'Refund',
+  CAUTION:     'Caution Money',
+  OVERPAYMENT: 'Overpayment',
+}
+
+export const REFUND_STATUS_COLORS: Record<RefundStatus, string> = {
+  pending:   'text-yellow-700 bg-yellow-50',
+  processed: 'text-green-700 bg-green-50',
+  rejected:  'text-red-600 bg-red-50',
+}
+
+// ─── Bulk Bursary Upload ──────────────────────────────────────────────────────
+
+export interface CreateBursaryBulkPayload {
+  academic_year_id:   number
+  bursary_type:       string
+  amount_per_student: number
+  sponsor_id?:        number | null
+  student_ids?:       string[]
+  student_ids_text?:  string
 }

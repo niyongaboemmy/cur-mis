@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import ModalPortal from '@/components/ui/ModalPortal'
 import { useMutation } from '@tanstack/react-query'
 import { CheckCircle2, ExternalLink, Loader2, ChevronRight, ChevronLeft, Wallet, CreditCard, Banknote } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -97,6 +98,7 @@ export default function RecordPaymentModal({ invoice, onClose, onDone }: Props) 
 
   if (success) {
     return (
+      <ModalPortal>
       <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm">
         <div className="flex min-h-full items-center justify-center p-4">
           <div className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-2xl shadow-2xl w-full max-w-sm p-8 space-y-6 text-center animate-in zoom-in-95 duration-200">
@@ -129,10 +131,12 @@ export default function RecordPaymentModal({ invoice, onClose, onDone }: Props) 
           </div>
         </div>
       </div>
+      </ModalPortal>
     )
   }
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm">
       <div className="flex min-h-full items-center justify-center p-4">
         <div className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-300">
@@ -348,5 +352,6 @@ export default function RecordPaymentModal({ invoice, onClose, onDone }: Props) 
         </div>
       </div>
     </div>
+    </ModalPortal>
   )
 }
