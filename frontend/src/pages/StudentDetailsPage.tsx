@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { studentService } from '@/services/studentService'
 import { marksService, type MyMarksRow, type MyMarksTotals } from '@/services/marksService'
 import { academicService } from '@/services/academicService'
-import { attendanceService, type AttendanceStatus } from '@/services/attendanceService'
+import { attendanceService, type StudentAttendanceStatus } from '@/services/attendanceService'
 import { useAuthStore } from '@/store/authStore'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
@@ -103,7 +103,7 @@ export default function StudentDetailsPage({ selfMode = false }: StudentDetailsP
             <ArrowLeft className="w-5 h-5" />
           </Link>
         )}
-        <StudentAvatar student={student} initials={initials} readOnly={selfMode} />
+        <StudentAvatar student={student} initials={initials} selfMode={selfMode} />
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold text-ink-900 dark:text-white">
@@ -133,22 +133,18 @@ export default function StudentDetailsPage({ selfMode = false }: StudentDetailsP
       <div className="flex flex-wrap items-center gap-2 border-b border-ink-200 dark:border-ink-800">
         <TabButton active={tab === 'overview'}   onClick={() => setTab('overview')}   icon={User}       label="Overview & Stats" />
         <TabButton active={tab === 'attendance'} onClick={() => setTab('attendance')} icon={Clock}      label="Attendance" />
-        {!selfMode && (
-          <>
-            <TabButton active={tab === 'documents'}  onClick={() => setTab('documents')}  icon={FileText}   label="Documents" />
-            <TabButton active={tab === 'curriculum'} onClick={() => setTab('curriculum')} icon={BookOpen}   label="Program & Marks" />
-          </>
-        )}
+        <TabButton active={tab === 'documents'}  onClick={() => setTab('documents')}  icon={FileText}   label="Documents" />
+        <TabButton active={tab === 'curriculum'} onClick={() => setTab('curriculum')} icon={BookOpen}   label="Program & Marks" />
         <TabButton active={tab === 'finance'}    onClick={() => setTab('finance')}    icon={BarChart}   label="Finance" />
         <TabButton active={tab === 'transcript'} onClick={() => setTab('transcript')} icon={FileText}   label="Transcript" />
       </div>
 
       {/* Tab Content */}
       <div className="min-h-[400px]">
-        {tab === 'overview' && <OverviewTab student={student} stats={stats} />}
+        {tab === 'overview' && <OverviewTab student={student} stats={stats} selfMode={selfMode} />}
         {tab === 'attendance' && <AttendanceTab student={student} />}
-        {!selfMode && tab === 'documents' && <DocumentsTab student={student} />}
-        {!selfMode && tab === 'curriculum' && <ProgramCurriculumTab student={student} />}
+        {tab === 'documents' && <DocumentsTab student={student} selfMode={selfMode} />}
+        {tab === 'curriculum' && <ProgramCurriculumTab student={student} selfMode={selfMode} />}
         {tab === 'finance' && <PlaceholderTab icon={BarChart} title="Financial Overview" desc="Tuition fees, payments, and balances." />}
         {tab === 'transcript' && <TranscriptTab student={student} />}
       </div>
@@ -158,7 +154,7 @@ export default function StudentDetailsPage({ selfMode = false }: StudentDetailsP
   )
 }
 
-function OverviewTab({ student, stats }: { student: any, stats: any }) {
+function OverviewTab({ student, stats, selfMode = false }: { student: any, stats: any, selfMode?: boolean }) {
   const app = student?.application ?? null
 
   // Prefer the live student record, but fall back to the application for fields
@@ -178,92 +174,89 @@ function OverviewTab({ student, stats }: { student: any, stats: any }) {
   const fullName = `${student.fname ?? ''} ${student.lname ?? ''}`.trim() || '—'
   const genderRaw = pick(student.gender, app?.gender)
   const genderLabel = genderRaw === 'M' ? 'Male' : genderRaw === 'F' ? 'Female' : (genderRaw || null)
+  const initials = [student.fname, student.lname].filter(Boolean).map((p: string) => p[0]).slice(0, 2).join('').toUpperCase() || '—'
+
+  const stateRaw = String(student.student_state ?? '').toLowerCase()
+  const stateClass =
+    stateRaw === 'active'    ? 'bg-mint-100 text-mint-700 ring-mint-200' :
+    stateRaw === 'graduated' ? 'bg-blue-100 text-blue-700 ring-blue-200' :
+    stateRaw === 'suspended' ? 'bg-red-100 text-red-700 ring-red-200' :
+                                'bg-ink-100 text-ink-700 ring-ink-200'
+
+  const academicYear = pick(student.acc_year, app?.academic_year_label)
+  const campus       = pick(app?.campus_name)
+  const studyMode    = cap(pick(app?.mode_of_study))
 
   return (
     <div className="space-y-6">
-      {/* Personal Details */}
-      <section className="card p-6">
-        <SectionHeader
-          title="Personal Details"
-          sub="Identity and parental information."
-          icon={User}
-        />
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5 mt-6">
-          <InfoGroup label="Full Name" value={fullName} icon={User} />
-          <InfoGroup label="Father's Name" value={pick(student.father, app?.father)} icon={UsersIcon} />
-          <InfoGroup label="Mother's Name" value={pick(student.mother, app?.mother)} icon={UsersIcon} />
-          <InfoGroup label="Gender" value={genderLabel} />
-          <InfoGroup label="Date of Birth" value={pick(student.birthdate, app?.birthdate)} icon={CalendarDays} />
-          <InfoGroup label="Marital Status" value={cap(pick(app?.marital_status))} icon={Heart} />
-          <InfoGroup label="National ID / Passport" value={pick(student.id_card, app?.national_id)} icon={CreditCard} />
-          <InfoGroup label="Nationality" value={pick(student.nationality, app?.nationality)} icon={Globe2} />
-          <InfoGroup label="Country of Residence" value={pick(app?.country_of_residence)} icon={MapPin} />
-          <InfoGroup label="Disability" value={pick(app?.disability) ?? 'None'} icon={Accessibility} />
+      {/* Hero profile card */}
+      <section className="relative overflow-hidden rounded-2xl border border-ink-200 dark:border-ink-800 bg-white dark:bg-ink-900">
+        {/* gradient banner */}
+        <div className="h-28 bg-gradient-to-r from-brand/90 via-brand to-brand/70 dark:from-brand/60 dark:via-brand/70 dark:to-brand/50" />
+
+        <div className="px-6 pb-6 -mt-16 flex flex-col md:flex-row gap-6 md:items-end">
+          {/* large editable photo */}
+          <ProfileHeroPhoto student={student} initials={initials} selfMode={selfMode} />
+
+          <div className="flex-1 min-w-0 md:pb-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-2xl font-bold text-ink-900 dark:text-white truncate">{fullName}</h2>
+              <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ring-1 ${stateClass}`}>
+                {String(student.student_state || 'Unknown').toUpperCase()}
+              </span>
+            </div>
+            <p className="mt-2 flex flex-wrap items-center gap-2 text-sm text-ink-500">
+              <span className="font-mono bg-ink-100 dark:bg-ink-800 px-2 py-0.5 rounded text-ink-700 dark:text-ink-200">
+                {student.regnumber || student.index_number || 'No ID'}
+              </span>
+              {programName && <span className="inline-flex items-center gap-1"><BookOpen className="w-3.5 h-3.5" /> {programName}</span>}
+              {levelName && <span className="inline-flex items-center gap-1"><GraduationCap className="w-3.5 h-3.5" /> Level {levelName}</span>}
+            </p>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              {facultyName && <Chip icon={Building2} label="Faculty" value={facultyName} />}
+              {deptName    && <Chip icon={GraduationCap} label="Department" value={deptName} />}
+              {academicYear && <Chip icon={Calendar} label="Year" value={academicYear} />}
+              {campus       && <Chip icon={Building2} label="Campus" value={campus} />}
+              {studyMode    && <Chip icon={Clock} label="Mode" value={studyMode} />}
+            </div>
+          </div>
         </div>
       </section>
 
-      {/* Contact */}
-      <section className="card p-6">
-        <SectionHeader
-          title="Contact"
-          sub="How we reach the student."
-          icon={Phone}
-        />
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5 mt-6">
-          <InfoGroup label="Phone" value={pick(student.phone, app?.phone)} icon={Phone} />
-          <InfoGroup label="Reference Person Phone" value={pick(app?.reference_phone)} icon={Phone} />
-          <InfoGroup label="Email" value={pick(student.email, app?.email)} icon={Mail} />
-        </div>
-      </section>
-
-      {/* Residency — only shown when we actually have any address data */}
-      {app && (app.province || app.district || app.sector || app.residence_district || app.address) && (
+      {/* Two-column responsive layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <section className="card p-6">
-          <SectionHeader
-            title="Residency"
-            sub="Where the student lives."
-            icon={MapPin}
-          />
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5 mt-6">
-            <InfoGroup label="Province" value={pick(app?.province)} />
-            <InfoGroup label="District" value={pick(app?.district)} />
-            <InfoGroup label="Sector" value={pick(app?.sector)} />
-            <InfoGroup label="Residence District" value={pick(app?.residence_district)} />
-            <div className="sm:col-span-2 lg:col-span-3">
-              <InfoGroup label="Address" value={pick(app?.address) ?? 'Not provided'} icon={MapPin} />
+          <SectionHeader title="Personal Details" sub="Identity and parental information." icon={User} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5 mt-6">
+            <InfoGroup label="Full Name" value={fullName} icon={User} />
+            <InfoGroup label="Gender" value={genderLabel} />
+            <InfoGroup label="Date of Birth" value={pick(student.birthdate, app?.birthdate)} icon={CalendarDays} />
+            <InfoGroup label="Marital Status" value={cap(pick(app?.marital_status))} icon={Heart} />
+            <InfoGroup label="National ID / Passport" value={pick(student.id_card, app?.national_id)} icon={CreditCard} />
+            <InfoGroup label="Nationality" value={pick(student.nationality, app?.nationality)} icon={Globe2} />
+            <InfoGroup label="Father's Name" value={pick(student.father, app?.father)} icon={UsersIcon} />
+            <InfoGroup label="Mother's Name" value={pick(student.mother, app?.mother)} icon={UsersIcon} />
+            <InfoGroup label="Country of Residence" value={pick(app?.country_of_residence)} icon={MapPin} />
+            <InfoGroup label="Disability" value={pick(app?.disability) ?? 'None'} icon={Accessibility} />
+          </div>
+        </section>
+
+        <section className="card p-6">
+          <SectionHeader title="Contact" sub="How we reach the student." icon={Phone} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5 mt-6">
+            <InfoGroup label="Phone" value={pick(student.phone, app?.phone)} icon={Phone} />
+            <InfoGroup label="Reference Person Phone" value={pick(app?.reference_phone)} icon={Phone} />
+            <div className="sm:col-span-2">
+              <InfoGroup label="Email" value={pick(student.email, app?.email)} icon={Mail} />
             </div>
           </div>
         </section>
-      )}
+      </div>
 
-      {/* Academic Background — captured at application time */}
-      {app && (
-        <section className="card p-6">
-          <SectionHeader
-            title="Academic Background"
-            sub="Secondary school transcript provided during application."
-            icon={GraduationCap}
-          />
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5 mt-6">
-            <InfoGroup label="Attended Secondary School" value={pick(app?.prev_school)} />
-            <InfoGroup label="Combination / Section" value={pick(app?.combination)} />
-            <InfoGroup label="A2 Grades" value={pick(app?.a2_grades)} />
-            <InfoGroup label="Principal Passes" value={app?.principal_passes != null ? String(app.principal_passes) : null} />
-            <InfoGroup label="Completion Year" value={app?.graduation_year ? String(app.graduation_year) : null} />
-            <InfoGroup label="Serial Number" value={pick(app?.serial_number)} />
-            <InfoGroup label="Qualification" value={pick(app?.prev_qualification)} />
-            <InfoGroup label="Mean Grade" value={pick(app?.prev_grade)} />
-          </div>
-        </section>
-      )}
-
-      {/* Programme Selection — current academic placement */}
+      {/* Programme — full width */}
       <section className="card p-6">
-        <SectionHeader
-          title="Programme Selection"
-          sub="Faculty, department, programme and academic year."
-          icon={BookOpen}
-        />
+        <SectionHeader title="Programme Details" sub="Faculty, department, programme and academic year." icon={BookOpen} />
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5 mt-6">
           <InfoGroup label="Program" value={programName} icon={BookOpen} />
           <InfoGroup label="Faculty" value={facultyName} icon={Building2} />
@@ -277,6 +270,40 @@ function OverviewTab({ student, stats }: { student: any, stats: any }) {
         </div>
       </section>
 
+      {/* Residency + Academic Background — side by side when both exist */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {app && (app.province || app.district || app.sector || app.residence_district || app.address) && (
+          <section className="card p-6">
+            <SectionHeader title="Residency" sub="Where the student lives." icon={MapPin} />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5 mt-6">
+              <InfoGroup label="Province" value={pick(app?.province)} />
+              <InfoGroup label="District" value={pick(app?.district)} />
+              <InfoGroup label="Sector" value={pick(app?.sector)} />
+              <InfoGroup label="Residence District" value={pick(app?.residence_district)} />
+              <div className="sm:col-span-2">
+                <InfoGroup label="Address" value={pick(app?.address) ?? 'Not provided'} icon={MapPin} />
+              </div>
+            </div>
+          </section>
+        )}
+
+        {app && (
+          <section className="card p-6">
+            <SectionHeader title="Academic Background" sub="Secondary school transcript." icon={GraduationCap} />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5 mt-6">
+              <InfoGroup label="Attended Secondary School" value={pick(app?.prev_school)} />
+              <InfoGroup label="Combination / Section" value={pick(app?.combination)} />
+              <InfoGroup label="A2 Grades" value={pick(app?.a2_grades)} />
+              <InfoGroup label="Principal Passes" value={app?.principal_passes != null ? String(app.principal_passes) : null} />
+              <InfoGroup label="Completion Year" value={app?.graduation_year ? String(app.graduation_year) : null} />
+              <InfoGroup label="Serial Number" value={pick(app?.serial_number)} />
+              <InfoGroup label="Qualification" value={pick(app?.prev_qualification)} />
+              <InfoGroup label="Mean Grade" value={pick(app?.prev_grade)} />
+            </div>
+          </section>
+        )}
+      </div>
+
       {/* Academic Progress placeholder */}
       <section className="card p-6">
         <SectionHeader title="Academic Progress" sub="GPA and term-by-term performance." icon={BarChart} />
@@ -285,6 +312,94 @@ function OverviewTab({ student, stats }: { student: any, stats: any }) {
           <p className="text-sm">Comprehensive stats and GPA calculations are currently being processed.</p>
         </div>
       </section>
+    </div>
+  )
+}
+
+function Chip({ icon: Icon, label, value }: { icon?: any; label: string; value: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-ink-50 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 text-[12px]">
+      {Icon && <Icon className="w-3.5 h-3.5 text-brand shrink-0" />}
+      <span className="text-ink-400 font-medium">{label}:</span>
+      <span className="text-ink-900 dark:text-white font-semibold truncate max-w-[180px]" title={value}>{value}</span>
+    </span>
+  )
+}
+
+/**
+ * Large editable photo used inside the overview hero card. In selfMode we
+ * route uploads/downloads through `/api/students/me/photo`, which doesn't
+ * require admin permissions, so a logged-in student can update their own
+ * picture from /me/profile.
+ */
+function ProfileHeroPhoto({ student, initials, selfMode }: { student: any; initials: string; selfMode: boolean }) {
+  const qc = useQueryClient()
+  const fileRef = useRef<HTMLInputElement | null>(null)
+  const [v, setV] = useState(0)
+
+  const upload = useMutation({
+    mutationFn: (f: File) =>
+      selfMode
+        ? studentService.uploadMyPhoto(f)
+        : studentService.uploadPhoto(student.id, f),
+    onSuccess: () => {
+      toast.success('Profile photo updated.')
+      setV(n => n + 1)
+      qc.invalidateQueries({ queryKey: selfMode ? ['student', 'me'] : ['student', String(student.id)] })
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to upload photo'),
+  })
+
+  const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]
+    e.target.value = ''
+    if (!f) return
+    if (f.size > 5 * 1024 * 1024) {
+      toast.error('Photo must be 5 MB or smaller.')
+      return
+    }
+    upload.mutate(f)
+  }
+
+  const photoSrc = student.photo
+    ? (selfMode
+        ? studentService.myPhotoUrl(`${student.photo}-${v}`)
+        : studentService.photoUrl(student.id, `${student.photo}-${v}`))
+    : null
+
+  return (
+    <div className="relative shrink-0">
+      <div className="w-32 h-32 sm:w-40 sm:h-40 rounded-2xl overflow-hidden bg-white dark:bg-ink-800 ring-4 ring-white dark:ring-ink-900 shadow-lg flex items-center justify-center">
+        {photoSrc ? (
+          <img
+            src={photoSrc}
+            alt={`${student.fname ?? ''} ${student.lname ?? ''}`.trim() || 'Student photo'}
+            className="w-full h-full object-cover"
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+          />
+        ) : (
+          <span className="text-4xl font-bold text-brand">{initials}</span>
+        )}
+      </div>
+
+      <button
+        type="button"
+        onClick={() => !upload.isPending && fileRef.current?.click()}
+        disabled={upload.isPending}
+        className="absolute -bottom-1 -right-1 w-10 h-10 rounded-full bg-brand text-white shadow-md flex items-center justify-center hover:bg-brand/90 transition-colors disabled:opacity-60 outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 ring-offset-white dark:ring-offset-ink-900"
+        title="Change profile photo"
+        aria-label="Change profile photo"
+      >
+        {upload.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
+      </button>
+
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="hidden"
+        onChange={onPick}
+      />
     </div>
   )
 }
@@ -324,7 +439,7 @@ function cap(s?: string | null): string | null {
   return s.charAt(0).toUpperCase() + s.slice(1)
 }
 
-function StudentAvatar({ student, initials, readOnly = false }: { student: any; initials: string; readOnly?: boolean }) {
+function StudentAvatar({ student, initials, selfMode = false }: { student: any; initials: string; selfMode?: boolean }) {
   const qc       = useQueryClient()
   const fileRef  = useRef<HTMLInputElement | null>(null)
   // Bumped after a successful upload so the cached <img> reloads even when
@@ -332,11 +447,14 @@ function StudentAvatar({ student, initials, readOnly = false }: { student: any; 
   const [v, setV] = useState(0)
 
   const upload = useMutation({
-    mutationFn: (f: File) => studentService.uploadPhoto(student.id, f),
+    mutationFn: (f: File) =>
+      selfMode
+        ? studentService.uploadMyPhoto(f)
+        : studentService.uploadPhoto(student.id, f),
     onSuccess: () => {
       toast.success('Profile photo updated.')
       setV(n => n + 1)
-      qc.invalidateQueries({ queryKey: ['student', String(student.id)] })
+      qc.invalidateQueries({ queryKey: selfMode ? ['student', 'me'] : ['student', String(student.id)] })
     },
     onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to upload photo'),
   })
@@ -353,25 +471,10 @@ function StudentAvatar({ student, initials, readOnly = false }: { student: any; 
   }
 
   const photoSrc = student.photo
-    ? studentService.photoUrl(student.id, `${student.photo}-${v}`)
+    ? (selfMode
+        ? studentService.myPhotoUrl(`${student.photo}-${v}`)
+        : studentService.photoUrl(student.id, `${student.photo}-${v}`))
     : null
-
-  if (readOnly) {
-    return (
-      <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-brand/10 text-brand flex items-center justify-center text-xl font-bold shrink-0">
-        {photoSrc ? (
-          <img
-            src={photoSrc}
-            alt={`${student.fname ?? ''} ${student.lname ?? ''}`.trim() || 'Student photo'}
-            className="w-full h-full object-cover"
-            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
-          />
-        ) : (
-          <span>{initials}</span>
-        )}
-      </div>
-    )
-  }
 
   return (
     <button
@@ -432,20 +535,22 @@ function TabButton({ active, icon: Icon, label, onClick }: { active: boolean, ic
  * table can be downloaded as a CSV via the dedicated server endpoint —
  * format mirrors what's on screen so it's printable as-is.
  */
-function ProgramCurriculumTab({ student }: { student: any }) {
+function ProgramCurriculumTab({ student, selfMode = false }: { student: any; selfMode?: boolean }) {
   const studentId = student?.id
   const qc = useQueryClient()
   const user = useAuthStore((s) => s.user)
-  const isAdmin = user?.role === 'superadmin' || user?.role === 'admin'
+  const isAdmin = !selfMode && (user?.role === 'superadmin' || user?.role === 'admin')
   const [exempting, setExempting] = useState<{ moduleId: number; moduleCode: string; moduleName: string } | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [enrollPending, setEnrollPending] = useState<number | null>(null)
   const [dropPending, setDropPending] = useState<number | null>(null)
 
   const dataQ = useQuery({
-    queryKey: ['student-program-modules', studentId],
-    queryFn: () => studentService.programModules(studentId),
-    enabled: !!studentId,
+    queryKey: selfMode ? ['student-program-modules', 'me'] : ['student-program-modules', studentId],
+    // Self mode hits /api/students/me/program-modules — no VIEW_STUDENTS
+    // required, so the student portal can read its own curriculum.
+    queryFn: () => (selfMode ? studentService.meProgramModules() : studentService.programModules(studentId)),
+    enabled: selfMode || !!studentId,
   })
 
   const deleteExemption = useMutation({
@@ -542,15 +647,17 @@ function ProgramCurriculumTab({ student }: { student: any }) {
               Exempt module
             </button>
           )}
-          <a
-            href={downloadUrl}
-            className="btn-primary btn-sm flex items-center gap-1.5"
-            target="_blank"
-            rel="noreferrer"
-          >
-            <Download className="w-3.5 h-3.5" />
-            Download CSV
-          </a>
+          {!selfMode && (
+            <a
+              href={downloadUrl}
+              className="btn-primary btn-sm flex items-center gap-1.5"
+              target="_blank"
+              rel="noreferrer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Download CSV
+            </a>
+          )}
         </div>
       </div>
 
@@ -706,7 +813,9 @@ function ProgramCurriculumTab({ student }: { student: any }) {
                         )}
                       </td>
                       <td className="px-3 py-2 text-right whitespace-nowrap">
-                        {hasMarks ? (
+                        {selfMode ? (
+                          <span className="text-ink-300">—</span>
+                        ) : hasMarks ? (
                           isExempted && isAdmin ? (
                             <button
                               type="button"
@@ -1178,16 +1287,18 @@ function AttendanceTab({ student }: { student: any }) {
   const byModule = data?.by_module ?? []
   const records = data?.recent ?? []
 
-  const statusBadge = (s: AttendanceStatus) => {
-    const map: Record<AttendanceStatus, string> = {
-      present: 'bg-mint-100 text-mint-700',
-      late:    'bg-amber-100 text-amber-700',
-      absent:  'bg-red-100 text-red-700',
-      excused: 'bg-ink-100 text-ink-700',
+  const statusBadge = (s: StudentAttendanceStatus) => {
+    const map: Record<StudentAttendanceStatus, string> = {
+      present:      'bg-mint-100 text-mint-700',
+      late:         'bg-amber-100 text-amber-700',
+      absent:       'bg-red-100 text-red-700',
+      excused:      'bg-ink-100 text-ink-700',
+      not_recorded: 'bg-ink-100 text-ink-500',
     }
+    const label = s === 'not_recorded' ? 'Not recorded' : s
     return (
       <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold uppercase ${map[s] || 'bg-ink-100 text-ink-700'}`}>
-        {s}
+        {label}
       </span>
     )
   }
@@ -1195,59 +1306,78 @@ function AttendanceTab({ student }: { student: any }) {
   return (
     <div className="space-y-6">
       {/* KPI cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <KpiCard label="Total Records" value={totals?.records ?? 0} />
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+        <KpiCard label="Sessions" value={totals?.sessions ?? 0} />
         <KpiCard label="Present" value={totals?.present ?? 0} accent="text-mint-700" />
         <KpiCard label="Late" value={totals?.late ?? 0} accent="text-amber-700" />
         <KpiCard label="Absent" value={totals?.absent ?? 0} accent="text-red-700" />
+        <KpiCard label="Not Recorded" value={totals?.not_recorded ?? 0} accent="text-ink-500" />
         <KpiCard label="Attendance %" value={`${totals?.attendance_pct ?? 0}%`} accent="text-brand" />
       </div>
 
-      {/* Per-module breakdown */}
-      {byModule.length > 0 && (
-        <div className="card p-0 overflow-hidden">
-          <div className="px-4 py-3 border-b border-ink-100 dark:border-ink-800 flex items-center gap-2">
-            <BookOpen className="w-4 h-4 text-brand" />
-            <h3 className="text-sm font-semibold text-ink-900 dark:text-white">By Module</h3>
+      {/* Per-module breakdown — driven by module_registrations so every
+          module the student is registered to is listed, even with no
+          sessions or records yet. */}
+      <div className="card p-0 overflow-hidden">
+        <div className="px-4 py-3 border-b border-ink-100 dark:border-ink-800 flex items-center gap-2">
+          <BookOpen className="w-4 h-4 text-brand" />
+          <h3 className="text-sm font-semibold text-ink-900 dark:text-white">
+            By Registered Module ({byModule.length})
+          </h3>
+        </div>
+        {byModule.length === 0 ? (
+          <div className="p-12 text-center text-ink-500 text-[13px]">
+            This student has no module registrations yet.
           </div>
+        ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-[13px]">
               <thead className="bg-ink-50 dark:bg-ink-900/40">
                 <tr className="text-ink-500">
                   <th className="px-4 py-2 font-semibold">Code</th>
                   <th className="px-4 py-2 font-semibold">Module</th>
-                  <th className="px-4 py-2 font-semibold text-right">Records</th>
-                  <th className="px-4 py-2 font-semibold text-right">Present-like</th>
+                  <th className="px-4 py-2 font-semibold text-right">Sessions</th>
+                  <th className="px-4 py-2 font-semibold text-right">Present</th>
+                  <th className="px-4 py-2 font-semibold text-right">Late</th>
+                  <th className="px-4 py-2 font-semibold text-right">Absent</th>
+                  <th className="px-4 py-2 font-semibold text-right">Excused</th>
+                  <th className="px-4 py-2 font-semibold text-right">Not&nbsp;Rec.</th>
                   <th className="px-4 py-2 font-semibold text-right">%</th>
                 </tr>
               </thead>
               <tbody>
                 {byModule.map((m) => (
-                  <tr key={m.module_id} className="border-t border-ink-100 dark:border-ink-800">
+                  <tr key={`${m.module_id}-${m.academic_term_id}`} className="border-t border-ink-100 dark:border-ink-800">
                     <td className="px-4 py-2 font-mono text-ink-700 dark:text-ink-200">{m.module_code}</td>
                     <td className="px-4 py-2 text-ink-900 dark:text-white">{m.module_name}</td>
-                    <td className="px-4 py-2 text-right">{m.records}</td>
-                    <td className="px-4 py-2 text-right">{m.present_like}</td>
+                    <td className="px-4 py-2 text-right">{m.sessions}</td>
+                    <td className="px-4 py-2 text-right text-mint-700">{m.present}</td>
+                    <td className="px-4 py-2 text-right text-amber-700">{m.late}</td>
+                    <td className="px-4 py-2 text-right text-red-700">{m.absent}</td>
+                    <td className="px-4 py-2 text-right text-ink-700">{m.excused}</td>
+                    <td className="px-4 py-2 text-right text-ink-500">{m.not_recorded}</td>
                     <td className="px-4 py-2 text-right font-semibold">{m.attendance_pct}%</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* All records */}
+      {/* All sessions for registered modules — sessions without a record
+          for this student appear as "Not recorded" so the full class
+          timeline is visible. */}
       <div className="card p-0 overflow-hidden">
         <div className="px-4 py-3 border-b border-ink-100 dark:border-ink-800 flex items-center gap-2">
           <Clock className="w-4 h-4 text-brand" />
           <h3 className="text-sm font-semibold text-ink-900 dark:text-white">
-            All Recorded Attendance ({records.length})
+            All Sessions on Registered Modules ({records.length})
           </h3>
         </div>
         {records.length === 0 ? (
           <div className="p-12 text-center text-ink-500 text-[13px]">
-            No attendance records yet for this student.
+            No attendance sessions have been held for this student's registered modules yet.
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -1263,8 +1393,8 @@ function AttendanceTab({ student }: { student: any }) {
                 </tr>
               </thead>
               <tbody>
-                {records.map((r, i) => (
-                  <tr key={`${r.session_date}-${r.module_code}-${i}`} className="border-t border-ink-100 dark:border-ink-800">
+                {records.map((r) => (
+                  <tr key={r.session_id} className="border-t border-ink-100 dark:border-ink-800">
                     <td className="px-4 py-2 text-ink-900 dark:text-white">{r.session_date}</td>
                     <td className="px-4 py-2">
                       <div className="font-mono text-ink-700 dark:text-ink-200">{r.module_code}</div>
@@ -1294,13 +1424,14 @@ function KpiCard({ label, value, accent }: { label: string, value: string | numb
   )
 }
 
-function DocumentsTab({ student }: { student: any }) {
+function DocumentsTab({ student, selfMode = false }: { student: any; selfMode?: boolean }) {
   const studentId = student.id
 
   const docsQ = useQuery({
-    queryKey: ['student-documents', studentId],
-    queryFn: () => studentService.listDocuments(studentId),
-    enabled: !!studentId,
+    queryKey: selfMode ? ['student-documents', 'me'] : ['student-documents', studentId],
+    // Self mode hits /api/students/me/documents — auth-only, no VIEW_STUDENTS required.
+    queryFn: () => (selfMode ? studentService.meDocuments() : studentService.listDocuments(studentId)),
+    enabled: selfMode || !!studentId,
   })
 
   if (docsQ.isLoading) {
@@ -1330,7 +1461,9 @@ function DocumentsTab({ student }: { student: any }) {
         </div>
         <h3 className="text-lg font-semibold text-ink-900 dark:text-white">No application on file</h3>
         <p className="text-ink-500 max-w-md mt-2">
-          This student was not enrolled through the admissions portal, so there are no uploaded documents to display.
+          {selfMode
+            ? 'You were not enrolled through the admissions portal, so there are no uploaded documents to display.'
+            : 'This student was not enrolled through the admissions portal, so there are no uploaded documents to display.'}
         </p>
       </div>
     )
@@ -1344,7 +1477,9 @@ function DocumentsTab({ student }: { student: any }) {
         </div>
         <h3 className="text-lg font-semibold text-ink-900 dark:text-white">No documents uploaded</h3>
         <p className="text-ink-500 max-w-md mt-2">
-          This student's admission application does not have any documents attached.
+          {selfMode
+            ? 'Your admission application does not have any documents attached.'
+            : "This student's admission application does not have any documents attached."}
         </p>
       </div>
     )
@@ -1370,19 +1505,25 @@ function DocumentsTab({ student }: { student: any }) {
 
       <div className="card divide-y divide-ink-100 dark:divide-ink-800 overflow-hidden">
         {documents.map((d: any) => (
-          <DocumentRow key={d.id} doc={d} studentId={studentId} />
+          <DocumentRow key={d.id} doc={d} studentId={studentId} selfMode={selfMode} />
         ))}
       </div>
     </div>
   )
 }
 
-function DocumentRow({ doc, studentId }: { doc: any; studentId: number }) {
+function DocumentRow({ doc, studentId, selfMode = false }: { doc: any; studentId: number; selfMode?: boolean }) {
   const status = String(doc.verification_status || 'pending').toLowerCase()
   const typeName = doc.type_name || doc.document_type_name || 'Document'
   const fileName = doc.file_original_name || '—'
   const hasFile = !!doc.file_server_id
-  const url = hasFile ? studentService.documentDownloadUrl(studentId, doc.id) : null
+  // Self-service download bypasses the VIEW_STUDENTS-gated /:id endpoint
+  // and resolves the application from the auth user instead.
+  const url = hasFile
+    ? (selfMode
+        ? studentService.meDocumentDownloadUrl(doc.id)
+        : studentService.documentDownloadUrl(studentId, doc.id))
+    : null
 
   const sizeKb = doc.file_size ? Math.max(1, Math.round(Number(doc.file_size) / 1024)) : null
   const sizeLabel = sizeKb
