@@ -7,9 +7,10 @@ import {
   Pencil, Eye, X, Settings2, Info,
   Mail, Phone, CalendarDays, Briefcase, BadgeCheck, User,
   Building2, CreditCard, UserCheck, TrendingDown, Wallet,
-  UserPlus, Trash2, Save, Plus, CheckCircle, Copy, Banknote, PlayCircle,
+  UserPlus, Trash2, Save, Plus, CheckCircle, Copy, Banknote, MinusCircle, PlayCircle,
 } from 'lucide-react'
 import PayAllModal from './PayAllModal'
+import EmployeeDeductionsModal from './EmployeeDeductionsModal'
 import {
   hrService,
   type PayrollRow,
@@ -117,6 +118,7 @@ export default function PayrollPage() {
   const [deletingPayroll, setDelPayroll]= useState<PayrollRow | null>(null)
   const [payingPayroll, setPayingPayroll] = useState<PayrollRow | null>(null)
   const [payAllOpen, setPayAllOpen]       = useState(false)
+  const [deductionsEmployee, setDeductionsEmployee] = useState<PayrollRow | null>(null)
 
   /* period */
   const periodYear  = parseInt(sp.get('period_year')  || String(CUR_Y))
@@ -159,7 +161,6 @@ export default function PayrollPage() {
   const { data: paymentsRes } = useQuery({
     queryKey: ['hr-payments', periodYear, periodMonth],
     queryFn:  ({ signal }) => hrService.listPayments({ period_year: periodYear, period_month: periodMonth }, signal),
-    enabled:  payAllOpen,
   })
   const alreadyPaidIds = useMemo(() => {
     const payments = (paymentsRes?.data ?? []) as import('@/services/hrService').SalaryPayment[]
@@ -228,7 +229,15 @@ export default function PayrollPage() {
 
         <div className="flex items-center gap-2 flex-wrap">
           {/* Pay All */}
-          
+          {canManage && (
+            <button
+              className="btn-primary btn-sm gap-1.5"
+              onClick={() => setPayAllOpen(true)}
+            >
+              <PlayCircle className="w-3.5 h-3.5" /> Pay All
+            </button>
+          )}
+
           {/* Add employee */}
           {canManage && (
             <button className="btn-secondary btn-sm gap-1.5" onClick={() => setAddingEmp(true)}>
@@ -425,6 +434,15 @@ export default function PayrollPage() {
                         >
                           <Eye className="w-3 h-3" /> View
                         </Link>
+                        {canManage && (
+                          <button
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold bg-violet-50 hover:bg-violet-100 dark:bg-violet-500/10 dark:hover:bg-violet-500/20 text-violet-700 dark:text-violet-300 transition-colors border border-violet-200 dark:border-violet-800"
+                            onClick={() => setDeductionsEmployee(row)}
+                            title="Manage per-employee deductions"
+                          >
+                            <MinusCircle className="w-3 h-3" /> Deductions
+                          </button>
+                        )}
                         {canManage && row.payroll_id && (
                           <button
                             className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold bg-red-50 hover:bg-red-100 dark:bg-red-500/10 dark:hover:bg-red-500/20 text-red-600 dark:text-red-400 transition-colors border border-red-200 dark:border-red-800"
@@ -596,6 +614,15 @@ export default function PayrollPage() {
         />
       )}
 
+      {/* Per-employee deductions modal */}
+      {deductionsEmployee && (
+        <EmployeeDeductionsModal
+          empId={deductionsEmployee.id}
+          empName={deductionsEmployee.full_name}
+          onClose={() => setDeductionsEmployee(null)}
+        />
+      )}
+
     </div>
   )
 }
@@ -632,11 +659,20 @@ function EditGrossModal({
   const rssbRate    = (cfg.rssb_employee_rate + cfg.maternity_employee_rate) / 100
   const cbhiRate    = cfg.cbhi_employee_rate / 100
 
+  // Auto-fetch active per-employee deductions for this period
+  const { data: dedRes } = useQuery({
+    queryKey: ['employee-deductions-active', row.id, periodYear, periodMonth],
+    queryFn:  ({ signal }) => hrService.activeEmployeeDeductions(row.id, periodYear, periodMonth, signal),
+    staleTime: 30_000,
+  })
+  const activeDeds  = dedRes?.data?.deductions ?? []
+  const otherDedTotal = dedRes?.data?.total ?? 0
+
   const payeFormula = calcPaye(gross, formula)
   const rssb        = gross * rssbRate
   const maternity   = gross * (cfg.maternity_employee_rate / 100)
   const cbhi        = gross * cbhiRate
-  const net         = Math.max(0, gross - payeFormula - rssb - cbhi)
+  const net         = Math.max(0, gross - payeFormula - rssb - cbhi - otherDedTotal)
 
   const save = useMutation({
     mutationFn: () => hrService.payrollUpsert({
@@ -652,6 +688,7 @@ function EditGrossModal({
       rssb:                rssb - maternity,
       maternity,
       cbhi,
+      other_deductions:    otherDedTotal,
       net_salary:          net,
     } as PayrollEntry & { maternity: number }),
     onSuccess: () => {
@@ -707,6 +744,22 @@ function EditGrossModal({
                 value={cbhi}
                 accent="text-sky-600 dark:text-sky-400"
               />
+              {/* Per-employee deductions */}
+              {activeDeds.map(d => (
+                <ComputedRow
+                  key={d.id}
+                  label={`${d.label} (${d.deduction_type})`}
+                  value={Number(d.monthly_amount)}
+                  accent="text-violet-600 dark:text-violet-400"
+                />
+              ))}
+              {otherDedTotal > 0 && activeDeds.length === 0 && (
+                <ComputedRow
+                  label="Other deductions"
+                  value={otherDedTotal}
+                  accent="text-violet-600 dark:text-violet-400"
+                />
+              )}
               <div className="flex items-center justify-between px-4 py-2.5 bg-emerald-50 dark:bg-emerald-500/10">
                 <span className="text-[12px] font-bold text-emerald-700 dark:text-emerald-300">Net Salary</span>
                 <span className="font-bold text-[14px] text-emerald-800 dark:text-emerald-200 tabular-nums">{fmt(net)}</span>
@@ -717,6 +770,7 @@ function EditGrossModal({
           {/* Deductions note */}
           <p className="text-[11px] text-ink-400 dark:text-ink-500 font-mono bg-ink-50 dark:bg-ink-700/20 rounded px-3 py-2">
             Net = Gross − PAYE − RSSB({cfg.rssb_employee_rate + cfg.maternity_employee_rate}%) − CBHI({cfg.cbhi_employee_rate}%)
+            {otherDedTotal > 0 ? ` − Other (${fmt(otherDedTotal)} RWF)` : ''}
           </p>
         </div>
 

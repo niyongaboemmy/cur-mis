@@ -109,6 +109,7 @@ class HrPayrollController extends BaseController
                p.tax                              AS paye,
                (p.pension + p.rama + p.maternity) AS rssb,
                p.cbhi,
+               COALESCE(p.other_deductions, 0)    AS other_deductions,
                p.net                              AS net_salary,
                p.status                           AS payroll_status
              FROM employees e
@@ -225,8 +226,39 @@ class HrPayrollController extends BaseController
                        'July','August','September','October','November','December'];
         $payMonth = ($monthNames[$month - 1] ?? '') . ' ' . $year;
 
+        // Auto-sum active per-employee deductions for this period.
+        $db = $this->payrollModel->db();
+        $dedRows = $db->fetchAll(
+            "SELECT monthly_amount
+             FROM hr_employee_deductions
+             WHERE emp_id = ?
+               AND status = 'Active'
+               AND (start_year < ? OR (start_year = ? AND start_month <= ?))
+               AND (end_year IS NULL
+                    OR end_year > ?
+                    OR (end_year = ? AND end_month >= ?))",
+            [$empId, $year, $year, $month, $year, $year, $month]
+        ) ?: [];
+        $autoOtherDed = array_sum(array_column($dedRows, 'monthly_amount'));
+
+        // Allow frontend override; fall back to auto-calculated sum.
+        $otherDeductions = isset($data['other_deductions']) && $data['other_deductions'] !== ''
+            ? (float)$data['other_deductions']
+            : $autoOtherDed;
+
         // Map frontend field names → real DB column names.
         // RSSB total is stored in `pension`; rama and maternity default to 0.
+        $grossVal = (float)($data['gross_salary'] ?? 0);
+        $payeVal  = (float)($data['paye']         ?? 0);
+        $rssbVal  = (float)($data['rssb']         ?? 0);
+        $maternityVal = (float)($data['maternity'] ?? 0);
+        $cbhiVal  = (float)($data['cbhi']         ?? 0);
+
+        // Recalculate net including other_deductions
+        $netVal = isset($data['net_salary']) && $data['net_salary'] !== ''
+            ? max(0, (float)$data['net_salary'] - $otherDeductions + $autoOtherDed)
+            : max(0, $grossVal - $payeVal - $rssbVal - $cbhiVal - $otherDeductions);
+
         $payload = [
             'emp_id'              => $empId,
             'pay_month'           => $payMonth,
@@ -236,13 +268,14 @@ class HrPayrollController extends BaseController
             'housing_allowance'   => (float)($data['housing_allowance']   ?? 0),
             'transport_allowance' => (float)($data['transport_allowance'] ?? 0),
             'other_allowances'    => (float)($data['other_allowances']    ?? 0),
-            'gross'               => (float)($data['gross_salary']        ?? 0),
-            'tax'                 => (float)($data['paye']                ?? 0),
-            'pension'             => (float)($data['rssb']                ?? 0),
+            'gross'               => $grossVal,
+            'tax'                 => $payeVal,
+            'pension'             => $rssbVal,
             'rama'                => 0,
-            'maternity'           => (float)($data['maternity']           ?? 0),
-            'cbhi'                => (float)($data['cbhi']                ?? 0),
-            'net'                 => (float)($data['net_salary']          ?? 0),
+            'maternity'           => $maternityVal,
+            'cbhi'                => $cbhiVal,
+            'other_deductions'    => $otherDeductions,
+            'net'                 => $netVal,
             'status'              => $data['payroll_status'] ?? 'Pending',
         ];
 

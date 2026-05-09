@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Controllers\HrPayrollController;
 use App\Controllers\SalaryPaymentController;
 use App\Controllers\PayrollConfigController;
+use App\Controllers\EmployeeDeductionController;
 use App\Middleware\AuthMiddleware;
 use App\Middleware\PermissionMiddleware;
 use App\Constants\Permissions;
@@ -51,4 +52,17 @@ $router->group('/api/hr/payroll/payments', function ($router) {
 $router->group('/api/hr/payroll/payments', function ($router) {
     $router->post('',     [SalaryPaymentController::class, 'process']);
     $router->delete('/:id', [SalaryPaymentController::class, 'destroy']);
+}, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES)]);
+
+// Per-employee deductions: read
+$router->group('/api/hr/employees/:emp_id/deductions', function ($router) {
+    $router->get('',        [EmployeeDeductionController::class, 'index']);
+    $router->get('/active', [EmployeeDeductionController::class, 'activeForMonth']);
+}, [AuthMiddleware::class, new PermissionMiddleware(Permissions::VIEW_HR_EMPLOYEES)]);
+
+// Per-employee deductions: write
+$router->group('/api/hr/employees/:emp_id/deductions', function ($router) {
+    $router->post('',       [EmployeeDeductionController::class, 'store']);
+    $router->put('/:id',    [EmployeeDeductionController::class, 'update']);
+    $router->delete('/:id', [EmployeeDeductionController::class, 'destroy']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES)]);
