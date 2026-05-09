@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import {
-  ArrowLeft, Loader2, Download, Printer, Plus,
+  ArrowLeft, Loader2, Download, Printer,
   Pencil, Trash2, X, Calculator,
 } from 'lucide-react'
 import {
@@ -53,7 +53,6 @@ export default function PayrollSlipPage() {
   const [toMonth,   setToMonth]   = useState<number>(CUR_M)
 
   const [editing,   setEditing]   = useState<PayrollEntry | null>(null)
-  const [addOpen,   setAddOpen]   = useState(false)
 
   const printRef = useRef<HTMLDivElement>(null)
 
@@ -80,19 +79,20 @@ export default function PayrollSlipPage() {
     paye:                acc.paye                + Number(s.paye),
     rssb:                acc.rssb                + Number(s.rssb),
     cbhi:                acc.cbhi                + Number(s.cbhi),
+    other_deductions:    acc.other_deductions    + Number(s.other_deductions ?? 0),
     net_salary:          acc.net_salary          + Number(s.net_salary),
   }), { basic_salary:0, housing_allowance:0, transport_allowance:0, other_allowances:0,
-        gross_salary:0, paye:0, rssb:0, cbhi:0, net_salary:0 })
+        gross_salary:0, paye:0, rssb:0, cbhi:0, other_deductions:0, net_salary:0 })
 
   /* ── CSV download ─────────────────────────────────────────────────── */
   const downloadCSV = () => {
     const header = ['No','Month','Basic Salary','Housing Allowance','Transport Allowance',
-                    'Other Allowances','Gross Salary','PAYE(TPR)','RSSB','CBHI','Net Salary']
+                    'Other Allowances','Gross Salary','PAYE(TPR)','RSSB','CBHI','Deductions','Net Salary']
     const rows = slips.map((s, i) => [
       i + 1,
       `${SHORT_M[(s.period_month ?? 1) - 1]}-${String(s.period_year).slice(-2)}`,
       s.basic_salary, s.housing_allowance, s.transport_allowance, s.other_allowances,
-      s.gross_salary, s.paye, s.rssb, s.cbhi, s.net_salary,
+      s.gross_salary, s.paye, s.rssb, s.cbhi, s.other_deductions ?? 0, s.net_salary,
     ])
     const csv = [header, ...rows].map(r => r.join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
@@ -119,6 +119,7 @@ export default function PayrollSlipPage() {
         <td class="num">${Number(s.paye).toLocaleString()}</td>
         <td class="num">${Number(s.rssb).toLocaleString()}</td>
         <td class="num">${Number(s.cbhi).toLocaleString()}</td>
+        <td class="num">${Number(s.other_deductions ?? 0) > 0 ? Number(s.other_deductions).toLocaleString() : '—'}</td>
         <td class="num"><strong>${Number(s.net_salary).toLocaleString()}</strong></td>
       </tr>
     `).join('')
@@ -134,6 +135,7 @@ export default function PayrollSlipPage() {
         <td class="num"><strong>${totals.paye.toLocaleString()}</strong></td>
         <td class="num"><strong>${totals.rssb.toLocaleString()}</strong></td>
         <td class="num"><strong>${totals.cbhi.toLocaleString()}</strong></td>
+        <td class="num"><strong>${totals.other_deductions.toLocaleString()}</strong></td>
         <td class="num"><strong>${totals.net_salary.toLocaleString()}</strong></td>
       </tr>
     `
@@ -167,7 +169,7 @@ export default function PayrollSlipPage() {
       <thead><tr>
         <th>No</th><th>Months</th><th>Basic Salary</th><th>Housing Allow.</th>
         <th>Transport Allow.</th><th>Other Allowances</th><th>Gross Salary</th>
-        <th>PAYE(TPR)</th><th>RSSB</th><th>CBHI</th><th>Net Salary</th>
+        <th>PAYE(TPR)</th><th>RSSB</th><th>CBHI</th><th>Deductions</th><th>Net Salary</th>
       </tr></thead>
       <tbody>${rows}${totRow}</tbody>
     </table>
@@ -235,11 +237,6 @@ export default function PayrollSlipPage() {
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {canManage && (
-            <button className="btn-primary btn-sm" onClick={() => setAddOpen(true)}>
-              <Plus className="w-3.5 h-3.5" /> Add Entry
-            </button>
-          )}
           <button className="btn-secondary btn-sm" onClick={downloadCSV} disabled={slips.length === 0} title="Export to CSV / Excel">
             <Download className="w-3.5 h-3.5" /> Excel
           </button>
@@ -309,7 +306,7 @@ export default function PayrollSlipPage() {
             <thead>
               <tr className="bg-ink-50 dark:bg-ink-800/50 border-b border-ink-100 dark:border-ink-700">
                 {['No','Month','Basic Salary','Housing Allow.','Transport Allow.','Other Allow.',
-                  'Gross Salary','PAYE(TPR)','RSSB','CBHI','Net Salary',''].map(h => (
+                  'Gross Salary','PAYE(TPR)','RSSB','CBHI','Deductions','Net Salary',''].map(h => (
                   <th key={h} className="px-3 py-2.5 font-bold text-ink-400 uppercase tracking-wider text-[10px] whitespace-nowrap text-right first:text-left last:text-center">
                     {h}
                   </th>
@@ -319,13 +316,8 @@ export default function PayrollSlipPage() {
             <tbody className="divide-y divide-ink-100 dark:divide-ink-700">
               {slips.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="p-10 text-center text-ink-400">
+                  <td colSpan={13} className="p-10 text-center text-ink-400">
                     No payslip entries for this period.
-                    {canManage && (
-                      <button className="ml-2 text-brand hover:underline" onClick={() => setAddOpen(true)}>
-                        Add first entry
-                      </button>
-                    )}
                   </td>
                 </tr>
               ) : (
@@ -344,6 +336,7 @@ export default function PayrollSlipPage() {
                       <td className="px-3 py-3 text-right tabular-nums text-red-600 dark:text-red-400">{fmt(slip.paye)}</td>
                       <td className="px-3 py-3 text-right tabular-nums text-orange-600 dark:text-orange-400">{fmt(slip.rssb)}</td>
                       <td className="px-3 py-3 text-right tabular-nums text-sky-600 dark:text-sky-400">{fmt(slip.cbhi)}</td>
+                      <td className="px-3 py-3 text-right tabular-nums text-violet-600 dark:text-violet-400">{Number(slip.other_deductions ?? 0) > 0 ? fmt(slip.other_deductions) : '—'}</td>
                       <td className="px-3 py-3 text-right tabular-nums font-bold text-emerald-700 dark:text-emerald-400">{fmt(slip.net_salary)}</td>
                       <td className="px-3 py-3">
                         {canManage && (
@@ -372,6 +365,7 @@ export default function PayrollSlipPage() {
                     <td className="px-3 py-3 text-right tabular-nums text-red-700 dark:text-red-300">{fmt(totals.paye)}</td>
                     <td className="px-3 py-3 text-right tabular-nums text-orange-700 dark:text-orange-300">{fmt(totals.rssb)}</td>
                     <td className="px-3 py-3 text-right tabular-nums text-sky-700 dark:text-sky-300">{fmt(totals.cbhi)}</td>
+                    <td className="px-3 py-3 text-right tabular-nums text-violet-700 dark:text-violet-300">{totals.other_deductions > 0 ? fmt(totals.other_deductions) : '—'}</td>
                     <td className="px-3 py-3 text-right tabular-nums text-emerald-700 dark:text-emerald-300">{fmt(totals.net_salary)}</td>
                     <td />
                   </tr>
@@ -382,12 +376,12 @@ export default function PayrollSlipPage() {
         </div>
       </div>
 
-      {/* Add / Edit modal */}
-      {(addOpen || editing) && (
+      {/* Edit modal */}
+      {editing && (
         <PayrollEntryModal
           empId={empId}
-          entry={editing ?? undefined}
-          onClose={() => { setEditing(null); setAddOpen(false) }}
+          entry={editing}
+          onClose={() => setEditing(null)}
         />
       )}
     </div>
@@ -422,11 +416,25 @@ function PayrollEntryModal({
     notes:               entry?.notes ?? '',
   })
 
+  // Live deductions for the selected period
+  const { data: dedRes } = useQuery({
+    queryKey: ['employee-deductions-active', empId, form.period_year, form.period_month],
+    queryFn:  ({ signal }) => hrService.activeEmployeeDeductions(empId, form.period_year!, form.period_month!, signal),
+    staleTime: 30_000,
+  })
+  const activeDeds    = dedRes?.data?.deductions ?? []
+  const otherDedTotal = dedRes?.data?.total ?? Number(entry?.other_deductions ?? 0)
+
   const gross = form.basic_salary + form.housing_allowance + form.transport_allowance + form.other_allowances
-  const net   = Math.max(0, gross - form.paye - form.rssb - form.cbhi)
+  const net   = Math.max(0, gross - form.paye - form.rssb - form.cbhi - otherDedTotal)
 
   const save = useMutation({
-    mutationFn: () => hrService.payrollUpsert({ ...form, gross_salary: gross, net_salary: net }),
+    mutationFn: () => hrService.payrollUpsert({
+      ...form,
+      gross_salary:     gross,
+      other_deductions: otherDedTotal,
+      net_salary:       net,
+    }),
     onSuccess: () => {
       toast.success(entry ? 'Entry updated.' : 'Entry added.')
       qc.invalidateQueries({ queryKey: ['hr-payroll-slips'] })
@@ -493,6 +501,20 @@ function PayrollEntryModal({
             <Field label="RSSB"><NumInput value={form.rssb} onChange={n('rssb')} /></Field>
             <Field label="CBHI"><NumInput value={form.cbhi} onChange={n('cbhi')} /></Field>
           </div>
+
+          {activeDeds.length > 0 && (
+            <div className="rounded-lg border border-violet-100 dark:border-violet-800 overflow-hidden">
+              <div className="px-3 py-1.5 bg-violet-50 dark:bg-violet-900/20 text-[10px] font-bold text-violet-500 uppercase tracking-wider">
+                Employee deductions
+              </div>
+              {activeDeds.map(d => (
+                <div key={d.id} className="flex items-center justify-between px-3 py-2 border-t border-violet-100 dark:border-violet-800">
+                  <span className="text-[12px] text-ink-600 dark:text-ink-300">{d.label} <span className="text-[10px] text-ink-400">({d.deduction_type})</span></span>
+                  <span className="text-[12px] font-semibold text-violet-700 dark:text-violet-300 tabular-nums">–{Number(d.monthly_amount).toLocaleString('en-US')}</span>
+                </div>
+              ))}
+            </div>
+          )}
 
           <div className="rounded-lg bg-emerald-50 dark:bg-emerald-500/10 px-4 py-2.5 flex items-center justify-between">
             <span className="text-[12px] font-semibold text-emerald-700 dark:text-emerald-300">Net Salary</span>

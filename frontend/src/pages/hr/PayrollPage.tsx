@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
@@ -953,8 +953,18 @@ function StaffDrawer({
 
   const genderLabel = row?.gender === 'M' ? 'Male' : row?.gender === 'F' ? 'Female' : row?.gender ?? '—'
 
+  // Fetch live active deductions so net is always up-to-date even when
+  // a deduction was added after the payroll record was last saved.
+  const { data: drawerDedRes } = useQuery({
+    queryKey: ['employee-deductions-active', row?.id, periodYear, periodMonth],
+    queryFn:  ({ signal }) => hrService.activeEmployeeDeductions(row!.id, periodYear, periodMonth, signal),
+    enabled:  open && row != null,
+    staleTime: 30_000,
+  })
+  const drawerDedTotal = drawerDedRes?.data?.total ?? n0(row?.other_deductions)
+
   const net = c && row
-    ? Math.max(0, c.effectiveGross - c.payeFormula - c.rssb - c.cbhi)
+    ? Math.max(0, c.effectiveGross - c.payeFormula - c.rssb - c.cbhi - drawerDedTotal)
     : 0
 
   return (
@@ -1070,6 +1080,14 @@ function StaffDrawer({
                         label="CBHI"
                         value={`–${fmt(c.cbhi)}`}
                         accent="text-sky-600 dark:text-sky-400"
+                      />
+                    )}
+                    {drawerDedTotal > 0 && (
+                      <PayrollSummaryRow
+                        icon={<TrendingDown className="w-3.5 h-3.5" />}
+                        label="Deductions"
+                        value={`–${fmt(drawerDedTotal)}`}
+                        accent="text-violet-600 dark:text-violet-400"
                       />
                     )}
                     {row.payroll_id && (
@@ -1657,7 +1675,20 @@ function ProcessPaymentModal({
 }) {
   const qc = useQueryClient()
 
-  const netAmount = n0(row.net_salary) || Math.max(0, n0(row.gross_salary) - n0(row.paye))
+  // Fetch live deductions — the stored net_salary may be stale if a deduction
+  // was added after the payroll record was last saved.
+  const { data: payDedRes } = useQuery({
+    queryKey: ['employee-deductions-active', row.id, periodYear, periodMonth],
+    queryFn:  ({ signal }) => hrService.activeEmployeeDeductions(row.id, periodYear, periodMonth, signal),
+    staleTime: 30_000,
+  })
+  const payDedTotal = payDedRes?.data?.total ?? n0(row.other_deductions)
+
+  const gross = n0(row.gross_salary)
+  const paye  = n0(row.paye)
+  const rssb  = n0(row.rssb)
+  const cbhi  = n0(row.cbhi)
+  const netAmount = Math.max(0, gross - paye - rssb - cbhi - payDedTotal)
 
   const [method,  setMethod]  = useState<PaymentMethod>('Bank Transfer')
   const [bankName,setBankName]= useState<string>((row as any).bank ?? '')
@@ -1665,6 +1696,11 @@ function ProcessPaymentModal({
   const [ref,     setRef]     = useState<string>('')
   const [notes,   setNotes]   = useState<string>('')
   const [amount,  setAmount]  = useState<number>(netAmount)
+
+  // Update amount when the deductions query resolves with fresh data
+  useEffect(() => {
+    if (payDedRes != null) setAmount(netAmount)
+  }, [payDedRes]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const pay = useMutation({
     mutationFn: () => hrService.processPayment({
@@ -1707,7 +1743,7 @@ function ProcessPaymentModal({
             <div>
               <p className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider">Net Salary</p>
               <p className="text-[11px] text-emerald-600 dark:text-emerald-400">
-                Gross {fmt(n0(row.gross_salary))} – PAYE {fmt(n0(row.paye))}
+                {fmt(gross)} – PAYE {fmt(paye)}{rssb > 0 ? ` – RSSB ${fmt(rssb)}` : ''}{cbhi > 0 ? ` – CBHI ${fmt(cbhi)}` : ''}{payDedTotal > 0 ? ` – Ded. ${fmt(payDedTotal)}` : ''}
               </p>
             </div>
             <span className="text-[20px] font-bold tabular-nums text-emerald-800 dark:text-emerald-200">

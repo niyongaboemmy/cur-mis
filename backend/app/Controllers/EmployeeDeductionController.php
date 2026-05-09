@@ -20,6 +20,51 @@ class EmployeeDeductionController extends BaseController
         return (new HrPayrollModel())->db();
     }
 
+    /**
+     * After any deduction change, recalculate other_deductions and net for
+     * every hr_payroll row belonging to this employee so the stored values
+     * stay consistent without requiring a manual payroll re-save.
+     */
+    private function recalcPayrollNets(int $empId): void
+    {
+        $db = $this->db();
+        $payrolls = $db->fetchAll(
+            "SELECT id, period_year, period_month, gross, tax, pension, cbhi
+             FROM hr_payroll WHERE emp_id = ?",
+            [$empId]
+        ) ?: [];
+
+        foreach ($payrolls as $p) {
+            $year  = (int)$p['period_year'];
+            $month = (int)$p['period_month'];
+
+            $dedRows = $db->fetchAll(
+                "SELECT monthly_amount FROM hr_employee_deductions
+                 WHERE emp_id = ?
+                   AND status = 'Active'
+                   AND (start_year < ? OR (start_year = ? AND start_month <= ?))
+                   AND (end_year IS NULL
+                        OR end_year > ?
+                        OR (end_year = ? AND end_month >= ?))",
+                [$empId, $year, $year, $month, $year, $year, $month]
+            ) ?: [];
+
+            $otherDed = array_sum(array_column($dedRows, 'monthly_amount'));
+            $net      = max(0,
+                (float)$p['gross']
+                - (float)$p['tax']
+                - (float)$p['pension']
+                - (float)$p['cbhi']
+                - $otherDed
+            );
+
+            $db->execute(
+                "UPDATE hr_payroll SET other_deductions = ?, net = ? WHERE id = ?",
+                [$otherDed, $net, (int)$p['id']]
+            );
+        }
+    }
+
     private function ensureTable(): void
     {
         $this->db()->execute("
@@ -152,6 +197,8 @@ class EmployeeDeductionController extends BaseController
             "SELECT * FROM hr_employee_deductions WHERE id = ?", [$id]
         );
 
+        $this->recalcPayrollNets($empId);
+
         $this->success($response, $row, 'Deduction added.', 201);
     }
 
@@ -221,6 +268,8 @@ class EmployeeDeductionController extends BaseController
             "SELECT * FROM hr_employee_deductions WHERE id = ?", [$id]
         );
 
+        $this->recalcPayrollNets($empId);
+
         $this->success($response, $updated, 'Deduction updated.');
     }
 
@@ -246,6 +295,8 @@ class EmployeeDeductionController extends BaseController
             "DELETE FROM hr_employee_deductions WHERE id = ? AND emp_id = ?",
             [$id, $empId]
         );
+
+        $this->recalcPayrollNets($empId);
 
         $this->success($response, null, 'Deduction removed.');
     }

@@ -187,6 +187,10 @@ class HrPayrollController extends BaseController
         $toYear    = $request->query('to_year')    !== null ? (int)$request->query('to_year')    : null;
         $toMonth   = $request->query('to_month')   !== null ? (int)$request->query('to_month')   : null;
 
+        // Sync other_deductions + net for all payroll rows of this employee
+        // so the payslip history always reflects the latest deduction setup.
+        $this->syncPayrollNets($empId, $this->payrollModel->db());
+
         $slips = $this->payrollModel->getSlips($empId, $fromYear, $fromMonth, $toYear, $toMonth);
 
         $this->success($response, [
@@ -573,5 +577,49 @@ class HrPayrollController extends BaseController
             'skipped'  => $skipped,
             'detail'   => $results,
         ], "Import complete: {$inserted} payroll records upserted for {$payMonth}.");
+    }
+
+    /**
+     * Recalculate other_deductions and net for every hr_payroll row of
+     * a given employee based on current hr_employee_deductions data.
+     * Called when loading payslips so historical rows stay consistent.
+     */
+    private function syncPayrollNets(int $empId, \Core\Database $db): void
+    {
+        $payrolls = $db->fetchAll(
+            "SELECT id, period_year, period_month, gross, tax, pension, cbhi
+             FROM hr_payroll WHERE emp_id = ?",
+            [$empId]
+        ) ?: [];
+
+        foreach ($payrolls as $p) {
+            $year  = (int)$p['period_year'];
+            $month = (int)$p['period_month'];
+
+            $dedRows = $db->fetchAll(
+                "SELECT monthly_amount FROM hr_employee_deductions
+                 WHERE emp_id = ?
+                   AND status = 'Active'
+                   AND (start_year < ? OR (start_year = ? AND start_month <= ?))
+                   AND (end_year IS NULL
+                        OR end_year > ?
+                        OR (end_year = ? AND end_month >= ?))",
+                [$empId, $year, $year, $month, $year, $year, $month]
+            ) ?: [];
+
+            $otherDed = array_sum(array_column($dedRows, 'monthly_amount'));
+            $net      = max(0,
+                (float)$p['gross']
+                - (float)$p['tax']
+                - (float)$p['pension']
+                - (float)$p['cbhi']
+                - $otherDed
+            );
+
+            $db->execute(
+                "UPDATE hr_payroll SET other_deductions = ?, net = ? WHERE id = ?",
+                [$otherDed, $net, (int)$p['id']]
+            );
+        }
     }
 }
