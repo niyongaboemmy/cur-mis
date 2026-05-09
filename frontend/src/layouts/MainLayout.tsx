@@ -142,8 +142,10 @@ const NAV_TREE: NavNode[] = [
       PERMISSIONS.MANAGE_MODULE_ASSIGNMENTS,
       PERMISSIONS.MANAGE_MODULE_REGISTRATIONS,
       PERMISSIONS.VIEW_MY_MODULES,
+      PERMISSIONS.ACCESS_STUDENT_PORTAL,
     ],
     children: [
+      { to: "/my-finance", label: "My Finance", permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL] },
       { to: "/my-modules", label: "My Registrations", permissions: [PERMISSIONS.VIEW_MY_MODULES] },
       { to: "/modules/catalog", label: "Catalog", permissions: [PERMISSIONS.MANAGE_MODULES] },
       { to: "/modules/scheduling", label: "Scheduling", permissions: [PERMISSIONS.MANAGE_MODULE_SCHEDULES] },

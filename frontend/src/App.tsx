@@ -87,6 +87,7 @@ import RefundsPage from "@/pages/finance/RefundsPage";
 import SponsorsPage from "@/pages/finance/SponsorsPage";
 import ExpenseCategoriesPage from "@/pages/finance/ExpenseCategoriesPage";
 import ReceiptPdfPage from "@/pages/finance/ReceiptPdfPage";
+import MyFinancePage from "@/pages/finance/MyFinancePage";
 
 function App() {
   const initTheme = useThemeStore((state) => state.initTheme);
@@ -318,6 +319,16 @@ function App() {
                 }
               >
                 <Route path="/my-modules" element={<MyRegistrationsPage />} />
+              </Route>
+
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={PERMISSIONS.ACCESS_STUDENT_PORTAL}
+                  />
+                }
+              >
+                <Route path="/my-finance" element={<MyFinancePage />} />
               </Route>
 
               <Route

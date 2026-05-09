@@ -50,6 +50,14 @@ $router->group('/api/finance', function ($router) {
         Permissions::MANAGE_FINANCE,
     ])]);
 
+    // ── Student self-service ──────────────────────────────────────────────────
+    $router->group('/my', function ($r) {
+        $r->get('/invoices',  [FeeController::class, 'getMyInvoices']);
+        $r->get('/clearance', [FeeController::class, 'getMyClearance']);
+    }, [new MaybePermissionMiddleware([
+        Permissions::ACCESS_STUDENT_PORTAL,
+    ])]);
+
     // ── Writes ────────────────────────────────────────────────────────────────
     $router->group('', function ($r) {
         $r->post('/structures',              [FeeController::class, 'createStructure']);

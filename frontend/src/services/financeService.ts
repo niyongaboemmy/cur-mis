@@ -453,6 +453,30 @@ export const refundService = {
     api.patch<null>(`/api/finance/refunds/${id}/reject`, notes ? { notes } : {}),
 };
 
+// ─── Student Self-Service Finance ────────────────────────────────────────────
+
+export const myLedgerService = {
+  getMyLedger: (
+    params?: { academic_year_id?: number; semester?: 1 | 2 },
+    signal?: AbortSignal,
+  ) =>
+    api.get<StudentLedger>("/api/finance/my/invoices", params ?? {}, signal),
+
+  getMyClearance: (
+    academicYearId: number,
+    semester?: 1 | 2 | null,
+    signal?: AbortSignal,
+  ) =>
+    api.get<ClearanceResult>(
+      "/api/finance/my/clearance",
+      {
+        academic_year_id: academicYearId,
+        ...(semester != null ? { semester } : {}),
+      },
+      signal,
+    ),
+};
+
 // ─── CSV Export ───────────────────────────────────────────────────────────────
 
 export const exportService = {

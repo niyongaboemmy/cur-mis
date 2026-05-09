@@ -19,6 +19,7 @@ use App\Models\ClearanceModel;
 use App\Services\FeeService;
 use App\Services\ClearanceService;
 use App\Helpers\ValidationHelper;
+use Core\Database;
 
 class FeeController extends BaseController
 {
@@ -34,6 +35,7 @@ class FeeController extends BaseController
     private ClearanceModel          $clearanceModel;
     private FeeService              $service;
     private ClearanceService        $clearanceService;
+    private Database                $db;
 
     public function __construct()
     {
@@ -49,6 +51,36 @@ class FeeController extends BaseController
         $this->clearanceModel       = new ClearanceModel();
         $this->service              = new FeeService();
         $this->clearanceService     = new ClearanceService();
+        $this->db                   = Database::getInstance();
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Student self-service helpers
+    // ──────────────────────────────────────────────────────────────────────────
+
+    private function authStudentRegnumber(Request $request): ?string
+    {
+        $user = (array)($request->param('_auth_user') ?? []);
+        if (!empty($user['regnumber'])) return (string)$user['regnumber'];
+
+        $username = trim((string)($user['username'] ?? ''));
+        if ($username !== '') {
+            $row = $this->db->fetchOne(
+                "SELECT regnumber FROM `student` WHERE regnumber = ? LIMIT 1",
+                [$username]
+            );
+            if ($row && !empty($row['regnumber'])) return (string)$row['regnumber'];
+        }
+
+        $email = trim((string)($user['email'] ?? ''));
+        if ($email !== '') {
+            $row = $this->db->fetchOne(
+                "SELECT regnumber FROM `student` WHERE email = ? LIMIT 1",
+                [$email]
+            );
+            if ($row && !empty($row['regnumber'])) return (string)$row['regnumber'];
+        }
+        return null;
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -202,6 +234,55 @@ class FeeController extends BaseController
             'payments' => $payments['data'] ?? [],
             'totals'   => $totals,
         ], 'Student ledger retrieved.');
+    }
+
+    /**
+     * GET /api/finance/my/invoices
+     * Student self-service: authenticated student's own ledger.
+     */
+    public function getMyInvoices(Request $request, Response $response): never
+    {
+        $reg = $this->authStudentRegnumber($request);
+        if (!$reg) $this->error($response, 'No student profile linked to this account.', 404);
+
+        $academicYearId = (int)($request->query('academic_year_id') ?? 0);
+        $semester       = $request->query('semester') !== null
+                            ? (int)$request->query('semester') : null;
+
+        $filters = ['student_id' => $reg];
+        if ($academicYearId)    $filters['academic_year_id'] = $academicYearId;
+        if ($semester !== null) $filters['semester']         = $semester;
+
+        $invoices = $this->invoiceModel->listWithDetails($filters);
+        $totals   = $academicYearId
+            ? $this->invoiceModel->getStudentLedgerTotals($reg, $academicYearId)
+            : [];
+        $payments = $this->paymentModel->listWithDetails(['student_id' => $reg], 1, 500);
+
+        $this->success($response, [
+            'invoices' => $invoices,
+            'payments' => $payments['data'] ?? [],
+            'totals'   => $totals,
+        ], 'Your finance ledger retrieved.');
+    }
+
+    /**
+     * GET /api/finance/my/clearance
+     * Student self-service: authenticated student's clearance status.
+     */
+    public function getMyClearance(Request $request, Response $response): never
+    {
+        $reg = $this->authStudentRegnumber($request);
+        if (!$reg) $this->error($response, 'No student profile linked to this account.', 404);
+
+        $yearId   = (int)($request->query('academic_year_id') ?? 0);
+        $semester = $request->query('semester') !== null
+                      ? (int)$request->query('semester') : null;
+
+        if (!$yearId) $this->error($response, 'academic_year_id is required.', 422);
+
+        $data = $this->clearanceService->getStatus($reg, $yearId, $semester);
+        $this->success($response, $data, 'Clearance status retrieved.');
     }
 
     /**
@@ -1124,7 +1205,8 @@ class FeeController extends BaseController
         if (!$cat) $this->error($response, 'Category not found.', 404);
 
         // Check if in use
-        $count = (int)$this->db->fetchColumn("SELECT COUNT(*) FROM `expenses` WHERE category_id = ?", [$id]);
+        $row   = $this->db->fetchOne("SELECT COUNT(*) AS cnt FROM `expenses` WHERE category_id = ?", [$id]);
+        $count = (int)($row['cnt'] ?? 0);
         if ($count > 0) $this->error($response, 'Cannot delete category that is currently in use by recorded expenses.', 422);
 
         $this->expenseCategoryModel->delete($id);
