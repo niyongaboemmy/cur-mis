@@ -70,6 +70,11 @@ export const PERMISSIONS = {
 
   // Applicant self-service
   MANAGE_OWN_PROFILE: 'MANAGE_OWN_PROFILE',
+
+  // Messaging (seeded in migration 036)
+  SEND_MESSAGES:      'SEND_MESSAGES',
+  MANAGE_MESSAGES:    'MANAGE_MESSAGES',
+  BROADCAST_MESSAGES: 'BROADCAST_MESSAGES',
 } as const;
 
 export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];

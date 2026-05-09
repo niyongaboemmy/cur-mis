@@ -32,6 +32,7 @@ import {
   type ReactNode,
 } from "react";
 import UserDropdown from "@/components/layout/UserDropdown";
+import MessageNotificationBell from "@/components/layout/MessageNotificationBell";
 import AcademicYearSelector from "@/components/layout/AcademicYearSelector";
 import AcademicTermSelector from "@/components/layout/AcademicTermSelector";
 
@@ -363,6 +364,13 @@ const ADMIN_TREE: NavNode[] = [
     ],
   },
   {
+    id: "messages",
+    label: "Messages",
+    icon: MessageSquare,
+    to: "/messages",
+    permissions: [PERMISSIONS.SEND_MESSAGES],
+  },
+  {
     id: "logs",
     label: "System logs",
     icon: Activity,
@@ -372,6 +380,7 @@ const ADMIN_TREE: NavNode[] = [
 ];
 
 const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
+  "/messages": { title: "Messages", sub: "Internal communications" },
   "/": {
     title: "Admin Dashboard",
     sub: "Welcome back to Catholic University of Rwanda",
@@ -890,9 +899,7 @@ export default function MainLayout() {
             <RoundIconBtn label="Notifications" dot>
               <Bell className="w-[18px] h-[18px]" />
             </RoundIconBtn>
-            <RoundIconBtn label="Messages">
-              <MessageSquare className="w-[18px] h-[18px]" />
-            </RoundIconBtn>
+            <MessageNotificationBell />
             <UserDropdown />
           </div>
         </header>

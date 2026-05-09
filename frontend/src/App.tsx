@@ -65,6 +65,9 @@ import ModulesRegistrationAdminPage from "@/pages/modules/ModulesRegistrationAdm
 import ModulesMarksPage from "@/pages/modules/ModulesMarksPage";
 import MyRegistrationsPage from "@/pages/modules/MyRegistrationsPage";
 
+// Messaging
+import MessagesPage from "@/pages/messaging/MessagesPage";
+
 // Placeholders
 import ProgramsPage from "@/pages/placeholders/ProgramsPage";
 import ExamsPage from "@/pages/placeholders/ExamsPage";
@@ -116,6 +119,7 @@ function App() {
               <Route path="/dashboard" element={<AdminDashboardPage />} />
               <Route path="/home" element={<HomePage />} />
               <Route path="/profile" element={<ProfilePage />} />
+              <Route path="/messages" element={<MessagesPage />} />
 
               <Route
                 element={
