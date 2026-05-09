@@ -36,6 +36,7 @@ import AcademicYearSelector from "@/components/layout/AcademicYearSelector";
 import AcademicTermSelector from "@/components/layout/AcademicTermSelector";
 
 import Logo from "@/components/brand/Logo";
+import GlobalSearch from "@/components/layout/GlobalSearch";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { useSystemBasics } from "@/hooks/useSystemBasics";
 import { PERMISSIONS } from "@/constants";
@@ -667,17 +668,10 @@ export default function MainLayout() {
                 {headerMeta.title}
               </h1>
             </div>
-            {/* Global pill search — hidden for applicants */}
+            {/* Global search — hidden for applicants */}
             {user?.role !== "applicant" && (
               <div className="hidden md:flex">
-                <div className="relative w-[280px] lg:w-[400px]">
-                  <Search className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400 pointer-events-none" />
-                  <input
-                    type="text"
-                    placeholder="What do you want to find?"
-                    className="w-full h-10 rounded-full bg-ink-50/80 dark:bg-ink-800 border border-ink-100 dark:border-ink-700 pl-5 pr-11 text-[13.5px] placeholder-ink-400 focus:outline-none focus:border-primary-300 focus:ring-2 focus:ring-primary-100 dark:focus:ring-primary-900/40 transition"
-                  />
-                </div>
+                <GlobalSearch />
               </div>
             )}
           </div>
