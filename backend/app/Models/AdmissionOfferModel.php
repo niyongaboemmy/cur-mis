@@ -29,6 +29,7 @@ class AdmissionOfferModel extends BaseModel
             "SELECT ao.*, sa.first_name, sa.last_name, sa.email, sa.phone, sa.gender, sa.birthdate, sa.nationality, sa.address,
                     sa.prev_school, sa.prev_qualification, sa.prev_grade, sa.combination, sa.graduation_year,
                     sa.sponsorship, sa.sponsor_name, sa.academic_year_id,
+                    sa.intake, sa.program_id, sa.campus_id, sa.mode_of_study, sa.level_id,
                     sa.application_number, sa.status AS application_status,
                     d.dep_name    AS department_name,
                     d.dep_acronym AS department_code,

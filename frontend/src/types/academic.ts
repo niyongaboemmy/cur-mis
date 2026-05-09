@@ -58,6 +58,7 @@ export interface Department {
   dep_id:          number
   dep_name:        string
   dep_acronym?:    string
+  dep_code?:       string
   dep_description?: string
   [k: string]:     unknown
 }
@@ -102,10 +103,22 @@ export interface LeaveType {
   is_paid?:      0 | 1
 }
 
+export interface Faculty {
+  fac_id:        number
+  fac_name:      string
+  fac_acronym?:  string
+  fac_code?:     string
+  fac_descript?: string
+  school_id?:    number
+  school_name?:  string
+  [k: string]:   unknown
+}
+
 /** Tagged union of entity names used by /api/academics-management/:entity */
 export type AcMgmtEntity =
   | 'degrees'
   | 'schools'
+  | 'faculties'
   | 'departments'
   | 'modules'
   | 'facility'

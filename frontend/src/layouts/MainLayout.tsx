@@ -80,7 +80,23 @@ type NavNode = {
 
 const NAV_TREE: NavNode[] = [
   { id: "home", label: "Home", icon: Home, to: "/" },
-  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, to: "/dashboard" },
+  {
+    id: "dashboard",
+    label: "Dashboard",
+    icon: LayoutDashboard,
+    to: "/dashboard",
+    // Admin metrics only — hide from external portal roles.
+    hideForRoles: ["student", "applicant"],
+  },
+  {
+    id: "student-profile",
+    label: "Profile",
+    icon: UserIcon,
+    to: "/me/profile",
+    // Role-scoped: enrolled students see "My Profile" wired to /api/students/me.
+    roles: ["student"],
+    permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL],
+  },
   {
     id: "applicant-dashboard",
     label: "Applications",
@@ -140,7 +156,7 @@ const NAV_TREE: NavNode[] = [
   // ─── Modules Management Module ───
   {
     id: "modules",
-    label: "Modules",
+    label: "Academics",
     icon: BookOpen,
     permissions: [
       PERMISSIONS.MANAGE_MODULES,
@@ -148,13 +164,14 @@ const NAV_TREE: NavNode[] = [
       PERMISSIONS.MANAGE_MODULE_ASSIGNMENTS,
       PERMISSIONS.MANAGE_MODULE_REGISTRATIONS,
       PERMISSIONS.VIEW_MY_MODULES,
+      PERMISSIONS.VIEW_MODULE_MARKS,
+      PERMISSIONS.RECORD_MODULE_MARKS,
+      PERMISSIONS.MANAGE_MODULE_MARKS,
+      PERMISSIONS.MANAGE_ACADEMIC_YEARS,
+      PERMISSIONS.MANAGE_ACADEMIC_TERMS,
     ],
     children: [
-      { to: "/my-modules", label: "My Registrations", permissions: [PERMISSIONS.VIEW_MY_MODULES] },
-      { to: "/modules/catalog", label: "Catalog", permissions: [PERMISSIONS.MANAGE_MODULES] },
-      { to: "/modules/scheduling", label: "Scheduling", permissions: [PERMISSIONS.MANAGE_MODULE_SCHEDULES] },
-      { to: "/modules/assignments", label: "Assignments", permissions: [PERMISSIONS.MANAGE_MODULE_ASSIGNMENTS] },
-      { to: "/modules/registrations", label: "Registrations", permissions: [PERMISSIONS.MANAGE_MODULE_REGISTRATIONS] },
+      { to: "/academic/settings", label: "Academic settings", permissions: [PERMISSIONS.MANAGE_ACADEMIC_YEARS, PERMISSIONS.MANAGE_ACADEMIC_TERMS] },
     ],
   },
   {
@@ -217,7 +234,7 @@ const ADMIN_TREE: NavNode[] = [
   },
   {
     id: "academics-management",
-    label: "Academics management",
+    label: "Settings",
     icon: Layers,
     to: "/academic/management",
     hideForRoles: ["hr_manager"],
@@ -261,11 +278,11 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
   },
   "/academic/settings": {
     title: "Academic settings",
-    sub: "Academic years & terms",
+    sub: "Faculties, departments, programs, modules and academic years/terms",
   },
   "/academic/management": {
-    title: "Academics management",
-    sub: "Degrees, schools, departments, modules, facilities and more",
+    title: "Settings",
+    sub: "Schools, degrees, facilities, levels, leave types, campuses and intakes",
   },
 
   "/admin/admissions": {
@@ -336,6 +353,7 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
   "/modules/scheduling": { title: "Module Scheduling", sub: "Timetable entries and conflict detection" },
   "/modules/assignments": { title: "Module Assignments", sub: "Faculty-to-module assignments and workload" },
   "/modules/registrations": { title: "Module Registrations", sub: "Admin view of student module registrations" },
+  "/modules/marks": { title: "Module Marks", sub: "Record CAT, partial and final exam marks per module" },
   "/my-modules": { title: "My Modules", sub: "Register for modules and track your courses" },
 };
 

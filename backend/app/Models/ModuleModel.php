@@ -20,7 +20,10 @@ class ModuleModel extends BaseModel
      * every row (list of { id, name } objects derived from
      * `module_programs`).
      *
-     * @param array{department?:int,program?:int,level?:int,status?:string,q?:string} $filters
+     * @param array{
+     *   department?:int,program?:int,level?:int,status?:string,q?:string,
+     *   sort_by?:string,sort_dir?:string
+     * } $filters
      */
     public function listWithPrereqs(int $page = 1, int $perPage = 20, array $filters = []): array
     {
@@ -57,8 +60,18 @@ class ModuleModel extends BaseModel
 
         $whereSql = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
         $page     = max(1, $page);
-        $perPage  = max(1, min(100, $perPage));
+        // Cap is generous so bulk exports (per_page=10000) get every row.
+        $perPage  = max(1, min(10000, $perPage));
         $offset   = ($page - 1) * $perPage;
+
+        // Optional sort, whitelisted to safe identifiers.
+        $sortBy  = (string)($filters['sort_by']  ?? '');
+        $sortDir = strtoupper((string)($filters['sort_dir'] ?? 'ASC'));
+        if (!preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/', $sortBy)) $sortBy = '';
+        if (!in_array($sortDir, ['ASC', 'DESC'], true))         $sortDir = 'ASC';
+        $orderSql = $sortBy !== ''
+            ? "ORDER BY m.`{$sortBy}` {$sortDir}"
+            : 'ORDER BY m.module_code ASC';
 
         $totalRow = $this->db->fetchOne(
             "SELECT COUNT(DISTINCT m.module_id) AS cnt FROM `modules` m {$joins} {$whereSql}",
@@ -71,15 +84,22 @@ class ModuleModel extends BaseModel
              FROM `modules` m
              {$joins}
              {$whereSql}
-             ORDER BY m.module_code ASC
+             {$orderSql}
              LIMIT ? OFFSET ?",
             [...$bindings, $perPage, $offset]
         );
 
-        $withRels = array_map(function (array $row) {
+        $moduleIds = array_map(static fn ($r) => (int)$r['module_id'], $rows);
+        $offerings = $this->aggregateOfferings($moduleIds);
+
+        $withRels = array_map(function (array $row) use ($offerings) {
             $row['prerequisites'] = $this->prereqsFor((int)$row['module_id']);
             $row['programs']      = $this->programsFor((int)$row['module_id']);
             $row['levels']        = $this->levelsFor((int)$row['module_id']);
+            $agg = $offerings[(int)$row['module_id']] ?? null;
+            $row['programs_count'] = $agg['programs_count'] ?? 0;
+            $row['orders_used']    = $agg['orders_used']    ?? '';
+            $row['min_order']      = $agg['min_order']      ?? null;
             return $row;
         }, $rows);
 
@@ -105,6 +125,50 @@ class ModuleModel extends BaseModel
         $row['programs']      = $this->programsFor($id);
         $row['levels']        = $this->levelsFor($id);
         return $row;
+    }
+
+    /**
+     * Batch-aggregate `module_offerings` rows for a list of modules. Returns
+     * a map keyed by module_id with summary fields used by the catalog
+     * listing and the Excel export. Pre-computing in one query avoids
+     * issuing N follow-up queries when the list page is shown.
+     *
+     * @param int[] $moduleIds
+     * @return array<int,array{
+     *   offerings_count:int, modes_used:string, semesters_used:string,
+     *   campuses_used:string, years_used:string
+     * }>
+     */
+    public function aggregateOfferings(array $moduleIds): array
+    {
+        if (empty($moduleIds)) return [];
+        $ids = array_values(array_unique(array_map('intval', $moduleIds)));
+        $ph  = implode(',', array_fill(0, count($ids), '?'));
+
+        // Order now lives on `module_programs` (per-program). Aggregate from
+        // there so the catalog listing shows the curricular order without
+        // depending on the future Schedules / module_offerings feature.
+        $rows = $this->db->fetchAll(
+            "SELECT
+                mp.module_id,
+                COUNT(*)                                                                          AS programs_count,
+                GROUP_CONCAT(DISTINCT mp.module_order ORDER BY mp.module_order SEPARATOR ', ')    AS orders_used,
+                MIN(mp.module_order)                                                              AS min_order
+             FROM `module_programs` mp
+             WHERE mp.module_id IN ($ph)
+             GROUP BY mp.module_id",
+            $ids,
+        );
+
+        $byId = [];
+        foreach ($rows as $r) {
+            $byId[(int)$r['module_id']] = [
+                'programs_count' => (int)($r['programs_count'] ?? 0),
+                'orders_used'    => (string)($r['orders_used'] ?? ''),
+                'min_order'      => $r['min_order'] !== null ? (int)$r['min_order'] : null,
+            ];
+        }
+        return $byId;
     }
 
     /** @return array<int,array{id:int,name:string,department_id:int|null}> */

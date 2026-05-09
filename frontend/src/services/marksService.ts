@@ -14,42 +14,116 @@ export interface MarksRosterRow {
   fname:             string
   lname:             string
   email:             string | null
+  sex:               string | null
+  student_program:   string | null
+  option_acro:       string | null
   mark_id:           number | null
+
+  // Legacy (kept in sync server-side for the transcript path).
   cat_marks:         string | number | null
   assignment_marks:  string | number | null
   exam_marks:        string | number | null
   cat_max:           string | number
   assignment_max:    string | number
   exam_max:          string | number
+
+  // CUR-template component scores.
+  cat1:              string | number | null
+  cat2:              string | number | null
+  cat3:              string | number | null
+  partial_exam:      string | number | null
+  cat1_max:          string | number
+  cat2_max:          string | number
+  cat3_max:          string | number
+  partial_exam_max:  string | number
+  cats_max:          string | number
+  exam_1st_sitting:  string | number | null
+  exam_2nd_sitting:  string | number | null
+  final_exam_max:    string | number
+
   total:             string | number | null
   percentage:        string | number | null
   grade:             string | null
+  decision:          string | null
+  status:            string | null
+  is_exempted?:      number | boolean | null
+  exemption_reason?: string | null
   remarks:           string | null
   updated_at:        string | null
+  teaching_started_on: string | null
+  teaching_ended_on:   string | null
+}
+
+export interface MarksModuleHeader {
+  module_id:           number
+  module_code:         string
+  module_name:         string
+  module_credits?:     number | string | null
+  level?:              number | string | null
+  d_option?:           string | null
+  option_acronym?:     string | null
+  program?:            string | null
+  dep_id?:             number | null
+  dep_name?:           string | null
+  dep_acronym?:        string | null
+  fac_id?:             number | null
+  fac_name?:           string | null
+  fac_code?:           string | null
+  lecturer_name?:      string | null
+  lecturer_email?:     string | null
+  teaching_started_on?:string | null
+  teaching_ended_on?:  string | null
+}
+
+export type MarksWorkflowStatus =
+  | 'draft'
+  | 'claims_open'
+  | 'submitted'
+  | 'confirmed'
+
+export interface MarksWorkflow {
+  status:           MarksWorkflowStatus
+  claims_opened_at: string | null
+  submitted_at:     string | null
+  confirmed_at:     string | null
 }
 
 export interface MarksListResponse {
-  module:  { module_id: number; module_code: string; module_name: string }
-  term:    { id: number; label: string }
-  roster:  MarksRosterRow[]
-  summary: { total_roster: number; recorded: number; unmarked: number; avg_pct: number }
+  module:   MarksModuleHeader
+  term:     { id: number; label: string }
+  roster:   MarksRosterRow[]
+  summary:  { total_roster: number; recorded: number; unmarked: number; avg_pct: number }
+  workflow: MarksWorkflow
 }
 
 export interface SaveMarkRecord {
   student_regnumber: string
-  cat_marks?:        number | null
-  assignment_marks?: number | null
-  exam_marks?:       number | null
-  cat_max?:          number
-  assignment_max?:   number
-  exam_max?:         number
+
+  // Component scores (CUR template).
+  cat1?:             number | null
+  cat2?:             number | null
+  cat3?:             number | null
+  partial_exam?:     number | null
+  exam_1st_sitting?: number | null
+  exam_2nd_sitting?: number | null
+
+  // Maxes — sent on every payload so a teacher's edit takes effect for the row.
+  cat1_max?:         number
+  cat2_max?:         number
+  cat3_max?:         number
+  partial_exam_max?: number
+  cats_max?:         number
+  final_exam_max?:   number
+
   remarks?:          string | null
 }
 
 export interface SaveMarksPayload {
-  module_id:        number
-  academic_term_id: number
-  records:          SaveMarkRecord[]
+  module_id:           number
+  academic_term_id:    number
+  teaching_started_on?:string | null
+  teaching_ended_on?:  string | null
+  records:             SaveMarkRecord[]
 }
 
 /** Full transcript shape — used for both /my and /students/:reg. */
@@ -84,6 +158,8 @@ export interface MyMarksRow {
   percentage:        string | number | null
   grade:             string | null
   remarks:           string | null
+  is_exempted?:      number | boolean | null
+  exemption_reason?: string | null
   credit_point:      number | string | null
   academic_term_id:  number
   term_label:        string
@@ -129,6 +205,13 @@ export const marksService = {
 
   save: (payload: SaveMarksPayload) =>
     api.put<{ saved: number }>('/api/marks', payload),
+
+  workflow: (payload: {
+    module_id:        number
+    academic_term_id: number
+    action:           'open_claims' | 'submit' | 'confirm' | 'reset'
+  }) =>
+    api.post<{ status: MarksWorkflowStatus }>('/api/marks/workflow', payload),
 
   remove: (id: number | string) =>
     api.delete<void>(`/api/marks/${id}`),

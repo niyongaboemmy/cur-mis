@@ -2,48 +2,60 @@ import { useParams, Link, useLocation } from 'react-router-dom'
 import { createPortal } from 'react-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { studentService } from '@/services/studentService'
-import {
-  moduleCatalogService,
-  moduleRegistrationService,
-  moduleScheduleService,
-} from '@/services/modulesService'
 import { marksService, type MyMarksRow, type MyMarksTotals } from '@/services/marksService'
+import { academicService } from '@/services/academicService'
 import { attendanceService, type AttendanceStatus } from '@/services/attendanceService'
-import { useSystemStore, selectActiveTerm } from '@/store/systemStore'
-import { useState } from 'react'
+import { useAuthStore } from '@/store/authStore'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import {
   ArrowLeft, Loader2, User, Mail, Phone, Calendar,
   GraduationCap, Globe2, Building2, BookOpen,
   CheckCircle, Clock, FileText, BarChart, Edit, Save, X,
-  Hash, Award, AlertTriangle, MapPin, Plus, Sparkles, Download, Percent,
-  Eye, ShieldCheck, ShieldAlert, ShieldX
+  Award, AlertTriangle, Download, Percent,
+  Eye, ShieldCheck, ShieldAlert, ShieldX,
+  Sparkles, Trash2, MapPin, CreditCard, CalendarDays,
+  Heart, Accessibility, Users as UsersIcon,
+  CalendarClock, CalendarOff, Camera,
+  PlusCircle, MinusCircle,
 } from 'lucide-react'
 
-const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+type Tab = 'overview' | 'attendance' | 'documents' | 'curriculum' | 'finance' | 'transcript'
 
-type Tab = 'overview' | 'attendance' | 'documents' | 'modules' | 'finance' | 'transcript'
+interface StudentDetailsPageProps {
+  /**
+   * When true, the page renders the authenticated user's own student record
+   * via `/api/students/me`. Admin-only actions (edit, photo upload, exemption
+   * controls, registry back-link) are hidden, and tabs that depend on
+   * VIEW_STUDENTS endpoints are replaced with friendly placeholders.
+   */
+  selfMode?: boolean
+}
 
-export default function StudentDetailsPage() {
+export default function StudentDetailsPage({ selfMode = false }: StudentDetailsPageProps = {}) {
   const { id } = useParams<{ id: string }>()
   const location = useLocation()
   const [tab, setTab] = useState<Tab>('overview')
   const [isEditing, setIsEditing] = useState(false)
-  
+
   const fromSearch = location.state?.fromSearch
   const backUrl = fromSearch !== undefined ? `/students?${fromSearch}` : '/students?tab=all'
 
   const studentQ = useQuery({
-    queryKey: ['student', id],
-    queryFn: () => studentService.show(Number(id)),
-    enabled: !!id,
+    queryKey: selfMode ? ['student', 'me'] : ['student', id],
+    queryFn: () => (selfMode ? studentService.me() : studentService.show(Number(id))),
+    enabled: selfMode || !!id,
   })
 
   const statsQ = useQuery({
     queryKey: ['student-stats'],
     queryFn: () => studentService.stats(),
     staleTime: 60_000,
+    // Stats requires VIEW_STUDENTS — students hitting their own profile get a
+    // 403 here. Skip the call entirely in self mode; the overview tab falls
+    // back to raw values from the student record.
+    enabled: !selfMode,
   })
 
   const student = studentQ.data?.data
@@ -58,6 +70,18 @@ export default function StudentDetailsPage() {
   }
 
   if (studentQ.isError || !student) {
+    if (selfMode) {
+      return (
+        <div className="max-w-[1000px] mx-auto p-6 text-center">
+          <h2 className="text-lg font-semibold text-ink-900 mb-2">No student record on file</h2>
+          <p className="text-ink-500 max-w-md mx-auto">
+            We couldn't find a student record linked to your account. If you've just been
+            enrolled, please sign out and back in. Otherwise, contact the registrar's office.
+          </p>
+        </div>
+      )
+    }
+
     return (
       <div className="max-w-[1000px] mx-auto p-6 text-center">
         <h2 className="text-lg font-semibold text-ink-900 mb-2">Student not found</h2>
@@ -74,21 +98,23 @@ export default function StudentDetailsPage() {
     <div className="max-w-[1200px] mx-auto space-y-6">
       {/* Header section */}
       <div className="flex items-center gap-4">
-        <Link to={backUrl} className="btn-secondary p-2">
-          <ArrowLeft className="w-5 h-5" />
-        </Link>
-        <div className="w-16 h-16 rounded-xl bg-brand/10 text-brand flex items-center justify-center text-xl font-bold">
-          {initials}
-        </div>
+        {!selfMode && (
+          <Link to={backUrl} className="btn-secondary p-2">
+            <ArrowLeft className="w-5 h-5" />
+          </Link>
+        )}
+        <StudentAvatar student={student} initials={initials} readOnly={selfMode} />
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold text-ink-900 dark:text-white">
               {student.fname} {student.lname}
             </h1>
-            <button onClick={() => setIsEditing(true)} className="btn-secondary btn-sm flex items-center gap-1.5 h-7 px-2.5">
-              <Edit className="w-3.5 h-3.5" />
-              <span>Edit</span>
-            </button>
+            {!selfMode && (
+              <button onClick={() => setIsEditing(true)} className="btn-secondary btn-sm flex items-center gap-1.5 h-7 px-2.5">
+                <Edit className="w-3.5 h-3.5" />
+                <span>Edit</span>
+              </button>
+            )}
           </div>
           <p className="text-sm text-ink-500 mt-1 flex items-center gap-3">
             <span className="font-mono bg-ink-100 dark:bg-ink-800 px-2 py-0.5 rounded">
@@ -107,8 +133,12 @@ export default function StudentDetailsPage() {
       <div className="flex flex-wrap items-center gap-2 border-b border-ink-200 dark:border-ink-800">
         <TabButton active={tab === 'overview'}   onClick={() => setTab('overview')}   icon={User}       label="Overview & Stats" />
         <TabButton active={tab === 'attendance'} onClick={() => setTab('attendance')} icon={Clock}      label="Attendance" />
-        <TabButton active={tab === 'documents'}  onClick={() => setTab('documents')}  icon={FileText}   label="Documents" />
-        <TabButton active={tab === 'modules'}    onClick={() => setTab('modules')}    icon={BookOpen}   label="Modules" />
+        {!selfMode && (
+          <>
+            <TabButton active={tab === 'documents'}  onClick={() => setTab('documents')}  icon={FileText}   label="Documents" />
+            <TabButton active={tab === 'curriculum'} onClick={() => setTab('curriculum')} icon={BookOpen}   label="Program & Marks" />
+          </>
+        )}
         <TabButton active={tab === 'finance'}    onClick={() => setTab('finance')}    icon={BarChart}   label="Finance" />
         <TabButton active={tab === 'transcript'} onClick={() => setTab('transcript')} icon={FileText}   label="Transcript" />
       </div>
@@ -117,65 +147,265 @@ export default function StudentDetailsPage() {
       <div className="min-h-[400px]">
         {tab === 'overview' && <OverviewTab student={student} stats={stats} />}
         {tab === 'attendance' && <AttendanceTab student={student} />}
-        {tab === 'documents' && <DocumentsTab student={student} />}
-        {tab === 'modules' && <ModulesTab student={student} stats={stats} />}
+        {!selfMode && tab === 'documents' && <DocumentsTab student={student} />}
+        {!selfMode && tab === 'curriculum' && <ProgramCurriculumTab student={student} />}
         {tab === 'finance' && <PlaceholderTab icon={BarChart} title="Financial Overview" desc="Tuition fees, payments, and balances." />}
         {tab === 'transcript' && <TranscriptTab student={student} />}
       </div>
 
-      {isEditing && <EditStudentModal student={student} stats={stats} onClose={() => setIsEditing(false)} />}
+      {!selfMode && isEditing && <EditStudentModal student={student} stats={stats} onClose={() => setIsEditing(false)} />}
     </div>
   )
 }
 
 function OverviewTab({ student, stats }: { student: any, stats: any }) {
-  const facultyName = stats?.facets?.faculty?.find((f: any) => String(f.value) === String(student.faculty))?.label || student.faculty
-  const deptName = stats?.facets?.department?.find((f: any) => String(f.value) === String(student.department))?.label || student.department
-  const levelName = stats?.facets?.current_level?.find((f: any) => String(f.value) === String(student.current_level))?.label || student.current_level
+  const app = student?.application ?? null
+
+  // Prefer the live student record, but fall back to the application for fields
+  // we never copied onto students (father, mother, residency, secondary school…).
+  const pick = (...vals: any[]) =>
+    vals.find(v => v !== undefined && v !== null && v !== '') ?? null
+
+  const facultyName = stats?.facets?.faculty?.find((f: any) => String(f.value) === String(student.faculty))?.label
+                   ?? app?.faculty_name ?? student.faculty
+  const deptName    = stats?.facets?.department?.find((f: any) => String(f.value) === String(student.department))?.label
+                   ?? app?.department_name ?? student.department
+  const levelName   = stats?.facets?.current_level?.find((f: any) => String(f.value) === String(student.current_level))?.label
+                   ?? student.current_level
+  const programName = stats?.facets?.options?.find((o: any) => String(o.value) === String(student.std_option))?.label
+                   ?? app?.program_name ?? student.program
+
+  const fullName = `${student.fname ?? ''} ${student.lname ?? ''}`.trim() || '—'
+  const genderRaw = pick(student.gender, app?.gender)
+  const genderLabel = genderRaw === 'M' ? 'Male' : genderRaw === 'F' ? 'Female' : (genderRaw || null)
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-      <div className="card p-5 space-y-4 md:col-span-1 h-max">
-        <h3 className="font-semibold text-ink-900 dark:text-white border-b border-ink-100 dark:border-ink-800 pb-3">Personal Details</h3>
-        <DetailRow icon={Mail} label="Email" value={student.email} />
-        <DetailRow icon={Phone} label="Phone" value={student.phone} />
-        <DetailRow icon={Globe2} label="Nationality" value={student.nationality} />
-        <DetailRow icon={User} label="Gender" value={student.gender === 'M' ? 'Male' : student.gender === 'F' ? 'Female' : student.gender} />
-        <DetailRow icon={Calendar} label="Birthdate" value={student.birthdate} />
-      </div>
-
-      <div className="card p-5 space-y-4 md:col-span-2">
-        <h3 className="font-semibold text-ink-900 dark:text-white border-b border-ink-100 dark:border-ink-800 pb-3">Academic Information</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <DetailRow icon={Building2} label="Faculty" value={facultyName} />
-          <DetailRow icon={GraduationCap} label="Department" value={deptName} />
-          <DetailRow icon={BookOpen} label="Program" value={student.program} />
-          <DetailRow icon={CheckCircle} label="Current Level" value={levelName} />
-          <DetailRow icon={Calendar} label="Registration Date" value={student.registration_date} />
-          <DetailRow icon={Calendar} label="Academic Year" value={student.acc_year} />
+    <div className="space-y-6">
+      {/* Personal Details */}
+      <section className="card p-6">
+        <SectionHeader
+          title="Personal Details"
+          sub="Identity and parental information."
+          icon={User}
+        />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5 mt-6">
+          <InfoGroup label="Full Name" value={fullName} icon={User} />
+          <InfoGroup label="Father's Name" value={pick(student.father, app?.father)} icon={UsersIcon} />
+          <InfoGroup label="Mother's Name" value={pick(student.mother, app?.mother)} icon={UsersIcon} />
+          <InfoGroup label="Gender" value={genderLabel} />
+          <InfoGroup label="Date of Birth" value={pick(student.birthdate, app?.birthdate)} icon={CalendarDays} />
+          <InfoGroup label="Marital Status" value={cap(pick(app?.marital_status))} icon={Heart} />
+          <InfoGroup label="National ID / Passport" value={pick(student.id_card, app?.national_id)} icon={CreditCard} />
+          <InfoGroup label="Nationality" value={pick(student.nationality, app?.nationality)} icon={Globe2} />
+          <InfoGroup label="Country of Residence" value={pick(app?.country_of_residence)} icon={MapPin} />
+          <InfoGroup label="Disability" value={pick(app?.disability) ?? 'None'} icon={Accessibility} />
         </div>
+      </section>
 
-        <div className="mt-8">
-          <h3 className="font-semibold text-ink-900 dark:text-white mb-4">Academic Progress</h3>
-          <div className="bg-ink-50 dark:bg-ink-800 rounded-lg p-6 text-center text-ink-500 border border-dashed border-ink-200 dark:border-ink-700">
-            <BarChart className="w-8 h-8 mx-auto mb-2 opacity-50" />
-            <p className="text-sm">Comprehensive stats and GPA calculations are currently being processed.</p>
+      {/* Contact */}
+      <section className="card p-6">
+        <SectionHeader
+          title="Contact"
+          sub="How we reach the student."
+          icon={Phone}
+        />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5 mt-6">
+          <InfoGroup label="Phone" value={pick(student.phone, app?.phone)} icon={Phone} />
+          <InfoGroup label="Reference Person Phone" value={pick(app?.reference_phone)} icon={Phone} />
+          <InfoGroup label="Email" value={pick(student.email, app?.email)} icon={Mail} />
+        </div>
+      </section>
+
+      {/* Residency — only shown when we actually have any address data */}
+      {app && (app.province || app.district || app.sector || app.residence_district || app.address) && (
+        <section className="card p-6">
+          <SectionHeader
+            title="Residency"
+            sub="Where the student lives."
+            icon={MapPin}
+          />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5 mt-6">
+            <InfoGroup label="Province" value={pick(app?.province)} />
+            <InfoGroup label="District" value={pick(app?.district)} />
+            <InfoGroup label="Sector" value={pick(app?.sector)} />
+            <InfoGroup label="Residence District" value={pick(app?.residence_district)} />
+            <div className="sm:col-span-2 lg:col-span-3">
+              <InfoGroup label="Address" value={pick(app?.address) ?? 'Not provided'} icon={MapPin} />
+            </div>
           </div>
+        </section>
+      )}
+
+      {/* Academic Background — captured at application time */}
+      {app && (
+        <section className="card p-6">
+          <SectionHeader
+            title="Academic Background"
+            sub="Secondary school transcript provided during application."
+            icon={GraduationCap}
+          />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5 mt-6">
+            <InfoGroup label="Attended Secondary School" value={pick(app?.prev_school)} />
+            <InfoGroup label="Combination / Section" value={pick(app?.combination)} />
+            <InfoGroup label="A2 Grades" value={pick(app?.a2_grades)} />
+            <InfoGroup label="Principal Passes" value={app?.principal_passes != null ? String(app.principal_passes) : null} />
+            <InfoGroup label="Completion Year" value={app?.graduation_year ? String(app.graduation_year) : null} />
+            <InfoGroup label="Serial Number" value={pick(app?.serial_number)} />
+            <InfoGroup label="Qualification" value={pick(app?.prev_qualification)} />
+            <InfoGroup label="Mean Grade" value={pick(app?.prev_grade)} />
+          </div>
+        </section>
+      )}
+
+      {/* Programme Selection — current academic placement */}
+      <section className="card p-6">
+        <SectionHeader
+          title="Programme Selection"
+          sub="Faculty, department, programme and academic year."
+          icon={BookOpen}
+        />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5 mt-6">
+          <InfoGroup label="Program" value={programName} icon={BookOpen} />
+          <InfoGroup label="Faculty" value={facultyName} icon={Building2} />
+          <InfoGroup label="Department" value={deptName} icon={GraduationCap} />
+          <InfoGroup label="Current Level" value={levelName} icon={CheckCircle} />
+          <InfoGroup label="Campus" value={pick(app?.campus_name)} icon={Building2} />
+          <InfoGroup label="Mode of Study" value={cap(pick(app?.mode_of_study))} />
+          <InfoGroup label="Intake" value={pick(app?.intake)} icon={Calendar} />
+          <InfoGroup label="Academic Year" value={pick(student.acc_year, app?.academic_year_label)} icon={Calendar} />
+          <InfoGroup label="Registration Date" value={pick(student.registration_date)} icon={Calendar} />
         </div>
+      </section>
+
+      {/* Academic Progress placeholder */}
+      <section className="card p-6">
+        <SectionHeader title="Academic Progress" sub="GPA and term-by-term performance." icon={BarChart} />
+        <div className="mt-6 bg-ink-50 dark:bg-ink-800 rounded-lg p-6 text-center text-ink-500 border border-dashed border-ink-200 dark:border-ink-700">
+          <BarChart className="w-8 h-8 mx-auto mb-2 opacity-50" />
+          <p className="text-sm">Comprehensive stats and GPA calculations are currently being processed.</p>
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function SectionHeader({ title, sub, icon: Icon }: { title: string; sub?: string; icon?: any }) {
+  return (
+    <div className="flex items-center gap-3">
+      {Icon && (
+        <div className="w-9 h-9 rounded-xl bg-brand/10 flex items-center justify-center text-brand shrink-0">
+          <Icon className="w-4 h-4" />
+        </div>
+      )}
+      <div className="min-w-0">
+        <h3 className="text-[15px] font-bold text-ink-900 dark:text-white leading-tight">{title}</h3>
+        {sub && <p className="text-[12px] text-ink-500 mt-0.5 truncate">{sub}</p>}
       </div>
     </div>
   )
 }
 
-function DetailRow({ icon: Icon, label, value }: { icon: any, label: string, value?: string | null }) {
+function InfoGroup({ label, value, icon: Icon }: { label: string; value?: string | null; icon?: any }) {
   return (
-    <div className="flex items-start gap-3">
-      <Icon className="w-4 h-4 text-ink-400 mt-0.5" />
-      <div>
-        <p className="text-xs text-ink-500">{label}</p>
-        <p className="text-sm font-medium text-ink-900 dark:text-ink-100">{value || '—'}</p>
+    <div className="min-w-0">
+      <p className="text-[11px] uppercase tracking-wider text-ink-400 font-bold mb-1">{label}</p>
+      <div className="flex items-center gap-2">
+        {Icon && <Icon className="w-3.5 h-3.5 text-ink-300 shrink-0" />}
+        <p className="text-[14px] text-ink-900 dark:text-white font-medium truncate" title={value || ''}>
+          {value || '—'}
+        </p>
       </div>
     </div>
+  )
+}
+
+function cap(s?: string | null): string | null {
+  if (!s) return null
+  return s.charAt(0).toUpperCase() + s.slice(1)
+}
+
+function StudentAvatar({ student, initials, readOnly = false }: { student: any; initials: string; readOnly?: boolean }) {
+  const qc       = useQueryClient()
+  const fileRef  = useRef<HTMLInputElement | null>(null)
+  // Bumped after a successful upload so the cached <img> reloads even when
+  // the file_server_id stays in transit before the student query refetches.
+  const [v, setV] = useState(0)
+
+  const upload = useMutation({
+    mutationFn: (f: File) => studentService.uploadPhoto(student.id, f),
+    onSuccess: () => {
+      toast.success('Profile photo updated.')
+      setV(n => n + 1)
+      qc.invalidateQueries({ queryKey: ['student', String(student.id)] })
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to upload photo'),
+  })
+
+  const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]
+    e.target.value = ''  // allow re-selecting the same file
+    if (!f) return
+    if (f.size > 5 * 1024 * 1024) {
+      toast.error('Photo must be 5 MB or smaller.')
+      return
+    }
+    upload.mutate(f)
+  }
+
+  const photoSrc = student.photo
+    ? studentService.photoUrl(student.id, `${student.photo}-${v}`)
+    : null
+
+  if (readOnly) {
+    return (
+      <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-brand/10 text-brand flex items-center justify-center text-xl font-bold shrink-0">
+        {photoSrc ? (
+          <img
+            src={photoSrc}
+            alt={`${student.fname ?? ''} ${student.lname ?? ''}`.trim() || 'Student photo'}
+            className="w-full h-full object-cover"
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+          />
+        ) : (
+          <span>{initials}</span>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => !upload.isPending && fileRef.current?.click()}
+      className="group relative w-16 h-16 rounded-xl overflow-hidden bg-brand/10 text-brand flex items-center justify-center text-xl font-bold shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-brand"
+      title="Change profile photo"
+      disabled={upload.isPending}
+    >
+      {photoSrc ? (
+        <img
+          src={photoSrc}
+          alt={`${student.fname ?? ''} ${student.lname ?? ''}`.trim() || 'Student photo'}
+          className="w-full h-full object-cover"
+          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+        />
+      ) : (
+        <span>{initials}</span>
+      )}
+
+      <span className="absolute inset-0 bg-black/45 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+        {upload.isPending
+          ? <Loader2 className="w-5 h-5 animate-spin" />
+          : <Camera  className="w-5 h-5" />}
+      </span>
+
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="hidden"
+        onChange={onPick}
+      />
+    </button>
   )
 }
 
@@ -195,108 +425,62 @@ function TabButton({ active, icon: Icon, label, onClick }: { active: boolean, ic
   )
 }
 
-type ScheduleSlot = {
-  module_id: number
-  day_of_week: number
-  start_time: string
-  end_time: string
-  room_name?: string
-}
-
-function timeOverlap(a: ScheduleSlot, b: ScheduleSlot): boolean {
-  if (a.day_of_week !== b.day_of_week) return false
-  return !(a.end_time <= b.start_time || a.start_time >= b.end_time)
-}
-
-function ModulesTab({ student, stats }: { student: any, stats: any }) {
+/**
+ * Curriculum view: every module attached to the student's program (option),
+ * grouped by level and ordered by module_order. Each module shows the
+ * student's marks pulled from the latest term they sat the module. The
+ * table can be downloaded as a CSV via the dedicated server endpoint —
+ * format mirrors what's on screen so it's printable as-is.
+ */
+function ProgramCurriculumTab({ student }: { student: any }) {
+  const studentId = student?.id
   const qc = useQueryClient()
-  const regnumber = student.regnumber || ''
-  const activeTerm = useSystemStore(selectActiveTerm)
-  const termId = activeTerm?.id ? Number(activeTerm.id) : null
+  const user = useAuthStore((s) => s.user)
+  const isAdmin = user?.role === 'superadmin' || user?.role === 'admin'
+  const [exempting, setExempting] = useState<{ moduleId: number; moduleCode: string; moduleName: string } | null>(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [enrollPending, setEnrollPending] = useState<number | null>(null)
+  const [dropPending, setDropPending] = useState<number | null>(null)
 
-  const facultyName = stats?.facets?.faculty?.find((f: any) => String(f.value) === String(student.faculty))?.label || student.faculty
-  const deptName = stats?.facets?.department?.find((f: any) => String(f.value) === String(student.department))?.label || student.department
-  const levelName = stats?.facets?.current_level?.find((f: any) => String(f.value) === String(student.current_level))?.label || student.current_level
-
-  // Show modules from the student's department (the curriculum they're
-  // enrolled in). If the department isn't set, fall back to "all modules" so
-  // an admin can still enroll them — but warn in the UI.
-  const studentDeptId = student?.department ? Number(student.department) : 0
-  const canList = true
-
-  const modulesQ = useQuery({
-    queryKey: ['student-modules', studentDeptId || 'all'],
-    queryFn: () => moduleCatalogService.list(
-      studentDeptId > 0
-        ? { per_page: 500, status: 'active', department: studentDeptId }
-        : { per_page: 500, status: 'active' }
-    ),
-    enabled: canList,
+  const dataQ = useQuery({
+    queryKey: ['student-program-modules', studentId],
+    queryFn: () => studentService.programModules(studentId),
+    enabled: !!studentId,
   })
 
-  const registrationsQ = useQuery({
-    queryKey: ['student-registrations', regnumber],
-    queryFn: () => moduleRegistrationService.list({ regnumber }),
-    enabled: !!regnumber,
-  })
-
-  const schedulesQ = useQuery({
-    queryKey: ['module-schedules', termId],
-    queryFn: () => moduleScheduleService.list({ term_id: termId! }),
-    enabled: !!termId,
-  })
-
-  const enrollM = useMutation({
-    mutationFn: (moduleId: number) =>
-      moduleRegistrationService.create({
-        module_id: moduleId,
-        student_regnumber: regnumber,
-        academic_term_id: termId!,
-        force: true,
-      } as any),
+  const deleteExemption = useMutation({
+    mutationFn: (markId: number) => studentService.deleteExemption(studentId, markId),
     onSuccess: () => {
-      toast.success('Student enrolled in module')
-      qc.invalidateQueries({ queryKey: ['student-registrations', regnumber] })
+      toast.success('Exemption removed.')
+      qc.invalidateQueries({ queryKey: ['student-program-modules', studentId] })
+      qc.invalidateQueries({ queryKey: ['student-marks', student?.regnumber] })
     },
-    onError: (e: any) =>
-      toast.error(e?.response?.data?.message || 'Could not enroll'),
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to remove exemption'),
   })
 
-  const [bulkEnrolling, setBulkEnrolling] = useState(false)
-  const enrollAllAvailable = async (ids: number[]) => {
-    if (!termId || ids.length === 0) return
-    setBulkEnrolling(true)
-    let ok = 0, fail = 0, errMsg = ''
-    for (const id of ids) {
-      try {
-        await moduleRegistrationService.create({ module_id: id, student_regnumber: regnumber, academic_term_id: termId, force: true } as any)
-        ok++
-      } catch (e: any) {
-        fail++; errMsg = e?.response?.data?.message || errMsg
-      }
-    }
-    qc.invalidateQueries({ queryKey: ['student-registrations', regnumber] })
-    setBulkEnrolling(false)
-    if (ok > 0) toast.success(`Enrolled in ${ok} module${ok === 1 ? '' : 's'}${fail ? ` · ${fail} skipped` : ''}`)
-    else toast.error(`Could not enroll${errMsg ? ': ' + errMsg : ''}`)
-  }
+  const enroll = useMutation({
+    mutationFn: (moduleId: number) => studentService.enrollModule(studentId, { module_id: moduleId }),
+    onMutate: (moduleId) => setEnrollPending(moduleId),
+    onSuccess: () => {
+      toast.success('Module enrolled.')
+      qc.invalidateQueries({ queryKey: ['student-program-modules', studentId] })
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to enroll'),
+    onSettled: () => setEnrollPending(null),
+  })
 
-  if (!canList) {
-    return (
-      <div className="card p-12 flex flex-col items-center justify-center text-center">
-        <div className="w-16 h-16 rounded-full bg-amber-50 flex items-center justify-center text-amber-600 mb-4">
-          <BookOpen className="w-8 h-8" />
-        </div>
-        <h3 className="text-lg font-semibold text-ink-900 dark:text-white">Cannot list modules</h3>
-        <p className="text-ink-500 max-w-md mt-2">
-          This student does not have a department or current level assigned.
-        </p>
-      </div>
-    )
-  }
+  const drop = useMutation({
+    mutationFn: (registrationId: number) => studentService.dropModule(studentId, registrationId),
+    onMutate: (registrationId) => setDropPending(registrationId),
+    onSuccess: () => {
+      toast.success('Registration dropped.')
+      qc.invalidateQueries({ queryKey: ['student-program-modules', studentId] })
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to drop registration'),
+    onSettled: () => setDropPending(null),
+  })
 
-  const isLoading = modulesQ.isLoading || registrationsQ.isLoading || (!!termId && schedulesQ.isLoading)
-  if (isLoading) {
+  if (dataQ.isLoading) {
     return (
       <div className="flex items-center justify-center p-20">
         <Loader2 className="w-6 h-6 text-brand animate-spin" />
@@ -304,346 +488,639 @@ function ModulesTab({ student, stats }: { student: any, stats: any }) {
     )
   }
 
-  const rawModules: any[] = modulesQ.data?.data?.data ?? []
-  const registrations: any[] = registrationsQ.data?.data ?? []
-  const schedules: any[] = schedulesQ.data?.data ?? []
-
-  // Deduplicate by trimmed/normalized code+name. The catalog has stale import
-  // rows where the same module exists with a trailing tab (e.g. "CCU8111\t" vs
-  // "CCU8111") — keep the lowest module_id as canonical.
-  const seenKey = new Set<string>()
-  const modules: any[] = []
-  for (const m of [...rawModules].sort((a, b) => Number(a.module_id) - Number(b.module_id))) {
-    const code = String(m.module_code ?? '').replace(/\s+/g, '').toLowerCase()
-    const name = String(m.module_name ?? '').replace(/\s+/g, ' ').trim().toLowerCase()
-    const key  = `${code}|${name}|${m.level ?? ''}`
-    if (seenKey.has(key)) continue
-    seenKey.add(key)
-    modules.push(m)
+  if (dataQ.isError) {
+    return (
+      <PlaceholderTab
+        icon={BookOpen}
+        title="Couldn't load curriculum"
+        desc={(dataQ.error as any)?.response?.data?.message ?? 'An error occurred while loading the program curriculum.'}
+      />
+    )
   }
 
-  // Group schedules per module (only for active term)
-  const schedulesByModule = new Map<number, ScheduleSlot[]>()
-  for (const s of schedules) {
-    const arr = schedulesByModule.get(Number(s.module_id)) ?? []
-    arr.push({
-      module_id: Number(s.module_id),
-      day_of_week: Number(s.day_of_week),
-      start_time: String(s.start_time).slice(0, 5),
-      end_time: String(s.end_time).slice(0, 5),
-      room_name: s.room_name,
-    })
-    schedulesByModule.set(Number(s.module_id), arr)
+  const payload = dataQ.data?.data
+  const program = payload?.program ?? null
+  const groups  = payload?.groups ?? []
+
+  if (!program) {
+    return (
+      <PlaceholderTab
+        icon={BookOpen}
+        title="No program assigned"
+        desc="Assign this student to a program/option first — the curriculum will appear here once the link exists."
+      />
+    )
   }
 
-  const completed = registrations.filter((r) => r.status === 'completed' || r.status === 'failed')
-  const inProgress = registrations.filter((r) => r.status === 'registered' && (!termId || Number(r.academic_term_id) === termId))
-  const registeredIds = new Set([
-    ...inProgress.map((r) => Number(r.module_id)),
-    ...completed.map((r) => Number(r.module_id)),
-  ])
+  const totalModules = groups.reduce((acc, g) => acc + (g.modules?.length ?? 0), 0)
+  const allModules   = groups.flatMap(g => g.modules)
+  const completed    = allModules.filter(m => m.marks?.percentage != null && Number(m.marks.percentage) >= 50).length
+  const failed       = allModules.filter(m => m.marks?.percentage != null && Number(m.marks.percentage) <  50).length
+  const unmarked     = totalModules - completed - failed
+  const scheduled    = allModules.filter(m => m.is_scheduled).length
 
-  // Schedule slots already locked in by in-progress registrations (used for clash detection)
-  const lockedSlots: ScheduleSlot[] = inProgress.flatMap((r) =>
-    schedulesByModule.get(Number(r.module_id)) ?? [],
-  )
-
-  const remaining = modules.filter((m) => !registeredIds.has(Number(m.module_id)))
-  const available = remaining.filter((m) => (schedulesByModule.get(Number(m.module_id)) ?? []).length > 0)
-  const unscheduled = remaining.filter((m) => (schedulesByModule.get(Number(m.module_id)) ?? []).length === 0)
-
-  const findConflict = (slots: ScheduleSlot[]): ScheduleSlot | null => {
-    for (const s of slots) {
-      const clash = lockedSlots.find((l) => timeOverlap(s, l))
-      if (clash) return clash
-    }
-    return null
-  }
-
-  const moduleNameById = (id: number) =>
-    modules.find((m) => Number(m.module_id) === id)?.module_name
-    || registrations.find((r) => Number(r.module_id) === id)?.module_name
-    || `Module #${id}`
+  const downloadUrl = studentService.programModulesExportUrl(studentId)
 
   return (
     <div className="space-y-6">
-      {/* Hero summary */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <SummaryCard tone="emerald" icon={CheckCircle} label="Completed" value={completed.filter(c => c.status === 'completed').length} />
-        <SummaryCard tone="brand" icon={Sparkles} label="In Progress" value={inProgress.length} />
-        <SummaryCard tone="amber" icon={Clock} label="Available" value={available.length} />
-        <SummaryCard tone="ink" icon={BookOpen} label="Catalog Total" value={modules.length} />
-      </div>
-
-      <div className="card p-4 flex flex-wrap items-center gap-2 text-[13px]">
-        <span className="text-ink-500">Filtered by</span>
-        <FilterPill icon={Building2} value={facultyName} />
-        <FilterPill icon={GraduationCap} value={deptName} />
-        <FilterPill icon={Award} value={levelName ? `Level ${levelName}` : '—'} />
-        <span className="ml-auto text-ink-500 font-medium">
-          {activeTerm?.label ? `Term: ${activeTerm.label}` : 'No active term'}
-        </span>
-      </div>
-
-      {/* In Progress */}
-      {inProgress.length > 0 && (
-        <SectionHeader icon={Sparkles} tone="brand" title="In Progress" count={inProgress.length} hint="Currently registered for the active term." />
-      )}
-      {inProgress.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {inProgress.map((r) => (
-            <ModuleCard
-              key={r.id}
-              code={r.module_code}
-              name={r.module_name}
-              credits={r.module_credits}
-              tone="brand"
-              badge={{ label: 'Registered', tone: 'brand' }}
-              schedule={schedulesByModule.get(Number(r.module_id)) ?? []}
-            />
-          ))}
-        </div>
-      )}
-
-      {/* Completed */}
-      {completed.length > 0 && (
-        <SectionHeader icon={CheckCircle} tone="emerald" title="Completed Modules" count={completed.length} hint="Past results from previous terms." />
-      )}
-      {completed.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {completed.map((r) => (
-            <ModuleCard
-              key={r.id}
-              code={r.module_code}
-              name={r.module_name}
-              credits={r.module_credits}
-              tone={r.status === 'completed' ? 'emerald' : 'rose'}
-              badge={{
-                label: r.status === 'completed' ? `Grade ${r.grade ?? '—'}` : 'Failed',
-                tone: r.status === 'completed' ? 'emerald' : 'rose',
-              }}
-              footer={
-                <span className="text-[11px] text-ink-500 flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5" />
-                  {r.term_label ? r.term_label + ' · ' : ''}
-                  {r.dropped_at ? `Closed ${new Date(r.dropped_at).toLocaleDateString()}` :
-                   r.registered_at ? new Date(r.registered_at).toLocaleDateString() : '—'}
-                </span>
-              }
-            />
-          ))}
-        </div>
-      )}
-
-      {/* Available to Enroll */}
-      <SectionHeader
-        icon={Plus}
-        tone="amber"
-        title="Available to Enroll"
-        count={available.length}
-        hint={termId ? 'Modules with a schedule for the current term.' : 'Set an active term to enable enrollment.'}
-        action={
-          (() => {
-            const enrollable = available
-              .filter((m) => !findConflict(schedulesByModule.get(Number(m.module_id)) ?? []))
-              .map((m) => Number(m.module_id))
-            if (!termId || enrollable.length === 0) return null
-            return (
-              <button
-                type="button"
-                disabled={bulkEnrolling}
-                onClick={() => {
-                  if (confirm(`Enroll this student in all ${enrollable.length} available module${enrollable.length === 1 ? '' : 's'} (skipping any with schedule conflicts)?`)) {
-                    enrollAllAvailable(enrollable)
-                  }
-                }}
-                className="btn-primary btn-sm flex items-center gap-1.5"
-              >
-                {bulkEnrolling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-                Enroll in all {enrollable.length}
-              </button>
-            )
-          })()
-        }
-      />
-      {available.length === 0 ? (
-        <EmptyState icon={BookOpen} title="Nothing schedulable yet" desc="No catalog modules at this department/level are scheduled in the current term." />
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {available.map((m) => {
-            const slots = schedulesByModule.get(Number(m.module_id)) ?? []
-            const conflict = findConflict(slots)
-            const enrolling = enrollM.isPending && enrollM.variables === Number(m.module_id)
-            return (
-              <ModuleCard
-                key={m.module_id}
-                code={m.module_code}
-                name={m.module_name}
-                credits={m.module_credits}
-                tone="amber"
-                schedule={slots}
-                footer={
-                  conflict ? (
-                    <div className="flex items-start gap-2 text-[11.5px] text-rose-600 bg-rose-50 dark:bg-rose-900/20 border border-rose-100 dark:border-rose-900/40 rounded-md px-2 py-1.5">
-                      <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                      <span>
-                        Conflicts with <strong>{moduleNameById(conflict.module_id)}</strong> on {DAY_NAMES[conflict.day_of_week - 1]} {conflict.start_time}–{conflict.end_time}
-                      </span>
-                    </div>
-                  ) : null
-                }
-                action={
-                  <button
-                    type="button"
-                    onClick={() => enrollM.mutate(Number(m.module_id))}
-                    disabled={!termId || !!conflict || enrolling}
-                    className={`btn-primary btn-sm flex items-center gap-1.5 ${(!termId || conflict) ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  >
-                    {enrolling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-                    Enroll
-                  </button>
-                }
-              />
-            )
-          })}
-        </div>
-      )}
-
-      {/* Unscheduled / Remaining */}
-      {unscheduled.length > 0 && (
-        <SectionHeader icon={Clock} tone="ink" title="Not Yet Scheduled" count={unscheduled.length} hint="Catalog modules without a schedule in the active term." />
-      )}
-      {unscheduled.length > 0 && (
-        <div className="card divide-y divide-ink-100 dark:divide-ink-800 overflow-hidden">
-          {unscheduled.map((m) => (
-            <Link
-              key={m.module_id}
-              to={`/modules/${m.module_id}`}
-              className="flex items-center gap-4 p-3 hover:bg-ink-50 dark:hover:bg-ink-800/50 transition-colors"
+      {/* Hero summary + download */}
+      <div className="flex flex-wrap items-center gap-3">
+        <SummaryCard tone="brand"   icon={BookOpen}      label="Modules"   value={totalModules} />
+        <SummaryCard tone="indigo"  icon={CalendarClock} label="Scheduled" value={scheduled} />
+        <SummaryCard tone="emerald" icon={CheckCircle}   label="Passed"    value={completed} />
+        <SummaryCard tone="amber"   icon={AlertTriangle} label="Failed"    value={failed} />
+        <SummaryCard tone="ink"     icon={Clock}         label="Unmarked"  value={unmarked} />
+        <div className="ml-auto flex items-center gap-2">
+          {isAdmin && (
+            <button
+              type="button"
+              className="btn-secondary btn-sm flex items-center gap-1.5 border-violet-200 text-violet-700 hover:bg-violet-50 dark:border-violet-500/30 dark:text-violet-300 dark:hover:bg-violet-500/10"
+              onClick={() => setPickerOpen(true)}
+              title="Record an exemption mark on an unmarked module"
             >
-              <div className="w-9 h-9 rounded-lg bg-ink-100 dark:bg-ink-800 text-ink-600 flex items-center justify-center shrink-0">
-                <BookOpen className="w-4 h-4" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-[10.5px] bg-ink-100 dark:bg-ink-800 text-ink-700 dark:text-ink-200 px-1.5 py-0.5 rounded">{m.module_code}</span>
-                  <span className="text-[10px] text-ink-400">L{m.level} · {m.module_credits} cr</span>
-                </div>
-                <h4 className="text-[13px] font-semibold text-ink-900 dark:text-white truncate mt-0.5">{m.module_name}</h4>
-              </div>
-              <span className="text-[10.5px] uppercase tracking-wider text-ink-400 font-semibold shrink-0">No schedule</span>
-            </Link>
-          ))}
+              <Sparkles className="w-3.5 h-3.5" />
+              Exempt module
+            </button>
+          )}
+          <a
+            href={downloadUrl}
+            className="btn-primary btn-sm flex items-center gap-1.5"
+            target="_blank"
+            rel="noreferrer"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Download CSV
+          </a>
         </div>
-      )}
-    </div>
-  )
-}
-
-function SectionHeader({ icon: Icon, tone, title, count, hint, action }: {
-  icon: any; tone: 'brand' | 'emerald' | 'amber' | 'ink'; title: string; count: number; hint?: string; action?: React.ReactNode
-}) {
-  const toneClass = {
-    brand: 'bg-brand/10 text-brand',
-    emerald: 'bg-mint-100 text-mint-700',
-    amber: 'bg-amber-100 text-amber-700',
-    ink: 'bg-ink-100 text-ink-600',
-  }[tone]
-  return (
-    <div className="flex items-center gap-3 pt-2">
-      <div className={`w-8 h-8 rounded-lg ${toneClass} flex items-center justify-center`}>
-        <Icon className="w-4 h-4" />
       </div>
-      <div className="flex-1 min-w-0">
-        <h3 className="text-[14px] font-bold text-ink-900 dark:text-white flex items-center gap-2">
-          {title}
-          <span className="text-[11px] font-semibold text-ink-400 bg-ink-100 dark:bg-ink-800 px-1.5 py-0.5 rounded-full">
-            {count}
-          </span>
-        </h3>
-        {hint && <p className="text-[12px] text-ink-500 mt-0.5">{hint}</p>}
-      </div>
-      {action && <div className="shrink-0">{action}</div>}
-    </div>
-  )
-}
 
-function ModuleCard({ code, name, credits, tone, badge, schedule, footer, action }: {
-  code?: string; name?: string; credits?: number | string;
-  tone: 'brand' | 'emerald' | 'amber' | 'rose'
-  badge?: { label: string; tone: 'brand' | 'emerald' | 'amber' | 'rose' }
-  schedule?: ScheduleSlot[]; footer?: React.ReactNode; action?: React.ReactNode
-}) {
-  const accent = {
-    brand: 'border-brand/20 bg-brand/[0.02]',
-    emerald: 'border-mint-200 bg-mint-50/50 dark:bg-mint-900/10',
-    amber: 'border-amber-200 bg-amber-50/40 dark:bg-amber-900/10',
-    rose: 'border-rose-200 bg-rose-50/40 dark:bg-rose-900/10',
-  }[tone]
-  const badgeTone = badge ? {
-    brand: 'bg-brand/10 text-brand',
-    emerald: 'bg-mint-100 text-mint-700',
-    amber: 'bg-amber-100 text-amber-700',
-    rose: 'bg-rose-100 text-rose-700',
-  }[badge.tone] : ''
-
-  return (
-    <div className={`card p-4 flex flex-col gap-3 border ${accent} hover:shadow-md transition-shadow`}>
-      <div className="flex items-start gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="font-mono text-[11px] bg-ink-100 dark:bg-ink-800 text-ink-700 dark:text-ink-200 px-1.5 py-0.5 rounded">
-              {code || '—'}
-            </span>
-            <span className="text-[11px] text-ink-400">
-              <Hash className="w-3 h-3 inline mr-0.5" />{credits ?? '—'} cr
-            </span>
-          </div>
-          <h4 className="text-[14px] font-semibold text-ink-900 dark:text-white leading-snug">{name || 'Untitled module'}</h4>
+      {/* Program info pill */}
+      <div className="card p-4 flex flex-wrap items-center gap-3">
+        <div className="w-10 h-10 rounded-lg bg-brand/10 text-brand flex items-center justify-center">
+          <GraduationCap className="w-5 h-5" />
         </div>
-        {badge && (
-          <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full shrink-0 ${badgeTone}`}>
-            {badge.label}
+        <div className="min-w-0">
+          <p className="text-[11px] uppercase tracking-wider text-ink-400 font-semibold">Program</p>
+          <p className="text-[14px] font-bold text-ink-900 dark:text-white">{program.name}</p>
+        </div>
+        {program.code && (
+          <span className="ml-2 font-mono text-[12px] bg-ink-100 dark:bg-ink-800 text-ink-700 dark:text-ink-200 px-2 py-1 rounded">
+            {program.code}
           </span>
         )}
       </div>
 
-      {schedule && schedule.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {schedule.map((s, i) => (
-            <span key={i} className="inline-flex items-center gap-1 text-[11px] bg-ink-50 dark:bg-ink-800 text-ink-700 dark:text-ink-200 border border-ink-100 dark:border-ink-700 px-2 py-1 rounded-md">
-              <Clock className="w-3 h-3 text-ink-400" />
-              <strong>{DAY_NAMES[s.day_of_week - 1]}</strong> {s.start_time}–{s.end_time}
-              {s.room_name && (
-                <>
-                  <span className="text-ink-300 mx-0.5">·</span>
-                  <MapPin className="w-3 h-3 text-ink-400" />{s.room_name}
-                </>
-              )}
-            </span>
-          ))}
-        </div>
+      {/* Per-level tables */}
+      {groups.length === 0 ? (
+        <PlaceholderTab
+          icon={BookOpen}
+          title="Curriculum is empty"
+          desc="No modules are mapped to this program yet. Once an admin imports them, they'll appear here."
+        />
+      ) : (
+        groups.map((g) => (
+          <div key={`${g.level_id ?? 'none'}-${g.level_name}`} className="card overflow-hidden">
+            <div className="px-4 py-2.5 border-b border-ink-100 dark:border-ink-700 bg-ink-50 dark:bg-ink-800/40 flex items-center gap-2">
+              <span className="text-[12px] font-semibold text-ink-700 dark:text-ink-200">{g.level_name}</span>
+              <span className="text-[11px] font-semibold text-ink-400 bg-ink-100 dark:bg-ink-800 px-1.5 py-0.5 rounded-full">
+                {g.modules.length} module{g.modules.length === 1 ? '' : 's'}
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-[13px]">
+                <thead className="bg-ink-50/60 dark:bg-ink-800/30 border-b border-ink-100 dark:border-ink-700">
+                  <tr className="text-ink-400 text-[10px] uppercase">
+                    <th className="px-3 py-2 font-bold w-[60px]">Order</th>
+                    <th className="px-3 py-2 font-bold">Code</th>
+                    <th className="px-3 py-2 font-bold">Module</th>
+                    <th className="px-3 py-2 font-bold text-center">Credits</th>
+                    <th className="px-3 py-2 font-bold text-center">CAT</th>
+                    <th className="px-3 py-2 font-bold text-center">Assg</th>
+                    <th className="px-3 py-2 font-bold text-center">Exam</th>
+                    <th className="px-3 py-2 font-bold text-center">Marks/100</th>
+                    <th className="px-3 py-2 font-bold text-center">Grade</th>
+                    <th className="px-3 py-2 font-bold">Term</th>
+                    <th className="px-3 py-2 font-bold text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-ink-100 dark:divide-ink-700">
+                  {g.modules.map((m) => {
+                    const isExempted   = !!m.marks?.is_exempted
+                    const hasMarks     = !!m.marks
+                    const isRegistered = m.registration?.status === 'registered'
+                    return (
+                    <tr
+                      key={`${g.level_id ?? 'na'}-${m.module_id}`}
+                      className={`hover:bg-ink-50/50 dark:hover:bg-ink-700/20 ${isExempted ? 'bg-violet-50/40 dark:bg-violet-500/5' : ''}`}
+                    >
+                      <td className="px-3 py-2 text-ink-500 tabular-nums">{m.module_order ?? '—'}</td>
+                      <td className="px-3 py-2 font-mono">{m.module_code}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <span>{m.module_name}</span>
+                          {m.is_scheduled ? (
+                            <span
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300"
+                              title={[m.schedule?.modes, m.schedule?.semesters, m.schedule?.years].filter(Boolean).join(' · ') || 'Scheduled'}
+                            >
+                              <CalendarClock className="w-3 h-3" /> Scheduled
+                            </span>
+                          ) : (
+                            <span
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-ink-100 text-ink-500 dark:bg-ink-700/40 dark:text-ink-300"
+                              title="No offering scheduled for this module yet"
+                            >
+                              <CalendarOff className="w-3 h-3" /> Not scheduled
+                            </span>
+                          )}
+                          {isRegistered && (
+                            <span
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
+                              title={`Registered${m.registration?.term_label ? ` · ${m.registration.term_label}` : ''}${m.registration?.year_label ? ` · ${m.registration.year_label}` : ''}`}
+                            >
+                              <CheckCircle className="w-3 h-3" /> Registered
+                            </span>
+                          )}
+                          {isExempted && (
+                            <span
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300"
+                              title={m.marks?.exemption_reason ?? 'Exempted'}
+                            >
+                              <Sparkles className="w-3 h-3" /> Exempted
+                            </span>
+                          )}
+                        </div>
+                        {m.is_scheduled && (m.schedule?.modes || m.schedule?.semesters || m.schedule?.years) && (
+                          <p className="text-[11px] text-ink-400 mt-0.5">
+                            {[m.schedule?.modes, m.schedule?.semesters, m.schedule?.years].filter(Boolean).join(' · ')}
+                          </p>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-center">{m.module_credits ?? '—'}</td>
+                      <td className="px-3 py-2 text-center">
+                        {isExempted ? <span className="text-ink-400">—</span> : (
+                          <>
+                            {tFmt(m.marks?.cat_marks)}
+                            {m.marks?.cat_max != null && (
+                              <span className="text-ink-400 text-[11px]">/{Number(m.marks.cat_max) || '—'}</span>
+                            )}
+                          </>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        {isExempted ? <span className="text-ink-400">—</span> : (
+                          <>
+                            {tFmt(m.marks?.assignment_marks)}
+                            {m.marks?.assignment_max != null && (
+                              <span className="text-ink-400 text-[11px]">/{Number(m.marks.assignment_max) || '—'}</span>
+                            )}
+                          </>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        {isExempted ? <span className="text-ink-400">—</span> : (
+                          <>
+                            {tFmt(m.marks?.exam_marks)}
+                            {m.marks?.exam_max != null && (
+                              <span className="text-ink-400 text-[11px]">/{Number(m.marks.exam_max) || '—'}</span>
+                            )}
+                          </>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-center font-semibold">
+                        {m.marks?.percentage != null ? Math.round(Number(m.marks.percentage)) : '—'}
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        {m.marks?.grade ? <TGradePill grade={m.marks.grade} /> : <span className="text-ink-400">—</span>}
+                      </td>
+                      <td className="px-3 py-2 text-ink-500 text-[12px]">
+                        {isExempted ? (
+                          <span className="italic text-violet-700 dark:text-violet-300">
+                            {m.marks?.exemption_reason || 'Exemption granted'}
+                          </span>
+                        ) : (
+                          <>
+                            {m.marks?.term_label ?? <span className="text-ink-400">—</span>}
+                            {m.marks?.year_label && <span className="text-ink-400 ml-1">· {m.marks.year_label}</span>}
+                          </>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">
+                        {hasMarks ? (
+                          isExempted && isAdmin ? (
+                            <button
+                              type="button"
+                              className="btn-ghost btn-sm text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10"
+                              disabled={deleteExemption.isPending}
+                              onClick={() => {
+                                if (!m.marks?.mark_id) return
+                                if (!confirm(`Remove exemption for ${m.module_code}?`)) return
+                                deleteExemption.mutate(m.marks.mark_id)
+                              }}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              Remove
+                            </button>
+                          ) : (
+                            <span className="text-ink-300">—</span>
+                          )
+                        ) : isRegistered ? (
+                          <button
+                            type="button"
+                            className="btn-ghost btn-sm text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10"
+                            disabled={dropPending === m.registration!.id || drop.isPending}
+                            onClick={() => {
+                              if (!confirm(`Drop ${m.module_code} from this student's enrollments?`)) return
+                              drop.mutate(m.registration!.id)
+                            }}
+                            title={`Registered${m.registration?.term_label ? ` · ${m.registration.term_label}` : ''}`}
+                          >
+                            {dropPending === m.registration!.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <MinusCircle className="w-3.5 h-3.5" />
+                            )}
+                            Drop
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className={`btn-secondary btn-sm ${m.is_scheduled ? 'border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-500/30 dark:text-emerald-300 dark:hover:bg-emerald-500/10' : ''}`}
+                            disabled={!m.is_scheduled || enrollPending === m.module_id || enroll.isPending}
+                            onClick={() => enroll.mutate(m.module_id)}
+                            title={m.is_scheduled
+                              ? `Enroll into ${m.module_code}`
+                              : 'This module has no scheduled offering yet — schedule it before enrolling.'}
+                          >
+                            {enrollPending === m.module_id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <PlusCircle className="w-3.5 h-3.5" />
+                            )}
+                            Enroll
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  )})}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ))
       )}
 
-      {footer}
+      {exempting && (
+        <ExemptionModal
+          studentId={studentId}
+          studentRegnumber={student?.regnumber ?? ''}
+          moduleId={exempting.moduleId}
+          moduleCode={exempting.moduleCode}
+          moduleName={exempting.moduleName}
+          onClose={() => setExempting(null)}
+        />
+      )}
 
-      {action && (
-        <div className="flex justify-end pt-1 border-t border-ink-100 dark:border-ink-800 -mx-4 px-4 -mb-1 pb-0">
-          <div className="pt-3">{action}</div>
-        </div>
+      {pickerOpen && (
+        <ExemptionPickerModal
+          studentId={studentId}
+          studentRegnumber={student?.regnumber ?? ''}
+          modules={allModules}
+          onClose={() => setPickerOpen(false)}
+        />
       )}
     </div>
   )
 }
 
+function ExemptionModal({
+  studentId, studentRegnumber, moduleId, moduleCode, moduleName, onClose,
+}: {
+  studentId: number
+  studentRegnumber: string
+  moduleId: number
+  moduleCode: string
+  moduleName: string
+  onClose: () => void
+}) {
+  const qc = useQueryClient()
+  const [percentage, setPercentage] = useState<string>('')
+  const [reason, setReason] = useState<string>('')
+  const [termId, setTermId] = useState<number>(0)
+
+  const termsQ = useQuery({
+    queryKey: ['academic', 'terms'],
+    queryFn: () => academicService.listTerms(),
+    staleTime: 60_000,
+  })
+  const terms = termsQ.data?.data ?? []
+  // Pre-select the current term once the list arrives.
+  useEffect(() => {
+    if (!termId && terms.length) {
+      const current = terms.find((t: any) => t.is_current) ?? terms[0]
+      if (current?.id) setTermId(current.id)
+    }
+  }, [terms, termId])
+
+  const create = useMutation({
+    mutationFn: () => studentService.createExemption(studentId, {
+      module_id:        moduleId,
+      academic_term_id: termId,
+      percentage:       Number(percentage),
+      reason:           reason.trim() || null,
+    }),
+    onSuccess: () => {
+      toast.success('Exemption recorded.')
+      qc.invalidateQueries({ queryKey: ['student-program-modules', studentId] })
+      qc.invalidateQueries({ queryKey: ['student-marks', studentRegnumber] })
+      onClose()
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to record exemption'),
+  })
+
+  const pctNum = Number(percentage)
+  const valid  = termId > 0 && Number.isFinite(pctNum) && pctNum >= 0 && pctNum <= 100
+
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-start justify-center bg-black/60 backdrop-blur-sm p-4 pt-20">
+      <div className="bg-white dark:bg-ink-900 rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
+        <div className="p-5 border-b border-ink-100 dark:border-ink-800 flex justify-between items-center bg-violet-50 dark:bg-violet-500/10">
+          <div>
+            <h2 className="text-lg font-bold text-ink-900 dark:text-white flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-violet-600" /> Exempt module
+            </h2>
+            <p className="text-[12px] text-ink-500 mt-0.5">
+              <span className="font-mono">{moduleCode}</span> · {moduleName}
+            </p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-md text-ink-400 hover:bg-ink-100 dark:hover:bg-ink-800">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <form
+          className="p-5 space-y-4"
+          onSubmit={(e) => { e.preventDefault(); if (valid) create.mutate() }}
+        >
+          <div>
+            <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-1.5 block">
+              Academic term <span className="text-red-500">*</span>
+            </label>
+            <select
+              className="input w-full cursor-pointer bg-white dark:bg-ink-900"
+              value={termId || ''}
+              onChange={(e) => setTermId(Number(e.target.value))}
+              required
+            >
+              <option value="" disabled>Select term…</option>
+              {terms.map((t: any) => (
+                <option key={t.id} value={t.id}>
+                  {t.label}{t.is_current ? ' (current)' : ''}
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-ink-500 mt-1">
+              The term the exemption is recorded against — usually the term the student would have sat the module.
+            </p>
+          </div>
+
+          <div>
+            <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-1.5 block">
+              Equivalence mark / 100 <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              step="0.01"
+              value={percentage}
+              onChange={(e) => setPercentage(e.target.value)}
+              className="input w-full"
+              placeholder="e.g. 75"
+              required
+            />
+            <p className="text-[11px] text-ink-500 mt-1">
+              Counts as the student's mark for this module on the transcript.
+            </p>
+          </div>
+
+          <div>
+            <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-1.5 block">
+              Reason
+            </label>
+            <textarea
+              rows={3}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              className="input w-full"
+              placeholder="e.g. Equivalence from prior institution; transferred credit."
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-ink-100 dark:border-ink-800">
+            <button type="button" onClick={onClose} className="btn-secondary px-4">Cancel</button>
+            <button type="submit" disabled={!valid || create.isPending} className="btn-primary px-4">
+              {create.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+              Record exemption
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
+/**
+ * Toolbar-driven exemption picker. Lists every unmarked module in the
+ * student's curriculum so the admin can pick one, enter an equivalence mark,
+ * a reason, and confirm — all in one dialog. Reuses the same backend
+ * exemption endpoint as the per-row flow, just with the module chosen here
+ * instead of pre-selected by the row.
+ */
+function ExemptionPickerModal({
+  studentId, studentRegnumber, modules, onClose,
+}: {
+  studentId: number
+  studentRegnumber: string
+  modules: import('@/services/studentService').ProgramModuleRow[]
+  onClose: () => void
+}) {
+  const qc = useQueryClient()
+  const [moduleId, setModuleId] = useState<number>(0)
+  const [percentage, setPercentage] = useState<string>('')
+  const [reason, setReason] = useState<string>('')
+  const [termId, setTermId] = useState<number>(0)
+
+  const termsQ = useQuery({
+    queryKey: ['academic', 'terms'],
+    queryFn: () => academicService.listTerms(),
+    staleTime: 60_000,
+  })
+  const terms = termsQ.data?.data ?? []
+  useEffect(() => {
+    if (!termId && terms.length) {
+      const current = terms.find((t: any) => t.is_current) ?? terms[0]
+      if (current?.id) setTermId(current.id)
+    }
+  }, [terms, termId])
+
+  // Only modules with no marks at all can be exempted — exempting one that
+  // already has a real grade would clobber it.
+  const unmarked = useMemo(() => modules.filter(m => !m.marks), [modules])
+  const selected = unmarked.find(m => m.module_id === moduleId) ?? null
+
+  const create = useMutation({
+    mutationFn: () => studentService.createExemption(studentId, {
+      module_id:        moduleId,
+      academic_term_id: termId,
+      percentage:       Number(percentage),
+      reason:           reason.trim() || null,
+    }),
+    onSuccess: () => {
+      toast.success('Exemption recorded.')
+      qc.invalidateQueries({ queryKey: ['student-program-modules', studentId] })
+      qc.invalidateQueries({ queryKey: ['student-marks', studentRegnumber] })
+      onClose()
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to record exemption'),
+  })
+
+  const pctNum = Number(percentage)
+  const valid  = moduleId > 0
+                 && termId > 0
+                 && Number.isFinite(pctNum) && pctNum >= 0 && pctNum <= 100
+                 && reason.trim().length > 0
+
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-start justify-center bg-black/60 backdrop-blur-sm p-4 pt-20">
+      <div className="bg-white dark:bg-ink-900 rounded-xl shadow-2xl w-full max-w-lg overflow-hidden">
+        <div className="p-5 border-b border-ink-100 dark:border-ink-800 flex justify-between items-center bg-violet-50 dark:bg-violet-500/10">
+          <div>
+            <h2 className="text-lg font-bold text-ink-900 dark:text-white flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-violet-600" /> Exempt a module
+            </h2>
+            <p className="text-[12px] text-ink-500 mt-0.5">
+              Pick an unmarked module and record an equivalence mark. The student's transcript will reflect it as if they sat the module.
+            </p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-md text-ink-400 hover:bg-ink-100 dark:hover:bg-ink-800">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <form
+          className="p-5 space-y-4"
+          onSubmit={(e) => { e.preventDefault(); if (valid) create.mutate() }}
+        >
+          <div>
+            <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-1.5 block">
+              Module <span className="text-red-500">*</span>
+            </label>
+            {unmarked.length === 0 ? (
+              <div className="text-[12px] text-ink-500 p-3 rounded-md border border-dashed border-ink-200 dark:border-ink-700">
+                Every module in the curriculum already has a mark — there's nothing left to exempt.
+              </div>
+            ) : (
+              <select
+                className="input w-full cursor-pointer bg-white dark:bg-ink-900"
+                value={moduleId || ''}
+                onChange={(e) => setModuleId(Number(e.target.value))}
+                required
+              >
+                <option value="" disabled>Select an unmarked module…</option>
+                {unmarked.map((m) => (
+                  <option key={m.module_id} value={m.module_id}>
+                    {m.module_code} — {m.module_name}
+                  </option>
+                ))}
+              </select>
+            )}
+            {selected && (
+              <p className="text-[11px] text-ink-500 mt-1">
+                {selected.module_credits ?? '—'} credits
+                {selected.is_scheduled ? ' · currently scheduled' : ' · not currently scheduled'}
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-1.5 block">
+              Academic term <span className="text-red-500">*</span>
+            </label>
+            <select
+              className="input w-full cursor-pointer bg-white dark:bg-ink-900"
+              value={termId || ''}
+              onChange={(e) => setTermId(Number(e.target.value))}
+              required
+            >
+              <option value="" disabled>Select term…</option>
+              {terms.map((t: any) => (
+                <option key={t.id} value={t.id}>
+                  {t.label}{t.is_current ? ' (current)' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-1.5 block">
+              Equivalence mark / 100 <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              step="0.01"
+              value={percentage}
+              onChange={(e) => setPercentage(e.target.value)}
+              className="input w-full"
+              placeholder="e.g. 75"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-1.5 block">
+              Reason <span className="text-red-500">*</span>
+            </label>
+            <textarea
+              rows={3}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              className="input w-full"
+              placeholder="e.g. Equivalence from prior institution; transferred credit."
+              required
+            />
+            <p className="text-[11px] text-ink-500 mt-1">
+              A reason is required so the audit log explains why this module was exempted.
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-ink-100 dark:border-ink-800">
+            <button type="button" onClick={onClose} className="btn-secondary px-4">Cancel</button>
+            <button type="submit" disabled={!valid || create.isPending} className="btn-primary px-4">
+              {create.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+              Confirm exemption
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
+
 function SummaryCard({ tone, icon: Icon, label, value }: {
-  tone: 'brand' | 'emerald' | 'amber' | 'ink'; icon: any; label: string; value: number
+  tone: 'brand' | 'emerald' | 'amber' | 'ink' | 'indigo'; icon: any; label: string; value: number
 }) {
   const cls = {
     brand: 'bg-brand/10 text-brand',
     emerald: 'bg-mint-100 text-mint-700',
     amber: 'bg-amber-100 text-amber-700',
     ink: 'bg-ink-100 text-ink-600',
+    indigo: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300',
   }[tone]
   return (
     <div className="card p-4 flex items-center gap-3">
@@ -658,26 +1135,6 @@ function SummaryCard({ tone, icon: Icon, label, value }: {
   )
 }
 
-function EmptyState({ icon: Icon, title, desc }: { icon: any; title: string; desc: string }) {
-  return (
-    <div className="card p-8 flex flex-col items-center justify-center text-center">
-      <div className="w-12 h-12 rounded-full bg-ink-100 dark:bg-ink-800 flex items-center justify-center text-ink-400 mb-3">
-        <Icon className="w-5 h-5" />
-      </div>
-      <h3 className="text-[13.5px] font-semibold text-ink-900 dark:text-white">{title}</h3>
-      <p className="text-[12px] text-ink-500 max-w-md mt-1">{desc}</p>
-    </div>
-  )
-}
-
-function FilterPill({ icon: Icon, value }: { icon: any, value?: string | null }) {
-  return (
-    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-ink-100 dark:bg-ink-800 text-ink-700 dark:text-ink-200 text-[12px] font-medium">
-      <Icon className="w-3.5 h-3.5" />
-      {value || '—'}
-    </span>
-  )
-}
 
 function AttendanceTab({ student }: { student: any }) {
   const reg = student?.regnumber as string | undefined
@@ -989,7 +1446,7 @@ function PlaceholderTab({ icon: Icon, title, desc }: { icon: any, title: string,
 
 function EditStudentModal({ student, stats, onClose }: { student: any, stats: any, onClose: () => void }) {
   const qc = useQueryClient()
-  const { register, handleSubmit } = useForm({
+  const { register, handleSubmit, watch, setValue } = useForm({
     defaultValues: {
       fname: student.fname,
       lname: student.lname,
@@ -997,9 +1454,8 @@ function EditStudentModal({ student, stats, onClose }: { student: any, stats: an
       phone: student.phone || '',
       gender: student.gender || '',
       nationality: student.nationality || '',
-      faculty: student.faculty || '',
-      department: student.department || '',
-      program: student.program || '',
+      // Catalog program (options.id) — the new authoritative academic link.
+      std_option: student.std_option ? String(student.std_option) : '',
       current_level: student.current_level || '',
       student_state: student.student_state || 'active',
       birthdate: student.birthdate || '',
@@ -1007,6 +1463,18 @@ function EditStudentModal({ student, stats, onClose }: { student: any, stats: an
       acc_year: student.acc_year || '',
     }
   })
+
+  // Surface the auto-derived faculty/department so the user knows which
+  // home faculty the program belongs to before they save.
+  const optionFacets = (stats?.facets?.options ?? []) as Array<{
+    value: string; label: string; department_id: number | null; faculty_id: number | null
+  }>
+  const watchedOption = watch('std_option')
+  const selectedOption = optionFacets.find(o => String(o.value) === String(watchedOption)) ?? null
+  const facultyName    = stats?.facets?.faculty?.find((f: any) => String(f.value) === String(selectedOption?.faculty_id))?.label
+                       ?? (selectedOption?.faculty_id ? `Faculty #${selectedOption.faculty_id}` : '')
+  const departmentName = stats?.facets?.department?.find((f: any) => String(f.value) === String(selectedOption?.department_id))?.label
+                       ?? (selectedOption?.department_id ? `Department #${selectedOption.department_id}` : '')
 
   const mut = useMutation({
     mutationFn: (data: any) => studentService.update(student.id, data),
@@ -1030,6 +1498,9 @@ function EditStudentModal({ student, stats, onClose }: { student: any, stats: an
     })
     mut.mutate(payload)
   }
+  // Suppress "unused" warning for the helper React Hook Form gives us — we use it
+  // implicitly via {...register(...)} on the std_option select.
+  void setValue
 
   return createPortal(
     <div className="fixed inset-0 z-[9999] flex items-start justify-center bg-black/60 backdrop-blur-sm p-4 pt-10 overflow-y-auto animate-in fade-in duration-200">
@@ -1095,38 +1566,29 @@ function EditStudentModal({ student, stats, onClose }: { student: any, stats: an
                   <option value="suspended">Suspended</option>
                 </select>
               </div>
-              <div>
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-1.5 block">Faculty <span className="text-red-500">*</span></label>
-                <select {...register('faculty')} className="input w-full cursor-pointer bg-white dark:bg-ink-900" required>
-                  <option value="">Select Faculty...</option>
-                  {stats?.facets?.faculty?.map((f: any) => (
-                    <option key={f.value} value={f.value}>{f.label}</option>
+              <div className="sm:col-span-2">
+                <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-1.5 block">
+                  Program / Option <span className="text-red-500">*</span>
+                </label>
+                <select {...register('std_option')} className="input w-full cursor-pointer bg-white dark:bg-ink-900" required>
+                  <option value="">Select Program...</option>
+                  {optionFacets.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
                   ))}
                 </select>
-              </div>
-              <div>
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-1.5 block">Department</label>
-                <select {...register('department')} className="input w-full cursor-pointer bg-white dark:bg-ink-900">
-                  <option value="">Select Department...</option>
-                  {stats?.facets?.department?.map((f: any) => (
-                    <option key={f.value} value={f.value}>{f.label}</option>
-                  ))}
-                </select>
+                {selectedOption && (
+                  <p className="text-[11px] text-ink-500 mt-1.5">
+                    Faculty/department auto-derived:
+                    {facultyName    ? <> <span className="font-semibold">{facultyName}</span></>    : null}
+                    {departmentName ? <> · <span className="font-semibold">{departmentName}</span></> : null}
+                  </p>
+                )}
               </div>
               <div>
                 <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-1.5 block">Current Level</label>
                 <select {...register('current_level')} className="input w-full cursor-pointer bg-white dark:bg-ink-900">
                   <option value="">Select Level...</option>
                   {stats?.facets?.current_level?.map((f: any) => (
-                    <option key={f.value} value={f.value}>{f.label}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-1.5 block">Program</label>
-                <select {...register('program')} className="input w-full cursor-pointer bg-white dark:bg-ink-900">
-                  <option value="">Select Program...</option>
-                  {stats?.facets?.program?.map((f: any) => (
                     <option key={f.value} value={f.value}>{f.label}</option>
                   ))}
                 </select>

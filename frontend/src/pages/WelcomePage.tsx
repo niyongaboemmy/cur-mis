@@ -71,13 +71,25 @@ interface QA {
 }
 
 const QUICK_ACTIONS: QA[] = [
-  // Universal — every signed-in user
+  // Universal — every signed-in user (except student/applicant who land on
+  // their portal-specific shortcuts).
   {
     to: '/dashboard',
     icon: LayoutDashboard,
     label: 'Dashboard',
     sub: 'Overview & key metrics',
     accent: 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300',
+    hideForRoles: ['student', 'applicant'],
+  },
+
+  // Student-only — opens the rich self-service profile.
+  {
+    to: '/me/profile',
+    icon: ClipboardList,
+    label: 'My Profile',
+    sub: 'Your enrolment & marks',
+    accent: 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300',
+    roles: ['student'],
   },
 
   // Applicant-only
@@ -283,7 +295,11 @@ export default function WelcomePage() {
     })
   }, [role, userPerms, isSuperadmin])
 
-  const dashLink  = isApplicant ? '/applicant' : '/dashboard'
+  const isStudent = role === 'student'
+  const dashLink  = isApplicant ? '/applicant' : isStudent ? '/me/profile' : '/dashboard'
+  const DashIcon  = isStudent ? ClipboardList : LayoutDashboard
+  const dashLabel = isStudent ? 'Open My Profile' : 'Go to Dashboard'
+  const dashSub   = isStudent ? 'View your enrolment & marks' : 'View metrics and overview'
   const greeting  = getGreeting()
   const dateLabel = formatNow()
 
@@ -346,12 +362,12 @@ export default function WelcomePage() {
                 to={dashLink}
                 className="inline-flex items-center gap-2.5 rounded-xl bg-gold-400 hover:bg-gold-300 text-primary-900 font-semibold text-[14px] px-7 py-3.5 shadow-lg shadow-gold-400/30 hover:shadow-gold-400/50 transition-all duration-200 hover:-translate-y-0.5 active:scale-95"
               >
-                <LayoutDashboard className="w-4.5 h-4.5" />
-                Go to Dashboard
+                <DashIcon className="w-4.5 h-4.5" />
+                {dashLabel}
                 <ArrowRight className="w-4 h-4" />
               </Link>
               <p className="text-[11.5px] text-white/40">
-                {isApplicant ? 'Track your application' : 'View metrics and overview'}
+                {isApplicant ? 'Track your application' : dashSub}
               </p>
             </motion.div>
 
@@ -394,7 +410,7 @@ export default function WelcomePage() {
               to={dashLink}
               className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-brand hover:text-brand/80 transition-colors"
             >
-              Continue to dashboard <ArrowRight className="w-3.5 h-3.5" />
+              {isStudent ? 'Open my profile' : 'Continue to dashboard'} <ArrowRight className="w-3.5 h-3.5" />
             </Link>
           </motion.div>
 

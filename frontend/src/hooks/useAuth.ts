@@ -78,8 +78,8 @@ export function useVerifyOtp(options?: { onSuccess?: (response: any) => void }) 
         }
         
         toast.success('Identity verified!')
-        
-        navigate('/welcome')
+
+        navigate('/')
       } else {
         toast.error(response.message || 'Verification failed')
       }

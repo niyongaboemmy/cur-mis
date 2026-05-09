@@ -133,22 +133,17 @@ class ModuleMarksController extends BaseController
         $termId = (int)($request->query('academic_term_id') ?? 0);
 
         if ($this->hasPerm($request, Permissions::MANAGE_MODULE_MARKS)) {
-            // Admin: show every active module that has at least one assignment OR
-            // at least one registration in the chosen term — that way the picker
-            // never hides a module that students are actually enrolled in.
-            $sql = "SELECT DISTINCT m.module_id, m.module_code, m.module_name, m.level
-                    FROM modules m
-                    LEFT JOIN module_assignments ma
-                           ON ma.module_id = m.module_id"
-                           . ($termId > 0 ? " AND ma.academic_term_id = ?" : "") . "
-                    LEFT JOIN module_registrations mr
-                           ON mr.module_id = m.module_id"
-                           . ($termId > 0 ? " AND mr.academic_term_id = ?" : "") . "
-                    WHERE m.status = 'active'
-                      AND (ma.id IS NOT NULL OR mr.id IS NOT NULL)
-                    ORDER BY m.module_code ASC LIMIT 500";
-            $bindings = $termId > 0 ? [$termId, $termId] : [];
-            $rows = $this->db->fetchAll($sql, $bindings);
+            // Admin: show every active module — the marks page is the canonical
+            // place to record marks, so the picker should never silently hide
+            // a module just because nobody is registered yet.
+            $rows = $this->db->fetchAll(
+                "SELECT m.module_id, m.module_code, m.module_name, m.level
+                 FROM modules m
+                 WHERE m.status = 'active'
+                 ORDER BY m.module_code ASC
+                 LIMIT 2000",
+                []
+            );
         } else {
             $staffId = $this->authStaffId($request);
             if ($staffId === null) {
@@ -174,7 +169,9 @@ class ModuleMarksController extends BaseController
     /**
      * GET /api/marks?module_id=&academic_term_id=
      * Returns the registered roster for that module/term plus any saved
-     * marks (left-joined so unmarked students still appear).
+     * marks (left-joined so unmarked students still appear) and the rich
+     * module header metadata used by the CUR module-marks template
+     * (program, level, option, department, faculty, lecturer, teaching dates).
      */
     public function listMarks(Request $request, Response $response): never
     {
@@ -186,7 +183,15 @@ class ModuleMarksController extends BaseController
         }
 
         $module = $this->db->fetchOne(
-            "SELECT module_id, module_code, module_name FROM modules WHERE module_id = ? LIMIT 1",
+            "SELECT m.module_id, m.module_code, m.module_name, m.module_credits,
+                    m.level, m.d_option,
+                    d.dep_id, d.dep_name, d.dep_acronym, d.program AS dep_program,
+                    f.fac_id, f.fac_name, f.fac_code
+             FROM modules m
+             LEFT JOIN departements d ON d.dep_id = m.department
+             LEFT JOIN faculty     f ON f.fac_id = d.fac_id
+             WHERE m.module_id = ?
+             LIMIT 1",
             [$moduleId]
         );
         if (!$module) $this->error($response, 'Module not found.', 404);
@@ -197,13 +202,50 @@ class ModuleMarksController extends BaseController
         );
         if (!$term) $this->error($response, 'Term not found.', 404);
 
+        // Best-effort lecturer + teaching dates from module_offerings (if present),
+        // falling back to module_assignments → staff for the lecturer.
+        $offering = $this->db->fetchOne(
+            "SELECT instructor_name, start_date, end_date
+             FROM module_offerings
+             WHERE module_id = ?
+             ORDER BY id DESC LIMIT 1",
+            [$moduleId]
+        ) ?: [];
+
+        $lecturer = $this->db->fetchOne(
+            "SELECT s.first_name, s.last_name, s.email
+             FROM module_assignments ma
+             JOIN staff s ON s.id = ma.staff_id
+             WHERE ma.module_id = ? AND ma.academic_term_id = ?
+             ORDER BY ma.role = 'primary' DESC, ma.id ASC
+             LIMIT 1",
+            [$moduleId, $termId]
+        );
+
+        $module['program']         = $module['dep_program'] ?? null;
+        $module['option_acronym']  = $module['d_option'] ?? null;
+        $module['lecturer_name']   = $lecturer
+            ? trim(($lecturer['first_name'] ?? '') . ' ' . ($lecturer['last_name'] ?? ''))
+            : ($offering['instructor_name'] ?? null);
+        $module['lecturer_email']  = $lecturer['email'] ?? null;
+        $module['teaching_started_on'] = $offering['start_date'] ?? null;
+        $module['teaching_ended_on']   = $offering['end_date']   ?? null;
+
+        $rosterCols = "st.id AS student_id, st.regnumber, st.fname, st.lname, st.email,
+                       st.gender AS sex, st.program AS student_program, st.std_option AS option_acro,
+                       mm.id AS mark_id,
+                       mm.cat_marks, mm.assignment_marks, mm.exam_marks,
+                       mm.cat_max, mm.assignment_max, mm.exam_max,
+                       mm.cat1, mm.cat2, mm.cat3, mm.partial_exam,
+                       mm.cat1_max, mm.cat2_max, mm.cat3_max, mm.partial_exam_max, mm.cats_max,
+                       mm.exam_1st_sitting, mm.exam_2nd_sitting, mm.final_exam_max,
+                       mm.total, mm.percentage, mm.grade, mm.decision, mm.status,
+                       mm.is_exempted, mm.exemption_reason,
+                       mm.remarks, mm.updated_at,
+                       mm.teaching_started_on, mm.teaching_ended_on";
+
         $roster = $this->db->fetchAll(
-            "SELECT st.id AS student_id, st.regnumber, st.fname, st.lname, st.email,
-                    mm.id AS mark_id,
-                    mm.cat_marks, mm.assignment_marks, mm.exam_marks,
-                    mm.cat_max, mm.assignment_max, mm.exam_max,
-                    mm.total, mm.percentage, mm.grade, mm.remarks,
-                    mm.updated_at
+            "SELECT $rosterCols
              FROM module_registrations mr
              JOIN student st ON st.regnumber = mr.student_regnumber
              LEFT JOIN module_marks mm
@@ -216,7 +258,92 @@ class ModuleMarksController extends BaseController
             [$moduleId, $termId]
         );
 
-        // Attach computed pct from sums when no row was saved yet.
+        // Fallback — if nobody is formally registered for this (module, term),
+        // derive the eligible roster from the module's offerings/programs:
+        //   • module → module_programs.option_id → options.acro
+        //   • options.acro → dep_options.option_acronym → dep_options.op_id
+        //   • dep_options.op_id → student.std_option
+        // Combined with the module's level + department, this picks up the
+        // typical class even before formal module_registrations exist.
+        if (count($roster) === 0) {
+            $level = (int)($module['level'] ?? 0);
+            $depId = (int)($module['dep_id'] ?? 0);
+
+            // Legacy std_option ids for every option this module is offered to.
+            $opIdRows = $this->db->fetchAll(
+                "SELECT DISTINCT do.op_id
+                 FROM module_programs mp
+                 JOIN options       o  ON o.id = mp.option_id
+                 JOIN dep_options   do ON do.option_acronym = o.acro
+                 WHERE mp.module_id = ?",
+                [$moduleId]
+            );
+            $optStdIds = array_values(array_filter(array_map(
+                fn($r) => (string)($r['op_id'] ?? ''), $opIdRows
+            ), fn($v) => $v !== ''));
+
+            // The two `?` for the module_marks LEFT JOIN come BEFORE the WHERE.
+            $args  = [$moduleId, $termId];
+            $where = "st.student_state = 'active'";
+            if ($level > 0) {
+                $where .= " AND CAST(NULLIF(st.current_level,'') AS UNSIGNED) = ?";
+                $args[] = $level;
+            }
+            if (count($optStdIds) > 0) {
+                $placeholders = implode(',', array_fill(0, count($optStdIds), '?'));
+                $where .= " AND st.std_option IN ($placeholders)";
+                array_push($args, ...$optStdIds);
+            } elseif ($depId > 0) {
+                // No option mapping found — fall back to department match.
+                $where .= " AND st.department = ?";
+                $args[] = (string)$depId;
+            }
+
+            $roster = $this->db->fetchAll(
+                "SELECT $rosterCols
+                 FROM `student` st
+                 LEFT JOIN module_marks mm
+                        ON mm.student_regnumber = st.regnumber
+                       AND mm.module_id        = ?
+                       AND mm.academic_term_id = ?
+                 WHERE $where
+                 ORDER BY st.lname, st.fname
+                 LIMIT 1000",
+                $args
+            );
+        }
+
+        // Workflow status & class-level teaching dates: mode of the saved rows
+        // (rows are written together as a batch so they share the same values).
+        $workflow = ['status' => 'draft', 'claims_opened_at' => null, 'submitted_at' => null, 'confirmed_at' => null];
+        foreach ($roster as $r) {
+            if (!empty($r['status'])) {
+                $workflow['status'] = $r['status'];
+                break;
+            }
+        }
+        $batchRow = $this->db->fetchOne(
+            "SELECT status, claims_opened_at, submitted_at, confirmed_at,
+                    teaching_started_on, teaching_ended_on
+             FROM module_marks
+             WHERE module_id = ? AND academic_term_id = ?
+             ORDER BY id DESC LIMIT 1",
+            [$moduleId, $termId]
+        ) ?: [];
+        if ($batchRow) {
+            $workflow['status']            = $batchRow['status'] ?? $workflow['status'];
+            $workflow['claims_opened_at']  = $batchRow['claims_opened_at'] ?? null;
+            $workflow['submitted_at']      = $batchRow['submitted_at']     ?? null;
+            $workflow['confirmed_at']      = $batchRow['confirmed_at']     ?? null;
+            // Prefer batch dates over offering dates.
+            if (!empty($batchRow['teaching_started_on'])) {
+                $module['teaching_started_on'] = $batchRow['teaching_started_on'];
+            }
+            if (!empty($batchRow['teaching_ended_on'])) {
+                $module['teaching_ended_on'] = $batchRow['teaching_ended_on'];
+            }
+        }
+
         $summary = ['total_roster' => count($roster), 'recorded' => 0, 'unmarked' => 0, 'avg_pct' => 0];
         $sumPct = 0.0; $countedPct = 0;
         foreach ($roster as $r) {
@@ -233,10 +360,11 @@ class ModuleMarksController extends BaseController
         $summary['avg_pct'] = $countedPct > 0 ? (int)round($sumPct / $countedPct) : 0;
 
         $this->success($response, [
-            'module'  => $module,
-            'term'    => $term,
-            'roster'  => $roster,
-            'summary' => $summary,
+            'module'   => $module,
+            'term'     => $term,
+            'roster'   => $roster,
+            'summary'  => $summary,
+            'workflow' => $workflow,
         ], 'Marks fetched.');
     }
 
@@ -271,63 +399,127 @@ class ModuleMarksController extends BaseController
         $this->ensureCanRecordForModule($request, $response, $moduleId);
 
         $userId = $this->authUserId($request) ?: null;
-        $saved = 0;
+        $saved  = 0;
+
+        $teachingStart = isset($body['teaching_started_on']) && $body['teaching_started_on'] !== ''
+            ? (string)$body['teaching_started_on'] : null;
+        $teachingEnd   = isset($body['teaching_ended_on']) && $body['teaching_ended_on'] !== ''
+            ? (string)$body['teaching_ended_on'] : null;
 
         foreach ($records as $r) {
             $reg = trim((string)($r['student_regnumber'] ?? ''));
             if ($reg === '') continue;
 
-            $cat       = $this->parseDecimal($r['cat_marks']        ?? null);
-            $asg       = $this->parseDecimal($r['assignment_marks'] ?? null);
-            $exam      = $this->parseDecimal($r['exam_marks']       ?? null);
-            $catMax    = $this->parseDecimal($r['cat_max']        ?? null) ?? 20.0;
-            $asgMax    = $this->parseDecimal($r['assignment_max'] ?? null) ?? 10.0;
-            $examMax   = $this->parseDecimal($r['exam_max']       ?? null) ?? 70.0;
-            $remarks   = isset($r['remarks']) && $r['remarks'] !== '' ? (string)$r['remarks'] : null;
-
-            $hasAny = $cat !== null || $asg !== null || $exam !== null
-                   || ($remarks !== null && $remarks !== '');
-
-            if (!$hasAny) {
-                // Nothing to save for this row. Skip — but if a row exists, leave it alone.
+            // Refuse to overwrite an exemption from this path. Admins must
+            // delete the exemption first (Student details → Curriculum) if
+            // they want to record a real CAT/exam mark instead.
+            $existing = $this->db->fetchOne(
+                "SELECT is_exempted FROM module_marks
+                 WHERE module_id = ? AND student_regnumber = ? AND academic_term_id = ?
+                 LIMIT 1",
+                [$moduleId, $reg, $termId]
+            );
+            if ($existing && (int)($existing['is_exempted'] ?? 0) === 1) {
                 continue;
             }
 
-            $totalRaw = ($cat ?? 0) + ($asg ?? 0) + ($exam ?? 0);
-            $maxSum   = $catMax + $asgMax + $examMax;
+            $cat1     = $this->parseDecimal($r['cat1']             ?? null);
+            $cat2     = $this->parseDecimal($r['cat2']             ?? null);
+            $cat3     = $this->parseDecimal($r['cat3']             ?? null);
+            $partial  = $this->parseDecimal($r['partial_exam']     ?? null);
+            $exam1    = $this->parseDecimal($r['exam_1st_sitting'] ?? null);
+            $exam2    = $this->parseDecimal($r['exam_2nd_sitting'] ?? null);
+
+            $cat1Max     = $this->parseDecimal($r['cat1_max']         ?? null) ?? 15.0;
+            $cat2Max     = $this->parseDecimal($r['cat2_max']         ?? null) ?? 15.0;
+            $cat3Max     = $this->parseDecimal($r['cat3_max']         ?? null) ?? 15.0;
+            $partialMax  = $this->parseDecimal($r['partial_exam_max'] ?? null) ?? 15.0;
+            $catsMax     = $this->parseDecimal($r['cats_max']         ?? null) ?? 60.0;
+            $finalMax    = $this->parseDecimal($r['final_exam_max']   ?? null) ?? 40.0;
+
+            $remarks = isset($r['remarks']) && $r['remarks'] !== '' ? (string)$r['remarks'] : null;
+
+            $hasAny = $cat1 !== null || $cat2 !== null || $cat3 !== null
+                   || $partial !== null || $exam1 !== null || $exam2 !== null
+                   || ($remarks !== null && $remarks !== '');
+
+            if (!$hasAny) continue;
+
+            // Total CATs = cat1 + cat2 + cat3 + partial (NULL counts as 0).
+            $catsTotal = ($cat1 ?? 0) + ($cat2 ?? 0) + ($cat3 ?? 0) + ($partial ?? 0);
+            // Final exam mark uses the better of the two sittings (resit beats first).
+            $finalMark = $exam2 !== null
+                ? max((float)($exam1 ?? 0), (float)$exam2)
+                : ($exam1 ?? null);
+
+            $totalRaw = $catsTotal + ($finalMark ?? 0);
+            $maxSum   = $catsMax + $finalMax;
             $pct      = $maxSum > 0 ? round(($totalRaw / $maxSum) * 100, 2) : null;
             $grade    = $pct !== null ? $this->gradeFor($pct) : null;
+            $decision = $pct === null ? null : ($pct >= 50 ? 'P' : 'F&R');
+
+            // Keep legacy `cat_marks/exam_marks` synced for the transcript path
+            // (transcript SQL still reads cat_marks/exam_marks/assignment_marks).
+            $catLegacy  = $catsTotal > 0 ? round($catsTotal, 2) : null;
+            $examLegacy = $finalMark !== null ? round((float)$finalMark, 2) : null;
 
             $this->db->execute(
                 "INSERT INTO module_marks
                    (module_id, student_regnumber, academic_term_id,
                     cat_marks, assignment_marks, exam_marks,
+                    cat1, cat2, cat3, partial_exam,
+                    cat1_max, cat2_max, cat3_max, partial_exam_max, cats_max,
+                    exam_1st_sitting, exam_2nd_sitting, final_exam_max,
                     cat_max, assignment_max, exam_max,
-                    total, percentage, grade, remarks, recorded_by)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    total, percentage, grade, decision, remarks,
+                    teaching_started_on, teaching_ended_on, recorded_by)
+                 VALUES (?, ?, ?,
+                         ?, ?, ?,
+                         ?, ?, ?, ?,
+                         ?, ?, ?, ?, ?,
+                         ?, ?, ?,
+                         ?, ?, ?,
+                         ?, ?, ?, ?, ?,
+                         ?, ?, ?)
                  ON DUPLICATE KEY UPDATE
-                   cat_marks        = VALUES(cat_marks),
-                   assignment_marks = VALUES(assignment_marks),
-                   exam_marks       = VALUES(exam_marks),
-                   cat_max          = VALUES(cat_max),
-                   assignment_max   = VALUES(assignment_max),
-                   exam_max         = VALUES(exam_max),
-                   total            = VALUES(total),
-                   percentage       = VALUES(percentage),
-                   grade            = VALUES(grade),
-                   remarks          = VALUES(remarks),
-                   recorded_by      = VALUES(recorded_by)",
+                   cat_marks         = VALUES(cat_marks),
+                   assignment_marks  = VALUES(assignment_marks),
+                   exam_marks        = VALUES(exam_marks),
+                   cat1              = VALUES(cat1),
+                   cat2              = VALUES(cat2),
+                   cat3              = VALUES(cat3),
+                   partial_exam      = VALUES(partial_exam),
+                   cat1_max          = VALUES(cat1_max),
+                   cat2_max          = VALUES(cat2_max),
+                   cat3_max          = VALUES(cat3_max),
+                   partial_exam_max  = VALUES(partial_exam_max),
+                   cats_max          = VALUES(cats_max),
+                   exam_1st_sitting  = VALUES(exam_1st_sitting),
+                   exam_2nd_sitting  = VALUES(exam_2nd_sitting),
+                   final_exam_max    = VALUES(final_exam_max),
+                   cat_max           = VALUES(cat_max),
+                   assignment_max    = VALUES(assignment_max),
+                   exam_max          = VALUES(exam_max),
+                   total             = VALUES(total),
+                   percentage        = VALUES(percentage),
+                   grade             = VALUES(grade),
+                   decision          = VALUES(decision),
+                   remarks           = VALUES(remarks),
+                   teaching_started_on = VALUES(teaching_started_on),
+                   teaching_ended_on   = VALUES(teaching_ended_on),
+                   recorded_by       = VALUES(recorded_by)",
                 [
                     $moduleId, $reg, $termId,
-                    $cat, $asg, $exam,
-                    $catMax, $asgMax, $examMax,
-                    round($totalRaw, 2), $pct, $grade, $remarks, $userId,
+                    $catLegacy, null, $examLegacy,
+                    $cat1, $cat2, $cat3, $partial,
+                    $cat1Max, $cat2Max, $cat3Max, $partialMax, $catsMax,
+                    $exam1, $exam2, $finalMax,
+                    $catsMax, 0.0, $finalMax,
+                    round($totalRaw, 2), $pct, $grade, $decision, $remarks,
+                    $teachingStart, $teachingEnd, $userId,
                 ]
             );
 
-            // Once a percentage exists, sync the registration status: completed
-            // (≥50%) or failed (<50%). Keeps the catalog/registrations view in
-            // step with the marks book without requiring a second admin step.
             if ($pct !== null) {
                 $regStatus = $pct >= 50 ? 'completed' : 'failed';
                 $this->db->execute(
@@ -342,6 +534,54 @@ class ModuleMarksController extends BaseController
         }
 
         $this->success($response, ['saved' => $saved], "$saved record(s) saved.");
+    }
+
+    /* ── Workflow transitions: open claims / submit / confirm ──────────── */
+
+    /**
+     * POST /api/marks/workflow
+     * Body: { module_id, academic_term_id, action: 'open_claims'|'submit'|'confirm'|'reset' }
+     * Updates the workflow status across every saved row of that module/term.
+     */
+    public function workflow(Request $request, Response $response): never
+    {
+        $body     = $request->body();
+        $moduleId = (int)($body['module_id']        ?? 0);
+        $termId   = (int)($body['academic_term_id'] ?? 0);
+        $action   = (string)($body['action']        ?? '');
+
+        if ($moduleId <= 0 || $termId <= 0) {
+            $this->error($response, 'module_id and academic_term_id are required.', 422);
+        }
+
+        $this->ensureCanRecordForModule($request, $response, $moduleId);
+
+        $sets = match ($action) {
+            'open_claims' => ['status' => 'claims_open',  'col' => 'claims_opened_at'],
+            'submit'      => ['status' => 'submitted',    'col' => 'submitted_at'],
+            'confirm'     => ['status' => 'confirmed',    'col' => 'confirmed_at'],
+            'reset'       => ['status' => 'draft',        'col' => null],
+            default       => null,
+        };
+        if (!$sets) $this->error($response, 'Unknown action.', 422);
+
+        if ($sets['col']) {
+            $this->db->execute(
+                "UPDATE module_marks
+                 SET status = ?, {$sets['col']} = COALESCE({$sets['col']}, NOW())
+                 WHERE module_id = ? AND academic_term_id = ?",
+                [$sets['status'], $moduleId, $termId]
+            );
+        } else {
+            $this->db->execute(
+                "UPDATE module_marks
+                 SET status = ?, claims_opened_at = NULL, submitted_at = NULL, confirmed_at = NULL
+                 WHERE module_id = ? AND academic_term_id = ?",
+                [$sets['status'], $moduleId, $termId]
+            );
+        }
+
+        $this->success($response, ['status' => $sets['status']], 'Workflow updated.');
     }
 
     /** DELETE /api/marks/:id — clear a single saved row. */
@@ -459,6 +699,7 @@ class ModuleMarksController extends BaseController
             "SELECT mm.id, mm.module_id, mm.cat_marks, mm.assignment_marks, mm.exam_marks,
                     mm.cat_max, mm.assignment_max, mm.exam_max,
                     mm.total, mm.percentage, mm.grade, mm.remarks, mm.updated_at,
+                    mm.is_exempted, mm.exemption_reason,
                     m.module_code, m.module_name, m.module_credits, m.level,
                     t.id AS academic_term_id, t.label AS term_label, t.academic_year_id,
                     y.label AS year_label

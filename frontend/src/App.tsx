@@ -139,6 +139,12 @@ function App() {
                 <Route path="/students/:id" element={<StudentDetailsPage />} />
               </Route>
 
+              {/* Student self-service — "My Profile" reuses the details page in
+                  selfMode and resolves the record via /api/students/me. */}
+              <Route element={<ProtectedRoute requiredPermissions={PERMISSIONS.ACCESS_STUDENT_PORTAL} />}>
+                <Route path="/me/profile" element={<StudentDetailsPage selfMode />} />
+              </Route>
+
               {/* HR Management — view */}
               <Route element={<ProtectedRoute requiredPermissions={PERMISSIONS.VIEW_HR_EMPLOYEES} />}>
                 <Route path="/hr/staff"          element={<StaffListPage />} />

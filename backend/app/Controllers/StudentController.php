@@ -8,6 +8,7 @@ use Core\Request;
 use Core\Response;
 use App\Models\StudentModel;
 use App\Models\ApplicationDocumentModel;
+use App\Models\StudentApplicationModel;
 use App\Helpers\ValidationHelper;
 use App\Helpers\FileServerClient;
 
@@ -150,6 +151,7 @@ class StudentController extends BaseController
         $filterable = [
             'student_state', 'gender', 'faculty', 'department',
             'current_level', 'nationality', 'acc_year', 'program',
+            'std_option',
         ];
 
         foreach ($filterable as $col) {
@@ -205,7 +207,74 @@ class StudentController extends BaseController
             $this->error($response, 'Student not found', 404);
         }
 
+        // Surface the linked admission application so the overview tab can render
+        // the rich personal/contact/residency/academic info that was captured at
+        // application time. Manually-created students simply won't have one.
+        $applicationId = $this->resolveApplicationId($id);
+        $application   = null;
+        if ($applicationId) {
+            $appModel = new StudentApplicationModel();
+            $application = $appModel->getWithDetails($applicationId) ?: null;
+        }
+        $student['application'] = $application;
+
         $this->success($response, $student, 'Student details fetched.');
+    }
+
+    /**
+     * GET /api/students/me
+     *
+     * Self-service: returns the student record tied to the authenticated user,
+     * regardless of whether they hold VIEW_STUDENTS. Used by the student
+     * portal "My Profile" page so each enrolled student can read their own
+     * record without unlocking the full registry.
+     */
+    public function me(Request $request, Response $response): never
+    {
+        $authUser = $request->param('_auth_user') ?? [];
+        $userId   = (int)($authUser['id'] ?? 0);
+        $email    = is_string($authUser['email'] ?? null) ? $authUser['email'] : null;
+
+        if ($userId <= 0) {
+            $this->error($response, 'Unauthorized.', 401);
+        }
+
+        $student = $this->studentModel->findByUserId($userId, $email);
+
+        if (!$student) {
+            $this->error($response, 'No student record is linked to your account.', 404);
+        }
+
+        $applicationId = $this->resolveApplicationId((int)$student['id']);
+        $application   = null;
+        if ($applicationId) {
+            $appModel    = new StudentApplicationModel();
+            $application = $appModel->getWithDetails($applicationId) ?: null;
+        }
+        $student['application'] = $application;
+
+        $this->success($response, $student, 'Student profile fetched.');
+    }
+
+    /**
+     * Resolve a chosen program/option (std_option) to a full
+     * { id, name, department_id, faculty_id } payload, used to auto-derive
+     * the student's faculty and department from the option they belong to.
+     *
+     * Returns null when the option is missing/invalid.
+     */
+    private function resolveOption(int|string|null $optionId): ?array
+    {
+        $oid = (int)$optionId;
+        if ($oid <= 0) return null;
+        $row = $this->studentModel->db()->fetchOne(
+            "SELECT o.id, o.name, o.department_id, d.fac_id AS faculty_id
+             FROM `options` o
+             LEFT JOIN `departements` d ON d.dep_id = o.department_id
+             WHERE o.id = ? LIMIT 1",
+            [$oid]
+        );
+        return $row ?: null;
     }
 
     /**
@@ -216,13 +285,18 @@ class StudentController extends BaseController
         $data = $request->body();
 
         $errors = ValidationHelper::validate($data, [
-            'fname'   => ['required', 'min:2'],
-            'lname'   => ['required', 'min:2'],
-            'faculty' => ['required'],
+            'fname'      => ['required', 'min:2'],
+            'lname'      => ['required', 'min:2'],
+            'std_option' => ['required'],
         ]);
 
         if (!empty($errors)) {
             $this->error($response, 'Validation failed', 422, $errors);
+        }
+
+        $option = $this->resolveOption($data['std_option'] ?? null);
+        if (!$option) {
+            $this->error($response, 'Validation failed', 422, ['std_option' => ['Selected program is invalid.']]);
         }
 
         // Auto-generate reg number if not provided
@@ -240,9 +314,10 @@ class StudentController extends BaseController
             'gender'            => $data['gender'] ?? null,
             'birthdate'         => $data['birthdate'] ?? null,
             'nationality'       => $data['nationality'] ?? 'Rwandan',
-            'program'           => $data['program'] ?? null,
-            'faculty'           => $data['faculty'],
-            'department'        => $data['department'] ?? null,
+            'std_option'        => (string)$option['id'],
+            'program'           => $data['program'] ?? $option['name'],
+            'faculty'           => isset($option['faculty_id']) ? (string)$option['faculty_id'] : ($data['faculty'] ?? null),
+            'department'        => isset($option['department_id']) ? (string)$option['department_id'] : ($data['department'] ?? null),
             'current_level'     => $data['current_level'] ?? null,
             'registration_date' => $data['registration_date'] ?? date('Y-m-d'),
             'student_state'     => $data['student_state'] ?? 'active',
@@ -265,13 +340,18 @@ class StudentController extends BaseController
         }
 
         $errors = ValidationHelper::validate($data, [
-            'fname'   => ['required', 'min:2'],
-            'lname'   => ['required', 'min:2'],
-            'faculty' => ['required'],
+            'fname'      => ['required', 'min:2'],
+            'lname'      => ['required', 'min:2'],
+            'std_option' => ['required'],
         ]);
 
         if (!empty($errors)) {
             $this->error($response, 'Validation failed', 422, $errors);
+        }
+
+        $option = $this->resolveOption($data['std_option'] ?? null);
+        if (!$option) {
+            $this->error($response, 'Validation failed', 422, ['std_option' => ['Selected program is invalid.']]);
         }
 
         $this->studentModel->update($id, [
@@ -283,9 +363,10 @@ class StudentController extends BaseController
             'gender'            => $data['gender'] ?? null,
             'birthdate'         => $data['birthdate'] ?? null,
             'nationality'       => $data['nationality'] ?? null,
-            'program'           => $data['program'] ?? null,
-            'faculty'           => $data['faculty'],
-            'department'        => $data['department'] ?? null,
+            'std_option'        => (string)$option['id'],
+            'program'           => $data['program'] ?? $option['name'],
+            'faculty'           => isset($option['faculty_id']) ? (string)$option['faculty_id'] : ($data['faculty'] ?? null),
+            'department'        => isset($option['department_id']) ? (string)$option['department_id'] : ($data['department'] ?? null),
             'current_level'     => $data['current_level'] ?? null,
             'registration_date' => $data['registration_date'] ?? null,
             'student_state'     => $data['student_state'] ?? $student['student_state'],
@@ -308,6 +389,758 @@ class StudentController extends BaseController
 
         $this->studentModel->delete($id);
         $this->success($response, null, 'Student deleted successfully.');
+    }
+
+    /**
+     * POST /api/students/:id/photo
+     * Upload (or replace) the student profile photo. Stores the new
+     * file_server_id on `student.photo` and best-effort deletes the previous
+     * file from the storage service so we don't leak orphans.
+     */
+    public function uploadPhoto(Request $request, Response $response): never
+    {
+        $id      = (int)$request->param('id');
+        $student = $this->studentModel->find($id);
+        if (!$student) {
+            $this->error($response, 'Student not found', 404);
+        }
+
+        $file = $request->file('photo');
+        if (!$file) {
+            $this->error($response, 'No photo file provided.', 422);
+        }
+
+        $allowedMimes = ['image/jpeg', 'image/png', 'image/webp'];
+        if (!in_array($file['type'] ?? '', $allowedMimes, true)) {
+            $this->error($response, 'Invalid file type. Only JPEG, PNG and WebP are allowed.', 422);
+        }
+
+        try {
+            $client   = new FileServerClient();
+            $uploaded = $client->upload($file);
+        } catch (\RuntimeException $e) {
+            $this->error($response, $e->getMessage(), 422);
+        }
+
+        $previous = $student['photo'] ?? null;
+
+        $this->studentModel->update($id, ['photo' => $uploaded['id']]);
+
+        // Cleanup the previous photo on the file server. Don't fail the request
+        // if it can't be deleted — the new photo is already saved on the record.
+        if ($previous && $previous !== $uploaded['id']) {
+            try { $client->delete($previous); } catch (\Throwable) { /* ignore */ }
+        }
+
+        $this->success($response, [
+            'photo' => $uploaded['id'],
+        ], 'Profile photo updated.');
+    }
+
+    /**
+     * GET /api/students/:id/photo
+     * Stream the student profile photo from the file server, inline so it can
+     * be used directly as an <img src=…>. 404s when the student has no photo.
+     */
+    public function downloadPhoto(Request $request, Response $response): never
+    {
+        $id      = (int)$request->param('id');
+        $student = $this->studentModel->find($id);
+        if (!$student) {
+            $this->error($response, 'Student not found', 404);
+        }
+
+        $photoId = $student['photo'] ?? null;
+        if (!$photoId) {
+            $this->error($response, 'Student has no profile photo.', 404);
+        }
+
+        try {
+            $client   = new FileServerClient();
+            $fileData = $client->download((string)$photoId);
+        } catch (\RuntimeException $e) {
+            $this->error($response, $e->getMessage(), 502);
+        }
+
+        $mime = $fileData['mime'] ?? 'image/jpeg';
+        header('Content-Type: ' . $mime);
+        header('Content-Disposition: inline; filename="' . addslashes($fileData['original_name'] ?? 'photo') . '"');
+        header('Content-Length: ' . strlen($fileData['content']));
+        // Short cache so consecutive renders reuse the bytes; clears quickly
+        // after a re-upload because the stored id changes.
+        header('Cache-Control: private, max-age=60');
+        header('X-Content-Type-Options: nosniff');
+
+        echo $fileData['content'];
+        exit;
+    }
+
+    /**
+     * GET /api/students/:id/program-modules
+     * Curriculum view: every module attached to the student's program (option)
+     * via `module_programs`, grouped by level and ordered by `module_order`,
+     * left-joined with the student's marks (latest term per module).
+     *
+     * Response shape:
+     * {
+     *   student:  { id, regnumber, fname, lname, std_option, ... },
+     *   program:  { id, name, code, department_id, faculty_id } | null,
+     *   groups:   [
+     *     { level_id, level_name, modules: [
+     *       { module_id, module_code, module_name, module_credits,
+     *         module_order, marks: { cat_marks, ..., percentage, grade,
+     *         term_label, year_label } | null }
+     *     ]}
+     *   ]
+     * }
+     */
+    public function programModules(Request $request, Response $response): never
+    {
+        $id      = (int)$request->param('id');
+        $student = $this->studentModel->find($id);
+        if (!$student) {
+            $this->error($response, 'Student not found', 404);
+        }
+
+        [$program, $groups] = $this->loadProgramCurriculum($student);
+
+        $this->success($response, [
+            'student' => [
+                'id'         => (int)$student['id'],
+                'regnumber'  => $student['regnumber'] ?? null,
+                'fname'      => $student['fname']     ?? null,
+                'lname'      => $student['lname']     ?? null,
+                'std_option' => $student['std_option']?? null,
+                'program'    => $student['program']   ?? null,
+            ],
+            'program' => $program,
+            'groups'  => $groups,
+        ], 'Program curriculum fetched.');
+    }
+
+    /**
+     * GET /api/students/:id/program-modules/export
+     * Stream the curriculum view as a CSV download. Same data as
+     * programModules() flattened to one row per (level, module) pair.
+     */
+    public function programModulesExport(Request $request, Response $response): never
+    {
+        $id      = (int)$request->param('id');
+        $student = $this->studentModel->find($id);
+        if (!$student) {
+            $this->error($response, 'Student not found', 404);
+        }
+
+        [$program, $groups] = $this->loadProgramCurriculum($student);
+
+        $reg      = (string)($student['regnumber'] ?? "id-{$id}");
+        $safeReg  = preg_replace('/[^A-Za-z0-9._-]+/', '_', $reg) ?: "id-{$id}";
+        $filename = "program-modules-{$safeReg}.csv";
+
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Cache-Control: no-store, no-cache, must-revalidate');
+        header('X-Content-Type-Options: nosniff');
+
+        $out = fopen('php://output', 'w');
+        // Excel-friendly UTF-8 BOM so accented module names render correctly.
+        fwrite($out, "\xEF\xBB\xBF");
+
+        $studentName = trim(($student['fname'] ?? '') . ' ' . ($student['lname'] ?? ''));
+        fputcsv($out, ['Student',  $studentName !== '' ? $studentName : '—']);
+        fputcsv($out, ['Reg number', $student['regnumber'] ?? '—']);
+        fputcsv($out, ['Program',  $program['name'] ?? '—']);
+        fputcsv($out, []);
+
+        fputcsv($out, [
+            'Level', 'Order', 'Module Code', 'Module Name', 'Credits',
+            'CAT', 'CAT Max', 'Assignment', 'Assignment Max',
+            'Exam', 'Exam Max', 'Total', 'Marks/100', 'Grade',
+            'Term', 'Academic Year',
+        ]);
+
+        foreach ($groups as $group) {
+            foreach ($group['modules'] as $m) {
+                $marks = $m['marks'] ?? null;
+                fputcsv($out, [
+                    $group['level_name'] ?? '',
+                    $m['module_order'] ?? '',
+                    $m['module_code']   ?? '',
+                    $m['module_name']   ?? '',
+                    $m['module_credits']?? '',
+                    $marks['cat_marks']        ?? '',
+                    $marks['cat_max']          ?? '',
+                    $marks['assignment_marks'] ?? '',
+                    $marks['assignment_max']   ?? '',
+                    $marks['exam_marks']       ?? '',
+                    $marks['exam_max']         ?? '',
+                    $marks['total']            ?? '',
+                    $marks['percentage']       ?? '',
+                    $marks['grade']            ?? '',
+                    $marks['term_label']       ?? '',
+                    $marks['year_label']       ?? '',
+                ]);
+            }
+        }
+
+        fclose($out);
+        exit;
+    }
+
+    /**
+     * Build the program curriculum + per-module marks bundle for a single
+     * student. Shared by the JSON and CSV endpoints.
+     *
+     * @return array{0: array<string,mixed>|null, 1: array<int,array<string,mixed>>}
+     */
+    private function loadProgramCurriculum(array $student): array
+    {
+        $db        = $this->studentModel->db();
+        $optionId  = isset($student['std_option']) && $student['std_option'] !== ''
+            ? (int)$student['std_option'] : 0;
+        $regnumber = (string)($student['regnumber'] ?? '');
+
+        // Fallback: legacy enrollments never copied program_id onto the
+        // student row. Walk the admission_offers → student_applications chain
+        // to recover it so the curriculum still shows up without requiring
+        // the backfill migration to have run. Once recovered, persist it on
+        // the student record so subsequent calls can skip this lookup.
+        if ($optionId <= 0) {
+            $studentId = (int)($student['id'] ?? 0);
+            $resolved  = null;
+            if ($studentId > 0) {
+                $resolved = $db->fetchOne(
+                    "SELECT sa.program_id, sa.campus_id
+                     FROM `admission_offers` ao
+                     JOIN `student_applications` sa ON sa.id = ao.application_id
+                     WHERE ao.student_id = ? AND sa.program_id IS NOT NULL
+                     ORDER BY ao.id DESC
+                     LIMIT 1",
+                    [$studentId]
+                );
+            }
+            // Last-ditch fallback when the offer link is missing — match
+            // the application by email/regnumber and pull program_id from there.
+            if (!$resolved) {
+                $email = trim((string)($student['email'] ?? ''));
+                if ($email !== '') {
+                    $resolved = $db->fetchOne(
+                        "SELECT program_id, campus_id
+                         FROM `student_applications`
+                         WHERE email = ? AND program_id IS NOT NULL
+                         ORDER BY id DESC LIMIT 1",
+                        [$email]
+                    );
+                }
+            }
+
+            if ($resolved && !empty($resolved['program_id'])) {
+                $optionId = (int)$resolved['program_id'];
+                if ($studentId > 0) {
+                    $db->execute(
+                        "UPDATE `student`
+                         SET std_option = ?,
+                             campus     = COALESCE(NULLIF(campus, ''), ?)
+                         WHERE id = ?",
+                        [
+                            (string)$optionId,
+                            !empty($resolved['campus_id']) ? (string)(int)$resolved['campus_id'] : null,
+                            $studentId,
+                        ]
+                    );
+                }
+            }
+        }
+
+        if ($optionId <= 0) {
+            return [null, []];
+        }
+
+        $program = $db->fetchOne(
+            "SELECT o.id, o.name, o.code, o.department_id, d.fac_id AS faculty_id
+             FROM `options` o
+             LEFT JOIN `departements` d ON d.dep_id = o.department_id
+             WHERE o.id = ? LIMIT 1",
+            [$optionId]
+        );
+        if (!$program) {
+            return [null, []];
+        }
+
+        // All modules attached to the program. Use module_levels when
+        // available so a single module can appear under each level it's
+        // assigned to (e.g. shared core modules); fall back to the legacy
+        // single-level column on `modules` when no module_levels rows exist.
+        $rows = $db->fetchAll(
+            "SELECT
+                m.module_id, m.module_code, m.module_name, m.module_credits,
+                mp.module_order,
+                COALESCE(ml.level_id, m.level)         AS level_id,
+                COALESCE(lvl.name, lvl_legacy.name)    AS level_name
+             FROM `module_programs` mp
+             JOIN `modules` m ON m.module_id = mp.module_id
+             LEFT JOIN `module_levels` ml ON ml.module_id = m.module_id
+             LEFT JOIN `levels` lvl        ON lvl.id        = ml.level_id
+             LEFT JOIN `levels` lvl_legacy ON lvl_legacy.id = m.level
+             WHERE mp.option_id = ?
+             ORDER BY level_id ASC, mp.module_order ASC, m.module_code ASC",
+            [$optionId]
+        );
+
+        // Latest marks per module for this student.
+        $marksByModule = [];
+        if ($regnumber !== '') {
+            $marksRows = $db->fetchAll(
+                "SELECT mm.id AS mark_id, mm.module_id, mm.cat_marks, mm.assignment_marks, mm.exam_marks,
+                        mm.cat_max, mm.assignment_max, mm.exam_max,
+                        mm.total, mm.percentage, mm.grade, mm.remarks,
+                        mm.is_exempted, mm.exemption_reason,
+                        mm.academic_term_id, t.label AS term_label,
+                        t.academic_year_id, y.label AS year_label,
+                        mm.updated_at
+                 FROM `module_marks` mm
+                 LEFT JOIN `academic_terms` t ON t.id = mm.academic_term_id
+                 LEFT JOIN `academic_years` y ON y.id = t.academic_year_id
+                 WHERE mm.student_regnumber = ?
+                 ORDER BY y.start_date DESC, t.start_date DESC, mm.updated_at DESC",
+                [$regnumber]
+            );
+            foreach ($marksRows as $r) {
+                $mid = (int)$r['module_id'];
+                // Keep only the latest record per module (rows are pre-sorted).
+                if (!isset($marksByModule[$mid])) {
+                    $marksByModule[$mid] = $r;
+                }
+            }
+        }
+
+        // Scheduled-offering summary per module for this option. A module is
+        // "scheduled" when at least one row exists in `module_offerings` for
+        // (module, option). Aggregating mode/semesters/years lets the UI
+        // render "Day · S1&S2 · 2025/2026" without N+1 lookups.
+        $offeringByModule = [];
+        $offeringRows = $db->fetchAll(
+            "SELECT
+                mo.module_id,
+                COUNT(*)                                                                              AS offering_count,
+                GROUP_CONCAT(DISTINCT mo.mode          ORDER BY mo.mode          SEPARATOR ', ')      AS modes,
+                GROUP_CONCAT(DISTINCT mo.semesters     ORDER BY mo.semesters     SEPARATOR ', ')      AS semesters,
+                GROUP_CONCAT(DISTINCT mo.academic_year ORDER BY mo.academic_year SEPARATOR ', ')      AS years
+             FROM `module_offerings` mo
+             WHERE mo.option_id = ?
+             GROUP BY mo.module_id",
+            [$optionId]
+        );
+        foreach ($offeringRows as $r) {
+            $offeringByModule[(int)$r['module_id']] = [
+                'offering_count' => (int)($r['offering_count'] ?? 0),
+                'modes'          => $r['modes']     ?? null,
+                'semesters'      => $r['semesters'] ?? null,
+                'years'          => $r['years']     ?? null,
+            ];
+        }
+
+        // Latest registration row per module for this student. Drives the
+        // per-row "Enroll / Registered / Drop" button — separate from marks
+        // because a student can be registered without having a grade yet.
+        $registrationByModule = [];
+        if ($regnumber !== '') {
+            $regRows = $db->fetchAll(
+                "SELECT mr.id AS registration_id, mr.module_id, mr.status, mr.grade,
+                        mr.academic_term_id, t.label AS term_label,
+                        t.academic_year_id, y.label AS year_label,
+                        mr.registered_at
+                 FROM `module_registrations` mr
+                 LEFT JOIN `academic_terms` t ON t.id = mr.academic_term_id
+                 LEFT JOIN `academic_years` y ON y.id = t.academic_year_id
+                 WHERE mr.student_regnumber = ?
+                 ORDER BY y.start_date DESC, t.start_date DESC, mr.id DESC",
+                [$regnumber]
+            );
+            foreach ($regRows as $r) {
+                $mid = (int)$r['module_id'];
+                if (!isset($registrationByModule[$mid])) {
+                    $registrationByModule[$mid] = $r;
+                }
+            }
+        }
+
+        // Group by level. Modules without a level fall under an "Unassigned" bucket.
+        $groups = [];
+        foreach ($rows as $r) {
+            $levelId   = $r['level_id'] !== null ? (int)$r['level_id'] : 0;
+            $levelName = (string)($r['level_name'] ?? '');
+            if ($levelName === '' && $levelId > 0) $levelName = "Level {$levelId}";
+            if ($levelName === '') $levelName = 'Unassigned';
+
+            if (!isset($groups[$levelId])) {
+                $groups[$levelId] = [
+                    'level_id'   => $levelId ?: null,
+                    'level_name' => $levelName,
+                    'modules'    => [],
+                ];
+            }
+
+            $mid   = (int)$r['module_id'];
+            $marks = $marksByModule[$mid] ?? null;
+            $sched = $offeringByModule[$mid] ?? null;
+            $reg   = $registrationByModule[$mid] ?? null;
+
+            $groups[$levelId]['modules'][] = [
+                'module_id'      => $mid,
+                'module_code'    => (string)$r['module_code'],
+                'module_name'    => (string)$r['module_name'],
+                'module_credits' => $r['module_credits'] !== null ? (float)$r['module_credits'] : null,
+                'module_order'   => $r['module_order'] !== null ? (int)$r['module_order'] : null,
+                'is_scheduled'   => $sched !== null,
+                'schedule'       => $sched ? [
+                    'offering_count' => (int)$sched['offering_count'],
+                    'modes'          => $sched['modes'],
+                    'semesters'      => $sched['semesters'],
+                    'years'          => $sched['years'],
+                ] : null,
+                'registration'   => $reg ? [
+                    'id'               => (int)$reg['registration_id'],
+                    'status'           => (string)$reg['status'],
+                    'grade'            => $reg['grade']            ?? null,
+                    'academic_term_id' => isset($reg['academic_term_id']) ? (int)$reg['academic_term_id'] : null,
+                    'term_label'       => $reg['term_label']       ?? null,
+                    'year_label'       => $reg['year_label']       ?? null,
+                    'registered_at'    => $reg['registered_at']    ?? null,
+                ] : null,
+                'marks'          => $marks ? [
+                    'mark_id'          => isset($marks['mark_id']) ? (int)$marks['mark_id'] : null,
+                    'cat_marks'        => $marks['cat_marks'],
+                    'assignment_marks' => $marks['assignment_marks'],
+                    'exam_marks'       => $marks['exam_marks'],
+                    'cat_max'          => $marks['cat_max'],
+                    'assignment_max'   => $marks['assignment_max'],
+                    'exam_max'         => $marks['exam_max'],
+                    'total'            => $marks['total'],
+                    'percentage'       => $marks['percentage'],
+                    'grade'            => $marks['grade'],
+                    'remarks'          => $marks['remarks'],
+                    'is_exempted'      => isset($marks['is_exempted']) ? (bool)(int)$marks['is_exempted'] : false,
+                    'exemption_reason' => $marks['exemption_reason'] ?? null,
+                    'academic_term_id' => isset($marks['academic_term_id']) ? (int)$marks['academic_term_id'] : null,
+                    'term_label'       => $marks['term_label']  ?? null,
+                    'year_label'       => $marks['year_label']  ?? null,
+                ] : null,
+            ];
+        }
+
+        // Stable level ordering: numeric level ids first, then 0/null last.
+        $sorted = array_values($groups);
+        usort($sorted, static function ($a, $b) {
+            $ai = $a['level_id'] ?? PHP_INT_MAX;
+            $bi = $b['level_id'] ?? PHP_INT_MAX;
+            return $ai <=> $bi;
+        });
+
+        $programOut = [
+            'id'            => (int)$program['id'],
+            'name'          => (string)$program['name'],
+            'code'          => $program['code'] ?? null,
+            'department_id' => $program['department_id'] !== null ? (int)$program['department_id'] : null,
+            'faculty_id'    => $program['faculty_id']    !== null ? (int)$program['faculty_id']    : null,
+        ];
+
+        return [$programOut, $sorted];
+    }
+
+    /**
+     * Official CUR grading scheme — kept in sync with ModuleMarksController
+     * so an exemption mark gets the same letter grade it would have received
+     * had the student sat the module.
+     */
+    private function gradeFor(float $pct): string
+    {
+        if ($pct >= 80) return 'A'; // Very Good
+        if ($pct >= 70) return 'B'; // Good
+        if ($pct >= 60) return 'C'; // Satisfaction
+        if ($pct >= 50) return 'D'; // Pass
+        return 'E';                 // Fail
+    }
+
+    /**
+     * POST /api/students/:id/exemptions
+     * Body: { module_id, academic_term_id, percentage, reason? }
+     *
+     * Records an exemption mark for the student against the given module.
+     * Stored in `module_marks` like a normal mark (so it appears on the
+     * transcript / curriculum view) but flagged with `is_exempted=1`.
+     * The `percentage` is treated as the equivalence mark — `total` mirrors
+     * it, the letter grade is auto-derived, and CAT/exam component fields
+     * are left null.
+     */
+    public function createExemption(Request $request, Response $response): never
+    {
+        $id      = (int)$request->param('id');
+        $student = $this->studentModel->find($id);
+        if (!$student) {
+            $this->error($response, 'Student not found', 404);
+        }
+        $reg = (string)($student['regnumber'] ?? '');
+        if ($reg === '') {
+            $this->error($response, 'Student has no registration number — cannot record an exemption.', 422);
+        }
+
+        $body     = $request->body();
+        $moduleId = (int)($body['module_id']        ?? 0);
+        $termId   = (int)($body['academic_term_id'] ?? 0);
+        $pct      = $this->parseDecimal($body['percentage'] ?? null);
+        $reason   = isset($body['reason']) && $body['reason'] !== '' ? trim((string)$body['reason']) : null;
+
+        if ($moduleId <= 0)            $this->error($response, 'module_id is required.', 422);
+        if ($termId <= 0)              $this->error($response, 'academic_term_id is required.', 422);
+        if ($pct === null)             $this->error($response, 'percentage is required.', 422);
+        if ($pct < 0 || $pct > 100)    $this->error($response, 'percentage must be between 0 and 100.', 422);
+
+        $db = $this->studentModel->db();
+
+        $module = $db->fetchOne("SELECT module_id FROM modules WHERE module_id = ? LIMIT 1", [$moduleId]);
+        if (!$module) $this->error($response, 'Module not found.', 404);
+
+        $term = $db->fetchOne("SELECT id FROM academic_terms WHERE id = ? LIMIT 1", [$termId]);
+        if (!$term) $this->error($response, 'Academic term not found.', 404);
+
+        $pctRound = round((float)$pct, 2);
+        $grade    = $this->gradeFor($pctRound);
+        $decision = $pctRound >= 50 ? 'P' : 'F&R';
+
+        $auth   = (array)($request->param('_auth_user') ?? []);
+        $userId = isset($auth['id']) ? (int)$auth['id'] : null;
+
+        // Use ON DUPLICATE KEY UPDATE because the same (module, student, term)
+        // tuple may already exist as a regular mark — switching it to an
+        // exemption is a legitimate admin override.
+        $db->execute(
+            "INSERT INTO module_marks
+               (module_id, student_regnumber, academic_term_id,
+                cat_marks, assignment_marks, exam_marks,
+                cat_max, assignment_max, exam_max,
+                total, percentage, grade, decision,
+                is_exempted, exemption_reason,
+                remarks, recorded_by)
+             VALUES (?, ?, ?,
+                     NULL, NULL, NULL,
+                     0, 0, 0,
+                     ?, ?, ?, ?,
+                     1, ?,
+                     NULL, ?)
+             ON DUPLICATE KEY UPDATE
+               cat_marks        = NULL,
+               assignment_marks = NULL,
+               exam_marks       = NULL,
+               cat1             = NULL,
+               cat2             = NULL,
+               cat3             = NULL,
+               partial_exam     = NULL,
+               exam_1st_sitting = NULL,
+               exam_2nd_sitting = NULL,
+               total            = VALUES(total),
+               percentage       = VALUES(percentage),
+               grade            = VALUES(grade),
+               decision         = VALUES(decision),
+               is_exempted      = 1,
+               exemption_reason = VALUES(exemption_reason),
+               recorded_by      = VALUES(recorded_by)",
+            [
+                $moduleId, $reg, $termId,
+                $pctRound, $pctRound, $grade, $decision,
+                $reason,
+                $userId,
+            ]
+        );
+
+        // Keep module_registrations consistent so the curriculum tab and
+        // "registered modules" lists stay in sync.
+        $db->execute(
+            "UPDATE module_registrations
+             SET status = 'completed', grade = ?
+             WHERE module_id = ? AND student_regnumber = ? AND academic_term_id = ?",
+            [$grade, $moduleId, $reg, $termId]
+        );
+
+        $row = $db->fetchOne(
+            "SELECT id FROM module_marks
+             WHERE module_id = ? AND student_regnumber = ? AND academic_term_id = ?
+             LIMIT 1",
+            [$moduleId, $reg, $termId]
+        );
+
+        $this->success($response, [
+            'id'               => $row ? (int)$row['id'] : null,
+            'percentage'       => $pctRound,
+            'grade'            => $grade,
+            'decision'         => $decision,
+            'is_exempted'      => true,
+            'exemption_reason' => $reason,
+        ], 'Exemption recorded.', 201);
+    }
+
+    /**
+     * DELETE /api/students/:id/exemptions/:mark_id
+     * Clears an exemption row. Refuses to delete a regular mark — admins
+     * who want to remove a real mark should use the marks-page DELETE
+     * endpoint so the audit trail is consistent.
+     */
+    public function deleteExemption(Request $request, Response $response): never
+    {
+        $id      = (int)$request->param('id');
+        $markId  = (int)$request->param('mark_id');
+        $student = $this->studentModel->find($id);
+        if (!$student) {
+            $this->error($response, 'Student not found', 404);
+        }
+        $reg = (string)($student['regnumber'] ?? '');
+
+        $db = $this->studentModel->db();
+        $row = $db->fetchOne(
+            "SELECT id, student_regnumber, is_exempted, module_id, academic_term_id
+             FROM module_marks WHERE id = ? LIMIT 1",
+            [$markId]
+        );
+        if (!$row) $this->error($response, 'Exemption not found.', 404);
+        if ((string)$row['student_regnumber'] !== $reg) {
+            $this->error($response, 'Exemption does not belong to this student.', 403);
+        }
+        if ((int)$row['is_exempted'] !== 1) {
+            $this->error($response, 'This is a recorded mark, not an exemption.', 422);
+        }
+
+        $db->execute("DELETE FROM module_marks WHERE id = ?", [$markId]);
+        // Drop the matching registration grade so the curriculum view
+        // shows the module as unmarked again.
+        $db->execute(
+            "UPDATE module_registrations
+             SET status = 'registered', grade = NULL
+             WHERE module_id = ? AND student_regnumber = ? AND academic_term_id = ?",
+            [$row['module_id'], $reg, $row['academic_term_id']]
+        );
+
+        $this->success($response, null, 'Exemption removed.');
+    }
+
+    /**
+     * POST /api/students/:id/module-registrations
+     * Body: { module_id, academic_term_id? }
+     *
+     * Enrolls the student into a module — i.e. creates a `module_registrations`
+     * row with status='registered'. Used by the curriculum tab's per-row
+     * "Enroll" button. The term defaults to the current academic_terms row
+     * when the client omits it. Idempotent: re-registering after a drop flips
+     * the row back to 'registered' instead of erroring on the unique key.
+     */
+    public function enrollModule(Request $request, Response $response): never
+    {
+        $id      = (int)$request->param('id');
+        $student = $this->studentModel->find($id);
+        if (!$student) {
+            $this->error($response, 'Student not found', 404);
+        }
+        $reg = (string)($student['regnumber'] ?? '');
+        if ($reg === '') {
+            $this->error($response, 'Student has no registration number — cannot enroll.', 422);
+        }
+
+        $body     = $request->body();
+        $moduleId = (int)($body['module_id'] ?? 0);
+        $termId   = (int)($body['academic_term_id'] ?? 0);
+
+        if ($moduleId <= 0) $this->error($response, 'module_id is required.', 422);
+
+        $db = $this->studentModel->db();
+
+        if ($termId <= 0) {
+            $row = $db->fetchOne(
+                "SELECT id FROM `academic_terms` WHERE is_current = 1 ORDER BY start_date DESC LIMIT 1"
+            );
+            $termId = $row ? (int)$row['id'] : 0;
+        }
+        if ($termId <= 0) {
+            $this->error($response, 'No current academic term — pass academic_term_id explicitly.', 422);
+        }
+
+        $module = $db->fetchOne(
+            "SELECT module_id FROM `modules` WHERE module_id = ? LIMIT 1",
+            [$moduleId]
+        );
+        if (!$module) $this->error($response, 'Module not found.', 404);
+
+        // The unique key on (module_id, student_regnumber, academic_term_id)
+        // means a re-enrol after a drop should flip status back rather than
+        // create a duplicate row.
+        $db->execute(
+            "INSERT INTO `module_registrations` (module_id, student_regnumber, academic_term_id, status)
+             VALUES (?, ?, ?, 'registered')
+             ON DUPLICATE KEY UPDATE
+                status        = 'registered',
+                grade         = NULL,
+                dropped_at    = NULL,
+                registered_at = CURRENT_TIMESTAMP",
+            [$moduleId, $reg, $termId]
+        );
+
+        $row = $db->fetchOne(
+            "SELECT id FROM `module_registrations`
+             WHERE module_id = ? AND student_regnumber = ? AND academic_term_id = ?
+             LIMIT 1",
+            [$moduleId, $reg, $termId]
+        );
+
+        $this->success($response, [
+            'id'               => $row ? (int)$row['id'] : null,
+            'module_id'        => $moduleId,
+            'academic_term_id' => $termId,
+            'status'           => 'registered',
+        ], 'Module enrolled.', 201);
+    }
+
+    /**
+     * DELETE /api/students/:id/module-registrations/:registration_id
+     * Marks a module registration as dropped. Refuses to drop a completed
+     * registration (one that already carries a grade) so audit history stays
+     * intact.
+     */
+    public function dropModule(Request $request, Response $response): never
+    {
+        $id      = (int)$request->param('id');
+        $regId   = (int)$request->param('registration_id');
+        $student = $this->studentModel->find($id);
+        if (!$student) {
+            $this->error($response, 'Student not found', 404);
+        }
+        $regNum = (string)($student['regnumber'] ?? '');
+
+        $db  = $this->studentModel->db();
+        $row = $db->fetchOne(
+            "SELECT id, student_regnumber, status FROM `module_registrations` WHERE id = ? LIMIT 1",
+            [$regId]
+        );
+        if (!$row) $this->error($response, 'Registration not found.', 404);
+        if ((string)$row['student_regnumber'] !== $regNum) {
+            $this->error($response, 'Registration does not belong to this student.', 403);
+        }
+        if ((string)$row['status'] === 'completed') {
+            $this->error($response, 'Cannot drop a completed registration.', 422);
+        }
+
+        $db->execute(
+            "UPDATE `module_registrations`
+             SET status = 'dropped', dropped_at = CURRENT_TIMESTAMP
+             WHERE id = ?",
+            [$regId]
+        );
+
+        $this->success($response, null, 'Registration dropped.');
+    }
+
+    private function parseDecimal(mixed $v): ?float
+    {
+        if ($v === null || $v === '') return null;
+        if (!is_numeric($v))           return null;
+        return (float)$v;
     }
 
     /**
@@ -469,6 +1302,18 @@ class StudentController extends BaseController
         $years    = $db->fetchAll("SELECT DISTINCT acc_year AS v, acc_year AS label FROM student WHERE acc_year IS NOT NULL AND acc_year <> '' ORDER BY acc_year DESC LIMIT 30");
         $programs = $db->fetchAll("SELECT DISTINCT program  AS v, program  AS label FROM student WHERE program  IS NOT NULL AND program  <> '' ORDER BY program  ASC LIMIT 50");
 
+        // Programs/options pulled from the catalogue, with the parent
+        // department + faculty so the student edit form can show a single
+        // searchable picker that auto-derives faculty/department.
+        $options = $db->fetchAll("
+            SELECT o.id AS v, o.name AS label, o.department_id, d.fac_id AS faculty_id
+            FROM `options` o
+            LEFT JOIN `departements` d ON d.dep_id = o.department_id
+            WHERE COALESCE(o.is_active, 1) = 1
+            ORDER BY o.name ASC
+            LIMIT 1000
+        ");
+
         $asPairs = function (array $rows): array {
             $out = [];
             foreach ($rows as $r) {
@@ -520,6 +1365,17 @@ class StudentController extends BaseController
                 'current_level' => $asPairs($levels),
                 'acc_year'      => $asPairs($years),
                 'program'       => $asPairs($programs),
+                // Catalog programs (options) — what students should now be assigned to.
+                // Each row carries department_id + faculty_id so the form can keep
+                // the legacy faculty/department fields in sync without an extra fetch.
+                'options'       => array_values(array_map(static function (array $r): array {
+                    return [
+                        'value'         => (string)($r['v'] ?? ''),
+                        'label'         => (string)($r['label'] ?? ''),
+                        'department_id' => $r['department_id'] !== null ? (int)$r['department_id'] : null,
+                        'faculty_id'    => $r['faculty_id'] !== null ? (int)$r['faculty_id'] : null,
+                    ];
+                }, $options)),
             ],
         ], 'Student stats fetched.');
     }

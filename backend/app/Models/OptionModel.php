@@ -7,7 +7,10 @@ namespace App\Models;
 class OptionModel extends BaseModel
 {
     protected string $table = 'options';
-    protected array $fillable = ['name', 'department_id', 'description', 'is_active'];
+    protected array $fillable = [
+        'name', 'code', 'acro', 'start_date', 'end_date',
+        'department_id', 'description', 'is_active',
+    ];
 
     /** @return int[] Campus IDs linked to this option/program. */
     public function getCampusIds(int $optionId): array
