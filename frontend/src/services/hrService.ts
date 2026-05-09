@@ -99,6 +99,7 @@ export interface PayrollEntry {
   paye: number
   rssb: number
   cbhi: number
+  other_deductions?: number
   net_salary: number
   notes?: string | null
 }
@@ -115,6 +116,7 @@ export interface PayrollRow extends HrEmployee {
   paye?: number | null
   rssb?: number | null
   cbhi?: number | null
+  other_deductions?: number | null
   net_salary?: number | null
   notes?: string | null
 }
@@ -164,6 +166,48 @@ export interface PayrollConfig {
   cbhi_employee_rate:      number
   cbhi_employer_rate:      number
   custom_deductions?:      CustomDeduction[]
+}
+
+/* ── Per-employee Deduction types ──────────────────────────────────────── */
+
+export type DeductionType = 'Loan' | 'School Fees' | 'Restoration' | 'Other'
+export type DeductionStatus = 'Active' | 'Completed' | 'Cancelled'
+
+export interface EmployeeDeduction {
+  id:              number
+  emp_id:          number
+  deduction_type:  DeductionType
+  label:           string
+  monthly_amount:  number
+  total_amount:    number | null
+  paid_amount:     number
+  notes:           string | null
+  start_year:      number
+  start_month:     number
+  end_year:        number | null
+  end_month:       number | null
+  status:          DeductionStatus
+  created_at:      string
+  updated_at:      string
+}
+
+export interface EmployeeDeductionPayload {
+  deduction_type:  DeductionType
+  label:           string
+  monthly_amount:  number
+  total_amount?:   number | null
+  paid_amount?:    number
+  notes?:          string
+  start_year:      number
+  start_month:     number
+  end_year?:       number | null
+  end_month?:      number | null
+  status?:         DeductionStatus
+}
+
+export interface ActiveDeductionsResponse {
+  deductions: { id: number; label: string; deduction_type: string; monthly_amount: number }[]
+  total:      number
 }
 
 /* ── Salary Payment types ───────────────────────────────────────────────── */
@@ -259,6 +303,23 @@ export const hrService = {
 
   cancelPayment: (id: number) =>
     api.delete<void>(`/api/hr/payroll/payments/${id}`),
+
+  /* ── Per-employee deductions ─────────────────────────────────────────── */
+
+  listEmployeeDeductions: (empId: number | string, signal?: AbortSignal) =>
+    api.get<EmployeeDeduction[]>(`/api/hr/employees/${empId}/deductions`, {}, signal),
+
+  activeEmployeeDeductions: (empId: number | string, year: number, month: number, signal?: AbortSignal) =>
+    api.get<ActiveDeductionsResponse>(`/api/hr/employees/${empId}/deductions/active`, { year, month }, signal),
+
+  addEmployeeDeduction: (empId: number | string, data: EmployeeDeductionPayload) =>
+    api.post<EmployeeDeduction>(`/api/hr/employees/${empId}/deductions`, data),
+
+  updateEmployeeDeduction: (empId: number | string, id: number, data: EmployeeDeductionPayload) =>
+    api.put<EmployeeDeduction>(`/api/hr/employees/${empId}/deductions/${id}`, data),
+
+  deleteEmployeeDeduction: (empId: number | string, id: number) =>
+    api.delete<void>(`/api/hr/employees/${empId}/deductions/${id}`),
 
   /* ── Payroll Config ──────────────────────────────────────────────────── */
 

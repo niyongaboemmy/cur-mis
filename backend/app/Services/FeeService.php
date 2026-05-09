@@ -9,6 +9,7 @@ use App\Models\FeeStructureModel;
 use App\Models\FeeInvoiceModel;
 use App\Models\FeePaymentModel;
 use App\Models\FeeBursaryModel;
+use App\Models\StudentFeeOverrideModel;
 use App\Models\StudentModel;
 use App\Models\ExpenseModel;
 use App\Models\ExpenseBudgetModel;
@@ -19,14 +20,15 @@ use Dompdf\Dompdf;
 use Dompdf\Options;
 class FeeService
 {
-    private FeeStructureModel $structureModel;
-    private FeeInvoiceModel   $invoiceModel;
-    private FeePaymentModel   $paymentModel;
-    private FeeBursaryModel   $bursaryModel;
-    private StudentModel      $studentModel;
-    private ExpenseModel      $expenseModel;
-    private ExpenseBudgetModel $budgetModel;
-    private Database          $db;
+    private FeeStructureModel       $structureModel;
+    private FeeInvoiceModel         $invoiceModel;
+    private FeePaymentModel         $paymentModel;
+    private FeeBursaryModel         $bursaryModel;
+    private StudentFeeOverrideModel $overrideModel;
+    private StudentModel            $studentModel;
+    private ExpenseModel            $expenseModel;
+    private ExpenseBudgetModel      $budgetModel;
+    private Database                $db;
 
     public function __construct()
     {
@@ -34,6 +36,7 @@ class FeeService
         $this->invoiceModel   = new FeeInvoiceModel();
         $this->paymentModel   = new FeePaymentModel();
         $this->bursaryModel   = new FeeBursaryModel();
+        $this->overrideModel  = new StudentFeeOverrideModel();
         $this->studentModel   = new StudentModel();
         $this->expenseModel   = new ExpenseModel();
         $this->budgetModel    = new ExpenseBudgetModel();
@@ -88,9 +91,9 @@ class FeeService
             $studentId, $academicYearId, $semester, 'TUITION',
             $departmentId, $levelId, $actorId
         );
-        if ($result['created'])      $created++;
-        elseif ($result['updated'])  $updated++;
-        else                         $skipped++;
+        $created += (int)$result['created'];
+        $updated += (int)$result['updated'];
+        if (!(int)$result['created'] && !(int)$result['updated'] && !$result['id']) $skipped++;
         if ($result['id']) $invoiceIds[] = $result['id'];
 
         // STEP 2 — Registration fee (first-time students only)
@@ -99,9 +102,9 @@ class FeeService
                 $studentId, $academicYearId, null, 'REGISTRATION',
                 $departmentId, $levelId, $actorId
             );
-            if ($result['created'])      $created++;
-            elseif ($result['updated'])  $updated++;
-            else                         $skipped++;
+            $created += (int)$result['created'];
+            $updated += (int)$result['updated'];
+            if (!(int)$result['created'] && !(int)$result['updated'] && !$result['id']) $skipped++;
             if ($result['id']) $invoiceIds[] = $result['id'];
         }
 
@@ -157,6 +160,37 @@ class FeeService
 
         // STEP 5 — Apply bursaries (creates BURSARY_CREDIT lines)
         $this->applyBursaries($studentId, $academicYearId, $actorId);
+
+        // STEP 6 — Module-linked fees (modules with fee_structure_id set)
+        $moduleRegs = $this->getActiveModuleRegistrationsWithFeeStructure($studentId, $academicYearId);
+        foreach ($moduleRegs as $reg) {
+            if ($this->invoiceModel->studentHasInvoice(
+                $studentId, $academicYearId, 'MODULE_FEE', (int)$reg['module_id']
+            )) {
+                $skipped++;
+                continue;
+            }
+            $feeStructure = $this->structureModel->find((int)$reg['fee_structure_id']);
+            if (!$feeStructure) {
+                $skipped++;
+                continue;
+            }
+            $invoiceId = $this->invoiceModel->create([
+                'invoice_number'      => $this->generateInvoiceNumber(),
+                'student_id'          => $studentId,
+                'fee_structure_id'    => (int)$reg['fee_structure_id'],
+                'academic_year_id'    => $academicYearId,
+                'semester'            => $semester,
+                'fee_type'            => 'MODULE_FEE',
+                'description'         => 'Module fee: ' . $reg['module_name'],
+                'amount_due'          => (float)$feeStructure['amount'],
+                'is_system_generated' => 1,
+                'module_id'           => (int)$reg['module_id'],
+                'created_by'          => $actorId,
+            ]);
+            $created++;
+            $invoiceIds[] = (int)$invoiceId;
+        }
 
         return ['created' => $created, 'updated' => $updated, 'skipped' => $skipped, 'invoices' => $invoiceIds];
     }
@@ -229,6 +263,31 @@ class FeeService
         $studentIds = array_column($students, 'regnumber');
 
         return $this->bulkGenerateInvoices($studentIds, $yearId, $semester, $actorId);
+    }
+
+    /**
+     * Get a comprehensive ledger for a student in a specific academic year.
+     */
+    public function getStudentLedger(string $studentId, int $yearId): array
+    {
+        $student = $this->db->fetchOne(
+            "SELECT s.regnumber AS student_id, s.fname, s.lname, s.gender, s.current_level AS level,
+                    f.fac_name AS faculty_name, d.dep_name AS department_name, p.program_name
+             FROM `student` s
+             LEFT JOIN `faculty` f ON f.fac_id = COALESCE(NULLIF(CAST(s.faculty AS UNSIGNED), 0), (SELECT fac_id FROM `faculty` WHERE fac_name = s.faculty LIMIT 1))
+             LEFT JOIN `departements` d ON d.dep_id = COALESCE(NULLIF(CAST(s.department AS UNSIGNED), 0), (SELECT dep_id FROM `departements` WHERE dep_acronym = s.department LIMIT 1))
+             LEFT JOIN `programs` p ON p.program_id = s.program
+             WHERE s.regnumber = ?
+             LIMIT 1",
+            [$studentId]
+        );
+
+        return [
+            'student'   => $student,
+            'invoices'  => $this->invoiceModel->listWithDetails(['student_id' => $studentId, 'academic_year_id' => $yearId]),
+            'payments'  => $this->paymentModel->listWithDetails(['student_id' => $studentId])['data'] ?? [],
+            'totals'    => $this->invoiceModel->getStudentLedgerTotals($studentId, $yearId)
+        ];
     }
 
     /**
@@ -467,6 +526,86 @@ class FeeService
 
 
     // ──────────────────────────────────────────────────────────────────────────
+    // Bulk bursary creation (sponsor-driven)
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Create confirmed bursary records for a list of student IDs, all from one sponsor.
+     * Skips students that already have a confirmed bursary of the same type for the year.
+     *
+     * @param string[] $studentIds
+     * @return array{created:int,skipped:int,total_input:int}
+     */
+    public function bulkCreateBursaries(
+        array   $studentIds,
+        int     $academicYearId,
+        float   $amountPerStudent,
+        string  $bursaryType,
+        ?int    $sponsorId,
+        int     $actorId
+    ): array {
+        $created = 0;
+        $skipped = 0;
+
+        foreach ($studentIds as $sid) {
+            $sid = trim((string)$sid);
+            if ($sid === '') {
+                continue;
+            }
+
+            // Check if any bursary of the same type already exists for this student/year
+            $existing = $this->db->fetchOne(
+                "SELECT id, sponsor_id, status FROM `fee_bursaries`
+                 WHERE student_id = ? AND academic_year_id = ? AND bursary_type = ?
+                 LIMIT 1",
+                [$sid, $academicYearId, $bursaryType]
+            );
+
+            if ($existing) {
+                // If it's already assigned to a DIFFERENT real sponsor, skip it
+                if ($existing['sponsor_id'] && (int)$existing['sponsor_id'] !== 0 && (int)$existing['sponsor_id'] !== $sponsorId) {
+                    $skipped++;
+                    continue;
+                }
+
+                // If it's unassigned or already assigned to THIS sponsor, we "upgrade" it
+                $this->bursaryModel->update((int)$existing['id'], [
+                    'sponsor_id'   => $sponsorId,
+                    'amount'       => $amountPerStudent,
+                    'status'       => 'confirmed',
+                    'confirmed_at' => date('Y-m-d H:i:s'),
+                    'confirmed_by' => $actorId,
+                    'approved_by'  => $actorId,
+                ]);
+
+                // Re-distribute immediately
+                $this->applyBursaries($sid, $academicYearId, $actorId);
+                $created++;
+                continue;
+            }
+
+            $now = date('Y-m-d H:i:s');
+            $this->bursaryModel->create([
+                'student_id'       => $sid,
+                'academic_year_id' => $academicYearId,
+                'bursary_type'     => $bursaryType,
+                'amount'           => $amountPerStudent,
+                'sponsor_id'       => $sponsorId,
+                'approved_by'      => $actorId,
+                'status'           => 'confirmed',
+                'confirmed_at'     => $now,
+                'confirmed_by'     => $actorId,
+            ]);
+
+            // Re-distribute bursaries for this student immediately
+            $this->applyBursaries($sid, $academicYearId, $actorId);
+            $created++;
+        }
+
+        return ['created' => $created, 'skipped' => $skipped, 'total_input' => count($studentIds)];
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
     // Bursary distribution
     // ──────────────────────────────────────────────────────────────────────────
 
@@ -698,6 +837,22 @@ class FeeService
     // Private helpers
     // ──────────────────────────────────────────────────────────────────────────
 
+    /**
+     * Upsert all invoices for one fee type, respecting the structure's payment_plan.
+     *
+     * - full_year       → 1 invoice for the total amount
+     * - per_semester    → 2 invoices (S1 + S2) when $semester is null,
+     *                      or 1 invoice for the requested semester
+     * - per_installment → N invoices (one per installment); existing rows are
+     *                      updated, missing rows are created
+     *
+     * Upsert rules applied to every invoice:
+     *   - status = paid | waived  → skip entirely (never touch)
+     *   - amount_paid > 0         → sync description + fee_structure_id only
+     *   - amount_paid = 0         → sync everything (amount_due, description, fee_structure_id)
+     *
+     * Returns aggregated created/updated counts and the first affected invoice id.
+     */
     private function createStructuredInvoice(
         string $studentId,
         int    $academicYearId,
@@ -707,65 +862,205 @@ class FeeService
         ?int   $levelId,
         int    $actorId
     ): array {
+        $override  = $this->overrideModel->findOverride($studentId, $academicYearId, $feeType);
         $structure = $this->structureModel->findBestMatch(
-            $academicYearId, $feeType, $departmentId, $levelId, $semester
+            $academicYearId, $feeType, $departmentId, $levelId, null
         );
 
-        if (!$structure) {
-            return ['created' => false, 'updated' => false, 'id' => null];
+        if ($override) {
+            if ($structure) {
+                $structure['amount'] = (float)$override['amount'];
+            } else {
+                $structure = [
+                    'id'               => null,
+                    'amount'           => (float)$override['amount'],
+                    'label'            => $feeType . ' (Override)',
+                    'payment_plan'     => 'full_year',
+                    'installment_count'=> null,
+                    'semester'         => null,
+                ];
+            }
+        } elseif (!$structure) {
+            return ['created' => 0, 'updated' => 0, 'id' => null];
         }
 
-        $label = match ($feeType) {
-            'TUITION'      => 'Tuition fee',
-            'REGISTRATION' => 'Registration fee',
-            'ADMISSION'    => 'Admission fee',
-            default        => $structure['label'],
-        };
+        $plan             = $structure['payment_plan'] ?? 'full_year';
+        $totalAmount      = (float)$structure['amount'];
+        $installmentCount = max(1, (int)($structure['installment_count'] ?? 1));
+        $created = 0;
+        $updated = 0;
+        $firstId = null;
+
+        if ($plan === 'per_installment') {
+            $perAmount    = $totalAmount / $installmentCount;
+            $structId     = $structure['id'] ? (int)$structure['id'] : null;
+            $existingRows = $structId ? $this->db->fetchAll(
+                "SELECT id, amount_due, amount_paid, status
+                 FROM `fee_invoices`
+                 WHERE student_id = ? AND academic_year_id = ? AND fee_type = ?
+                   AND fee_structure_id = ? AND is_system_generated = 1
+                 ORDER BY id ASC",
+                [$studentId, $academicYearId, $feeType, $structId]
+            ) : [];
+
+            // Update existing installment rows
+            foreach ($existingRows as $idx => $row) {
+                if (!$firstId) $firstId = (int)$row['id'];
+                if (in_array($row['status'], ['paid', 'waived'])) {
+                    continue; // never touch settled rows
+                }
+                $installNum = $idx + 1;
+                $label      = $this->makeLabel($feeType, $structure)
+                            . " (Installment {$installNum}/{$installmentCount})";
+                $newAmount  = (float)$row['amount_paid'] > 0.0
+                            ? (float)$row['amount_due']   // keep amount when partial payment exists
+                            : $perAmount;
+                $this->db->query(
+                    "UPDATE `fee_invoices`
+                     SET amount_due = ?, fee_structure_id = ?, description = ?, updated_at = NOW()
+                     WHERE id = ?",
+                    [$newAmount, $structId, $label, (int)$row['id']]
+                );
+                $updated++;
+            }
+
+            // Create any missing installments
+            $existingCount = count($existingRows);
+            for ($i = $existingCount + 1; $i <= $installmentCount; $i++) {
+                $label = $this->makeLabel($feeType, $structure)
+                       . " (Installment {$i}/{$installmentCount})";
+                $id = $this->invoiceModel->create([
+                    'invoice_number'      => $this->generateInvoiceNumber(),
+                    'student_id'          => $studentId,
+                    'fee_structure_id'    => $structId,
+                    'academic_year_id'    => $academicYearId,
+                    'semester'            => null,
+                    'fee_type'            => $feeType,
+                    'description'         => $label,
+                    'amount_due'          => $perAmount,
+                    'is_system_generated' => 1,
+                    'created_by'          => $actorId,
+                ]);
+                $created++;
+                if (!$firstId) $firstId = (int)$id;
+            }
+
+        } elseif ($plan === 'per_semester') {
+            $semestersToGen = $semester ? [$semester] : [1, 2];
+            $perAmount      = $totalAmount / 2;
+
+            foreach ($semestersToGen as $sem) {
+                $res = $this->upsertSingleStructuredInvoice(
+                    $studentId, $academicYearId, $sem,
+                    $feeType, $structure, $perAmount, $actorId
+                );
+                $created += (int)$res['created'];
+                $updated += (int)$res['updated'];
+                if ($res['id'] && !$firstId) $firstId = $res['id'];
+            }
+
+        } else {
+            // full_year
+            $res = $this->upsertSingleStructuredInvoice(
+                $studentId, $academicYearId, $semester,
+                $feeType, $structure, $totalAmount, $actorId
+            );
+            $created += (int)$res['created'];
+            $updated += (int)$res['updated'];
+            if ($res['id']) $firstId = $res['id'];
+        }
+
+        return ['created' => $created, 'updated' => $updated, 'id' => $firstId];
+    }
+
+    /**
+     * Upsert a single invoice scoped to one semester slot (or null = no semester).
+     *
+     * Upsert rules:
+     *   - paid / waived          → skip, return existing id
+     *   - partial payment exists → update description + fee_structure_id only
+     *   - unpaid, no payment     → update all fields including amount_due
+     *   - not found              → create
+     */
+    private function upsertSingleStructuredInvoice(
+        string $studentId,
+        int    $academicYearId,
+        ?int   $semester,
+        string $feeType,
+        array  $structure,
+        float  $amount,
+        int    $actorId
+    ): array {
+        $label    = $this->makeLabel($feeType, $structure);
         if ($semester) {
             $label .= " (Semester {$semester})";
         }
 
-        // Check for an existing system-generated invoice of this type
+        $where    = "student_id = ? AND academic_year_id = ? AND fee_type = ? AND is_system_generated = 1";
+        $bindings = [$studentId, $academicYearId, $feeType];
+
+        if ($semester !== null) {
+            $where      .= " AND semester = ?";
+            $bindings[]  = $semester;
+        } else {
+            $where .= " AND semester IS NULL";
+        }
+
+        if (!empty($structure['id'])) {
+            $where      .= " AND fee_structure_id = ?";
+            $bindings[]  = (int)$structure['id'];
+        }
+
         $existing = $this->db->fetchOne(
-            "SELECT id, amount_due, amount_paid, status FROM `fee_invoices`
-             WHERE student_id = ? AND academic_year_id = ? AND fee_type = ?
-               AND is_system_generated = 1
-             LIMIT 1",
-            [$studentId, $academicYearId, $feeType]
+            "SELECT id, amount_due, amount_paid, status FROM `fee_invoices` WHERE {$where} LIMIT 1",
+            $bindings
         );
 
         if ($existing) {
-            // Only update if the student has not yet made any payment on this invoice
-            if ((float)$existing['amount_paid'] == 0.0 && $existing['status'] === 'unpaid') {
-                $newAmount = (float)$structure['amount'];
-                if ((float)$existing['amount_due'] !== $newAmount) {
-                    $this->db->query(
-                        "UPDATE `fee_invoices`
-                         SET amount_due = ?, fee_structure_id = ?, description = ?, updated_at = NOW()
-                         WHERE id = ?",
-                        [$newAmount, (int)$structure['id'], $label, (int)$existing['id']]
-                    );
-                    return ['created' => false, 'updated' => true, 'id' => (int)$existing['id']];
-                }
+            // Never touch invoices the student has already fully settled or waived
+            if (in_array($existing['status'], ['paid', 'waived'])) {
+                return ['created' => 0, 'updated' => 0, 'id' => (int)$existing['id']];
             }
-            // Has payment or amount unchanged — leave it alone
-            return ['created' => false, 'updated' => false, 'id' => (int)$existing['id']];
+
+            $hasPayment = (float)$existing['amount_paid'] > 0.0;
+            // Keep amount_due if a partial payment has already been recorded
+            $newAmount  = $hasPayment ? (float)$existing['amount_due'] : $amount;
+            $structId   = $structure['id'] ? (int)$structure['id'] : null;
+
+            $this->db->query(
+                "UPDATE `fee_invoices`
+                 SET amount_due = ?, fee_structure_id = ?, description = ?, updated_at = NOW()
+                 WHERE id = ?",
+                [$newAmount, $structId, $label, (int)$existing['id']]
+            );
+
+            return ['created' => 0, 'updated' => 1, 'id' => (int)$existing['id']];
         }
 
-        $invoiceId = $this->invoiceModel->create([
+        $id = $this->invoiceModel->create([
             'invoice_number'      => $this->generateInvoiceNumber(),
             'student_id'          => $studentId,
-            'fee_structure_id'    => (int)$structure['id'],
+            'fee_structure_id'    => $structure['id'] ? (int)$structure['id'] : null,
             'academic_year_id'    => $academicYearId,
             'semester'            => $semester,
             'fee_type'            => $feeType,
             'description'         => $label,
-            'amount_due'          => (float)$structure['amount'],
+            'amount_due'          => $amount,
             'is_system_generated' => 1,
             'created_by'          => $actorId,
         ]);
 
-        return ['created' => true, 'updated' => false, 'id' => (int)$invoiceId];
+        return ['created' => 1, 'updated' => 0, 'id' => (int)$id];
+    }
+
+    private function makeLabel(string $feeType, array $structure): string
+    {
+        return match ($feeType) {
+            'TUITION'      => 'Tuition fee',
+            'REGISTRATION' => 'Registration fee',
+            'ADMISSION'    => 'Admission fee',
+            default        => $structure['label'] ?? $feeType,
+        };
     }
 
     private function isFirstYearStudent(array $student, int $academicYearId): bool
@@ -783,6 +1078,22 @@ class FeeService
             return false;
         }
         return $regDate >= $year['start_date'] && $regDate <= $year['end_date'];
+    }
+
+    /** Return module registrations where the module has a fee_structure_id set. */
+    private function getActiveModuleRegistrationsWithFeeStructure(string $studentId, int $academicYearId): array
+    {
+        return $this->db->fetchAll(
+            "SELECT mr.module_id, m.module_name, m.fee_structure_id
+             FROM `module_registrations` mr
+             JOIN `modules` m ON m.module_id = mr.module_id
+             JOIN `academic_terms` t ON t.id = mr.academic_term_id
+             WHERE mr.student_regnumber = ?
+               AND t.academic_year_id = ?
+               AND mr.status = 'registered'
+               AND m.fee_structure_id IS NOT NULL",
+            [$studentId, $academicYearId]
+        );
     }
 
     /** Return modules that a student failed or is repeating in the given year. */

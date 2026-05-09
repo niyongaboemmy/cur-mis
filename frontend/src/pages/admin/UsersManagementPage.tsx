@@ -15,6 +15,7 @@ import {
 import userService, { User } from "@/services/userService";
 import { rbacService, Role } from "@/services/rbacService";
 import { toast } from "react-hot-toast";
+import ModalPortal from "@/components/ui/ModalPortal";
 
 export default function UsersManagementPage() {
   const [users, setUsers] = useState<User[]>([]);
@@ -285,6 +286,7 @@ export default function UsersManagementPage() {
 
       {/* Modal */}
       {showModal && (
+        <ModalPortal>
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 animate-in fade-in">
           <div
             className="absolute inset-0 bg-ink-900/60 backdrop-blur-sm"
@@ -392,6 +394,7 @@ export default function UsersManagementPage() {
             </form>
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   );

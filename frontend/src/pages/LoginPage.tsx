@@ -9,13 +9,14 @@ import { useAuthStore } from "@/store/authStore";
 export default function LoginPage() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
 
-  if (isAuthenticated) return <Navigate to="/" replace />
-
   const { data: intakes } = useQuery({
     queryKey: ['portal-intakes'],
     queryFn: () => portalService.getIntakes(),
     staleTime: 1000 * 60 * 10, // 10 mins
+    enabled: !isAuthenticated,
   });
+
+  if (isAuthenticated) return <Navigate to="/" replace />
 
   const hasActiveIntake = (intakes?.data?.length ?? 0) > 0;
 

@@ -1,17 +1,17 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Loader2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, Loader2, X, CalendarDays, Layers, SplitSquareHorizontal } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { feeStructureService } from '@/services/financeService'
 import { academicsMgmtService } from '@/services/academicsMgmtService'
 import { academicService as academicSvc } from '@/services/academicService'
-import type { FeeStructure, CreateFeeStructurePayload } from '@/types/finance'
+import type { FeeStructure, CreateFeeStructurePayload, PaymentPlan } from '@/types/finance'
 import { FEE_TYPE_LABELS } from '@/types/finance'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import Pagination from '@/components/ui/Pagination'
 import { useSystemStore } from '@/store/systemStore'
-
 import { formatRWF } from '@/utils/formatCurrency'
+import ModalPortal from '@/components/ui/ModalPortal'
 
 const FEE_TYPES: [string, string][] = Object.entries(FEE_TYPE_LABELS).filter(
   ([k]) => !['ARREARS', 'BURSARY_CREDIT'].includes(k)
@@ -24,25 +24,20 @@ export default function FeeStructuresPage() {
   const basics = useSystemStore((s) => s.basics)
   const selectedYearLabel = useSystemStore((s) => s.selectedYearLabel)
 
-  const [yearId, setYearId]   = useState<number | string>('')
-  const [page, setPage]       = useState(1)
+  const [yearId, setYearId]     = useState<number | string>('')
+  const [page, setPage]         = useState(1)
   const [showForm, setShowForm] = useState(false)
-  const [editing, setEditing]  = useState<FeeStructure | null>(null)
+  const [editing, setEditing]   = useState<FeeStructure | null>(null)
 
-  // Sync with global academic year
   useEffect(() => {
     if (selectedYearLabel) {
-      const year = basics?.years?.find((y) => y.label === selectedYearLabel);
-      if (year) {
-        setYearId(year.id);
-      }
+      const year = basics?.years?.find((y) => y.label === selectedYearLabel)
+      if (year) setYearId(year.id)
     } else {
-      // Fallback to active year if "All years" is selected but we need a default
-      const active = basics?.active_year as any;
-      if (active?.id) setYearId(active.id);
+      const active = basics?.active_year as any
+      if (active?.id) setYearId(active.id)
     }
-  }, [selectedYearLabel, basics?.years]);
-
+  }, [selectedYearLabel, basics?.years])
 
   const yearsQ = useQuery({
     queryKey: ['academic-years'],
@@ -70,7 +65,6 @@ export default function FeeStructuresPage() {
   })
   const allRows: FeeStructure[] = structuresQ.data?.data ?? []
 
-  // Client-side pagination (structures per year is usually small)
   const totalRows = allRows.length
   const lastPage  = Math.max(1, Math.ceil(totalRows / PER_PAGE))
   const rows      = allRows.slice((page - 1) * PER_PAGE, page * PER_PAGE)
@@ -83,6 +77,13 @@ export default function FeeStructuresPage() {
     },
     onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Delete failed'),
   })
+
+  const planLabel = (row: FeeStructure) => {
+    const plan = row.payment_plan ?? 'full_year'
+    if (plan === 'per_semester') return '2× semester'
+    if (plan === 'per_installment') return `${row.installment_count ?? '?'}× install.`
+    return 'Full year'
+  }
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -134,6 +135,7 @@ export default function FeeStructuresPage() {
                     <th className="px-4 py-2.5 text-left">Level</th>
                     <th className="px-4 py-2.5 text-left">Semester</th>
                     <th className="px-4 py-2.5 text-right">Amount (RWF)</th>
+                    <th className="px-4 py-2.5 text-left">Payment Plan</th>
                     <th className="px-4 py-2.5 text-center">Active</th>
                     <th className="px-4 py-2.5" />
                   </tr>
@@ -147,10 +149,21 @@ export default function FeeStructuresPage() {
                     >
                       <td className="px-4 py-2.5 font-medium">{row.label}</td>
                       <td className="px-4 py-2.5 text-ink-500">{(FEE_TYPE_LABELS as Record<string, string>)[row.fee_type] ?? row.fee_type}</td>
-                      <td className="px-4 py-2.5 text-ink-500">{row.department_name ?? <span className="italic text-ink-300">All</span>}</td>
+                      <td className="px-4 py-2.5 text-ink-500">
+                        {row.dept_ids
+                          ? (() => {
+                              const ids = row.dept_ids.split(',').filter(Boolean)
+                              if (ids.length === 1) return row.department_name ?? ids[0]
+                              return <span className="text-xs bg-brand/10 text-brand px-1.5 py-0.5 rounded font-medium">{ids.length} depts</span>
+                            })()
+                          : row.department_name ?? <span className="italic text-ink-300">All</span>}
+                      </td>
                       <td className="px-4 py-2.5 text-ink-500">{row.level_name ?? <span className="italic text-ink-300">All</span>}</td>
-                      <td className="px-4 py-2.5 text-ink-500">{row.semester ?? '—'}</td>
+                      <td className="px-4 py-2.5 text-ink-500">{row.semester ? `S${row.semester}` : '—'}</td>
                       <td className="px-4 py-2.5 text-right font-mono font-semibold">{formatRWF(row.amount)}</td>
+                      <td className="px-4 py-2.5">
+                        <span className="text-xs text-ink-500">{planLabel(row)}</span>
+                      </td>
                       <td className="px-4 py-2.5 text-center">
                         <span className={`inline-block w-2 h-2 rounded-full ${row.is_active ? 'bg-green-500' : 'bg-ink-300'}`} />
                       </td>
@@ -208,31 +221,108 @@ export default function FeeStructuresPage() {
 // ─── Modal ────────────────────────────────────────────────────────────────────
 
 interface ModalProps {
-  years:        any[]
-  departments:  any[]
-  levels:       any[]
-  initial:      FeeStructure | null
+  years:         any[]
+  departments:   any[]
+  levels:        any[]
+  initial:       FeeStructure | null
   defaultYearId?: number
-  onClose:      () => void
-  onSaved:      () => void
+  onClose:       () => void
+  onSaved:       () => void
+}
+
+const PLAN_OPTIONS: { value: PaymentPlan; label: string; desc: string; icon: React.ReactNode }[] = [
+  {
+    value: 'full_year',
+    label: 'Full Year',
+    desc: 'One payment covers the entire academic year.',
+    icon: <CalendarDays className="w-4 h-4" />,
+  },
+  {
+    value: 'per_semester',
+    label: 'Per Semester',
+    desc: 'Amount split equally across 2 semesters.',
+    icon: <Layers className="w-4 h-4" />,
+  },
+  {
+    value: 'per_installment',
+    label: 'Installments',
+    desc: 'Custom number of payment installments.',
+    icon: <SplitSquareHorizontal className="w-4 h-4" />,
+  },
+]
+
+function planBreakdown(plan: PaymentPlan, amount: number, count: number) {
+  if (plan === 'full_year') {
+    return [{ label: 'Full year payment', amount }]
+  }
+  if (plan === 'per_semester') {
+    const half = Math.round(amount / 2)
+    return [
+      { label: 'Semester 1', amount: half },
+      { label: 'Semester 2', amount: amount - half },
+    ]
+  }
+  if (plan === 'per_installment' && count >= 2) {
+    const base = Math.floor(amount / count)
+    const remainder = amount - base * (count - 1)
+    return Array.from({ length: count }, (_, i) => ({
+      label: `Installment ${i + 1}`,
+      amount: i === count - 1 ? remainder : base,
+    }))
+  }
+  return [{ label: 'Full year payment', amount }]
 }
 
 function FeeStructureModal({ years, departments, levels, initial, defaultYearId, onClose, onSaved }: ModalProps) {
+  const parseInitialDepts = (): number[] => {
+    if (initial?.dept_ids) return initial.dept_ids.split(',').map(Number).filter(Boolean)
+    if (initial?.department_id) return [initial.department_id]
+    return []
+  }
+
+  const [selectedDepts, setSelectedDepts] = useState<number[]>(parseInitialDepts)
   const [form, setForm] = useState<CreateFeeStructurePayload & { is_active: 0 | 1 }>({
-    academic_year_id: initial?.academic_year_id ?? defaultYearId ?? 0,
-    department_id:    initial?.department_id ?? null,
-    level_id:         initial?.level_id ?? null,
-    fee_type:         (initial?.fee_type ?? 'TUITION') as string,
-    label:            initial?.label ?? '',
-    amount:           initial?.amount ?? 0,
-    semester:         initial?.semester ?? null,
-    is_active:        (initial?.is_active ?? 1) as 0 | 1,
+    academic_year_id:  initial?.academic_year_id ?? defaultYearId ?? 0,
+    department_id:     initial?.department_id ?? null,
+    department_ids:    parseInitialDepts(),
+    level_id:          initial?.level_id ?? null,
+    fee_type:          (initial?.fee_type ?? 'TUITION') as string,
+    label:             initial?.label ?? '',
+    amount:            initial?.amount ?? 0,
+    semester:          initial?.semester ?? null,
+    payment_plan:      initial?.payment_plan ?? 'full_year',
+    installment_count: initial?.installment_count ?? 4,
+    is_active:         (initial?.is_active ?? 1) as 0 | 1,
   })
 
-  const yearOptions = years.map((y: any) => ({ value: y.id, label: y.label }))
-  const deptOptions = departments.map((d: any) => ({ value: d.dep_id, label: d.dep_name }))
-  const levelOptions = levels.map((l: any) => ({ value: l.id, label: l.name }))
-  const feeTypeOptions = FEE_TYPES.map(([k, v]) => ({ value: k, label: v }))
+  const toggleDept = (deptId: number) => {
+    const next = selectedDepts.includes(deptId)
+      ? selectedDepts.filter(d => d !== deptId)
+      : [...selectedDepts, deptId]
+    setSelectedDepts(next)
+    setForm(f => ({ ...f, department_ids: next, department_id: next[0] ?? null }))
+  }
+
+  const toggleAllDepts = () => {
+    if (selectedDepts.length === departments.length) {
+      setSelectedDepts([])
+      setForm(f => ({ ...f, department_ids: [], department_id: null }))
+    } else {
+      const allIds = departments.map((d: any) => d.dep_id)
+      setSelectedDepts(allIds)
+      setForm(f => ({ ...f, department_ids: allIds, department_id: allIds[0] ?? null }))
+    }
+  }
+
+  const set = (k: keyof typeof form, v: any) => setForm(f => ({ ...f, [k]: v }))
+
+  const yearOptions     = years.map((y: any) => ({ value: y.id, label: y.label }))
+  const levelOptions    = levels.map((l: any) => ({ value: l.id, label: l.name }))
+  const feeTypeOptions  = FEE_TYPES.map(([k, v]) => ({ value: k, label: v }))
+
+  const activePlan    = form.payment_plan ?? 'full_year'
+  const installCount  = Math.max(2, Math.min(12, form.installment_count ?? 4))
+  const breakdown     = planBreakdown(activePlan, form.amount, installCount)
 
   const mutation = useMutation({
     mutationFn: (): Promise<any> =>
@@ -246,53 +336,95 @@ function FeeStructureModal({ years, departments, levels, initial, defaultYearId,
     onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Save failed'),
   })
 
-  const set = (k: keyof typeof form, v: any) => setForm(f => ({ ...f, [k]: v }))
-
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50">
-      <div className="flex min-h-full items-center justify-center p-4">
-        <div className="bg-white dark:bg-ink-800 rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
-          <h3 className="text-base font-semibold">{initial ? 'Edit' : 'New'} Fee Structure</h3>
+    <ModalPortal>
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 backdrop-blur-sm">
+      <div className="flex min-h-full items-start justify-center p-4 pt-10">
+        <div className="bg-white dark:bg-ink-800 rounded-2xl shadow-2xl w-full max-w-5xl overflow-hidden">
 
-          <div className="space-y-3 text-sm">
-            <Field label="Academic Year *">
-              <SearchableSelect
-                options={yearOptions}
-                value={form.academic_year_id}
-                onChange={v => set('academic_year_id', Number(v))}
-                placeholder="Select year…"
-              />
-            </Field>
+          {/* Header */}
+          <div className="flex items-center justify-between px-6 py-4 border-b border-ink-100 dark:border-ink-700">
+            <div>
+              <h3 className="text-base font-semibold text-ink-900 dark:text-white">
+                {initial ? 'Edit Fee Structure' : 'New Fee Structure'}
+              </h3>
+              <p className="text-xs text-ink-400 mt-0.5">
+                Define how a fee is charged and how students can pay it.
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              className="btn-ghost btn-sm p-1.5 rounded-full"
+              aria-label="Close"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
 
-            <Field label="Fee Type *">
-              <SearchableSelect
-                options={feeTypeOptions}
-                value={form.fee_type}
-                onChange={v => set('fee_type', String(v))}
-                placeholder="Select fee type…"
-              />
-            </Field>
+          {/* Body */}
+          <div className="p-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-            <Field label="Label *">
-              <input className="input input-sm w-full" value={form.label} onChange={e => set('label', e.target.value)} placeholder="e.g. Tuition Y1 S1" />
-            </Field>
+            {/* ── Left: Basic Details ── */}
+            <div className="space-y-4">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-400">Basic Details</p>
 
-            <Field label="Amount (RWF) *">
-              <input type="number" className="input input-sm w-full" value={form.amount} onChange={e => set('amount', Number(e.target.value))} />
-            </Field>
-
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Department (optional)">
+              <Field label="Academic Year *">
                 <SearchableSelect
-                  options={deptOptions}
-                  value={form.department_id ?? ''}
-                  onChange={v => set('department_id', v ? Number(v) : null)}
-                  placeholder="All departments"
-                  allLabel="All departments"
+                  options={yearOptions}
+                  value={form.academic_year_id}
+                  onChange={v => set('academic_year_id', Number(v))}
+                  placeholder="Select year…"
                 />
               </Field>
 
-              <Field label="Level (optional)">
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Fee Type *">
+                  <SearchableSelect
+                    options={feeTypeOptions}
+                    value={form.fee_type}
+                    onChange={v => set('fee_type', String(v))}
+                    placeholder="Select type…"
+                  />
+                </Field>
+                <Field label="Semester">
+                  <SearchableSelect
+                    options={[
+                      { value: 1, label: 'Semester 1' },
+                      { value: 2, label: 'Semester 2' },
+                    ]}
+                    value={form.semester ?? ''}
+                    onChange={v => set('semester', v ? Number(v) : null)}
+                    placeholder="Full year"
+                    allLabel="Full year"
+                  />
+                </Field>
+              </div>
+
+              <Field label="Label *">
+                <input
+                  className="input input-sm w-full"
+                  value={form.label}
+                  onChange={e => set('label', e.target.value)}
+                  placeholder="e.g. Tuition Y1 S1"
+                />
+              </Field>
+
+              <Field label="Annual Amount (RWF) *">
+                <input
+                  type="number"
+                  className="input input-sm w-full font-mono"
+                  value={form.amount}
+                  onChange={e => set('amount', Number(e.target.value))}
+                  min={0}
+                />
+                {form.amount > 0 && (
+                  <p className="text-[11px] text-ink-400 mt-1">
+                    = {formatRWF(form.amount)} total per student
+                  </p>
+                )}
+              </Field>
+
+              <Field label="Level">
                 <SearchableSelect
                   options={levelOptions}
                   value={form.level_id ?? ''}
@@ -301,64 +433,174 @@ function FeeStructureModal({ years, departments, levels, initial, defaultYearId,
                   allLabel="All levels"
                 />
               </Field>
+
+              {initial && (
+                <Field label="Status">
+                  <label className="flex items-center gap-3 cursor-pointer select-none">
+                    <div className="relative">
+                      <input
+                        type="checkbox"
+                        className="sr-only"
+                        checked={form.is_active === 1}
+                        onChange={e => set('is_active', e.target.checked ? 1 : 0)}
+                      />
+                      <div className={`w-10 h-5 rounded-full transition-colors ${
+                        form.is_active === 1 ? 'bg-green-500' : 'bg-ink-300 dark:bg-ink-600'
+                      }`} />
+                      <div className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
+                        form.is_active === 1 ? 'translate-x-5' : 'translate-x-0'
+                      }`} />
+                    </div>
+                    <span className={`text-sm font-medium ${form.is_active === 1 ? 'text-green-600' : 'text-ink-400'}`}>
+                      {form.is_active === 1 ? 'Active' : 'Inactive'}
+                    </span>
+                  </label>
+                </Field>
+              )}
             </div>
 
-            <Field label="Semester (optional)">
-              <SearchableSelect
-                options={[
-                  { value: 1, label: 'Semester 1' },
-                  { value: 2, label: 'Semester 2' },
-                ]}
-                value={form.semester ?? ''}
-                onChange={v => set('semester', v ? Number(v) : null)}
-                placeholder="Full year"
-                allLabel="Full year"
-              />
-            </Field>
+            {/* ── Right: Scope + Payment Plan ── */}
+            <div className="space-y-4">
+              {/* Departments */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400">
+                    Departments
+                    <span className="normal-case font-normal ml-1 text-ink-300">(leave empty = all)</span>
+                  </label>
+                  {departments.length > 0 && (
+                    <button
+                      type="button"
+                      className="text-[11px] text-brand hover:underline"
+                      onClick={toggleAllDepts}
+                    >
+                      {selectedDepts.length === departments.length ? 'Deselect all' : 'Select all'}
+                    </button>
+                  )}
+                </div>
+                <div className="border border-ink-200 dark:border-ink-600 rounded-xl p-2 max-h-44 overflow-y-auto space-y-0.5 bg-ink-50/50 dark:bg-ink-900/30">
+                  {departments.length === 0 && (
+                    <p className="text-xs text-ink-400 py-1 px-1">No departments loaded</p>
+                  )}
+                  {departments.map((d: any) => (
+                    <label
+                      key={d.dep_id}
+                      className={`flex items-center gap-2.5 cursor-pointer rounded-lg px-2 py-1.5 transition-colors ${
+                        selectedDepts.includes(d.dep_id)
+                          ? 'bg-brand/10 dark:bg-brand/20'
+                          : 'hover:bg-ink-100 dark:hover:bg-ink-700/40'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        className="rounded accent-brand"
+                        checked={selectedDepts.includes(d.dep_id)}
+                        onChange={() => toggleDept(d.dep_id)}
+                      />
+                      <span className="text-xs leading-none">{d.dep_name}</span>
+                    </label>
+                  ))}
+                </div>
+                {selectedDepts.length > 0 && (
+                  <p className="text-[11px] text-brand mt-1.5 font-medium">
+                    {selectedDepts.length} department{selectedDepts.length !== 1 ? 's' : ''} selected
+                  </p>
+                )}
+              </div>
 
-            {initial && (
-              <Field label="Active">
-                <label className="flex items-center gap-2 cursor-pointer select-none">
-                  <div className="relative">
-                    <input
-                      type="checkbox"
-                      className="sr-only"
-                      checked={form.is_active === 1}
-                      onChange={e => set('is_active', e.target.checked ? 1 : 0)}
-                    />
-                    <div className={`w-9 h-5 rounded-full transition-colors ${
-                      form.is_active === 1
-                        ? 'bg-green-500'
-                        : 'bg-ink-300 dark:bg-ink-600'
-                    }`} />
-                    <div className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
-                      form.is_active === 1 ? 'translate-x-4' : 'translate-x-0'
-                    }`} />
+              {/* Payment Plan */}
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 mb-2">
+                  Payment Plan
+                  <span className="normal-case font-normal ml-1 text-ink-300">(how students may pay)</span>
+                </p>
+
+                <div className="grid grid-cols-3 gap-2 mb-3">
+                  {PLAN_OPTIONS.map(opt => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => set('payment_plan', opt.value)}
+                      className={`flex flex-col items-center gap-1.5 rounded-xl border-2 px-3 py-3 text-xs font-medium transition-all ${
+                        activePlan === opt.value
+                          ? 'border-brand bg-brand/10 text-brand dark:bg-brand/20'
+                          : 'border-ink-200 dark:border-ink-600 text-ink-500 hover:border-ink-300 dark:hover:border-ink-500'
+                      }`}
+                    >
+                      {opt.icon}
+                      <span>{opt.label}</span>
+                    </button>
+                  ))}
+                </div>
+
+                <p className="text-xs text-ink-400 mb-3">
+                  {PLAN_OPTIONS.find(o => o.value === activePlan)?.desc}
+                </p>
+
+                {activePlan === 'per_installment' && (
+                  <div className="mb-3">
+                    <label className="block text-xs text-ink-500 mb-1">Number of installments per year</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={2}
+                        max={12}
+                        className="input input-sm w-24 font-mono"
+                        value={installCount}
+                        onChange={e => set('installment_count', Math.max(2, Math.min(12, Number(e.target.value))))}
+                      />
+                      <span className="text-xs text-ink-400">payments / year (2–12)</span>
+                    </div>
                   </div>
-                  <span className={`text-sm font-medium ${
-                    form.is_active === 1 ? 'text-green-600' : 'text-ink-400'
-                  }`}>
-                    {form.is_active === 1 ? 'Active' : 'Inactive'}
-                  </span>
-                </label>
-              </Field>
-            )}
+                )}
+
+                {/* Breakdown preview */}
+                {form.amount > 0 && (
+                  <div className="rounded-xl border border-ink-200 dark:border-ink-600 overflow-hidden">
+                    <div className="bg-ink-50 dark:bg-ink-700/40 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-ink-500">
+                      Payment schedule — {formatRWF(form.amount)} total
+                    </div>
+                    <div className="divide-y divide-ink-100 dark:divide-ink-700">
+                      {breakdown.map((item, i) => (
+                        <div key={i} className="flex items-center justify-between px-3 py-2">
+                          <span className="text-xs text-ink-500">{item.label}</span>
+                          <span className="text-xs font-mono font-semibold text-ink-800 dark:text-ink-100">
+                            {formatRWF(item.amount)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    {activePlan !== 'full_year' && (
+                      <div className="bg-brand/5 px-3 py-2 text-[11px] text-brand font-medium">
+                        Each payment: {formatRWF(breakdown[0]?.amount ?? 0)}
+                        {activePlan === 'per_semester' && ' · Paid once per semester'}
+                        {activePlan === 'per_installment' && ` · ${installCount} installments per year`}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
-          <div className="flex gap-2 justify-end pt-2">
+          {/* Footer */}
+          <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-ink-100 dark:border-ink-700 bg-ink-50/50 dark:bg-ink-900/20">
             <button className="btn-ghost btn-sm" onClick={onClose}>Cancel</button>
             <button
-              className="btn-primary btn-sm"
+              className="btn-primary btn-sm min-w-[110px]"
               onClick={() => mutation.mutate()}
               disabled={mutation.isPending || !form.academic_year_id || !form.label || !form.amount}
             >
-              {mutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-              {initial ? 'Save changes' : 'Create'}
+              {mutation.isPending
+                ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving…</>
+                : initial ? 'Save changes' : 'Create structure'
+              }
             </button>
           </div>
         </div>
       </div>
     </div>
+    </ModalPortal>
   )
 }
 

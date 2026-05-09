@@ -15,6 +15,7 @@ import {
 } from '@/services/hrService'
 import { useAuthStore } from '@/store/authStore'
 import { PERMISSIONS } from '@/constants'
+import ModalPortal from '@/components/ui/ModalPortal'
 
 /* ── helpers ── */
 const MONTHS = ['January','February','March','April','May','June',
@@ -501,6 +502,7 @@ function PayAllModal({
   const isProcessing = progress !== null
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/60 backdrop-blur-sm p-4">
       <div className="bg-white dark:bg-ink-800 rounded-xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]">
         {/* Header */}
@@ -645,6 +647,7 @@ function PayAllModal({
         </div>
       </div>
     </div>
+    </ModalPortal>
   )
 }
 
@@ -666,6 +669,7 @@ function CancelPaymentModal({
   })
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/60 backdrop-blur-sm p-4">
       <div className="bg-white dark:bg-ink-800 rounded-xl shadow-2xl w-full max-w-sm">
         <div className="p-6 text-center space-y-3">
@@ -692,5 +696,6 @@ function CancelPaymentModal({
         </div>
       </div>
     </div>
+    </ModalPortal>
   )
 }

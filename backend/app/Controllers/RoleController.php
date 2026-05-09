@@ -9,6 +9,7 @@ use Core\Response;
 use App\Models\RoleModel;
 use App\Models\RolePermissionModel;
 use App\Helpers\ValidationHelper;
+use App\Services\SystemLogService;
 
 class RoleController extends BaseController
 {
@@ -66,6 +67,8 @@ class RoleController extends BaseController
             'description' => $data['description'] ?? null
         ]);
 
+        $actor = (array) $request->param('_auth_user');
+        SystemLogService::log('CREATE', 'ROLES', "Created role '{$data['name']}' (ID {$id}).", (int) $id, 'role', null, $actor ?: null);
         $this->success($response, ['id' => $id], 'Role created successfully.', 201);
     }
 
@@ -97,6 +100,8 @@ class RoleController extends BaseController
             'description' => $data['description'] ?? null
         ]);
 
+        $actor = (array) $request->param('_auth_user');
+        SystemLogService::log('UPDATE', 'ROLES', "Updated role ID {$id} to '{$data['name']}'.", $id, 'role', null, $actor ?: null);
         $this->success($response, null, 'Role updated successfully.');
     }
 
@@ -110,6 +115,8 @@ class RoleController extends BaseController
 
         // Cannot delete Superadmin easily if we want to protect it, but for now standard delete.
         $this->roleModel->delete($id);
+        $actor = (array) $request->param('_auth_user');
+        SystemLogService::log('DELETE', 'ROLES', "Deleted role ID {$id}.", $id, 'role', null, $actor ?: null);
         $this->success($response, null, 'Role deleted successfully.');
     }
 
@@ -140,6 +147,9 @@ class RoleController extends BaseController
             }
         }
 
+        $actor = (array) $request->param('_auth_user');
+        $count = count($data['permissions']);
+        SystemLogService::log('ASSIGN', 'ROLES', "Assigned {$count} permission(s) to role ID {$id}.", $id, 'role', ['permission_ids' => $data['permissions']], $actor ?: null);
         $this->success($response, null, 'Permissions assigned successfully.');
     }
 }

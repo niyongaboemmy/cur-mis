@@ -13,6 +13,7 @@ import {
   Activity,
 } from "lucide-react";
 import toast from "react-hot-toast";
+import ModalPortal from "@/components/ui/ModalPortal";
 
 export default function RolesManagementPage() {
   const [roles, setRoles] = useState<Role[]>([]);
@@ -414,6 +415,7 @@ export default function RolesManagementPage() {
 
       {/* Role Form Modal */}
       {isModalOpen && (
+        <ModalPortal>
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-md border border-gray-100 dark:border-gray-800 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-gray-800/50">
@@ -474,10 +476,12 @@ export default function RolesManagementPage() {
             </form>
           </div>
         </div>
+        </ModalPortal>
       )}
 
       {/* Permissions Assignment Modal */}
       {isPermsOpen && selectedRoleForPerms && (
+        <ModalPortal>
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-md transition-all duration-300">
           <div className="bg-white dark:bg-gray-900 rounded-[2rem] w-full max-w-6xl overflow-hidden flex flex-col h-[85vh] animate-in fade-in zoom-in duration-300 border border-white/20">
             {/* Modal Header */}
@@ -786,6 +790,7 @@ export default function RolesManagementPage() {
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   );

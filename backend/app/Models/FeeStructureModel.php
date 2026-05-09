@@ -9,7 +9,8 @@ class FeeStructureModel extends BaseModel
     protected string $table = 'fee_structures';
     protected array $fillable = [
         'academic_year_id', 'department_id', 'level_id',
-        'fee_type', 'label', 'amount', 'semester', 'is_active', 'created_by',
+        'fee_type', 'label', 'amount', 'semester', 'payment_plan', 'installment_count',
+        'is_active', 'created_by',
     ];
 
     /** @param array{academic_year_id?:int,department_id?:int,level_id?:int,fee_type?:string,is_active?:bool} $filters */
@@ -45,12 +46,15 @@ class FeeStructureModel extends BaseModel
             "SELECT fs.*,
                     ay.label  AS academic_year_label,
                     d.dep_name AS department_name,
-                    l.name    AS level_name
+                    l.name    AS level_name,
+                    GROUP_CONCAT(DISTINCT fsd.department_id ORDER BY fsd.department_id) AS dept_ids
              FROM `fee_structures` fs
-             LEFT JOIN `academic_years` ay ON ay.id  = fs.academic_year_id
-             LEFT JOIN `departements`   d  ON d.dep_id = fs.department_id
-             LEFT JOIN `levels`         l  ON l.id   = fs.level_id
+             LEFT JOIN `academic_years`          ay  ON ay.id    = fs.academic_year_id
+             LEFT JOIN `departements`            d   ON d.dep_id = fs.department_id
+             LEFT JOIN `levels`                  l   ON l.id     = fs.level_id
+             LEFT JOIN `fee_structure_departments` fsd ON fsd.fee_structure_id = fs.id
              {$whereSql}
+             GROUP BY fs.id
              ORDER BY fs.fee_type, fs.label",
             $bindings
         );
@@ -58,7 +62,7 @@ class FeeStructureModel extends BaseModel
 
     /**
      * Find the best-matching fee structure for a student's profile.
-     * Prefers the most specific match (department + level) over generic ones.
+     * Checks both the legacy department_id column and the fee_structure_departments join table.
      */
     public function findBestMatch(
         int $academicYearId,
@@ -72,10 +76,13 @@ class FeeStructureModel extends BaseModel
         if ($semester !== null) {
             $bindings[] = $semester;
         }
+
+        // dept match bindings: used in WHERE (×2 for EXISTS) and ORDER BY (×2)
         $bindings = array_merge($bindings, [
-            $departmentId, $levelId,
-            $departmentId,
-            $levelId,
+            $departmentId, $departmentId,  // WHERE dept check
+            $levelId,                       // WHERE level check
+            $departmentId, $departmentId,  // ORDER BY dept priority
+            $levelId,                       // ORDER BY level priority
         ]);
 
         return $this->db->fetchOne(
@@ -85,13 +92,47 @@ class FeeStructureModel extends BaseModel
                AND fs.fee_type = ?
                AND fs.is_active = 1
                {$semesterSql}
-               AND (fs.department_id = ? OR fs.department_id IS NULL)
+               AND (
+                     fs.department_id = ?
+                  OR fs.department_id IS NULL
+                  OR EXISTS (
+                       SELECT 1 FROM `fee_structure_departments` fsd2
+                       WHERE fsd2.fee_structure_id = fs.id AND fsd2.department_id = ?
+                     )
+               )
                AND (fs.level_id = ? OR fs.level_id IS NULL)
              ORDER BY
-               (fs.department_id = ?) DESC,
+               (fs.department_id = ? OR EXISTS (
+                  SELECT 1 FROM `fee_structure_departments` fsd3
+                  WHERE fsd3.fee_structure_id = fs.id AND fsd3.department_id = ?
+               )) DESC,
                (fs.level_id = ?) DESC
              LIMIT 1",
             $bindings
         );
+    }
+
+    /**
+     * Replace all department links for a fee structure.
+     * Called after create or update when department_ids array is provided.
+     */
+    public function insertDepartmentLinks(int $structureId, array $departmentIds): void
+    {
+        $this->db->execute(
+            "DELETE FROM `fee_structure_departments` WHERE fee_structure_id = ?",
+            [$structureId]
+        );
+
+        foreach ($departmentIds as $deptId) {
+            $deptId = (int)$deptId;
+            if ($deptId <= 0) {
+                continue;
+            }
+            $this->db->execute(
+                "INSERT IGNORE INTO `fee_structure_departments` (fee_structure_id, department_id)
+                 VALUES (?, ?)",
+                [$structureId, $deptId]
+            );
+        }
     }
 }

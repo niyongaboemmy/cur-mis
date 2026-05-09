@@ -1,5 +1,5 @@
 import { useParams, Link, useLocation } from 'react-router-dom'
-import { createPortal } from 'react-dom'
+import ModalPortal from '@/components/ui/ModalPortal'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { studentService } from '@/services/studentService'
 import {
@@ -1031,8 +1031,9 @@ function EditStudentModal({ student, stats, onClose }: { student: any, stats: an
     mut.mutate(payload)
   }
 
-  return createPortal(
-    <div className="fixed inset-0 z-[9999] flex items-start justify-center bg-black/60 backdrop-blur-sm p-4 pt-10 overflow-y-auto animate-in fade-in duration-200">
+  return (
+    <ModalPortal>
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto animate-in fade-in duration-200">
       <div className="bg-white dark:bg-ink-900 rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
         <div className="p-5 border-b border-ink-100 dark:border-ink-800 flex justify-between items-center bg-ink-50 dark:bg-ink-900/50">
           <h2 className="text-lg font-bold text-ink-900 dark:text-white flex items-center gap-2">
@@ -1151,8 +1152,8 @@ function EditStudentModal({ student, stats, onClose }: { student: any, stats: an
           </button>
         </div>
       </div>
-    </div>,
-    document.body
+    </div>
+    </ModalPortal>
   )
 }
 

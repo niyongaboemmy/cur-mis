@@ -10,26 +10,33 @@ use App\Models\FeeStructureModel;
 use App\Models\FeeInvoiceModel;
 use App\Models\FeePaymentModel;
 use App\Models\FeeBursaryModel;
+use App\Models\StudentFeeOverrideModel;
+use App\Models\SponsorModel;
 use App\Models\ExpenseModel;
 use App\Models\ExpenseCategoryModel;
 use App\Models\ExpenseBudgetModel;
 use App\Models\ClearanceModel;
 use App\Services\FeeService;
 use App\Services\ClearanceService;
+use App\Services\SystemLogService;
 use App\Helpers\ValidationHelper;
+use Core\Database;
 
 class FeeController extends BaseController
 {
-    private FeeStructureModel    $structureModel;
-    private FeeInvoiceModel      $invoiceModel;
-    private FeePaymentModel      $paymentModel;
-    private FeeBursaryModel      $bursaryModel;
-    private ExpenseModel         $expenseModel;
-    private ExpenseCategoryModel $expenseCategoryModel;
-    private ExpenseBudgetModel   $budgetModel;
-    private ClearanceModel       $clearanceModel;
-    private FeeService           $service;
-    private ClearanceService     $clearanceService;
+    private FeeStructureModel       $structureModel;
+    private FeeInvoiceModel         $invoiceModel;
+    private FeePaymentModel         $paymentModel;
+    private FeeBursaryModel         $bursaryModel;
+    private StudentFeeOverrideModel $overrideModel;
+    private SponsorModel            $sponsorModel;
+    private ExpenseModel            $expenseModel;
+    private ExpenseCategoryModel    $expenseCategoryModel;
+    private ExpenseBudgetModel      $budgetModel;
+    private ClearanceModel          $clearanceModel;
+    private FeeService              $service;
+    private ClearanceService        $clearanceService;
+    private Database                $db;
 
     public function __construct()
     {
@@ -37,12 +44,44 @@ class FeeController extends BaseController
         $this->invoiceModel         = new FeeInvoiceModel();
         $this->paymentModel         = new FeePaymentModel();
         $this->bursaryModel         = new FeeBursaryModel();
+        $this->overrideModel        = new StudentFeeOverrideModel();
+        $this->sponsorModel         = new SponsorModel();
         $this->expenseModel         = new ExpenseModel();
         $this->expenseCategoryModel = new ExpenseCategoryModel();
         $this->budgetModel          = new ExpenseBudgetModel();
         $this->clearanceModel       = new ClearanceModel();
         $this->service              = new FeeService();
         $this->clearanceService     = new ClearanceService();
+        $this->db                   = Database::getInstance();
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Student self-service helpers
+    // ──────────────────────────────────────────────────────────────────────────
+
+    private function authStudentRegnumber(Request $request): ?string
+    {
+        $user = (array)($request->param('_auth_user') ?? []);
+        if (!empty($user['regnumber'])) return (string)$user['regnumber'];
+
+        $username = trim((string)($user['username'] ?? ''));
+        if ($username !== '') {
+            $row = $this->db->fetchOne(
+                "SELECT regnumber FROM `student` WHERE regnumber = ? LIMIT 1",
+                [$username]
+            );
+            if ($row && !empty($row['regnumber'])) return (string)$row['regnumber'];
+        }
+
+        $email = trim((string)($user['email'] ?? ''));
+        if ($email !== '') {
+            $row = $this->db->fetchOne(
+                "SELECT regnumber FROM `student` WHERE email = ? LIMIT 1",
+                [$email]
+            );
+            if ($row && !empty($row['regnumber'])) return (string)$row['regnumber'];
+        }
+        return null;
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -86,18 +125,34 @@ class FeeController extends BaseController
             $this->error($response, 'Validation failed.', 422, $errors);
         }
 
+        // Derive a primary department_id for the legacy column (first in the array, or the scalar value)
+        $deptIds = !empty($data['department_ids']) && is_array($data['department_ids'])
+            ? array_map('intval', $data['department_ids'])
+            : (!empty($data['department_id']) ? [(int)$data['department_id']] : []);
+
+        $validPlans = ['full_year', 'per_semester', 'per_installment'];
+        $paymentPlan = in_array($data['payment_plan'] ?? '', $validPlans, true)
+            ? $data['payment_plan'] : 'full_year';
+
         $id = $this->structureModel->create([
-            'academic_year_id' => (int)$data['academic_year_id'],
-            'department_id'    => !empty($data['department_id']) ? (int)$data['department_id'] : null,
-            'level_id'         => !empty($data['level_id'])      ? (int)$data['level_id']      : null,
-            'fee_type'         => $data['fee_type'],
-            'label'            => $data['label'],
-            'amount'           => (float)$data['amount'],
-            'semester'         => !empty($data['semester'])       ? (int)$data['semester']      : null,
-            'is_active'        => 1,
-            'created_by'       => (int)$actor['id'],
+            'academic_year_id'  => (int)$data['academic_year_id'],
+            'department_id'     => !empty($deptIds) ? $deptIds[0] : null,
+            'level_id'          => !empty($data['level_id'])  ? (int)$data['level_id']  : null,
+            'fee_type'          => $data['fee_type'],
+            'label'             => $data['label'],
+            'amount'            => (float)$data['amount'],
+            'semester'          => !empty($data['semester'])  ? (int)$data['semester']  : null,
+            'payment_plan'      => $paymentPlan,
+            'installment_count' => !empty($data['installment_count']) ? (int)$data['installment_count'] : null,
+            'is_active'         => 1,
+            'created_by'        => (int)$actor['id'],
         ]);
 
+        if (!empty($deptIds)) {
+            $this->structureModel->insertDepartmentLinks((int)$id, $deptIds);
+        }
+
+        SystemLogService::log('CREATE', 'FINANCE', "Created fee structure '{$data['label']}' ({$data['fee_type']}) — amount {$data['amount']}.", (int) $id, 'fee_structure', ['fee_type' => $data['fee_type'], 'amount' => (float) $data['amount']], (array) $actor ?: null);
         $this->success($response, ['id' => (int)$id], 'Fee structure created.', 201);
     }
 
@@ -113,13 +168,28 @@ class FeeController extends BaseController
             $this->error($response, 'Fee structure not found.', 404);
         }
 
+        $validPlans = ['full_year', 'per_semester', 'per_installment'];
         $this->structureModel->update($id, array_filter([
-            'label'      => $data['label']     ?? null,
-            'amount'     => isset($data['amount'])    ? (float)$data['amount']    : null,
-            'semester'   => isset($data['semester'])  ? (int)$data['semester']    : null,
-            'is_active'  => isset($data['is_active']) ? (int)$data['is_active']   : null,
+            'label'             => $data['label']     ?? null,
+            'amount'            => isset($data['amount'])    ? (float)$data['amount']    : null,
+            'semester'          => isset($data['semester'])  ? (int)$data['semester']    : null,
+            'payment_plan'      => isset($data['payment_plan']) && in_array($data['payment_plan'], $validPlans, true)
+                                     ? $data['payment_plan'] : null,
+            'installment_count' => isset($data['installment_count']) ? ((int)$data['installment_count'] ?: null) : null,
+            'is_active'         => isset($data['is_active']) ? (int)$data['is_active']   : null,
         ], fn ($v) => $v !== null));
 
+        if (isset($data['department_ids']) && is_array($data['department_ids'])) {
+            $deptIds = array_map('intval', $data['department_ids']);
+            $this->structureModel->insertDepartmentLinks($id, $deptIds);
+            // Keep legacy column in sync
+            if (!empty($deptIds)) {
+                $this->structureModel->update($id, ['department_id' => $deptIds[0]]);
+            }
+        }
+
+        $actor = $request->param('_auth_user');
+        SystemLogService::log('UPDATE', 'FINANCE', "Updated fee structure ID {$id}.", $id, 'fee_structure', array_filter(['label' => $data['label'] ?? null, 'amount' => isset($data['amount']) ? (float)$data['amount'] : null], fn($v) => $v !== null), (array) $actor ?: null);
         $this->success($response, null, 'Fee structure updated.');
     }
 
@@ -133,6 +203,8 @@ class FeeController extends BaseController
             $this->error($response, 'Fee structure not found.', 404);
         }
         $this->structureModel->delete($id);
+        $actor = $request->param('_auth_user');
+        SystemLogService::log('DELETE', 'FINANCE', "Deleted fee structure ID {$id}.", $id, 'fee_structure', null, (array) $actor ?: null);
         $this->success($response, null, 'Fee structure deleted.');
     }
 
@@ -161,13 +233,62 @@ class FeeController extends BaseController
             ? $this->invoiceModel->getStudentLedgerTotals($studentId, $academicYearId)
             : [];
 
-        $payments = $this->paymentModel->listWithDetails(['student_id' => $studentId]);
+        $payments = $this->paymentModel->listWithDetails(['student_id' => $studentId], 1, 500);
 
         $this->success($response, [
             'invoices' => $invoices,
             'payments' => $payments['data'] ?? [],
             'totals'   => $totals,
         ], 'Student ledger retrieved.');
+    }
+
+    /**
+     * GET /api/finance/my/invoices
+     * Student self-service: authenticated student's own ledger.
+     */
+    public function getMyInvoices(Request $request, Response $response): never
+    {
+        $reg = $this->authStudentRegnumber($request);
+        if (!$reg) $this->error($response, 'No student profile linked to this account.', 404);
+
+        $academicYearId = (int)($request->query('academic_year_id') ?? 0);
+        $semester       = $request->query('semester') !== null
+                            ? (int)$request->query('semester') : null;
+
+        $filters = ['student_id' => $reg];
+        if ($academicYearId)    $filters['academic_year_id'] = $academicYearId;
+        if ($semester !== null) $filters['semester']         = $semester;
+
+        $invoices = $this->invoiceModel->listWithDetails($filters);
+        $totals   = $academicYearId
+            ? $this->invoiceModel->getStudentLedgerTotals($reg, $academicYearId)
+            : [];
+        $payments = $this->paymentModel->listWithDetails(['student_id' => $reg], 1, 500);
+
+        $this->success($response, [
+            'invoices' => $invoices,
+            'payments' => $payments['data'] ?? [],
+            'totals'   => $totals,
+        ], 'Your finance ledger retrieved.');
+    }
+
+    /**
+     * GET /api/finance/my/clearance
+     * Student self-service: authenticated student's clearance status.
+     */
+    public function getMyClearance(Request $request, Response $response): never
+    {
+        $reg = $this->authStudentRegnumber($request);
+        if (!$reg) $this->error($response, 'No student profile linked to this account.', 404);
+
+        $yearId   = (int)($request->query('academic_year_id') ?? 0);
+        $semester = $request->query('semester') !== null
+                      ? (int)$request->query('semester') : null;
+
+        if (!$yearId) $this->error($response, 'academic_year_id is required.', 422);
+
+        $data = $this->clearanceService->getStatus($reg, $yearId, $semester);
+        $this->success($response, $data, 'Clearance status retrieved.');
     }
 
     /**
@@ -199,6 +320,7 @@ class FeeController extends BaseController
             $this->error($response, $e->getMessage(), 422);
         }
 
+        SystemLogService::log('GENERATE', 'FINANCE', "Auto-generated invoices for student {$studentId} (year {$data['academic_year_id']}): {$result['created']} new, {$result['skipped']} skipped.", null, 'fee_invoice', ['student_id' => $studentId, 'created' => $result['created'], 'skipped' => $result['skipped']], (array) $actor ?: null);
         $this->success($response, $result, "Invoices generated: {$result['created']} new, {$result['skipped']} skipped.");
     }
 
@@ -214,7 +336,7 @@ class FeeController extends BaseController
         $errors = ValidationHelper::validate($data, [
             'student_id'       => 'required|string',
             'academic_year_id' => 'required|numeric',
-            'fee_type'         => 'required|in:TUITION,REGISTRATION,ADMISSION,HOSTEL,ACADEMIC_DOCUMENT,FINE,REPEAT_MODULE,ARREARS',
+            'fee_type'         => 'required|in:TUITION,REGISTRATION,ADMISSION,HOSTEL,ACADEMIC_DOCUMENT,FINE,REPEAT_MODULE,ARREARS,MODULE_FEE',
             'description'      => 'required|string|max:200',
             'amount_due'       => 'required|numeric',
         ]);
@@ -225,6 +347,7 @@ class FeeController extends BaseController
         $id = $this->invoiceModel->create([
             'invoice_number'   => $this->service->generateInvoiceNumber(),
             'student_id'       => $data['student_id'],
+            'fee_structure_id' => !empty($data['fee_structure_id']) ? (int)$data['fee_structure_id'] : null,
             'academic_year_id' => (int)$data['academic_year_id'],
             'semester'         => !empty($data['semester']) ? (int)$data['semester'] : null,
             'fee_type'         => $data['fee_type'],
@@ -235,6 +358,7 @@ class FeeController extends BaseController
             'created_by'       => (int)$actor['id'],
         ]);
 
+        SystemLogService::log('CREATE', 'FINANCE', "Created manual invoice for student {$data['student_id']} ({$data['fee_type']}): {$data['amount_due']}.", (int) $id, 'fee_invoice', ['fee_type' => $data['fee_type'], 'amount' => (float) $data['amount_due']], (array) $actor ?: null);
         $this->success($response, ['id' => (int)$id], 'Invoice created.', 201);
     }
 
@@ -266,6 +390,7 @@ class FeeController extends BaseController
             $result = $this->service->bulkGenerateInvoices($studentIds, $yearId, $semester, (int)$actor['id']);
         }
 
+        SystemLogService::log('GENERATE', 'FINANCE', "Bulk generated invoices for year {$yearId}: {$result['processed_students']} students processed.", null, 'fee_invoice', ['processed_students' => $result['processed_students'], 'academic_year_id' => $yearId], (array) $actor ?: null);
         $this->success($response, $result, "Bulk generation complete: processed {$result['processed_students']} students.");
     }
 
@@ -302,6 +427,7 @@ class FeeController extends BaseController
      */
     public function exportBillingSummary(Request $request, Response $response): never
     {
+        $actor   = $request->param('_auth_user');
         $filters = [
             'academic_year_id' => (int)($request->query('academic_year_id') ?? 0),
             'semester'         => $request->query('semester') !== null ? (int)$request->query('semester') : null,
@@ -315,7 +441,8 @@ class FeeController extends BaseController
         }
 
         $csv = $this->service->exportBillingSummary($filters);
-        
+
+        SystemLogService::log('EXPORT', 'FINANCE', "Exported billing summary for year {$filters['academic_year_id']}.", null, null, array_filter($filters, fn($v) => $v !== null), (array) $actor ?: null);
         $filename = "billing_summary_" . date('Y-m-d_His') . ".csv";
         header("Content-Type: text/csv");
         header("Content-Disposition: attachment; filename=\"{$filename}\"");
@@ -345,6 +472,8 @@ class FeeController extends BaseController
             $this->invoiceModel->recalculateStatus($id);
         }
 
+        $actor = $request->param('_auth_user');
+        SystemLogService::log('UPDATE', 'FINANCE', "Updated invoice ID {$id}.", $id, 'fee_invoice', $update ?: null, (array) $actor ?: null);
         $this->success($response, null, 'Invoice updated.');
     }
 
@@ -401,6 +530,7 @@ class FeeController extends BaseController
         // Non-blocking email confirmation
         $this->service->sendPaymentConfirmationEmail((int)$result['payment_id']);
 
+        SystemLogService::log('CREATE', 'FINANCE', "Recorded payment of {$data['amount']} for invoice {$data['invoice_id']} (ID {$result['payment_id']}).", (int) $result['payment_id'], 'fee_payment', ['method' => $data['payment_method'], 'amount' => (float) $data['amount']], (array) $actor ?: null);
         $this->success($response, $result, 'Payment recorded successfully.', 201);
     }
 
@@ -424,12 +554,24 @@ class FeeController extends BaseController
      */
     public function approvePayment(Request $request, Response $response): never
     {
-        $id     = (int)$request->param('id');
-        $actor  = $request->param('_auth_user');
+        $id      = (int)$request->param('id');
+        $actor   = $request->param('_auth_user');
+        $data    = $request->body();
         $payment = $this->paymentModel->find($id);
 
-        if (!$payment)               $this->error($response, 'Payment not found.', 404);
+        if (!$payment)                        $this->error($response, 'Payment not found.', 404);
         if ($payment['status'] !== 'pending') $this->error($response, 'Only pending payments can be approved.', 422);
+
+        // Optional invoice reassignment: allow finance officer to correct a wrong invoice
+        $newInvoiceId = !empty($data['invoice_id']) ? (int)$data['invoice_id'] : null;
+        if ($newInvoiceId && $newInvoiceId !== (int)$payment['invoice_id']) {
+            $newInvoice = $this->invoiceModel->find($newInvoiceId);
+            if (!$newInvoice || $newInvoice['student_id'] !== $payment['student_id']) {
+                $this->error($response, 'The specified invoice does not belong to this student.', 422);
+            }
+            $this->paymentModel->update($id, ['invoice_id' => $newInvoiceId]);
+            $payment['invoice_id'] = $newInvoiceId;
+        }
 
         // Mark payment confirmed
         $this->paymentModel->update($id, [
@@ -441,10 +583,10 @@ class FeeController extends BaseController
         // Now update invoice balance
         $this->invoiceModel->applyPayment((int)$payment['invoice_id'], (float)$payment['amount']);
 
-
         // Send email receipt
         $this->service->sendPaymentConfirmationEmail($id);
 
+        SystemLogService::log('APPROVE', 'FINANCE', "Approved payment ID {$id} (amount {$payment['amount']}) for invoice {$payment['invoice_id']}.", $id, 'fee_payment', ['amount' => (float) $payment['amount']], (array) $actor ?: null);
         $this->success($response, null, 'Payment approved and applied to invoice.');
     }
 
@@ -468,6 +610,7 @@ class FeeController extends BaseController
             'rejection_reason' => $data['reason'] ?? 'Rejected by finance officer',
         ]);
 
+        SystemLogService::log('REJECT', 'FINANCE', "Rejected payment ID {$id}. Reason: " . ($data['reason'] ?? 'N/A') . ".", $id, 'fee_payment', ['reason' => $data['reason'] ?? null], (array) $actor ?: null);
         $this->success($response, null, 'Payment rejected.');
     }
 
@@ -494,6 +637,7 @@ class FeeController extends BaseController
             'academic_year_id' => (int)($request->query('academic_year_id') ?? 0) ?: null,
             'status'           => $request->query('status')            ?? '',
             'bursary_type'     => $request->query('bursary_type')     ?? '',
+            'sponsor_id'       => $request->query('sponsor_id'),
         ], fn ($v) => $v !== '' && $v !== null);
 
         $page    = max(1, (int)($request->query('page') ?? 1));
@@ -525,6 +669,7 @@ class FeeController extends BaseController
             'bursary_type'     => $data['bursary_type'],
             'amount'           => (float)$data['amount'],
             'coverage_pct'     => !empty($data['coverage_pct']) ? (float)$data['coverage_pct'] : null,
+            'sponsor_id'       => isset($data['sponsor_id']) ? (int)$data['sponsor_id'] : null,
             'approved_by'      => (int)$actor['id'],
             'notes'            => $data['notes'] ?? null,
             'status'           => $data['status'] ?? 'confirmed',
@@ -539,6 +684,7 @@ class FeeController extends BaseController
             (int)$actor['id']
         );
 
+        SystemLogService::log('CREATE', 'FINANCE', "Created bursary for student {$data['student_id']} ({$data['bursary_type']}): {$data['amount']}.", (int) $id, 'fee_bursary', ['amount' => (float) $data['amount'], 'type' => $data['bursary_type']], (array) $actor ?: null);
         $this->success($response, ['id' => (int)$id], 'Bursary created.', 201);
     }
 
@@ -552,6 +698,8 @@ class FeeController extends BaseController
             $this->error($response, 'Bursary not found.', 404);
         }
         $this->bursaryModel->delete($id);
+        $actor = $request->param('_auth_user');
+        SystemLogService::log('DELETE', 'FINANCE', "Deleted bursary ID {$id}.", $id, 'fee_bursary', null, (array) $actor ?: null);
         $this->success($response, null, 'Bursary deleted.');
     }
 
@@ -579,6 +727,7 @@ class FeeController extends BaseController
             (int)$actor['id']
         );
 
+        SystemLogService::log('APPROVE', 'FINANCE', "Confirmed bursary ID {$id} for student {$bursary['student_id']}.", $id, 'fee_bursary', null, (array) $actor ?: null);
         $this->success($response, null, 'Bursary confirmed and applied.');
     }
 
@@ -602,7 +751,232 @@ class FeeController extends BaseController
             (int)$actor['id']
         );
 
+        SystemLogService::log('UPDATE', 'FINANCE', "Cancelled bursary ID {$id} for student {$bursary['student_id']}.", $id, 'fee_bursary', null, (array) $actor ?: null);
         $this->success($response, null, 'Bursary cancelled.');
+    }
+
+    /**
+     * PUT /api/finance/bursaries/:id
+     */
+    public function updateBursary(Request $request, Response $response): never
+    {
+        $id    = (int)$request->param('id');
+        $data  = $request->body();
+        $actor = $request->param('_auth_user');
+
+        $bursary = $this->bursaryModel->find($id);
+        if (!$bursary) $this->error($response, 'Bursary not found.', 404);
+
+        $errors = ValidationHelper::validate($data, [
+            'amount'           => 'numeric',
+            'coverage_pct'     => 'numeric|nullable',
+            'bursary_type'     => 'string',
+            'sponsor_id'       => 'numeric',
+            'status'           => 'in:pending,confirmed,cancelled',
+        ]);
+        if (!empty($errors)) $this->error($response, 'Validation failed.', 422, $errors);
+
+        $updateData = [];
+        if (isset($data['amount']))           $updateData['amount']       = (float)$data['amount'];
+        if (isset($data['coverage_pct']))     $updateData['coverage_pct'] = (float)$data['coverage_pct'];
+        if (isset($data['bursary_type']))     $updateData['bursary_type'] = $data['bursary_type'];
+        if (isset($data['notes']))            $updateData['notes']        = $data['notes'];
+        if (isset($data['status']))           $updateData['status']       = $data['status'];
+        
+        if (array_key_exists('sponsor_id', $data)) {
+            $updateData['sponsor_id'] = ($data['sponsor_id'] !== null && $data['sponsor_id'] !== '') 
+                ? (int)$data['sponsor_id'] 
+                : null;
+        }
+
+        // Handle confirmation details if status is moving to confirmed
+        if (isset($data['status']) && $data['status'] === 'confirmed' && $bursary['status'] !== 'confirmed') {
+            $updateData['confirmed_at'] = date('Y-m-d H:i:s');
+            $updateData['confirmed_by'] = (int)$actor['id'];
+        }
+
+        $this->bursaryModel->update($id, $updateData);
+
+        // Re-apply bursaries if either old or new status is confirmed
+        if ($bursary['status'] === 'confirmed' || (isset($data['status']) && $data['status'] === 'confirmed')) {
+            $this->service->applyBursaries(
+                $bursary['student_id'],
+                (int)$bursary['academic_year_id'],
+                (int)$actor['id']
+            );
+        }
+
+        SystemLogService::log('UPDATE', 'FINANCE', "Updated bursary ID {$id} for student {$bursary['student_id']}.", $id, 'fee_bursary', $updateData ?: null, (array) $actor ?: null);
+        $this->success($response, null, 'Bursary updated.');
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Sponsors
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /** GET /api/finance/sponsors */
+    public function listSponsors(Request $request, Response $response): never
+    {
+        $activeOnly = $request->query('is_active') !== null
+            ? (bool)(int)$request->query('is_active')
+            : false;
+        
+        $yearId = (int)($request->query('academic_year_id') ?? 0);
+
+        if ($yearId) {
+            $data = $this->sponsorModel->listWithSummaries($yearId, $activeOnly);
+            
+            // Handle unassigned bursaries
+            $unassigned = $this->bursaryModel->getUnassignedSummary($yearId);
+            if ($unassigned && (float)$unassigned['total_amount'] > 0) {
+                $data[] = [
+                    'id'               => 'unassigned', // Use string ID for clarity
+                    'name'             => 'Unassigned / General',
+                    'email'            => null,
+                    'phone'            => null,
+                    'is_active'        => 1,
+                    'total_amount'     => $unassigned['total_amount'],
+                    'confirmed_amount' => $unassigned['confirmed_amount'],
+                    'bursary_count'    => $unassigned['bursary_count'],
+                    'student_count'    => $unassigned['student_count'],
+                    'is_virtual'       => true
+                ];
+            }
+        } else {
+            $data = $this->sponsorModel->listAll($activeOnly);
+        }
+
+        $this->success($response, $data, 'Sponsors retrieved.');
+    }
+
+    /** POST /api/finance/sponsors */
+    public function createSponsor(Request $request, Response $response): never
+    {
+        $data   = $request->body();
+        $errors = ValidationHelper::validate($data, [
+            'name' => 'required|string|max:150',
+        ]);
+        if (!empty($errors)) $this->error($response, 'Validation failed.', 422, $errors);
+
+        $id = $this->sponsorModel->create([
+            'name'      => $data['name'],
+            'email'     => $data['email']     ?? null,
+            'phone'     => $data['phone']     ?? null,
+            'is_active' => isset($data['is_active']) ? (int)$data['is_active'] : 1,
+        ]);
+        $actor = $request->param('_auth_user');
+        SystemLogService::log('CREATE', 'FINANCE', "Created sponsor '{$data['name']}' (ID {$id}).", (int) $id, 'sponsor', null, (array) $actor ?: null);
+        $this->success($response, ['id' => (int)$id], 'Sponsor created.', 201);
+    }
+
+    /** PUT /api/finance/sponsors/:id */
+    public function updateSponsor(Request $request, Response $response): never
+    {
+        $id   = (int)$request->param('id');
+        $data = $request->body();
+        if (!$this->sponsorModel->find($id)) $this->error($response, 'Sponsor not found.', 404);
+
+        $this->sponsorModel->update($id, array_filter([
+            'name'      => $data['name']      ?? null,
+            'email'     => $data['email']     ?? null,
+            'phone'     => $data['phone']     ?? null,
+            'is_active' => isset($data['is_active']) ? (int)$data['is_active'] : null,
+        ], fn ($v) => $v !== null));
+
+        $actor = $request->param('_auth_user');
+        SystemLogService::log('UPDATE', 'FINANCE', "Updated sponsor ID {$id}.", $id, 'sponsor', null, (array) $actor ?: null);
+        $this->success($response, null, 'Sponsor updated.');
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Student Fee Overrides
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /** GET /api/finance/overrides?student_id=&academic_year_id= */
+    public function listOverrides(Request $request, Response $response): never
+    {
+        $studentId = $request->query('student_id')       ?? '';
+        $yearId    = (int)($request->query('academic_year_id') ?? 0);
+        if (!$studentId || !$yearId) $this->error($response, 'student_id and academic_year_id required.', 422);
+        $this->success($response, $this->overrideModel->listForStudent($studentId, $yearId), 'Overrides retrieved.');
+    }
+
+    /** POST /api/finance/overrides */
+    public function createOverride(Request $request, Response $response): never
+    {
+        $data  = $request->body();
+        $actor = $request->param('_auth_user');
+        $errors = ValidationHelper::validate($data, [
+            'student_id'       => 'required|string',
+            'academic_year_id' => 'required|numeric',
+            'fee_type'         => 'required|in:TUITION,REGISTRATION,ADMISSION,HOSTEL,ACADEMIC_DOCUMENT,FINE,REPEAT_MODULE',
+            'amount'           => 'required|numeric',
+        ]);
+        if (!empty($errors)) $this->error($response, 'Validation failed.', 422, $errors);
+
+        $this->overrideModel->upsert([
+            'student_id'       => $data['student_id'],
+            'academic_year_id' => (int)$data['academic_year_id'],
+            'fee_type'         => $data['fee_type'],
+            'amount'           => (float)$data['amount'],
+            'reason'           => $data['reason'] ?? '',
+            'created_by'       => (int)$actor['id'],
+        ]);
+        SystemLogService::log('CREATE', 'FINANCE', "Set fee override for student {$data['student_id']} ({$data['fee_type']}): {$data['amount']}.", null, 'student_fee_override', ['student_id' => $data['student_id'], 'fee_type' => $data['fee_type'], 'amount' => (float) $data['amount']], (array) $actor ?: null);
+        $this->success($response, null, 'Override saved.', 201);
+    }
+
+    /** DELETE /api/finance/overrides/:id */
+    public function deleteOverride(Request $request, Response $response): never
+    {
+        $id = (int)$request->param('id');
+        if (!$this->overrideModel->find($id)) $this->error($response, 'Override not found.', 404);
+        $this->overrideModel->delete($id);
+        $actor = $request->param('_auth_user');
+        SystemLogService::log('DELETE', 'FINANCE', "Deleted fee override ID {$id}.", $id, 'student_fee_override', null, (array) $actor ?: null);
+        $this->success($response, null, 'Override deleted.');
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Bulk Bursary Upload (sponsor-driven)
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /**
+     * POST /api/finance/bursaries/bulk
+     * Accepts student_ids as an array OR a CSV text blob (one regnumber per line).
+     */
+    public function bulkCreateBursaries(Request $request, Response $response): never
+    {
+        $data  = $request->body();
+        $actor = $request->param('_auth_user');
+
+        $errors = ValidationHelper::validate($data, [
+            'academic_year_id'   => 'required|numeric',
+            'bursary_type'       => 'required|string|max:80',
+            'amount_per_student' => 'required|numeric',
+        ]);
+        if (!empty($errors)) $this->error($response, 'Validation failed.', 422, $errors);
+
+        // Accept either an array or a newline/comma-separated text blob
+        if (!empty($data['student_ids']) && is_array($data['student_ids'])) {
+            $studentIds = $data['student_ids'];
+        } elseif (!empty($data['student_ids_text'])) {
+            $studentIds = preg_split('/[\r\n,]+/', (string)$data['student_ids_text'], -1, PREG_SPLIT_NO_EMPTY);
+        } else {
+            $this->error($response, 'student_ids or student_ids_text is required.', 422);
+        }
+
+        $result = $this->service->bulkCreateBursaries(
+            $studentIds,
+            (int)$data['academic_year_id'],
+            (float)$data['amount_per_student'],
+            $data['bursary_type'],
+            !empty($data['sponsor_id']) ? (int)$data['sponsor_id'] : null,
+            (int)$actor['id']
+        );
+
+        SystemLogService::log('CREATE', 'FINANCE', "Bulk bursary for '{$data['bursary_type']}' (year {$data['academic_year_id']}): {$result['created']} created, {$result['skipped']} skipped.", null, 'fee_bursary', ['bursary_type' => $data['bursary_type'], 'amount_per_student' => (float) $data['amount_per_student'], 'created' => $result['created']], (array) $actor ?: null);
+        $this->success($response, $result, "Bulk bursary complete: {$result['created']} created, {$result['skipped']} skipped.");
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -640,6 +1014,7 @@ class FeeController extends BaseController
             (int)$actor['id']
         );
 
+        SystemLogService::log('UPDATE', 'FINANCE', "Saved expense budget for category {$data['category_id']} (year {$data['academic_year_id']}): {$data['amount']}.", null, 'expense_budget', ['category_id' => (int) $data['category_id'], 'amount' => (float) $data['amount']], (array) $actor ?: null);
         $this->success($response, null, 'Budget saved.');
     }
 
@@ -716,6 +1091,7 @@ class FeeController extends BaseController
      */
     public function exportReport(Request $request, Response $response): never
     {
+        $actor  = $request->param('_auth_user');
         $type   = $request->query('type')   ?? 'payments';
         $yearId = (int)($request->query('academic_year_id') ?? 0);
 
@@ -788,6 +1164,7 @@ class FeeController extends BaseController
         fclose($out);
         $csv = ob_get_clean();
 
+        SystemLogService::log('EXPORT', 'FINANCE', "Exported {$type} report" . ($yearId ? " for year {$yearId}" : '') . ".", null, null, ['type' => $type, 'academic_year_id' => $yearId ?: null], (array) $actor ?: null);
         header('Content-Type: text/csv; charset=utf-8');
         header("Content-Disposition: attachment; filename=\"{$filename}\"");
         header('Cache-Control: no-cache');
@@ -819,6 +1196,60 @@ class FeeController extends BaseController
     public function listExpenseCategories(Request $request, Response $response): never
     {
         $this->success($response, $this->expenseCategoryModel->listAll(), 'Categories retrieved.');
+    }
+
+    /** POST /api/finance/expenses/categories */
+    public function createExpenseCategory(Request $request, Response $response): never
+    {
+        $data = $request->body();
+        $errors = ValidationHelper::validate($data, [
+            'name' => 'required|string|max:80'
+        ]);
+        if (!empty($errors)) $this->error($response, 'Validation failed.', 422, $errors);
+
+        $id = $this->expenseCategoryModel->create([
+            'name'        => $data['name'],
+            'description' => $data['description'] ?? null
+        ]);
+
+        $actor = $request->param('_auth_user');
+        SystemLogService::log('CREATE', 'FINANCE', "Created expense category '{$data['name']}' (ID {$id}).", (int) $id, 'expense_category', null, (array) $actor ?: null);
+        $this->success($response, ['id' => (int)$id], 'Category created.', 201);
+    }
+
+    /** PUT /api/finance/expenses/categories/:id */
+    public function updateExpenseCategory(Request $request, Response $response): never
+    {
+        $id   = (int)$request->param('id');
+        $data = $request->body();
+        if (!$this->expenseCategoryModel->find($id)) $this->error($response, 'Category not found.', 404);
+
+        $this->expenseCategoryModel->update($id, array_filter([
+            'name'        => $data['name'] ?? null,
+            'description' => $data['description'] ?? null
+        ], fn($v) => $v !== null));
+
+        $actor = $request->param('_auth_user');
+        SystemLogService::log('UPDATE', 'FINANCE', "Updated expense category ID {$id}.", $id, 'expense_category', null, (array) $actor ?: null);
+        $this->success($response, null, 'Category updated.');
+    }
+
+    /** DELETE /api/finance/expenses/categories/:id */
+    public function deleteExpenseCategory(Request $request, Response $response): never
+    {
+        $id = (int)$request->param('id');
+        $cat = $this->expenseCategoryModel->find($id);
+        if (!$cat) $this->error($response, 'Category not found.', 404);
+
+        // Check if in use
+        $row   = $this->db->fetchOne("SELECT COUNT(*) AS cnt FROM `expenses` WHERE category_id = ?", [$id]);
+        $count = (int)($row['cnt'] ?? 0);
+        if ($count > 0) $this->error($response, 'Cannot delete category that is currently in use by recorded expenses.', 422);
+
+        $this->expenseCategoryModel->delete($id);
+        $actor = $request->param('_auth_user');
+        SystemLogService::log('DELETE', 'FINANCE', "Deleted expense category ID {$id} ('{$cat['name']}').", $id, 'expense_category', null, (array) $actor ?: null);
+        $this->success($response, null, 'Category deleted.');
     }
 
     /** POST /api/finance/expenses */
@@ -853,6 +1284,7 @@ class FeeController extends BaseController
             'recorded_by'      => (int)$actor['id'],
         ]);
 
+        SystemLogService::log('CREATE', 'FINANCE', "Recorded expense '{$data['title']}': {$data['amount']}.", (int) $id, 'expense', ['amount' => (float) $data['amount'], 'category_id' => (int) $data['category_id']], (array) $actor ?: null);
         $this->success($response, ['id' => (int)$id], 'Expense recorded.', 201);
     }
 
@@ -878,6 +1310,8 @@ class FeeController extends BaseController
             'vendor'           => $data['vendor']           ?? null,
         ], fn ($v) => $v !== null));
 
+        $actor = $request->param('_auth_user');
+        SystemLogService::log('UPDATE', 'FINANCE', "Updated expense ID {$id}.", $id, 'expense', null, (array) $actor ?: null);
         $this->success($response, null, 'Expense updated.');
     }
 
@@ -887,6 +1321,8 @@ class FeeController extends BaseController
         $id = (int)$request->param('id');
         if (!$this->expenseModel->find($id)) $this->error($response, 'Expense not found.', 404);
         $this->expenseModel->delete($id);
+        $actor = $request->param('_auth_user');
+        SystemLogService::log('DELETE', 'FINANCE', "Deleted expense ID {$id}.", $id, 'expense', null, (array) $actor ?: null);
         $this->success($response, null, 'Expense deleted.');
     }
 
@@ -905,6 +1341,27 @@ class FeeController extends BaseController
 
         $data = $this->clearanceService->getStatus($studentId, $yearId, $semester);
         $this->success($response, $data, 'Clearance status retrieved.');
+    }
+
+    /**
+     * GET /api/finance/clearance/exam-eligibility
+     * ?student_id=&academic_year_id=&semester=1|2
+     *
+     * Dedicated endpoint for payment-plan-aware exam access check.
+     * Returns per-fee-type breakdown with installment schedule.
+     */
+    public function getExamEligibility(Request $request, Response $response): never
+    {
+        $studentId = $request->query('student_id')       ?? '';
+        $yearId    = (int)($request->query('academic_year_id') ?? 0);
+        $semester  = (int)($request->query('semester') ?? 0);
+
+        if (!$studentId || !$yearId || !in_array($semester, [1, 2], true)) {
+            $this->error($response, 'student_id, academic_year_id, and semester (1 or 2) are required.', 422);
+        }
+
+        $data = $this->clearanceService->getExamEligibility($studentId, $yearId, $semester);
+        $this->success($response, $data, 'Exam eligibility computed.');
     }
 
     /** POST /api/finance/clearance — grant manual clearance */
@@ -927,6 +1384,7 @@ class FeeController extends BaseController
             $data['notes'] ?? ''
         );
 
+        SystemLogService::log('UPDATE', 'FINANCE', "Granted manual clearance to student {$data['student_id']} for year {$data['academic_year_id']}.", null, 'clearance', ['student_id' => $data['student_id'], 'notes' => $data['notes'] ?? ''], (array) $actor ?: null);
         $this->success($response, $record, 'Clearance granted.');
     }
 
@@ -939,6 +1397,7 @@ class FeeController extends BaseController
         if (!$yearId) $this->error($response, 'academic_year_id required.', 422);
 
         $result = $this->clearanceService->runBulkClearance($yearId, (int)$actor['id']);
+        SystemLogService::log('UPDATE', 'FINANCE', "Ran bulk clearance for year {$yearId}: {$result['cleared']} cleared, {$result['not_cleared']} pending.", null, 'clearance', ['year_id' => $yearId, 'cleared' => $result['cleared'], 'not_cleared' => $result['not_cleared']], (array) $actor ?: null);
         $this->success($response, $result, "Bulk clearance complete: {$result['cleared']} cleared, {$result['not_cleared']} pending.");
     }
 
@@ -951,5 +1410,36 @@ class FeeController extends BaseController
         $perPage = max(1, min(200, (int)($request->query('per_page') ?? 50)));
 
         $this->success($response, $this->clearanceModel->getBulkForYear($yearId, $page, $perPage), 'Clearance list retrieved.');
+    }
+
+    /**
+     * GET /api/finance/clearance/report
+     * ?academic_year_id=&fee_structure_id=&period=full_year|semester_1|semester_2|installment_N
+     */
+    public function getClearanceReport(Request $request, Response $response): never
+    {
+        $yearId          = (int)($request->query('academic_year_id')  ?? 0);
+        $feeStructureId  = (int)($request->query('fee_structure_id')  ?? 0);
+        $period          = trim($request->query('period') ?? 'full_year');
+
+        if (!$yearId || !$feeStructureId) {
+            $this->error($response, 'academic_year_id and fee_structure_id are required.', 422);
+        }
+
+        // Validate period format
+        $validPeriod = $period === 'full_year'
+            || preg_match('/^semester_[12]$/', $period)
+            || preg_match('/^installment_\d+$/', $period);
+        if (!$validPeriod) {
+            $this->error($response, 'Invalid period. Use full_year, semester_1, semester_2, or installment_N.', 422);
+        }
+
+        try {
+            $data = $this->clearanceService->getReport($yearId, $feeStructureId, $period);
+        } catch (\InvalidArgumentException $e) {
+            $this->error($response, $e->getMessage(), 404);
+        }
+
+        $this->success($response, $data, 'Clearance report generated.');
     }
 }

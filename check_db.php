@@ -1,31 +1,31 @@
 <?php
-require 'backend/core/Database.php';
+require_once __DIR__ . '/backend/vendor/autoload.php';
 
-// Mock getenv or use .env if possible
-function loadEnv($path) {
-    if (!file_exists($path)) return;
-    $lines = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-    foreach ($lines as $line) {
-        if (strpos(trim($line), '#') === 0) continue;
-        list($name, $value) = explode('=', $line, 2);
-        $_ENV[trim($name)] = trim($value);
-        putenv(trim($name)."=".trim($value));
-    }
-}
+// Assuming there's a config file or I can just use the ENV
+$socket = '/Applications/MAMP/tmp/mysql/mysql.sock';
+$db   = 'curac_save';
+$user = 'root';
+$pass = 'root'; 
+$charset = 'utf8mb4';
 
-loadEnv(__DIR__ . '/backend/.env');
-
-try {
-    $db = Core\Database::getInstance();
-    $db->query("SELECT 1 FROM intakes LIMIT 1");
-    echo "INTAKES_EXISTS\n";
-} catch (Exception $e) {
-    echo "INTAKES_MISSING: " . $e->getMessage() . "\n";
-}
+$dsn = "mysql:unix_socket=$socket;dbname=$db;charset=$charset";
+$options = [
+    PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+    PDO::ATTR_EMULATE_PREPARES   => false,
+];
 
 try {
-    $db->query("SELECT email_verified FROM student_applications LIMIT 1");
-    echo "COLUMNS_EXISTS\n";
-} catch (Exception $e) {
-    echo "COLUMNS_MISSING: " . $e->getMessage() . "\n";
+     $pdo = new PDO($dsn, $user, $pass, $options);
+     
+     echo "Checking 'departements' table...\n";
+     $stmt = $pdo->query("SHOW CREATE TABLE `departements`");
+     print_r($stmt->fetch());
+     
+     echo "\nChecking 'fee_structures' table...\n";
+     $stmt = $pdo->query("SHOW CREATE TABLE `fee_structures`");
+     print_r($stmt->fetch());
+
+} catch (\PDOException $e) {
+     echo "Error: " . $e->getMessage();
 }

@@ -10,6 +10,7 @@ use App\Models\StudentApplicationModel;
 use App\Models\ApplicationDocumentModel;
 use App\Models\ApplicationStatusLogModel;
 use App\Services\ApplicationService;
+use App\Services\SystemLogService;
 use App\Helpers\ValidationHelper;
 
 class ApplicationAdminController extends BaseController
@@ -138,6 +139,7 @@ class ApplicationAdminController extends BaseController
 
         $this->service->logStatusChange($id, $from, $to, $actorId, 'admin', $data['notes'] ?? null);
 
+        SystemLogService::log('UPDATE', 'ADMISSIONS', "Application ID {$id} status changed from '{$from}' to '{$to}'.", $id, 'student_application', ['from' => $from, 'to' => $to, 'notes' => $data['notes'] ?? null], (array) $authUser ?: null);
         $this->success($response, ['status' => $to], 'Application status updated.');
     }
 
@@ -172,6 +174,7 @@ class ApplicationAdminController extends BaseController
 
         $this->appModel->update($id, ['notes' => $combined]);
 
+        SystemLogService::log('UPDATE', 'ADMISSIONS', "Added internal note to application ID {$id}.", $id, 'student_application', null, (array) $authUser ?: null);
         $this->success($response, ['notes' => $combined], 'Note added successfully.');
     }
     /**

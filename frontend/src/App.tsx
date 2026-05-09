@@ -1,298 +1,440 @@
-import { Routes, Route } from 'react-router-dom'
-import { useEffect, Suspense, lazy } from 'react'
-import MainLayout           from '@/layouts/MainLayout'
-import ProtectedRoute       from '@/components/layout/ProtectedRoute'
-import ErrorBoundary        from '@/components/layout/ErrorBoundary'
-import { useThemeStore }    from '@/store/themeStore'
-import { PERMISSIONS }      from '@/constants'
+import { Routes, Route } from "react-router-dom";
+import { useEffect, Suspense } from "react";
+import MainLayout from "@/layouts/MainLayout";
+import ProtectedRoute from "@/components/layout/ProtectedRoute";
+import ErrorBoundary from "@/components/layout/ErrorBoundary";
+import { useThemeStore } from "@/store/themeStore";
+import { PERMISSIONS } from "@/constants";
 
-// Lazy loaded pages
-const WelcomePage          = lazy(() => import('@/pages/WelcomePage'))
-const HomePage             = lazy(() => import('@/pages/HomePage'))
-const AdminDashboardPage   = lazy(() => import('@/pages/admin/AdminDashboardPage'))
-const ProfilePage          = lazy(() => import('@/pages/ProfilePage'))
-const LoginPage            = lazy(() => import('@/pages/LoginPage'))
-const RegisterPage         = lazy(() => import('@/pages/RegisterPage'))
-const VerifyOtpPage        = lazy(() => import('@/pages/VerifyOtpPage'))
-const ForgotPasswordPage   = lazy(() => import('@/pages/ForgotPasswordPage'))
-const NotFoundPage         = lazy(() => import('@/pages/NotFoundPage'))
-const RolesManagementPage  = lazy(() => import('@/pages/admin/RolesManagementPage'))
-const PermissionsManagementPage = lazy(() => import('@/pages/admin/PermissionsManagementPage'))
-const UsersManagementPage = lazy(() => import('@/pages/admin/UsersManagementPage'))
+// ── Pages (direct imports — no lazy() to avoid chunk-load failures on cPanel) ──
+import WelcomePage from "@/pages/WelcomePage";
+import HomePage from "@/pages/HomePage";
+import AdminDashboardPage from "@/pages/admin/AdminDashboardPage";
+import ProfilePage from "@/pages/ProfilePage";
+import LoginPage from "@/pages/LoginPage";
+import RegisterPage from "@/pages/RegisterPage";
+import VerifyOtpPage from "@/pages/VerifyOtpPage";
+import ForgotPasswordPage from "@/pages/ForgotPasswordPage";
+import NotFoundPage from "@/pages/NotFoundPage";
+import RolesManagementPage from "@/pages/admin/RolesManagementPage";
+import PermissionsManagementPage from "@/pages/admin/PermissionsManagementPage";
+import UsersManagementPage from "@/pages/admin/UsersManagementPage";
 
 // University Modules
-const StudentsPage              = lazy(() => import('@/pages/StudentsPage'))
-const StudentDetailsPage        = lazy(() => import('@/pages/StudentDetailsPage'))
-const AttendancePage            = lazy(() => import('@/pages/AttendancePage'))
+import StudentsPage from "@/pages/StudentsPage";
+import StudentDetailsPage from "@/pages/StudentDetailsPage";
+import AttendancePage from "@/pages/AttendancePage";
 
 // HR Management
-const StaffListPage             = lazy(() => import('@/pages/hr/StaffListPage'))
-const StaffDetailPage           = lazy(() => import('@/pages/hr/StaffDetailPage'))
-const HrAttendancePage          = lazy(() => import('@/pages/hr/HrAttendancePage'))
-const HrDocumentsPage           = lazy(() => import('@/pages/hr/HrDocumentsPage'))
-const PayrollPage               = lazy(() => import('@/pages/hr/PayrollPage'))
-const PayrollSlipPage           = lazy(() => import('@/pages/hr/PayrollSlipPage'))
-const PaymentsPage              = lazy(() => import('@/pages/hr/PaymentsPage'))
-const HrSettingsPage            = lazy(() => import('@/pages/hr/HrSettingsPage'))
-const LeavePage                 = lazy(() => import('@/pages/hr/LeavePage'))
-const AcademicSettingsPage      = lazy(() => import('@/pages/academic/AcademicSettingsPage'))
-const AcademicsManagementPage   = lazy(() => import('@/pages/academic/AcademicsManagementPage'))
+import StaffListPage from "@/pages/hr/StaffListPage";
+import StaffDetailPage from "@/pages/hr/StaffDetailPage";
+import HrAttendancePage from "@/pages/hr/HrAttendancePage";
+import HrDocumentsPage from "@/pages/hr/HrDocumentsPage";
+import PayrollPage from "@/pages/hr/PayrollPage";
+import PayrollSlipPage from "@/pages/hr/PayrollSlipPage";
+import PaymentsPage from "@/pages/hr/PaymentsPage";
+import HrSettingsPage from "@/pages/hr/HrSettingsPage";
+import LeavePage from "@/pages/hr/LeavePage";
+
+// Academic
+import AcademicSettingsPage from "@/pages/academic/AcademicSettingsPage";
+import AcademicsManagementPage from "@/pages/academic/AcademicsManagementPage";
 
 // Admissions / Student Management Module
-const ApplyPage                 = lazy(() => import('@/pages/public/ApplyPage'))
-const TrackApplicationPage      = lazy(() => import('@/pages/public/TrackApplicationPage'))
-const AdmissionsHub             = lazy(() => import('@/pages/admin/admissions/AdmissionsHub'))
-const ApplicationsListPage      = lazy(() => import('@/pages/admin/admissions/ApplicationsListPage'))
-const ApplicationDetailPage     = lazy(() => import('@/pages/admin/admissions/ApplicationDetailPage'))
-const VerificationsPage         = lazy(() => import('@/pages/admin/admissions/VerificationsPage'))
-const DocumentValidationCarousel = lazy(() => import('@/pages/admin/admissions/DocumentValidationCarousel'))
-const MeritPage                 = lazy(() => import('@/pages/admin/admissions/MeritPage'))
-const OffersPage                = lazy(() => import('@/pages/admin/admissions/OffersPage'))
-const RequirementsPage          = lazy(() => import('@/pages/admin/admissions/RequirementsPage'))
-const DocumentTypesPage         = lazy(() => import('@/pages/admin/admissions/DocumentTypesPage'))
-const IntakesManagementPage     = lazy(() => import('@/pages/admin/admissions/IntakesManagementPage'))
-const ApplicantOverviewPage   = lazy(() => import('@/pages/applicant/ApplicantOverviewPage'))
-const ApplicantDocumentsPage  = lazy(() => import('@/pages/applicant/ApplicantDocumentsPage'))
+import ApplyPage from "@/pages/public/ApplyPage";
+import TrackApplicationPage from "@/pages/public/TrackApplicationPage";
+import AdmissionsHub from "@/pages/admin/admissions/AdmissionsHub";
+import ApplicationsListPage from "@/pages/admin/admissions/ApplicationsListPage";
+import ApplicationDetailPage from "@/pages/admin/admissions/ApplicationDetailPage";
+import VerificationsPage from "@/pages/admin/admissions/VerificationsPage";
+import DocumentValidationCarousel from "@/pages/admin/admissions/DocumentValidationCarousel";
+import MeritPage from "@/pages/admin/admissions/MeritPage";
+import OffersPage from "@/pages/admin/admissions/OffersPage";
+import RequirementsPage from "@/pages/admin/admissions/RequirementsPage";
+import DocumentTypesPage from "@/pages/admin/admissions/DocumentTypesPage";
+import IntakesManagementPage from "@/pages/admin/admissions/IntakesManagementPage";
+import ApplicantOverviewPage from "@/pages/applicant/ApplicantOverviewPage";
+import ApplicantDocumentsPage from "@/pages/applicant/ApplicantDocumentsPage";
 
-// Modules Management Module
-const ModulesHub                   = lazy(() => import('@/pages/modules/ModulesHub'))
-const ModulesCatalogPage           = lazy(() => import('@/pages/modules/ModulesCatalogPage'))
-const ModulesSchedulePage          = lazy(() => import('@/pages/modules/ModulesSchedulePage'))
-const ModulesAssignmentsPage       = lazy(() => import('@/pages/modules/ModulesAssignmentsPage'))
-const ModulesRegistrationAdminPage = lazy(() => import('@/pages/modules/ModulesRegistrationAdminPage'))
-const ModulesMarksPage             = lazy(() => import('@/pages/modules/ModulesMarksPage'))
-const MyRegistrationsPage          = lazy(() => import('@/pages/modules/MyRegistrationsPage'))
+// Modules Management
+import ModulesHub from "@/pages/modules/ModulesHub";
+import ModulesCatalogPage from "@/pages/modules/ModulesCatalogPage";
+import ModulesSchedulePage from "@/pages/modules/ModulesSchedulePage";
+import ModulesAssignmentsPage from "@/pages/modules/ModulesAssignmentsPage";
+import ModulesRegistrationAdminPage from "@/pages/modules/ModulesRegistrationAdminPage";
+import ModulesMarksPage from "@/pages/modules/ModulesMarksPage";
+import MyRegistrationsPage from "@/pages/modules/MyRegistrationsPage";
 
-// Placeholders still in use for modules not yet wired up
-const ProgramsPage   = lazy(() => import('@/pages/placeholders/ProgramsPage'))
-const FinanceHub          = lazy(() => import('@/pages/finance/FinanceHub'))
-const FinanceOverviewPage = lazy(() => import('@/pages/finance/FinanceOverviewPage'))
-const StudentLedgerPage    = lazy(() => import('@/pages/finance/StudentLedgerPage'))
-const StudentBillingPage   = lazy(() => import('@/pages/finance/StudentBillingPage'))
-const PaymentApprovalsPage = lazy(() => import('@/pages/finance/PaymentApprovalsPage'))
-const FeeStructuresPage    = lazy(() => import('@/pages/finance/FeeStructuresPage'))
-const BursariesPage       = lazy(() => import('@/pages/finance/BursariesPage'))
-const ExpensesPage        = lazy(() => import('@/pages/finance/ExpensesPage'))
-const AccountBalancePage  = lazy(() => import('@/pages/finance/AccountBalancePage'))
-const ClearancePage       = lazy(() => import('@/pages/finance/ClearancePage'))
-const RevenueReportPage   = lazy(() => import('@/pages/finance/RevenueReportPage'))
-const ReceiptPdfPage      = lazy(() => import('@/pages/finance/ReceiptPdfPage'))
-const ExamsPage      = lazy(() => import('@/pages/placeholders/ExamsPage'))
-const LogsPage       = lazy(() => import('@/pages/placeholders/LogsPage'))
-const ComingSoonPage = lazy(() => import('@/pages/placeholders/ComingSoonPage'))
+// Placeholders
+import ProgramsPage from "@/pages/placeholders/ProgramsPage";
+import ExamsPage from "@/pages/placeholders/ExamsPage";
+import LogsPage from "@/pages/placeholders/LogsPage";
+import ComingSoonPage from "@/pages/placeholders/ComingSoonPage";
 
-// A graceful loading fallback for route transitions
-const CustomLoader = () => (
-  <div className="min-h-screen flex items-center justify-center bg-[rgb(var(--bg-app))] dark:bg-ink-900 transition-colors">
-    <div className="flex flex-col items-center gap-4">
-      <div className="w-10 h-10 border-4 border-primary-100 border-t-primary-600 rounded-full animate-spin" />
-      <p className="text-ink-500 text-sm font-medium animate-pulse-soft">Loading CUR-MIS…</p>
-    </div>
-  </div>
-)
+// Finance
+import FinanceHub from "@/pages/finance/FinanceHub";
+import FinanceOverviewPage from "@/pages/finance/FinanceOverviewPage";
+import StudentLedgerPage from "@/pages/finance/StudentLedgerPage";
+import StudentBillingPage from "@/pages/finance/StudentBillingPage";
+import PaymentApprovalsPage from "@/pages/finance/PaymentApprovalsPage";
+import FeeStructuresPage from "@/pages/finance/FeeStructuresPage";
+import BursariesPage from "@/pages/finance/BursariesPage";
+import ExpensesPage from "@/pages/finance/ExpensesPage";
+import AccountBalancePage from "@/pages/finance/AccountBalancePage";
+import ClearancePage from "@/pages/finance/ClearancePage";
+import RevenueReportPage from "@/pages/finance/RevenueReportPage";
+import RefundsPage from "@/pages/finance/RefundsPage";
+import SponsorsPage from "@/pages/finance/SponsorsPage";
+import ExpenseCategoriesPage from "@/pages/finance/ExpenseCategoriesPage";
+import ReceiptPdfPage from "@/pages/finance/ReceiptPdfPage";
+import MyFinancePage from "@/pages/finance/MyFinancePage";
 
 function App() {
-  const initTheme = useThemeStore((state) => state.initTheme)
+  const initTheme = useThemeStore((state) => state.initTheme);
 
   useEffect(() => {
-    initTheme()
-  }, [initTheme])
+    initTheme();
+  }, [initTheme]);
 
   return (
     <ErrorBoundary>
-      <Suspense fallback={<CustomLoader />}>
+      <Suspense fallback={null}>
         <Routes>
           {/* Public */}
-          <Route path="/login"           element={<LoginPage />} />
-          <Route path="/register"        element={<RegisterPage />} />
-          <Route path="/verify-otp"      element={<VerifyOtpPage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/verify-otp" element={<VerifyOtpPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-          {/* Public admissions portal — no auth required */}
-          <Route path="/apply"           element={<ApplyPage />} />
-          <Route path="/apply/track"     element={<TrackApplicationPage />} />
+          <Route path="/apply" element={<ApplyPage />} />
+          <Route path="/apply/track" element={<TrackApplicationPage />} />
 
           {/* Protected — requires valid JWT in Zustand store */}
           <Route element={<ProtectedRoute />}>
             <Route element={<MainLayout />}>
-              <Route path="/"          element={<WelcomePage />} />
-              <Route path="/welcome"   element={<WelcomePage />} />
+              <Route path="/" element={<WelcomePage />} />
+              <Route path="/welcome" element={<WelcomePage />} />
               <Route path="/dashboard" element={<AdminDashboardPage />} />
-              <Route path="/home"      element={<HomePage />} />
+              <Route path="/home" element={<HomePage />} />
               <Route path="/profile" element={<ProfilePage />} />
-              
-              {/* Admin Routes with Permissions Protection */}
-              <Route element={<ProtectedRoute requiredPermissions={PERMISSIONS.MANAGE_ROLES} />}>
+
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={PERMISSIONS.MANAGE_ROLES}
+                  />
+                }
+              >
                 <Route path="/roles" element={<RolesManagementPage />} />
               </Route>
-              
-              <Route element={<ProtectedRoute requiredPermissions={PERMISSIONS.MANAGE_PERMISSIONS} />}>
-                <Route path="/permissions" element={<PermissionsManagementPage />} />
+
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={PERMISSIONS.MANAGE_PERMISSIONS}
+                  />
+                }
+              >
+                <Route
+                  path="/permissions"
+                  element={<PermissionsManagementPage />}
+                />
               </Route>
 
-              <Route element={<ProtectedRoute requiredPermissions={PERMISSIONS.MANAGE_USERS} />}>
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={PERMISSIONS.MANAGE_USERS}
+                  />
+                }
+              >
                 <Route path="/users" element={<UsersManagementPage />} />
               </Route>
 
-              {/* University Modules */}
-              <Route element={<ProtectedRoute requiredPermissions={PERMISSIONS.VIEW_STUDENTS} />}>
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={PERMISSIONS.VIEW_STUDENTS}
+                  />
+                }
+              >
                 <Route path="/students" element={<StudentsPage />} />
                 <Route path="/students/:id" element={<StudentDetailsPage />} />
               </Route>
 
-              {/* HR Management — view */}
-              <Route element={<ProtectedRoute requiredPermissions={PERMISSIONS.VIEW_HR_EMPLOYEES} />}>
-                <Route path="/hr/staff"          element={<StaffListPage />} />
-                <Route path="/hr/staff/:id"      element={<StaffDetailPage />} />
-                <Route path="/hr/attendance"     element={<HrAttendancePage />} />
-                <Route path="/hr/documents"      element={<HrDocumentsPage />} />
-                <Route path="/hr/payroll"        element={<PayrollPage />} />
-                <Route path="/hr/payroll/:id"    element={<PayrollSlipPage />} />
-                <Route path="/hr/payments"       element={<PaymentsPage />} />
-                <Route path="/hr/leave"          element={<LeavePage />} />
-              </Route>
-              {/* HR Management — manage only */}
-              <Route element={<ProtectedRoute requiredPermissions={PERMISSIONS.MANAGE_HR_EMPLOYEES} />}>
-                <Route path="/hr/settings"       element={<HrSettingsPage />} />
-              </Route>
-
-              {/* Academic Settings — years & terms */}
-              <Route element={<ProtectedRoute requiredPermissions={[
-                PERMISSIONS.MANAGE_ACADEMIC_YEARS,
-                PERMISSIONS.MANAGE_ACADEMIC_TERMS,
-                PERMISSIONS.VIEW_SYSTEM_BASICS,
-              ]} />}>
-                <Route path="/academic/settings" element={<AcademicSettingsPage />} />
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={PERMISSIONS.VIEW_HR_EMPLOYEES}
+                  />
+                }
+              >
+                <Route path="/hr/staff" element={<StaffListPage />} />
+                <Route path="/hr/staff/:id" element={<StaffDetailPage />} />
+                <Route path="/hr/attendance" element={<HrAttendancePage />} />
+                <Route path="/hr/documents" element={<HrDocumentsPage />} />
+                <Route path="/hr/payroll" element={<PayrollPage />} />
+                <Route path="/hr/payroll/:id" element={<PayrollSlipPage />} />
+                <Route path="/hr/payments" element={<PaymentsPage />} />
+                <Route path="/hr/leave" element={<LeavePage />} />
               </Route>
 
-              {/* Academics Management — degrees, schools, departments, modules, etc. */}
-              <Route element={<ProtectedRoute requiredPermissions={[
-                PERMISSIONS.MANAGE_ACADEMICS,
-                PERMISSIONS.MANAGE_DEGREES,
-                PERMISSIONS.MANAGE_FACILITIES,
-                PERMISSIONS.MANAGE_DEPARTMENTS,
-                PERMISSIONS.MANAGE_OPTIONS,
-                PERMISSIONS.MANAGE_LEVELS,
-                PERMISSIONS.MANAGE_SCHOOLS,
-                PERMISSIONS.MANAGE_LEAVE_TYPES,
-              ]} />}>
-                <Route path="/academic/management" element={<AcademicsManagementPage />} />
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={PERMISSIONS.MANAGE_HR_EMPLOYEES}
+                  />
+                }
+              >
+                <Route path="/hr/settings" element={<HrSettingsPage />} />
               </Route>
 
-              {/* Admissions hub (admins) */}
-              <Route element={<ProtectedRoute requiredPermissions={[
-                PERMISSIONS.MANAGE_STUDENT_APPLICATIONS,
-                PERMISSIONS.VERIFY_DOCUMENTS,
-                PERMISSIONS.MANAGE_ADMISSIONS,
-                PERMISSIONS.MANAGE_ADMISSION_REQUIREMENTS,
-              ]} />}>
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={[
+                      PERMISSIONS.MANAGE_ACADEMIC_YEARS,
+                      PERMISSIONS.MANAGE_ACADEMIC_TERMS,
+                      PERMISSIONS.VIEW_SYSTEM_BASICS,
+                    ]}
+                  />
+                }
+              >
+                <Route
+                  path="/academic/settings"
+                  element={<AcademicSettingsPage />}
+                />
+              </Route>
+
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={[
+                      PERMISSIONS.MANAGE_ACADEMICS,
+                      PERMISSIONS.MANAGE_DEGREES,
+                      PERMISSIONS.MANAGE_FACILITIES,
+                      PERMISSIONS.MANAGE_DEPARTMENTS,
+                      PERMISSIONS.MANAGE_OPTIONS,
+                      PERMISSIONS.MANAGE_LEVELS,
+                      PERMISSIONS.MANAGE_SCHOOLS,
+                      PERMISSIONS.MANAGE_LEAVE_TYPES,
+                    ]}
+                  />
+                }
+              >
+                <Route
+                  path="/academic/management"
+                  element={<AcademicsManagementPage />}
+                />
+              </Route>
+
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={[
+                      PERMISSIONS.MANAGE_STUDENT_APPLICATIONS,
+                      PERMISSIONS.VERIFY_DOCUMENTS,
+                      PERMISSIONS.MANAGE_ADMISSIONS,
+                      PERMISSIONS.MANAGE_ADMISSION_REQUIREMENTS,
+                    ]}
+                  />
+                }
+              >
                 <Route path="/admin/admissions" element={<AdmissionsHub />}>
-                  <Route index                   element={<ApplicationsListPage />} />
-                  <Route path="applications"     element={<ApplicationsListPage />} />
-                  <Route path="applications/:id" element={<ApplicationDetailPage />} />
-                  <Route path="verifications"    element={<VerificationsPage />} />
-                  <Route path="verifications/:id/validate" element={<DocumentValidationCarousel />} />
-                  <Route path="merit"            element={<MeritPage />} />
-                  <Route path="offers"           element={<OffersPage />} />
-                  <Route path="requirements"     element={<RequirementsPage />} />
-                  <Route path="document-types"   element={<DocumentTypesPage />} />
-                  <Route path="intakes"          element={<IntakesManagementPage />} />
+                  <Route index element={<ApplicationsListPage />} />
+                  <Route
+                    path="applications"
+                    element={<ApplicationsListPage />}
+                  />
+                  <Route
+                    path="applications/:id"
+                    element={<ApplicationDetailPage />}
+                  />
+                  <Route path="verifications" element={<VerificationsPage />} />
+                  <Route
+                    path="verifications/:id/validate"
+                    element={<DocumentValidationCarousel />}
+                  />
+                  <Route path="merit" element={<MeritPage />} />
+                  <Route path="offers" element={<OffersPage />} />
+                  <Route path="requirements" element={<RequirementsPage />} />
+                  <Route
+                    path="document-types"
+                    element={<DocumentTypesPage />}
+                  />
+                  <Route path="intakes" element={<IntakesManagementPage />} />
                 </Route>
               </Route>
 
-              {/* Applicant portal — role-scoped to the `applicant` role only.
-                  Admins with ACCESS_APPLICANT_PORTAL still can't land here,
-                  because they have no applicant profile to render. */}
-              <Route element={<ProtectedRoute
-                requiredRoles="applicant"
-                requiredPermissions={[PERMISSIONS.ACCESS_APPLICANT_PORTAL]}
-              />}>
-                <Route path="/applicant"           element={<ApplicantOverviewPage />} />
-                <Route path="/applicant/documents" element={<ApplicantDocumentsPage />} />
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredRoles="applicant"
+                    requiredPermissions={[PERMISSIONS.ACCESS_APPLICANT_PORTAL]}
+                  />
+                }
+              >
+                <Route path="/applicant" element={<ApplicantOverviewPage />} />
+                <Route
+                  path="/applicant/documents"
+                  element={<ApplicantDocumentsPage />}
+                />
               </Route>
 
-              {/* Modules Management Module */}
-              <Route element={<ProtectedRoute requiredPermissions={[
-                PERMISSIONS.MANAGE_MODULES,
-                PERMISSIONS.MANAGE_MODULE_SCHEDULES,
-                PERMISSIONS.MANAGE_MODULE_ASSIGNMENTS,
-                PERMISSIONS.MANAGE_MODULE_REGISTRATIONS,
-                PERMISSIONS.VIEW_MODULE_MARKS,
-                PERMISSIONS.RECORD_MODULE_MARKS,
-                PERMISSIONS.MANAGE_MODULE_MARKS,
-              ]} />}>
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={[
+                      PERMISSIONS.MANAGE_MODULES,
+                      PERMISSIONS.MANAGE_MODULE_SCHEDULES,
+                      PERMISSIONS.MANAGE_MODULE_ASSIGNMENTS,
+                      PERMISSIONS.MANAGE_MODULE_REGISTRATIONS,
+                      PERMISSIONS.VIEW_MODULE_MARKS,
+                      PERMISSIONS.RECORD_MODULE_MARKS,
+                      PERMISSIONS.MANAGE_MODULE_MARKS,
+                    ]}
+                  />
+                }
+              >
                 <Route path="/modules" element={<ModulesHub />}>
-                  <Route index                  element={<ModulesCatalogPage />} />
-                  <Route path="catalog"         element={<ModulesCatalogPage />} />
-                  <Route path="scheduling"      element={<ModulesSchedulePage />} />
-                  <Route path="assignments"     element={<ModulesAssignmentsPage />} />
-                  <Route path="registrations"   element={<ModulesRegistrationAdminPage />} />
-                  <Route path="marks"           element={<ModulesMarksPage />} />
+                  <Route index element={<ModulesCatalogPage />} />
+                  <Route path="catalog" element={<ModulesCatalogPage />} />
+                  <Route path="scheduling" element={<ModulesSchedulePage />} />
+                  <Route
+                    path="assignments"
+                    element={<ModulesAssignmentsPage />}
+                  />
+                  <Route
+                    path="registrations"
+                    element={<ModulesRegistrationAdminPage />}
+                  />
+                  <Route path="marks" element={<ModulesMarksPage />} />
                 </Route>
               </Route>
 
-              {/* Student self-service — My modules */}
-              <Route element={<ProtectedRoute requiredPermissions={PERMISSIONS.VIEW_MY_MODULES} />}>
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={PERMISSIONS.VIEW_MY_MODULES}
+                  />
+                }
+              >
                 <Route path="/my-modules" element={<MyRegistrationsPage />} />
               </Route>
 
-              <Route element={<ProtectedRoute requiredPermissions={PERMISSIONS.MANAGE_ACADEMICS} />}>
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={PERMISSIONS.ACCESS_STUDENT_PORTAL}
+                  />
+                }
+              >
+                <Route path="/my-finance" element={<MyFinancePage />} />
+              </Route>
+
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={PERMISSIONS.MANAGE_ACADEMICS}
+                  />
+                }
+              >
                 <Route path="/programs" element={<ProgramsPage />} />
               </Route>
 
-              <Route element={<ProtectedRoute requiredPermissions={[PERMISSIONS.VIEW_FINANCE, PERMISSIONS.MANAGE_FINANCE]} />}>
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={[
+                      PERMISSIONS.VIEW_FINANCE,
+                      PERMISSIONS.MANAGE_FINANCE,
+                    ]}
+                  />
+                }
+              >
                 <Route path="/finance" element={<FinanceHub />}>
                   <Route index element={<FinanceOverviewPage />} />
                   <Route path="billing" element={<StudentBillingPage />} />
                   <Route path="billing/*" element={<StudentLedgerPage />} />
-
-                  <Route path="approvals"  element={<PaymentApprovalsPage />} />
+                  <Route path="approvals" element={<PaymentApprovalsPage />} />
                   <Route path="structures" element={<FeeStructuresPage />} />
-                  <Route path="bursaries"  element={<BursariesPage />} />
-                  <Route path="expenses"   element={<ExpensesPage />} />
-                  <Route path="balance"    element={<AccountBalancePage />} />
-                  <Route path="clearance"  element={<ClearancePage />} />
-                  <Route path="reports"    element={<RevenueReportPage />} />
+                  <Route path="bursaries" element={<BursariesPage />} />
+                  <Route path="sponsors" element={<SponsorsPage />} />
+                  <Route path="expenses" element={<ExpensesPage />} />
+                  <Route path="expenses/categories" element={<ExpenseCategoriesPage />} />
+                  <Route path="balance" element={<AccountBalancePage />} />
+                  <Route path="clearance" element={<ClearancePage />} />
+                  <Route path="refunds" element={<RefundsPage />} />
+                  <Route path="reports" element={<RevenueReportPage />} />
                 </Route>
               </Route>
 
-              <Route element={<ProtectedRoute requiredPermissions={PERMISSIONS.MANAGE_EXAMS} />}>
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={PERMISSIONS.MANAGE_EXAMS}
+                  />
+                }
+              >
                 <Route path="/exams" element={<ExamsPage />} />
               </Route>
 
-              <Route element={<ProtectedRoute requiredPermissions={PERMISSIONS.VIEW_SYSTEM_LOGS} />}>
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={PERMISSIONS.VIEW_SYSTEM_LOGS}
+                  />
+                }
+              >
                 <Route path="/logs" element={<LogsPage />} />
               </Route>
 
-              {/* Spik-reference placeholder routes — all authenticated users see them. */}
-              <Route path="/students/new"     element={<ComingSoonPage />} />
-              <Route path="/students/alumni"  element={<ComingSoonPage />} />
-              <Route path="/teachers"         element={<ComingSoonPage />} />
+              <Route path="/students/new" element={<ComingSoonPage />} />
+              <Route path="/students/alumni" element={<ComingSoonPage />} />
+              <Route path="/teachers" element={<ComingSoonPage />} />
               <Route path="/teachers/schedules" element={<ComingSoonPage />} />
-              <Route path="/library"          element={<ComingSoonPage />} />
-              <Route path="/account/billing"  element={<ComingSoonPage />} />
+              <Route path="/library" element={<ComingSoonPage />} />
+              <Route path="/account/billing" element={<ComingSoonPage />} />
               <Route path="/account/salaries" element={<ComingSoonPage />} />
-              <Route path="/class"            element={<ComingSoonPage />} />
-              <Route path="/subject"          element={<ComingSoonPage />} />
-              <Route path="/routine"          element={<ComingSoonPage />} />
+              <Route path="/class" element={<ComingSoonPage />} />
+              <Route path="/subject" element={<ComingSoonPage />} />
+              <Route path="/routine" element={<ComingSoonPage />} />
 
-              <Route element={<ProtectedRoute requiredPermissions={[
-                PERMISSIONS.VIEW_ATTENDANCE,
-                PERMISSIONS.RECORD_ATTENDANCE,
-                PERMISSIONS.MANAGE_ATTENDANCE,
-              ]} />}>
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={[
+                      PERMISSIONS.VIEW_ATTENDANCE,
+                      PERMISSIONS.RECORD_ATTENDANCE,
+                      PERMISSIONS.MANAGE_ATTENDANCE,
+                    ]}
+                  />
+                }
+              >
                 <Route path="/attendance" element={<AttendancePage />} />
               </Route>
 
-              <Route path="/exams/results"    element={<ComingSoonPage />} />
-              <Route path="/notice"           element={<ComingSoonPage />} />
-              <Route path="/transport"        element={<ComingSoonPage />} />
-              <Route path="/hostel"           element={<ComingSoonPage />} />
+              <Route path="/exams/results" element={<ComingSoonPage />} />
+              <Route path="/notice" element={<ComingSoonPage />} />
+              <Route path="/transport" element={<ComingSoonPage />} />
+              <Route path="/hostel" element={<ComingSoonPage />} />
             </Route>
           </Route>
 
-          {/* Finance receipt — standalone (no sidebar) for clean printing */}
-          <Route element={<ProtectedRoute requiredPermissions={[PERMISSIONS.VIEW_FINANCE, PERMISSIONS.MANAGE_FINANCE]} />}>
-            <Route path="/finance/receipt/:paymentId" element={<ReceiptPdfPage />} />
+          {/* Finance receipt — standalone for clean printing */}
+          <Route
+            element={
+              <ProtectedRoute
+                requiredPermissions={[
+                  PERMISSIONS.VIEW_FINANCE,
+                  PERMISSIONS.MANAGE_FINANCE,
+                ]}
+              />
+            }
+          >
+            <Route
+              path="/finance/receipt/:paymentId"
+              element={<ReceiptPdfPage />}
+            />
           </Route>
 
           {/* Catch-all */}
@@ -300,7 +442,7 @@ function App() {
         </Routes>
       </Suspense>
     </ErrorBoundary>
-  )
+  );
 }
 
-export default App
+export default App;

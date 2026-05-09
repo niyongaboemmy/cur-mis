@@ -23,10 +23,20 @@ import type {
   SaveBudgetPayload,
   ClearanceResult,
   StudentClearance,
+  ClearanceReport,
   IncomeProjection,
   AccountBalance,
   BillingSummary,
   MonthlyCollection,
+  Sponsor,
+  CreateSponsorPayload,
+  StudentFeeOverride,
+  CreateOverridePayload,
+  FeeRefund,
+  CreateRefundPayload,
+  RefundStatus,
+  RefundCategory,
+  CreateBursaryBulkPayload,
 } from "@/types/finance";
 
 // ─── Fee Structures ───────────────────────────────────────────────────────────
@@ -116,8 +126,8 @@ export const paymentService = {
       signal,
     ),
 
-  approve: (id: number) =>
-    api.patch<null>(`/api/finance/payments/${id}/approve`),
+  approve: (id: number, options?: { invoice_id?: number }) =>
+    api.patch<null>(`/api/finance/payments/${id}/approve`, options ?? {}),
 
   reject: (id: number, reason?: string) =>
     api.patch<null>(`/api/finance/payments/${id}/reject`, { reason }),
@@ -139,6 +149,7 @@ export const bursaryService = {
       academic_year_id?: number;
       status?: 'pending' | 'confirmed' | 'cancelled';
       bursary_type?: string;
+      sponsor_id?: number;
       page?: number;
       per_page?: number;
     },
@@ -153,7 +164,15 @@ export const bursaryService = {
   create: (data: CreateBursaryPayload) =>
     api.post<{ id: number }>("/api/finance/bursaries", data),
 
+  bulkCreate: (data: CreateBursaryBulkPayload) =>
+    api.post<{ created: number; skipped: number; total_input: number }>(
+      "/api/finance/bursaries/bulk",
+      data,
+    ),
+
   delete: (id: number) => api.delete<null>(`/api/finance/bursaries/${id}`),
+  update: (id: number, data: Partial<CreateBursaryPayload>) =>
+    api.put<null>(`/api/finance/bursaries/${id}`, data),
 
   confirm: (id: number) =>
     api.patch<null>(`/api/finance/bursaries/${id}/confirm`),
@@ -263,6 +282,15 @@ export const expenseService = {
   listCategories: (signal?: AbortSignal) =>
     api.get<ExpenseCategory[]>("/api/finance/expenses/categories", {}, signal),
 
+  createCategory: (data: { name: string; description?: string }) =>
+    api.post<{ id: number }>("/api/finance/expenses/categories", data),
+
+  updateCategory: (id: number, data: { name?: string; description?: string }) =>
+    api.put<null>(`/api/finance/expenses/categories/${id}`, data),
+
+  deleteCategory: (id: number) =>
+    api.delete<null>(`/api/finance/expenses/categories/${id}`),
+
   create: (data: CreateExpensePayload) =>
     api.post<{ id: number }>("/api/finance/expenses", data),
 
@@ -330,6 +358,122 @@ export const clearanceService = {
     api.post<{ total: number; cleared: number; not_cleared: number }>(
       "/api/finance/clearance/bulk",
       { academic_year_id: academicYearId },
+    ),
+
+  getExamEligibility: (
+    studentId: string,
+    academicYearId: number,
+    semester: 1 | 2,
+    signal?: AbortSignal,
+  ) =>
+    api.get<import("@/types/finance").ExamEligibility>(
+      "/api/finance/clearance/exam-eligibility",
+      { student_id: studentId, academic_year_id: academicYearId, semester },
+      signal,
+    ),
+
+  getReport: (
+    academicYearId: number,
+    feeStructureId: number,
+    period: string,
+    signal?: AbortSignal,
+  ) =>
+    api.get<ClearanceReport>(
+      "/api/finance/clearance/report",
+      { academic_year_id: academicYearId, fee_structure_id: feeStructureId, period },
+      signal,
+    ),
+};
+
+// ─── Sponsors ─────────────────────────────────────────────────────────────────
+
+export const sponsorService = {
+  list: (params?: { is_active?: boolean; academic_year_id?: number }, signal?: AbortSignal) =>
+    api.get<Sponsor[]>(
+      "/api/finance/sponsors",
+      { 
+        ...(params?.is_active ? { is_active: 1 } : {}),
+        ...(params?.academic_year_id ? { academic_year_id: params.academic_year_id } : {}),
+      },
+      signal,
+    ),
+
+  create: (data: CreateSponsorPayload) =>
+    api.post<{ id: number }>("/api/finance/sponsors", data),
+
+  update: (id: number, data: Partial<CreateSponsorPayload>) =>
+    api.put<null>(`/api/finance/sponsors/${id}`, data),
+};
+
+// ─── Student Fee Overrides ────────────────────────────────────────────────────
+
+export const overrideService = {
+  list: (studentId: string, academicYearId: number, signal?: AbortSignal) =>
+    api.get<StudentFeeOverride[]>(
+      "/api/finance/overrides",
+      { student_id: studentId, academic_year_id: academicYearId },
+      signal,
+    ),
+
+  create: (data: CreateOverridePayload) =>
+    api.post<null>("/api/finance/overrides", data),
+
+  delete: (id: number) => api.delete<null>(`/api/finance/overrides/${id}`),
+};
+
+// ─── Refunds ──────────────────────────────────────────────────────────────────
+
+export const refundService = {
+  list: (
+    params?: {
+      student_id?: string;
+      status?: RefundStatus;
+      category?: RefundCategory;
+      page?: number;
+      per_page?: number;
+    },
+    signal?: AbortSignal,
+  ) =>
+    api.get<PaginatedResponse<FeeRefund>>(
+      "/api/finance/refunds",
+      params ?? {},
+      signal,
+    ),
+
+  create: (data: CreateRefundPayload) =>
+    api.post<{ id: number }>("/api/finance/refunds", data),
+
+  process: (id: number, academicYearId: number, notes?: string) =>
+    api.patch<null>(`/api/finance/refunds/${id}/process`, {
+      academic_year_id: academicYearId,
+      ...(notes ? { notes } : {}),
+    }),
+
+  reject: (id: number, notes?: string) =>
+    api.patch<null>(`/api/finance/refunds/${id}/reject`, notes ? { notes } : {}),
+};
+
+// ─── Student Self-Service Finance ────────────────────────────────────────────
+
+export const myLedgerService = {
+  getMyLedger: (
+    params?: { academic_year_id?: number; semester?: 1 | 2 },
+    signal?: AbortSignal,
+  ) =>
+    api.get<StudentLedger>("/api/finance/my/invoices", params ?? {}, signal),
+
+  getMyClearance: (
+    academicYearId: number,
+    semester?: 1 | 2 | null,
+    signal?: AbortSignal,
+  ) =>
+    api.get<ClearanceResult>(
+      "/api/finance/my/clearance",
+      {
+        academic_year_id: academicYearId,
+        ...(semester != null ? { semester } : {}),
+      },
+      signal,
     ),
 };
 

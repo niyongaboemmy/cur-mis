@@ -34,8 +34,8 @@
     --border-soft:  217 227 241;
 
     /* Brand — LIGHT mode uses Secondary palette */
-    --brand:        26  74  140;   /* #1A4A8C Banner Blue */
-    --brand-hover:  43  95  168;   /* #2B5FA8 Mid Blue */
+    --brand:        74 127 193;    /* #4A7FC1 Accent Blue — vibrant, readable on white */
+    --brand-hover:  43  95 168;    /* #2B5FA8 Mid Blue — hover darkens */
     --brand-soft:   74 127 193;    /* #4A7FC1 Accent Blue */
     --brand-active: 10  42  94;    /* #0A2A5E Deep Navy */
     --brand-ink:    255 255 255;   /* text that sits on brand surface */
@@ -53,13 +53,12 @@
     --text-muted:   164 178 207;   /* #A4B2CF — body / secondary, better contrast */
     --border-soft:  42  54  84;    /* #2A3654 — subtle hairline borders */
 
-    /* Brand — DARK mode uses Primary palette (Banner Blue + Gold companion).
-       Slightly lifted from Deep Navy so the brand surfaces don't vanish
-       into the page background. */
-    --brand:        26  74 140;    /* #1A4A8C Banner Blue — readable on dark pages */
+    /* Brand — DARK mode: Accent Blue as base so text-brand and bg-brand
+       are both visible against dark surfaces (#151C30). */
+    --brand:        74 127 193;    /* #4A7FC1 Accent Blue — readable on dark bg */
     --brand-hover:  43  95 168;    /* #2B5FA8 Mid Blue */
-    --brand-soft:   74 127 193;    /* #4A7FC1 Accent Blue */
-    --brand-active: 10  42  94;    /* #0A2A5E Deep Navy */
+    --brand-soft:  139 170 213;    /* #8BAAD5 — lighter tint for subtle text */
+    --brand-active: 26  74 140;    /* #1A4A8C Banner Blue */
     --brand-ink:    245 196   0;   /* #F5C400 Gold — sits on brand in dark mode */
 
     --ring:         245 196 0;     /* gold focus rings in dark */
