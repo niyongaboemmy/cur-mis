@@ -9,6 +9,7 @@ use Core\Response;
 use App\Models\UserModel;
 use App\Models\RoleModel;
 use App\Helpers\ValidationHelper;
+use App\Services\SystemLogService;
 
 class UserController extends BaseController
 {
@@ -106,6 +107,8 @@ class UserController extends BaseController
             'is_active' => 1
         ]);
 
+        $actor = (array) $request->param('_auth_user');
+        SystemLogService::log('CREATE', 'USERS', "Created user '{$data['email']}' (ID {$id}).", (int) $id, 'user', ['role_id' => (int) $data['role_id']], $actor ?: null);
         $this->success($response, ['id' => $id], 'User created successfully.', 201);
     }
 
@@ -152,6 +155,8 @@ class UserController extends BaseController
         }
 
         $this->userModel->update($id, $updateData);
+        $actor = (array) $request->param('_auth_user');
+        SystemLogService::log('UPDATE', 'USERS', "Updated user '{$user['email']}' (ID {$id}).", $id, 'user', null, $actor ?: null);
         $this->success($response, null, 'User updated successfully.');
     }
 
@@ -173,6 +178,7 @@ class UserController extends BaseController
         }
 
         $this->userModel->delete($id);
+        SystemLogService::log('DELETE', 'USERS', "Deleted user '{$user['email']}' (ID {$id}).", $id, 'user', ['email' => $user['email']], (array) $authUser ?: null);
         $this->success($response, null, 'User deleted successfully.');
     }
 
@@ -190,7 +196,9 @@ class UserController extends BaseController
 
         $newStatus = (int)($user['is_active']) === 1 ? 0 : 1;
         $this->userModel->update($id, ['is_active' => $newStatus]);
-
+        $actor = (array) $request->param('_auth_user');
+        $label = $newStatus === 1 ? 'activated' : 'deactivated';
+        SystemLogService::log('UPDATE', 'USERS', "User '{$user['email']}' (ID {$id}) {$label}.", $id, 'user', ['is_active' => $newStatus], $actor ?: null);
         $this->success($response, ['is_active' => $newStatus], 'User status toggled.');
     }
 }

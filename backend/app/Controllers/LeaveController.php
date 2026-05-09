@@ -11,6 +11,7 @@ use App\Models\LeaveRequestModel;
 use App\Models\LeaveBalanceModel;
 use App\Models\HrEmployeeModel;
 use App\Helpers\ValidationHelper;
+use App\Services\SystemLogService;
 
 class LeaveController extends BaseController
 {
@@ -66,6 +67,8 @@ class LeaveController extends BaseController
             'is_active'    => isset($data['is_active']) ? (int)(bool)$data['is_active'] : 1,
         ]);
 
+        $actor = (array) $request->param('_auth_user');
+        SystemLogService::log('CREATE', 'HR', "Created leave type '{$data['name']}' (ID {$id}).", (int) $id, 'leave_type', null, $actor ?: null);
         $new = $this->typeModel->find($id);
         $this->success($response, $new, 'Leave type created.', 201);
     }
@@ -91,6 +94,8 @@ class LeaveController extends BaseController
             'is_active'    => isset($data['is_active']) ? (int)(bool)$data['is_active'] : (int)$type['is_active'],
         ]);
 
+        $actor = (array) $request->param('_auth_user');
+        SystemLogService::log('UPDATE', 'HR', "Updated leave type ID {$id} ('{$data['name']}').", $id, 'leave_type', null, $actor ?: null);
         $this->success($response, $this->typeModel->find($id), 'Leave type updated.');
     }
 
@@ -114,6 +119,8 @@ class LeaveController extends BaseController
         }
 
         $this->typeModel->delete($id);
+        $actor = (array) $request->param('_auth_user');
+        SystemLogService::log('DELETE', 'HR', "Deleted leave type ID {$id}.", $id, 'leave_type', null, $actor ?: null);
         $this->success($response, null, 'Leave type deleted.');
     }
 
@@ -299,6 +306,8 @@ class LeaveController extends BaseController
             'status'        => 'Pending',
         ]);
 
+        $actor = (array) $request->param('_auth_user');
+        SystemLogService::log('CREATE', 'HR', "Leave request submitted for employee {$empId} ({$days} days, {$start} to {$end}).", (int) $id, 'leave_request', ['employee_id' => $empId, 'days' => $days, 'start' => $start, 'end' => $end], $actor ?: null);
         $new = $this->requestModel->find($id);
         $this->success($response, $new, 'Leave request submitted.', 201);
     }
@@ -336,6 +345,8 @@ class LeaveController extends BaseController
             +1
         );
 
+        $actor = (array) $request->param('_auth_user');
+        SystemLogService::log('APPROVE', 'HR', "Approved leave request ID {$id} for employee {$row['employee_id']} ({$row['days_requested']} days).", $id, 'leave_request', ['employee_id' => $row['employee_id'], 'days' => $row['days_requested']], $actor ?: null);
         $this->success($response, null, 'Leave request approved.');
     }
 
@@ -368,6 +379,8 @@ class LeaveController extends BaseController
             'reviewed_at'    => date('Y-m-d H:i:s'),
         ]);
 
+        $actor = (array) $request->param('_auth_user');
+        SystemLogService::log('REJECT', 'HR', "Rejected leave request ID {$id} for employee {$row['employee_id']}. Reason: {$comment}.", $id, 'leave_request', ['employee_id' => $row['employee_id'], 'comment' => $comment], $actor ?: null);
         $this->success($response, null, 'Leave request rejected.');
     }
 
@@ -394,6 +407,8 @@ class LeaveController extends BaseController
         }
 
         $this->requestModel->update($id, ['status' => 'Cancelled']);
+        $actor = (array) $request->param('_auth_user');
+        SystemLogService::log('UPDATE', 'HR', "Cancelled leave request ID {$id} for employee {$row['employee_id']}.", $id, 'leave_request', ['employee_id' => $row['employee_id']], $actor ?: null);
         $this->success($response, null, 'Leave request cancelled.');
     }
 
@@ -483,6 +498,8 @@ class LeaveController extends BaseController
             ]
         );
 
+        $actor = (array) $request->param('_auth_user');
+        SystemLogService::log('UPDATE', 'HR', "Upserted leave balance for employee {$data['employee_id']} (type {$data['leave_type_id']}, year {$data['year']}): {$data['total_days']} days.", null, 'leave_balance', ['employee_id' => (int) $data['employee_id'], 'leave_type_id' => (int) $data['leave_type_id'], 'total_days' => (float) $data['total_days']], $actor ?: null);
         $this->success($response, null, 'Leave balance saved.', 201);
     }
 

@@ -64,3 +64,40 @@ export interface PaginatedResponse<T> {
 }
 
 export type FormErrors = Record<string, string | string[]>
+
+export interface SystemLog {
+  id:          number
+  user_id:     number | null
+  user_name:   string
+  user_email:  string
+  action:      string
+  module:      string
+  entity_type: string | null
+  entity_id:   number | null
+  description: string
+  ip_address:  string
+  metadata:    Record<string, unknown> | null
+  created_at:  string
+}
+
+export interface SystemLogStats {
+  total:      number
+  today:      number
+  yesterday:  number
+  by_module:  { module: string; count: number }[]
+  by_action:  { action: string; count: number }[]
+  trend_7d:   { date: string;   count: number }[]
+  top_users:  { user_name: string; user_email: string; count: number }[]
+  last_entry: string | null
+}
+
+export interface SystemLogFilters {
+  module?:    string
+  action?:    string
+  user_id?:   number
+  date_from?: string
+  date_to?:   string
+  search?:    string
+  page?:      number
+  per_page?:  number
+}

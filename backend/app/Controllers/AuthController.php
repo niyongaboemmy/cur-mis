@@ -7,6 +7,7 @@ namespace App\Controllers;
 use Core\Request;
 use Core\Response;
 use App\Services\AuthService;
+use App\Services\SystemLogService;
 use App\Helpers\ValidationHelper;
 
 class AuthController extends BaseController
@@ -39,6 +40,7 @@ class AuthController extends BaseController
 
         // If OTP is required, return 200 with the specific data and message
         if ($result['otp_required'] ?? false) {
+            SystemLogService::log('LOGIN', 'AUTH', "Login initiated for {$data['email']} — OTP sent.", null, 'user', ['email' => $data['email']]);
             $this->success($response, $result['data'], $result['message'], 200, ['otp_required' => true]);
         }
 
@@ -64,6 +66,8 @@ class AuthController extends BaseController
             $this->error($response, $result['message'], 401);
         }
 
+        $user = $result['data']['user'] ?? [];
+        SystemLogService::log('LOGIN', 'AUTH', "Successful login: {$data['email']}.", isset($user['id']) ? (int) $user['id'] : null, 'user', null, $user ?: null);
         $this->success($response, $result['data'], 'Verification successful.');
     }
 
@@ -85,6 +89,7 @@ class AuthController extends BaseController
             $this->error($response, $result['message'], 500);
         }
 
+        SystemLogService::log('UPDATE', 'AUTH', "OTP resent to {$data['email']}.", null, 'user', ['email' => $data['email']]);
         $this->success($response, null, $result['message']);
     }
 
@@ -108,6 +113,7 @@ class AuthController extends BaseController
             $this->error($response, $result['message'], 409);
         }
 
+        SystemLogService::log('CREATE', 'AUTH', "New staff account registered: {$data['email']}.", null, 'user', ['email' => $data['email']]);
         $this->success($response, $result['data'], 'Registration successful.', 201);
     }
 
@@ -129,6 +135,7 @@ class AuthController extends BaseController
             $this->error($response, $result['message'], 500);
         }
 
+        SystemLogService::log('UPDATE', 'AUTH', "Password reset requested for {$data['email']}.", null, 'user', ['email' => $data['email']]);
         $this->success($response, $result['data'], $result['message']);
     }
 
@@ -151,6 +158,7 @@ class AuthController extends BaseController
             $this->error($response, $result['message'], 401);
         }
 
+        SystemLogService::log('UPDATE', 'AUTH', "Password reset OTP verified for {$data['email']}.", null, 'user', ['email' => $data['email']]);
         $this->success($response, $result['data'], $result['message']);
     }
 
@@ -173,11 +181,14 @@ class AuthController extends BaseController
             $this->error($response, $result['message'], 400);
         }
 
+        SystemLogService::log('UPDATE', 'AUTH', "Password was reset via reset token.", null, 'user', null);
         $this->success($response, null, $result['message']);
     }
 
     public function logout(Request $request, Response $response): never
     {
+        $actor = (array) $request->param('_auth_user');
+        SystemLogService::log('LOGOUT', 'AUTH', "User logged out: " . ($actor['email'] ?? 'unknown') . ".", isset($actor['id']) ? (int) $actor['id'] : null, 'user', null, $actor ?: null);
         $this->success($response, null, 'Logged out successfully.');
     }
 
@@ -225,6 +236,7 @@ class AuthController extends BaseController
             $this->error($response, $result['message'], $statusCode);
         }
 
+        SystemLogService::log('CREATE', 'AUTH', "Applicant account self-registered: {$data['email']}.", null, 'user', ['email' => $data['email']]);
         $this->success($response, $result['data'], $result['message'], 201);
     }
 
@@ -253,6 +265,7 @@ class AuthController extends BaseController
             $this->error($response, $result['message'], $statusCode);
         }
 
+        SystemLogService::log('CREATE', 'AUTH', "Applicant portal account claimed for application {$data['application_number']} by {$data['email']}.", null, 'user', ['email' => $data['email'], 'application_number' => $data['application_number']]);
         $this->success($response, $result['data'], $result['message'], 201);
     }
 }

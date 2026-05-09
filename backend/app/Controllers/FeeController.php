@@ -18,6 +18,7 @@ use App\Models\ExpenseBudgetModel;
 use App\Models\ClearanceModel;
 use App\Services\FeeService;
 use App\Services\ClearanceService;
+use App\Services\SystemLogService;
 use App\Helpers\ValidationHelper;
 use Core\Database;
 
@@ -151,6 +152,7 @@ class FeeController extends BaseController
             $this->structureModel->insertDepartmentLinks((int)$id, $deptIds);
         }
 
+        SystemLogService::log('CREATE', 'FINANCE', "Created fee structure '{$data['label']}' ({$data['fee_type']}) — amount {$data['amount']}.", (int) $id, 'fee_structure', ['fee_type' => $data['fee_type'], 'amount' => (float) $data['amount']], (array) $actor ?: null);
         $this->success($response, ['id' => (int)$id], 'Fee structure created.', 201);
     }
 
@@ -186,6 +188,8 @@ class FeeController extends BaseController
             }
         }
 
+        $actor = $request->param('_auth_user');
+        SystemLogService::log('UPDATE', 'FINANCE', "Updated fee structure ID {$id}.", $id, 'fee_structure', array_filter(['label' => $data['label'] ?? null, 'amount' => isset($data['amount']) ? (float)$data['amount'] : null], fn($v) => $v !== null), (array) $actor ?: null);
         $this->success($response, null, 'Fee structure updated.');
     }
 
@@ -199,6 +203,8 @@ class FeeController extends BaseController
             $this->error($response, 'Fee structure not found.', 404);
         }
         $this->structureModel->delete($id);
+        $actor = $request->param('_auth_user');
+        SystemLogService::log('DELETE', 'FINANCE', "Deleted fee structure ID {$id}.", $id, 'fee_structure', null, (array) $actor ?: null);
         $this->success($response, null, 'Fee structure deleted.');
     }
 
@@ -314,6 +320,7 @@ class FeeController extends BaseController
             $this->error($response, $e->getMessage(), 422);
         }
 
+        SystemLogService::log('GENERATE', 'FINANCE', "Auto-generated invoices for student {$studentId} (year {$data['academic_year_id']}): {$result['created']} new, {$result['skipped']} skipped.", null, 'fee_invoice', ['student_id' => $studentId, 'created' => $result['created'], 'skipped' => $result['skipped']], (array) $actor ?: null);
         $this->success($response, $result, "Invoices generated: {$result['created']} new, {$result['skipped']} skipped.");
     }
 
@@ -351,6 +358,7 @@ class FeeController extends BaseController
             'created_by'       => (int)$actor['id'],
         ]);
 
+        SystemLogService::log('CREATE', 'FINANCE', "Created manual invoice for student {$data['student_id']} ({$data['fee_type']}): {$data['amount_due']}.", (int) $id, 'fee_invoice', ['fee_type' => $data['fee_type'], 'amount' => (float) $data['amount_due']], (array) $actor ?: null);
         $this->success($response, ['id' => (int)$id], 'Invoice created.', 201);
     }
 
@@ -382,6 +390,7 @@ class FeeController extends BaseController
             $result = $this->service->bulkGenerateInvoices($studentIds, $yearId, $semester, (int)$actor['id']);
         }
 
+        SystemLogService::log('GENERATE', 'FINANCE', "Bulk generated invoices for year {$yearId}: {$result['processed_students']} students processed.", null, 'fee_invoice', ['processed_students' => $result['processed_students'], 'academic_year_id' => $yearId], (array) $actor ?: null);
         $this->success($response, $result, "Bulk generation complete: processed {$result['processed_students']} students.");
     }
 
@@ -418,6 +427,7 @@ class FeeController extends BaseController
      */
     public function exportBillingSummary(Request $request, Response $response): never
     {
+        $actor   = $request->param('_auth_user');
         $filters = [
             'academic_year_id' => (int)($request->query('academic_year_id') ?? 0),
             'semester'         => $request->query('semester') !== null ? (int)$request->query('semester') : null,
@@ -431,7 +441,8 @@ class FeeController extends BaseController
         }
 
         $csv = $this->service->exportBillingSummary($filters);
-        
+
+        SystemLogService::log('EXPORT', 'FINANCE', "Exported billing summary for year {$filters['academic_year_id']}.", null, null, array_filter($filters, fn($v) => $v !== null), (array) $actor ?: null);
         $filename = "billing_summary_" . date('Y-m-d_His') . ".csv";
         header("Content-Type: text/csv");
         header("Content-Disposition: attachment; filename=\"{$filename}\"");
@@ -461,6 +472,8 @@ class FeeController extends BaseController
             $this->invoiceModel->recalculateStatus($id);
         }
 
+        $actor = $request->param('_auth_user');
+        SystemLogService::log('UPDATE', 'FINANCE', "Updated invoice ID {$id}.", $id, 'fee_invoice', $update ?: null, (array) $actor ?: null);
         $this->success($response, null, 'Invoice updated.');
     }
 
@@ -517,6 +530,7 @@ class FeeController extends BaseController
         // Non-blocking email confirmation
         $this->service->sendPaymentConfirmationEmail((int)$result['payment_id']);
 
+        SystemLogService::log('CREATE', 'FINANCE', "Recorded payment of {$data['amount']} for invoice {$data['invoice_id']} (ID {$result['payment_id']}).", (int) $result['payment_id'], 'fee_payment', ['method' => $data['payment_method'], 'amount' => (float) $data['amount']], (array) $actor ?: null);
         $this->success($response, $result, 'Payment recorded successfully.', 201);
     }
 
@@ -572,6 +586,7 @@ class FeeController extends BaseController
         // Send email receipt
         $this->service->sendPaymentConfirmationEmail($id);
 
+        SystemLogService::log('APPROVE', 'FINANCE', "Approved payment ID {$id} (amount {$payment['amount']}) for invoice {$payment['invoice_id']}.", $id, 'fee_payment', ['amount' => (float) $payment['amount']], (array) $actor ?: null);
         $this->success($response, null, 'Payment approved and applied to invoice.');
     }
 
@@ -595,6 +610,7 @@ class FeeController extends BaseController
             'rejection_reason' => $data['reason'] ?? 'Rejected by finance officer',
         ]);
 
+        SystemLogService::log('REJECT', 'FINANCE', "Rejected payment ID {$id}. Reason: " . ($data['reason'] ?? 'N/A') . ".", $id, 'fee_payment', ['reason' => $data['reason'] ?? null], (array) $actor ?: null);
         $this->success($response, null, 'Payment rejected.');
     }
 
@@ -668,6 +684,7 @@ class FeeController extends BaseController
             (int)$actor['id']
         );
 
+        SystemLogService::log('CREATE', 'FINANCE', "Created bursary for student {$data['student_id']} ({$data['bursary_type']}): {$data['amount']}.", (int) $id, 'fee_bursary', ['amount' => (float) $data['amount'], 'type' => $data['bursary_type']], (array) $actor ?: null);
         $this->success($response, ['id' => (int)$id], 'Bursary created.', 201);
     }
 
@@ -681,6 +698,8 @@ class FeeController extends BaseController
             $this->error($response, 'Bursary not found.', 404);
         }
         $this->bursaryModel->delete($id);
+        $actor = $request->param('_auth_user');
+        SystemLogService::log('DELETE', 'FINANCE', "Deleted bursary ID {$id}.", $id, 'fee_bursary', null, (array) $actor ?: null);
         $this->success($response, null, 'Bursary deleted.');
     }
 
@@ -708,6 +727,7 @@ class FeeController extends BaseController
             (int)$actor['id']
         );
 
+        SystemLogService::log('APPROVE', 'FINANCE', "Confirmed bursary ID {$id} for student {$bursary['student_id']}.", $id, 'fee_bursary', null, (array) $actor ?: null);
         $this->success($response, null, 'Bursary confirmed and applied.');
     }
 
@@ -731,6 +751,7 @@ class FeeController extends BaseController
             (int)$actor['id']
         );
 
+        SystemLogService::log('UPDATE', 'FINANCE', "Cancelled bursary ID {$id} for student {$bursary['student_id']}.", $id, 'fee_bursary', null, (array) $actor ?: null);
         $this->success($response, null, 'Bursary cancelled.');
     }
 
@@ -785,6 +806,7 @@ class FeeController extends BaseController
             );
         }
 
+        SystemLogService::log('UPDATE', 'FINANCE', "Updated bursary ID {$id} for student {$bursary['student_id']}.", $id, 'fee_bursary', $updateData ?: null, (array) $actor ?: null);
         $this->success($response, null, 'Bursary updated.');
     }
 
@@ -842,6 +864,8 @@ class FeeController extends BaseController
             'phone'     => $data['phone']     ?? null,
             'is_active' => isset($data['is_active']) ? (int)$data['is_active'] : 1,
         ]);
+        $actor = $request->param('_auth_user');
+        SystemLogService::log('CREATE', 'FINANCE', "Created sponsor '{$data['name']}' (ID {$id}).", (int) $id, 'sponsor', null, (array) $actor ?: null);
         $this->success($response, ['id' => (int)$id], 'Sponsor created.', 201);
     }
 
@@ -859,6 +883,8 @@ class FeeController extends BaseController
             'is_active' => isset($data['is_active']) ? (int)$data['is_active'] : null,
         ], fn ($v) => $v !== null));
 
+        $actor = $request->param('_auth_user');
+        SystemLogService::log('UPDATE', 'FINANCE', "Updated sponsor ID {$id}.", $id, 'sponsor', null, (array) $actor ?: null);
         $this->success($response, null, 'Sponsor updated.');
     }
 
@@ -896,6 +922,7 @@ class FeeController extends BaseController
             'reason'           => $data['reason'] ?? '',
             'created_by'       => (int)$actor['id'],
         ]);
+        SystemLogService::log('CREATE', 'FINANCE', "Set fee override for student {$data['student_id']} ({$data['fee_type']}): {$data['amount']}.", null, 'student_fee_override', ['student_id' => $data['student_id'], 'fee_type' => $data['fee_type'], 'amount' => (float) $data['amount']], (array) $actor ?: null);
         $this->success($response, null, 'Override saved.', 201);
     }
 
@@ -905,6 +932,8 @@ class FeeController extends BaseController
         $id = (int)$request->param('id');
         if (!$this->overrideModel->find($id)) $this->error($response, 'Override not found.', 404);
         $this->overrideModel->delete($id);
+        $actor = $request->param('_auth_user');
+        SystemLogService::log('DELETE', 'FINANCE', "Deleted fee override ID {$id}.", $id, 'student_fee_override', null, (array) $actor ?: null);
         $this->success($response, null, 'Override deleted.');
     }
 
@@ -946,6 +975,7 @@ class FeeController extends BaseController
             (int)$actor['id']
         );
 
+        SystemLogService::log('CREATE', 'FINANCE', "Bulk bursary for '{$data['bursary_type']}' (year {$data['academic_year_id']}): {$result['created']} created, {$result['skipped']} skipped.", null, 'fee_bursary', ['bursary_type' => $data['bursary_type'], 'amount_per_student' => (float) $data['amount_per_student'], 'created' => $result['created']], (array) $actor ?: null);
         $this->success($response, $result, "Bulk bursary complete: {$result['created']} created, {$result['skipped']} skipped.");
     }
 
@@ -984,6 +1014,7 @@ class FeeController extends BaseController
             (int)$actor['id']
         );
 
+        SystemLogService::log('UPDATE', 'FINANCE', "Saved expense budget for category {$data['category_id']} (year {$data['academic_year_id']}): {$data['amount']}.", null, 'expense_budget', ['category_id' => (int) $data['category_id'], 'amount' => (float) $data['amount']], (array) $actor ?: null);
         $this->success($response, null, 'Budget saved.');
     }
 
@@ -1060,6 +1091,7 @@ class FeeController extends BaseController
      */
     public function exportReport(Request $request, Response $response): never
     {
+        $actor  = $request->param('_auth_user');
         $type   = $request->query('type')   ?? 'payments';
         $yearId = (int)($request->query('academic_year_id') ?? 0);
 
@@ -1132,6 +1164,7 @@ class FeeController extends BaseController
         fclose($out);
         $csv = ob_get_clean();
 
+        SystemLogService::log('EXPORT', 'FINANCE', "Exported {$type} report" . ($yearId ? " for year {$yearId}" : '') . ".", null, null, ['type' => $type, 'academic_year_id' => $yearId ?: null], (array) $actor ?: null);
         header('Content-Type: text/csv; charset=utf-8');
         header("Content-Disposition: attachment; filename=\"{$filename}\"");
         header('Cache-Control: no-cache');
@@ -1179,6 +1212,8 @@ class FeeController extends BaseController
             'description' => $data['description'] ?? null
         ]);
 
+        $actor = $request->param('_auth_user');
+        SystemLogService::log('CREATE', 'FINANCE', "Created expense category '{$data['name']}' (ID {$id}).", (int) $id, 'expense_category', null, (array) $actor ?: null);
         $this->success($response, ['id' => (int)$id], 'Category created.', 201);
     }
 
@@ -1194,6 +1229,8 @@ class FeeController extends BaseController
             'description' => $data['description'] ?? null
         ], fn($v) => $v !== null));
 
+        $actor = $request->param('_auth_user');
+        SystemLogService::log('UPDATE', 'FINANCE', "Updated expense category ID {$id}.", $id, 'expense_category', null, (array) $actor ?: null);
         $this->success($response, null, 'Category updated.');
     }
 
@@ -1210,6 +1247,8 @@ class FeeController extends BaseController
         if ($count > 0) $this->error($response, 'Cannot delete category that is currently in use by recorded expenses.', 422);
 
         $this->expenseCategoryModel->delete($id);
+        $actor = $request->param('_auth_user');
+        SystemLogService::log('DELETE', 'FINANCE', "Deleted expense category ID {$id} ('{$cat['name']}').", $id, 'expense_category', null, (array) $actor ?: null);
         $this->success($response, null, 'Category deleted.');
     }
 
@@ -1245,6 +1284,7 @@ class FeeController extends BaseController
             'recorded_by'      => (int)$actor['id'],
         ]);
 
+        SystemLogService::log('CREATE', 'FINANCE', "Recorded expense '{$data['title']}': {$data['amount']}.", (int) $id, 'expense', ['amount' => (float) $data['amount'], 'category_id' => (int) $data['category_id']], (array) $actor ?: null);
         $this->success($response, ['id' => (int)$id], 'Expense recorded.', 201);
     }
 
@@ -1270,6 +1310,8 @@ class FeeController extends BaseController
             'vendor'           => $data['vendor']           ?? null,
         ], fn ($v) => $v !== null));
 
+        $actor = $request->param('_auth_user');
+        SystemLogService::log('UPDATE', 'FINANCE', "Updated expense ID {$id}.", $id, 'expense', null, (array) $actor ?: null);
         $this->success($response, null, 'Expense updated.');
     }
 
@@ -1279,6 +1321,8 @@ class FeeController extends BaseController
         $id = (int)$request->param('id');
         if (!$this->expenseModel->find($id)) $this->error($response, 'Expense not found.', 404);
         $this->expenseModel->delete($id);
+        $actor = $request->param('_auth_user');
+        SystemLogService::log('DELETE', 'FINANCE', "Deleted expense ID {$id}.", $id, 'expense', null, (array) $actor ?: null);
         $this->success($response, null, 'Expense deleted.');
     }
 
@@ -1340,6 +1384,7 @@ class FeeController extends BaseController
             $data['notes'] ?? ''
         );
 
+        SystemLogService::log('UPDATE', 'FINANCE', "Granted manual clearance to student {$data['student_id']} for year {$data['academic_year_id']}.", null, 'clearance', ['student_id' => $data['student_id'], 'notes' => $data['notes'] ?? ''], (array) $actor ?: null);
         $this->success($response, $record, 'Clearance granted.');
     }
 
@@ -1352,6 +1397,7 @@ class FeeController extends BaseController
         if (!$yearId) $this->error($response, 'academic_year_id required.', 422);
 
         $result = $this->clearanceService->runBulkClearance($yearId, (int)$actor['id']);
+        SystemLogService::log('UPDATE', 'FINANCE', "Ran bulk clearance for year {$yearId}: {$result['cleared']} cleared, {$result['not_cleared']} pending.", null, 'clearance', ['year_id' => $yearId, 'cleared' => $result['cleared'], 'not_cleared' => $result['not_cleared']], (array) $actor ?: null);
         $this->success($response, $result, "Bulk clearance complete: {$result['cleared']} cleared, {$result['not_cleared']} pending.");
     }
 

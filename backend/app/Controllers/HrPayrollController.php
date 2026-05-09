@@ -9,6 +9,7 @@ use Core\Response;
 use App\Models\HrPayrollModel;
 use App\Models\HrEmployeeModel;
 use App\Helpers\ValidationHelper;
+use App\Services\SystemLogService;
 
 class HrPayrollController extends BaseController
 {
@@ -284,13 +285,16 @@ class HrPayrollController extends BaseController
 
         $existing = $this->payrollModel->findByPeriod($empId, $year, $month);
 
+        $actor = (array) $request->param('_auth_user');
         if ($existing) {
             $this->payrollModel->update((int)$existing['id'], $payload);
             $updated = $this->payrollModel->find((int)$existing['id']);
+            SystemLogService::log('UPDATE', 'HR', "Updated payroll for emp {$empId} ({$payMonth}). Net: {$netVal}.", (int) $existing['id'], 'hr_payroll', ['emp_id' => $empId, 'period' => $payMonth], $actor ?: null);
             $this->success($response, $updated, 'Payroll entry updated.');
         } else {
             $id  = $this->payrollModel->create($payload);
             $new = $this->payrollModel->find($id);
+            SystemLogService::log('CREATE', 'HR', "Created payroll for emp {$empId} ({$payMonth}). Net: {$netVal}.", (int) $id, 'hr_payroll', ['emp_id' => $empId, 'period' => $payMonth], $actor ?: null);
             $this->success($response, $new, 'Payroll entry created.', 201);
         }
     }
@@ -316,6 +320,8 @@ class HrPayrollController extends BaseController
         }
 
         $this->payrollModel->update($id, ['status' => $status]);
+        $actor = (array) $request->param('_auth_user');
+        SystemLogService::log('UPDATE', 'HR', "Payroll entry ID {$id} (emp {$existing['emp_id']}) marked as {$status}.", $id, 'hr_payroll', ['status' => $status, 'emp_id' => $existing['emp_id'] ?? null], $actor ?: null);
         $this->success($response, null, "Payroll marked as {$status}.");
     }
 
@@ -382,6 +388,8 @@ class HrPayrollController extends BaseController
             $copied++;
         }
 
+        $actor = (array) $request->param('_auth_user');
+        SystemLogService::log('CREATE', 'HR', "Copied payroll from {$fromYear}-{$fromMonth} to {$toPayMonth}: {$copied} copied, {$skipped} skipped.", null, 'hr_payroll', ['from' => "{$fromYear}-{$fromMonth}", 'to' => $toPayMonth, 'copied' => $copied], $actor ?: null);
         $this->success($response, [
             'copied'  => $copied,
             'skipped' => $skipped,
@@ -401,6 +409,8 @@ class HrPayrollController extends BaseController
         }
 
         $this->payrollModel->delete($id);
+        $actor = (array) $request->param('_auth_user');
+        SystemLogService::log('DELETE', 'HR', "Deleted payroll entry ID {$id}.", $id, 'hr_payroll', null, $actor ?: null);
         $this->success($response, null, 'Payroll entry deleted.');
     }
 
@@ -567,6 +577,8 @@ class HrPayrollController extends BaseController
             $inserted++;
         }
 
+        $actor = (array) $request->param('_auth_user');
+        SystemLogService::log('CREATE', 'HR', "Imported payroll from Excel for {$payMonth}: {$inserted} records upserted, {$skipped} skipped.", null, 'hr_payroll', ['period' => $payMonth, 'inserted' => $inserted, 'skipped' => $skipped], $actor ?: null);
         $this->success($response, [
             'period'   => $payMonth,
             'inserted' => $inserted,
