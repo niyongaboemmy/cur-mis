@@ -42,12 +42,20 @@ class ModuleRegistrationModel extends BaseModel
         return $this->db->fetchAll(
             "SELECT mr.*,
                     m.module_code, m.module_name, m.module_credits,
-                    s.fname AS student_fname, s.lname AS student_lname,
-                    t.label AS term_label
+                    s.id            AS student_id,
+                    s.fname         AS student_fname,
+                    s.lname         AS student_lname,
+                    s.std_option    AS student_std_option,
+                    s.current_level AS student_current_level,
+                    s.intake        AS student_intake,
+                    o.name          AS student_program_name,
+                    o.code          AS student_program_code,
+                    t.label         AS term_label
              FROM `module_registrations` mr
-             JOIN `modules` m        ON m.module_id = mr.module_id
-             LEFT JOIN `student` s   ON s.regnumber = mr.student_regnumber
-             LEFT JOIN `academic_terms` t ON t.id = mr.academic_term_id
+             JOIN `modules` m            ON m.module_id = mr.module_id
+             LEFT JOIN `student` s       ON s.regnumber = mr.student_regnumber
+             LEFT JOIN `options` o       ON o.id        = CAST(NULLIF(s.std_option, '') AS UNSIGNED)
+             LEFT JOIN `academic_terms` t ON t.id       = mr.academic_term_id
              {$whereSql}
              ORDER BY mr.registered_at DESC",
             $bindings

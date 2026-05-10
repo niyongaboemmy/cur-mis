@@ -27,7 +27,12 @@ $router->group('/api/attendance', function ($router) {
         $r->get('/modules/:moduleId/report',   [AttendanceController::class, 'moduleReport']);
         $r->get('/overview',                   [AttendanceController::class, 'overview']);
         $r->get('/teachable-modules',          [AttendanceController::class, 'myTeachableModules']);
+        $r->get('/scheduled-blocks',           [AttendanceController::class, 'listScheduledBlocks']);
         $r->get('/students/:regnumber/summary',[AttendanceController::class, 'studentSummary']);
+        // Numeric-id variant — regnumbers like "STD/2026/22699" have slashes
+        // and break the `:regnumber` segment matcher, so the student detail
+        // page calls this one instead.
+        $r->get('/students/by-id/:id/summary', [AttendanceController::class, 'studentSummaryById']);
     }, [new MaybePermissionMiddleware([
         Permissions::VIEW_ATTENDANCE,
         Permissions::RECORD_ATTENDANCE,

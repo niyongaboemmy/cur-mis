@@ -78,6 +78,7 @@ const RevenueReportPage   = lazy(() => import('@/pages/finance/RevenueReportPage
 const ReceiptPdfPage      = lazy(() => import('@/pages/finance/ReceiptPdfPage'))
 const ExamSchedulesPage = lazy(() => import('@/pages/exam/ExamSchedulesPage'))
 const ExamResultsPage   = lazy(() => import('@/pages/exam/ExamResultsPage'))
+const DeliberationPage  = lazy(() => import('@/pages/exam/DeliberationPage'))
 const LogsPage       = lazy(() => import('@/pages/placeholders/LogsPage'))
 const ComingSoonPage = lazy(() => import('@/pages/placeholders/ComingSoonPage'))
 
@@ -272,7 +273,8 @@ function App() {
                 PERMISSIONS.RECORD_MODULE_MARKS,
                 PERMISSIONS.MANAGE_MODULE_MARKS,
               ]} />}>
-                <Route path="/exams/results" element={<ExamResultsPage />} />
+                <Route path="/exams/results"      element={<ExamResultsPage />} />
+                <Route path="/exams/deliberation" element={<DeliberationPage />} />
               </Route>
 
               <Route element={<ProtectedRoute requiredPermissions={PERMISSIONS.VIEW_SYSTEM_LOGS} />}>

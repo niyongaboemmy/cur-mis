@@ -114,7 +114,6 @@ const NAV_TREE: NavNode[] = [
     permissions: [PERMISSIONS.VIEW_STUDENTS],
     children: [
       { to: "/students", label: "All students", permissions: [PERMISSIONS.VIEW_STUDENTS] },
-      { to: "/students/alumni", label: "Alumni", permissions: [PERMISSIONS.VIEW_STUDENTS] },
     ],
   },
   {
@@ -171,6 +170,15 @@ const NAV_TREE: NavNode[] = [
       PERMISSIONS.MANAGE_ACADEMIC_TERMS,
     ],
     children: [
+      // Student self-service — opens the same Program & Marks view that
+      // lives under /me/profile so the curriculum, registration state and
+      // marks are presented identically across both entry points. Hidden
+      // from non-students; teachers get the assignment-driven view below.
+      { to: "/me/profile?tab=curriculum", label: "My modules",        roles: ["student"], permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL] },
+      // Teacher / staff self-service — modules the user is assigned to
+      // teach. Skipped for students since they have the curriculum view
+      // above; admin/superadmin already see the full management children.
+      { to: "/my-modules?tab=mine",                 label: "My modules",        permissions: [PERMISSIONS.VIEW_MY_MODULES], hideForRoles: ["student", "superadmin", "admin"] },
       { to: "/academic/settings?tab=faculties",     label: "Faculties",         permissions: [PERMISSIONS.MANAGE_ACADEMIC_YEARS, PERMISSIONS.MANAGE_ACADEMIC_TERMS] },
       { to: "/academic/settings?tab=departments",   label: "Departments",       permissions: [PERMISSIONS.MANAGE_ACADEMIC_YEARS, PERMISSIONS.MANAGE_ACADEMIC_TERMS] },
       { to: "/academic/settings?tab=options",       label: "Programs",          permissions: [PERMISSIONS.MANAGE_ACADEMIC_YEARS, PERMISSIONS.MANAGE_ACADEMIC_TERMS] },
@@ -193,25 +201,49 @@ const NAV_TREE: NavNode[] = [
       { to: "/finance/reports",    label: "Reports",     permissions: [PERMISSIONS.VIEW_FINANCE, PERMISSIONS.MANAGE_FINANCE] },
     ],
   },
+  // Staff / teachers / admins — full attendance workspace (record + review).
+  // Hidden from the student role even when their permissions would allow
+  // it, since the student-only entry below points them at their personal
+  // attendance summary on the profile page instead.
   {
     id: "attendance",
     label: "Attendance",
     icon: ClipboardCheck,
     to: "/attendance",
+    hideForRoles: ["student"],
     permissions: [
       PERMISSIONS.VIEW_ATTENDANCE,
       PERMISSIONS.RECORD_ATTENDANCE,
       PERMISSIONS.MANAGE_ATTENDANCE,
     ],
   },
+  // Student self-service — opens the same attendance summary that lives
+  // under /me/profile, so the student sees only their own per-module
+  // attendance numbers without admin/teacher controls.
+  {
+    id: "attendance-student",
+    label: "Attendance",
+    icon: ClipboardCheck,
+    to: "/me/profile?tab=attendance",
+    roles: ["student"],
+    permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL],
+  },
   {
     id: "exam",
     label: "Exam",
     icon: ClipboardList,
-    permissions: [PERMISSIONS.MANAGE_EXAMS],
+    // Visible to admins/staff with MANAGE_EXAMS *or* to students who hold
+    // VIEW_MY_MODULES (so they can see their personal exams + results).
+    permissions: [PERMISSIONS.MANAGE_EXAMS, PERMISSIONS.VIEW_MY_MODULES],
     children: [
-      { to: "/exams",         label: "Exam schedules" },
-      { to: "/exams/results", label: "Results" },
+      // Admin / staff items — gated by MANAGE_EXAMS.
+      { to: "/exams",              label: "Exam schedules", permissions: [PERMISSIONS.MANAGE_EXAMS] },
+      { to: "/exams/results",      label: "Results",        permissions: [PERMISSIONS.MANAGE_EXAMS] },
+      { to: "/exams/deliberation", label: "Deliberation",   permissions: [PERMISSIONS.MANAGE_EXAMS] },
+      // Student self-service — gated by VIEW_MY_MODULES, hidden from admins
+      // who already have the admin views above.
+      { to: "/my-modules?tab=exams", label: "My exams",   permissions: [PERMISSIONS.VIEW_MY_MODULES], hideForRoles: ["superadmin", "admin"] },
+      { to: "/my-modules?tab=marks", label: "My results", permissions: [PERMISSIONS.VIEW_MY_MODULES], hideForRoles: ["superadmin", "admin"] },
     ],
   },
 ];
@@ -344,8 +376,9 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
   "/finance/bursaries":  { title: "Bursaries",  sub: "Scholarship and bursary allocations" },
   "/finance/reports":    { title: "Revenue",    sub: "Fee collection breakdown by category" },
   "/account/salaries":   { title: "Salaries",   sub: "Staff payroll" },
-  "/exams":         { title: "Exam schedules", sub: "Plan, edit and view scheduled exam sessions" },
-  "/exams/results": { title: "Exam results",   sub: "Record and review marks per module and term" },
+  "/exams":              { title: "Exam schedules", sub: "Plan, edit and view scheduled exam sessions" },
+  "/exams/results":      { title: "Exam results",   sub: "Record and review marks per module and term" },
+  "/exams/deliberation": { title: "Deliberation",   sub: "Per-program grid of every active student × every module" },
   "/library": { title: "Library", sub: "Books and digital resources" },
   "/class": { title: "Classes", sub: "Class schedules and rooms" },
   "/attendance": { title: "Attendance", sub: "Record and review student attendance by module and session" },
@@ -376,15 +409,65 @@ function childMatchesLocation(
   childTo: string,
   location: Pick<Location, "pathname" | "search">,
 ): boolean {
-  const [path, query = ""] = childTo.split("?");
-  if (location.pathname !== path) return false;
-  if (!query) return true;
+  return entryMatchSpecificity(childTo, location) > 0;
+}
+
+/**
+ * Returns 0 when `to` doesn't match the current location, otherwise a
+ * positive number whose magnitude reflects how *specific* the match is.
+ *
+ *   • Pathname-only entry (no query in `to`): 1
+ *   • Pathname + N query params, each present on the URL with the same
+ *     value: 2 + N
+ *
+ * The runtime keeps the single highest-specificity match active, so an
+ * entry like `/me/profile?tab=curriculum` correctly outranks the bare
+ * `/me/profile` leaf when both could otherwise claim the active state.
+ */
+function entryMatchSpecificity(
+  to: string,
+  location: Pick<Location, "pathname" | "search">,
+): number {
+  const [path, query = ""] = to.split("?");
+  if (location.pathname !== path) return 0;
+  if (!query) return 1;
   const want = new URLSearchParams(query);
   const have = new URLSearchParams(location.search);
+  let matched = 0;
   for (const [k, v] of want) {
-    if (have.get(k) !== v) return false;
+    if (have.get(k) !== v) return 0;
+    matched++;
   }
-  return true;
+  return 2 + matched;
+}
+
+/**
+ * Walks both nav trees and returns the `to` URL of the most specific entry
+ * that currently matches the location. Drives the sidebar's active state
+ * so only that one entry lights up, even when less-specific entries (e.g.
+ * a parent leaf vs. a deep-linked child) also pathname-match.
+ */
+function findActiveEntry(
+  trees: readonly (readonly NavNode[])[],
+  location: Pick<Location, "pathname" | "search">,
+): string | null {
+  let bestUrl: string | null = null;
+  let bestSpec = 0;
+  for (const tree of trees) {
+    for (const node of tree) {
+      if (node.to) {
+        const spec = entryMatchSpecificity(node.to, location);
+        if (spec > bestSpec) { bestSpec = spec; bestUrl = node.to; }
+      }
+      if (node.children) {
+        for (const c of node.children) {
+          const spec = entryMatchSpecificity(c.to, location);
+          if (spec > bestSpec) { bestSpec = spec; bestUrl = c.to; }
+        }
+      }
+    }
+  }
+  return bestUrl;
 }
 
 /* ------------------------------------------------------------------ */
@@ -397,6 +480,15 @@ export default function MainLayout() {
   // Fetch /system/basics once — active academic year / term become globally
   // available via useSystemStore.
   useSystemBasics();
+
+  // Resolve a single active entry across the whole tree so only one
+  // sidebar link highlights at a time — without this, deep-linked
+  // children (e.g. /me/profile?tab=curriculum) would light up alongside
+  // the broader parent leaf (/me/profile) since both pathname-match.
+  const activeUrl = useMemo(
+    () => findActiveEntry([NAV_TREE, ADMIN_TREE], location),
+    [location.pathname, location.search],
+  );
 
   const [sidebarOpen, setSidebarOpen] = useState(false); // mobile drawer
   const [collapsed, setCollapsed] = useState<boolean>(() => {
@@ -631,6 +723,7 @@ export default function MainLayout() {
               node={node}
               collapsed={collapsed}
               isOpen={openIds.has(node.id)}
+              activeUrl={activeUrl}
               onToggle={toggleGroup}
             />
           ))}
@@ -647,6 +740,7 @@ export default function MainLayout() {
                   node={node}
                   collapsed={collapsed}
                   isOpen={openIds.has(node.id)}
+                  activeUrl={activeUrl}
                   onToggle={toggleGroup}
                 />
               ))}
@@ -767,33 +861,38 @@ const NavNodeItem = memo(function NavNodeItem({
   node,
   collapsed,
   isOpen,
+  activeUrl,
   onToggle,
 }: {
   node: NavNode;
   collapsed: boolean;
   isOpen: boolean;
+  /**
+   * The single `to` URL the parent layout has resolved as active for the
+   * current location. Used in place of NavLink's built-in `isActive` so
+   * that less-specific entries (e.g. a `/me/profile` leaf) don't light up
+   * when a more-specific child (`/me/profile?tab=curriculum`) wins.
+   */
+  activeUrl: string | null;
   onToggle: (id: string) => void;
 }) {
-  const location = useLocation();
-
   // Leaf route
   if (!node.children) {
+    const isActive = activeUrl === node.to;
     return (
       <NavLink
         to={node.to!}
         end
         title={collapsed ? node.label : undefined}
-        className={({ isActive }) =>
-          `${collapsed ? "flex items-center justify-center h-10 w-full rounded-lg transition-colors" : "nav-link"}
-           ${
-             isActive
-               ? collapsed
-                 ? "bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-200"
-                 : "nav-link-active"
-               : collapsed
-                 ? "text-ink-500 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-400 dark:hover:bg-ink-700/50 dark:hover:text-white"
-                 : "nav-link-idle"
-           }`
+        className={
+          `${collapsed ? "flex items-center justify-center h-10 w-full rounded-lg transition-colors" : "nav-link"} ` +
+          (isActive
+            ? collapsed
+              ? "bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-200"
+              : "nav-link-active"
+            : collapsed
+              ? "text-ink-500 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-400 dark:hover:bg-ink-700/50 dark:hover:text-white"
+              : "nav-link-idle")
         }
       >
         <node.icon className="h-[18px] w-[18px] shrink-0" />
@@ -802,11 +901,10 @@ const NavNodeItem = memo(function NavNodeItem({
     );
   }
 
+  const hasActiveChild = node.children.some((c) => c.to === activeUrl);
+
   // When collapsed, treat groups as an "icon-only" button — click goes to first child.
   if (collapsed) {
-    const hasActiveChild = node.children.some((c) =>
-      childMatchesLocation(c.to, location),
-    );
     return (
       <NavLink
         to={node.children[0].to}
@@ -821,11 +919,6 @@ const NavNodeItem = memo(function NavNodeItem({
       </NavLink>
     );
   }
-
-  // Expanded group
-  const hasActiveChild = node.children.some((c) =>
-    childMatchesLocation(c.to, location),
-  );
 
   return (
     <div>
@@ -852,7 +945,7 @@ const NavNodeItem = memo(function NavNodeItem({
           >
             <div className="mt-0.5 mb-1 space-y-0.5">
               {node.children.map((child) => {
-                const isActive = childMatchesLocation(child.to, location);
+                const isActive = child.to === activeUrl;
                 return (
                   <Link
                     key={child.to}

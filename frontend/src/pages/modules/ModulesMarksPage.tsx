@@ -1,14 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Loader2, Save, GraduationCap, Users, Percent,
   CheckCircle2, FileCheck, SendHorizontal, RotateCcw, Lock,
   UserPlus, Search, X, Download, Upload, AlertTriangle,
+  Filter, BookOpen, ChevronLeft, AlertCircle,
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import toast from 'react-hot-toast'
 import { academicService } from '@/services/academicService'
 import { studentService } from '@/services/studentService'
+import { attendanceService, type ScheduledBlock } from '@/services/attendanceService'
+import { portalService } from '@/services/admissionService'
+import { academicsMgmtService } from '@/services/academicsMgmtService'
+import SearchableSelect from '@/components/ui/SearchableSelect'
 import {
   marksService,
   type MarkableModule,
@@ -50,10 +56,20 @@ const gradeFor = (pct: number): string => {
 const decisionFor = (pct: number | null): string | null =>
   pct === null ? null : pct >= 50 ? 'P' : 'F&R'
 
+/* ──────────────────────────────────────────────────────────────────────
+ * Top-level dispatcher. Decides between the schedule-list landing view
+ * and the marks editor based on whether `module_id` is in the URL.
+ *
+ * The two views are split into separate components so each owns a stable
+ * set of hooks. Mounting a different component when the route changes
+ * keeps React's hook-count invariant intact (otherwise toggling between
+ * the picker and editor blows up with "Rendered more hooks…").
+ * ─────────────────────────────────────────────────────────────────── */
 export default function ModulesMarksPage() {
-  const qc = useQueryClient()
+  const [sp, setSp] = useSearchParams()
+  const moduleId = Number(sp.get('module_id') || 0)
 
-  /* ── filters: term + module ───────────────────────────────────── */
+  /* ── shared term state — kept here so it survives toggling the views ── */
   const termsQ = useQuery({ queryKey: ['academic', 'terms'], queryFn: () => academicService.listTerms() })
   const terms  = termsQ.data?.data ?? []
   const [termId, setTermId] = useState<number>(0)
@@ -64,17 +80,82 @@ export default function ModulesMarksPage() {
     }
   }, [terms, termId])
 
+  if (!moduleId) {
+    return (
+      <MarksSchedulePicker
+        termId={termId}
+        terms={terms}
+        onChangeTerm={setTermId}
+        onPickModule={(modId, code, name) => {
+          const next = new URLSearchParams(sp)
+          next.set('module_id', String(modId))
+          next.set('m_code', code || '')
+          next.set('m_name', name || '')
+          setSp(next, { replace: true })
+        }}
+      />
+    )
+  }
+
+  return (
+    <MarksEditor
+      // Remount on module switch so the editor's internal state (drafts,
+      // extras, hydration ref) resets cleanly to the new module.
+      key={moduleId}
+      moduleId={moduleId}
+      termId={termId}
+      terms={terms}
+      setTermId={setTermId}
+      onBackToSchedules={() => {
+        const next = new URLSearchParams(sp)
+        next.delete('module_id')
+        next.delete('m_code')
+        next.delete('m_name')
+        setSp(next, { replace: true })
+      }}
+    />
+  )
+}
+
+function MarksEditor({
+  moduleId, termId, terms, setTermId, onBackToSchedules,
+}: {
+  moduleId:         number
+  termId:           number
+  terms:            any[]
+  setTermId:        (id: number) => void
+  onBackToSchedules: () => void
+}) {
+  const qc = useQueryClient()
+  const [, setSp] = useSearchParams()
+
+  const setModuleId = (id: number) => {
+    setSp((prev) => {
+      const next = new URLSearchParams(prev)
+      if (id > 0) {
+        next.set('module_id', String(id))
+      } else {
+        next.delete('module_id')
+        next.delete('m_code')
+        next.delete('m_name')
+      }
+      return next
+    }, { replace: true })
+  }
+
   const modulesQ = useQuery({
     queryKey: ['marks', 'markable-modules', termId],
     queryFn: () => marksService.markableModules({ academic_term_id: termId }),
     enabled: !!termId,
   })
   const modules: MarkableModule[] = modulesQ.data?.data ?? []
-  const [moduleId, setModuleId] = useState<number>(0)
+  // If the term was switched and the previously-picked module isn't markable
+  // there anymore, drop it so the schedule picker reappears.
   useEffect(() => {
     if (moduleId && modules.length && !modules.find((m) => m.module_id === moduleId)) {
-      setModuleId(0)
+      onBackToSchedules()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modules, moduleId])
 
   /* ── roster ───────────────────────────────────────────────────── */
@@ -146,20 +227,40 @@ export default function ModulesMarksPage() {
     }
   }, [roster, moduleId, termId])
 
-  // Backfill empty drafts for new roster rows (e.g., manually picked students)
-  // without touching any draft that already has values.
+  // Backfill drafts for new roster rows. When the row has saved marks, seed
+  // from the server values; otherwise create an empty draft. This handles
+  // students that join the roster after the initial hydration ran — e.g.,
+  // a manually-picked student whose marks were just saved and now arrive
+  // through the registered roster path with persisted cat1/cat2/etc.
   useEffect(() => {
     if (!roster) return
     setDrafts((prev) => {
-      let added = false
+      let changed = false
       const next = { ...prev }
       for (const r of roster) {
-        if (!next[r.regnumber]) {
+        const cur = next[r.regnumber]
+        const isEmpty = !cur || (
+          !cur.cat1 && !cur.cat2 && !cur.cat3 && !cur.partial &&
+          !cur.exam1 && !cur.exam2 && !cur.remarks
+        )
+        if (cur && !isEmpty) continue
+        if (r.mark_id !== null) {
+          next[r.regnumber] = {
+            cat1:    toStr(r.cat1),
+            cat2:    toStr(r.cat2),
+            cat3:    toStr(r.cat3),
+            partial: toStr(r.partial_exam),
+            exam1:   toStr(r.exam_1st_sitting),
+            exam2:   toStr(r.exam_2nd_sitting),
+            remarks: r.remarks ?? '',
+          }
+          changed = true
+        } else if (!cur) {
           next[r.regnumber] = { cat1: '', cat2: '', cat3: '', partial: '', exam1: '', exam2: '', remarks: '' }
-          added = true
+          changed = true
         }
       }
-      return added ? next : prev
+      return changed ? next : prev
     })
   }, [roster])
 
@@ -279,6 +380,11 @@ export default function ModulesMarksPage() {
     },
     onSuccess: (res: any) => {
       toast.success(res?.message ?? `Saved ${res?.data?.saved ?? 0} record(s).`)
+      // Force the next refetch to re-hydrate drafts from the server's
+      // normalized values (e.g., "10" → "10.00") so the rows aren't reported
+      // as dirty just because of decimal formatting, and so saved students
+      // reappear with their marks instead of empty cells.
+      hydratedKey.current = ''
       qc.invalidateQueries({ queryKey: ['marks', 'list', moduleId, termId] })
     },
     onError: (e: any) => toast.error(e?.response?.data?.message ?? e?.message ?? 'Save failed'),
@@ -471,12 +577,22 @@ export default function ModulesMarksPage() {
       />
 
       <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h2 className="text-lg font-bold text-ink-900 dark:text-white">Module Marks</h2>
-          <p className="text-[13px] text-ink-500">
-            Pick a term and a module — the official CUR mark sheet auto-fills with the module
-            header and full registered roster.
-          </p>
+        <div className="flex items-start gap-2 min-w-0">
+          <button
+            type="button"
+            onClick={onBackToSchedules}
+            className="mt-0.5 p-1.5 hover:bg-ink-100 dark:hover:bg-ink-800 rounded-lg text-ink-500 hover:text-brand transition-colors shrink-0"
+            title="Back to schedule list"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <div>
+            <h2 className="text-lg font-bold text-ink-900 dark:text-white">Module Marks</h2>
+            <p className="text-[13px] text-ink-500">
+              Pick a term and a module — the official CUR mark sheet auto-fills with the module
+              header and full registered roster.
+            </p>
+          </div>
         </div>
         <div className="flex gap-2 items-center flex-wrap">
           <select
@@ -659,14 +775,28 @@ export default function ModulesMarksPage() {
                         </td>
                         <td className="px-2 py-2 border-r border-ink-100 dark:border-ink-700">
                           {r.fname}
-                          {isExempted && (
+                          {isExempted ? (
                             <span
                               className="ml-1.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300"
                               title={r.exemption_reason ?? 'Exempted from this module'}
                             >
                               EXEMPTED
                             </span>
-                          )}
+                          ) : r.reg_status === 'completed' ? (
+                            <span
+                              className="ml-1.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
+                              title="Marks saved — student passed this module"
+                            >
+                              COMPLETED
+                            </span>
+                          ) : r.reg_status === 'failed' ? (
+                            <span
+                              className="ml-1.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300"
+                              title="Marks saved — student failed this module"
+                            >
+                              FAILED
+                            </span>
+                          ) : null}
                         </td>
                         <td className="px-2 py-2 border-r border-ink-100 dark:border-ink-700">{r.lname}</td>
                         <td className="px-2 py-2 text-center border-r border-ink-100 dark:border-ink-700">{r.sex ?? '—'}</td>
@@ -1394,4 +1524,239 @@ function ImportPreviewModal({
 /** React.Fragment alias to keep <Fragment2 key…> JSX legal as a sibling of <th>/<td>. */
 function Fragment2({ children }: { children: React.ReactNode }) {
   return <>{children}</>
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * MarksSchedulePicker — landing view that mirrors the Attendance flow.
+ * Shows every teaching block on the timetable as a flat table; clicking a
+ * row opens that module's marks roster.
+ * ═══════════════════════════════════════════════════════════════════════ */
+const DAY_LABELS_MARKS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+function formatDayPatternMarks(pattern: string | null, dayOfWeek: number | null): string {
+  const days = (pattern && pattern.trim() !== ''
+    ? pattern.split(',').map((s) => Number(s.trim())).filter((n) => n >= 1 && n <= 7)
+    : (dayOfWeek ? [dayOfWeek] : []))
+  if (!days.length) return '—'
+  return days.map((d) => DAY_LABELS_MARKS[d - 1]).join(', ')
+}
+
+function MarksSchedulePicker({
+  termId, terms, onChangeTerm, onPickModule,
+}: {
+  termId:        number
+  terms:         any[]
+  onChangeTerm:  (id: number) => void
+  onPickModule:  (moduleId: number, code: string, name: string) => void
+}) {
+  const [programId, setProgramId] = useState<number>(0)
+  const [gLevel, setGLevel]       = useState<number>(0)
+  const [gSearch, setGSearch]     = useState('')
+
+  const programsQ = useQuery({
+    queryKey:  ['portal', 'programs'],
+    queryFn:   () => portalService.getPrograms(),
+    staleTime: 5 * 60_000,
+  })
+  const program = useMemo(
+    () => (programsQ.data?.data ?? []).find((p: any) => Number(p.id) === programId) ?? null,
+    [programsQ.data, programId],
+  )
+
+  const levelsQ = useQuery({
+    queryKey: ['academics', 'levels'],
+    queryFn:  () => academicsMgmtService.list<any>('levels', { per_page: 100 }),
+    staleTime: 5 * 60_000,
+  })
+  const levels: any[] = levelsQ.data?.data?.data ?? []
+
+  // Reuse the attendance endpoint — it returns every module_offerings block
+  // with the same shape the marks roster needs (module id/code/name).
+  const blocksQ = useQuery({
+    queryKey:  ['marks', 'scheduled-blocks', programId || 0],
+    queryFn:   () => attendanceService.scheduledBlocks(
+      programId ? { program_id: programId } : {},
+    ),
+    staleTime: 60_000,
+  })
+  const allBlocks: ScheduledBlock[] = blocksQ.data?.data?.rows ?? []
+
+  const filteredBlocks = useMemo(() => {
+    let list = allBlocks
+    if (gLevel) list = list.filter((b) => Number(b.level ?? 0) === gLevel)
+    if (gSearch.trim()) {
+      const q = gSearch.toLowerCase()
+      list = list.filter((b) =>
+        (b.module_code ?? '').toLowerCase().includes(q)
+        || (b.module_name ?? '').toLowerCase().includes(q)
+        || (b.program_name ?? '').toLowerCase().includes(q),
+      )
+    }
+    return list
+  }, [allBlocks, gLevel, gSearch])
+
+  const hasFilters = gLevel > 0 || gSearch.trim().length > 0
+
+  return (
+    <div className="space-y-4 animate-fade-in">
+      <section className="card p-4">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-[16px] font-semibold text-ink-900 dark:text-white">
+              Exam results — scheduled modules
+            </h2>
+            <p className="text-[12px] text-ink-500">
+              Every module that has a teaching block on the timetable. Click a row to open the
+              official CUR mark sheet for that module.
+            </p>
+          </div>
+          <select
+            className="input input-sm w-44 shrink-0"
+            value={termId || ''}
+            onChange={(e) => onChangeTerm(Number(e.target.value))}
+            title="Academic term"
+          >
+            <option value="" disabled>Select term…</option>
+            {terms.map((t: any) => (
+              <option key={t.id} value={t.id}>
+                {t.label}{t.is_current ? ' (current)' : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="mt-3 flex items-center gap-2 flex-wrap">
+          <Filter className="w-4 h-4 text-ink-400 shrink-0" />
+          <div className="relative flex-1 min-w-[220px]">
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
+            <input
+              className="input input-sm pl-8 w-full"
+              placeholder="Search by module code or name…"
+              value={gSearch}
+              onChange={(e) => setGSearch(e.target.value)}
+            />
+          </div>
+          <div className="w-72 shrink-0">
+            <SearchableSelect
+              options={(programsQ.data?.data ?? []).map((p: any) => ({ value: p.id, label: p.name }))}
+              value={programId}
+              onChange={(v) => setProgramId(Number(v))}
+              allLabel="All programmes"
+            />
+          </div>
+          <div className="w-44 shrink-0">
+            <SearchableSelect
+              options={levels.map((l: any) => ({ value: l.id, label: l.name }))}
+              value={gLevel}
+              onChange={(v) => setGLevel(Number(v))}
+              allLabel="All levels"
+            />
+          </div>
+          {(hasFilters || programId > 0) && (
+            <button
+              type="button"
+              className="icon-btn text-ink-400 hover:text-rose-500"
+              title="Clear all filters"
+              onClick={() => { setGLevel(0); setGSearch(''); setProgramId(0) }}
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+
+        {program && (
+          <div className="mt-3 inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-brand/5 border border-brand/20 text-[11.5px] text-brand">
+            <BookOpen className="w-3.5 h-3.5" />
+            <span className="font-semibold">{program.name}</span>
+            <span className="text-ink-500">· {[program.department_name, program.faculty_name].filter(Boolean).join(' · ')}</span>
+            <button
+              type="button"
+              onClick={() => setProgramId(0)}
+              className="ml-1 text-ink-400 hover:text-rose-500"
+              title="Clear programme filter"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        )}
+      </section>
+
+      <section className="card p-0 overflow-hidden">
+        <div className="px-5 py-3 border-b border-ink-100 dark:border-ink-700 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="font-semibold text-[14px] text-ink-900 dark:text-white">
+              All schedules ({filteredBlocks.length})
+            </h3>
+            <p className="text-[11.5px] text-ink-500 mt-0.5">
+              Same data as Module scheduling. Click any row to record marks for that module.
+            </p>
+          </div>
+          {blocksQ.isFetching && <Loader2 className="w-3.5 h-3.5 animate-spin text-ink-400" />}
+        </div>
+
+        {blocksQ.isLoading ? (
+          <div className="p-10 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-ink-400" /></div>
+        ) : filteredBlocks.length === 0 ? (
+          <div className="p-8 text-center text-ink-500 text-[13px] inline-flex flex-col items-center gap-2 w-full">
+            <AlertCircle className="w-5 h-5 text-ink-300" />
+            No teaching blocks match the current filters.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Code</th>
+                  <th>Module &amp; component</th>
+                  <th>Programme</th>
+                  <th>Activity</th>
+                  <th>Sem</th>
+                  <th>Day</th>
+                  <th>Start</th>
+                  <th>End</th>
+                  <th>Period</th>
+                  <th>Teacher</th>
+                  <th className="text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredBlocks.map((b) => {
+                  const pick = () => onPickModule(b.module_id, b.module_code ?? '', b.module_name ?? '')
+                  return (
+                    <tr
+                      key={b.block_id}
+                      className="cursor-pointer hover:bg-ink-50/50 dark:hover:bg-ink-700/20"
+                      onClick={pick}
+                    >
+                      <td className="font-mono text-[12px] font-semibold">{b.module_code ?? '—'}</td>
+                      <td className="text-[12.5px]">{b.module_name ?? '—'}</td>
+                      <td className="text-[12px] text-ink-500">{b.program_acro ?? b.program_name ?? '—'}</td>
+                      <td className="text-[12px]">{b.activity ?? '—'}</td>
+                      <td className="text-[12px] text-ink-500">{b.semesters ?? '—'}</td>
+                      <td className="text-[12px]">{formatDayPatternMarks(b.day_pattern, b.day_of_week)}</td>
+                      <td className="text-[12px] tabular-nums text-ink-500">{b.start_date ?? '—'}</td>
+                      <td className="text-[12px] tabular-nums text-ink-500">{b.end_date ?? '—'}</td>
+                      <td className="text-[12px] tabular-nums text-ink-500">
+                        {b.start_time?.slice(0, 5) ?? '—'}–{b.end_time?.slice(0, 5) ?? '—'}
+                      </td>
+                      <td className="text-[12px] text-ink-700 dark:text-ink-200">{b.instructor_name ?? '—'}</td>
+                      <td className="text-right">
+                        <button
+                          type="button"
+                          className="btn-primary btn-sm"
+                          onClick={(e) => { e.stopPropagation(); pick() }}
+                        >
+                          Record marks
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </div>
+  )
 }

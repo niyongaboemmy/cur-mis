@@ -1,7 +1,7 @@
-import { useParams, Link, useLocation } from 'react-router-dom'
+import { useParams, Link, useLocation, useSearchParams } from 'react-router-dom'
 import { createPortal } from 'react-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { studentService } from '@/services/studentService'
+import { studentService, type StudentPatch, type ProgramModuleRow } from '@/services/studentService'
 import { authService } from '@/services/authService'
 import { marksService, type MyMarksRow, type MyMarksTotals } from '@/services/marksService'
 import { academicService } from '@/services/academicService'
@@ -19,10 +19,11 @@ import {
   Sparkles, Trash2, MapPin, CreditCard, CalendarDays,
   Heart, Accessibility, Users as UsersIcon,
   CalendarClock, CalendarOff, Camera,
-  PlusCircle, MinusCircle, Lock, EyeOff,
+  PlusCircle, MinusCircle, Lock, EyeOff, Network,
 } from 'lucide-react'
 
 type Tab = 'overview' | 'attendance' | 'documents' | 'curriculum' | 'finance' | 'transcript'
+const VALID_TABS: readonly Tab[] = ['overview', 'attendance', 'documents', 'curriculum', 'finance', 'transcript'] as const
 
 interface StudentDetailsPageProps {
   /**
@@ -37,7 +38,17 @@ interface StudentDetailsPageProps {
 export default function StudentDetailsPage({ selfMode = false }: StudentDetailsPageProps = {}) {
   const { id } = useParams<{ id: string }>()
   const location = useLocation()
-  const [tab, setTab] = useState<Tab>('overview')
+  const [sp, setSp] = useSearchParams()
+  // Tab is URL-driven so deep-links like /me/profile?tab=attendance (used by
+  // the student-only Attendance entry in the sidebar) land on the right
+  // pane on first paint instead of always opening "Overview".
+  const tabParam = sp.get('tab') as Tab | null
+  const tab: Tab = tabParam && (VALID_TABS as readonly string[]).includes(tabParam) ? tabParam : 'overview'
+  const setTab = (t: Tab) => {
+    const next = new URLSearchParams(sp)
+    next.set('tab', t)
+    setSp(next, { replace: true })
+  }
   const [isEditing, setIsEditing] = useState(false)
 
   const fromSearch = location.state?.fromSearch
@@ -234,25 +245,11 @@ function OverviewTab({ student, stats, selfMode = false }: { student: any, stats
         <ContactSection student={student} app={app} selfMode={selfMode} />
       </div>
 
-      {/* Programme — full width */}
-      <section className="card p-6">
-        <SectionHeader title="Programme Details" sub="Faculty, department, programme and academic year." icon={BookOpen} />
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5 mt-6">
-          <InfoGroup label="Program" value={programName} icon={BookOpen} />
-          <InfoGroup label="Faculty" value={facultyName} icon={Building2} />
-          <InfoGroup label="Department" value={deptName} icon={GraduationCap} />
-          <InfoGroup label="Current Level" value={levelName} icon={CheckCircle} />
-          <InfoGroup label="Campus" value={pick(app?.campus_name)} icon={Building2} />
-          <InfoGroup label="Mode of Study" value={cap(pick(app?.mode_of_study))} />
-          <InfoGroup label="Intake" value={pick(app?.intake)} icon={Calendar} />
-          <InfoGroup label="Academic Year" value={pick(student.acc_year, app?.academic_year_label)} icon={Calendar} />
-          <InfoGroup label="Registration Date" value={pick(student.registration_date)} icon={Calendar} />
-        </div>
-      </section>
+      <ProgrammeSection student={student} app={app} stats={stats} selfMode={selfMode} />
 
       {/* Residency + Academic Background — side by side when both exist */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {(selfMode || (app && (student.province || student.district || student.sector || app.province || app.district || app.sector || app.residence_district || app.address))) && (
+        {(!selfMode || student.province || student.district || student.sector || app?.province || app?.district || app?.sector || app?.residence_district || app?.address) && (
           <ResidencySection student={student} app={app} selfMode={selfMode} />
         )}
 
@@ -273,15 +270,6 @@ function OverviewTab({ student, stats, selfMode = false }: { student: any, stats
         )}
       </div>
 
-      {/* Academic Progress placeholder */}
-      <section className="card p-6">
-        <SectionHeader title="Academic Progress" sub="GPA and term-by-term performance." icon={BarChart} />
-        <div className="mt-6 bg-ink-50 dark:bg-ink-800 rounded-lg p-6 text-center text-ink-500 border border-dashed border-ink-200 dark:border-ink-700">
-          <BarChart className="w-8 h-8 mx-auto mb-2 opacity-50" />
-          <p className="text-sm">Comprehensive stats and GPA calculations are currently being processed.</p>
-        </div>
-      </section>
-
       {selfMode && <ChangePasswordSection />}
     </div>
   )
@@ -294,34 +282,86 @@ function OverviewTab({ student, stats, selfMode = false }: { student: any, stats
  * locked because those belong to the legal/academic identity captured at
  * enrollment and are admin-only.
  */
+/**
+ * Hook that picks the right save mutation for a section based on whether
+ * we're viewing the page as the student themselves (`/me/profile`) or as an
+ * admin. Admins use the full PUT /api/students/:id endpoint; students use
+ * the whitelisted PUT /api/students/me. Returns a mutate(patch) helper that
+ * accepts the patch keys directly so each section can wire its own form.
+ */
+function useSectionSave(student: any, selfMode: boolean, sectionLabel: string) {
+  const qc = useQueryClient()
+  return useMutation<unknown, any, StudentPatch>({
+    mutationFn: async (patch) => {
+      if (selfMode) return studentService.updateMe(patch as any)
+      return studentService.update(student.id, patch)
+    },
+    onSuccess: () => {
+      toast.success(`${sectionLabel} updated.`)
+      qc.invalidateQueries({ queryKey: selfMode ? ['student', 'me'] : ['student', String(student.id)] })
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? `Failed to update ${sectionLabel.toLowerCase()}`),
+  })
+}
+
 function PersonalDetailsSection({
   student, app, fullName, genderLabel, selfMode,
 }: { student: any; app: any; fullName: string; genderLabel: string | null; selfMode: boolean }) {
-  const qc = useQueryClient()
   const [editing, setEditing] = useState(false)
 
   const pick = (...vals: any[]) =>
     vals.find(v => v !== undefined && v !== null && v !== '') ?? null
 
-  const initialMarital = (pick(student.marital_status, app?.marital_status) ?? '') as string
-  const [marital, setMarital] = useState<string>(initialMarital.toLowerCase())
-  useEffect(() => { setMarital((pick(student.marital_status, app?.marital_status) ?? '').toString().toLowerCase()) }, [student.marital_status, app?.marital_status])
-
-  const save = useMutation({
-    mutationFn: () => studentService.updateMe({ marital_status: marital || null }),
-    onSuccess: () => {
-      toast.success('Personal details updated.')
-      qc.invalidateQueries({ queryKey: ['student', 'me'] })
-      setEditing(false)
-    },
-    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to update profile'),
+  const buildInitial = () => ({
+    fname:          (student.fname ?? '') as string,
+    lname:          (student.lname ?? '') as string,
+    gender:         ((pick(student.gender, app?.gender) ?? '') as string).toUpperCase().slice(0, 1),
+    birthdate:      (pick(student.birthdate, app?.birthdate) ?? '') as string,
+    marital_status: ((pick(student.marital_status, app?.marital_status) ?? '') as string).toLowerCase(),
+    id_card:        (pick(student.id_card, app?.national_id) ?? '') as string,
+    nationality:    (pick(student.nationality, app?.nationality) ?? '') as string,
+    father:         (pick(student.father, app?.father) ?? '') as string,
+    mother:         (pick(student.mother, app?.mother) ?? '') as string,
+    country:        (pick(student.country, app?.country_of_residence) ?? '') as string,
+    disability:     (pick(student.disability, app?.disability) ?? '') as string,
   })
+  const [form, setForm] = useState(buildInitial)
+  useEffect(() => { setForm(buildInitial()) /* eslint-disable-next-line */ }, [student, app])
+
+  const save = useSectionSave(student, selfMode, 'Personal details')
+  const set = (k: keyof ReturnType<typeof buildInitial>) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+      setForm(f => ({ ...f, [k]: e.target.value }))
+
+  const handleSave = () => {
+    if (selfMode) {
+      save.mutate({ marital_status: form.marital_status || null })
+    } else {
+      save.mutate({
+        fname:          form.fname.trim(),
+        lname:          form.lname.trim(),
+        gender:         form.gender || null,
+        birthdate:      form.birthdate || null,
+        marital_status: form.marital_status || null,
+        id_card:        form.id_card.trim() || null,
+        nationality:    form.nationality.trim() || null,
+        father:         form.father.trim() || null,
+        mother:         form.mother.trim() || null,
+        country:        form.country.trim() || null,
+        disability:     form.disability.trim() || null,
+      })
+    }
+  }
+
+  // Close editor on a successful save. Mirrored from save.isSuccess so we
+  // don't have to inline this in every onSuccess handler.
+  useEffect(() => { if (save.isSuccess) setEditing(false) }, [save.isSuccess])
 
   return (
     <section className="card p-6">
       <div className="flex items-start justify-between gap-3">
         <SectionHeader title="Personal Details" sub="Identity and parental information." icon={User} />
-        {selfMode && !editing && (
+        {!editing && (
           <button
             type="button"
             onClick={() => setEditing(true)}
@@ -333,17 +373,42 @@ function PersonalDetailsSection({
         )}
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5 mt-6">
-        <InfoGroup label="Full Name" value={fullName} icon={User} />
-        <InfoGroup label="Gender" value={genderLabel} />
-        <InfoGroup label="Date of Birth" value={pick(student.birthdate, app?.birthdate)} icon={CalendarDays} />
+        {/* First name */}
+        {!selfMode && editing ? (
+          <FieldGroup label="First Name" icon={User}><TextInput value={form.fname} onChange={set('fname')} /></FieldGroup>
+        ) : (
+          <InfoGroup label="Full Name" value={fullName} icon={User} />
+        )}
+        {!selfMode && editing && (
+          <FieldGroup label="Last Name" icon={User}><TextInput value={form.lname} onChange={set('lname')} /></FieldGroup>
+        )}
 
+        {/* Gender */}
+        {!selfMode && editing ? (
+          <FieldGroup label="Gender">
+            <select value={form.gender} onChange={set('gender')} className={selectInputClass}>
+              <option value="">— Select —</option>
+              <option value="M">Male</option>
+              <option value="F">Female</option>
+            </select>
+          </FieldGroup>
+        ) : (
+          <InfoGroup label="Gender" value={genderLabel} />
+        )}
+
+        {/* Birthdate */}
+        {!selfMode && editing ? (
+          <FieldGroup label="Date of Birth" icon={CalendarDays}>
+            <TextInput type="date" value={form.birthdate || ''} onChange={set('birthdate')} />
+          </FieldGroup>
+        ) : (
+          <InfoGroup label="Date of Birth" value={pick(student.birthdate, app?.birthdate)} icon={CalendarDays} />
+        )}
+
+        {/* Marital status — both selfMode and admin can edit this. */}
         {editing ? (
           <FieldGroup label="Marital Status" icon={Heart}>
-            <select
-              value={marital}
-              onChange={(e) => setMarital(e.target.value)}
-              className="w-full h-9 px-3 rounded-md border border-ink-200 dark:border-ink-700 bg-white dark:bg-ink-900 text-sm focus:border-brand focus:ring-1 focus:ring-brand outline-none"
-            >
+            <select value={form.marital_status} onChange={set('marital_status')} className={selectInputClass}>
               <option value="">— Select —</option>
               <option value="single">Single</option>
               <option value="married">Married</option>
@@ -355,34 +420,34 @@ function PersonalDetailsSection({
           <InfoGroup label="Marital Status" value={cap(pick(student.marital_status, app?.marital_status))} icon={Heart} />
         )}
 
-        <InfoGroup label="National ID / Passport" value={pick(student.id_card, app?.national_id)} icon={CreditCard} />
-        <InfoGroup label="Nationality" value={pick(student.nationality, app?.nationality)} icon={Globe2} />
-        <InfoGroup label="Father's Name" value={pick(student.father, app?.father)} icon={UsersIcon} />
-        <InfoGroup label="Mother's Name" value={pick(student.mother, app?.mother)} icon={UsersIcon} />
-        <InfoGroup label="Country of Residence" value={pick(app?.country_of_residence)} icon={MapPin} />
-        <InfoGroup label="Disability" value={pick(app?.disability) ?? 'None'} icon={Accessibility} />
+        {/* Admin-editable identity fields */}
+        {!selfMode && editing ? (
+          <>
+            <FieldGroup label="National ID / Passport" icon={CreditCard}><TextInput value={form.id_card} onChange={set('id_card')} /></FieldGroup>
+            <FieldGroup label="Nationality" icon={Globe2}><TextInput value={form.nationality} onChange={set('nationality')} /></FieldGroup>
+            <FieldGroup label="Father's Name" icon={UsersIcon}><TextInput value={form.father} onChange={set('father')} /></FieldGroup>
+            <FieldGroup label="Mother's Name" icon={UsersIcon}><TextInput value={form.mother} onChange={set('mother')} /></FieldGroup>
+            <FieldGroup label="Country of Residence" icon={MapPin}><TextInput value={form.country} onChange={set('country')} /></FieldGroup>
+            <FieldGroup label="Disability" icon={Accessibility}><TextInput value={form.disability} onChange={set('disability')} placeholder="None" /></FieldGroup>
+          </>
+        ) : (
+          <>
+            <InfoGroup label="National ID / Passport" value={pick(student.id_card, app?.national_id)} icon={CreditCard} />
+            <InfoGroup label="Nationality" value={pick(student.nationality, app?.nationality)} icon={Globe2} />
+            <InfoGroup label="Father's Name" value={pick(student.father, app?.father)} icon={UsersIcon} />
+            <InfoGroup label="Mother's Name" value={pick(student.mother, app?.mother)} icon={UsersIcon} />
+            <InfoGroup label="Country of Residence" value={pick(student.country, app?.country_of_residence)} icon={MapPin} />
+            <InfoGroup label="Disability" value={pick(student.disability, app?.disability) ?? 'None'} icon={Accessibility} />
+          </>
+        )}
       </div>
 
       {editing && (
-        <div className="mt-6 flex items-center justify-end gap-2 pt-4 border-t border-ink-100 dark:border-ink-800">
-          <button
-            type="button"
-            onClick={() => { setMarital(initialMarital.toLowerCase()); setEditing(false) }}
-            disabled={save.isPending}
-            className="btn-secondary btn-sm flex items-center gap-1.5 h-8 px-3"
-          >
-            <X className="w-3.5 h-3.5" /> Cancel
-          </button>
-          <button
-            type="button"
-            onClick={() => save.mutate()}
-            disabled={save.isPending}
-            className="btn-primary btn-sm flex items-center gap-1.5 h-8 px-3"
-          >
-            {save.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-            Save
-          </button>
-        </div>
+        <SectionEditFooter
+          saving={save.isPending}
+          onCancel={() => { setForm(buildInitial()); setEditing(false) }}
+          onSave={handleSave}
+        />
       )}
     </section>
   )
@@ -395,31 +460,40 @@ function PersonalDetailsSection({
  * both stay read-only.
  */
 function ContactSection({ student, app, selfMode }: { student: any; app: any; selfMode: boolean }) {
-  const qc = useQueryClient()
   const [editing, setEditing] = useState(false)
 
   const pick = (...vals: any[]) =>
     vals.find(v => v !== undefined && v !== null && v !== '') ?? null
 
-  const initialPhone = (pick(student.phone, app?.phone) ?? '') as string
-  const [phone, setPhone] = useState<string>(initialPhone)
-  useEffect(() => { setPhone((pick(student.phone, app?.phone) ?? '') as string) }, [student.phone, app?.phone])
-
-  const save = useMutation({
-    mutationFn: () => studentService.updateMe({ phone: phone.trim() || null }),
-    onSuccess: () => {
-      toast.success('Contact updated.')
-      qc.invalidateQueries({ queryKey: ['student', 'me'] })
-      setEditing(false)
-    },
-    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to update contact'),
+  const buildInitial = () => ({
+    phone: (pick(student.phone, app?.phone) ?? '') as string,
+    email: (pick(student.email, app?.email) ?? '') as string,
   })
+  const [form, setForm] = useState(buildInitial)
+  useEffect(() => { setForm(buildInitial()) /* eslint-disable-next-line */ }, [student.phone, student.email, app?.phone, app?.email])
+
+  const save = useSectionSave(student, selfMode, 'Contact')
+  const set = (k: keyof ReturnType<typeof buildInitial>) =>
+    (e: React.ChangeEvent<HTMLInputElement>) => setForm(f => ({ ...f, [k]: e.target.value }))
+
+  const handleSave = () => {
+    if (selfMode) {
+      save.mutate({ phone: form.phone.trim() || null })
+    } else {
+      save.mutate({
+        phone: form.phone.trim() || null,
+        email: form.email.trim() || null,
+      })
+    }
+  }
+
+  useEffect(() => { if (save.isSuccess) setEditing(false) }, [save.isSuccess])
 
   return (
     <section className="card p-6">
       <div className="flex items-start justify-between gap-3">
         <SectionHeader title="Contact" sub="How we reach the student." icon={Phone} />
-        {selfMode && !editing && (
+        {!editing && (
           <button
             type="button"
             onClick={() => setEditing(true)}
@@ -433,43 +507,29 @@ function ContactSection({ student, app, selfMode }: { student: any; app: any; se
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5 mt-6">
         {editing ? (
           <FieldGroup label="Phone" icon={Phone}>
-            <input
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="+250 7XX XXX XXX"
-              className="w-full h-9 px-3 rounded-md border border-ink-200 dark:border-ink-700 bg-white dark:bg-ink-900 text-sm focus:border-brand focus:ring-1 focus:ring-brand outline-none"
-            />
+            <TextInput type="tel" value={form.phone} onChange={set('phone')} placeholder="+250 7XX XXX XXX" />
           </FieldGroup>
         ) : (
           <InfoGroup label="Phone" value={pick(student.phone, app?.phone)} icon={Phone} />
         )}
         <InfoGroup label="Reference Person Phone" value={pick(app?.reference_phone)} icon={Phone} />
         <div className="sm:col-span-2">
-          <InfoGroup label="Email" value={pick(student.email, app?.email)} icon={Mail} />
+          {!selfMode && editing ? (
+            <FieldGroup label="Email" icon={Mail}>
+              <TextInput type="email" value={form.email} onChange={set('email')} placeholder="student@example.com" />
+            </FieldGroup>
+          ) : (
+            <InfoGroup label="Email" value={pick(student.email, app?.email)} icon={Mail} />
+          )}
         </div>
       </div>
 
       {editing && (
-        <div className="mt-6 flex items-center justify-end gap-2 pt-4 border-t border-ink-100 dark:border-ink-800">
-          <button
-            type="button"
-            onClick={() => { setPhone(initialPhone); setEditing(false) }}
-            disabled={save.isPending}
-            className="btn-secondary btn-sm flex items-center gap-1.5 h-8 px-3"
-          >
-            <X className="w-3.5 h-3.5" /> Cancel
-          </button>
-          <button
-            type="button"
-            onClick={() => save.mutate()}
-            disabled={save.isPending}
-            className="btn-primary btn-sm flex items-center gap-1.5 h-8 px-3"
-          >
-            {save.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-            Save
-          </button>
-        </div>
+        <SectionEditFooter
+          saving={save.isPending}
+          onCancel={() => { setForm(buildInitial()); setEditing(false) }}
+          onSave={handleSave}
+        />
       )}
     </section>
   )
@@ -481,52 +541,40 @@ function ContactSection({ student, app, selfMode }: { student: any; app: any; se
  * district stay read-only (admin-only on the application record).
  */
 function ResidencySection({ student, app, selfMode }: { student: any; app: any; selfMode: boolean }) {
-  const qc = useQueryClient()
   const [editing, setEditing] = useState(false)
 
   const pick = (...vals: any[]) =>
     vals.find(v => v !== undefined && v !== null && v !== '') ?? null
 
-  const initial = {
+  const buildInitial = () => ({
     province: (pick(student.province, app?.province) ?? '') as string,
     district: (pick(student.district, app?.district) ?? '') as string,
     sector:   (pick(student.sector,   app?.sector)   ?? '') as string,
     cell:     (pick(student.cell)                    ?? '') as string,
     village:  (pick(student.village)                 ?? '') as string,
-  }
-  const [form, setForm] = useState(initial)
-  useEffect(() => { setForm({
-    province: (pick(student.province, app?.province) ?? '') as string,
-    district: (pick(student.district, app?.district) ?? '') as string,
-    sector:   (pick(student.sector,   app?.sector)   ?? '') as string,
-    cell:     (pick(student.cell)                    ?? '') as string,
-    village:  (pick(student.village)                 ?? '') as string,
-  }) }, [student.province, student.district, student.sector, student.cell, student.village, app?.province, app?.district, app?.sector])
+  })
+  const [form, setForm] = useState(buildInitial)
+  useEffect(() => { setForm(buildInitial()) /* eslint-disable-next-line */ }, [student.province, student.district, student.sector, student.cell, student.village, app?.province, app?.district, app?.sector])
 
-  const save = useMutation({
-    mutationFn: () => studentService.updateMe({
-      province: form.province.trim() || null,
-      district: form.district.trim() || null,
-      sector:   form.sector.trim()   || null,
-      cell:     form.cell.trim()     || null,
-      village:  form.village.trim()  || null,
-    }),
-    onSuccess: () => {
-      toast.success('Residency updated.')
-      qc.invalidateQueries({ queryKey: ['student', 'me'] })
-      setEditing(false)
-    },
-    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to update residency'),
+  const save = useSectionSave(student, selfMode, 'Residency')
+  const set = (k: keyof ReturnType<typeof buildInitial>) =>
+    (e: React.ChangeEvent<HTMLInputElement>) => setForm(f => ({ ...f, [k]: e.target.value }))
+
+  const handleSave = () => save.mutate({
+    province: form.province.trim() || null,
+    district: form.district.trim() || null,
+    sector:   form.sector.trim()   || null,
+    cell:     form.cell.trim()     || null,
+    village:  form.village.trim()  || null,
   })
 
-  const set = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
-    setForm(f => ({ ...f, [key]: e.target.value }))
+  useEffect(() => { if (save.isSuccess) setEditing(false) }, [save.isSuccess])
 
   return (
     <section className="card p-6">
       <div className="flex items-start justify-between gap-3">
         <SectionHeader title="Residency" sub="Where the student lives." icon={MapPin} />
-        {selfMode && !editing && (
+        {!editing && (
           <button
             type="button"
             onClick={() => setEditing(true)}
@@ -556,7 +604,7 @@ function ResidencySection({ student, app, selfMode }: { student: any; app: any; 
           </>
         )}
 
-        {/* Application-level fields stay read-only on the student side. */}
+        {/* Application-level fields stay read-only — they live on the application record. */}
         {pick(app?.residence_district) && (
           <InfoGroup label="Residence District" value={pick(app?.residence_district)} />
         )}
@@ -568,29 +616,190 @@ function ResidencySection({ student, app, selfMode }: { student: any; app: any; 
       </div>
 
       {editing && (
-        <div className="mt-6 flex items-center justify-end gap-2 pt-4 border-t border-ink-100 dark:border-ink-800">
-          <button
-            type="button"
-            onClick={() => { setForm(initial); setEditing(false) }}
-            disabled={save.isPending}
-            className="btn-secondary btn-sm flex items-center gap-1.5 h-8 px-3"
-          >
-            <X className="w-3.5 h-3.5" /> Cancel
-          </button>
-          <button
-            type="button"
-            onClick={() => save.mutate()}
-            disabled={save.isPending}
-            className="btn-primary btn-sm flex items-center gap-1.5 h-8 px-3"
-          >
-            {save.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-            Save
-          </button>
-        </div>
+        <SectionEditFooter
+          saving={save.isPending}
+          onCancel={() => { setForm(buildInitial()); setEditing(false) }}
+          onSave={handleSave}
+        />
       )}
     </section>
   )
 }
+
+/**
+ * Programme Details — read-only for students, editable by admins. Changing
+ * std_option triggers a server-side recompute of faculty/department to keep
+ * the legacy columns in sync with the catalog. Options come from the stats
+ * facets so the dropdowns mirror what's exposed on the students list.
+ */
+function ProgrammeSection({ student, app, stats, selfMode }: { student: any; app: any; stats: any; selfMode: boolean }) {
+  const [editing, setEditing] = useState(false)
+
+  const pick = (...vals: any[]) =>
+    vals.find(v => v !== undefined && v !== null && v !== '') ?? null
+
+  const optionFacets = (stats?.facets?.options ?? []) as Array<{ value: string; label: string; department_id: number | null; faculty_id: number | null }>
+  const levelFacets  = (stats?.facets?.current_level ?? []) as FacetLite[]
+  const yearFacets   = (stats?.facets?.acc_year ?? []) as FacetLite[]
+  const facultyFacets    = (stats?.facets?.faculty ?? []) as FacetLite[]
+  const departmentFacets = (stats?.facets?.department ?? []) as FacetLite[]
+
+  const programName = optionFacets.find(o => String(o.value) === String(student.std_option))?.label ?? app?.program_name ?? student.program ?? null
+  const facultyName = facultyFacets.find(f => String(f.value) === String(student.faculty))?.label ?? app?.faculty_name ?? student.faculty ?? null
+  const deptName    = departmentFacets.find(f => String(f.value) === String(student.department))?.label ?? app?.department_name ?? student.department ?? null
+  const levelName   = levelFacets.find(f => String(f.value) === String(student.current_level))?.label ?? student.current_level ?? null
+
+  const buildInitial = () => ({
+    std_option:        student.std_option ? String(student.std_option) : '',
+    current_level:     student.current_level ? String(student.current_level) : '',
+    intake:            (student.intake ?? '') as string,
+    acc_year:          (student.acc_year ?? '') as string,
+    registration_date: (student.registration_date ?? '') as string,
+    regnumber:         (student.regnumber ?? '') as string,
+    student_state:     (student.student_state ?? 'active') as string,
+    sponsor:           (student.sponsor ?? '') as string,
+  })
+  const [form, setForm] = useState(buildInitial)
+  useEffect(() => { setForm(buildInitial()) /* eslint-disable-next-line */ }, [
+    student.std_option, student.current_level, student.intake, student.acc_year,
+    student.registration_date, student.regnumber, student.student_state, student.sponsor,
+  ])
+
+  const save = useSectionSave(student, selfMode, 'Programme details')
+  const set = (k: keyof ReturnType<typeof buildInitial>) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+      setForm(f => ({ ...f, [k]: e.target.value }))
+
+  const handleSave = () => save.mutate({
+    std_option:        form.std_option || null,
+    current_level:     form.current_level || null,
+    intake:            form.intake.trim() || null,
+    acc_year:          form.acc_year.trim() || null,
+    registration_date: form.registration_date || null,
+    regnumber:         form.regnumber.trim() || null,
+    student_state:     form.student_state || null,
+    sponsor:           form.sponsor.trim() || null,
+  })
+
+  useEffect(() => { if (save.isSuccess) setEditing(false) }, [save.isSuccess])
+
+  // Selected option preview helps admins see the cascading faculty/department
+  // they're about to commit to before they save.
+  const selectedOption = optionFacets.find(o => String(o.value) === String(form.std_option)) ?? null
+  const previewFaculty = selectedOption ? (facultyFacets.find(f => String(f.value) === String(selectedOption.faculty_id))?.label ?? facultyName) : facultyName
+  const previewDept    = selectedOption ? (departmentFacets.find(d => String(d.value) === String(selectedOption.department_id))?.label ?? deptName) : deptName
+
+  return (
+    <section className="card p-6">
+      <div className="flex items-start justify-between gap-3">
+        <SectionHeader title="Programme Details" sub="Faculty, department, programme and academic year." icon={BookOpen} />
+        {!selfMode && !editing && (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="btn-secondary btn-sm flex items-center gap-1.5 h-7 px-2.5 shrink-0"
+          >
+            <Edit className="w-3.5 h-3.5" />
+            <span>Edit</span>
+          </button>
+        )}
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5 mt-6">
+        {editing ? (
+          <>
+            <FieldGroup label="Program" icon={BookOpen}>
+              <select value={form.std_option} onChange={set('std_option')} className={selectInputClass}>
+                <option value="">— Select program —</option>
+                {optionFacets.map(o => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </FieldGroup>
+            <InfoGroup label="Faculty" value={previewFaculty} icon={Building2} />
+            <InfoGroup label="Department" value={previewDept} icon={GraduationCap} />
+
+            <FieldGroup label="Current Level" icon={CheckCircle}>
+              <select value={form.current_level} onChange={set('current_level')} className={selectInputClass}>
+                <option value="">— Select —</option>
+                {levelFacets.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
+              </select>
+            </FieldGroup>
+            <FieldGroup label="Academic Year" icon={Calendar}>
+              <select value={form.acc_year} onChange={set('acc_year')} className={selectInputClass}>
+                <option value="">— Select —</option>
+                {yearFacets.map(y => <option key={y.value} value={y.value}>{y.label}</option>)}
+              </select>
+            </FieldGroup>
+            <FieldGroup label="Registration Date" icon={Calendar}>
+              <TextInput type="date" value={form.registration_date} onChange={set('registration_date')} />
+            </FieldGroup>
+            <FieldGroup label="Reg Number"><TextInput value={form.regnumber} onChange={set('regnumber')} /></FieldGroup>
+            <FieldGroup label="Intake" icon={Calendar}><TextInput value={form.intake} onChange={set('intake')} /></FieldGroup>
+            <FieldGroup label="Sponsor"><TextInput value={form.sponsor} onChange={set('sponsor')} /></FieldGroup>
+
+            <FieldGroup label="Status">
+              <select value={form.student_state} onChange={set('student_state')} className={selectInputClass}>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+                <option value="graduated">Graduated</option>
+                <option value="suspended">Suspended</option>
+                <option value="dismissed">Dismissed</option>
+                <option value="dropped">Dropped</option>
+              </select>
+            </FieldGroup>
+          </>
+        ) : (
+          <>
+            <InfoGroup label="Program" value={programName} icon={BookOpen} />
+            <InfoGroup label="Faculty" value={facultyName} icon={Building2} />
+            <InfoGroup label="Department" value={deptName} icon={GraduationCap} />
+            <InfoGroup label="Current Level" value={levelName} icon={CheckCircle} />
+            <InfoGroup label="Campus" value={pick(app?.campus_name)} icon={Building2} />
+            <InfoGroup label="Mode of Study" value={cap(pick(app?.mode_of_study))} />
+            <InfoGroup label="Intake" value={pick(student.intake, app?.intake)} icon={Calendar} />
+            <InfoGroup label="Academic Year" value={pick(student.acc_year, app?.academic_year_label)} icon={Calendar} />
+            <InfoGroup label="Registration Date" value={pick(student.registration_date)} icon={Calendar} />
+          </>
+        )}
+      </div>
+
+      {editing && (
+        <SectionEditFooter
+          saving={save.isPending}
+          onCancel={() => { setForm(buildInitial()); setEditing(false) }}
+          onSave={handleSave}
+        />
+      )}
+    </section>
+  )
+}
+
+/** Cancel + Save button row used by every editable section. */
+function SectionEditFooter({ saving, onCancel, onSave }: { saving: boolean; onCancel: () => void; onSave: () => void }) {
+  return (
+    <div className="mt-6 flex items-center justify-end gap-2 pt-4 border-t border-ink-100 dark:border-ink-800">
+      <button
+        type="button"
+        onClick={onCancel}
+        disabled={saving}
+        className="btn-secondary btn-sm flex items-center gap-1.5 h-8 px-3"
+      >
+        <X className="w-3.5 h-3.5" /> Cancel
+      </button>
+      <button
+        type="button"
+        onClick={onSave}
+        disabled={saving}
+        className="btn-primary btn-sm flex items-center gap-1.5 h-8 px-3"
+      >
+        {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+        Save
+      </button>
+    </div>
+  )
+}
+
+interface FacetLite { value: string; label: string }
 
 /** Plain text input styled to match the FieldGroup wrapper. */
 function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
@@ -602,6 +811,10 @@ function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
     />
   )
 }
+
+/** Field-styling inputs use this className — share it with selects so the
+ *  edit forms look consistent without spelling out the Tailwind chain. */
+const selectInputClass = 'w-full h-9 px-3 rounded-md border border-ink-200 dark:border-ink-700 bg-white dark:bg-ink-900 text-sm focus:border-brand focus:ring-1 focus:ring-brand outline-none'
 
 /**
  * Change Password card. Requires the current password before persisting,
@@ -988,6 +1201,8 @@ function TabButton({ active, icon: Icon, label, onClick }: { active: boolean, ic
  * table can be downloaded as a CSV via the dedicated server endpoint —
  * format mirrors what's on screen so it's printable as-is.
  */
+type ModuleFilter = 'all' | 'scheduled' | 'enrolled' | 'passed' | 'failed' | 'unmarked'
+
 function ProgramCurriculumTab({ student, selfMode = false }: { student: any; selfMode?: boolean }) {
   const studentId = student?.id
   const qc = useQueryClient()
@@ -997,6 +1212,14 @@ function ProgramCurriculumTab({ student, selfMode = false }: { student: any; sel
   const [pickerOpen, setPickerOpen] = useState(false)
   const [enrollPending, setEnrollPending] = useState<number | null>(null)
   const [dropPending, setDropPending] = useState<number | null>(null)
+  // IMPORTANT: every hook must run on every render. The early returns below
+  // (loading / error / no-program) used to sit between the data hooks and
+  // the filter hooks, which made React see "more hooks" once data arrived
+  // and crash with "Rendered more hooks than during the previous render".
+  // Keep all hook calls above any conditional return.
+  const [filter, setFilter] = useState<ModuleFilter>('all')
+  // Reset filter when student changes so we don't carry it across navigation.
+  useEffect(() => { setFilter('all') }, [studentId])
 
   const dataQ = useQuery({
     queryKey: selfMode ? ['student-program-modules', 'me'] : ['student-program-modules', studentId],
@@ -1076,18 +1299,47 @@ function ProgramCurriculumTab({ student, selfMode = false }: { student: any; sel
   const failed       = allModules.filter(m => m.marks?.percentage != null && Number(m.marks.percentage) <  50).length
   const unmarked     = totalModules - completed - failed
   const scheduled    = allModules.filter(m => m.is_scheduled).length
+  const enrolled     = allModules.filter(m => m.registration?.status === 'registered' && !m.marks).length
+  // Completion = modules the student has passed, out of total. Failed
+  // doesn't count as complete — student typically resits.
+  const completionPct = totalModules > 0
+    ? Math.round((completed / totalModules) * 100)
+    : 0
+  const passedSegPct   = totalModules > 0 ? (completed / totalModules) * 100 : 0
+  const failedSegPct   = totalModules > 0 ? (failed    / totalModules) * 100 : 0
+  const enrolledSegPct = totalModules > 0 ? (enrolled  / totalModules) * 100 : 0
+
+  const matchesFilter = (m: ProgramModuleRow): boolean => {
+    switch (filter) {
+      case 'scheduled': return !!m.is_scheduled
+      case 'enrolled':  return m.registration?.status === 'registered' && !m.marks
+      case 'passed':    return m.marks?.percentage != null && Number(m.marks.percentage) >= 50
+      case 'failed':    return m.marks?.percentage != null && Number(m.marks.percentage) <  50
+      case 'unmarked':  return !m.marks
+      default:          return true
+    }
+  }
+  const visibleGroups = filter === 'all'
+    ? groups
+    : groups
+        .map(g => ({ ...g, modules: g.modules.filter(matchesFilter) }))
+        .filter(g => g.modules.length > 0)
+  const visibleCount = visibleGroups.reduce((acc, g) => acc + g.modules.length, 0)
 
   const downloadUrl = studentService.programModulesExportUrl(studentId)
 
   return (
     <div className="space-y-6">
-      {/* Hero summary + download */}
+      {/* Hero summary + download. Each card doubles as a filter chip — click
+       *  to scope the per-level tables below to that subset, click again or
+       *  click "Modules" to clear. */}
       <div className="flex flex-wrap items-center gap-3">
-        <SummaryCard tone="brand"   icon={BookOpen}      label="Modules"   value={totalModules} />
-        <SummaryCard tone="indigo"  icon={CalendarClock} label="Scheduled" value={scheduled} />
-        <SummaryCard tone="emerald" icon={CheckCircle}   label="Passed"    value={completed} />
-        <SummaryCard tone="amber"   icon={AlertTriangle} label="Failed"    value={failed} />
-        <SummaryCard tone="ink"     icon={Clock}         label="Unmarked"  value={unmarked} />
+        <SummaryCard tone="brand"   icon={BookOpen}      label="Modules"   value={totalModules} active={filter === 'all'}       onClick={() => setFilter('all')} />
+        <SummaryCard tone="indigo"  icon={CalendarClock} label="Scheduled" value={scheduled}     active={filter === 'scheduled'} onClick={() => setFilter(filter === 'scheduled' ? 'all' : 'scheduled')} />
+        <SummaryCard tone="sky"     icon={GraduationCap} label="Enrolled"  value={enrolled}      active={filter === 'enrolled'}  onClick={() => setFilter(filter === 'enrolled'  ? 'all' : 'enrolled')} />
+        <SummaryCard tone="emerald" icon={CheckCircle}   label="Passed"    value={completed}     active={filter === 'passed'}    onClick={() => setFilter(filter === 'passed'    ? 'all' : 'passed')} />
+        <SummaryCard tone="amber"   icon={AlertTriangle} label="Failed"    value={failed}        active={filter === 'failed'}    onClick={() => setFilter(filter === 'failed'    ? 'all' : 'failed')} />
+        <SummaryCard tone="ink"     icon={Clock}         label="Unmarked"  value={unmarked}      active={filter === 'unmarked'}  onClick={() => setFilter(filter === 'unmarked'  ? 'all' : 'unmarked')} />
         <div className="ml-auto flex items-center gap-2">
           {isAdmin && (
             <button
@@ -1114,21 +1366,66 @@ function ProgramCurriculumTab({ student, selfMode = false }: { student: any; sel
         </div>
       </div>
 
-      {/* Program info pill */}
-      <div className="card p-4 flex flex-wrap items-center gap-3">
-        <div className="w-10 h-10 rounded-lg bg-brand/10 text-brand flex items-center justify-center">
-          <GraduationCap className="w-5 h-5" />
+      {/* Program info + completion progress */}
+      <div className="card p-4 space-y-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-brand/10 text-brand flex items-center justify-center">
+            <GraduationCap className="w-5 h-5" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[11px] uppercase tracking-wider text-ink-400 font-semibold">Program</p>
+            <p className="text-[14px] font-bold text-ink-900 dark:text-white">{program.name}</p>
+          </div>
+          {program.code && (
+            <span className="ml-2 font-mono text-[12px] bg-ink-100 dark:bg-ink-800 text-ink-700 dark:text-ink-200 px-2 py-1 rounded">
+              {program.code}
+            </span>
+          )}
+          <div className="ml-auto text-right">
+            <p className="text-[11px] uppercase tracking-wider text-ink-400 font-semibold">Completion</p>
+            <p className="text-[14px] font-bold text-ink-900 dark:text-white tabular-nums">
+              {completed}/{totalModules} <span className="text-ink-400 font-medium">· {completionPct}%</span>
+            </p>
+          </div>
         </div>
-        <div className="min-w-0">
-          <p className="text-[11px] uppercase tracking-wider text-ink-400 font-semibold">Program</p>
-          <p className="text-[14px] font-bold text-ink-900 dark:text-white">{program.name}</p>
+        {/* Stacked progress bar: passed (emerald) | failed (rose) | enrolled
+         *  (sky) | remaining (ink). Read left-to-right as the student's
+         *  trajectory through the curriculum. */}
+        <div
+          className="h-2.5 w-full rounded-full bg-ink-100 dark:bg-ink-700/40 overflow-hidden flex"
+          role="progressbar"
+          aria-valuenow={completionPct}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          title={`${completed} passed · ${failed} failed · ${enrolled} enrolled · ${totalModules - completed - failed - enrolled} remaining`}
+        >
+          {passedSegPct > 0   && <div className="h-full bg-emerald-500" style={{ width: `${passedSegPct}%` }} />}
+          {failedSegPct > 0   && <div className="h-full bg-rose-400"    style={{ width: `${failedSegPct}%` }} />}
+          {enrolledSegPct > 0 && <div className="h-full bg-sky-400"     style={{ width: `${enrolledSegPct}%` }} />}
         </div>
-        {program.code && (
-          <span className="ml-2 font-mono text-[12px] bg-ink-100 dark:bg-ink-800 text-ink-700 dark:text-ink-200 px-2 py-1 rounded">
-            {program.code}
-          </span>
-        )}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-ink-500">
+          <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Passed {completed}</span>
+          <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-rose-400" /> Failed {failed}</span>
+          <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-sky-400" /> Enrolled {enrolled}</span>
+          <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-ink-300 dark:bg-ink-600" /> Remaining {Math.max(0, totalModules - completed - failed - enrolled)}</span>
+        </div>
       </div>
+
+      {/* Active-filter banner */}
+      {filter !== 'all' && (
+        <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-brand/5 border border-brand/20 text-[12.5px]">
+          <span className="text-ink-700 dark:text-ink-200">
+            Filtering by <b className="capitalize">{filter}</b> · {visibleCount} of {totalModules} modules
+          </span>
+          <button
+            type="button"
+            onClick={() => setFilter('all')}
+            className="inline-flex items-center gap-1 text-brand font-semibold hover:underline"
+          >
+            <X className="w-3.5 h-3.5" /> Clear filter
+          </button>
+        </div>
+      )}
 
       {/* Per-level tables */}
       {groups.length === 0 ? (
@@ -1137,12 +1434,30 @@ function ProgramCurriculumTab({ student, selfMode = false }: { student: any; sel
           title="Curriculum is empty"
           desc="No modules are mapped to this program yet. Once an admin imports them, they'll appear here."
         />
+      ) : visibleGroups.length === 0 ? (
+        <PlaceholderTab
+          icon={BookOpen}
+          title="No modules match this filter"
+          desc={`No modules in this program are currently ${filter}. Pick another filter or clear the current one.`}
+        />
       ) : (
-        groups.map((g) => (
-          <div key={`${g.level_id ?? 'none'}-${g.level_name}`} className="card overflow-hidden">
-            <div className="px-4 py-2.5 border-b border-ink-100 dark:border-ink-700 bg-ink-50 dark:bg-ink-800/40 flex items-center gap-2">
-              <span className="text-[12px] font-semibold text-ink-700 dark:text-ink-200">{g.level_name}</span>
-              <span className="text-[11px] font-semibold text-ink-400 bg-ink-100 dark:bg-ink-800 px-1.5 py-0.5 rounded-full">
+        visibleGroups.map((g) => (
+          <div
+            key={`${g.level_id ?? 'none'}-${g.level_name}`}
+            className={`card overflow-hidden ${g.is_extra ? 'ring-1 ring-violet-200 dark:ring-violet-500/20' : ''}`}
+          >
+            <div className={`px-4 py-2.5 border-b flex items-center gap-2 ${g.is_extra
+              ? 'border-violet-200 dark:border-violet-500/20 bg-violet-50/60 dark:bg-violet-500/5'
+              : 'border-ink-100 dark:border-ink-700 bg-ink-50 dark:bg-ink-800/40'}`}>
+              {g.is_extra && <Network className="w-3.5 h-3.5 text-violet-700 dark:text-violet-300 shrink-0" />}
+              <span className={`text-[12px] font-semibold ${g.is_extra
+                ? 'text-violet-800 dark:text-violet-200'
+                : 'text-ink-700 dark:text-ink-200'}`}>
+                {g.level_name}
+              </span>
+              <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded-full ${g.is_extra
+                ? 'text-violet-700 bg-violet-100 dark:bg-violet-500/20 dark:text-violet-200'
+                : 'text-ink-400 bg-ink-100 dark:bg-ink-800'}`}>
                 {g.modules.length} module{g.modules.length === 1 ? '' : 's'}
               </span>
             </div>
@@ -1153,6 +1468,7 @@ function ProgramCurriculumTab({ student, selfMode = false }: { student: any; sel
                     <th className="px-3 py-2 font-bold w-[60px]">Order</th>
                     <th className="px-3 py-2 font-bold">Code</th>
                     <th className="px-3 py-2 font-bold">Module</th>
+                    <th className="px-3 py-2 font-bold">Status</th>
                     <th className="px-3 py-2 font-bold text-center">Credits</th>
                     <th className="px-3 py-2 font-bold text-center">CAT</th>
                     <th className="px-3 py-2 font-bold text-center">Assg</th>
@@ -1168,10 +1484,29 @@ function ProgramCurriculumTab({ student, selfMode = false }: { student: any; sel
                     const isExempted   = !!m.marks?.is_exempted
                     const hasMarks     = !!m.marks
                     const isRegistered = m.registration?.status === 'registered'
+                    const wasDropped   = m.registration?.status === 'dropped'
+                    const passed       = hasMarks && m.marks?.percentage != null && Number(m.marks.percentage) >= 50
+                    const failedMark   = hasMarks && !isExempted && m.marks?.percentage != null && Number(m.marks.percentage) < 50
+                    /* Lifecycle pill — shown in its own column so the state is
+                     * obvious instead of buried in a tiny badge next to the
+                     * module name. Priority: marks > registered > dropped. */
+                    let statusPill: { label: string; tone: string; icon: any }
+                    if (isExempted) statusPill = { label: 'Exempted', tone: 'bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300', icon: Sparkles }
+                    else if (passed) statusPill = { label: m.marks?.grade ? `Completed · ${m.marks.grade}` : 'Completed', tone: 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300', icon: CheckCircle }
+                    else if (failedMark) statusPill = { label: m.marks?.grade ? `Failed · ${m.marks.grade}` : 'Failed', tone: 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300', icon: AlertTriangle }
+                    else if (isRegistered) statusPill = { label: 'Enrolled', tone: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300', icon: CheckCircle }
+                    else if (wasDropped) statusPill = { label: 'Dropped', tone: 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300', icon: MinusCircle }
+                    else statusPill = { label: 'Not enrolled', tone: 'bg-ink-100 text-ink-500 dark:bg-ink-700/40 dark:text-ink-300', icon: Clock }
+                    const StatusIcon = statusPill.icon
+                    const rowAccent = isExempted ? 'bg-violet-50/40 dark:bg-violet-500/5'
+                      : passed ? 'bg-sky-50/40 dark:bg-sky-500/5'
+                      : failedMark ? 'bg-rose-50/40 dark:bg-rose-500/5'
+                      : isRegistered ? 'bg-emerald-50/30 dark:bg-emerald-500/5'
+                      : ''
                     return (
                     <tr
                       key={`${g.level_id ?? 'na'}-${m.module_id}`}
-                      className={`hover:bg-ink-50/50 dark:hover:bg-ink-700/20 ${isExempted ? 'bg-violet-50/40 dark:bg-violet-500/5' : ''}`}
+                      className={`hover:bg-ink-50/50 dark:hover:bg-ink-700/20 ${rowAccent}`}
                     >
                       <td className="px-3 py-2 text-ink-500 tabular-nums">{m.module_order ?? '—'}</td>
                       <td className="px-3 py-2 font-mono">{m.module_code}</td>
@@ -1193,28 +1528,25 @@ function ProgramCurriculumTab({ student, selfMode = false }: { student: any; sel
                               <CalendarOff className="w-3 h-3" /> Not scheduled
                             </span>
                           )}
-                          {isRegistered && (
-                            <span
-                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
-                              title={`Registered${m.registration?.term_label ? ` · ${m.registration.term_label}` : ''}${m.registration?.year_label ? ` · ${m.registration.year_label}` : ''}`}
-                            >
-                              <CheckCircle className="w-3 h-3" /> Registered
-                            </span>
-                          )}
-                          {isExempted && (
-                            <span
-                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300"
-                              title={m.marks?.exemption_reason ?? 'Exempted'}
-                            >
-                              <Sparkles className="w-3 h-3" /> Exempted
-                            </span>
-                          )}
                         </div>
                         {m.is_scheduled && (m.schedule?.modes || m.schedule?.semesters || m.schedule?.years) && (
                           <p className="text-[11px] text-ink-400 mt-0.5">
                             {[m.schedule?.modes, m.schedule?.semesters, m.schedule?.years].filter(Boolean).join(' · ')}
                           </p>
                         )}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-bold ${statusPill.tone}`}
+                          title={
+                            isRegistered && m.registration?.term_label
+                              ? `Enrolled · ${m.registration.term_label}${m.registration.year_label ? ` · ${m.registration.year_label}` : ''}`
+                              : isExempted ? (m.marks?.exemption_reason ?? 'Exempted')
+                              : statusPill.label
+                          }
+                        >
+                          <StatusIcon className="w-3 h-3" /> {statusPill.label}
+                        </span>
                       </td>
                       <td className="px-3 py-2 text-center">{m.module_credits ?? '—'}</td>
                       <td className="px-3 py-2 text-center">
@@ -1674,45 +2006,79 @@ function ExemptionPickerModal({
 }
 
 
-function SummaryCard({ tone, icon: Icon, label, value }: {
-  tone: 'brand' | 'emerald' | 'amber' | 'ink' | 'indigo'; icon: any; label: string; value: number
+function SummaryCard({ tone, icon: Icon, label, value, onClick, active }: {
+  tone: 'brand' | 'emerald' | 'amber' | 'ink' | 'indigo' | 'sky'
+  icon: any
+  label: string
+  value: number
+  onClick?: () => void
+  active?: boolean
 }) {
-  const cls = {
-    brand: 'bg-brand/10 text-brand',
+  const iconCls = {
+    brand:   'bg-brand/10 text-brand',
     emerald: 'bg-mint-100 text-mint-700',
-    amber: 'bg-amber-100 text-amber-700',
-    ink: 'bg-ink-100 text-ink-600',
-    indigo: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300',
+    amber:   'bg-amber-100 text-amber-700',
+    ink:     'bg-ink-100 text-ink-600',
+    indigo:  'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300',
+    sky:     'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300',
   }[tone]
-  return (
-    <div className="card p-4 flex items-center gap-3">
-      <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${cls}`}>
+  // Active rings echo the icon tone so the selected card reads as "lit up".
+  const activeRing = {
+    brand:   'ring-2 ring-brand/40',
+    emerald: 'ring-2 ring-mint-400',
+    amber:   'ring-2 ring-amber-400',
+    ink:     'ring-2 ring-ink-300 dark:ring-ink-500',
+    indigo:  'ring-2 ring-indigo-400',
+    sky:     'ring-2 ring-sky-400',
+  }[tone]
+  const interactive = !!onClick
+  const baseCls = `card p-4 flex items-center gap-3 transition-all ${
+    interactive ? 'cursor-pointer hover:-translate-y-0.5 hover:shadow-md select-none' : ''
+  } ${active ? `${activeRing} shadow-md` : ''}`
+  const inner = (
+    <>
+      <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${iconCls}`}>
         <Icon className="w-5 h-5" />
       </div>
       <div>
         <p className="text-[11px] uppercase tracking-wider text-ink-500 font-semibold">{label}</p>
         <p className="text-xl font-bold text-ink-900 dark:text-white">{value}</p>
       </div>
-    </div>
+    </>
+  )
+  return interactive ? (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={!!active}
+      className={`${baseCls} text-left`}
+    >
+      {inner}
+    </button>
+  ) : (
+    <div className={baseCls}>{inner}</div>
   )
 }
 
 
 function AttendanceTab({ student }: { student: any }) {
-  const reg = student?.regnumber as string | undefined
+  // Use the numeric student id — regnumbers like "STD/2026/22699" contain
+  // slashes that would break the regnumber-segmented route. The backend
+  // resolves the id back to a regnumber server-side.
+  const studentId = student?.id as number | string | undefined
 
   const summaryQ = useQuery({
-    queryKey: ['student-attendance', reg],
-    queryFn: () => attendanceService.studentSummary(reg as string),
-    enabled: !!reg,
+    queryKey: ['student-attendance', studentId],
+    queryFn: () => attendanceService.studentSummaryById(studentId as number),
+    enabled: !!studentId,
   })
 
-  if (!reg) {
+  if (!studentId) {
     return (
       <PlaceholderTab
         icon={Clock}
-        title="No Registration Number"
-        desc="This student doesn't have a registration number yet, so attendance records cannot be loaded."
+        title="No student id"
+        desc="This student record is missing an internal id, so attendance can't be loaded."
       />
     )
   }
@@ -1905,8 +2271,9 @@ function DocumentsTab({ student, selfMode = false }: { student: any; selfMode?: 
 
   const applicationId = docsQ.data?.data?.application_id ?? null
   const documents = docsQ.data?.data?.documents ?? []
+  const offer = docsQ.data?.data?.admission_offer ?? null
 
-  if (!applicationId) {
+  if (!applicationId && !offer) {
     return (
       <div className="card p-12 flex flex-col items-center justify-center text-center">
         <div className="w-16 h-16 rounded-full bg-ink-100 dark:bg-ink-800 flex items-center justify-center text-ink-400 mb-4">
@@ -1917,22 +2284,6 @@ function DocumentsTab({ student, selfMode = false }: { student: any; selfMode?: 
           {selfMode
             ? 'You were not enrolled through the admissions portal, so there are no uploaded documents to display.'
             : 'This student was not enrolled through the admissions portal, so there are no uploaded documents to display.'}
-        </p>
-      </div>
-    )
-  }
-
-  if (documents.length === 0) {
-    return (
-      <div className="card p-12 flex flex-col items-center justify-center text-center">
-        <div className="w-16 h-16 rounded-full bg-ink-100 dark:bg-ink-800 flex items-center justify-center text-ink-400 mb-4">
-          <FileText className="w-8 h-8" />
-        </div>
-        <h3 className="text-lg font-semibold text-ink-900 dark:text-white">No documents uploaded</h3>
-        <p className="text-ink-500 max-w-md mt-2">
-          {selfMode
-            ? 'Your admission application does not have any documents attached.'
-            : "This student's admission application does not have any documents attached."}
         </p>
       </div>
     )
@@ -1950,16 +2301,68 @@ function DocumentsTab({ student, selfMode = false }: { student: any; selfMode?: 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <SummaryCard tone="ink"     icon={FileText}     label="Total"    value={documents.length} />
-        <SummaryCard tone="emerald" icon={ShieldCheck}  label="Verified" value={counts.verified ?? 0} />
+        <SummaryCard tone="ink"     icon={FileText}     label="Total"    value={documents.length + (offer ? 1 : 0)} />
+        <SummaryCard tone="emerald" icon={ShieldCheck}  label="Verified" value={(counts.verified ?? 0) + (offer ? 1 : 0)} />
         <SummaryCard tone="amber"   icon={ShieldAlert}  label="Pending"  value={counts.pending ?? 0} />
         <SummaryCard tone="brand"   icon={ShieldX}      label="Rejected" value={counts.rejected ?? 0} />
       </div>
 
-      <div className="card divide-y divide-ink-100 dark:divide-ink-800 overflow-hidden">
-        {documents.map((d: any) => (
-          <DocumentRow key={d.id} doc={d} studentId={studentId} selfMode={selfMode} />
-        ))}
+      {offer && <AdmissionLetterRow offer={offer} />}
+
+      {documents.length === 0 ? (
+        <div className="card p-8 text-center text-ink-500 text-sm">
+          {selfMode
+            ? 'No documents have been attached to your admission application.'
+            : "No documents have been attached to this student's admission application."}
+        </div>
+      ) : (
+        <div className="card divide-y divide-ink-100 dark:divide-ink-800 overflow-hidden">
+          {documents.map((d: any) => (
+            <DocumentRow key={d.id} doc={d} studentId={studentId} selfMode={selfMode} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Standalone row for the admission letter PDF. The letter isn't a stored
+ * document — it's regenerated on demand from the admission_offer record —
+ * so it gets its own card instead of being shoehorned into DocumentRow.
+ * Token-gated download URL works for both admins and the student.
+ */
+function AdmissionLetterRow({ offer }: { offer: { letter_token: string; status?: string | null; letter_sent_at?: string | null; application_number?: string | null } }) {
+  const url = studentService.admissionLetterUrl(offer.letter_token)
+  const fileName = `admission-letter-${offer.application_number ?? 'student'}.pdf`
+  const sent = offer.letter_sent_at ? new Date(offer.letter_sent_at).toLocaleDateString() : null
+
+  return (
+    <div className="card p-4 flex items-center gap-4">
+      <div className="w-10 h-10 rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300 flex items-center justify-center shrink-0">
+        <Award className="w-5 h-5" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <h4 className="text-[13.5px] font-semibold text-ink-900 dark:text-white truncate">Admission Letter</h4>
+          <span className="inline-flex items-center gap-1 text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
+            <ShieldCheck className="w-3 h-3" />
+            Official
+          </span>
+        </div>
+        <p className="text-[12px] text-ink-500 truncate mt-0.5">
+          {fileName}
+          {offer.application_number && <span className="text-ink-400"> · App #{offer.application_number}</span>}
+          {sent && <span className="text-ink-400"> · Issued {sent}</span>}
+        </p>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <a href={url} target="_blank" rel="noreferrer" className="btn-secondary btn-sm flex items-center gap-1.5">
+          <Eye className="w-3.5 h-3.5" /> View
+        </a>
+        <a href={url} download={fileName} className="btn-primary btn-sm flex items-center gap-1.5">
+          <Download className="w-3.5 h-3.5" /> Download
+        </a>
       </div>
     </div>
   )
@@ -2215,23 +2618,25 @@ function EditStudentModal({ student, stats, onClose }: { student: any, stats: an
 /* ─── Transcript tab ───────────────────────────────────────────────── */
 
 function TranscriptTab({ student }: { student: any }) {
-  const regnumber: string = student?.regnumber ?? ''
+  // Use the numeric student id — regnumbers may contain slashes that break
+  // the regnumber-segmented route. The backend resolves id → regnumber.
+  const studentId = student?.id as number | string | undefined
 
   const marksQ = useQuery({
-    queryKey: ['student-marks', regnumber],
-    queryFn: () => marksService.studentMarks(regnumber),
-    enabled: !!regnumber,
+    queryKey: ['student-marks', studentId],
+    queryFn: () => marksService.studentMarksById(studentId as number),
+    enabled: !!studentId,
   })
 
   const download = useMutation({
-    mutationFn: () => marksService.downloadStudentTranscript(regnumber),
+    mutationFn: () => marksService.downloadStudentTranscriptById(studentId as number),
     onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Could not download transcript'),
   })
 
-  if (!regnumber) {
+  if (!studentId) {
     return (
       <div className="card p-8 text-center text-ink-400">
-        This student has no registration number, so a transcript cannot be generated.
+        This student record is missing an internal id, so a transcript cannot be generated.
       </div>
     )
   }
@@ -2241,14 +2646,24 @@ function TranscriptTab({ student }: { student: any }) {
   }
 
   const data = marksQ.data?.data
-  const rows: MyMarksRow[] = data?.rows ?? []
+  const rawRows: MyMarksRow[] = data?.rows ?? []
   const totals: MyMarksTotals | undefined = data?.totals
+
+  // Transcript rule: only modules the student has actually completed —
+  // i.e. has a final grade (or, defensively, a computed percentage). Rows
+  // with no marks yet are still in-progress and shouldn't be on the
+  // transcript.
+  const rows = rawRows.filter((r) =>
+    (r.grade != null && String(r.grade).trim() !== '')
+    || r.percentage != null,
+  )
 
   if (rows.length === 0) {
     return (
       <div className="card p-8 text-center text-ink-400">
-        No marks have been recorded for this student yet. Once a lecturer or admin records marks under
-        <span className="font-mono mx-1">Modules → Marks</span>, they will appear here.
+        {rawRows.length === 0
+          ? <>No marks have been recorded for this student yet. Once a lecturer or admin records marks under <span className="font-mono mx-1">Modules → Marks</span>, they will appear here.</>
+          : <>This student has registered modules but none have been completed yet — the transcript only lists modules with a final grade.</>}
       </div>
     )
   }
@@ -2264,7 +2679,7 @@ function TranscriptTab({ student }: { student: any }) {
     <div className="space-y-4">
       {/* Summary + download */}
       <div className="card p-4 flex flex-wrap items-center gap-5">
-        <TStat icon={<BookOpen className="w-4 h-4" />}     label="Modules"          value={totals?.modules ?? 0} />
+        <TStat icon={<BookOpen className="w-4 h-4" />}     label="Completed modules" value={rows.length} />
         <TStat icon={<Award className="w-4 h-4" />}        label="Total credits"    value={totals?.total_credits ?? 0} />
         <TStat icon={<Percent className="w-4 h-4" />}      label="Weighted avg"     value={totals?.weighted_average != null ? `${totals.weighted_average}%` : '—'} highlight />
         <TStat icon={<GraduationCap className="w-4 h-4" />} label="Overall grade"    value={totals?.overall_grade ?? '—'} />

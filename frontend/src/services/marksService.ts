@@ -46,6 +46,9 @@ export interface MarksRosterRow {
   grade:             string | null
   decision:          string | null
   status:            string | null
+  /** Registration status from `module_registrations.status`:
+   *  'registered' | 'completed' | 'failed' | 'dropped' | null (eligible-only). */
+  reg_status?:       string | null
   is_exempted?:      number | boolean | null
   exemption_reason?: string | null
   remarks:           string | null
@@ -219,6 +222,11 @@ export const marksService = {
   studentMarks: (regnumber: string, params: { academic_year_id?: number | string } = {}) =>
     api.get<StudentMarksResponse>(`/api/marks/students/${regnumber}`, params as Record<string, unknown>),
 
+  /** id-based variant — use when regnumber may contain slashes that would
+   *  break path-segment routing (e.g. "STD/2026/22699"). */
+  studentMarksById: (studentId: number | string, params: { academic_year_id?: number | string } = {}) =>
+    api.get<StudentMarksResponse>(`/api/marks/students/by-id/${studentId}`, params as Record<string, unknown>),
+
   /** Admin: stream a student's PDF transcript. */
   downloadStudentTranscript: async (regnumber: string, params: { academic_year_id?: number | string } = {}) => {
     const res = await apiClient.get(`/api/marks/students/${regnumber}/transcript`, {
@@ -229,6 +237,23 @@ export const marksService = {
     const cd   = (res.headers['content-disposition'] as string | undefined) ?? ''
     const m    = /filename="?([^";]+)"?/i.exec(cd)
     const name = m?.[1] ?? `transcript-${regnumber}.pdf`
+    const url  = window.URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href = url; a.download = name
+    document.body.appendChild(a); a.click(); a.remove()
+    window.URL.revokeObjectURL(url)
+  },
+
+  /** id-based variant of downloadStudentTranscript. */
+  downloadStudentTranscriptById: async (studentId: number | string, params: { academic_year_id?: number | string } = {}) => {
+    const res = await apiClient.get(`/api/marks/students/by-id/${studentId}/transcript`, {
+      params,
+      responseType: 'blob',
+    })
+    const blob = res.data instanceof Blob ? res.data : new Blob([res.data])
+    const cd   = (res.headers['content-disposition'] as string | undefined) ?? ''
+    const m    = /filename="?([^";]+)"?/i.exec(cd)
+    const name = m?.[1] ?? `transcript-${studentId}.pdf`
     const url  = window.URL.createObjectURL(blob)
     const a    = document.createElement('a')
     a.href = url; a.download = name

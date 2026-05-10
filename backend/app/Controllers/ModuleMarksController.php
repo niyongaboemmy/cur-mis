@@ -244,8 +244,11 @@ class ModuleMarksController extends BaseController
                        mm.remarks, mm.updated_at,
                        mm.teaching_started_on, mm.teaching_ended_on";
 
+        // Keep students whose marks have already been saved (status flips to
+        // 'completed' or 'failed' inside saveMarks). Only `'dropped'` should
+        // disappear from the roster.
         $roster = $this->db->fetchAll(
-            "SELECT $rosterCols
+            "SELECT $rosterCols, mr.status AS reg_status
              FROM module_registrations mr
              JOIN student st ON st.regnumber = mr.student_regnumber
              LEFT JOIN module_marks mm
@@ -253,7 +256,7 @@ class ModuleMarksController extends BaseController
                    AND mm.student_regnumber = mr.student_regnumber
                    AND mm.academic_term_id  = mr.academic_term_id
              WHERE mr.module_id = ? AND mr.academic_term_id = ?
-               AND mr.status = 'registered'
+               AND mr.status IN ('registered','completed','failed')
              ORDER BY st.lname, st.fname",
             [$moduleId, $termId]
         );
@@ -300,7 +303,7 @@ class ModuleMarksController extends BaseController
             }
 
             $roster = $this->db->fetchAll(
-                "SELECT $rosterCols
+                "SELECT $rosterCols, NULL AS reg_status
                  FROM `student` st
                  LEFT JOIN module_marks mm
                         ON mm.student_regnumber = st.regnumber
@@ -598,6 +601,37 @@ class ModuleMarksController extends BaseController
     }
 
     /* ── Per-student summary (used on student details page) ────────────── */
+
+    /** id-based variants of the regnumber routes — necessary because some
+     *  regnumbers have slashes which break path-segment routing. */
+    public function studentMarksById(Request $request, Response $response): never
+    {
+        $reg = $this->resolveRegnumberById($request, $response);
+        $request->setRouteParams(['regnumber' => $reg]);
+        $this->studentMarks($request, $response);
+    }
+
+    public function studentTranscriptById(Request $request, Response $response): never
+    {
+        $reg = $this->resolveRegnumberById($request, $response);
+        $request->setRouteParams(['regnumber' => $reg]);
+        $this->studentTranscript($request, $response);
+    }
+
+    /** Resolve a numeric `:id` route param to the student's regnumber, or
+     *  short-circuit with an error response. */
+    private function resolveRegnumberById(Request $request, Response $response): string
+    {
+        $id = (int) $request->param('id');
+        if ($id <= 0) {
+            $this->error($response, 'student id required', 422);
+        }
+        $row = $this->db->fetchOne('SELECT regnumber FROM `student` WHERE id = ? LIMIT 1', [$id]);
+        if (!$row || empty($row['regnumber'])) {
+            $this->error($response, 'Student not found.', 404);
+        }
+        return (string) $row['regnumber'];
+    }
 
     /**
      * GET /api/marks/students/:regnumber

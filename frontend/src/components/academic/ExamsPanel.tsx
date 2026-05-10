@@ -450,13 +450,20 @@ export default function ExamsPanel() {
                     </td>
                     <td className="px-3 py-2 align-top text-right whitespace-nowrap">
                       {scheduled ? (
-                        <>
+                        <div className="inline-flex items-center gap-1">
                           <button
-                            className="btn-ghost btn-xs"
-                            title="View attendance list"
+                            className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold transition-colors ${
+                              row.registered_count > 0
+                                ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-500/15 dark:text-emerald-300 dark:hover:bg-emerald-500/25'
+                                : 'bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-500/15 dark:text-amber-300 dark:hover:bg-amber-500/25'
+                            }`}
+                            title={row.registered_count > 0
+                              ? `${row.registered_count} student${row.registered_count === 1 ? '' : 's'} registered — click to view attendance list`
+                              : 'No students enrolled for this exam yet — click to view roster'}
                             onClick={(e) => { e.stopPropagation(); setAttendanceId(row.id) }}
                           >
                             <Users className="w-3.5 h-3.5" />
+                            {row.registered_count}
                           </button>
                           <button
                             className="btn-ghost btn-xs"
@@ -477,7 +484,7 @@ export default function ExamsPanel() {
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
-                        </>
+                        </div>
                       ) : (
                         <button
                           className="btn-primary btn-xs"

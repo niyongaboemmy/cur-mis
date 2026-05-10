@@ -20,7 +20,6 @@ import {
   Filter,
   AlertCircle,
   ChevronLeft,
-  ChevronRight,
   Lock,
   Unlock,
   Pencil,
@@ -43,12 +42,11 @@ import {
   type TeachableModule,
   type CreateSessionPayload,
 } from '@/services/attendanceService'
-import { moduleScheduleService, moduleCatalogService, moduleRegistrationService } from '@/services/modulesService'
+import { moduleScheduleService, moduleRegistrationService } from '@/services/modulesService'
 import { apiClient } from '@/services/api'
 import { studentService } from '@/services/studentService'
 import { academicsMgmtService } from '@/services/academicsMgmtService'
 import { portalService } from '@/services/admissionService'
-import type { ModuleScheduleRow } from '@/types/modules'
 import { useSystemStore } from '@/store/systemStore'
 import { useAuthStore } from '@/store/authStore'
 import { PERMISSIONS } from '@/constants'
@@ -129,53 +127,66 @@ export default function AttendancePage() {
     queryFn:  () => attendanceService.teachableModules({ academic_term_id: termId || undefined }),
     staleTime: 60_000,
   })
-  const modules = teachableQ.data?.data ?? []
-  const pickedModule = modules.find((m) => m.module_id === moduleId) || (moduleId > 0 ? {
-    module_id:   moduleId,
-    module_code: sp.get('m_code') || 'Module',
-    module_name: sp.get('m_name') || '',
-  } as TeachableModule : null)
+  const allTeachable = teachableQ.data?.data ?? []
+
+  // Only modules that actually have a teaching block in `module_schedules`
+  // qualify for attendance — irrespective of which term the schedule
+  // belongs to. The user explicitly wants every active schedule visible.
+  const termSchedulesQ = useQuery({
+    queryKey: ['attendance-all-schedules'],
+    queryFn:  () => moduleScheduleService.list({}),
+    staleTime: 60_000,
+  })
+  const scheduledModuleIds = useMemo(
+    () => new Set((termSchedulesQ.data?.data ?? []).map((s) => Number(s.module_id))),
+    [termSchedulesQ.data],
+  )
+  const modules = useMemo(
+    () => allTeachable.filter((m) => scheduledModuleIds.has(Number(m.module_id))),
+    [allTeachable, scheduledModuleIds],
+  )
+
+  const pickedModule = modules.find((m) => m.module_id === moduleId)
+    || allTeachable.find((m) => m.module_id === moduleId)
+    || (moduleId > 0 ? {
+        module_id:   moduleId,
+        module_code: sp.get('m_code') || 'Module',
+        module_name: sp.get('m_name') || '',
+      } as TeachableModule : null)
 
   // URL-persisted preferred session type — set when user clicks a calendar entry
   const preferredSessionType = (sp.get('session_type') as SessionType | null) || null
   const preferredDate         = sp.get('date') || null
+  // Schedule scope from URL — restricts which dates the strip lights up.
+  const scopeDayPattern       = sp.get('days') || null
+  const scopeStartDate        = sp.get('from') || null
+  const scopeEndDate          = sp.get('to')   || null
 
-  // Step 0: no program yet — block everything until one is chosen.
-  if (!programId) {
-    return <ProgramPicker onPick={(id) => setProgramId(id)} />
-  }
-
-  // Step 1: program picked but no module — schedule calendar scoped to program
+  // Landing view: no module picked yet → show every scheduled module in
+  // the term as a list. Programme is just an optional filter; users no
+  // longer have to choose one before they can see anything.
   if (!moduleId || !pickedModule) {
     return (
       <SchedulePicker
-        termId={termId}
-        setTermId={setTermId}
-        allTerms={allTerms}
-        activeTerm={activeTerm}
         canManage={canManage}
         teachableModuleIds={modules.map((m) => m.module_id)}
         teachableLoading={teachableQ.isLoading}
         programId={programId}
         onChangeProgram={() => setProgramId(0)}
-        onPickModule={(modId, code, name) => {
+        onPickProgram={(id) => setProgramId(id)}
+        onPickModule={(modId, code, name, scope) => {
           const next = new URLSearchParams(sp)
           next.set('module_id', String(modId))
           next.set('m_code',    code || '')
           next.set('m_name',    name || '')
-          next.set('tab',       'overview')
+          next.set('tab',       'record')
           next.delete('session_type')
           next.delete('date')
-          setSp(next, { replace: true })
-        }}
-        onPick={(row, dateISO) => {
-          const next = new URLSearchParams(sp)
-          next.set('module_id',    String(row.module_id))
-          next.set('m_code',       row.module_code || '')
-          next.set('m_name',       row.module_name || '')
-          next.set('session_type', row.session_type)
-          if (dateISO) next.set('date', dateISO)
-          next.set('tab',          'record')
+          // Schedule scope — days the strip should keep clickable. Persists
+          // via URL so deep-links still constrain the picker correctly.
+          if (scope?.day_pattern) next.set('days', scope.day_pattern); else next.delete('days')
+          if (scope?.start_date)  next.set('from', scope.start_date);  else next.delete('from')
+          if (scope?.end_date)    next.set('to',   scope.end_date);    else next.delete('to')
           setSp(next, { replace: true })
         }}
       />
@@ -201,7 +212,29 @@ export default function AttendancePage() {
       />
 
       {tab === 'overview'           && <OverviewTab termId={termId} moduleId={moduleId} mineOnly={!canManage && canRecord} />}
-      {tab === 'record' && canRecord && <RecordTab   termId={termId} pickedModule={pickedModule} initialSessionType={preferredSessionType} initialDate={preferredDate} />}
+      {tab === 'record' && canRecord && (
+        scheduledModuleIds.size > 0 && !scheduledModuleIds.has(moduleId) ? (
+          <section className="card p-6 text-[13px] text-amber-900 bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:text-amber-100 dark:border-amber-700/60 flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" />
+            <div>
+              <p className="font-semibold">This module has no teaching block on the timetable.</p>
+              <p className="mt-1 text-[12.5px] opacity-90">
+                Attendance can only be recorded for modules that have a teaching block in <code>module_schedules</code>. Add a schedule under <em>Academics → Scheduling</em>, or pick a different module from the switcher.
+              </p>
+            </div>
+          </section>
+        ) : (
+          <RecordTab
+            termId={termId}
+            pickedModule={pickedModule}
+            initialSessionType={preferredSessionType}
+            initialDate={preferredDate}
+            scopeDayPattern={scopeDayPattern}
+            scopeStartDate={scopeStartDate}
+            scopeEndDate={scopeEndDate}
+          />
+        )
+      )}
       {tab === 'sessions'           && <SessionsTab termId={termId} moduleId={moduleId} canDelete={canRecord} setTab={setTab} />}
     </div>
   )
@@ -628,12 +661,42 @@ function OverviewTab({ termId, moduleId, mineOnly }: { termId: number; moduleId:
  * Record tab — module first, then date navigator; auto-loads the matching
  * session (if any). Saved sessions come back read-only with Edit / Lock.
  * ═══════════════════════════════════════════════════════════════════════ */
-function RecordTab({ termId, pickedModule, initialSessionType, initialDate }: { termId: number; pickedModule: TeachableModule; initialSessionType?: SessionType | null; initialDate?: string | null }) {
+function RecordTab({
+  termId, pickedModule, initialSessionType, initialDate,
+  scopeDayPattern, scopeStartDate, scopeEndDate,
+}: {
+  termId: number
+  pickedModule: TeachableModule
+  initialSessionType?: SessionType | null
+  initialDate?: string | null
+  scopeDayPattern?: string | null
+  scopeStartDate?:  string | null
+  scopeEndDate?:    string | null
+}) {
   const qc = useQueryClient()
 
   const moduleId = pickedModule.module_id
-  const sessionDate = initialDate || todayISO()
   const sessionType: SessionType = initialSessionType || 'lecture'
+
+  // The day pattern (e.g. "1,2,3,4,5") restricts which dates can be picked.
+  // `null` means no scope was passed — fall back to "any past or today".
+  const allowedDows = useMemo<Set<number> | null>(() => {
+    if (!scopeDayPattern) return null
+    const parts = scopeDayPattern.split(',').map((s) => Number(s.trim())).filter((n) => n >= 1 && n <= 7)
+    return parts.length ? new Set(parts) : null
+  }, [scopeDayPattern])
+
+  const initialPickedDate = useMemo(() => {
+    if (initialDate) return initialDate
+    return mostRecentAllowedDate(allowedDows, scopeStartDate, scopeEndDate)
+  }, [initialDate, allowedDows, scopeStartDate, scopeEndDate])
+
+  // Date strip — admins can scrub any allowed past day to record/edit attendance.
+  const [sessionDate, setSessionDate] = useState<string>(initialPickedDate)
+  useEffect(() => {
+    if (initialDate) setSessionDate(initialDate)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialDate])
 
   // Auto-lookup session for the (module, date, type) combo
   const findQ = useQuery({
@@ -672,7 +735,14 @@ function RecordTab({ termId, pickedModule, initialSessionType, initialDate }: { 
 
   return (
     <div className="space-y-4">
-      {/* Redundant navigation removed as per user request — date/type is fixed by the selected schedule */}
+      <DateStrip
+        moduleId={moduleId}
+        selected={sessionDate}
+        onSelect={setSessionDate}
+        allowedDows={allowedDows}
+        scopeStartDate={scopeStartDate ?? null}
+        scopeEndDate={scopeEndDate ?? null}
+      />
 
       {termId === 0 && (
         <section className="card p-4 text-[12.5px] text-amber-900 bg-amber-50 border-amber-200 dark:bg-amber-900/30 dark:text-amber-100 dark:border-amber-700">
@@ -694,11 +764,243 @@ function RecordTab({ termId, pickedModule, initialSessionType, initialDate }: { 
             qc.invalidateQueries({ queryKey: ['attendance-overview'] })
             qc.invalidateQueries({ queryKey: ['attendance-sessions'] })
             qc.invalidateQueries({ queryKey: ['attendance-find', moduleId, sessionDate, sessionType] })
+            // Refresh the date strip so the just-recorded day picks up
+            // its green ✓ badge without waiting for the next refetch tick.
+            qc.invalidateQueries({ queryKey: ['attendance-strip-sessions', moduleId] })
           }}
         />
       )}
     </div>
   )
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * DateStrip — horizontal month-strip date picker for the Record tab.
+ * Only days that match the schedule's day_pattern, fall inside [start,end],
+ * and are today or earlier are clickable. Days where this module already
+ * has a recorded session get a checkmark stamp.
+ * ═══════════════════════════════════════════════════════════════════════ */
+function DateStrip({ moduleId, selected, onSelect, allowedDows, scopeStartDate, scopeEndDate }: {
+  moduleId:       number
+  selected:       string
+  onSelect:       (iso: string) => void
+  allowedDows:    Set<number> | null
+  scopeStartDate: string | null
+  scopeEndDate:   string | null
+}) {
+  const [monthRef, setMonthRef] = useState(() => {
+    const d = new Date(selected + 'T00:00:00')
+    return { year: d.getFullYear(), month: d.getMonth() }
+  })
+  useEffect(() => {
+    const d = new Date(selected + 'T00:00:00')
+    if (d.getFullYear() !== monthRef.year || d.getMonth() !== monthRef.month) {
+      setMonthRef({ year: d.getFullYear(), month: d.getMonth() })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected])
+
+  const monthStart = useMemo(() => stripDateISO(new Date(monthRef.year, monthRef.month, 1)), [monthRef])
+  const monthEnd   = useMemo(() => stripDateISO(new Date(monthRef.year, monthRef.month + 1, 0)), [monthRef])
+  const monthLabel = useMemo(
+    () => new Date(monthRef.year, monthRef.month, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }),
+    [monthRef],
+  )
+
+  const sessionsQ = useQuery({
+    queryKey: ['attendance-strip-sessions', moduleId, monthStart, monthEnd],
+    queryFn:  () => attendanceService.listSessions({
+      module_id: moduleId, date_from: monthStart, date_to: monthEnd, per_page: 200,
+    }),
+    enabled:  moduleId > 0,
+    staleTime: 30_000,
+  })
+  const recordedDates = useMemo(() => {
+    const s = new Set<string>()
+    for (const r of sessionsQ.data?.data?.data ?? []) {
+      if (Number(r.recorded_count ?? 0) > 0) s.add(r.session_date)
+    }
+    return s
+  }, [sessionsQ.data])
+
+  const days = useMemo(() => {
+    const out: { iso: string; day: number; jsDow: number; backendDow: number }[] = []
+    const last = new Date(monthRef.year, monthRef.month + 1, 0).getDate()
+    for (let d = 1; d <= last; d++) {
+      const date = new Date(monthRef.year, monthRef.month, d)
+      const jsDow = date.getDay()              // 0 Sun … 6 Sat
+      const backendDow = jsDow === 0 ? 7 : jsDow // 1 Mon … 7 Sun
+      out.push({ iso: stripDateISO(date), day: d, jsDow, backendDow })
+    }
+    return out
+  }, [monthRef])
+
+  const today = todayISO()
+  const goPrev = () => setMonthRef((m) => {
+    const n = new Date(m.year, m.month - 1, 1); return { year: n.getFullYear(), month: n.getMonth() }
+  })
+  const goNext = () => setMonthRef((m) => {
+    const n = new Date(m.year, m.month + 1, 1); return { year: n.getFullYear(), month: n.getMonth() }
+  })
+  const isCurrentMonth = (() => {
+    const t = new Date()
+    return t.getFullYear() === monthRef.year && t.getMonth() === monthRef.month
+  })()
+
+  const DOW_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+  /** A date is selectable iff it matches the schedule's day-of-week pattern,
+   *  sits inside [start_date, end_date], and isn't in the future. */
+  const isSelectable = (iso: string, backendDow: number): boolean => {
+    if (iso > today) return false
+    if (scopeStartDate && iso < scopeStartDate) return false
+    if (scopeEndDate   && iso > scopeEndDate)   return false
+    if (allowedDows && !allowedDows.has(backendDow)) return false
+    return true
+  }
+
+  // Month-nav clamping: prev disabled once the visible month already shows
+  // (or precedes) the block's start month; next disabled once it reaches the
+  // earlier of end_date and today.
+  const minMonth = useMemo(() => {
+    if (!scopeStartDate) return null
+    const d = new Date(scopeStartDate + 'T00:00:00')
+    return { year: d.getFullYear(), month: d.getMonth() }
+  }, [scopeStartDate])
+  const maxMonth = useMemo(() => {
+    const t = new Date()
+    let cap = t
+    if (scopeEndDate) {
+      const e = new Date(scopeEndDate + 'T00:00:00')
+      if (e < cap) cap = e
+    }
+    return { year: cap.getFullYear(), month: cap.getMonth() }
+  }, [scopeEndDate])
+  const monthIndex = (m: { year: number; month: number }) => m.year * 12 + m.month
+  const cmpRef = monthIndex(monthRef)
+  const canGoPrev = minMonth ? cmpRef > monthIndex(minMonth) : true
+  const canGoNext = cmpRef < monthIndex(maxMonth)
+
+  return (
+    <section className="card p-3">
+      <div className="flex items-center gap-2 mb-2">
+        <button
+          type="button"
+          onClick={goPrev}
+          disabled={!canGoPrev}
+          className="p-1 text-ink-500 hover:text-brand disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:text-ink-500"
+          title={canGoPrev ? 'Previous month' : 'Reached the schedule start'}
+        >
+          <ChevronLeft className="w-4 h-4" />
+        </button>
+        <span className="font-semibold text-[13px] text-ink-900 dark:text-white tabular-nums">{monthLabel}</span>
+        <button
+          type="button"
+          onClick={goNext}
+          disabled={!canGoNext}
+          className="p-1 text-ink-500 hover:text-brand disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:text-ink-500"
+          title={canGoNext ? 'Next month' : 'Reached the schedule end (or today)'}
+        >
+          <ChevronLeft className="w-4 h-4 rotate-180" />
+        </button>
+        <span className={`ml-1 px-2 py-0.5 text-[11.5px] rounded-md font-medium ${isCurrentMonth ? 'text-brand' : 'text-ink-400'}`}>
+          {isCurrentMonth ? 'Current month' : ''}
+        </span>
+        {sessionsQ.isFetching && <Loader2 className="w-3.5 h-3.5 animate-spin text-ink-400" />}
+        <span className="ml-auto text-[11px] text-ink-400 inline-flex items-center gap-3">
+          <span className="inline-flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-emerald-500" /> Recorded
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span className="w-2 h-2 rounded border border-brand bg-brand/10" /> Selected
+          </span>
+        </span>
+      </div>
+      <div className="overflow-x-auto">
+        <div className="flex gap-0.5 min-w-max">
+          {days.map((d) => {
+            const isSelected = d.iso === selected
+            const isToday    = d.iso === today
+            const isFuture   = d.iso > today
+            const allowed    = isSelectable(d.iso, d.backendDow)
+            const recorded   = recordedDates.has(d.iso)
+            const baseTone =
+              isSelected
+                ? 'border-brand bg-brand/10 ring-1 ring-brand/20'
+                : isToday && allowed
+                  ? 'border-amber-300 bg-amber-50 dark:bg-amber-900/15 dark:border-amber-700/60'
+                  : allowed
+                    ? 'border-ink-100 dark:border-ink-700/60 hover:bg-ink-50 dark:hover:bg-ink-800/60'
+                    : 'border-transparent bg-ink-50/40 dark:bg-ink-800/20 opacity-50 cursor-not-allowed'
+            return (
+              <button
+                key={d.iso}
+                type="button"
+                disabled={!allowed}
+                onClick={() => onSelect(d.iso)}
+                title={
+                  !allowed
+                    ? (isFuture ? 'Future dates can\'t be recorded' : 'Not part of this schedule')
+                    : recorded ? `${d.iso} — already recorded` : d.iso
+                }
+                className={`relative w-12 shrink-0 flex flex-col items-center py-1.5 rounded-md border transition-colors ${baseTone}`}
+              >
+                <span className={`text-[10px] uppercase tracking-wider ${
+                  d.jsDow === 0 || d.jsDow === 6 ? 'text-rose-400' : 'text-ink-400'
+                }`}>
+                  {DOW_SHORT[d.jsDow]}
+                </span>
+                <span className={`text-[14px] font-semibold tabular-nums ${
+                  isSelected ? 'text-brand' : isToday ? 'text-amber-700 dark:text-amber-300' : 'text-ink-700 dark:text-ink-200'
+                }`}>
+                  {d.day}
+                </span>
+                {recorded && (
+                  <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 text-white flex items-center justify-center">
+                    <Check className="w-2.5 h-2.5" />
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/** YYYY-MM-DD for a Date in local time (no UTC drift). */
+function stripDateISO(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+/** Most recent past-or-today date that lies in `allowedDows` and inside the
+ *  optional [start,end] window. Walks back from min(today, end) and stops
+ *  at start. Returns today (clamped to the window) if no day matches. */
+function mostRecentAllowedDate(
+  allowedDows: Set<number> | null,
+  scopeStart:  string | null | undefined,
+  scopeEnd:    string | null | undefined,
+): string {
+  const today = new Date()
+  const todayIso = stripDateISO(today)
+  // Pick the highest valid starting date: today, capped by end_date.
+  const cap = (scopeEnd && todayIso > scopeEnd)
+    ? new Date(scopeEnd + 'T00:00:00')
+    : today
+  for (let i = 0; i < 366; i++) {
+    const d = new Date(cap.getFullYear(), cap.getMonth(), cap.getDate() - i)
+    const iso = stripDateISO(d)
+    if (scopeStart && iso < scopeStart) break
+    const backendDow = d.getDay() === 0 ? 7 : d.getDay()
+    if (allowedDows && !allowedDows.has(backendDow)) continue
+    return iso
+  }
+  // No matching day inside the window — pick the start (or today as last fallback).
+  return scopeStart ?? todayIso
 }
 
 function RosterEditor({ sessionId, onSaved }: { sessionId: number; onSaved?: () => void }) {
@@ -1408,143 +1710,43 @@ function toneForPct(p: number): string {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * ProgramPicker — gating step. The user must declare which programme they
- * are recording attendance for before the calendar / module work appears.
+ * SchedulePicker — landing view. Shows every schedule on the timetable as
+ * a flat table (one row per teaching block) with the assigned teacher.
+ * Click a row → roster + attendance recording for that module.
  * ═══════════════════════════════════════════════════════════════════════ */
-function ProgramPicker({ onPick }: { onPick: (id: number) => void }) {
-  const [q, setQ] = useState('')
-  const [facultyId, setFacultyId] = useState(0)
+const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
-  const programsQ = useQuery({
-    queryKey:  ['portal', 'programs'],
-    queryFn:   () => portalService.getPrograms(),
-    staleTime: 5 * 60_000,
-  })
-  const facultiesQ = useQuery({
-    queryKey:  ['portal', 'faculties'],
-    queryFn:   () => portalService.getFaculties(),
-    staleTime: 5 * 60_000,
-  })
-  const programs   = programsQ.data?.data ?? []
-  const faculties  = facultiesQ.data?.data ?? []
-
-  const filtered = useMemo(() => {
-    let list = programs
-    if (facultyId) list = list.filter((p) => Number(p.faculty_id) === facultyId)
-    const needle = q.trim().toLowerCase()
-    if (needle) {
-      list = list.filter((p) =>
-        (p.name ?? '').toLowerCase().includes(needle)
-        || (p.department_name ?? '').toLowerCase().includes(needle)
-        || (p.faculty_name ?? '').toLowerCase().includes(needle),
-      )
-    }
-    return list
-  }, [programs, facultyId, q])
-
-  return (
-    <div className="max-w-[1100px] mx-auto space-y-4 animate-fade-in">
-      <section className="card p-6">
-        <div className="flex items-start gap-3">
-          <div className="w-10 h-10 rounded-lg bg-brand/10 text-brand flex items-center justify-center shrink-0">
-            <BookOpen className="w-5 h-5" />
-          </div>
-          <div className="min-w-0">
-            <h2 className="text-[18px] font-semibold text-ink-900 dark:text-white">Choose a programme</h2>
-            <p className="text-[12.5px] text-ink-500 mt-0.5">
-              Pick the programme you're recording attendance for. We'll then show every module planned for that programme so you can mark sessions.
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-5 flex items-center gap-2 flex-wrap">
-          <div className="relative flex-1 min-w-[260px]">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
-            <input
-              autoFocus
-              className="input input-sm pl-8 w-full"
-              placeholder="Search programmes by name, department or faculty…"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-            />
-          </div>
-          <div className="w-64 shrink-0">
-            <SearchableSelect
-              options={faculties.map((f: any) => ({ value: f.id, label: f.name }))}
-              value={facultyId}
-              onChange={(v) => setFacultyId(Number(v))}
-              allLabel="All faculties"
-            />
-          </div>
-        </div>
-
-        {programsQ.isLoading ? (
-          <div className="mt-6 p-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-brand" /></div>
-        ) : filtered.length === 0 ? (
-          <div className="mt-6 p-10 text-center text-ink-500 text-[13px]">
-            {programs.length === 0 ? 'No programmes are configured yet.' : 'No programmes match your search.'}
-          </div>
-        ) : (
-          <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-            {filtered.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => onPick(Number(p.id))}
-                className="text-left p-3 rounded-lg border border-ink-100 dark:border-ink-700 hover:border-brand hover:bg-brand/[0.03] transition-colors group"
-              >
-                <p className="font-semibold text-[13.5px] text-ink-900 dark:text-white truncate group-hover:text-brand">
-                  {p.name}
-                </p>
-                <p className="text-[11.5px] text-ink-500 truncate mt-0.5">
-                  {[p.department_name, p.faculty_name].filter(Boolean).join(' · ') || '—'}
-                </p>
-              </button>
-            ))}
-          </div>
-        )}
-      </section>
-    </div>
-  )
-}
-
-/* ═══════════════════════════════════════════════════════════════════════════
- * SchedulePicker — second-step calendar / list of every module planned for
- * the chosen programme. Each card shows live attendance status. Admins see
- * all modules in the programme; teachers see only ones assigned to them.
- * ═══════════════════════════════════════════════════════════════════════ */
-const SCHED_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-
-type SessionMark = 'recorded' | 'pending' | 'upcoming'
-const MARK_STYLE: Record<SessionMark, { bg: string; dot: string; label: string }> = {
-  recorded: { bg: 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-200', dot: '#10B981', label: 'Recorded' },
-  pending:  { bg: 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800/60 text-amber-800 dark:text-amber-200',          dot: '#F59E0B', label: 'Pending' },
-  upcoming: { bg: 'bg-ink-50 dark:bg-ink-800/40 border-ink-200 dark:border-ink-700 text-ink-700 dark:text-ink-200',                         dot: '#94A3B8', label: 'Upcoming' },
+/** Render the comma-separated `day_pattern` (e.g. "1,2,3,4,5") as
+ *  "Mon–Fri" / "Mon, Wed". Falls back to single `day_of_week` when the
+ *  pattern field isn't set. */
+function formatDayPattern(pattern: string | null, dayOfWeek: number | null): string {
+  const days = (pattern && pattern.trim() !== ''
+    ? pattern.split(',').map((s) => Number(s.trim())).filter((n) => n >= 1 && n <= 7)
+    : (dayOfWeek ? [dayOfWeek] : []))
+  if (!days.length) return '—'
+  return days.map((d) => DAY_LABELS[d - 1]).join(', ')
 }
 
 function SchedulePicker({
-  termId, setTermId, allTerms, activeTerm, canManage,
-  teachableModuleIds, teachableLoading, programId, onChangeProgram,
-  onPickModule, onPick,
+  canManage,
+  teachableModuleIds, teachableLoading, programId, onChangeProgram, onPickProgram,
+  onPickModule,
 }: {
-  termId:             number
-  setTermId:          (id: number) => void
-  allTerms:           AcademicTerm[]
-  activeTerm:         AcademicTerm | null
   canManage:          boolean
   teachableModuleIds: number[]
   teachableLoading:   boolean
   programId:          number
   onChangeProgram:    () => void
-  onPickModule:       (moduleId: number, code: string, name: string) => void
-  onPick:             (row: ModuleScheduleRow, dateISO: string) => void
+  onPickProgram:      (id: number) => void
+  onPickModule:       (
+    moduleId: number,
+    code: string,
+    name: string,
+    scope?: { day_pattern?: string | null; start_date?: string | null; end_date?: string | null },
+  ) => void
 }) {
   const [gLevel, setGLevel]     = useState(0)
   const [gSearch, setGSearch]   = useState('')
-  const [monthRef, setMonthRef] = useState(() => {
-    const t = new Date()
-    return { year: t.getFullYear(), month: t.getMonth() }  // 0-indexed month
-  })
 
   const programsQ = useQuery({
     queryKey:  ['portal', 'programs'],
@@ -1559,240 +1761,59 @@ function SchedulePicker({
   const levelsQ = useQuery({ queryKey: ['academics', 'levels'], queryFn: () => academicsMgmtService.list<any>('levels', { per_page: 100 }), staleTime: 5 * 60_000 })
   const levels: any[] = levelsQ.data?.data?.data ?? []
 
-  const schedulesQ = useQuery({
-    queryKey: ['modules', 'schedules', termId],
-    queryFn:  () => moduleScheduleService.list({ term_id: termId }),
-    enabled:  !!termId,
-    staleTime: 30_000,
+  // Same data-source the Module scheduling page uses: `module_offerings`
+  // joined with module/programme/instructor labels. Server returns a flat
+  // list of every block across every programme & mode.
+  const blocksQ = useQuery({
+    queryKey: ['attendance', 'scheduled-blocks', programId || 0],
+    queryFn:  () => attendanceService.scheduledBlocks(
+      programId ? { program_id: programId } : {},
+    ),
+    staleTime: 60_000,
   })
-  const allSchedules: ModuleScheduleRow[] = schedulesQ.data?.data ?? []
+  const allBlocks = blocksQ.data?.data?.rows ?? []
 
-  // Modules in the chosen programme. Server filters via the `module_programs`
-  // join table so we only get the catalogue rows that belong to this option.
-  const modulesQ = useQuery({
-    queryKey:  ['modules', 'catalog-by-program', programId],
-    queryFn:   () => moduleCatalogService.list({ per_page: 500, status: 'active', program: programId }),
-    enabled:   programId > 0,
-    staleTime: 5 * 60_000,
-  })
-  const programModules = modulesQ.data?.data?.data ?? []
-  const programModuleIds = useMemo(
-    () => new Set(programModules.map((m: any) => Number(m.module_id))),
-    [programModules],
-  )
-  const moduleLevelMap = useMemo(() => {
-    const m = new Map<number, number>()
-    programModules.forEach((mod: any) => m.set(Number(mod.module_id), Number(mod.level ?? 0)))
-    return m
-  }, [programModules])
+  const teachableSet = useMemo(() => new Set(teachableModuleIds), [teachableModuleIds])
 
-  const teachableSet  = useMemo(() => new Set(teachableModuleIds), [teachableModuleIds])
-
-  const filteredSchedules = useMemo(() => {
-    let list = allSchedules.filter((s) => programModuleIds.has(s.module_id))
-    // Role scope: non-admins only see schedules whose module they are assigned to.
-    if (!canManage) list = list.filter((s) => teachableSet.has(s.module_id))
-    if (gLevel) {
-      list = list.filter((s) => moduleLevelMap.get(s.module_id) === gLevel)
-    }
+  const filteredBlocks = useMemo(() => {
+    let list = allBlocks
+    // Role scope: non-admins only see blocks for modules they teach.
+    if (!canManage) list = list.filter((b) => teachableSet.has(Number(b.module_id)))
+    if (gLevel)    list = list.filter((b) => Number(b.level ?? 0) === gLevel)
     if (gSearch.trim()) {
       const q = gSearch.toLowerCase()
-      list = list.filter((s) =>
-        (s.module_code ?? '').toLowerCase().includes(q) ||
-        (s.module_name ?? '').toLowerCase().includes(q),
+      list = list.filter((b) =>
+        (b.module_code ?? '').toLowerCase().includes(q)
+        || (b.module_name ?? '').toLowerCase().includes(q)
+        || (b.program_name ?? '').toLowerCase().includes(q),
       )
     }
     return list
-  }, [allSchedules, programModuleIds, canManage, teachableSet, gLevel, gSearch, moduleLevelMap])
+  }, [allBlocks, canManage, teachableSet, gLevel, gSearch])
 
   const hasFilters = gLevel > 0 || gSearch.trim().length > 0
-  const programScopedSchedules = useMemo(
-    () => allSchedules.filter((s) => programModuleIds.has(s.module_id)),
-    [allSchedules, programModuleIds],
-  )
   const totalForRole = canManage
-    ? programScopedSchedules.length
-    : programScopedSchedules.filter((s) => teachableSet.has(s.module_id)).length
-
-  // ── Month grid setup ────────────────────────────────────────────────
-  const monthStartISO = useMemo(() => isoFromDate(new Date(monthRef.year, monthRef.month, 1)),     [monthRef])
-  const monthEndISO   = useMemo(() => isoFromDate(new Date(monthRef.year, monthRef.month + 1, 0)), [monthRef])
-  const monthLabel    = useMemo(
-    () => new Date(monthRef.year, monthRef.month, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }),
-    [monthRef],
-  )
-
-  // Pull attendance sessions for the visible month so we can mark each scheduled
-  // occurrence as Recorded / Pending / Upcoming. `mine: 1` for non-admin scopes
-  // it server-side to the user's own sessions.
-  const sessionsQ = useQuery({
-    queryKey: ['attendance-sessions-month', termId, monthStartISO, monthEndISO, canManage ? 0 : 1],
-    queryFn:  () => attendanceService.listSessions({
-      academic_term_id: termId || undefined,
-      date_from:        monthStartISO,
-      date_to:          monthEndISO,
-      mine:             canManage ? 0 : 1,
-      per_page:         500,
-    }),
-    enabled:  !!termId,
-    staleTime: 30_000,
-  })
-  const sessionMap = useMemo(() => {
-    const m = new Map<string, { id: number; recorded: number }>()
-    const rows = sessionsQ.data?.data?.data ?? []
-    for (const s of rows) {
-      m.set(`${s.module_id}|${s.session_date}|${s.session_type}`, {
-        id:       s.id,
-        recorded: Number(s.recorded_count ?? 0),
-      })
-    }
-    return m
-  }, [sessionsQ.data])
-
-  // Per-module attendance roll-up for the chosen programme — drives the
-  // "Modules planned" panel so users can see at-a-glance how each module is
-  // doing without having to drill in one by one.
-  const overviewQ = useQuery({
-    queryKey: ['attendance-overview-program', termId, programId, canManage ? 0 : 1],
-    queryFn:  () => attendanceService.overview({
-      academic_term_id: termId || undefined,
-      mine:             canManage ? 0 : 1,
-    }),
-    enabled:  programId > 0,
-    staleTime: 30_000,
-  })
-  const moduleStatsMap = useMemo(() => {
-    const m = new Map<number, { sessions: number; pct: number; records: number }>()
-    const rows = overviewQ.data?.data?.by_module ?? []
-    for (const r of rows) {
-      m.set(Number(r.module_id), {
-        sessions: Number(r.sessions ?? 0),
-        pct:      Number(r.attendance_pct ?? 0),
-        records:  Number(r.records ?? 0),
-      })
-    }
-    return m
-  }, [overviewQ.data])
-
-  // Distinct planned modules in the chosen programme (after role + filter
-  // scoping). One row per module — used by the summary panel.
-  const plannedModules = useMemo(() => {
-    const seen = new Map<number, { module_id: number; module_code: string; module_name: string; sessions_planned: number }>()
-    for (const s of filteredSchedules) {
-      const cur = seen.get(s.module_id)
-      if (cur) cur.sessions_planned += 1
-      else seen.set(s.module_id, {
-        module_id:        s.module_id,
-        module_code:      s.module_code ?? '',
-        module_name:      s.module_name ?? '',
-        sessions_planned: 1,
-      })
-    }
-    return [...seen.values()].sort((a, b) => a.module_code.localeCompare(b.module_code))
-  }, [filteredSchedules])
-
-  // 6-week grid: leading days from prev month + this month + trailing days,
-  // starting on Monday.
-  const cells = useMemo(() => {
-    const start = new Date(monthRef.year, monthRef.month, 1)
-    const startDow = (start.getDay() + 6) % 7  // 0=Mon..6=Sun
-    const out: { iso: string; day: number; inMonth: boolean }[] = []
-    for (let i = 0; i < 42; i++) {
-      const d = new Date(start)
-      d.setDate(start.getDate() - startDow + i)
-      out.push({ iso: isoFromDate(d), day: d.getDate(), inMonth: d.getMonth() === monthRef.month })
-    }
-    return out
-  }, [monthRef])
-
-  // Pre-bucket schedules by day-of-week for O(1) cell lookup.
-  const schedulesByDow = useMemo(() => {
-    const buckets: Record<number, ModuleScheduleRow[]> = { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: [] }
-    for (const s of filteredSchedules) (buckets[s.day_of_week] ?? []).push(s)
-    Object.values(buckets).forEach((arr) => arr.sort((a, b) => a.start_time.localeCompare(b.start_time)))
-    return buckets
-  }, [filteredSchedules])
-
-  /** A schedule applies to a date when day-of-week matches AND the date is
-   *  within [start_date, end_date] (both optional — null means open-ended). */
-  const scheduleAppliesOn = (s: ModuleScheduleRow, iso: string): boolean => {
-    if (s.start_date && iso < s.start_date) return false
-    if (s.end_date   && iso > s.end_date)   return false
-    return true
-  }
-
-  const monthCounts = useMemo(() => {
-    let recorded = 0, pending = 0, upcoming = 0
-    const today = todayISO()
-    for (const c of cells) {
-      if (!c.inMonth) continue
-      const dow = ((new Date(c.iso + 'T00:00:00').getDay() + 6) % 7) + 1
-      const list = (schedulesByDow[dow] ?? []).filter((r) => scheduleAppliesOn(r, c.iso))
-      for (const r of list) {
-        const session = sessionMap.get(`${r.module_id}|${c.iso}|${r.session_type}`)
-        if (session && session.recorded > 0) recorded++
-        else if (c.iso > today) upcoming++
-        else pending++
-      }
-    }
-    return { recorded, pending, upcoming, total: recorded + pending + upcoming }
-  }, [cells, schedulesByDow, sessionMap])
-
-  const goPrevMonth = () => setMonthRef((m) => {
-    const n = new Date(m.year, m.month - 1, 1)
-    return { year: n.getFullYear(), month: n.getMonth() }
-  })
-  const goNextMonth = () => setMonthRef((m) => {
-    const n = new Date(m.year, m.month + 1, 1)
-    return { year: n.getFullYear(), month: n.getMonth() }
-  })
-  const goToday = () => {
-    const t = new Date()
-    setMonthRef({ year: t.getFullYear(), month: t.getMonth() })
-  }
-  const isCurrentMonth = (() => {
-    const t = new Date()
-    return t.getFullYear() === monthRef.year && t.getMonth() === monthRef.month
-  })()
+    ? allBlocks.length
+    : allBlocks.filter((b) => teachableSet.has(Number(b.module_id))).length
 
   return (
     <div className="max-w-[1400px] mx-auto space-y-4 animate-fade-in">
-      {/* Hero — chosen programme banner */}
+      {/* Hero — page title + filter bar. Programme is one optional filter
+          among others; users land on the full list of scheduled modules. */}
       <section className="card p-4">
         <div className="flex items-center gap-3 flex-wrap">
           <div className="min-w-0 flex-1">
-            <p className="text-[10.5px] uppercase tracking-wider text-ink-400 font-semibold">Programme</p>
-            <h2 className="text-[16px] font-semibold text-ink-900 dark:text-white truncate">
-              {program?.name ?? 'Loading…'}
+            <h2 className="text-[16px] font-semibold text-ink-900 dark:text-white">
+              Attendance — scheduled modules
             </h2>
-            <p className="text-[12px] text-ink-500 truncate">
-              {[program?.department_name, program?.faculty_name].filter(Boolean).join(' · ') || ' '}
+            <p className="text-[12px] text-ink-500">
+              Every module that has a teaching block on the timetable. Click a module to open its roster and record attendance.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onChangeProgram}
-            className="btn-secondary btn-sm inline-flex items-center gap-1.5"
-            title="Pick a different programme"
-          >
-            <ChevronLeft className="w-3.5 h-3.5" /> Change programme
-          </button>
-          <select
-            value={termId}
-            onChange={(e) => setTermId(Number(e.target.value))}
-            className="input input-sm bg-white dark:bg-ink-900 cursor-pointer w-auto"
-            title="Academic term"
-          >
-            <option value={0}>All terms</option>
-            {allTerms.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.label}{activeTerm?.id === t.id ? ' · active' : ''}
-              </option>
-            ))}
-          </select>
         </div>
 
-        {/* Filter bar — search + level only; programme is the primary scope. */}
+        {/* Filter bar — programme is now an optional dropdown alongside
+            search and level. Empty programme = show every scheduled module. */}
         <div className="mt-3 flex items-center gap-2 flex-wrap">
           <Filter className="w-4 h-4 text-ink-400 shrink-0" />
           <div className="relative flex-1 min-w-[220px]">
@@ -1804,6 +1825,14 @@ function SchedulePicker({
               onChange={(e) => setGSearch(e.target.value)}
             />
           </div>
+          <div className="w-72 shrink-0">
+            <SearchableSelect
+              options={(programsQ.data?.data ?? []).map((p: any) => ({ value: p.id, label: p.name }))}
+              value={programId}
+              onChange={(v) => onPickProgram(Number(v))}
+              allLabel="All programmes"
+            />
+          </div>
           <div className="w-44 shrink-0">
             <SearchableSelect
               options={levels.map((l: any) => ({ value: l.id, label: l.name }))}
@@ -1812,305 +1841,126 @@ function SchedulePicker({
               allLabel="All levels"
             />
           </div>
-          {hasFilters && (
+          {(hasFilters || programId > 0) && (
             <button
               type="button"
               className="icon-btn text-ink-400 hover:text-rose-500"
               title="Clear all filters"
-              onClick={() => { setGLevel(0); setGSearch('') }}
+              onClick={() => { setGLevel(0); setGSearch(''); if (programId > 0) onChangeProgram() }}
             >
               <X className="w-4 h-4" />
             </button>
           )}
         </div>
 
-        {!canManage && totalForRole === 0 && !teachableLoading && !schedulesQ.isLoading && !modulesQ.isLoading && (
+        {program && (
+          <div className="mt-3 inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-brand/5 border border-brand/20 text-[11.5px] text-brand">
+            <BookOpen className="w-3.5 h-3.5" />
+            <span className="font-semibold">{program.name}</span>
+            <span className="text-ink-500">· {[program.department_name, program.faculty_name].filter(Boolean).join(' · ')}</span>
+            <button
+              type="button"
+              onClick={onChangeProgram}
+              className="ml-1 text-ink-400 hover:text-rose-500"
+              title="Clear programme filter"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        )}
+
+        {!canManage && totalForRole === 0 && !teachableLoading && !blocksQ.isLoading && (
           <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-700 p-3 text-[12.5px] text-amber-800 dark:text-amber-200 flex items-center gap-2">
             <AlertCircle className="w-4 h-4" />
-            No schedules are assigned to you in this programme{termId ? ' for this term' : ''}. Ask an admin to assign a module schedule to you.
+            No schedules are assigned to you. Ask an admin to assign a module schedule to you.
           </div>
         )}
       </section>
 
-      {/* Modules planned in this programme — attendance summary per module. */}
+      {/* All schedules — one row per teaching block. Mirrors the Module
+          scheduling page so admins can see the full timetable plus the
+          assigned teacher. Click any row to open that module's roster. */}
       <section className="card p-0 overflow-hidden">
         <div className="px-5 py-3 border-b border-ink-100 dark:border-ink-700 flex items-center justify-between gap-3">
           <div className="min-w-0">
             <h3 className="font-semibold text-[14px] text-ink-900 dark:text-white">
-              Modules planned ({plannedModules.length})
+              All schedules ({filteredBlocks.length})
             </h3>
             <p className="text-[11.5px] text-ink-500 mt-0.5">
-              Click a module to open its attendance overview, or click a session on the calendar below to record.
+              Same data as Module scheduling. Click any row to open the module's roster and record attendance.
             </p>
           </div>
-          {(modulesQ.isFetching || overviewQ.isFetching) && <Loader2 className="w-3.5 h-3.5 animate-spin text-ink-400" />}
+          {blocksQ.isFetching && <Loader2 className="w-3.5 h-3.5 animate-spin text-ink-400" />}
         </div>
 
-        {modulesQ.isLoading || schedulesQ.isLoading ? (
+        {blocksQ.isLoading ? (
           <div className="p-10 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-ink-400" /></div>
-        ) : plannedModules.length === 0 ? (
+        ) : filteredBlocks.length === 0 ? (
           <div className="p-8 text-center text-ink-500 text-[13px]">
-            No modules have schedules in this programme{termId ? ' for the selected term' : ''}.
+            No teaching blocks on the timetable yet.
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-px bg-ink-100 dark:bg-ink-800">
-            {plannedModules.map((m) => {
-              const stats = moduleStatsMap.get(m.module_id)
-              const pct   = stats?.pct ?? 0
-              const sess  = stats?.sessions ?? 0
-              const recorded = sess > 0
-              return (
-                <button
-                  key={m.module_id}
-                  type="button"
-                  onClick={() => onPickModule(m.module_id, m.module_code, m.module_name)}
-                  className="bg-white dark:bg-ink-900 hover:bg-brand/[0.03] transition-colors text-left p-4 group"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <p className="font-mono text-[12px] font-bold text-ink-900 dark:text-white truncate">{m.module_code}</p>
-                      <p className="text-[12px] text-ink-500 truncate mt-0.5">{m.module_name}</p>
-                    </div>
-                    {recorded ? (
-                      <span className="text-[14px] font-bold tabular-nums" style={{ color: toneForPct(pct) }}>{pct}%</span>
-                    ) : (
-                      <span className="text-[10.5px] text-ink-400 uppercase tracking-wider">No data</span>
-                    )}
-                  </div>
-                  <div className="mt-3 h-1.5 rounded-full bg-ink-100 dark:bg-ink-700/40 overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-[width] duration-500"
-                      style={{ width: `${recorded ? pct : 0}%`, backgroundColor: toneForPct(pct) }}
-                    />
-                  </div>
-                  <div className="mt-2 flex items-center justify-between text-[11px] text-ink-500">
-                    <span>{m.sessions_planned} planned</span>
-                    <span>{sess} recorded</span>
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-        )}
-      </section>
-
-      {/* Monthly calendar */}
-      <section className="card p-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 gap-3">
-          <div className="min-w-0 flex items-center gap-3 flex-wrap">
-            <h3 className="font-semibold text-[15px] text-ink-900 dark:text-white">{monthLabel}</h3>
-            {(schedulesQ.isFetching || sessionsQ.isFetching) && <Loader2 className="w-3.5 h-3.5 animate-spin text-ink-400" />}
-            {/* Month tally */}
-            {termId > 0 && monthCounts.total > 0 && (
-              <div className="flex items-center gap-3 text-[11.5px] text-ink-600 dark:text-ink-300">
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: MARK_STYLE.recorded.dot }} />
-                  {monthCounts.recorded} recorded
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: MARK_STYLE.pending.dot }} />
-                  {monthCounts.pending} pending
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: MARK_STYLE.upcoming.dot }} />
-                  {monthCounts.upcoming} upcoming
-                </span>
-              </div>
-            )}
-          </div>
-
-          <div className="flex items-center gap-1.5 p-1 bg-ink-50 dark:bg-ink-800/50 rounded-lg">
-            <button type="button" onClick={goPrevMonth} className="p-1.5 hover:bg-white dark:hover:bg-ink-700 rounded-md text-ink-600 dark:text-ink-300" title="Previous month">
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={goToday}
-              className={`px-2.5 py-1 text-[11.5px] font-medium rounded-md transition-colors ${
-                isCurrentMonth ? 'bg-white dark:bg-ink-700 text-ink-900 dark:text-white' : 'text-ink-600 dark:text-ink-300 hover:bg-white dark:hover:bg-ink-700'
-              }`}
-            >
-              Today
-            </button>
-            <button type="button" onClick={goNextMonth} className="p-1.5 hover:bg-white dark:hover:bg-ink-700 rounded-md text-ink-600 dark:text-ink-300" title="Next month">
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-
-        {!termId ? (
-          <div className="p-10 text-center text-ink-400 text-[13px]">Pick an academic term to see schedules.</div>
-        ) : schedulesQ.isLoading ? (
-          <div className="p-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-brand" /></div>
-        ) : (
-          <div className="overflow-x-auto">
-            <div className="min-w-[760px]">
-              {/* Day-of-week headers */}
-              <div className="grid grid-cols-7 gap-1 mb-1">
-                {SCHED_DAYS.map((d) => (
-                  <div key={d} className="text-[10px] uppercase tracking-wider font-semibold text-ink-400 text-center py-1">{d}</div>
-                ))}
-              </div>
-
-              {/* Cells */}
-              <div className="grid grid-cols-7 gap-1.5">
-                {cells.map((c) => {
-                  const dow = ((new Date(c.iso + 'T00:00:00').getDay() + 6) % 7) + 1
-                  const daySchedules = (schedulesByDow[dow] ?? []).filter((r) => scheduleAppliesOn(r, c.iso))
-                  const isToday = c.iso === todayISO()
-                  const isPast  = c.iso < todayISO()
-                  const isWeekend = dow >= 6
-
-                  return (
-                    <div
-                      key={c.iso}
-                      className={`min-h-[120px] rounded-lg border flex flex-col transition-colors ${
-                        c.inMonth
-                          ? isToday
-                            ? 'bg-brand/5 border-brand/40 ring-1 ring-brand/20'
-                            : isWeekend
-                              ? 'bg-ink-50/40 dark:bg-ink-800/30 border-ink-100 dark:border-ink-700/60'
-                              : 'bg-white dark:bg-ink-900 border-ink-100 dark:border-ink-700/60'
-                          : 'bg-ink-50/30 dark:bg-ink-800/10 border-transparent'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between px-2 py-1 border-b border-ink-100/60 dark:border-ink-700/40">
-                        <span
-                          className={`text-[11px] tabular-nums leading-none ${
-                            isToday
-                              ? 'text-brand font-bold'
-                              : c.inMonth
-                                ? 'text-ink-700 dark:text-ink-300 font-medium'
-                                : 'text-ink-300 dark:text-ink-600'
-                          }`}
-                        >
-                          {c.day}
-                        </span>
-                        {c.inMonth && daySchedules.length > 0 && (
-                          <span className="text-[9.5px] text-ink-400 tabular-nums">{daySchedules.length}</span>
-                        )}
-                      </div>
-
-                      <div className="flex-1 px-1 pt-1 pb-1 space-y-1">
-                        {c.inMonth && daySchedules.map((r) => {
-                          const session = sessionMap.get(`${r.module_id}|${c.iso}|${r.session_type}`)
-                          const recorded = !!session && session.recorded > 0
-                          const mark: SessionMark = recorded ? 'recorded' : (isPast || isToday ? 'pending' : 'upcoming')
-                          const style = MARK_STYLE[mark]
-                          return (
-                            <button
-                              key={r.id}
-                              type="button"
-                              onClick={() => onPick(r, c.iso)}
-                              title={`${r.module_code} · ${r.module_name} — ${r.start_time.slice(0, 5)}–${r.end_time.slice(0, 5)}${r.room_name ? ` · ${r.room_name}` : ''} — ${style.label}`}
-                              className={`w-full text-left rounded-md border ${style.bg} pl-1.5 pr-1 py-1 hover:shadow-sm transition-all`}
-                            >
-                              <div className="flex items-center gap-1">
-                                {recorded
-                                  ? <CheckCircle2 className="w-3 h-3 shrink-0" style={{ color: style.dot }} />
-                                  : <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: style.dot }} />}
-                                <span className="font-mono font-semibold text-[10.5px] truncate flex-1">{r.module_code}</span>
-                              </div>
-                              <div className="flex items-center justify-between mt-0.5 text-[9.5px]">
-                                <span className="tabular-nums text-ink-500 dark:text-ink-400">{r.start_time.slice(0, 5)}</span>
-                                {recorded && session && (
-                                  <span className="tabular-nums font-medium" style={{ color: style.dot }}>{session.recorded}✓</span>
-                                )}
-                              </div>
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Legend */}
-        <div className="mt-3 pt-3 border-t border-ink-100 dark:border-ink-700/60 flex items-center gap-4 flex-wrap text-[11px] text-ink-500">
-          <span className="inline-flex items-center gap-1.5">
-            <CheckCircle2 className="w-3 h-3" style={{ color: MARK_STYLE.recorded.dot }} /> Recorded
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: MARK_STYLE.pending.dot }} /> Pending — past or today, not yet marked
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: MARK_STYLE.upcoming.dot }} /> Upcoming
-          </span>
-        </div>
-      </section>
-
-      {/* Compact list — recurring schedules with most-recent-occurrence status */}
-      {filteredSchedules.length > 0 && (
-        <section className="card p-0 overflow-hidden">
-          <div className="px-5 py-3 border-b border-ink-100 dark:border-ink-700 flex items-center justify-between">
-            <h3 className="font-semibold text-[13px]">All scheduled sessions ({filteredSchedules.length})</h3>
-            <span className="text-[11px] text-ink-400">Click any row to record</span>
-          </div>
           <div className="overflow-x-auto">
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Module</th>
-                  <th>Day · Time</th>
-                  <th>Room</th>
-                  <th>Type</th>
-                  {canManage && <th>Teacher</th>}
-                  <th>Latest</th>
+                  <th>Code</th>
+                  <th>Module &amp; component</th>
+                  <th>Programme</th>
+                  <th>Activity</th>
+                  <th>Sem</th>
+                  <th>Day</th>
+                  <th>Start</th>
+                  <th>End</th>
+                  <th>Period</th>
+                  <th>Teacher</th>
                   <th className="text-right">Action</th>
                 </tr>
               </thead>
               <tbody>
-                {[...filteredSchedules]
-                  .sort((a, b) => a.day_of_week - b.day_of_week || a.start_time.localeCompare(b.start_time))
-                  .map((r) => {
-                    const dateISO = lastOccurrenceISO(r.day_of_week, r.start_date ?? null, r.end_date ?? null)
-                    const session = sessionMap.get(`${r.module_id}|${dateISO}|${r.session_type}`)
-                    const recorded = !!session && session.recorded > 0
-                    const mark: SessionMark = recorded ? 'recorded' : 'pending'
-                    const style = MARK_STYLE[mark]
-                    return (
-                      <tr
-                        key={r.id}
-                        className="cursor-pointer hover:bg-ink-50/40 dark:hover:bg-ink-800/30"
-                        onClick={() => onPick(r, dateISO)}
-                      >
-                        <td>
-                          <p className="font-mono text-[11.5px] font-semibold">{r.module_code}</p>
-                          <p className="text-[11.5px] text-ink-500 truncate">{r.module_name}</p>
-                        </td>
-                        <td className="text-[12.5px]">
-                          <span className="font-medium">{SCHED_DAYS[r.day_of_week - 1]}</span>
-                          <span className="ml-2 font-mono tabular-nums text-ink-500">{r.start_time.slice(0, 5)}–{r.end_time.slice(0, 5)}</span>
-                        </td>
-                        <td className="text-[12px]">{r.room_name ?? '—'}</td>
-                        <td className="text-[12px] capitalize">{r.session_type}</td>
-                        {canManage && <td className="text-[12px] text-ink-500">{r.staff_name ?? '—'}</td>}
-                        <td>
-                          <span className="inline-flex items-center gap-1.5 text-[11.5px]">
-                            {recorded
-                              ? <CheckCircle2 className="w-3 h-3" style={{ color: style.dot }} />
-                              : <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: style.dot }} />}
-                            {style.label}
-                            <span className="text-ink-400">· {dateISO}</span>
-                          </span>
-                        </td>
-                        <td className="text-right">
-                          <button type="button" className="btn-secondary btn-sm" onClick={(e) => { e.stopPropagation(); onPick(r, dateISO) }}>
-                            {recorded ? 'View' : 'Record'}
-                          </button>
-                        </td>
-                      </tr>
-                    )
-                  })}
+                {filteredBlocks.map((b) => {
+                  const pickScope = {
+                    day_pattern: b.day_pattern ?? (b.day_of_week ? String(b.day_of_week) : null),
+                    start_date:  b.start_date,
+                    end_date:    b.end_date,
+                  }
+                  const pick = () => onPickModule(b.module_id, b.module_code ?? '', b.module_name ?? '', pickScope)
+                  return (
+                    <tr
+                      key={b.block_id}
+                      className="cursor-pointer hover:bg-ink-50/50 dark:hover:bg-ink-700/20"
+                      onClick={pick}
+                    >
+                      <td className="font-mono text-[12px] font-semibold">{b.module_code ?? '—'}</td>
+                      <td className="text-[12.5px]">{b.module_name ?? '—'}</td>
+                      <td className="text-[12px] text-ink-500">{b.program_acro ?? b.program_name ?? '—'}</td>
+                      <td className="text-[12px]">{b.activity ?? '—'}</td>
+                      <td className="text-[12px] text-ink-500">{b.semesters ?? '—'}</td>
+                      <td className="text-[12px]">{formatDayPattern(b.day_pattern, b.day_of_week)}</td>
+                      <td className="text-[12px] tabular-nums text-ink-500">{b.start_date ?? '—'}</td>
+                      <td className="text-[12px] tabular-nums text-ink-500">{b.end_date ?? '—'}</td>
+                      <td className="text-[12px] tabular-nums text-ink-500">
+                        {b.start_time?.slice(0, 5) ?? '—'}–{b.end_time?.slice(0, 5) ?? '—'}
+                      </td>
+                      <td className="text-[12px] text-ink-700 dark:text-ink-200">{b.instructor_name ?? '—'}</td>
+                      <td className="text-right">
+                        <button
+                          type="button"
+                          className="btn-primary btn-sm"
+                          onClick={(e) => { e.stopPropagation(); pick() }}
+                        >
+                          Record
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
-        </section>
-      )}
+        )}
+      </section>
+
     </div>
   )
 }
@@ -2127,33 +1977,6 @@ function todayISO(): string {
   const d = new Date()
   const tz = d.getTimezoneOffset() * 60000
   return new Date(d.getTime() - tz).toISOString().slice(0, 10)
-}
-
-function isoFromDate(d: Date): string {
-  const tz = d.getTimezoneOffset() * 60000
-  return new Date(d.getTime() - tz).toISOString().slice(0, 10)
-}
-
-/** Most recent occurrence of `dow` (1=Mon..7=Sun) on/before today, clamped to
- *  the schedule's optional [startISO, endISO] window. If today is past endISO,
- *  returns the last occurrence at-or-before endISO. If today is before startISO,
- *  returns the first occurrence at-or-after startISO. */
-function lastOccurrenceISO(dow: number, startISO: string | null, endISO: string | null): string {
-  const today = new Date()
-  let ref = today
-  if (endISO && isoFromDate(today) > endISO) ref = new Date(endISO + 'T00:00:00')
-  if (startISO && isoFromDate(today) < startISO) {
-    // Walk forward from start to first matching dow
-    const s = new Date(startISO + 'T00:00:00')
-    const sDow = ((s.getDay() + 6) % 7) + 1
-    const fwd = (dow - sDow + 7) % 7
-    s.setDate(s.getDate() + fwd)
-    return isoFromDate(s)
-  }
-  const refDow = ((ref.getDay() + 6) % 7) + 1
-  const back = (refDow - dow + 7) % 7
-  ref.setDate(ref.getDate() - back)
-  return isoFromDate(ref)
 }
 
 function EnrollStudentModal({ moduleId, moduleCode, termId, onClose, onSuccess, existingRegnumbers = [] }: { moduleId: number; moduleCode: string; termId: number; onClose: () => void; onSuccess: () => void; existingRegnumbers?: string[] }) {

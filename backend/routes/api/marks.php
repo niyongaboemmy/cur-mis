@@ -21,6 +21,10 @@ $router->group('/api/marks', function ($router) {
         $r->get('/markable-modules',                 [ModuleMarksController::class, 'myMarkableModules']);
         $r->get('/students/:regnumber',              [ModuleMarksController::class, 'studentMarks']);
         $r->get('/students/:regnumber/transcript',   [ModuleMarksController::class, 'studentTranscript']);
+        // Numeric-id variants — regnumbers like "STD/2026/22699" contain
+        // slashes that break the `:regnumber` segment matcher.
+        $r->get('/students/by-id/:id',               [ModuleMarksController::class, 'studentMarksById']);
+        $r->get('/students/by-id/:id/transcript',    [ModuleMarksController::class, 'studentTranscriptById']);
     }, [new MaybePermissionMiddleware([
         Permissions::VIEW_MODULE_MARKS,
         Permissions::RECORD_MODULE_MARKS,

@@ -14,7 +14,8 @@ class StudentModel extends BaseModel
         'birthdate', 'nationality', 'program', 'std_option', 'faculty',
         'department', 'current_level', 'registration_date', 'student_state',
         'intake', 'acc_year', 'combination', 'last_school', 'sponsor',
-        'photo', 'marital_status',
+        'photo', 'marital_status', 'spouse', 'disability',
+        'father', 'mother', 'reference', 'id_card', 'country',
         'province', 'district', 'sector', 'cell', 'village',
     ];
 

@@ -659,6 +659,8 @@ type ServerBlock = {
   semesters:       string | null
   academic_year:   string | null
   day_of_week:     number | null
+  /** Comma-separated ISO day numbers (1=Mon…7=Sun). May be multi-day. */
+  day_pattern:     string | null
   start_time:      string | null
   end_time:        string | null
   instructor_id:   number | null
@@ -687,7 +689,9 @@ type WorkingBlock = {
   start_date:      string
   end_date:        string
   semesters:       string
-  day_of_week:     number | ''
+  day_of_week:     number | ''  // legacy; derived on save from day_pattern
+  /** Selected ISO day numbers (1=Mon…7=Sun). Empty = "any day". */
+  day_pattern:     number[]
   start_time:      string  // 'HH:MM'
   end_time:        string  // 'HH:MM'
   instructor_id:   number | ''
@@ -726,6 +730,43 @@ const SEMESTER_OPTIONS = [
 ]
 const DAY_LABELS: Record<number, string> = {
   1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat', 7: 'Sun',
+}
+const WEEKDAYS = [1, 2, 3, 4, 5]
+const WEEKEND  = [6, 7]
+
+/** Parse a server-side `day_pattern` ("1,3,5" / "weekdays" / "weekend")
+ *  into a sorted, deduplicated list of ISO day numbers. Falls back to the
+ *  legacy single `day_of_week` when no pattern is set. */
+function parseDayPattern(pattern: string | null | undefined, dayOfWeek: number | null | undefined): number[] {
+  const out = new Set<number>()
+  const raw = (pattern ?? '').trim().toLowerCase()
+  if (raw === 'weekdays' || raw === 'mon-fri' || raw === 'monday-friday') {
+    WEEKDAYS.forEach((d) => out.add(d))
+  } else if (raw === 'weekend' || raw === 'sat-sun' || raw === 'saturday-sunday') {
+    WEEKEND.forEach((d) => out.add(d))
+  } else if (raw) {
+    for (const tok of raw.split(/[,\s]+/)) {
+      const n = Number(tok)
+      if (Number.isInteger(n) && n >= 1 && n <= 7) out.add(n)
+    }
+  } else if (typeof dayOfWeek === 'number' && dayOfWeek >= 1 && dayOfWeek <= 7) {
+    out.add(dayOfWeek)
+  }
+  return [...out].sort((a, b) => a - b)
+}
+
+/** Compact human-readable summary of a day list. Picks the smallest form
+ *  that's still unambiguous: "—" / "Mon" / "Mon–Fri" / "Sat,Sun" /
+ *  "Mon, Wed, Fri". */
+function formatDayPattern(days: number[]): string {
+  if (days.length === 0) return '— any —'
+  const sorted = [...days].sort((a, b) => a - b)
+  const isWeekdays = sorted.length === 5 && sorted.every((d, i) => d === i + 1)
+  const isWeekend  = sorted.length === 2 && sorted[0] === 6 && sorted[1] === 7
+  if (isWeekdays) return 'Mon–Fri'
+  if (isWeekend)  return 'Sat–Sun'
+  if (sorted.length === 7) return 'All week'
+  return sorted.map((d) => DAY_LABELS[d]).join(', ')
 }
 
 function SchedulingPanel() {
@@ -881,7 +922,9 @@ function SchedulingPanel() {
         start_date:      b.start_date || null,
         end_date:        b.end_date   || null,
         semesters:       b.semesters  || null,
-        day_of_week:     b.day_of_week === '' ? null : Number(b.day_of_week),
+        day_of_week:     b.day_pattern.length === 1 ? b.day_pattern[0]
+                       : b.day_of_week === '' ? null : Number(b.day_of_week),
+        day_pattern:     b.day_pattern.length ? b.day_pattern.join(',') : null,
         start_time:      b.start_time || null,
         end_time:        b.end_time   || null,
         instructor_id:   b.instructor_id === '' ? null : Number(b.instructor_id),
@@ -1140,6 +1183,7 @@ function newDraftBlock(moduleId: number): WorkingBlock {
     start_date:  '', end_date: '',
     semesters:   '',
     day_of_week: '',
+    day_pattern: [],
     start_time:  '', end_time: '',
     instructor_id:   '',
     instructor_name: '',
@@ -1157,6 +1201,7 @@ function serverBlockToWorking(moduleId: number, b: ServerBlock): WorkingBlock {
     end_date:    b.end_date   ?? '',
     semesters:   b.semesters  ?? '',
     day_of_week: b.day_of_week ?? '',
+    day_pattern: parseDayPattern(b.day_pattern, b.day_of_week),
     start_time:  b.start_time ? b.start_time.slice(0, 5) : '',
     end_time:    b.end_time   ? b.end_time.slice(0, 5)   : '',
     instructor_id:   b.instructor_id ?? '',
@@ -1331,7 +1376,7 @@ function ScheduleBlocksTable({
               <th className="w-[260px] sticky left-[150px] z-20 bg-ink-50 dark:bg-ink-900 border-r border-ink-200 dark:border-ink-700 shadow-[2px_0_0_0_rgba(0,0,0,0.04)]">Module &amp; Component</th>
               <th className="w-[150px]">Activity</th>
               <th className="w-[120px]">Sem</th>
-              <th className="w-[110px]">Day</th>
+              <th className="w-[180px]">Days</th>
               <th className="w-[170px]">Start Date</th>
               <th className="w-[170px]">End Date</th>
               <th className="w-[230px]">Period</th>
@@ -1350,6 +1395,7 @@ function ScheduleBlocksTable({
                   issues={issuesByKey.get(b._key)}
                   onChange={(patch) => updateBlock(m.module_id, b._key, patch)}
                   onRemove={() => removeBlock(m.module_id, b._key)}
+                  onAddAnother={() => addBlock(m.module_id)}
                   instructors={instructors}
                   campuses={campuses}
                   termStart={termStart}
@@ -1361,6 +1407,7 @@ function ScheduleBlocksTable({
                   key={`empty-${m.module_id}`}
                   module={m}
                   onAdd={() => addBlock(m.module_id)}
+                  mode={mode}
                 />
               )
             ))}
@@ -1372,14 +1419,16 @@ function ScheduleBlocksTable({
 }
 
 function PlaceholderRow({
-  module: m, onAdd,
+  module: m, onAdd, mode,
 }: {
   module: ServerModule
   onAdd: () => void
+  mode?: string
 }) {
   // Solid bg on every cell so the sticky-left cells match the rest of the
   // placeholder row exactly, and so scrolled content can't bleed through.
   const cellBg = 'bg-ink-50 dark:bg-ink-900'
+  const modeLabel = mode ? mode : ''
   return (
     <tr>
       <td className={`font-mono text-[12px] text-ink-500 sticky left-0 z-10 ${cellBg}`}>{m.module_order ?? '—'}</td>
@@ -1388,9 +1437,14 @@ function PlaceholderRow({
       </td>
       <td
         className={`text-[12.5px] truncate text-ink-700 dark:text-ink-200 sticky left-[150px] z-10 ${cellBg} border-r border-ink-200 dark:border-ink-700 shadow-[2px_0_0_0_rgba(0,0,0,0.04)] max-w-[260px]`}
-        title={m.module_name}
+        title={modeLabel ? `${m.module_name} · ${modeLabel}` : m.module_name}
       >
         {m.module_name}
+        {modeLabel && (
+          <span className="ml-1.5 text-[10.5px] uppercase tracking-wider text-ink-400 font-normal">
+            · {modeLabel}
+          </span>
+        )}
       </td>
       <td colSpan={8} className={`text-[12px] text-ink-500 italic ${cellBg}`}>
         Not scheduled yet.
@@ -1406,6 +1460,147 @@ function PlaceholderRow({
         </button>
       </td>
     </tr>
+  )
+}
+
+/* ── Days picker (Mon–Fri / Sat–Sun / custom) ───────────────────
+ * Lets the admin pick any subset of the week. Two presets ("Weekdays",
+ * "Weekend") plus seven toggle chips so unusual schedules (e.g. Mon-Wed-Fri)
+ * are still fast to enter. Portaled like TablePicker so the popover
+ * doesn't get clipped by the table's horizontal scroll container.
+ */
+function DaysPicker({
+  value, onChange,
+}: {
+  value: number[]
+  onChange: (next: number[]) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [coords, setCoords] = useState<{ top: number; left: number; width: number } | null>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const popRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const reposition = () => {
+      const r = btnRef.current?.getBoundingClientRect()
+      if (!r) return
+      setCoords({ top: r.bottom + 4, left: r.left, width: Math.max(r.width, 280) })
+    }
+    reposition()
+    window.addEventListener('scroll', reposition, true)
+    window.addEventListener('resize', reposition)
+    return () => {
+      window.removeEventListener('scroll', reposition, true)
+      window.removeEventListener('resize', reposition)
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    const handleClick = (e: MouseEvent) => {
+      const t = e.target as Node
+      if (btnRef.current?.contains(t) || popRef.current?.contains(t)) return
+      setOpen(false)
+    }
+    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', handleClick)
+    document.addEventListener('keydown', handleKey)
+    return () => {
+      document.removeEventListener('mousedown', handleClick)
+      document.removeEventListener('keydown', handleKey)
+    }
+  }, [open])
+
+  const sorted = [...value].sort((a, b) => a - b)
+  const summary = formatDayPattern(sorted)
+  const has = (n: number) => sorted.includes(n)
+  const isWeekdays = sorted.length === 5 && WEEKDAYS.every((d) => sorted.includes(d))
+  const isWeekend  = sorted.length === 2 && WEEKEND.every((d) => sorted.includes(d))
+  const toggle = (n: number) => onChange(has(n) ? sorted.filter((d) => d !== n) : [...sorted, n])
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        aria-label="Days"
+        className="input input-sm w-full text-left flex items-center justify-between gap-1.5"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className={sorted.length ? 'text-ink-900 dark:text-white truncate' : 'text-ink-400 truncate'}>
+          {summary}
+        </span>
+        <ChevronDown className={`w-3.5 h-3.5 text-ink-400 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && coords && createPortal(
+        <div
+          ref={popRef}
+          style={{ position: 'fixed', top: coords.top, left: coords.left, width: coords.width, zIndex: 1000 }}
+          className="bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-700 rounded-lg shadow-2xl overflow-hidden"
+        >
+          {/* Presets */}
+          <div className="p-2 border-b border-ink-100 dark:border-ink-700 flex items-center gap-1.5 flex-wrap">
+            <button
+              type="button"
+              className={`text-[11.5px] px-2 py-1 rounded-md border transition-colors ${
+                isWeekdays
+                  ? 'bg-brand text-white border-brand'
+                  : 'border-ink-200 dark:border-ink-700 hover:border-brand hover:text-brand'
+              }`}
+              onClick={() => onChange(isWeekdays ? [] : [...WEEKDAYS])}
+            >
+              Weekdays · Mon–Fri
+            </button>
+            <button
+              type="button"
+              className={`text-[11.5px] px-2 py-1 rounded-md border transition-colors ${
+                isWeekend
+                  ? 'bg-brand text-white border-brand'
+                  : 'border-ink-200 dark:border-ink-700 hover:border-brand hover:text-brand'
+              }`}
+              onClick={() => onChange(isWeekend ? [] : [...WEEKEND])}
+            >
+              Weekend · Sat–Sun
+            </button>
+            {sorted.length > 0 && (
+              <button
+                type="button"
+                className="ml-auto text-[11px] text-ink-500 hover:text-red-500"
+                onClick={() => onChange([])}
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          {/* Custom day chips */}
+          <div className="p-2">
+            <div className="text-[10px] uppercase tracking-wider text-ink-400 mb-1.5">Custom days</div>
+            <div className="grid grid-cols-7 gap-1">
+              {[1, 2, 3, 4, 5, 6, 7].map((n) => {
+                const on = has(n)
+                return (
+                  <button
+                    key={n}
+                    type="button"
+                    aria-pressed={on}
+                    className={`text-[11.5px] py-1.5 rounded-md border transition-colors ${
+                      on
+                        ? 'bg-brand text-white border-brand'
+                        : 'border-ink-200 dark:border-ink-700 text-ink-600 dark:text-ink-300 hover:border-brand hover:text-brand'
+                    }`}
+                    onClick={() => toggle(n)}
+                  >
+                    {DAY_LABELS[n]}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
+    </>
   )
 }
 
@@ -1560,13 +1755,14 @@ function TablePicker({
 }
 
 function BlockRow({
-  module: m, block: b, issues, onChange, onRemove, instructors, campuses, termStart, termEnd,
+  module: m, block: b, issues, onChange, onRemove, onAddAnother, instructors, campuses, termStart, termEnd, mode,
 }: {
   module: ServerModule
   block: WorkingBlock
   issues?: BlockIssues
   onChange: (patch: Partial<WorkingBlock>) => void
   onRemove: () => void
+  onAddAnother?: () => void
   instructors: Array<{ id: number; full_name: string; position: string | null }>
   campuses:    Array<{ id: number; name: string }>
   termStart?: string
@@ -1596,9 +1792,14 @@ function BlockRow({
       </td>
       <td
         className={`text-[12.5px] truncate sticky left-[150px] z-10 ${stickyBg} border-r border-ink-200 dark:border-ink-700 shadow-[2px_0_0_0_rgba(0,0,0,0.04)] max-w-[260px]`}
-        title={m.module_name}
+        title={mode ? `${m.module_name} · ${mode}` : m.module_name}
       >
         {m.module_name}
+        {mode && (
+          <span className="ml-1.5 text-[10.5px] uppercase tracking-wider text-ink-400 font-normal">
+            · {mode}
+          </span>
+        )}
       </td>
       <td>
         <select className="input input-sm" value={b.activity} onChange={(e) => onChange({ activity: e.target.value })}>
@@ -1611,14 +1812,13 @@ function BlockRow({
         </select>
       </td>
       <td>
-        <select
-          className="input input-sm"
-          value={b.day_of_week === '' ? '' : String(b.day_of_week)}
-          onChange={(e) => onChange({ day_of_week: e.target.value === '' ? '' : Number(e.target.value) })}
-        >
-          <option value="">— any —</option>
-          {[1,2,3,4,5,6,7].map((n) => <option key={n} value={n}>{DAY_LABELS[n]}</option>)}
-        </select>
+        <DaysPicker
+          value={b.day_pattern}
+          onChange={(next) => onChange({
+            day_pattern: next,
+            day_of_week: next.length === 1 ? next[0] : '',
+          })}
+        />
       </td>
       <td>
         <input
@@ -1701,14 +1901,26 @@ function BlockRow({
         />
       </td>
       <td className="text-right">
-        <button
-          type="button"
-          className="icon-btn text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
-          onClick={onRemove}
-          title="Remove this block"
-        >
-          <Trash2 className="w-3.5 h-3.5" />
-        </button>
+        <div className="flex items-center justify-end gap-1">
+          {onAddAnother && (
+            <button
+              type="button"
+              className="icon-btn text-brand hover:text-brand hover:bg-brand/10"
+              onClick={onAddAnother}
+              title="Add another schedule for this module"
+            >
+              <Plus className="w-3.5 h-3.5" />
+            </button>
+          )}
+          <button
+            type="button"
+            className="icon-btn text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+            onClick={onRemove}
+            title="Remove this block"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </td>
     </tr>
   )
