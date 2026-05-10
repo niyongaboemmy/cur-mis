@@ -19,7 +19,7 @@ foreach ($fsRoots as $dir) {
 if ($foundFsRoot) {
     $_FS_ROOT = $foundFsRoot;
 } else {
-    // cPanel split layout: `public/` is in `public_html/umsTest/cdn/`
+    // cPanel split layout: `public/` is in `public_html/umis/cdn/`
     $docRoot = $_SERVER['DOCUMENT_ROOT'] ?? '';
     if (($pos = strpos($docRoot, '/public_html')) !== false) {
         $_FS_ROOT = substr($docRoot, 0, $pos) . '/file-server';
@@ -44,10 +44,10 @@ $dotenv->safeLoad();
 define('STORAGE_PATH', $_FS_ROOT . '/storage/uploads/');
 define('API_KEY', $_ENV['FILE_SERVER_KEY'] ?? 'development_key_change_me');
 
-$request  = new Request();
+$request = new Request();
 $response = new Response();
-$router   = new Router();
-$storage  = new Storage(STORAGE_PATH);
+$router = new Router();
+$storage = new Storage(STORAGE_PATH);
 
 // ── Auth Middleware ───────────────────────────────────────────────────────────
 $checkAuth = function (Request $request, Response $response) {
