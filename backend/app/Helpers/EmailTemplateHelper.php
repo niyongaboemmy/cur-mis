@@ -17,7 +17,7 @@ class EmailTemplateHelper
         $logoHtml = '';
         if (file_exists($logoPath)) {
             $logoData = base64_encode(file_get_contents($logoPath));
-            $logoHtml = "<img src='data:image/png;base64,{$logoData}' alt='{$appName}' style='height:52px;width:auto;display:block;margin:0 auto 10px auto;'>";
+            $logoHtml = "<img src='data:image/jpeg;base64,{$logoData}' alt='{$appName}' style='height:52px;width:auto;display:block;margin:0 auto 10px auto;'>";
         }
 
         return "
