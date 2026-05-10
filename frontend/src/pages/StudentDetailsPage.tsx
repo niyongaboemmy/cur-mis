@@ -70,6 +70,7 @@ import {
   Network,
 } from "lucide-react";
 import ModalPortal from "@/components/ui/ModalPortal";
+import UserAccountPanel from "@/components/account/UserAccountPanel";
 
 type Tab =
   | "overview"
@@ -154,18 +155,10 @@ export default function StudentDetailsPage({
 
   if (studentQ.isError || !student) {
     if (selfMode) {
-      return (
-        <div className="max-w-[1000px] mx-auto p-6 text-center">
-          <h2 className="text-lg font-semibold text-ink-900 mb-2">
-            No student record on file
-          </h2>
-          <p className="text-ink-500 max-w-md mx-auto">
-            We couldn't find a student record linked to your account. If you've
-            just been enrolled, please sign out and back in. Otherwise, contact
-            the registrar's office.
-          </p>
-        </div>
-      );
+      // Non-student staff accounts (admins, finance, HR, etc.) don't have a
+      // matching `student` record. Show the user-account self-service panel
+      // so they can edit their own profile and password from the same URL.
+      return <UserAccountPanel />;
     }
 
     return (
