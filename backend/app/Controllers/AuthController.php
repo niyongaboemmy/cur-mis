@@ -192,6 +192,43 @@ class AuthController extends BaseController
         $this->success($response, null, 'Logged out successfully.');
     }
 
+    /**
+     * POST /api/auth/change-password
+     * Authenticated self-service password change. Requires the caller's
+     * current password so a leaked JWT alone can't be used to take over the
+     * account.
+     */
+    public function changePassword(Request $request, Response $response): never
+    {
+        $authUser = $request->param('_auth_user') ?? [];
+        $userId   = (int)($authUser['id'] ?? 0);
+        if ($userId <= 0) {
+            $this->error($response, 'Unauthorized.', 401);
+        }
+
+        $data = array_map(fn($v) => is_string($v) ? trim($v) : $v, $request->body());
+
+        $errors = ValidationHelper::validate($data, [
+            'current_password' => ['required'],
+            'new_password'     => ['required', 'min:8'],
+        ]);
+        if (!empty($errors)) {
+            $this->error($response, 'Validation failed.', 422, $errors);
+        }
+
+        $result = $this->authService->changePassword(
+            $userId,
+            (string)$data['current_password'],
+            (string)$data['new_password'],
+        );
+
+        if (!$result['success']) {
+            $this->error($response, $result['message'], $result['code'] ?? 400);
+        }
+
+        $this->success($response, null, $result['message']);
+    }
+
     public function me(Request $request, Response $response): never
     {
         $user = $request->param('_auth_user');

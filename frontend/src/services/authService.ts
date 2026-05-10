@@ -30,5 +30,9 @@ export const authService = {
   resetPassword: (data: Record<string, string>) =>
     api.post<null>('/api/auth/reset-password', data),
 
+  /** Authenticated self-service password change. */
+  changePassword: (data: { current_password: string; new_password: string }) =>
+    api.post<null>('/api/auth/change-password', data),
+
   me: () => api.get<AuthUser>('/api/auth/me'),
 }

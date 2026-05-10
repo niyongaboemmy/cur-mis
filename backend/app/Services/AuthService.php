@@ -480,6 +480,35 @@ class AuthService
         ];
     }
 
+    /**
+     * Authenticated self-service password change. Verifies the current
+     * password before persisting the new hash, so a stolen JWT alone can't
+     * lock the legitimate owner out of their account.
+     */
+    public function changePassword(int $userId, string $currentPassword, string $newPassword): array
+    {
+        $model = new UserModel();
+        $user  = $model->find($userId);
+
+        if (!$user) {
+            return ['success' => false, 'message' => 'User not found.', 'code' => 404];
+        }
+
+        if (!password_verify($currentPassword, $user['password'])) {
+            return ['success' => false, 'message' => 'Current password is incorrect.', 'code' => 400];
+        }
+
+        if (password_verify($newPassword, $user['password'])) {
+            return ['success' => false, 'message' => 'New password must be different from the current one.', 'code' => 400];
+        }
+
+        $model->update($userId, [
+            'password' => password_hash($newPassword, PASSWORD_BCRYPT),
+        ]);
+
+        return ['success' => true, 'message' => 'Password updated successfully.'];
+    }
+
     public function generateToken(array $user): string
     {
         $now     = time();

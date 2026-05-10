@@ -78,6 +78,8 @@ export interface StudentListParams {
   nationality?:   string
   acc_year?:      string
   program?:       string
+  /** Catalog program (options.id) the student is assigned to. */
+  std_option?:    string | number
   sort_by?:       string
   sort_dir?:      'asc' | 'desc'
 }
@@ -201,6 +203,36 @@ export const studentService = {
   me: (signal?: AbortSignal) =>
     api.get<Student>(`/api/students/me`, {}, signal),
 
+  /** Self-service: patch the caller's own student record. The server
+   *  whitelists which columns are actually writable; anything else in the
+   *  payload is silently dropped. */
+  updateMe: (data: Partial<{
+    phone:          string | null
+    marital_status: string | null
+    province:       string | null
+    district:       string | null
+    sector:         string | null
+    cell:           string | null
+    village:        string | null
+  }>) => api.put<Student>(`/api/students/me`, data),
+
+  /** Self-service: documents the authenticated student uploaded with their application. */
+  meDocuments: (signal?: AbortSignal) =>
+    api.get<{ application_id: number | null; documents: ApplicationDocument[] }>(
+      `/api/students/me/documents`, {}, signal,
+    ),
+
+  /** Self-service: tokenized download URL for one of the caller's own documents. */
+  meDocumentDownloadUrl: (documentId: number | string) => {
+    const token = useAuthStore.getState().token
+    const base  = import.meta.env.VITE_API_URL ?? ''
+    return `${base}/api/students/me/documents/${documentId}/download?token=${token}`
+  },
+
+  /** Self-service: curriculum + marks view for the authenticated student. */
+  meProgramModules: (signal?: AbortSignal) =>
+    api.get<ProgramModulesResponse>(`/api/students/me/program-modules`, {}, signal),
+
   create: (data: StudentPayload) =>
     api.post<{ id: number }>('/api/students', data),
 
@@ -274,5 +306,21 @@ export const studentService = {
     const form = new FormData()
     form.append('photo', file)
     return api.upload<{ photo: string }>(`/api/students/${id}/photo`, form)
+  },
+
+  /** Self-service photo URL — fetches the authenticated student's own photo
+   *  without requiring VIEW_STUDENTS. */
+  myPhotoUrl: (cacheKey?: string | number) => {
+    const token = useAuthStore.getState().token
+    const base  = import.meta.env.VITE_API_URL ?? ''
+    const v     = cacheKey != null ? `&v=${encodeURIComponent(String(cacheKey))}` : ''
+    return `${base}/api/students/me/photo?token=${token}${v}`
+  },
+
+  /** Self-service photo upload — students update their own profile picture. */
+  uploadMyPhoto: (file: File) => {
+    const form = new FormData()
+    form.append('photo', file)
+    return api.upload<{ photo: string }>(`/api/students/me/photo`, form)
   },
 }

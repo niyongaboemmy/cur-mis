@@ -675,43 +675,70 @@ class AttendanceController extends BaseController
             $this->error($response, 'regnumber required', 422);
 
         $termId = (int) ($request->query('academic_term_id') ?? 0);
-        $termClause = $termId > 0 ? " AND s.academic_term_id = ?" : "";
-        $termBinding = $termId > 0 ? [$termId] : [];
+        $termClauseMr = $termId > 0 ? " AND mr.academic_term_id = ?" : "";
+        $termClauseS  = $termId > 0 ? " AND s.academic_term_id = ?" : "";
+        $termBinding  = $termId > 0 ? [$termId] : [];
 
-        $totals = $this->db->fetchOne(
-            "SELECT COUNT(*) AS records,
-                    SUM(CASE WHEN r.status = 'present' THEN 1 ELSE 0 END) AS present,
-                    SUM(CASE WHEN r.status = 'late'    THEN 1 ELSE 0 END) AS late,
-                    SUM(CASE WHEN r.status = 'absent'  THEN 1 ELSE 0 END) AS absent,
-                    SUM(CASE WHEN r.status = 'excused' THEN 1 ELSE 0 END) AS excused
-             FROM attendance_records r
-             JOIN attendance_sessions s ON s.id = r.session_id
-             WHERE r.student_regnumber = ? $termClause",
-            array_merge([$reg], $termBinding)
-        ) ?: [];
-
-        $records = (int) ($totals['records'] ?? 0);
-        $pr = (int) ($totals['present'] ?? 0) + (int) ($totals['late'] ?? 0);
-        $pct = $records > 0 ? (int) round(($pr / $records) * 100) : 0;
-
+        // Per-module breakdown driven by module_registrations so every
+        // registered module appears, even ones with zero sessions or zero
+        // recorded marks for this student.
         $byModule = $this->db->fetchAll(
             "SELECT m.module_id, m.module_code, m.module_name,
-                    COUNT(*) AS records,
-                    SUM(CASE WHEN r.status IN ('present','late') THEN 1 ELSE 0 END) AS present_like
-             FROM attendance_records r
-             JOIN attendance_sessions s ON s.id = r.session_id
-             LEFT JOIN modules m ON m.module_id = s.module_id
-             WHERE r.student_regnumber = ? $termClause
-             GROUP BY m.module_id, m.module_code, m.module_name
+                    mr.academic_term_id,
+                    mr.status AS registration_status,
+                    COALESCE(stats.sessions, 0)     AS sessions,
+                    COALESCE(stats.records, 0)      AS records,
+                    COALESCE(stats.present, 0)      AS present,
+                    COALESCE(stats.late, 0)         AS late,
+                    COALESCE(stats.absent, 0)       AS absent,
+                    COALESCE(stats.excused, 0)      AS excused,
+                    COALESCE(stats.present_like, 0) AS present_like
+             FROM module_registrations mr
+             JOIN modules m ON m.module_id = mr.module_id
+             LEFT JOIN (
+               SELECT s.module_id, s.academic_term_id,
+                      COUNT(s.id) AS sessions,
+                      SUM(CASE WHEN r.id IS NOT NULL THEN 1 ELSE 0 END) AS records,
+                      SUM(CASE WHEN r.status = 'present' THEN 1 ELSE 0 END) AS present,
+                      SUM(CASE WHEN r.status = 'late'    THEN 1 ELSE 0 END) AS late,
+                      SUM(CASE WHEN r.status = 'absent'  THEN 1 ELSE 0 END) AS absent,
+                      SUM(CASE WHEN r.status = 'excused' THEN 1 ELSE 0 END) AS excused,
+                      SUM(CASE WHEN r.status IN ('present','late') THEN 1 ELSE 0 END) AS present_like
+               FROM attendance_sessions s
+               LEFT JOIN attendance_records r
+                      ON r.session_id = s.id AND r.student_regnumber = ?
+               GROUP BY s.module_id, s.academic_term_id
+             ) stats ON stats.module_id = mr.module_id
+                    AND stats.academic_term_id = mr.academic_term_id
+             WHERE mr.student_regnumber = ?
+               AND mr.status IN ('registered','completed')
+               $termClauseMr
              ORDER BY m.module_code",
-            array_merge([$reg], $termBinding)
+            array_merge([$reg, $reg], $termBinding)
         );
+
+        $totalSessions = 0; $totalRecords = 0;
+        $totPresent = 0; $totLate = 0; $totAbsent = 0; $totExcused = 0;
         foreach ($byModule as &$row) {
-            $r = (int) $row['records'];
-            $p = (int) $row['present_like'];
-            $row['attendance_pct'] = $r > 0 ? (int) round(($p / $r) * 100) : 0;
+            $sCount = (int) $row['sessions'];
+            $pLike  = (int) $row['present_like'];
+            // Attendance % is present-like over sessions (unmarked sessions
+            // count against the student so the figure reflects real exposure).
+            $row['attendance_pct'] = $sCount > 0 ? (int) round(($pLike / $sCount) * 100) : 0;
+            $row['not_recorded']   = max(0, $sCount - (int) $row['records']);
+            $totalSessions += $sCount;
+            $totalRecords  += (int) $row['records'];
+            $totPresent    += (int) $row['present'];
+            $totLate       += (int) $row['late'];
+            $totAbsent     += (int) $row['absent'];
+            $totExcused    += (int) $row['excused'];
         }
         unset($row);
+
+        $totalPresentLike = $totPresent + $totLate;
+        $pct = $totalSessions > 0
+            ? (int) round(($totalPresentLike / $totalSessions) * 100)
+            : 0;
 
         $limitParam = $request->query('limit');
         $limitClause = '';
@@ -719,30 +746,43 @@ class AttendanceController extends BaseController
             $limitClause = ' LIMIT ' . (int) $limitParam;
         }
 
+        // Every session in a module the student is registered to, whether
+        // or not the student has a record on it. Missing records surface
+        // as 'not_recorded' so the student details page reflects the full
+        // class timeline.
         $recent = $this->db->fetchAll(
-            "SELECT r.status, r.remarks, r.recorded_at,
-                    s.session_date, s.session_type,
-                    m.module_code, m.module_name
-             FROM attendance_records r
-             JOIN attendance_sessions s ON s.id = r.session_id
-             LEFT JOIN modules m ON m.module_id = s.module_id
-             WHERE r.student_regnumber = ? $termClause
-             ORDER BY s.session_date DESC, r.id DESC
+            "SELECT COALESCE(r.status, 'not_recorded') AS status,
+                    r.remarks, r.recorded_at,
+                    s.id AS session_id, s.session_date, s.session_type,
+                    m.module_id, m.module_code, m.module_name
+             FROM attendance_sessions s
+             JOIN module_registrations mr
+                  ON mr.module_id = s.module_id
+                 AND mr.academic_term_id = s.academic_term_id
+                 AND mr.student_regnumber = ?
+                 AND mr.status IN ('registered','completed')
+             JOIN modules m ON m.module_id = s.module_id
+             LEFT JOIN attendance_records r
+                  ON r.session_id = s.id AND r.student_regnumber = ?
+             WHERE 1=1 $termClauseS
+             ORDER BY s.session_date DESC, s.id DESC
              $limitClause",
-            array_merge([$reg], $termBinding)
+            array_merge([$reg, $reg], $termBinding)
         );
 
         $this->success($response, [
             'totals' => [
-                'records' => $records,
-                'present' => (int) ($totals['present'] ?? 0),
-                'late' => (int) ($totals['late'] ?? 0),
-                'absent' => (int) ($totals['absent'] ?? 0),
-                'excused' => (int) ($totals['excused'] ?? 0),
+                'sessions'       => $totalSessions,
+                'records'        => $totalRecords,
+                'present'        => $totPresent,
+                'late'           => $totLate,
+                'absent'         => $totAbsent,
+                'excused'        => $totExcused,
+                'not_recorded'   => max(0, $totalSessions - $totalRecords),
                 'attendance_pct' => $pct,
             ],
             'by_module' => $byModule,
-            'recent' => $recent,
+            'recent'    => $recent,
         ], 'Student attendance fetched.');
     }
 

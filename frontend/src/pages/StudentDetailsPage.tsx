@@ -1,63 +1,27 @@
-import { useParams, Link, useLocation, useNavigate } from "react-router-dom";
-import ModalPortal from "@/components/ui/ModalPortal";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { studentService } from "@/services/studentService";
+import { useParams, Link, useLocation, useNavigate } from 'react-router-dom'
+import { createPortal } from 'react-dom'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { studentService } from '@/services/studentService'
+import { authService } from '@/services/authService'
+import { marksService, type MyMarksRow, type MyMarksTotals } from '@/services/marksService'
+import { academicService } from '@/services/academicService'
+import { attendanceService, type StudentAttendanceStatus } from '@/services/attendanceService'
+import { useAuthStore } from '@/store/authStore'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useForm } from 'react-hook-form'
+import toast from 'react-hot-toast'
 import {
-  marksService,
-  type MyMarksRow,
-  type MyMarksTotals,
-} from "@/services/marksService";
-import { academicService } from "@/services/academicService";
-import {
-  attendanceService,
-  type AttendanceStatus,
-} from "@/services/attendanceService";
-import { useAuthStore } from "@/store/authStore";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useForm } from "react-hook-form";
-import toast from "react-hot-toast";
-import {
-  ArrowLeft,
-  Loader2,
-  User,
-  Mail,
-  Phone,
-  Calendar,
-  GraduationCap,
-  Globe2,
-  Building2,
-  BookOpen,
-  CheckCircle,
-  Clock,
-  FileText,
-  BarChart,
-  Edit,
-  Save,
-  X,
-  Award,
-  AlertTriangle,
-  Download,
-  Percent,
-  Eye,
-  ShieldCheck,
-  ShieldAlert,
-  ShieldX,
-  Sparkles,
-  Trash2,
-  MapPin,
-  CreditCard,
-  CalendarDays,
-  Heart,
-  Accessibility,
-  Users as UsersIcon,
-  CalendarClock,
-  CalendarOff,
-  Camera,
-  PlusCircle,
-  MinusCircle,
-  FileOutput,
-} from "lucide-react";
-import { createPortal } from "react-dom";
+  ArrowLeft, Loader2, User, Mail, Phone, Calendar,
+  GraduationCap, Globe2, Building2, BookOpen,
+  CheckCircle, Clock, FileText, BarChart, Edit, Save, X,
+  Award, AlertTriangle, Download, Percent,
+  Eye, ShieldCheck, ShieldAlert, ShieldX,
+  Sparkles, MapPin, CreditCard, CalendarDays, FileOutput,
+  Heart, Accessibility, Users as UsersIcon,
+  CalendarClock, CalendarOff, Camera,
+  PlusCircle, MinusCircle, Lock, EyeOff,
+} from 'lucide-react'
+import ModalPortal from '@/components/ui/ModalPortal'
 
 type Tab =
   | "overview"
@@ -166,11 +130,7 @@ export default function StudentDetailsPage({
             <ArrowLeft className="w-5 h-5" />
           </Link>
         )}
-        <StudentAvatar
-          student={student}
-          initials={initials}
-          readOnly={selfMode}
-        />
+        <StudentAvatar student={student} initials={initials} selfMode={selfMode} />
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold text-ink-900 dark:text-white">
@@ -214,64 +174,22 @@ export default function StudentDetailsPage({
 
       {/* Tabs */}
       <div className="flex flex-wrap items-center gap-2 border-b border-ink-200 dark:border-ink-800">
-        <TabButton
-          active={tab === "overview"}
-          onClick={() => setTab("overview")}
-          icon={User}
-          label="Overview & Stats"
-        />
-        <TabButton
-          active={tab === "attendance"}
-          onClick={() => setTab("attendance")}
-          icon={Clock}
-          label="Attendance"
-        />
-        {!selfMode && (
-          <>
-            <TabButton
-              active={tab === "documents"}
-              onClick={() => setTab("documents")}
-              icon={FileText}
-              label="Documents"
-            />
-            <TabButton
-              active={tab === "curriculum"}
-              onClick={() => setTab("curriculum")}
-              icon={BookOpen}
-              label="Program & Marks"
-            />
-          </>
-        )}
-        <TabButton
-          active={tab === "finance"}
-          onClick={() => setTab("finance")}
-          icon={BarChart}
-          label="Finance"
-        />
-        <TabButton
-          active={tab === "transcript"}
-          onClick={() => setTab("transcript")}
-          icon={FileText}
-          label="Transcript"
-        />
+        <TabButton active={tab === 'overview'}   onClick={() => setTab('overview')}   icon={User}       label="Overview & Stats" />
+        <TabButton active={tab === 'attendance'} onClick={() => setTab('attendance')} icon={Clock}      label="Attendance" />
+        <TabButton active={tab === 'documents'}  onClick={() => setTab('documents')}  icon={FileText}   label="Documents" />
+        <TabButton active={tab === 'curriculum'} onClick={() => setTab('curriculum')} icon={BookOpen}   label="Program & Marks" />
+        <TabButton active={tab === 'finance'}    onClick={() => setTab('finance')}    icon={BarChart}   label="Finance" />
+        <TabButton active={tab === 'transcript'} onClick={() => setTab('transcript')} icon={FileText}   label="Transcript" />
       </div>
 
       {/* Tab Content */}
       <div className="min-h-[400px]">
-        {tab === "overview" && <OverviewTab student={student} stats={stats} />}
-        {tab === "attendance" && <AttendanceTab student={student} />}
-        {!selfMode && tab === "documents" && <DocumentsTab student={student} />}
-        {!selfMode && tab === "curriculum" && (
-          <ProgramCurriculumTab student={student} />
-        )}
-        {tab === "finance" && (
-          <PlaceholderTab
-            icon={BarChart}
-            title="Financial Overview"
-            desc="Tuition fees, payments, and balances."
-          />
-        )}
-        {tab === "transcript" && <TranscriptTab student={student} />}
+        {tab === 'overview' && <OverviewTab student={student} stats={stats} selfMode={selfMode} />}
+        {tab === 'attendance' && <AttendanceTab student={student} />}
+        {tab === 'documents' && <DocumentsTab student={student} selfMode={selfMode} />}
+        {tab === 'curriculum' && <ProgramCurriculumTab student={student} selfMode={selfMode} />}
+        {tab === 'finance' && <PlaceholderTab icon={BarChart} title="Financial Overview" desc="Tuition fees, payments, and balances." />}
+        {tab === 'transcript' && <TranscriptTab student={student} />}
       </div>
 
       {!selfMode && isEditing && (
@@ -285,8 +203,8 @@ export default function StudentDetailsPage({
   );
 }
 
-function OverviewTab({ student, stats }: { student: any; stats: any }) {
-  const app = student?.application ?? null;
+function OverviewTab({ student, stats, selfMode = false }: { student: any, stats: any, selfMode?: boolean }) {
+  const app = student?.application ?? null
 
   // Prefer the live student record, but fall back to the application for fields
   // we never copied onto students (father, mother, residency, secondary school…).
@@ -316,176 +234,71 @@ function OverviewTab({ student, stats }: { student: any; stats: any }) {
     app?.program_name ??
     student.program;
 
-  const fullName =
-    `${student.fname ?? ""} ${student.lname ?? ""}`.trim() || "—";
-  const genderRaw = pick(student.gender, app?.gender);
-  const genderLabel =
-    genderRaw === "M"
-      ? "Male"
-      : genderRaw === "F"
-        ? "Female"
-        : genderRaw || null;
+  const fullName = `${student.fname ?? ''} ${student.lname ?? ''}`.trim() || '—'
+  const genderRaw = pick(student.gender, app?.gender)
+  const genderLabel = genderRaw === 'M' ? 'Male' : genderRaw === 'F' ? 'Female' : (genderRaw || null)
+  const initials = [student.fname, student.lname].filter(Boolean).map((p: string) => p[0]).slice(0, 2).join('').toUpperCase() || '—'
+
+  const stateRaw = String(student.student_state ?? '').toLowerCase()
+  const stateClass =
+    stateRaw === 'active'    ? 'bg-mint-100 text-mint-700 ring-mint-200' :
+    stateRaw === 'graduated' ? 'bg-blue-100 text-blue-700 ring-blue-200' :
+    stateRaw === 'suspended' ? 'bg-red-100 text-red-700 ring-red-200' :
+                                'bg-ink-100 text-ink-700 ring-ink-200'
+
+  const academicYear = pick(student.acc_year, app?.academic_year_label)
+  const campus       = pick(app?.campus_name)
+  const studyMode    = cap(pick(app?.mode_of_study))
 
   return (
     <div className="space-y-6">
-      {/* Personal Details */}
-      <section className="card p-6">
-        <SectionHeader
-          title="Personal Details"
-          sub="Identity and parental information."
-          icon={User}
-        />
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5 mt-6">
-          <InfoGroup label="Full Name" value={fullName} icon={User} />
-          <InfoGroup
-            label="Father's Name"
-            value={pick(student.father, app?.father)}
-            icon={UsersIcon}
-          />
-          <InfoGroup
-            label="Mother's Name"
-            value={pick(student.mother, app?.mother)}
-            icon={UsersIcon}
-          />
-          <InfoGroup label="Gender" value={genderLabel} />
-          <InfoGroup
-            label="Date of Birth"
-            value={pick(student.birthdate, app?.birthdate)}
-            icon={CalendarDays}
-          />
-          <InfoGroup
-            label="Marital Status"
-            value={cap(pick(app?.marital_status))}
-            icon={Heart}
-          />
-          <InfoGroup
-            label="National ID / Passport"
-            value={pick(student.id_card, app?.national_id)}
-            icon={CreditCard}
-          />
-          <InfoGroup
-            label="Nationality"
-            value={pick(student.nationality, app?.nationality)}
-            icon={Globe2}
-          />
-          <InfoGroup
-            label="Country of Residence"
-            value={pick(app?.country_of_residence)}
-            icon={MapPin}
-          />
-          <InfoGroup
-            label="Disability"
-            value={pick(app?.disability) ?? "None"}
-            icon={Accessibility}
-          />
-        </div>
-      </section>
+      {/* Hero profile card */}
+      <section className="rounded-2xl border border-ink-200 dark:border-ink-800 bg-white dark:bg-ink-900 p-6 sm:p-8">
+        <div className="flex flex-col md:flex-row gap-8 items-start">
+          {/* large editable photo */}
+          <ProfileHeroPhoto student={student} initials={initials} selfMode={selfMode} />
 
-      {/* Contact */}
-      <section className="card p-6">
-        <SectionHeader
-          title="Contact"
-          sub="How we reach the student."
-          icon={Phone}
-        />
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5 mt-6">
-          <InfoGroup
-            label="Phone"
-            value={pick(student.phone, app?.phone)}
-            icon={Phone}
-          />
-          <InfoGroup
-            label="Reference Person Phone"
-            value={pick(app?.reference_phone)}
-            icon={Phone}
-          />
-          <InfoGroup
-            label="Email"
-            value={pick(student.email, app?.email)}
-            icon={Mail}
-          />
-        </div>
-      </section>
-
-      {/* Residency — only shown when we actually have any address data */}
-      {app &&
-        (app.province ||
-          app.district ||
-          app.sector ||
-          app.residence_district ||
-          app.address) && (
-          <section className="card p-6">
-            <SectionHeader
-              title="Residency"
-              sub="Where the student lives."
-              icon={MapPin}
-            />
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5 mt-6">
-              <InfoGroup label="Province" value={pick(app?.province)} />
-              <InfoGroup label="District" value={pick(app?.district)} />
-              <InfoGroup label="Sector" value={pick(app?.sector)} />
-              <InfoGroup
-                label="Residence District"
-                value={pick(app?.residence_district)}
-              />
-              <div className="sm:col-span-2 lg:col-span-3">
-                <InfoGroup
-                  label="Address"
-                  value={pick(app?.address) ?? "Not provided"}
-                  icon={MapPin}
-                />
-              </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-wrap items-center gap-3">
+              <h2 className="text-3xl font-bold text-ink-900 dark:text-white">{fullName}</h2>
+              <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold ring-1 ${stateClass}`}>
+                {String(student.student_state || 'Unknown').toUpperCase()}
+              </span>
             </div>
-          </section>
-        )}
+            <p className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-ink-500">
+              <span className="font-mono bg-ink-100 dark:bg-ink-800 px-2.5 py-1 rounded text-ink-800 dark:text-ink-100 font-semibold">
+                {student.regnumber || student.index_number || 'No ID'}
+              </span>
+              {programName && <span className="inline-flex items-center gap-1.5"><BookOpen className="w-4 h-4 text-brand" /> {programName}</span>}
+              {levelName && <span className="inline-flex items-center gap-1.5"><GraduationCap className="w-4 h-4 text-brand" /> Level {levelName}</span>}
+            </p>
 
-      {/* Academic Background — captured at application time */}
-      {app && (
-        <section className="card p-6">
-          <SectionHeader
-            title="Academic Background"
-            sub="Secondary school transcript provided during application."
-            icon={GraduationCap}
-          />
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5 mt-6">
-            <InfoGroup
-              label="Attended Secondary School"
-              value={pick(app?.prev_school)}
-            />
-            <InfoGroup
-              label="Combination / Section"
-              value={pick(app?.combination)}
-            />
-            <InfoGroup label="A2 Grades" value={pick(app?.a2_grades)} />
-            <InfoGroup
-              label="Principal Passes"
-              value={
-                app?.principal_passes != null
-                  ? String(app.principal_passes)
-                  : null
-              }
-            />
-            <InfoGroup
-              label="Completion Year"
-              value={app?.graduation_year ? String(app.graduation_year) : null}
-            />
-            <InfoGroup label="Serial Number" value={pick(app?.serial_number)} />
-            <InfoGroup
-              label="Qualification"
-              value={pick(app?.prev_qualification)}
-            />
-            <InfoGroup label="Mean Grade" value={pick(app?.prev_grade)} />
+            <div className="mt-5 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+              {facultyName && <Chip icon={Building2} label="Faculty" value={facultyName} />}
+              {deptName    && <Chip icon={GraduationCap} label="Department" value={deptName} />}
+              {academicYear && <Chip icon={Calendar} label="Year" value={academicYear} />}
+              {campus       && <Chip icon={Building2} label="Campus" value={campus} />}
+              {studyMode    && <Chip icon={Clock} label="Mode" value={studyMode} />}
+            </div>
           </div>
-        </section>
-      )}
+        </div>
+      </section>
 
-      {/* Programme Selection — current academic placement */}
-      <section className="card p-6">
-        <SectionHeader
-          title="Programme Selection"
-          sub="Faculty, department, programme and academic year."
-          icon={BookOpen}
+      {/* Two-column responsive layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <PersonalDetailsSection
+          student={student}
+          app={app}
+          fullName={fullName}
+          genderLabel={genderLabel}
+          selfMode={selfMode}
         />
+        <ContactSection student={student} app={app} selfMode={selfMode} />
+      </div>
+
+      {/* Programme — full width */}
+      <section className="card p-6">
+        <SectionHeader title="Programme Details" sub="Faculty, department, programme and academic year." icon={BookOpen} />
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5 mt-6">
           <InfoGroup label="Program" value={programName} icon={BookOpen} />
           <InfoGroup label="Faculty" value={facultyName} icon={Building2} />
@@ -518,6 +331,29 @@ function OverviewTab({ student, stats }: { student: any; stats: any }) {
         </div>
       </section>
 
+      {/* Residency + Academic Background — side by side when both exist */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {(selfMode || (app && (student.province || student.district || student.sector || app.province || app.district || app.sector || app.residence_district || app.address))) && (
+          <ResidencySection student={student} app={app} selfMode={selfMode} />
+        )}
+
+        {app && (
+          <section className="card p-6">
+            <SectionHeader title="Academic Background" sub="Secondary school transcript." icon={GraduationCap} />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5 mt-6">
+              <InfoGroup label="Attended Secondary School" value={pick(app?.prev_school)} />
+              <InfoGroup label="Combination / Section" value={pick(app?.combination)} />
+              <InfoGroup label="A2 Grades" value={pick(app?.a2_grades)} />
+              <InfoGroup label="Principal Passes" value={app?.principal_passes != null ? String(app.principal_passes) : null} />
+              <InfoGroup label="Completion Year" value={app?.graduation_year ? String(app.graduation_year) : null} />
+              <InfoGroup label="Serial Number" value={pick(app?.serial_number)} />
+              <InfoGroup label="Qualification" value={pick(app?.prev_qualification)} />
+              <InfoGroup label="Mean Grade" value={pick(app?.prev_grade)} />
+            </div>
+          </section>
+        )}
+      </div>
+
       {/* Academic Progress placeholder */}
       <section className="card p-6">
         <SectionHeader
@@ -533,6 +369,578 @@ function OverviewTab({ student, stats }: { student: any; stats: any }) {
           </p>
         </div>
       </section>
+
+      {selfMode && <ChangePasswordSection />}
+    </div>
+  )
+}
+
+/**
+ * Personal Details — read-only by default. In selfMode the section can be
+ * flipped into edit mode, where only the marital_status field is writable.
+ * Everything else (name, gender, DOB, ID, nationality, parents) stays
+ * locked because those belong to the legal/academic identity captured at
+ * enrollment and are admin-only.
+ */
+function PersonalDetailsSection({
+  student, app, fullName, genderLabel, selfMode,
+}: { student: any; app: any; fullName: string; genderLabel: string | null; selfMode: boolean }) {
+  const qc = useQueryClient()
+  const [editing, setEditing] = useState(false)
+
+  const pick = (...vals: any[]) =>
+    vals.find(v => v !== undefined && v !== null && v !== '') ?? null
+
+  const initialMarital = (pick(student.marital_status, app?.marital_status) ?? '') as string
+  const [marital, setMarital] = useState<string>(initialMarital.toLowerCase())
+  useEffect(() => { setMarital((pick(student.marital_status, app?.marital_status) ?? '').toString().toLowerCase()) }, [student.marital_status, app?.marital_status])
+
+  const save = useMutation({
+    mutationFn: () => studentService.updateMe({ marital_status: marital || null }),
+    onSuccess: () => {
+      toast.success('Personal details updated.')
+      qc.invalidateQueries({ queryKey: ['student', 'me'] })
+      setEditing(false)
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to update profile'),
+  })
+
+  return (
+    <section className="card p-6">
+      <div className="flex items-start justify-between gap-3">
+        <SectionHeader title="Personal Details" sub="Identity and parental information." icon={User} />
+        {selfMode && !editing && (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="btn-secondary btn-sm flex items-center gap-1.5 h-7 px-2.5 shrink-0"
+          >
+            <Edit className="w-3.5 h-3.5" />
+            <span>Edit</span>
+          </button>
+        )}
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5 mt-6">
+        <InfoGroup label="Full Name" value={fullName} icon={User} />
+        <InfoGroup label="Gender" value={genderLabel} />
+        <InfoGroup label="Date of Birth" value={pick(student.birthdate, app?.birthdate)} icon={CalendarDays} />
+
+        {editing ? (
+          <FieldGroup label="Marital Status" icon={Heart}>
+            <select
+              value={marital}
+              onChange={(e) => setMarital(e.target.value)}
+              className="w-full h-9 px-3 rounded-md border border-ink-200 dark:border-ink-700 bg-white dark:bg-ink-900 text-sm focus:border-brand focus:ring-1 focus:ring-brand outline-none"
+            >
+              <option value="">— Select —</option>
+              <option value="single">Single</option>
+              <option value="married">Married</option>
+              <option value="divorced">Divorced</option>
+              <option value="widowed">Widowed</option>
+            </select>
+          </FieldGroup>
+        ) : (
+          <InfoGroup label="Marital Status" value={cap(pick(student.marital_status, app?.marital_status))} icon={Heart} />
+        )}
+
+        <InfoGroup label="National ID / Passport" value={pick(student.id_card, app?.national_id)} icon={CreditCard} />
+        <InfoGroup label="Nationality" value={pick(student.nationality, app?.nationality)} icon={Globe2} />
+        <InfoGroup label="Father's Name" value={pick(student.father, app?.father)} icon={UsersIcon} />
+        <InfoGroup label="Mother's Name" value={pick(student.mother, app?.mother)} icon={UsersIcon} />
+        <InfoGroup label="Country of Residence" value={pick(app?.country_of_residence)} icon={MapPin} />
+        <InfoGroup label="Disability" value={pick(app?.disability) ?? 'None'} icon={Accessibility} />
+      </div>
+
+      {editing && (
+        <div className="mt-6 flex items-center justify-end gap-2 pt-4 border-t border-ink-100 dark:border-ink-800">
+          <button
+            type="button"
+            onClick={() => { setMarital(initialMarital.toLowerCase()); setEditing(false) }}
+            disabled={save.isPending}
+            className="btn-secondary btn-sm flex items-center gap-1.5 h-8 px-3"
+          >
+            <X className="w-3.5 h-3.5" /> Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => save.mutate()}
+            disabled={save.isPending}
+            className="btn-primary btn-sm flex items-center gap-1.5 h-8 px-3"
+          >
+            {save.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+            Save
+          </button>
+        </div>
+      )}
+    </section>
+  )
+}
+
+/**
+ * Contact section — phone is the only field a student is allowed to edit.
+ * Email is the login identifier (changing it server-side would risk locking
+ * the user out) and reference phone belongs to the application record, so
+ * both stay read-only.
+ */
+function ContactSection({ student, app, selfMode }: { student: any; app: any; selfMode: boolean }) {
+  const qc = useQueryClient()
+  const [editing, setEditing] = useState(false)
+
+  const pick = (...vals: any[]) =>
+    vals.find(v => v !== undefined && v !== null && v !== '') ?? null
+
+  const initialPhone = (pick(student.phone, app?.phone) ?? '') as string
+  const [phone, setPhone] = useState<string>(initialPhone)
+  useEffect(() => { setPhone((pick(student.phone, app?.phone) ?? '') as string) }, [student.phone, app?.phone])
+
+  const save = useMutation({
+    mutationFn: () => studentService.updateMe({ phone: phone.trim() || null }),
+    onSuccess: () => {
+      toast.success('Contact updated.')
+      qc.invalidateQueries({ queryKey: ['student', 'me'] })
+      setEditing(false)
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to update contact'),
+  })
+
+  return (
+    <section className="card p-6">
+      <div className="flex items-start justify-between gap-3">
+        <SectionHeader title="Contact" sub="How we reach the student." icon={Phone} />
+        {selfMode && !editing && (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="btn-secondary btn-sm flex items-center gap-1.5 h-7 px-2.5 shrink-0"
+          >
+            <Edit className="w-3.5 h-3.5" />
+            <span>Edit</span>
+          </button>
+        )}
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5 mt-6">
+        {editing ? (
+          <FieldGroup label="Phone" icon={Phone}>
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="+250 7XX XXX XXX"
+              className="w-full h-9 px-3 rounded-md border border-ink-200 dark:border-ink-700 bg-white dark:bg-ink-900 text-sm focus:border-brand focus:ring-1 focus:ring-brand outline-none"
+            />
+          </FieldGroup>
+        ) : (
+          <InfoGroup label="Phone" value={pick(student.phone, app?.phone)} icon={Phone} />
+        )}
+        <InfoGroup label="Reference Person Phone" value={pick(app?.reference_phone)} icon={Phone} />
+        <div className="sm:col-span-2">
+          <InfoGroup label="Email" value={pick(student.email, app?.email)} icon={Mail} />
+        </div>
+      </div>
+
+      {editing && (
+        <div className="mt-6 flex items-center justify-end gap-2 pt-4 border-t border-ink-100 dark:border-ink-800">
+          <button
+            type="button"
+            onClick={() => { setPhone(initialPhone); setEditing(false) }}
+            disabled={save.isPending}
+            className="btn-secondary btn-sm flex items-center gap-1.5 h-8 px-3"
+          >
+            <X className="w-3.5 h-3.5" /> Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => save.mutate()}
+            disabled={save.isPending}
+            className="btn-primary btn-sm flex items-center gap-1.5 h-8 px-3"
+          >
+            {save.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+            Save
+          </button>
+        </div>
+      )}
+    </section>
+  )
+}
+
+/**
+ * Residency — province/district/sector/cell/village live on the student
+ * record itself, so students can self-edit them. Address and residence
+ * district stay read-only (admin-only on the application record).
+ */
+function ResidencySection({ student, app, selfMode }: { student: any; app: any; selfMode: boolean }) {
+  const qc = useQueryClient()
+  const [editing, setEditing] = useState(false)
+
+  const pick = (...vals: any[]) =>
+    vals.find(v => v !== undefined && v !== null && v !== '') ?? null
+
+  const initial = {
+    province: (pick(student.province, app?.province) ?? '') as string,
+    district: (pick(student.district, app?.district) ?? '') as string,
+    sector:   (pick(student.sector,   app?.sector)   ?? '') as string,
+    cell:     (pick(student.cell)                    ?? '') as string,
+    village:  (pick(student.village)                 ?? '') as string,
+  }
+  const [form, setForm] = useState(initial)
+  useEffect(() => { setForm({
+    province: (pick(student.province, app?.province) ?? '') as string,
+    district: (pick(student.district, app?.district) ?? '') as string,
+    sector:   (pick(student.sector,   app?.sector)   ?? '') as string,
+    cell:     (pick(student.cell)                    ?? '') as string,
+    village:  (pick(student.village)                 ?? '') as string,
+  }) }, [student.province, student.district, student.sector, student.cell, student.village, app?.province, app?.district, app?.sector])
+
+  const save = useMutation({
+    mutationFn: () => studentService.updateMe({
+      province: form.province.trim() || null,
+      district: form.district.trim() || null,
+      sector:   form.sector.trim()   || null,
+      cell:     form.cell.trim()     || null,
+      village:  form.village.trim()  || null,
+    }),
+    onSuccess: () => {
+      toast.success('Residency updated.')
+      qc.invalidateQueries({ queryKey: ['student', 'me'] })
+      setEditing(false)
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to update residency'),
+  })
+
+  const set = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setForm(f => ({ ...f, [key]: e.target.value }))
+
+  return (
+    <section className="card p-6">
+      <div className="flex items-start justify-between gap-3">
+        <SectionHeader title="Residency" sub="Where the student lives." icon={MapPin} />
+        {selfMode && !editing && (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="btn-secondary btn-sm flex items-center gap-1.5 h-7 px-2.5 shrink-0"
+          >
+            <Edit className="w-3.5 h-3.5" />
+            <span>Edit</span>
+          </button>
+        )}
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5 mt-6">
+        {editing ? (
+          <>
+            <FieldGroup label="Province"><TextInput value={form.province} onChange={set('province')} placeholder="e.g. Kigali City" /></FieldGroup>
+            <FieldGroup label="District"><TextInput value={form.district} onChange={set('district')} placeholder="e.g. Gasabo" /></FieldGroup>
+            <FieldGroup label="Sector"><TextInput value={form.sector} onChange={set('sector')} placeholder="e.g. Remera" /></FieldGroup>
+            <FieldGroup label="Cell"><TextInput value={form.cell} onChange={set('cell')} placeholder="e.g. Rukiri I" /></FieldGroup>
+            <FieldGroup label="Village"><TextInput value={form.village} onChange={set('village')} placeholder="e.g. Amahoro" /></FieldGroup>
+          </>
+        ) : (
+          <>
+            <InfoGroup label="Province" value={pick(student.province, app?.province)} />
+            <InfoGroup label="District" value={pick(student.district, app?.district)} />
+            <InfoGroup label="Sector"   value={pick(student.sector,   app?.sector)} />
+            <InfoGroup label="Cell"     value={pick(student.cell)} />
+            <InfoGroup label="Village"  value={pick(student.village)} />
+          </>
+        )}
+
+        {/* Application-level fields stay read-only on the student side. */}
+        {pick(app?.residence_district) && (
+          <InfoGroup label="Residence District" value={pick(app?.residence_district)} />
+        )}
+        {(pick(app?.address) || !editing) && (
+          <div className="sm:col-span-2">
+            <InfoGroup label="Address" value={pick(app?.address) ?? 'Not provided'} icon={MapPin} />
+          </div>
+        )}
+      </div>
+
+      {editing && (
+        <div className="mt-6 flex items-center justify-end gap-2 pt-4 border-t border-ink-100 dark:border-ink-800">
+          <button
+            type="button"
+            onClick={() => { setForm(initial); setEditing(false) }}
+            disabled={save.isPending}
+            className="btn-secondary btn-sm flex items-center gap-1.5 h-8 px-3"
+          >
+            <X className="w-3.5 h-3.5" /> Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => save.mutate()}
+            disabled={save.isPending}
+            className="btn-primary btn-sm flex items-center gap-1.5 h-8 px-3"
+          >
+            {save.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+            Save
+          </button>
+        </div>
+      )}
+    </section>
+  )
+}
+
+/** Plain text input styled to match the FieldGroup wrapper. */
+function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <input
+      type="text"
+      {...props}
+      className={`w-full h-9 px-3 rounded-md border border-ink-200 dark:border-ink-700 bg-white dark:bg-ink-900 text-sm focus:border-brand focus:ring-1 focus:ring-brand outline-none ${props.className ?? ''}`}
+    />
+  )
+}
+
+/**
+ * Change Password card. Requires the current password before persisting,
+ * mirrors the server's 8-char minimum, and clears the form on success.
+ */
+function ChangePasswordSection() {
+  const [show, setShow] = useState({ current: false, next: false, confirm: false })
+  const [form, setForm] = useState({ current: '', next: '', confirm: '' })
+  const [err, setErr] = useState<string | null>(null)
+
+  const submit = useMutation({
+    mutationFn: () => authService.changePassword({
+      current_password: form.current,
+      new_password:     form.next,
+    }),
+    onSuccess: () => {
+      toast.success('Password updated.')
+      setForm({ current: '', next: '', confirm: '' })
+      setErr(null)
+    },
+    onError: (e: any) => {
+      const msg = e?.response?.data?.message ?? 'Failed to update password'
+      setErr(msg)
+      toast.error(msg)
+    },
+  })
+
+  const onSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    setErr(null)
+    if (form.next.length < 8) { setErr('New password must be at least 8 characters.'); return }
+    if (form.next !== form.confirm) { setErr('New password and confirmation do not match.'); return }
+    submit.mutate()
+  }
+
+  const togglePill = (key: keyof typeof show) => (
+    <button
+      type="button"
+      onClick={() => setShow(s => ({ ...s, [key]: !s[key] }))}
+      className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-400 hover:text-ink-700 dark:hover:text-ink-200"
+      tabIndex={-1}
+    >
+      {show[key] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+    </button>
+  )
+
+  return (
+    <section className="card p-6">
+      <SectionHeader title="Change Password" sub="Update the password you use to sign in." icon={Lock} />
+      <form onSubmit={onSubmit} className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl">
+        <div>
+          <label className="text-[11px] uppercase tracking-wider text-ink-400 font-bold block mb-1.5">Current password</label>
+          <div className="relative">
+            <input
+              type={show.current ? 'text' : 'password'}
+              value={form.current}
+              onChange={(e) => setForm(f => ({ ...f, current: e.target.value }))}
+              autoComplete="current-password"
+              className="w-full h-9 pl-3 pr-9 rounded-md border border-ink-200 dark:border-ink-700 bg-white dark:bg-ink-900 text-sm focus:border-brand focus:ring-1 focus:ring-brand outline-none"
+              required
+            />
+            {togglePill('current')}
+          </div>
+        </div>
+        <div>
+          <label className="text-[11px] uppercase tracking-wider text-ink-400 font-bold block mb-1.5">New password</label>
+          <div className="relative">
+            <input
+              type={show.next ? 'text' : 'password'}
+              value={form.next}
+              onChange={(e) => setForm(f => ({ ...f, next: e.target.value }))}
+              autoComplete="new-password"
+              minLength={8}
+              className="w-full h-9 pl-3 pr-9 rounded-md border border-ink-200 dark:border-ink-700 bg-white dark:bg-ink-900 text-sm focus:border-brand focus:ring-1 focus:ring-brand outline-none"
+              required
+            />
+            {togglePill('next')}
+          </div>
+        </div>
+        <div>
+          <label className="text-[11px] uppercase tracking-wider text-ink-400 font-bold block mb-1.5">Confirm new password</label>
+          <div className="relative">
+            <input
+              type={show.confirm ? 'text' : 'password'}
+              value={form.confirm}
+              onChange={(e) => setForm(f => ({ ...f, confirm: e.target.value }))}
+              autoComplete="new-password"
+              minLength={8}
+              className="w-full h-9 pl-3 pr-9 rounded-md border border-ink-200 dark:border-ink-700 bg-white dark:bg-ink-900 text-sm focus:border-brand focus:ring-1 focus:ring-brand outline-none"
+              required
+            />
+            {togglePill('confirm')}
+          </div>
+        </div>
+
+        {err && (
+          <div className="sm:col-span-3 text-[12px] text-red-600 dark:text-red-400 flex items-center gap-1.5">
+            <AlertTriangle className="w-3.5 h-3.5" /> {err}
+          </div>
+        )}
+
+        <div className="sm:col-span-3 pt-1">
+          <button
+            type="submit"
+            disabled={submit.isPending}
+            className="btn-primary flex items-center gap-1.5 h-9 px-4"
+          >
+            {submit.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Lock className="w-3.5 h-3.5" />}
+            Update password
+          </button>
+        </div>
+      </form>
+    </section>
+  )
+}
+
+/** Wraps an editable form input with the same label styling as InfoGroup. */
+function FieldGroup({ label, icon: Icon, children }: { label: string; icon?: any; children: React.ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[11px] uppercase tracking-wider text-ink-400 font-bold mb-1.5">{label}</p>
+      <div className="flex items-center gap-2">
+        {Icon && <Icon className="w-3.5 h-3.5 text-ink-300 shrink-0" />}
+        <div className="flex-1 min-w-0">{children}</div>
+      </div>
+    </div>
+  )
+}
+
+function Chip({ icon: Icon, label, value }: { icon?: any; label: string; value: string }) {
+  return (
+    <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-ink-50 dark:bg-ink-800/60 border border-ink-200 dark:border-ink-700 min-w-0">
+      {Icon && (
+        <div className="w-7 h-7 rounded-md bg-brand/10 text-brand flex items-center justify-center shrink-0 mt-0.5">
+          <Icon className="w-3.5 h-3.5" />
+        </div>
+      )}
+      <div className="min-w-0">
+        <p className="text-[10px] uppercase tracking-wider text-ink-400 font-bold leading-none">{label}</p>
+        <p className="text-[13px] text-ink-900 dark:text-white font-semibold truncate mt-0.5" title={value}>{value}</p>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Large editable photo used inside the overview hero card. In selfMode we
+ * route uploads/downloads through `/api/students/me/photo`, which doesn't
+ * require admin permissions, so a logged-in student can update their own
+ * picture from /me/profile.
+ *
+ * Shows a local object-URL preview as soon as the file is picked, so the user
+ * sees the new image immediately without waiting for the round-trip.
+ */
+function ProfileHeroPhoto({ student, initials, selfMode }: { student: any; initials: string; selfMode: boolean }) {
+  const qc = useQueryClient()
+  const fileRef = useRef<HTMLInputElement | null>(null)
+  // Cache-buster bumped after a successful upload — forces the cached <img>
+  // to refetch even when student.photo arrives in a later refetch.
+  const [v, setV] = useState(0)
+  // Local object-URL preview shown as soon as the user picks a file. Cleared
+  // once the server confirms; revoked on unmount to avoid leaking blobs.
+  const [preview, setPreview] = useState<string | null>(null)
+  useEffect(() => () => { if (preview) URL.revokeObjectURL(preview) }, [preview])
+
+  const upload = useMutation({
+    mutationFn: (f: File) =>
+      selfMode
+        ? studentService.uploadMyPhoto(f)
+        : studentService.uploadPhoto(student.id, f),
+    onSuccess: () => {
+      toast.success('Profile photo updated.')
+      setV(n => n + 1)
+      qc.invalidateQueries({ queryKey: selfMode ? ['student', 'me'] : ['student', String(student.id)] })
+    },
+    onError: (e: any) => {
+      // Drop the optimistic preview on failure so the old photo comes back.
+      if (preview) { URL.revokeObjectURL(preview); setPreview(null) }
+      toast.error(e?.response?.data?.message ?? 'Failed to upload photo')
+    },
+    onSettled: () => {
+      // Keep the preview visible briefly until the refetch lands, then drop it.
+      setTimeout(() => {
+        setPreview(p => { if (p) URL.revokeObjectURL(p); return null })
+      }, 1500)
+    },
+  })
+
+  const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]
+    e.target.value = ''
+    if (!f) return
+    if (f.size > 5 * 1024 * 1024) {
+      toast.error('Photo must be 5 MB or smaller.')
+      return
+    }
+    if (preview) URL.revokeObjectURL(preview)
+    setPreview(URL.createObjectURL(f))
+    upload.mutate(f)
+  }
+
+  const photoSrc = preview
+    ?? (student.photo
+        ? (selfMode
+            ? studentService.myPhotoUrl(`${student.photo}-${v}`)
+            : studentService.photoUrl(student.id, `${student.photo}-${v}`))
+        : null)
+
+  return (
+    <div className="shrink-0 w-full sm:w-auto flex flex-col items-center sm:items-start gap-3">
+      <div className="relative group">
+        <div className="w-48 h-48 sm:w-56 sm:h-56 rounded-2xl overflow-hidden bg-ink-100 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 shadow-sm flex items-center justify-center">
+          {photoSrc ? (
+            <img
+              src={photoSrc}
+              alt={`${student.fname ?? ''} ${student.lname ?? ''}`.trim() || 'Student photo'}
+              className="w-full h-full object-cover"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+            />
+          ) : (
+            <span className="text-6xl font-bold text-ink-400">{initials}</span>
+          )}
+
+          {upload.isPending && (
+            <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+              <Loader2 className="w-8 h-8 text-white animate-spin" />
+            </div>
+          )}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => !upload.isPending && fileRef.current?.click()}
+          disabled={upload.isPending}
+          className="absolute bottom-2 right-2 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-brand text-white text-xs font-semibold shadow-md hover:bg-brand/90 transition-colors disabled:opacity-60 outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 ring-offset-white dark:ring-offset-ink-900"
+          aria-label="Change profile photo"
+        >
+          <Camera className="w-3.5 h-3.5" />
+          <span>Change</span>
+        </button>
+      </div>
+
+      <p className="text-[11px] text-ink-400 text-center sm:text-left">JPEG, PNG or WebP · max 5 MB</p>
+
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="hidden"
+        onChange={onPick}
+      />
     </div>
   );
 }
@@ -597,27 +1005,22 @@ function cap(s?: string | null): string | null {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-function StudentAvatar({
-  student,
-  initials,
-  readOnly = false,
-}: {
-  student: any;
-  initials: string;
-  readOnly?: boolean;
-}) {
-  const qc = useQueryClient();
-  const fileRef = useRef<HTMLInputElement | null>(null);
+function StudentAvatar({ student, initials, selfMode = false }: { student: any; initials: string; selfMode?: boolean }) {
+  const qc       = useQueryClient()
+  const fileRef  = useRef<HTMLInputElement | null>(null)
   // Bumped after a successful upload so the cached <img> reloads even when
   // the file_server_id stays in transit before the student query refetches.
   const [v, setV] = useState(0);
 
   const upload = useMutation({
-    mutationFn: (f: File) => studentService.uploadPhoto(student.id, f),
+    mutationFn: (f: File) =>
+      selfMode
+        ? studentService.uploadMyPhoto(f)
+        : studentService.uploadPhoto(student.id, f),
     onSuccess: () => {
-      toast.success("Profile photo updated.");
-      setV((n) => n + 1);
-      qc.invalidateQueries({ queryKey: ["student", String(student.id)] });
+      toast.success('Profile photo updated.')
+      setV(n => n + 1)
+      qc.invalidateQueries({ queryKey: selfMode ? ['student', 'me'] : ['student', String(student.id)] })
     },
     onError: (e: any) =>
       toast.error(e?.response?.data?.message ?? "Failed to upload photo"),
@@ -635,30 +1038,10 @@ function StudentAvatar({
   };
 
   const photoSrc = student.photo
-    ? studentService.photoUrl(student.id, `${student.photo}-${v}`)
-    : null;
-
-  if (readOnly) {
-    return (
-      <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-brand/10 text-brand flex items-center justify-center text-xl font-bold shrink-0">
-        {photoSrc ? (
-          <img
-            src={photoSrc}
-            alt={
-              `${student.fname ?? ""} ${student.lname ?? ""}`.trim() ||
-              "Student photo"
-            }
-            className="w-full h-full object-cover"
-            onError={(e) => {
-              (e.currentTarget as HTMLImageElement).style.display = "none";
-            }}
-          />
-        ) : (
-          <span>{initials}</span>
-        )}
-      </div>
-    );
-  }
+    ? (selfMode
+        ? studentService.myPhotoUrl(`${student.photo}-${v}`)
+        : studentService.photoUrl(student.id, `${student.photo}-${v}`))
+    : null
 
   return (
     <button
@@ -736,39 +1119,23 @@ function TabButton({
  * table can be downloaded as a CSV via the dedicated server endpoint —
  * format mirrors what's on screen so it's printable as-is.
  */
-function ProgramCurriculumTab({ student }: { student: any }) {
-  const studentId = student?.id;
-  const qc = useQueryClient();
-  const user = useAuthStore((s) => s.user);
-  const isAdmin = user?.role === "superadmin" || user?.role === "admin";
-  const [exempting, setExempting] = useState<{
-    moduleId: number;
-    moduleCode: string;
-    moduleName: string;
-  } | null>(null);
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [enrollPending, setEnrollPending] = useState<number | null>(null);
-  const [dropPending, setDropPending] = useState<number | null>(null);
+function ProgramCurriculumTab({ student, selfMode = false }: { student: any; selfMode?: boolean }) {
+  const studentId = student?.id
+  const qc = useQueryClient()
+  const user = useAuthStore((s) => s.user)
+  const isAdmin = !selfMode && (user?.role === 'superadmin' || user?.role === 'admin')
+  const [exempting, setExempting] = useState<{ moduleId: number; moduleCode: string; moduleName: string } | null>(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [enrollPending, setEnrollPending] = useState<number | null>(null)
+  const [dropPending, setDropPending] = useState<number | null>(null)
 
   const dataQ = useQuery({
-    queryKey: ["student-program-modules", studentId],
-    queryFn: () => studentService.programModules(studentId),
-    enabled: !!studentId,
-  });
-
-  const deleteExemption = useMutation({
-    mutationFn: (markId: number) =>
-      studentService.deleteExemption(studentId, markId),
-    onSuccess: () => {
-      toast.success("Exemption removed.");
-      qc.invalidateQueries({
-        queryKey: ["student-program-modules", studentId],
-      });
-      qc.invalidateQueries({ queryKey: ["student-marks", student?.regnumber] });
-    },
-    onError: (e: any) =>
-      toast.error(e?.response?.data?.message ?? "Failed to remove exemption"),
-  });
+    queryKey: selfMode ? ['student-program-modules', 'me'] : ['student-program-modules', studentId],
+    // Self mode hits /api/students/me/program-modules — no VIEW_STUDENTS
+    // required, so the student portal can read its own curriculum.
+    queryFn: () => (selfMode ? studentService.meProgramModules() : studentService.programModules(studentId)),
+    enabled: selfMode || !!studentId,
+  })
 
   const enroll = useMutation({
     mutationFn: (moduleId: number) =>
@@ -897,15 +1264,17 @@ function ProgramCurriculumTab({ student }: { student: any }) {
               Exempt module
             </button>
           )}
-          <a
-            href={downloadUrl}
-            className="btn-primary btn-sm flex items-center gap-1.5"
-            target="_blank"
-            rel="noreferrer"
-          >
-            <Download className="w-3.5 h-3.5" />
-            Download CSV
-          </a>
+          {!selfMode && (
+            <a
+              href={downloadUrl}
+              className="btn-primary btn-sm flex items-center gap-1.5"
+              target="_blank"
+              rel="noreferrer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Download CSV
+            </a>
+          )}
         </div>
       </div>
 
@@ -1119,30 +1488,10 @@ function ProgramCurriculumTab({ student }: { student: any }) {
                           )}
                         </td>
                         <td className="px-3 py-2 text-right whitespace-nowrap">
-                          {hasMarks ? (
-                            isExempted && isAdmin ? (
-                              <button
-                                type="button"
-                                className="btn-ghost btn-sm text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10"
-                                disabled={deleteExemption.isPending}
-                                onClick={() => {
-                                  if (!m.marks?.mark_id) return;
-                                  if (
-                                    !confirm(
-                                      `Remove exemption for ${m.module_code}?`,
-                                    )
-                                  )
-                                    return;
-                                  deleteExemption.mutate(m.marks.mark_id);
-                                }}
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                                Remove
-                              </button>
-                            ) : (
-                              <span className="text-ink-300">—</span>
-                            )
-                          ) : isRegistered ? (
+                        {selfMode ? (
+                          <span className="text-ink-300">—</span>
+                        ) : hasMarks ? (
+                          isExempted && isAdmin ? (
                             <button
                               type="button"
                               className="btn-ghost btn-sm text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10"
@@ -1191,7 +1540,8 @@ function ProgramCurriculumTab({ student }: { student: any }) {
                               )}
                               Enroll
                             </button>
-                          )}
+                          )
+                        ) : null}
                         </td>
                       </tr>
                     );
@@ -1701,18 +2051,18 @@ function AttendanceTab({ student }: { student: any }) {
   const byModule = data?.by_module ?? [];
   const records = data?.recent ?? [];
 
-  const statusBadge = (s: AttendanceStatus) => {
-    const map: Record<AttendanceStatus, string> = {
-      present: "bg-mint-100 text-mint-700",
-      late: "bg-amber-100 text-amber-700",
-      absent: "bg-red-100 text-red-700",
-      excused: "bg-ink-100 text-ink-700",
-    };
+  const statusBadge = (s: StudentAttendanceStatus) => {
+    const map: Record<StudentAttendanceStatus, string> = {
+      present:      'bg-mint-100 text-mint-700',
+      late:         'bg-amber-100 text-amber-700',
+      absent:       'bg-red-100 text-red-700',
+      excused:      'bg-ink-100 text-ink-700',
+      not_recorded: 'bg-ink-100 text-ink-500',
+    }
+    const label = s === 'not_recorded' ? 'Not recorded' : s
     return (
-      <span
-        className={`px-2 py-0.5 rounded-full text-[11px] font-semibold uppercase ${map[s] || "bg-ink-100 text-ink-700"}`}
-      >
-        {s}
+      <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold uppercase ${map[s] || 'bg-ink-100 text-ink-700'}`}>
+        {label}
       </span>
     );
   };
@@ -1720,90 +2070,78 @@ function AttendanceTab({ student }: { student: any }) {
   return (
     <div className="space-y-6">
       {/* KPI cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <KpiCard label="Total Records" value={totals?.records ?? 0} />
-        <KpiCard
-          label="Present"
-          value={totals?.present ?? 0}
-          accent="text-mint-700"
-        />
-        <KpiCard
-          label="Late"
-          value={totals?.late ?? 0}
-          accent="text-amber-700"
-        />
-        <KpiCard
-          label="Absent"
-          value={totals?.absent ?? 0}
-          accent="text-red-700"
-        />
-        <KpiCard
-          label="Attendance %"
-          value={`${totals?.attendance_pct ?? 0}%`}
-          accent="text-brand"
-        />
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+        <KpiCard label="Sessions" value={totals?.sessions ?? 0} />
+        <KpiCard label="Present" value={totals?.present ?? 0} accent="text-mint-700" />
+        <KpiCard label="Late" value={totals?.late ?? 0} accent="text-amber-700" />
+        <KpiCard label="Absent" value={totals?.absent ?? 0} accent="text-red-700" />
+        <KpiCard label="Not Recorded" value={totals?.not_recorded ?? 0} accent="text-ink-500" />
+        <KpiCard label="Attendance %" value={`${totals?.attendance_pct ?? 0}%`} accent="text-brand" />
       </div>
 
-      {/* Per-module breakdown */}
-      {byModule.length > 0 && (
-        <div className="card p-0 overflow-hidden">
-          <div className="px-4 py-3 border-b border-ink-100 dark:border-ink-800 flex items-center gap-2">
-            <BookOpen className="w-4 h-4 text-brand" />
-            <h3 className="text-sm font-semibold text-ink-900 dark:text-white">
-              By Module
-            </h3>
+      {/* Per-module breakdown — driven by module_registrations so every
+          module the student is registered to is listed, even with no
+          sessions or records yet. */}
+      <div className="card p-0 overflow-hidden">
+        <div className="px-4 py-3 border-b border-ink-100 dark:border-ink-800 flex items-center gap-2">
+          <BookOpen className="w-4 h-4 text-brand" />
+          <h3 className="text-sm font-semibold text-ink-900 dark:text-white">
+            By Registered Module ({byModule.length})
+          </h3>
+        </div>
+        {byModule.length === 0 ? (
+          <div className="p-12 text-center text-ink-500 text-[13px]">
+            This student has no module registrations yet.
           </div>
+        ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-[13px]">
               <thead className="bg-ink-50 dark:bg-ink-900/40">
                 <tr className="text-ink-500">
                   <th className="px-4 py-2 font-semibold">Code</th>
                   <th className="px-4 py-2 font-semibold">Module</th>
-                  <th className="px-4 py-2 font-semibold text-right">
-                    Records
-                  </th>
-                  <th className="px-4 py-2 font-semibold text-right">
-                    Present-like
-                  </th>
+                  <th className="px-4 py-2 font-semibold text-right">Sessions</th>
+                  <th className="px-4 py-2 font-semibold text-right">Present</th>
+                  <th className="px-4 py-2 font-semibold text-right">Late</th>
+                  <th className="px-4 py-2 font-semibold text-right">Absent</th>
+                  <th className="px-4 py-2 font-semibold text-right">Excused</th>
+                  <th className="px-4 py-2 font-semibold text-right">Not&nbsp;Rec.</th>
                   <th className="px-4 py-2 font-semibold text-right">%</th>
                 </tr>
               </thead>
               <tbody>
                 {byModule.map((m) => (
-                  <tr
-                    key={m.module_id}
-                    className="border-t border-ink-100 dark:border-ink-800"
-                  >
-                    <td className="px-4 py-2 font-mono text-ink-700 dark:text-ink-200">
-                      {m.module_code}
-                    </td>
-                    <td className="px-4 py-2 text-ink-900 dark:text-white">
-                      {m.module_name}
-                    </td>
-                    <td className="px-4 py-2 text-right">{m.records}</td>
-                    <td className="px-4 py-2 text-right">{m.present_like}</td>
-                    <td className="px-4 py-2 text-right font-semibold">
-                      {m.attendance_pct}%
-                    </td>
+                  <tr key={`${m.module_id}-${m.academic_term_id}`} className="border-t border-ink-100 dark:border-ink-800">
+                    <td className="px-4 py-2 font-mono text-ink-700 dark:text-ink-200">{m.module_code}</td>
+                    <td className="px-4 py-2 text-ink-900 dark:text-white">{m.module_name}</td>
+                    <td className="px-4 py-2 text-right">{m.sessions}</td>
+                    <td className="px-4 py-2 text-right text-mint-700">{m.present}</td>
+                    <td className="px-4 py-2 text-right text-amber-700">{m.late}</td>
+                    <td className="px-4 py-2 text-right text-red-700">{m.absent}</td>
+                    <td className="px-4 py-2 text-right text-ink-700">{m.excused}</td>
+                    <td className="px-4 py-2 text-right text-ink-500">{m.not_recorded}</td>
+                    <td className="px-4 py-2 text-right font-semibold">{m.attendance_pct}%</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* All records */}
+      {/* All sessions for registered modules — sessions without a record
+          for this student appear as "Not recorded" so the full class
+          timeline is visible. */}
       <div className="card p-0 overflow-hidden">
         <div className="px-4 py-3 border-b border-ink-100 dark:border-ink-800 flex items-center gap-2">
           <Clock className="w-4 h-4 text-brand" />
           <h3 className="text-sm font-semibold text-ink-900 dark:text-white">
-            All Recorded Attendance ({records.length})
+            All Sessions on Registered Modules ({records.length})
           </h3>
         </div>
         {records.length === 0 ? (
           <div className="p-12 text-center text-ink-500 text-[13px]">
-            No attendance records yet for this student.
+            No attendance sessions have been held for this student's registered modules yet.
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -1819,24 +2157,12 @@ function AttendanceTab({ student }: { student: any }) {
                 </tr>
               </thead>
               <tbody>
-                {records.map((r, i) => (
-                  <tr
-                    key={`${r.session_date}-${r.module_code}-${i}`}
-                    className="border-t border-ink-100 dark:border-ink-800"
-                  >
-                    <td className="px-4 py-2 text-ink-900 dark:text-white">
-                      {r.session_date}
-                    </td>
+                {records.map((r) => (
+                  <tr key={r.session_id} className="border-t border-ink-100 dark:border-ink-800">
+                    <td className="px-4 py-2 text-ink-900 dark:text-white">{r.session_date}</td>
                     <td className="px-4 py-2">
-                      <div className="font-mono text-ink-700 dark:text-ink-200">
-                        {r.module_code}
-                      </div>
-                      <div className="text-[11px] text-ink-500">
-                        {r.module_name}
-                      </div>
-                    </td>
-                    <td className="px-4 py-2 capitalize text-ink-700 dark:text-ink-200">
-                      {r.session_type}
+                      <div className="font-mono text-ink-700 dark:text-ink-200">{r.module_code}</div>
+                      <div className="text-[11px] text-ink-500">{r.module_name}</div>
                     </td>
                     <td className="px-4 py-2">{statusBadge(r.status)}</td>
                     <td className="px-4 py-2 text-ink-500">
@@ -1881,14 +2207,15 @@ function KpiCard({
   );
 }
 
-function DocumentsTab({ student }: { student: any }) {
-  const studentId = student.id;
+function DocumentsTab({ student, selfMode = false }: { student: any; selfMode?: boolean }) {
+  const studentId = student.id
 
   const docsQ = useQuery({
-    queryKey: ["student-documents", studentId],
-    queryFn: () => studentService.listDocuments(studentId),
-    enabled: !!studentId,
-  });
+    queryKey: selfMode ? ['student-documents', 'me'] : ['student-documents', studentId],
+    // Self mode hits /api/students/me/documents — auth-only, no VIEW_STUDENTS required.
+    queryFn: () => (selfMode ? studentService.meDocuments() : studentService.listDocuments(studentId)),
+    enabled: selfMode || !!studentId,
+  })
 
   if (docsQ.isLoading) {
     return (
@@ -1919,8 +2246,9 @@ function DocumentsTab({ student }: { student: any }) {
           No application on file
         </h3>
         <p className="text-ink-500 max-w-md mt-2">
-          This student was not enrolled through the admissions portal, so there
-          are no uploaded documents to display.
+          {selfMode
+            ? 'You were not enrolled through the admissions portal, so there are no uploaded documents to display.'
+            : 'This student was not enrolled through the admissions portal, so there are no uploaded documents to display.'}
         </p>
       </div>
     );
@@ -1936,8 +2264,9 @@ function DocumentsTab({ student }: { student: any }) {
           No documents uploaded
         </h3>
         <p className="text-ink-500 max-w-md mt-2">
-          This student's admission application does not have any documents
-          attached.
+          {selfMode
+            ? 'Your admission application does not have any documents attached.'
+            : "This student's admission application does not have any documents attached."}
         </p>
       </div>
     );
@@ -1983,21 +2312,25 @@ function DocumentsTab({ student }: { student: any }) {
 
       <div className="card divide-y divide-ink-100 dark:divide-ink-800 overflow-hidden">
         {documents.map((d: any) => (
-          <DocumentRow key={d.id} doc={d} studentId={studentId} />
+          <DocumentRow key={d.id} doc={d} studentId={studentId} selfMode={selfMode} />
         ))}
       </div>
     </div>
   );
 }
 
-function DocumentRow({ doc, studentId }: { doc: any; studentId: number }) {
-  const status = String(doc.verification_status || "pending").toLowerCase();
-  const typeName = doc.type_name || doc.document_type_name || "Document";
-  const fileName = doc.file_original_name || "—";
-  const hasFile = !!doc.file_server_id;
+function DocumentRow({ doc, studentId, selfMode = false }: { doc: any; studentId: number; selfMode?: boolean }) {
+  const status = String(doc.verification_status || 'pending').toLowerCase()
+  const typeName = doc.type_name || doc.document_type_name || 'Document'
+  const fileName = doc.file_original_name || '—'
+  const hasFile = !!doc.file_server_id
+  // Self-service download bypasses the VIEW_STUDENTS-gated /:id endpoint
+  // and resolves the application from the auth user instead.
   const url = hasFile
-    ? studentService.documentDownloadUrl(studentId, doc.id)
-    : null;
+    ? (selfMode
+        ? studentService.meDocumentDownloadUrl(doc.id)
+        : studentService.documentDownloadUrl(studentId, doc.id))
+    : null
 
   const sizeKb = doc.file_size
     ? Math.max(1, Math.round(Number(doc.file_size) / 1024))

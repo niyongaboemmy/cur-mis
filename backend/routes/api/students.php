@@ -11,11 +11,18 @@ use App\Constants\Permissions;
  * Students API Routes
  */
 
-// Self-service: any authenticated user can fetch their own student record.
-// Registered BEFORE the VIEW_STUDENTS-gated group so `/me` doesn't get
-// swallowed by the `/:id` matcher.
+// Self-service: any authenticated user can fetch their own student record
+// + linked documents + program curriculum + photo. Registered BEFORE the
+// VIEW_STUDENTS-gated group so `/me` and `/me/...` don't get swallowed by
+// the `/:id` matchers.
 $router->group('/api/students', function ($router) {
-    $router->get('/me', [StudentController::class, 'me']);
+    $router->get('/me',                                 [StudentController::class, 'me']);
+    $router->put('/me',                                 [StudentController::class, 'updateMe']);
+    $router->get('/me/photo',                           [StudentController::class, 'downloadMyPhoto']);
+    $router->post('/me/photo',                          [StudentController::class, 'uploadMyPhoto']);
+    $router->get('/me/documents',                       [StudentController::class, 'meDocuments']);
+    $router->get('/me/documents/:document_id/download', [StudentController::class, 'meDownloadDocument']);
+    $router->get('/me/program-modules',                 [StudentController::class, 'meProgramModules']);
 }, [AuthMiddleware::class]);
 
 // Read-only: any user with VIEW_STUDENTS

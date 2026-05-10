@@ -593,6 +593,18 @@ class ModulesManagementController extends BaseController
             return ['ok' => false, 'message' => 'Module is not active.'];
         }
 
+        // The module must already have a teaching schedule for this term —
+        // students can only register for modules the registrar has actually
+        // planned. Mirrors the filter in ModuleModel::listEligibleFor.
+        $hasSchedule = $this->modules->db()->fetchOne(
+            'SELECT 1 FROM `module_schedules`
+             WHERE module_id = ? AND academic_term_id = ? LIMIT 1',
+            [$moduleId, $termId]
+        );
+        if (!$hasSchedule) {
+            return ['ok' => false, 'message' => 'This module is not scheduled for the selected term yet.'];
+        }
+
         $student = $this->modules->db()->fetchOne(
             'SELECT department, current_level FROM `student` WHERE regnumber = ? LIMIT 1',
             [$regnumber]

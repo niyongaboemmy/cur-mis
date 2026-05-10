@@ -29,7 +29,6 @@ import StatCard from "@/components/dashboard/StatCard";
 import DonutChart from "@/components/dashboard/DonutChart";
 import BarChart, { type BarDatum } from "@/components/dashboard/BarChart";
 import SearchableSelect from "@/components/ui/SearchableSelect";
-import { portalService } from "@/services/admissionService";
 import { academicsMgmtService } from "@/services/academicsMgmtService";
 import type { Student } from "@/types/academic";
 
@@ -549,9 +548,8 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
   // Academic year comes from the global topnav selector — not the URL.
   const selectedYear = useSystemStore((s) => s.selectedYearLabel);
 
-  // Entity data for cascading filters
-  const facultiesQ = useQuery({ queryKey: ['portal', 'faculties'], queryFn: () => portalService.getFaculties(), staleTime: 5 * 60_000 });
-  const allFaculties: any[] = facultiesQ.data?.data ?? [];
+  // Entity data for filters. Departments + programs are loaded once and
+  // shown flat — no faculty cascade — so the user can pick either directly.
   const deptsQ = useQuery({ queryKey: ['acmgmt', 'departments', 'all'], queryFn: () => academicsMgmtService.list<any>('departments', { per_page: 200 }), staleTime: 5 * 60_000 });
   const allDepartments: any[] = deptsQ.data?.data?.data ?? [];
   const programsQ = useQuery({ queryKey: ['acmgmt', 'options', 'all'], queryFn: () => academicsMgmtService.list<any>('options', { per_page: 500 }), staleTime: 5 * 60_000 });
@@ -561,9 +559,11 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
   const gender = sp.get("gender") ?? "";
   const state = sp.get("student_state") ?? "active";
   const nationality = sp.get("nationality") ?? "";
-  const faculty = sp.get("faculty") ?? "";
   const department = sp.get("department") ?? "";
   const level = sp.get("current_level") ?? "";
+  // The Program filter now stores the option id (not the free-text name) so
+  // the backend can resolve it through the permissive std_option matcher,
+  // catching legacy student rows that don't have the canonical option id set.
   const program = sp.get("program") ?? "";
   const sort_by = sp.get("sort_by") ?? "";
   const sort_dir = (sp.get("sort_dir") as "asc" | "desc") ?? "desc";
@@ -599,37 +599,49 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
     }
   };
 
-  const listParams: StudentListParams = useMemo(
-    () => ({
+  // When a programme is picked we send ONLY the programme filter (plus the
+  // search box if the user is typing). Implicit filters like the topnav's
+  // academic year and the auto-derived department would AND together with
+  // `std_option` and silently zero out the result set, so we drop them.
+  // To filter further on top of a programme, the admin can clear the
+  // programme picker first or we'll add explicit filter combinators later.
+  const listParams: StudentListParams = useMemo(() => {
+    if (program) {
+      return {
+        page,
+        per_page: PER_PAGE,
+        q: debouncedQ || undefined,
+        std_option: program,
+        sort_by: sort_by || undefined,
+        sort_dir: sort_dir || undefined,
+      };
+    }
+    return {
       page,
       per_page: PER_PAGE,
       q: debouncedQ || undefined,
       gender: gender || undefined,
       student_state: state === "all" ? undefined : state,
       nationality: nationality || undefined,
-      faculty: faculty || undefined,
       department: department || undefined,
       current_level: level || undefined,
       acc_year: selectedYear || undefined,
-      program: program || undefined,
       sort_by: sort_by || undefined,
       sort_dir: sort_dir || undefined,
-    }),
-    [
-      page,
-      debouncedQ,
-      gender,
-      state,
-      nationality,
-      faculty,
-      department,
-      level,
-      selectedYear,
-      program,
-      sort_by,
-      sort_dir,
-    ],
-  );
+    };
+  }, [
+    page,
+    debouncedQ,
+    gender,
+    state,
+    nationality,
+    department,
+    level,
+    selectedYear,
+    program,
+    sort_by,
+    sort_dir,
+  ]);
 
   const listQ = useQuery({
     queryKey: ["students", listParams],
@@ -645,35 +657,49 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
     gender,
     state === "active" ? "" : state,
     nationality,
-    faculty,
     department,
     level,
     program,
   ].filter(Boolean).length;
 
-  /* ── Cascading lists (Faculty → Department → Program) ──
+  /* ── Filter option lists ──
      Backend filter expectations:
-       - faculty    → faculty.fac_id  (numeric, stored as varchar in `student`)
-       - department → departements.dep_id (numeric, stored as varchar)
-       - program    → program name (free-text in `student.program`) */
-  const facultyFacets: FacetOption[] = useMemo(() => {
-    if (allFaculties.length) return allFaculties.map((f: any) => ({ value: String(f.id), label: String(f.name) }));
-    return facets?.faculty ?? [];
-  }, [allFaculties, facets?.faculty]);
+       - department → departements.dep_id (numeric, stored as varchar in `student`)
+       - std_option → option id; backend resolves to id/name/code/acro/admission chain. */
+  const departmentFacets: FacetOption[] = useMemo(
+    () => allDepartments.map((d: any) => ({ value: String(d.dep_id), label: String(d.dep_name) })),
+    [allDepartments],
+  );
 
-  const departmentFacets: FacetOption[] = useMemo(() => {
-    if (!faculty) return [];
-    const facId = Number(faculty);
-    const deps = allDepartments.filter((d: any) => Number(d.fac_id) === facId);
-    return deps.map((d: any) => ({ value: String(d.dep_id), label: String(d.dep_name) }));
-  }, [faculty, allDepartments]);
-
+  // Programmes are shown flat — no department gate. When a department is
+  // chosen we narrow the visible programmes to that department, but the
+  // programme filter is always usable on its own.
   const programFacets: FacetOption[] = useMemo(() => {
-    if (!department) return [];
-    const depId = Number(department);
-    const progs = allPrograms.filter((o: any) => Number(o.department_id) === depId);
-    return progs.map((o: any) => ({ value: String(o.name), label: String(o.name) }));
-  }, [department, allPrograms]);
+    let progs = allPrograms;
+    if (department) {
+      const depId = Number(department);
+      progs = progs.filter((o: any) => Number(o.department_id) === depId);
+    }
+    return progs.map((o: any) => ({ value: String(o.id), label: String(o.name) }));
+  }, [allPrograms, department]);
+
+  /** Picking a programme is an exclusive mode — clear every other filter so
+   *  the request goes out as "students in this programme, full stop". The
+   *  list-params builder also strips implicit filters like acc_year, but we
+   *  drop them from the URL too so the visible filter chips stay accurate. */
+  const onProgramChange = (v: string | undefined) => {
+    if (!v) {
+      update({ program: undefined });
+      return;
+    }
+    update({
+      program: v,
+      department: undefined,
+      current_level: undefined,
+      gender: undefined,
+      nationality: undefined,
+    });
+  };
 
   const clearAll = () =>
     setSp({ tab: "all", student_state: "active" }, { replace: false });
@@ -722,35 +748,26 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
           </div>
         </div>
 
-        <div className="mt-3 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
+        <div className="mt-3 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-2">
           <FilterSelect
-            label="Faculty"
-            value={faculty}
-            onChange={(v) => update({ faculty: v, department: undefined, program: undefined })}
-            options={facultyFacets}
-            placeholder="Select faculty…"
+            label="Program"
+            value={program}
+            onChange={onProgramChange}
+            options={programFacets}
+            placeholder="Select program…"
           />
           <FilterSelect
             label="Department"
             value={department}
-            onChange={(v) => update({ department: v, program: undefined })}
+            onChange={(v) => update({ department: v })}
             options={departmentFacets}
-            disabled={!faculty}
-            placeholder={faculty ? "Select department…" : "Pick faculty first"}
+            placeholder="Select department…"
           />
           <FilterSelect
             label="Level"
             value={level}
             onChange={(v) => update({ current_level: v })}
             options={facets?.current_level}
-          />
-          <FilterSelect
-            label="Program"
-            value={program}
-            onChange={(v) => update({ program: v })}
-            options={programFacets}
-            disabled={!department}
-            placeholder={department ? "Select program…" : "Pick department first"}
           />
           <FilterSelect
             label="Gender"
@@ -871,12 +888,24 @@ function StudentRow({
     .slice(0, 2)
     .join("")
     .toUpperCase();
+  const photoSrc = s.photo
+    ? studentService.photoUrl(s.id, s.photo as string)
+    : null;
   return (
     <tr>
       <td>
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-md bg-brand/10 text-brand dark:bg-brand/25 dark:text-gold-400 flex items-center justify-center font-semibold text-[12px] shrink-0">
-            {initials}
+          <div className="w-9 h-9 rounded-md bg-brand/10 text-brand dark:bg-brand/25 dark:text-gold-400 flex items-center justify-center font-semibold text-[12px] shrink-0 overflow-hidden">
+            {photoSrc ? (
+              <img
+                src={photoSrc}
+                alt={name}
+                className="w-full h-full object-cover"
+                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+              />
+            ) : (
+              <span>{initials}</span>
+            )}
           </div>
           <div className="min-w-0">
             <p className="font-semibold text-ink-900 dark:text-ink-100 truncate">

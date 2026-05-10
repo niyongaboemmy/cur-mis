@@ -94,6 +94,20 @@ export default function AttendancePage() {
     if (termId === 0 && activeTerm?.id) setTermId(activeTerm.id)
   }, [activeTerm?.id, termId])
 
+  // Program — the gating scope. Until a program is picked we show only a
+  // program picker; the calendar / module work is hidden so users can't
+  // record attendance without first declaring which programme they're in.
+  const programId = Number(sp.get('program_id') || 0)
+  const setProgramId = (id: number) => {
+    const n = new URLSearchParams(sp)
+    if (id > 0) n.set('program_id', String(id))
+    else        n.delete('program_id')
+    // Picking / changing program clears any deeper selection.
+    n.delete('module_id'); n.delete('m_code'); n.delete('m_name')
+    n.delete('session_type'); n.delete('date')
+    setSp(n, { replace: true })
+  }
+
   // Module — the page-level scope. Until a module is picked, the tabs are
   // hidden and we show a full-width picker card instead. Derived from URL so
   // any URL update (e.g. picking a schedule entry) re-renders correctly.
@@ -126,7 +140,12 @@ export default function AttendancePage() {
   const preferredSessionType = (sp.get('session_type') as SessionType | null) || null
   const preferredDate         = sp.get('date') || null
 
-  // Step 1: no module yet — schedule calendar picker
+  // Step 0: no program yet — block everything until one is chosen.
+  if (!programId) {
+    return <ProgramPicker onPick={(id) => setProgramId(id)} />
+  }
+
+  // Step 1: program picked but no module — schedule calendar scoped to program
   if (!moduleId || !pickedModule) {
     return (
       <SchedulePicker
@@ -137,6 +156,18 @@ export default function AttendancePage() {
         canManage={canManage}
         teachableModuleIds={modules.map((m) => m.module_id)}
         teachableLoading={teachableQ.isLoading}
+        programId={programId}
+        onChangeProgram={() => setProgramId(0)}
+        onPickModule={(modId, code, name) => {
+          const next = new URLSearchParams(sp)
+          next.set('module_id', String(modId))
+          next.set('m_code',    code || '')
+          next.set('m_name',    name || '')
+          next.set('tab',       'overview')
+          next.delete('session_type')
+          next.delete('date')
+          setSp(next, { replace: true })
+        }}
         onPick={(row, dateISO) => {
           const next = new URLSearchParams(sp)
           next.set('module_id',    String(row.module_id))
@@ -1377,10 +1408,110 @@ function toneForPct(p: number): string {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * SchedulePicker — first-step calendar to pick which scheduled session to
- * record attendance for. Mirrors the filters & weekly grid of /modules/scheduling.
- * Admin sees every entry; teachers see only schedules whose module is in
- * their teachable list.
+ * ProgramPicker — gating step. The user must declare which programme they
+ * are recording attendance for before the calendar / module work appears.
+ * ═══════════════════════════════════════════════════════════════════════ */
+function ProgramPicker({ onPick }: { onPick: (id: number) => void }) {
+  const [q, setQ] = useState('')
+  const [facultyId, setFacultyId] = useState(0)
+
+  const programsQ = useQuery({
+    queryKey:  ['portal', 'programs'],
+    queryFn:   () => portalService.getPrograms(),
+    staleTime: 5 * 60_000,
+  })
+  const facultiesQ = useQuery({
+    queryKey:  ['portal', 'faculties'],
+    queryFn:   () => portalService.getFaculties(),
+    staleTime: 5 * 60_000,
+  })
+  const programs   = programsQ.data?.data ?? []
+  const faculties  = facultiesQ.data?.data ?? []
+
+  const filtered = useMemo(() => {
+    let list = programs
+    if (facultyId) list = list.filter((p) => Number(p.faculty_id) === facultyId)
+    const needle = q.trim().toLowerCase()
+    if (needle) {
+      list = list.filter((p) =>
+        (p.name ?? '').toLowerCase().includes(needle)
+        || (p.department_name ?? '').toLowerCase().includes(needle)
+        || (p.faculty_name ?? '').toLowerCase().includes(needle),
+      )
+    }
+    return list
+  }, [programs, facultyId, q])
+
+  return (
+    <div className="max-w-[1100px] mx-auto space-y-4 animate-fade-in">
+      <section className="card p-6">
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-lg bg-brand/10 text-brand flex items-center justify-center shrink-0">
+            <BookOpen className="w-5 h-5" />
+          </div>
+          <div className="min-w-0">
+            <h2 className="text-[18px] font-semibold text-ink-900 dark:text-white">Choose a programme</h2>
+            <p className="text-[12.5px] text-ink-500 mt-0.5">
+              Pick the programme you're recording attendance for. We'll then show every module planned for that programme so you can mark sessions.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-5 flex items-center gap-2 flex-wrap">
+          <div className="relative flex-1 min-w-[260px]">
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
+            <input
+              autoFocus
+              className="input input-sm pl-8 w-full"
+              placeholder="Search programmes by name, department or faculty…"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
+          </div>
+          <div className="w-64 shrink-0">
+            <SearchableSelect
+              options={faculties.map((f: any) => ({ value: f.id, label: f.name }))}
+              value={facultyId}
+              onChange={(v) => setFacultyId(Number(v))}
+              allLabel="All faculties"
+            />
+          </div>
+        </div>
+
+        {programsQ.isLoading ? (
+          <div className="mt-6 p-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-brand" /></div>
+        ) : filtered.length === 0 ? (
+          <div className="mt-6 p-10 text-center text-ink-500 text-[13px]">
+            {programs.length === 0 ? 'No programmes are configured yet.' : 'No programmes match your search.'}
+          </div>
+        ) : (
+          <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+            {filtered.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => onPick(Number(p.id))}
+                className="text-left p-3 rounded-lg border border-ink-100 dark:border-ink-700 hover:border-brand hover:bg-brand/[0.03] transition-colors group"
+              >
+                <p className="font-semibold text-[13.5px] text-ink-900 dark:text-white truncate group-hover:text-brand">
+                  {p.name}
+                </p>
+                <p className="text-[11.5px] text-ink-500 truncate mt-0.5">
+                  {[p.department_name, p.faculty_name].filter(Boolean).join(' · ') || '—'}
+                </p>
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * SchedulePicker — second-step calendar / list of every module planned for
+ * the chosen programme. Each card shows live attendance status. Admins see
+ * all modules in the programme; teachers see only ones assigned to them.
  * ═══════════════════════════════════════════════════════════════════════ */
 const SCHED_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
@@ -1393,7 +1524,8 @@ const MARK_STYLE: Record<SessionMark, { bg: string; dot: string; label: string }
 
 function SchedulePicker({
   termId, setTermId, allTerms, activeTerm, canManage,
-  teachableModuleIds, teachableLoading, onPick,
+  teachableModuleIds, teachableLoading, programId, onChangeProgram,
+  onPickModule, onPick,
 }: {
   termId:             number
   setTermId:          (id: number) => void
@@ -1402,10 +1534,11 @@ function SchedulePicker({
   canManage:          boolean
   teachableModuleIds: number[]
   teachableLoading:   boolean
+  programId:          number
+  onChangeProgram:    () => void
+  onPickModule:       (moduleId: number, code: string, name: string) => void
   onPick:             (row: ModuleScheduleRow, dateISO: string) => void
 }) {
-  const [gFaculty, setGFaculty] = useState(0)
-  const [gDept, setGDept]       = useState(0)
   const [gLevel, setGLevel]     = useState(0)
   const [gSearch, setGSearch]   = useState('')
   const [monthRef, setMonthRef] = useState(() => {
@@ -1413,11 +1546,15 @@ function SchedulePicker({
     return { year: t.getFullYear(), month: t.getMonth() }  // 0-indexed month
   })
 
-  const facultiesQ = useQuery({ queryKey: ['portal', 'faculties'], queryFn: () => portalService.getFaculties(), staleTime: 5 * 60_000 })
-  const faculties: any[] = facultiesQ.data?.data ?? []
-
-  const deptsQ = useQuery({ queryKey: ['academics', 'departments'], queryFn: () => academicsMgmtService.list<any>('departments', { per_page: 200 }), staleTime: 5 * 60_000 })
-  const departments: any[] = deptsQ.data?.data?.data ?? []
+  const programsQ = useQuery({
+    queryKey:  ['portal', 'programs'],
+    queryFn:   () => portalService.getPrograms(),
+    staleTime: 5 * 60_000,
+  })
+  const program = useMemo(
+    () => (programsQ.data?.data ?? []).find((p) => Number(p.id) === programId) ?? null,
+    [programsQ.data, programId],
+  )
 
   const levelsQ = useQuery({ queryKey: ['academics', 'levels'], queryFn: () => academicsMgmtService.list<any>('levels', { per_page: 100 }), staleTime: 5 * 60_000 })
   const levels: any[] = levelsQ.data?.data?.data ?? []
@@ -1430,38 +1567,31 @@ function SchedulePicker({
   })
   const allSchedules: ModuleScheduleRow[] = schedulesQ.data?.data ?? []
 
-  // Module → department lookup so faculty/dept filters work on schedule rows.
+  // Modules in the chosen programme. Server filters via the `module_programs`
+  // join table so we only get the catalogue rows that belong to this option.
   const modulesQ = useQuery({
-    queryKey: ['modules', 'catalog-all'],
-    queryFn:  () => moduleCatalogService.list({ per_page: 500, status: 'active' }),
+    queryKey:  ['modules', 'catalog-by-program', programId],
+    queryFn:   () => moduleCatalogService.list({ per_page: 500, status: 'active', program: programId }),
+    enabled:   programId > 0,
     staleTime: 5 * 60_000,
   })
-  const moduleDeptMap = useMemo(() => {
-    const m = new Map<number, number>()
-    const rows = modulesQ.data?.data?.data ?? []
-    rows.forEach((mod: any) => m.set(Number(mod.module_id), Number(mod.department ?? 0)))
-    return m
-  }, [modulesQ.data])
+  const programModules = modulesQ.data?.data?.data ?? []
+  const programModuleIds = useMemo(
+    () => new Set(programModules.map((m: any) => Number(m.module_id))),
+    [programModules],
+  )
   const moduleLevelMap = useMemo(() => {
     const m = new Map<number, number>()
-    const rows = modulesQ.data?.data?.data ?? []
-    rows.forEach((mod: any) => m.set(Number(mod.module_id), Number(mod.level ?? 0)))
+    programModules.forEach((mod: any) => m.set(Number(mod.module_id), Number(mod.level ?? 0)))
     return m
-  }, [modulesQ.data])
+  }, [programModules])
 
-  const filteredDepts = useMemo(() => gFaculty ? departments.filter((d: any) => Number(d.fac_id) === gFaculty) : departments, [departments, gFaculty])
   const teachableSet  = useMemo(() => new Set(teachableModuleIds), [teachableModuleIds])
 
   const filteredSchedules = useMemo(() => {
-    let list = allSchedules
+    let list = allSchedules.filter((s) => programModuleIds.has(s.module_id))
     // Role scope: non-admins only see schedules whose module they are assigned to.
     if (!canManage) list = list.filter((s) => teachableSet.has(s.module_id))
-    if (gDept) {
-      list = list.filter((s) => moduleDeptMap.get(s.module_id) === gDept)
-    } else if (gFaculty) {
-      const facDepts = new Set(filteredDepts.map((d: any) => Number(d.dep_id)))
-      list = list.filter((s) => facDepts.has(moduleDeptMap.get(s.module_id) ?? 0))
-    }
     if (gLevel) {
       list = list.filter((s) => moduleLevelMap.get(s.module_id) === gLevel)
     }
@@ -1473,10 +1603,16 @@ function SchedulePicker({
       )
     }
     return list
-  }, [allSchedules, canManage, teachableSet, gFaculty, gDept, gLevel, gSearch, filteredDepts, moduleDeptMap, moduleLevelMap])
+  }, [allSchedules, programModuleIds, canManage, teachableSet, gLevel, gSearch, moduleLevelMap])
 
-  const hasFilters = gFaculty > 0 || gDept > 0 || gLevel > 0 || gSearch.trim().length > 0
-  const totalForRole = canManage ? allSchedules.length : allSchedules.filter((s) => teachableSet.has(s.module_id)).length
+  const hasFilters = gLevel > 0 || gSearch.trim().length > 0
+  const programScopedSchedules = useMemo(
+    () => allSchedules.filter((s) => programModuleIds.has(s.module_id)),
+    [allSchedules, programModuleIds],
+  )
+  const totalForRole = canManage
+    ? programScopedSchedules.length
+    : programScopedSchedules.filter((s) => teachableSet.has(s.module_id)).length
 
   // ── Month grid setup ────────────────────────────────────────────────
   const monthStartISO = useMemo(() => isoFromDate(new Date(monthRef.year, monthRef.month, 1)),     [monthRef])
@@ -1512,6 +1648,48 @@ function SchedulePicker({
     }
     return m
   }, [sessionsQ.data])
+
+  // Per-module attendance roll-up for the chosen programme — drives the
+  // "Modules planned" panel so users can see at-a-glance how each module is
+  // doing without having to drill in one by one.
+  const overviewQ = useQuery({
+    queryKey: ['attendance-overview-program', termId, programId, canManage ? 0 : 1],
+    queryFn:  () => attendanceService.overview({
+      academic_term_id: termId || undefined,
+      mine:             canManage ? 0 : 1,
+    }),
+    enabled:  programId > 0,
+    staleTime: 30_000,
+  })
+  const moduleStatsMap = useMemo(() => {
+    const m = new Map<number, { sessions: number; pct: number; records: number }>()
+    const rows = overviewQ.data?.data?.by_module ?? []
+    for (const r of rows) {
+      m.set(Number(r.module_id), {
+        sessions: Number(r.sessions ?? 0),
+        pct:      Number(r.attendance_pct ?? 0),
+        records:  Number(r.records ?? 0),
+      })
+    }
+    return m
+  }, [overviewQ.data])
+
+  // Distinct planned modules in the chosen programme (after role + filter
+  // scoping). One row per module — used by the summary panel.
+  const plannedModules = useMemo(() => {
+    const seen = new Map<number, { module_id: number; module_code: string; module_name: string; sessions_planned: number }>()
+    for (const s of filteredSchedules) {
+      const cur = seen.get(s.module_id)
+      if (cur) cur.sessions_planned += 1
+      else seen.set(s.module_id, {
+        module_id:        s.module_id,
+        module_code:      s.module_code ?? '',
+        module_name:      s.module_name ?? '',
+        sessions_planned: 1,
+      })
+    }
+    return [...seen.values()].sort((a, b) => a.module_code.localeCompare(b.module_code))
+  }, [filteredSchedules])
 
   // 6-week grid: leading days from prev month + this month + trailing days,
   // starting on Monday.
@@ -1579,15 +1757,26 @@ function SchedulePicker({
 
   return (
     <div className="max-w-[1400px] mx-auto space-y-4 animate-fade-in">
-      {/* Hero */}
+      {/* Hero — chosen programme banner */}
       <section className="card p-4">
         <div className="flex items-center gap-3 flex-wrap">
           <div className="min-w-0 flex-1">
-            <h2 className="text-[16px] font-semibold text-ink-900 dark:text-white">Pick a scheduled session</h2>
-            <p className="text-[12px] text-ink-500">
-              {canManage ? 'Click any entry on the calendar to record attendance.' : 'Click a session assigned to you to record attendance.'}
+            <p className="text-[10.5px] uppercase tracking-wider text-ink-400 font-semibold">Programme</p>
+            <h2 className="text-[16px] font-semibold text-ink-900 dark:text-white truncate">
+              {program?.name ?? 'Loading…'}
+            </h2>
+            <p className="text-[12px] text-ink-500 truncate">
+              {[program?.department_name, program?.faculty_name].filter(Boolean).join(' · ') || ' '}
             </p>
           </div>
+          <button
+            type="button"
+            onClick={onChangeProgram}
+            className="btn-secondary btn-sm inline-flex items-center gap-1.5"
+            title="Pick a different programme"
+          >
+            <ChevronLeft className="w-3.5 h-3.5" /> Change programme
+          </button>
           <select
             value={termId}
             onChange={(e) => setTermId(Number(e.target.value))}
@@ -1603,7 +1792,7 @@ function SchedulePicker({
           </select>
         </div>
 
-        {/* Filter bar */}
+        {/* Filter bar — search + level only; programme is the primary scope. */}
         <div className="mt-3 flex items-center gap-2 flex-wrap">
           <Filter className="w-4 h-4 text-ink-400 shrink-0" />
           <div className="relative flex-1 min-w-[220px]">
@@ -1613,22 +1802,6 @@ function SchedulePicker({
               placeholder="Search by module code or name…"
               value={gSearch}
               onChange={(e) => setGSearch(e.target.value)}
-            />
-          </div>
-          <div className="w-56 shrink-0">
-            <SearchableSelect
-              options={faculties.map((f: any) => ({ value: f.id, label: f.name }))}
-              value={gFaculty}
-              onChange={(v) => { setGFaculty(Number(v)); setGDept(0) }}
-              allLabel="All faculties"
-            />
-          </div>
-          <div className="w-56 shrink-0">
-            <SearchableSelect
-              options={filteredDepts.map((d: any) => ({ value: d.dep_id, label: d.dep_name }))}
-              value={gDept}
-              onChange={(v) => setGDept(Number(v))}
-              allLabel="All departments"
             />
           </div>
           <div className="w-44 shrink-0">
@@ -1644,17 +1817,79 @@ function SchedulePicker({
               type="button"
               className="icon-btn text-ink-400 hover:text-rose-500"
               title="Clear all filters"
-              onClick={() => { setGFaculty(0); setGDept(0); setGLevel(0); setGSearch('') }}
+              onClick={() => { setGLevel(0); setGSearch('') }}
             >
               <X className="w-4 h-4" />
             </button>
           )}
         </div>
 
-        {!canManage && totalForRole === 0 && !teachableLoading && !schedulesQ.isLoading && (
+        {!canManage && totalForRole === 0 && !teachableLoading && !schedulesQ.isLoading && !modulesQ.isLoading && (
           <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-700 p-3 text-[12.5px] text-amber-800 dark:text-amber-200 flex items-center gap-2">
             <AlertCircle className="w-4 h-4" />
-            No schedules are assigned to you{termId ? ' for this term' : ''}. Ask an admin to assign a module schedule to you.
+            No schedules are assigned to you in this programme{termId ? ' for this term' : ''}. Ask an admin to assign a module schedule to you.
+          </div>
+        )}
+      </section>
+
+      {/* Modules planned in this programme — attendance summary per module. */}
+      <section className="card p-0 overflow-hidden">
+        <div className="px-5 py-3 border-b border-ink-100 dark:border-ink-700 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="font-semibold text-[14px] text-ink-900 dark:text-white">
+              Modules planned ({plannedModules.length})
+            </h3>
+            <p className="text-[11.5px] text-ink-500 mt-0.5">
+              Click a module to open its attendance overview, or click a session on the calendar below to record.
+            </p>
+          </div>
+          {(modulesQ.isFetching || overviewQ.isFetching) && <Loader2 className="w-3.5 h-3.5 animate-spin text-ink-400" />}
+        </div>
+
+        {modulesQ.isLoading || schedulesQ.isLoading ? (
+          <div className="p-10 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-ink-400" /></div>
+        ) : plannedModules.length === 0 ? (
+          <div className="p-8 text-center text-ink-500 text-[13px]">
+            No modules have schedules in this programme{termId ? ' for the selected term' : ''}.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-px bg-ink-100 dark:bg-ink-800">
+            {plannedModules.map((m) => {
+              const stats = moduleStatsMap.get(m.module_id)
+              const pct   = stats?.pct ?? 0
+              const sess  = stats?.sessions ?? 0
+              const recorded = sess > 0
+              return (
+                <button
+                  key={m.module_id}
+                  type="button"
+                  onClick={() => onPickModule(m.module_id, m.module_code, m.module_name)}
+                  className="bg-white dark:bg-ink-900 hover:bg-brand/[0.03] transition-colors text-left p-4 group"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-mono text-[12px] font-bold text-ink-900 dark:text-white truncate">{m.module_code}</p>
+                      <p className="text-[12px] text-ink-500 truncate mt-0.5">{m.module_name}</p>
+                    </div>
+                    {recorded ? (
+                      <span className="text-[14px] font-bold tabular-nums" style={{ color: toneForPct(pct) }}>{pct}%</span>
+                    ) : (
+                      <span className="text-[10.5px] text-ink-400 uppercase tracking-wider">No data</span>
+                    )}
+                  </div>
+                  <div className="mt-3 h-1.5 rounded-full bg-ink-100 dark:bg-ink-700/40 overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-[width] duration-500"
+                      style={{ width: `${recorded ? pct : 0}%`, backgroundColor: toneForPct(pct) }}
+                    />
+                  </div>
+                  <div className="mt-2 flex items-center justify-between text-[11px] text-ink-500">
+                    <span>{m.sessions_planned} planned</span>
+                    <span>{sess} recorded</span>
+                  </div>
+                </button>
+              )
+            })}
           </div>
         )}
       </section>
@@ -1922,38 +2157,48 @@ function lastOccurrenceISO(dow: number, startISO: string | null, endISO: string 
 }
 
 function EnrollStudentModal({ moduleId, moduleCode, termId, onClose, onSuccess, existingRegnumbers = [] }: { moduleId: number; moduleCode: string; termId: number; onClose: () => void; onSuccess: () => void; existingRegnumbers?: string[] }) {
+  // The current programme scope lives in the page URL (`program_id`). Default
+  // student lookup is scoped to that programme so admins immediately see the
+  // cohort that should be in the module — no manual filtering required.
+  const [sp] = useSearchParams()
+  const programId = Number(sp.get('program_id') || 0)
+
   const [q, setQ] = useState('')
+  const debouncedQ = useDebounce(q, 300)
   const [faculty, setFaculty] = useState('')
   const [department, setDepartment] = useState('')
   const [picking, setPicking] = useState<Student | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
-  const moduleQ = useQuery({
-    queryKey: ['attendance-module-details', moduleId],
-    queryFn:  () => moduleCatalogService.show(moduleId),
-    staleTime: 300_000,
+  // All historical registrations for this module (any term, any status) —
+  // used to hide students who have already studied / are studying it. Active
+  // session roster is also excluded via `existingRegnumbers`.
+  const moduleRegsQ = useQuery({
+    queryKey: ['attendance-module-regs-all', moduleId],
+    queryFn:  () => moduleRegistrationService.list({ module_id: moduleId }),
+    staleTime: 30_000,
   })
-
-  // Auto-set filters when module details load
-  useEffect(() => {
-    if (moduleQ.data?.data) {
-      const m = moduleQ.data.data
-      if (m.department_id) setDepartment(String(m.department_id))
-      // If we had faculty_id on module we'd set it too
+  const studiedSet = useMemo(() => {
+    const set = new Set<string>(existingRegnumbers)
+    for (const r of moduleRegsQ.data?.data ?? []) {
+      if (r.student_regnumber) set.add(r.student_regnumber)
     }
-  }, [moduleQ.data?.data])
+    return set
+  }, [moduleRegsQ.data, existingRegnumbers])
 
   const studentsQ = useQuery({
-    queryKey: ['attendance-students-search', q, faculty, department],
+    queryKey: ['attendance-students-search', debouncedQ, faculty, department, programId],
     queryFn:  () => studentService.list({
       q: debouncedQ || undefined,
-      per_page: 50,
+      per_page: 200,
       faculty: faculty || undefined,
       department: department || undefined,
+      // Admin-picked programme at the page level — scopes the cohort by default.
+      // Faculty/department/search filters are additive on top of this scope.
+      std_option: programId ? String(programId) : undefined,
     }),
     staleTime: 10_000,
   })
-  const debouncedQ = useDebounce(q, 300)
 
   const statsQ = useQuery({
     queryKey: ['student-stats-facets'],
@@ -1995,10 +2240,20 @@ function EnrollStudentModal({ moduleId, moduleCode, termId, onClose, onSuccess, 
     onError: (err: any) => toast.error(err?.response?.data?.message || 'Bulk enrollment failed.'),
   })
 
-  const students = studentsQ.data?.data?.data ?? []
+  const allStudents = studentsQ.data?.data?.data ?? []
+  // Hide anyone who already studied or is registered for this module — the
+  // user wants a list of "students in the programme who have NOT studied
+  // this module". Filtering client-side keeps the API contract narrow.
+  const students = useMemo(
+    () => allStudents.filter((s) => {
+      const reg = s.regnumber || (s as any).student_regnumber
+      return reg && !studiedSet.has(reg)
+    }),
+    [allStudents, studiedSet],
+  )
+  const hiddenCount = allStudents.length - students.length
 
   const toggleSelect = (reg: string) => {
-    if (existingRegnumbers.includes(reg)) return
     setSelected(prev => {
       const next = new Set(prev)
       if (next.has(reg)) next.delete(reg)
@@ -2008,13 +2263,12 @@ function EnrollStudentModal({ moduleId, moduleCode, termId, onClose, onSuccess, 
   }
 
   const selectAll = () => {
-    const available = students.filter(s => {
-      const reg = s.regnumber || (s as any).student_regnumber
-      return reg && !existingRegnumbers.includes(reg)
-    })
     setSelected(prev => {
       const next = new Set(prev)
-      available.forEach(s => next.add(s.regnumber || (s as any).student_regnumber))
+      students.forEach((s) => {
+        const reg = s.regnumber || (s as any).student_regnumber
+        if (reg) next.add(reg)
+      })
       return next
     })
   }
@@ -2026,7 +2280,10 @@ function EnrollStudentModal({ moduleId, moduleCode, termId, onClose, onSuccess, 
           <div className="flex flex-col gap-0.5">
             <h5 className="text-[14px] font-bold text-ink-900 dark:text-white">Find and select students</h5>
             <p className="text-[12px] text-ink-500">
-              Bulk enroll students by selecting them below or search across departments.
+              Showing students in the selected programme who haven't taken this module yet. Add filters or a search if you want to narrow further.
+              {hiddenCount > 0 && (
+                <span className="ml-1 text-ink-400">({hiddenCount} already enrolled or completed — hidden)</span>
+              )}
             </p>
           </div>
           {selected.size > 0 && (
@@ -2104,24 +2361,27 @@ function EnrollStudentModal({ moduleId, moduleCode, termId, onClose, onSuccess, 
             ) : students.length === 0 ? (
               <div className="p-12 text-center">
                 <Users className="w-10 h-10 text-ink-200 mx-auto mb-3" />
-                <p className="text-[13px] text-ink-500 font-medium">No students found.</p>
+                <p className="text-[13px] text-ink-500 font-medium">No students match.</p>
+                <p className="text-[12px] text-ink-400 mt-1">
+                  {programId
+                    ? 'No remaining students in this programme have yet to take this module.'
+                    : 'Pick a programme on the attendance page first to see the cohort.'}
+                </p>
               </div>
             ) : (
               students.map((s) => {
                 const reg = s.regnumber || (s as any).student_regnumber
-                const isEnrolled = existingRegnumbers.includes(reg)
                 const isSelected = selected.has(reg)
 
                 return (
                   <div
                     key={s.id}
-                    className={`p-3 flex items-center justify-between transition-all group/row ${isSelected ? 'bg-brand/[0.04]' : 'hover:bg-brand/[0.01]'}`}
+                    className={`p-3 flex items-center justify-between transition-all group/row cursor-pointer ${isSelected ? 'bg-brand/[0.04]' : 'hover:bg-brand/[0.01]'}`}
                     onClick={() => toggleSelect(reg)}
                   >
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className={`w-5 h-5 rounded border flex items-center justify-center transition-all ${isSelected ? 'bg-brand border-brand text-white' : 'border-ink-200 dark:border-ink-700 bg-white dark:bg-ink-900'} ${isEnrolled ? 'opacity-20 cursor-not-allowed' : 'cursor-pointer'}`}>
+                      <div className={`w-5 h-5 rounded border flex items-center justify-center transition-all cursor-pointer ${isSelected ? 'bg-brand border-brand text-white' : 'border-ink-200 dark:border-ink-700 bg-white dark:bg-ink-900'}`}>
                         {isSelected && <Check className="w-3.5 h-3.5" />}
-                        {isEnrolled && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />}
                       </div>
                       <div className="w-10 h-10 rounded-full bg-ink-100 dark:bg-ink-800 text-ink-600 dark:text-ink-400 flex items-center justify-center font-bold text-[13px] border border-ink-200 dark:border-ink-700">
                         {s.fname[0]}{s.lname[0]}
@@ -2137,20 +2397,14 @@ function EnrollStudentModal({ moduleId, moduleCode, termId, onClose, onSuccess, 
                     </div>
 
                     <div onClick={e => e.stopPropagation()}>
-                      {isEnrolled ? (
-                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400 text-[11px] font-bold border border-emerald-100 dark:border-emerald-800">
-                          <Check className="w-3 h-3" /> Enrolled
-                        </span>
-                      ) : (
-                        <button
-                          type="button"
-                          disabled={regMut.isPending || !reg}
-                          onClick={() => { setPicking(s); regMut.mutate(s) }}
-                          className="btn-secondary btn-sm px-4 bg-white dark:bg-ink-900 hover:bg-brand hover:text-white hover:border-brand transition-all"
-                        >
-                          {regMut.isPending && picking?.id === s.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Enroll'}
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        disabled={regMut.isPending || !reg}
+                        onClick={() => { setPicking(s); regMut.mutate(s) }}
+                        className="btn-secondary btn-sm px-4 bg-white dark:bg-ink-900 hover:bg-brand hover:text-white hover:border-brand transition-all"
+                      >
+                        {regMut.isPending && picking?.id === s.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Enroll'}
+                      </button>
                     </div>
                   </div>
                 )

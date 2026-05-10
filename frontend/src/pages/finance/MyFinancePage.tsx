@@ -65,7 +65,7 @@ export default function MyFinancePage() {
 
   const invoices: FeeInvoice[]        = ledgerQ.data?.data?.invoices ?? []
   const totals: LedgerTotals | undefined = ledgerQ.data?.data?.totals
-  const clearance: ClearanceResult | undefined = clearanceQ.data?.data
+  const clearance: ClearanceResult | undefined = clearanceQ.data?.data ?? undefined
 
   const balance = totals?.balance ?? 0
 

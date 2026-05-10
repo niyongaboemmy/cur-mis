@@ -277,6 +277,9 @@ class ModuleModel extends BaseModel
         // registrations (any status), AND any completed/registered module
         // across past terms (no point re-enrolling in something they already
         // passed or are still in).
+        // Also require an existing teaching schedule in the target term —
+        // students can only enrol in modules that the registrar has actually
+        // scheduled, mirroring the Module scheduling page.
         $rows = $this->db->fetchAll(
             "SELECT m.*
              FROM `modules` m
@@ -286,8 +289,13 @@ class ModuleModel extends BaseModel
                    SELECT module_id FROM `module_registrations`
                    WHERE student_regnumber = ?
                      AND (academic_term_id = ? OR status IN ('registered','completed'))
+               )
+               AND EXISTS (
+                   SELECT 1 FROM `module_schedules` ms
+                   WHERE ms.module_id = m.module_id
+                     AND ms.academic_term_id = ?
                )",
-            [$level, $regnumber, $termId]
+            [$level, $regnumber, $termId, $termId]
         );
 
         // Filter by prerequisite completion (cheaper in PHP than nested NOT EXISTS per row)

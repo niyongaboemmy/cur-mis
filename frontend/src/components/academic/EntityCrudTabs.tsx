@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import * as XLSX from 'xlsx'
@@ -533,12 +534,33 @@ export function EntityCrudTabs({
   extraTabs = [],
   ariaLabel = 'Settings sections',
 }: TabsProps) {
-  const allSlugs = [...entities.map((e) => e.slug as string), ...extraTabs.map((t) => t.slug)]
-  const initial = defaultSlug && allSlugs.includes(defaultSlug)
+  const allSlugs = useMemo(
+    () => [...entities.map((e) => e.slug as string), ...extraTabs.map((t) => t.slug)],
+    [entities, extraTabs],
+  )
+  const fallbackSlug = defaultSlug && allSlugs.includes(defaultSlug)
     ? defaultSlug
     : (allSlugs[0] ?? '')
 
-  const [activeSlug, setActiveSlug] = useState<string>(initial)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tabFromUrl = searchParams.get('tab') ?? ''
+  const activeSlug = allSlugs.includes(tabFromUrl) ? tabFromUrl : fallbackSlug
+
+  // Mirror the resolved tab back into the URL so reloads land on the same
+  // section and the sidebar's sub-item highlighting stays in sync.
+  useEffect(() => {
+    if (!activeSlug) return
+    if (searchParams.get('tab') === activeSlug) return
+    const next = new URLSearchParams(searchParams)
+    next.set('tab', activeSlug)
+    setSearchParams(next, { replace: true })
+  }, [activeSlug, searchParams, setSearchParams])
+
+  const handleTabChange = useCallback((slug: string) => {
+    // Switching tabs invalidates the entity-scoped state (filters, sort,
+    // search, page) so we drop everything except the new tab key.
+    setSearchParams({ tab: slug }, { replace: false })
+  }, [setSearchParams])
 
   const activeEntity = useMemo(
     () => entities.find((e) => e.slug === activeSlug) ?? null,
@@ -570,7 +592,7 @@ export function EntityCrudTabs({
                 key={item.slug}
                 role="tab"
                 aria-selected={isActive}
-                onClick={() => setActiveSlug(item.slug)}
+                onClick={() => handleTabChange(item.slug)}
                 className={`flex items-center gap-2 px-3.5 py-2 rounded-md text-[13px] font-medium whitespace-nowrap transition-colors ${
                   isActive
                     ? 'bg-brand/10 text-brand dark:bg-brand/25 dark:text-gold-400'
@@ -586,7 +608,7 @@ export function EntityCrudTabs({
       </nav>
 
       {activeEntity && <CrudPanel key={activeEntity.slug} entity={activeEntity} />}
-      {activeExtra && <div>{activeExtra.render()}</div>}
+      {activeExtra && <div key={activeExtra.slug}>{activeExtra.render()}</div>}
     </div>
   )
 }
@@ -595,7 +617,20 @@ export function EntityCrudTabs({
 
 function CrudPanel({ entity }: { entity: EntityCfg }) {
   const qc = useQueryClient()
-  const [page, setPage] = useState(1)
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  const filterKeys = useMemo(
+    () => (entity.filters ?? []).map((f) => f.key),
+    [entity.filters],
+  )
+
+  // Initial state is hydrated from the URL once per mount. The panel
+  // re-mounts whenever the parent tab changes (key={activeEntity.slug}),
+  // so this also reacts to browser back/forward across tabs.
+  const [page, setPage] = useState<number>(() => {
+    const n = Number(searchParams.get('page') ?? '1')
+    return Number.isFinite(n) && n > 0 ? n : 1
+  })
   const [editing, setEditing] = useState<Record<string, any> | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [campusFor, setCampusFor] = useState<Record<string, any> | null>(null)
@@ -604,12 +639,22 @@ function CrudPanel({ entity }: { entity: EntityCfg }) {
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null)
   const [levelMapping, setLevelMapping] = useState<Record<string, number>>({})
   const [orderEdits, setOrderEdits] = useState<Record<number, number>>({})
-  const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(
-    entity.defaultSort ?? null,
-  )
-  const [searchInput, setSearchInput] = useState('')
-  const [search, setSearch] = useState('')
-  const [filterValues, setFilterValues] = useState<Record<string, string>>({})
+  const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(() => {
+    const sb = searchParams.get('sort_by')
+    const sd = searchParams.get('sort_dir')
+    if (sb && (sd === 'asc' || sd === 'desc')) return { key: sb, dir: sd }
+    return entity.defaultSort ?? null
+  })
+  const [searchInput, setSearchInput] = useState<string>(() => searchParams.get('q') ?? '')
+  const [search, setSearch] = useState<string>(() => searchParams.get('q') ?? '')
+  const [filterValues, setFilterValues] = useState<Record<string, string>>(() => {
+    const init: Record<string, string> = {}
+    for (const k of filterKeys) {
+      const v = searchParams.get(k)
+      if (v) init[k] = v
+    }
+    return init
+  })
   const [importContextOpen, setImportContextOpen] = useState(false)
   const [importContextValues, setImportContextValues] = useState<Record<string, any>>({})
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -622,6 +667,31 @@ function CrudPanel({ entity }: { entity: EntityCfg }) {
 
   // Whenever the active search changes, jump back to page 1.
   useEffect(() => { setPage(1) }, [search])
+
+  // Mirror panel state (search / sort / page / filters) into the URL so
+  // reloading the page restores the exact view. `tab` and any unrelated
+  // params are preserved.
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams)
+    if (search) next.set('q', search)
+    else next.delete('q')
+    if (sort) {
+      next.set('sort_by', sort.key)
+      next.set('sort_dir', sort.dir)
+    } else {
+      next.delete('sort_by')
+      next.delete('sort_dir')
+    }
+    if (page > 1) next.set('page', String(page))
+    else next.delete('page')
+    for (const k of filterKeys) {
+      const v = filterValues[k]
+      if (v) next.set(k, v)
+      else next.delete(k)
+    }
+    if (next.toString() === searchParams.toString()) return
+    setSearchParams(next, { replace: true })
+  }, [search, sort, page, filterValues, filterKeys, searchParams, setSearchParams])
 
   const toggleSort = (key: string) => {
     setPage(1)

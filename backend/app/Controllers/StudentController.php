@@ -181,6 +181,54 @@ class StudentController extends BaseController
                     $ph = implode(',', array_fill(0, count($variants), '?'));
                     $clauses[] = "acc_year IN ($ph)";
                     foreach ($variants as $v) { $bindings[] = $v; }
+                } elseif ($col === 'std_option') {
+                    // Programme scoping. Match the option through every place
+                    // a programme link can live for a student row — but never
+                    // widen to the option's *department*, otherwise every
+                    // programme in the same department returns the same
+                    // cohort and switching programmes appears to do nothing.
+                    $optionId = (int)$val;
+                    $opt      = null;
+                    if ($optionId > 0) {
+                        $opt = $this->studentModel->db()->fetchOne(
+                            'SELECT id, name, code, acro, department_id
+                             FROM `options` WHERE id = ? LIMIT 1',
+                            [$optionId]
+                        );
+                    }
+
+                    $aliases = [(string)$val];
+                    foreach (['name', 'code', 'acro'] as $f) {
+                        $v = trim((string)($opt[$f] ?? ''));
+                        if ($v !== '') $aliases[] = $v;
+                    }
+                    $aliases = array_values(array_unique($aliases));
+
+                    $sub = [];
+                    foreach ($aliases as $a) {
+                        $sub[] = 'LOWER(TRIM(std_option)) = LOWER(?)';
+                        $bindings[] = $a;
+                        $sub[] = 'LOWER(TRIM(program)) = LOWER(?)';
+                        $bindings[] = $a;
+                    }
+                    if ($optionId > 0) {
+                        $sub[] = 'id IN (
+                            SELECT ao.student_id
+                            FROM `admission_offers` ao
+                            JOIN `student_applications` sa ON sa.id = ao.application_id
+                            WHERE sa.program_id = ?
+                        )';
+                        $bindings[] = $optionId;
+
+                        $sub[] = 'user_id IN (
+                            SELECT ap.user_id
+                            FROM `applicant_profiles` ap
+                            JOIN `student_applications` sa2 ON sa2.id = ap.application_id
+                            WHERE sa2.program_id = ? AND ap.user_id IS NOT NULL
+                        )';
+                        $bindings[] = $optionId;
+                    }
+                    $clauses[] = '(' . implode(' OR ', $sub) . ')';
                 } else {
                     $clauses[]  = "`$col` = ?";
                     $bindings[] = $val;
@@ -231,6 +279,125 @@ class StudentController extends BaseController
      */
     public function me(Request $request, Response $response): never
     {
+        $student = $this->resolveSelfStudent($request, $response);
+
+        $applicationId = $this->resolveApplicationId((int)$student['id']);
+        $application   = null;
+        if ($applicationId) {
+            $appModel    = new StudentApplicationModel();
+            $application = $appModel->getWithDetails($applicationId) ?: null;
+        }
+        $student['application'] = $application;
+
+        $this->success($response, $student, 'Student profile fetched.');
+    }
+
+    /**
+     * GET /api/students/me/documents
+     * Self-service: documents uploaded by the authenticated student during
+     * their admission application. Mirrors `documents()` but doesn't require
+     * VIEW_STUDENTS — the row is auto-resolved to the caller.
+     */
+    public function meDocuments(Request $request, Response $response): never
+    {
+        $student   = $this->resolveSelfStudent($request, $response);
+        $studentId = (int)$student['id'];
+
+        $applicationId = $this->resolveApplicationId($studentId);
+        if (!$applicationId) {
+            $this->success($response, [
+                'application_id' => null,
+                'documents'      => [],
+            ], 'You have no linked application.');
+        }
+
+        $documents = $this->docModel->getForApplication($applicationId);
+
+        $this->success($response, [
+            'application_id' => $applicationId,
+            'documents'      => $documents,
+        ], 'Documents fetched successfully.');
+    }
+
+    /**
+     * GET /api/students/me/documents/:document_id/download
+     * Self-service download — only resolves if the document belongs to the
+     * caller's application.
+     */
+    public function meDownloadDocument(Request $request, Response $response): never
+    {
+        $student    = $this->resolveSelfStudent($request, $response);
+        $studentId  = (int)$student['id'];
+        $documentId = (int)$request->param('document_id');
+
+        $applicationId = $this->resolveApplicationId($studentId);
+        if (!$applicationId) {
+            $this->error($response, 'You have no linked application.', 404);
+        }
+
+        $document = $this->docModel->find($documentId);
+        if (!$document || (int)$document['application_id'] !== $applicationId) {
+            $this->error($response, 'Document not found.', 404);
+        }
+
+        if (empty($document['file_server_id'])) {
+            $this->error($response, 'No file associated with this document record.', 404);
+        }
+
+        try {
+            $client   = new FileServerClient();
+            $fileData = $client->download($document['file_server_id']);
+        } catch (\RuntimeException $e) {
+            $this->error($response, $e->getMessage(), 502);
+        }
+
+        $mime         = $fileData['mime'] ?? 'application/octet-stream';
+        $isInlineable = str_starts_with($mime, 'image/') || $mime === 'application/pdf';
+        $disposition  = $isInlineable ? 'inline' : 'attachment';
+
+        header('Content-Type: ' . $mime);
+        header('Content-Disposition: ' . $disposition . '; filename="' . addslashes($fileData['original_name']) . '"');
+        header('Content-Length: ' . strlen($fileData['content']));
+        header('Cache-Control: private, no-store');
+        header('X-Content-Type-Options: nosniff');
+
+        echo $fileData['content'];
+        exit;
+    }
+
+    /**
+     * GET /api/students/me/program-modules
+     * Self-service curriculum view — every module in the caller's program
+     * with their marks. Mirrors `programModules()` for any authenticated
+     * student, no VIEW_STUDENTS required.
+     */
+    public function meProgramModules(Request $request, Response $response): never
+    {
+        $student = $this->resolveSelfStudent($request, $response);
+
+        [$program, $groups] = $this->loadProgramCurriculum($student);
+
+        $this->success($response, [
+            'student' => [
+                'id'         => (int)$student['id'],
+                'regnumber'  => $student['regnumber'] ?? null,
+                'fname'      => $student['fname']     ?? null,
+                'lname'      => $student['lname']     ?? null,
+                'std_option' => $student['std_option']?? null,
+                'program'    => $student['program']   ?? null,
+            ],
+            'program' => $program,
+            'groups'  => $groups,
+        ], 'Program curriculum fetched.');
+    }
+
+    /**
+     * Internal helper used by every `me*` endpoint to resolve the student
+     * row tied to the authenticated user. Aborts the request with 401/404
+     * if there is no usable account or no linked student record.
+     */
+    private function resolveSelfStudent(Request $request, Response $response): array
+    {
         $authUser = $request->param('_auth_user') ?? [];
         $userId   = (int)($authUser['id'] ?? 0);
         $email    = is_string($authUser['email'] ?? null) ? $authUser['email'] : null;
@@ -245,15 +412,7 @@ class StudentController extends BaseController
             $this->error($response, 'No student record is linked to your account.', 404);
         }
 
-        $applicationId = $this->resolveApplicationId((int)$student['id']);
-        $application   = null;
-        if ($applicationId) {
-            $appModel    = new StudentApplicationModel();
-            $application = $appModel->getWithDetails($applicationId) ?: null;
-        }
-        $student['application'] = $application;
-
-        $this->success($response, $student, 'Student profile fetched.');
+        return $student;
     }
 
     /**
@@ -473,6 +632,105 @@ class StudentController extends BaseController
 
         echo $fileData['content'];
         exit;
+    }
+
+    /**
+     * POST /api/students/me/photo
+     * Self-service photo upload — students update their own profile picture
+     * without holding MANAGE_STUDENTS. Reuses uploadPhoto() after resolving
+     * the caller's student id from the auth context.
+     */
+    public function uploadMyPhoto(Request $request, Response $response): never
+    {
+        $student = $this->resolveAuthStudent($request, $response);
+        $request->setRouteParams(['id' => (string)$student['id']]);
+        $this->uploadPhoto($request, $response);
+    }
+
+    /**
+     * GET /api/students/me/photo
+     * Self-service photo download — mirrors downloadPhoto() but resolves
+     * the student from the auth context so VIEW_STUDENTS isn't required.
+     */
+    public function downloadMyPhoto(Request $request, Response $response): never
+    {
+        $student = $this->resolveAuthStudent($request, $response);
+        $request->setRouteParams(['id' => (string)$student['id']]);
+        $this->downloadPhoto($request, $response);
+    }
+
+    /**
+     * PUT /api/students/me
+     * Self-service field update. Strictly whitelists what students may change
+     * about their own record — name, gender, DOB, ID, faculty/department,
+     * etc. remain admin-only because they are part of the legal/academic
+     * identity captured at enrollment.
+     */
+    public function updateMe(Request $request, Response $response): never
+    {
+        $student = $this->resolveAuthStudent($request, $response);
+        $body    = $request->body();
+
+        // Whitelist of self-editable columns. Anything else in the payload is
+        // silently dropped so a malicious client can't promote themselves to a
+        // different program / level / faculty.
+        $editable = [
+            'phone', 'marital_status',
+            // Residency — student-controlled location data. `address` and
+            // `residence_district` live on the application record and stay
+            // admin-only on purpose.
+            'province', 'district', 'sector', 'cell', 'village',
+        ];
+
+        $patch = [];
+        foreach ($editable as $col) {
+            if (array_key_exists($col, $body)) {
+                $val = $body[$col];
+                $patch[$col] = is_string($val) ? trim($val) : $val;
+            }
+        }
+
+        $errors = ValidationHelper::validate($patch, [
+            'phone'          => ['min:6', 'max:30'],
+            'marital_status' => ['in:single,married,divorced,widowed'],
+            'province'       => ['max:50'],
+            'district'       => ['max:50'],
+            'sector'         => ['max:100'],
+            'cell'           => ['max:50'],
+            'village'        => ['max:50'],
+        ]);
+        if (!empty($errors)) {
+            $this->error($response, 'Validation failed.', 422, $errors);
+        }
+
+        if (!empty($patch)) {
+            $this->studentModel->update((int)$student['id'], $patch);
+        }
+
+        $fresh = $this->studentModel->find((int)$student['id']);
+        $this->success($response, $fresh, 'Profile updated.');
+    }
+
+    /**
+     * Resolve the authenticated user's student record. Errors out (and never
+     * returns) when there is no auth user or no linked student row.
+     */
+    private function resolveAuthStudent(Request $request, Response $response): array
+    {
+        $authUser = $request->param('_auth_user') ?? [];
+        $userId   = (int)($authUser['id'] ?? 0);
+        $email    = is_string($authUser['email'] ?? null) ? $authUser['email'] : null;
+
+        if ($userId <= 0) {
+            $this->error($response, 'Unauthorized.', 401);
+        }
+
+        $student = $this->studentModel->findByUserId($userId, $email);
+        if (!$student) {
+            $this->error($response, 'No student record is linked to your account.', 404);
+        }
+
+        return $student;
     }
 
     /**

@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { User, LogOut, Sun, Moon, ChevronDown } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useThemeStore } from "@/store/themeStore";
 import { useLogout } from "@/hooks/useAuth";
+import { studentService } from "@/services/studentService";
 
 export default function UserDropdown() {
   const [isOpen, setIsOpen] = useState(false);
@@ -39,14 +41,40 @@ export default function UserDropdown() {
 
   const userInitials = user?.full_name ? getInitials(user.full_name) : "U";
 
+  // Pull the auth user's student record (if any) so we can use their profile
+  // photo as the avatar across the app. Shares the cache key with the profile
+  // page, so a successful upload there reactively refreshes this avatar too.
+  // Errors (e.g. admins with no student row) are silently ignored — we just
+  // fall back to initials.
+  const meQ = useQuery({
+    queryKey: ['student', 'me'],
+    queryFn:  ({ signal }) => studentService.me(signal),
+    enabled:  !!user,
+    retry:    false,
+    staleTime: 5 * 60_000,
+    // 404 means this user isn't linked to a student row — treat as "no photo".
+    throwOnError: false,
+  });
+  const photoId = meQ.data?.data?.photo as string | undefined | null;
+  const photoSrc = photoId ? studentService.myPhotoUrl(photoId) : null;
+
   return (
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-2.5 py-1 pl-1 pr-2.5 rounded-md hover:bg-ink-100 dark:hover:bg-ink-700 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"
       >
-        <div className="h-9 w-9 rounded-full bg-primary-600 flex items-center justify-center text-white font-semibold text-[12px]">
-          {userInitials}
+        <div className="h-9 w-9 rounded-full bg-primary-600 flex items-center justify-center text-white font-semibold text-[12px] overflow-hidden">
+          {photoSrc ? (
+            <img
+              src={photoSrc}
+              alt={user?.full_name ?? 'User'}
+              className="w-full h-full object-cover"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+            />
+          ) : (
+            <span>{userInitials}</span>
+          )}
         </div>
         <div className="hidden md:block text-left">
           <p className="text-[13px] font-semibold text-ink-800 dark:text-ink-100 leading-tight">
@@ -73,8 +101,17 @@ export default function UserDropdown() {
             {/* Profile header */}
             <div className="p-4 border-b border-ink-100 dark:border-ink-700">
               <div className="flex items-center gap-3">
-                <div className="h-11 w-11 rounded-md bg-primary-600 flex items-center justify-center text-white text-[15px] font-semibold">
-                  {userInitials}
+                <div className="h-11 w-11 rounded-md bg-primary-600 flex items-center justify-center text-white text-[15px] font-semibold overflow-hidden">
+                  {photoSrc ? (
+                    <img
+                      src={photoSrc}
+                      alt={user?.full_name ?? 'User'}
+                      className="w-full h-full object-cover"
+                      onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+                    />
+                  ) : (
+                    <span>{userInitials}</span>
+                  )}
                 </div>
                 <div className="min-w-0">
                   <h4 className="text-[14px] font-semibold text-ink-900 dark:text-white truncate">
@@ -92,7 +129,7 @@ export default function UserDropdown() {
 
             {/* Menu */}
             <div className="p-1.5">
-              <MenuItem icon={<User     className="h-4 w-4" />} onClick={() => go('/profile')}>My profile</MenuItem>
+              <MenuItem icon={<User     className="h-4 w-4" />} onClick={() => go('/me/profile')}>My profile</MenuItem>
 
               {/* Theme toggle */}
               <button

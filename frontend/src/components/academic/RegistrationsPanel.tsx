@@ -98,49 +98,71 @@ export default function RegistrationsPanel() {
     )
   }, [programModules, moduleSearch])
 
-  /* ── Existing registrations for selected module / term ───── */
+  /* ── Every prior registration for this module (any term, any status). The
+   *    user wants "students in the programme who have NOT studied this
+   *    module", so anyone with a prior record at all should drop out — not
+   *    just current-term registrations. ─────────────────────────── */
   const regsQ = useQuery({
-    queryKey: ['modules', 'registrations', termId, moduleId],
-    queryFn:  () => moduleRegistrationService.list({ term_id: Number(termId), module_id: moduleId }),
-    enabled:  !!termId && !!moduleId,
+    queryKey: ['modules', 'registrations-all-terms', moduleId],
+    queryFn:  () => moduleRegistrationService.list({ module_id: moduleId }),
+    enabled:  !!moduleId,
   })
   const existingRegs: ModuleRegistration[] = regsQ.data?.data ?? []
-  const enrolledRegnumbers = useMemo(
-    () => new Set(existingRegs.filter((r) => r.status === 'registered').map((r) => r.student_regnumber).filter(Boolean)),
+  const studiedRegnumbers = useMemo(
+    () => new Set(existingRegs.map((r) => r.student_regnumber).filter(Boolean)),
     [existingRegs],
   )
+  // Distinguish "currently enrolled in this term" so the row UI can still
+  // show an Enrolled chip for the active term, instead of just hiding.
+  const enrolledThisTermRegnumbers = useMemo(
+    () => new Set(
+      existingRegs
+        .filter((r) => r.status === 'registered' && Number(r.academic_term_id) === Number(termId))
+        .map((r) => r.student_regnumber)
+        .filter(Boolean),
+    ),
+    [existingRegs, termId],
+  )
 
-  /* ── Students in the program (filtered by std_option) ────── */
+  /* ── Students in the program (scoped by std_option). Search and any other
+   *    filters only apply when the admin types/picks them — by default we
+   *    show every student whose programme matches. The admin can flip
+   *    `showAll` if scoping-by-programme misses someone they expected. ── */
   const [studentSearch, setStudentSearch] = useState('')
+  const [showAll, setShowAll] = useState(false)
   const studentsQ = useQuery({
-    queryKey: ['students', 'by-program', programId, studentSearch],
+    queryKey: ['students', 'by-program', programId, studentSearch, showAll],
     queryFn: () => studentService.list({
-      per_page: 500, page: 1,
-      std_option: String(programId),
+      per_page: 500,
+      page: 1,
+      std_option: showAll ? undefined : String(programId),
       q: studentSearch || undefined,
-      student_state: 'active',
-    } as any),
+    }),
     enabled: !!programId,
   })
   const allStudents: any[] = studentsQ.data?.data?.data ?? []
   const totalInProgram = allStudents.length
+  const programMatchEmpty = !showAll && !studentsQ.isLoading && totalInProgram === 0
 
   /* ── Selection state for bulk enroll ─────────────────────── */
   const [selected, setSelected] = useState<Set<string>>(new Set())
   useEffect(() => { setSelected(new Set()) }, [moduleId, programId])
 
+  // The displayed list = students in this programme who have NOT studied
+  // this module before. Already-enrolled-this-term still appear (to give a
+  // visual confirmation) but the bulk of the panel is the "can enrol" set.
   const eligibleForEnroll = useMemo(
     () => allStudents.filter((s: any) => {
       const reg = s.regnumber || s.student_regnumber
-      return !!reg && !enrolledRegnumbers.has(reg)
+      return !!reg && !studiedRegnumbers.has(reg)
     }),
-    [allStudents, enrolledRegnumbers],
+    [allStudents, studiedRegnumbers],
   )
   const totalEligible = eligibleForEnroll.length
-  const enrolledInScope = totalInProgram - totalEligible
+  const enrolledInScope = enrolledThisTermRegnumbers.size
 
   const toggleStudent = (reg: string) => {
-    if (enrolledRegnumbers.has(reg)) return
+    if (studiedRegnumbers.has(reg)) return
     setSelected((prev) => {
       const n = new Set(prev)
       if (n.has(reg)) n.delete(reg); else n.add(reg)
@@ -335,7 +357,7 @@ export default function RegistrationsPanel() {
                         <span className="text-ink-500"> · {selectedModule.module_name}</span>
                       </h3>
                       <span className="text-[11px] text-ink-400 flex items-center gap-2 flex-wrap">
-                        <span><b className="text-ink-600">{totalInProgram}</b> in program</span>
+                        <span><b className="text-ink-600">{totalInProgram}</b> {showAll ? 'shown' : 'in program'}</span>
                         <span className="inline-flex items-center gap-1">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                           <b>{enrolledInScope}</b> enrolled
@@ -347,7 +369,16 @@ export default function RegistrationsPanel() {
                       </span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                    <label className="inline-flex items-center gap-1.5 text-[11.5px] text-ink-600 dark:text-ink-300 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        className="rounded border-ink-300 text-brand"
+                        checked={showAll}
+                        onChange={(e) => setShowAll(e.target.checked)}
+                      />
+                      Show all students
+                    </label>
                     <div className="relative">
                       <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-400" />
                       <input
@@ -368,11 +399,26 @@ export default function RegistrationsPanel() {
                 </div>
 
                 <div className="max-h-[640px] overflow-y-auto">
-                  {studentsQ.isLoading ? (
+                  {studentsQ.isLoading || regsQ.isLoading ? (
                     <div className="p-6 text-center"><Loader2 className="w-5 h-5 animate-spin mx-auto text-brand" /></div>
-                  ) : allStudents.length === 0 ? (
+                  ) : programMatchEmpty ? (
                     <div className="p-8 text-center text-ink-400 text-[13px]">
-                      No active students in this program.
+                      No students could be matched to this programme.<br/>
+                      <button
+                        type="button"
+                        className="mt-2 text-brand hover:underline text-[12.5px] font-semibold"
+                        onClick={() => setShowAll(true)}
+                      >
+                        Show all students instead
+                      </button>
+                    </div>
+                  ) : totalInProgram === 0 ? (
+                    <div className="p-8 text-center text-ink-400 text-[13px]">
+                      No students match your search.
+                    </div>
+                  ) : eligibleForEnroll.length === 0 ? (
+                    <div className="p-8 text-center text-ink-400 text-[13px]">
+                      Every student in this programme has already studied this module.
                     </div>
                   ) : (
                     <table className="w-full text-[12.5px]">
@@ -390,60 +436,42 @@ export default function RegistrationsPanel() {
                           <th className="px-3 py-2 text-left text-[10px] uppercase font-bold text-ink-400">Reg #</th>
                           <th className="px-3 py-2 text-left text-[10px] uppercase font-bold text-ink-400">Name</th>
                           <th className="px-3 py-2 text-left text-[10px] uppercase font-bold text-ink-400">Level</th>
-                          <th className="px-3 py-2 text-right text-[10px] uppercase font-bold text-ink-400">Status</th>
+                          <th className="px-3 py-2 text-right text-[10px] uppercase font-bold text-ink-400">Action</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-ink-100/50 dark:divide-ink-700/50">
-                        {allStudents.map((s: any) => {
+                        {eligibleForEnroll.map((s: any) => {
                           const reg = s.regnumber || s.student_regnumber
-                          const enrolled = !!reg && enrolledRegnumbers.has(reg)
                           const isSelected = !!reg && selected.has(reg)
-                          const rowClass = enrolled
-                            ? 'bg-emerald-50/40 dark:bg-emerald-500/5 border-l-[3px] border-l-emerald-400'
-                            : isSelected
-                              ? 'bg-brand/5 dark:bg-brand/10 border-l-[3px] border-l-brand'
-                              : 'hover:bg-ink-50 dark:hover:bg-ink-700/20 border-l-[3px] border-l-transparent'
+                          const rowClass = isSelected
+                            ? 'bg-brand/5 dark:bg-brand/10 border-l-[3px] border-l-brand'
+                            : 'hover:bg-ink-50 dark:hover:bg-ink-700/20 border-l-[3px] border-l-transparent'
                           return (
                             <tr key={s.id ?? reg} className={`transition-colors ${rowClass}`}>
                               <td className="px-3 py-2 text-center">
-                                {enrolled ? (
-                                  <span
-                                    className="w-4 h-4 rounded-full inline-flex items-center justify-center bg-emerald-500 text-white"
-                                    title="Already enrolled"
-                                  >
-                                    <Check className="w-3 h-3" />
-                                  </span>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    className={`w-4 h-4 rounded border inline-flex items-center justify-center ${isSelected ? 'bg-brand border-brand text-white' : 'border-ink-300 dark:border-ink-600'}`}
-                                    onClick={() => reg && toggleStudent(reg)}
-                                  >
-                                    {isSelected && <Check className="w-3 h-3" />}
-                                  </button>
-                                )}
+                                <button
+                                  type="button"
+                                  className={`w-4 h-4 rounded border inline-flex items-center justify-center ${isSelected ? 'bg-brand border-brand text-white' : 'border-ink-300 dark:border-ink-600'}`}
+                                  onClick={() => reg && toggleStudent(reg)}
+                                >
+                                  {isSelected && <Check className="w-3 h-3" />}
+                                </button>
                               </td>
-                              <td className={`px-3 py-2 font-mono ${enrolled ? 'text-emerald-800 dark:text-emerald-200' : 'text-ink-900 dark:text-white'}`}>
+                              <td className="px-3 py-2 font-mono text-ink-900 dark:text-white">
                                 {reg || '—'}
                               </td>
-                              <td className={`px-3 py-2 ${enrolled ? 'text-emerald-800 dark:text-emerald-200' : ''}`}>
+                              <td className="px-3 py-2">
                                 {s.fname} {s.lname}
                               </td>
                               <td className="px-3 py-2 text-ink-500">L{s.current_level ?? '—'}</td>
                               <td className="px-3 py-2 text-right">
-                                {enrolled ? (
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-[11px] font-semibold border border-emerald-200 dark:border-emerald-500/30">
-                                    <Check className="w-3 h-3" /> Enrolled
-                                  </span>
-                                ) : (
-                                  <button
-                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-brand text-white text-[11px] font-semibold hover:bg-brand-700 disabled:opacity-50 transition-colors"
-                                    disabled={singleEnroll.isPending || !reg}
-                                    onClick={() => reg && singleEnroll.mutate(reg)}
-                                  >
-                                    <Plus className="w-3 h-3" /> Enroll
-                                  </button>
-                                )}
+                                <button
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-brand text-white text-[11px] font-semibold hover:bg-brand-700 disabled:opacity-50 transition-colors"
+                                  disabled={singleEnroll.isPending || !reg}
+                                  onClick={() => reg && singleEnroll.mutate(reg)}
+                                >
+                                  <Plus className="w-3 h-3" /> Enroll
+                                </button>
                               </td>
                             </tr>
                           )

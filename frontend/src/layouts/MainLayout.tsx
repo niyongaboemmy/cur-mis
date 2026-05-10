@@ -42,7 +42,13 @@ import { useCurrentUser } from "@/hooks/useAuth";
 import { useSystemBasics } from "@/hooks/useSystemBasics";
 import { PERMISSIONS } from "@/constants";
 
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import {
+  Link,
+  NavLink,
+  Outlet,
+  useLocation,
+  type Location,
+} from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { useAuthStore } from "@/store/authStore";
 
@@ -269,6 +275,62 @@ const NAV_TREE: NavNode[] = [
           PERMISSIONS.MANAGE_ACADEMIC_TERMS,
         ],
       },
+      {
+        to: "/academic/settings?tab=faculties",
+        label: "Faculties",
+        permissions: [
+          PERMISSIONS.MANAGE_ACADEMIC_YEARS,
+          PERMISSIONS.MANAGE_ACADEMIC_TERMS,
+        ],
+      },
+      {
+        to: "/academic/settings?tab=departments",
+        label: "Departments",
+        permissions: [
+          PERMISSIONS.MANAGE_ACADEMIC_YEARS,
+          PERMISSIONS.MANAGE_ACADEMIC_TERMS,
+        ],
+      },
+      {
+        to: "/academic/settings?tab=options",
+        label: "Programs",
+        permissions: [
+          PERMISSIONS.MANAGE_ACADEMIC_YEARS,
+          PERMISSIONS.MANAGE_ACADEMIC_TERMS,
+        ],
+      },
+      {
+        to: "/academic/settings?tab=modules",
+        label: "Modules / Courses",
+        permissions: [
+          PERMISSIONS.MANAGE_ACADEMIC_YEARS,
+          PERMISSIONS.MANAGE_ACADEMIC_TERMS,
+        ],
+      },
+      {
+        to: "/academic/settings?tab=scheduling",
+        label: "Scheduling",
+        permissions: [
+          PERMISSIONS.MANAGE_ACADEMIC_YEARS,
+          PERMISSIONS.MANAGE_ACADEMIC_TERMS,
+        ],
+      },
+      {
+        to: "/academic/settings?tab=registrations",
+        label: "Registrations",
+        permissions: [
+          PERMISSIONS.MANAGE_ACADEMIC_YEARS,
+          PERMISSIONS.MANAGE_ACADEMIC_TERMS,
+        ],
+      },
+      {
+        to: "/academic/settings?tab=years-terms",
+        label: "Years & terms",
+        permissions: [
+          PERMISSIONS.MANAGE_ACADEMIC_YEARS,
+          PERMISSIONS.MANAGE_ACADEMIC_TERMS,
+        ],
+      },
     ],
   },
   {
@@ -321,7 +383,7 @@ const NAV_TREE: NavNode[] = [
     icon: ClipboardList,
     permissions: [PERMISSIONS.MANAGE_EXAMS],
     children: [
-      { to: "/exams", label: "Exam schedule" },
+      { to: "/exams", label: "Exam schedules" },
       { to: "/exams/results", label: "Results" },
     ],
   },
@@ -550,6 +612,28 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
 
 const STORAGE_KEY = "cur-mis-sidebar-collapsed";
 
+/**
+ * Match a child link's `to` (which may carry a query string, e.g.
+ * `/academic/settings?tab=faculties`) against the current router location.
+ * Path must match exactly, and every query param declared on the child must
+ * appear with the same value on the current URL — extra params on the URL
+ * (e.g. filters, page) don't break the match.
+ */
+function childMatchesLocation(
+  childTo: string,
+  location: Pick<Location, "pathname" | "search">,
+): boolean {
+  const [path, query = ""] = childTo.split("?");
+  if (location.pathname !== path) return false;
+  if (!query) return true;
+  const want = new URLSearchParams(query);
+  const have = new URLSearchParams(location.search);
+  for (const [k, v] of want) {
+    if (have.get(k) !== v) return false;
+  }
+  return true;
+}
+
 /* ------------------------------------------------------------------ */
 
 export default function MainLayout() {
@@ -574,7 +658,7 @@ export default function MainLayout() {
   const initiallyOpen = useMemo<Set<string>>(() => {
     const set = new Set<string>();
     for (const node of [...NAV_TREE, ...ADMIN_TREE]) {
-      if (node.children?.some((c) => c.to === location.pathname))
+      if (node.children?.some((c) => childMatchesLocation(c.to, location)))
         set.add(node.id);
     }
     return set;
@@ -587,7 +671,7 @@ export default function MainLayout() {
     setOpenIds((prev) => {
       for (const node of [...NAV_TREE, ...ADMIN_TREE]) {
         if (
-          node.children?.some((c) => c.to === location.pathname) &&
+          node.children?.some((c) => childMatchesLocation(c.to, location)) &&
           !prev.has(node.id)
         ) {
           const next = new Set(prev);
@@ -597,7 +681,7 @@ export default function MainLayout() {
       }
       return prev;
     });
-  }, [location.pathname]);
+  }, [location.pathname, location.search]);
 
   // Close mobile drawer on route change
   useEffect(() => {
@@ -969,8 +1053,8 @@ const NavNodeItem = memo(function NavNodeItem({
 
   // When collapsed, treat groups as an "icon-only" button — click goes to first child.
   if (collapsed) {
-    const hasActiveChild = node.children.some(
-      (c) => c.to === location.pathname,
+    const hasActiveChild = node.children.some((c) =>
+      childMatchesLocation(c.to, location),
     );
     return (
       <NavLink
@@ -988,7 +1072,9 @@ const NavNodeItem = memo(function NavNodeItem({
   }
 
   // Expanded group
-  const hasActiveChild = node.children.some((c) => c.to === location.pathname);
+  const hasActiveChild = node.children.some((c) =>
+    childMatchesLocation(c.to, location),
+  );
 
   return (
     <div>
@@ -1014,18 +1100,19 @@ const NavNodeItem = memo(function NavNodeItem({
             className="overflow-hidden"
           >
             <div className="mt-0.5 mb-1 space-y-0.5">
-              {node.children.map((child) => (
-                <NavLink
-                  key={child.to}
-                  to={child.to}
-                  end
-                  className={({ isActive }) =>
-                    `nav-sublink ${isActive ? "nav-sublink-active" : "nav-sublink-idle"}`
-                  }
-                >
-                  {child.label}
-                </NavLink>
-              ))}
+              {node.children.map((child) => {
+                const isActive = childMatchesLocation(child.to, location);
+                return (
+                  <Link
+                    key={child.to}
+                    to={child.to}
+                    aria-current={isActive ? "page" : undefined}
+                    className={`nav-sublink ${isActive ? "nav-sublink-active" : "nav-sublink-idle"}`}
+                  >
+                    {child.label}
+                  </Link>
+                );
+              })}
             </div>
           </motion.div>
         )}
