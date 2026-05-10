@@ -125,6 +125,11 @@ const NAV_TREE: NavNode[] = [
         label: "Alumni",
         permissions: [PERMISSIONS.VIEW_STUDENTS],
       },
+      {
+        to: "/documents/generate",
+        label: "Generate Documents",
+        permissions: [PERMISSIONS.GENERATE_DOCUMENTS],
+      },
     ],
   },
   {

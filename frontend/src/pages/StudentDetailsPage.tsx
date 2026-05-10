@@ -1,4 +1,4 @@
-import { useParams, Link, useLocation } from "react-router-dom";
+import { useParams, Link, useLocation, useNavigate } from "react-router-dom";
 import ModalPortal from "@/components/ui/ModalPortal";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { studentService } from "@/services/studentService";
@@ -55,6 +55,7 @@ import {
   Camera,
   PlusCircle,
   MinusCircle,
+  FileOutput,
 } from "lucide-react";
 import { createPortal } from "react-dom";
 
@@ -81,6 +82,7 @@ export default function StudentDetailsPage({
 }: StudentDetailsPageProps = {}) {
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
+  const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>("overview");
   const [isEditing, setIsEditing] = useState(false);
 
@@ -175,13 +177,22 @@ export default function StudentDetailsPage({
               {student.fname} {student.lname}
             </h1>
             {!selfMode && (
-              <button
-                onClick={() => setIsEditing(true)}
-                className="btn-secondary btn-sm flex items-center gap-1.5 h-7 px-2.5"
-              >
-                <Edit className="w-3.5 h-3.5" />
-                <span>Edit</span>
-              </button>
+              <>
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="btn-secondary btn-sm flex items-center gap-1.5 h-7 px-2.5"
+                >
+                  <Edit className="w-3.5 h-3.5" />
+                  <span>Edit</span>
+                </button>
+                <button
+                  onClick={() => navigate(`/documents/generate?student_id=${student.id}`)}
+                  className="btn-secondary btn-sm flex items-center gap-1.5 h-7 px-2.5"
+                >
+                  <FileOutput className="w-3.5 h-3.5" />
+                  <span>Generate Documents</span>
+                </button>
+              </>
             )}
           </div>
           <p className="text-sm text-ink-500 mt-1 flex items-center gap-3">

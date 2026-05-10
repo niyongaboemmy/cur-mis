@@ -71,6 +71,9 @@ export const PERMISSIONS = {
   // Applicant self-service
   MANAGE_OWN_PROFILE: 'MANAGE_OWN_PROFILE',
 
+  // Document Generation
+  GENERATE_DOCUMENTS: 'GENERATE_DOCUMENTS',
+
   // Messaging (seeded in migration 036)
   SEND_MESSAGES:      'SEND_MESSAGES',
   MANAGE_MESSAGES:    'MANAGE_MESSAGES',

@@ -23,6 +23,7 @@ import UsersManagementPage from "@/pages/admin/UsersManagementPage";
 // University Modules
 import StudentsPage from "@/pages/StudentsPage";
 import StudentDetailsPage from "@/pages/StudentDetailsPage";
+import DocumentGenerationPage from "@/pages/DocumentGenerationPage";
 import AttendancePage from "@/pages/AttendancePage";
 
 // HR Management
@@ -163,6 +164,16 @@ function App() {
               >
                 <Route path="/students" element={<StudentsPage />} />
                 <Route path="/students/:id" element={<StudentDetailsPage />} />
+              </Route>
+
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={PERMISSIONS.GENERATE_DOCUMENTS}
+                  />
+                }
+              >
+                <Route path="/documents/generate" element={<DocumentGenerationPage />} />
               </Route>
 
               <Route

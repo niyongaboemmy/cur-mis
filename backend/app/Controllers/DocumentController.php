@@ -1,0 +1,96 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Controllers;
+
+use Core\Request;
+use Core\Response;
+use App\Helpers\DocumentHelper;
+
+class DocumentController extends BaseController
+{
+    private const ALLOWED_TYPES = [
+        'to_whom_visa',
+        'admission_letter',
+        'registration_form',
+    ];
+
+    /**
+     * Return the document HTML as JSON so the frontend can render it via srcdoc.
+     * GET /api/documents/preview?student_id=&document_type=&token=
+     */
+    public function preview(Request $request, Response $response): never
+    {
+        [$studentId, $documentType] = $this->validated($request, $response);
+
+        $student = DocumentHelper::fetchStudentData($studentId);
+        if (!$student) {
+            $this->error($response, 'Student not found.', 404);
+        }
+
+        $html = match ($documentType) {
+            'to_whom_visa'      => DocumentHelper::buildVisaLetter($student, preview: true),
+            'admission_letter'  => DocumentHelper::buildAdmissionLetter($student, preview: true),
+            'registration_form' => DocumentHelper::buildRegistrationForm($student, preview: true),
+        };
+
+        $this->success($response, ['html' => $html], 'Preview generated.');
+    }
+
+    /**
+     * Stream the document as a PDF (inline in the browser tab).
+     * GET /api/documents/download?student_id=&document_type=&token=
+     */
+    public function download(Request $request, Response $response): never
+    {
+        [$studentId, $documentType] = $this->validated($request, $response);
+
+        $student = DocumentHelper::fetchStudentData($studentId);
+        if (!$student) {
+            $this->error($response, 'Student not found.', 404);
+        }
+
+        $reg = preg_replace('/[^A-Za-z0-9_-]/', '', $student['regnumber'] ?? "s{$studentId}");
+
+        [$html, $filename] = match ($documentType) {
+            'to_whom_visa'      => [
+                DocumentHelper::buildVisaLetter($student),
+                "visa-letter-{$reg}.pdf",
+            ],
+            'admission_letter'  => [
+                DocumentHelper::buildAdmissionLetter($student),
+                "admission-letter-{$reg}.pdf",
+            ],
+            'registration_form' => [
+                DocumentHelper::buildRegistrationForm($student),
+                "registration-form-{$reg}.pdf",
+            ],
+        };
+
+        DocumentHelper::stream($html, $filename);
+    }
+
+    // ─── Internal helpers ─────────────────────────────────────────────────────
+
+    /** Validate common query params; exits with 422 on failure. */
+    private function validated(Request $request, Response $response): array
+    {
+        $studentId    = (int) ($request->query('student_id') ?? 0);
+        $documentType = trim((string) ($request->query('document_type') ?? ''));
+
+        if ($studentId <= 0) {
+            $this->error($response, 'student_id is required.', 422);
+        }
+
+        if (!\in_array($documentType, self::ALLOWED_TYPES, true)) {
+            $this->error(
+                $response,
+                'Invalid document_type. Allowed: ' . implode(', ', self::ALLOWED_TYPES),
+                422
+            );
+        }
+
+        return [$studentId, $documentType];
+    }
+}

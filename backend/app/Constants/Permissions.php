@@ -80,6 +80,9 @@ class Permissions
     public const ACCESS_APPLICANT_PORTAL = 'ACCESS_APPLICANT_PORTAL';
     public const ACCESS_STUDENT_PORTAL = 'ACCESS_STUDENT_PORTAL';
 
+    // Document Generation
+    public const GENERATE_DOCUMENTS = 'GENERATE_DOCUMENTS';
+
     // Applicant self-service
     public const MANAGE_OWN_PROFILE = 'MANAGE_OWN_PROFILE';
 
@@ -145,6 +148,7 @@ class Permissions
             self::MANAGE_CLEARANCE,
             self::ACCESS_APPLICANT_PORTAL,
             self::ACCESS_STUDENT_PORTAL,
+            self::GENERATE_DOCUMENTS,
             self::MANAGE_OWN_PROFILE,
         ];
     }
