@@ -16,6 +16,16 @@ class ExceptionHandler
 {
     public static function register(): void
     {
+        // Write all error_log() output to the app's own log file instead of
+        // the shared server log, so errors from this app are easy to isolate.
+        if (\defined('BASE_PATH')) {
+            $logDir = BASE_PATH . '/logs';
+            if (!is_dir($logDir)) {
+                mkdir($logDir, 0755, true);
+            }
+            ini_set('error_log', $logDir . '/app.log');
+        }
+
         // Catch uncaught exceptions
         set_exception_handler([static::class, 'handleException']);
 
@@ -35,18 +45,28 @@ class ExceptionHandler
     {
         $debug = ($_ENV['APP_DEBUG'] ?? 'false') === 'true';
 
-        $status  = 500;
+        // Always write the full error to the server log (visible in cPanel Error Log)
+        error_log(sprintf(
+            '[%s] %s: %s in %s on line %d',
+            date('Y-m-d H:i:s'),
+            get_class($e),
+            $e->getMessage(),
+            $e->getFile(),
+            $e->getLine()
+        ));
+
+        $status = 500;
         $message = 'An internal server error occurred.';
 
         // Map known exception types to appropriate HTTP status codes
         $map = [
             \InvalidArgumentException::class => [400, $e->getMessage()],
-            \RuntimeException::class         => [500, $debug ? $e->getMessage() : 'Server error.'],
+            \RuntimeException::class => [500, $debug ? $e->getMessage() : 'Server error.'],
         ];
 
         foreach ($map as $class => [$code, $msg]) {
             if ($e instanceof $class) {
-                $status  = $code;
+                $status = $code;
                 $message = $msg;
                 break;
             }
@@ -57,10 +77,10 @@ class ExceptionHandler
         if ($debug) {
             $payload['debug'] = [
                 'exception' => get_class($e),
-                'message'   => $e->getMessage(),
-                'file'      => $e->getFile(),
-                'line'      => $e->getLine(),
-                'trace'     => array_slice(
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => array_slice(
                     explode("\n", $e->getTraceAsString()),
                     0,
                     10
@@ -79,14 +99,23 @@ class ExceptionHandler
         if ($error && in_array($error['type'], [E_ERROR, E_CORE_ERROR, E_COMPILE_ERROR, E_PARSE], true)) {
             $debug = ($_ENV['APP_DEBUG'] ?? 'false') === 'true';
 
+            error_log(sprintf(
+                '[%s] Fatal PHP error (type %d): %s in %s on line %d',
+                date('Y-m-d H:i:s'),
+                $error['type'],
+                $error['message'],
+                $error['file'],
+                $error['line']
+            ));
+
             $payload = ['success' => false, 'message' => 'Fatal server error.'];
 
             if ($debug) {
                 $payload['debug'] = [
-                    'type'    => $error['type'],
+                    'type' => $error['type'],
                     'message' => $error['message'],
-                    'file'    => $error['file'],
-                    'line'    => $error['line'],
+                    'file' => $error['file'],
+                    'line' => $error['line'],
                 ];
             }
 
