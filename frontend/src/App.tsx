@@ -1,5 +1,5 @@
 import { Routes, Route } from "react-router-dom";
-import { useEffect, Suspense, lazy } from "react";
+import { useEffect, Suspense } from "react";
 import MainLayout from "@/layouts/MainLayout";
 import ProtectedRoute from "@/components/layout/ProtectedRoute";
 import ErrorBoundary from "@/components/layout/ErrorBoundary";
