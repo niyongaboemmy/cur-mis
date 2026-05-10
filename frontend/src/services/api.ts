@@ -57,13 +57,22 @@ export const api = {
     apiClient.post<ApiResponse<T>>(url, body, { signal }).then((r) => r.data),
 
   put: <T>(url: string, body?: unknown, signal?: AbortSignal) =>
-    apiClient.put<ApiResponse<T>>(url, body, { signal }).then((r) => r.data),
+    apiClient.post<ApiResponse<T>>(url, body, {
+      signal,
+      headers: { 'X-HTTP-Method-Override': 'PUT' },
+    }).then((r) => r.data),
 
   patch: <T>(url: string, body?: unknown, signal?: AbortSignal) =>
-    apiClient.patch<ApiResponse<T>>(url, body, { signal }).then((r) => r.data),
+    apiClient.post<ApiResponse<T>>(url, body, {
+      signal,
+      headers: { 'X-HTTP-Method-Override': 'PATCH' },
+    }).then((r) => r.data),
 
   delete: <T>(url: string, signal?: AbortSignal) =>
-    apiClient.delete<ApiResponse<T>>(url, { signal }).then((r) => r.data),
+    apiClient.post<ApiResponse<T>>(url, {}, {
+      signal,
+      headers: { 'X-HTTP-Method-Override': 'DELETE' },
+    }).then((r) => r.data),
 
   /** Multipart POST — pass a FormData body. Axios sets the correct
    *  `multipart/form-data; boundary=...` automatically when Content-Type is omitted. */
