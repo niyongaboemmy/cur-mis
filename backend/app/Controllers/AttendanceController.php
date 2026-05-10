@@ -110,6 +110,55 @@ class AttendanceController extends BaseController
      * "Modules I teach" — drives the picker in the Record tab
      * ═══════════════════════════════════════════════════════════════════ */
 
+    /**
+     * GET /api/attendance/scheduled-blocks
+     * Returns every module_offerings block (flat, across all programmes
+     * and modes) with module / programme / instructor labels joined in.
+     * Powers the attendance landing table — same shape the Module
+     * scheduling page consumes per programme, but unfiltered so
+     * attendance can show the entire timetable at once.
+     */
+    public function listScheduledBlocks(Request $request, Response $response): never
+    {
+        // Optional permissive filters in case we want to drill in later.
+        $programId = (int) ($request->query('program_id') ?? 0);
+        $mode      = trim((string) ($request->query('mode') ?? ''));
+
+        $where    = [];
+        $bindings = [];
+        if ($programId > 0) {
+            $where[]    = 'mo.option_id = ?';
+            $bindings[] = $programId;
+        }
+        if ($mode !== '') {
+            $where[]    = 'mo.`mode` = ?';
+            $bindings[] = $mode;
+        }
+        $whereSql = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
+
+        $rows = $this->db->fetchAll(
+            "SELECT mo.id AS block_id, mo.module_id, mo.option_id,
+                    m.module_code, m.module_name, m.level,
+                    o.name AS program_name, o.code AS program_code, o.acro AS program_acro,
+                    mo.start_date, mo.end_date, mo.semesters, mo.academic_year,
+                    mo.day_of_week, mo.day_pattern,
+                    mo.start_time, mo.end_time,
+                    mo.activity, mo.`mode`,
+                    mo.year_of_study, mo.campus_id,
+                    COALESCE(e.full_name, mo.instructor_name) AS instructor_name,
+                    mo.instructor_id
+             FROM `module_offerings` mo
+             JOIN `modules`  m ON m.module_id = mo.module_id
+             LEFT JOIN `options`     o ON o.id = mo.option_id
+             LEFT JOIN `hr_employees` e ON e.id = mo.instructor_id
+             {$whereSql}
+             ORDER BY mo.start_date ASC, mo.start_time ASC, m.module_code ASC",
+            $bindings,
+        );
+
+        $this->success($response, ['rows' => $rows, 'count' => count($rows)], 'Scheduled blocks fetched.');
+    }
+
     public function myTeachableModules(Request $request, Response $response): never
     {
         $termId = (int) ($request->query('academic_term_id') ?? 0);
@@ -667,6 +716,24 @@ class AttendanceController extends BaseController
     /* ══════════════════════════════════════════════════════════════════════
      * Per-student summary (used on StudentDetailsPage)
      * ═══════════════════════════════════════════════════════════════════ */
+
+    /** Same as `studentSummary` but takes a numeric student id, used so the
+     *  caller doesn't have to URL-encode regnumbers that contain slashes. */
+    public function studentSummaryById(Request $request, Response $response): never
+    {
+        $id = (int) $request->param('id');
+        if ($id <= 0) {
+            $this->error($response, 'student id required', 422);
+        }
+        $row = $this->db->fetchOne('SELECT regnumber FROM `student` WHERE id = ? LIMIT 1', [$id]);
+        if (!$row || empty($row['regnumber'])) {
+            $this->error($response, 'Student not found.', 404);
+        }
+        // Hand off to the regnumber-based handler by injecting the resolved
+        // value into the route params bag the controller reads from.
+        $request->setRouteParams(['regnumber' => (string) $row['regnumber']]);
+        $this->studentSummary($request, $response);
+    }
 
     public function studentSummary(Request $request, Response $response): never
     {

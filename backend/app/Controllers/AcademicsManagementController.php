@@ -1151,7 +1151,7 @@ class AcademicsManagementController extends BaseController
         $offeringRows = $moduleModel->db()->fetchAll(
             "SELECT mo.id, mo.module_id, mo.start_date, mo.end_date, mo.semesters,
                     mo.academic_year, mo.mode_order,
-                    mo.day_of_week, mo.start_time, mo.end_time,
+                    mo.day_of_week, mo.day_pattern, mo.start_time, mo.end_time,
                     mo.instructor_id, mo.activity, mo.instructor_name, mo.year_of_study,
                     mo.campus_id,
                     e.full_name AS instructor_full_name
@@ -1165,6 +1165,13 @@ class AcademicsManagementController extends BaseController
         foreach ($offeringRows as $o) {
             $mid = (int)$o['module_id'];
             $blocksByModule[$mid] ??= [];
+            // Prefer the multi-day `day_pattern` when present; fall back to
+            // the legacy single-day `day_of_week` so rows saved before this
+            // feature still surface a value.
+            $dayPattern = trim((string)($o['day_pattern'] ?? '')) ?: null;
+            if (!$dayPattern && $o['day_of_week'] !== null) {
+                $dayPattern = (string)(int)$o['day_of_week'];
+            }
             $blocksByModule[$mid][] = [
                 'id'              => (int)$o['id'],
                 'start_date'      => $o['start_date']    ?? null,
@@ -1172,6 +1179,7 @@ class AcademicsManagementController extends BaseController
                 'semesters'       => $o['semesters']     ?? null,
                 'academic_year'   => $o['academic_year'] ?? null,
                 'day_of_week'     => isset($o['day_of_week']) && $o['day_of_week'] !== null ? (int)$o['day_of_week'] : null,
+                'day_pattern'     => $dayPattern,
                 'start_time'      => $o['start_time']  ?? null,
                 'end_time'        => $o['end_time']    ?? null,
                 'instructor_id'   => isset($o['instructor_id']) && $o['instructor_id'] !== null ? (int)$o['instructor_id'] : null,
@@ -1297,9 +1305,24 @@ class AcademicsManagementController extends BaseController
             $instructorRaw = trim((string)($s['instructor_name'] ?? '')) ?: null;
             $academicYear  = trim((string)($s['academic_year']   ?? '')) ?: null;
 
-            $dayOfWeek  = isset($s['day_of_week']) && $s['day_of_week'] !== '' && $s['day_of_week'] !== null
-                ? (int)$s['day_of_week'] : null;
-            if ($dayOfWeek !== null && ($dayOfWeek < 1 || $dayOfWeek > 7)) $dayOfWeek = null;
+            // `day_pattern` is the source of truth (a comma-separated list
+            // of ISO day numbers, 1=Mon … 7=Sun). The legacy `day_of_week`
+            // is derived from it for back-compat: first day of the pattern
+            // when single-day, NULL otherwise.
+            $rawPattern = trim((string)($s['day_pattern'] ?? ''));
+            if ($rawPattern === '' && isset($s['day_of_week']) && $s['day_of_week'] !== '' && $s['day_of_week'] !== null) {
+                $rawPattern = (string)(int)$s['day_of_week'];
+            }
+            $patternDays = [];
+            foreach (explode(',', $rawPattern) as $tok) {
+                $n = (int)trim($tok);
+                if ($n >= 1 && $n <= 7 && !in_array($n, $patternDays, true)) {
+                    $patternDays[] = $n;
+                }
+            }
+            sort($patternDays);
+            $dayPattern = $patternDays === [] ? null : implode(',', $patternDays);
+            $dayOfWeek  = count($patternDays) === 1 ? $patternDays[0] : null;
             $startTime    = $cleanTime($s['start_time'] ?? null);
             $endTime      = $cleanTime($s['end_time']   ?? null);
             $instructorId = isset($s['instructor_id']) && $s['instructor_id'] !== '' && $s['instructor_id'] !== null
@@ -1327,6 +1350,7 @@ class AcademicsManagementController extends BaseController
                 'end_date'        => $endDate,
                 'semesters'       => $semesters,
                 'day_of_week'     => $dayOfWeek,
+                'day_pattern'     => $dayPattern,
                 'start_time'      => $startTime,
                 'end_time'        => $endTime,
                 'instructor_id'   => $instructorId,
@@ -1507,7 +1531,10 @@ class AcademicsManagementController extends BaseController
             // Subquery dedupes module_offerings into one row per module
             // inside the program — admins only need one entry per module
             // to schedule its exam, regardless of how many teaching
-            // blocks exist.
+            // blocks exist. The `registered_count` correlated subquery
+            // surfaces how many students have actually registered for
+            // this module (by exam term when set, else any term) so
+            // the exam list can show the cohort size at a glance.
             $rows = $this->models['exam_schedules']->db()->fetchAll(
                 "SELECT
                     es.id,
@@ -1523,7 +1550,13 @@ class AcademicsManagementController extends BaseController
                     o.name AS option_name, o.acro AS option_acro, o.code AS option_code,
                     COALESCE(esc.name, moc.name) AS campus_name,
                     t.label AS term_label,
-                    mo.mode_label
+                    mo.mode_label,
+                    (
+                        SELECT COUNT(*) FROM `module_registrations` mr
+                        WHERE mr.module_id = mo.module_id
+                          AND mr.status    = 'registered'
+                          AND (es.term_id IS NULL OR mr.academic_term_id = es.term_id)
+                    ) AS registered_count
                  FROM (
                     SELECT module_id, option_id,
                            MIN(academic_year) AS academic_year,
@@ -1583,7 +1616,13 @@ class AcademicsManagementController extends BaseController
                     o.code      AS option_code,
                     c.name      AS campus_name,
                     t.label     AS term_label,
-                    NULL        AS mode_label
+                    NULL        AS mode_label,
+                    (
+                        SELECT COUNT(*) FROM `module_registrations` mr
+                        WHERE mr.module_id = es.module_id
+                          AND mr.status    = 'registered'
+                          AND (es.term_id IS NULL OR mr.academic_term_id = es.term_id)
+                    ) AS registered_count
                  FROM `exam_schedules` es
                  JOIN `modules`      m ON m.module_id = es.module_id
                  LEFT JOIN `options` o ON o.id        = es.option_id
@@ -1625,6 +1664,7 @@ class AcademicsManagementController extends BaseController
                 'campus_name'     => $r['campus_name']    ?? null,
                 'term_label'      => $r['term_label']     ?? null,
                 'mode_label'      => $r['mode_label']     ?? null,
+                'registered_count' => isset($r['registered_count']) ? (int)$r['registered_count'] : 0,
             ];
         }
         $this->success($response, ['rows' => $out, 'count' => count($out)], 'Exams fetched.');
@@ -1732,61 +1772,21 @@ class AcademicsManagementController extends BaseController
         $exam['fac_acronym']  = null;
         $exam['fac_code']     = null;
 
-        // Resolve the legacy std_option ids that map to the EXAM'S program
-        // (not all programs containing the module). Without this constraint
-        // the fallback would pull students from every program that lists
-        // the module in `module_programs`, which is what was leaking
-        // EMC/EBC/EMB students into an MCS exam list.
+        // Roster comes from `module_registrations` — formally enrolled
+        // students for this specific module / term. We deliberately do
+        // NOT scope by the exam's option_id: shared / service modules
+        // (e.g. English Skills taught for MCS but also Bio+Chem) need to
+        // surface every cross-programme enrollee on the same attendance
+        // sheet. Each student carries their own programme label below
+        // so the exam invigilator can still tell who is from where.
         //
-        // Match on either acronym OR exact name — the live `dep_options`
-        // sometimes carries an older/abbreviated acronym (e.g. "MC" for
-        // what `options.acro` now stores as "MCS") so the acro-only join
-        // would silently return zero rows and the fallback would skip the
-        // program filter entirely.
-        $examOptionId = $exam['option_id'] !== null ? (int)$exam['option_id'] : 0;
-        $examOptStdIds = [];
-        if ($examOptionId > 0) {
-            $rows = $db->fetchAll(
-                "SELECT DISTINCT do.op_id
-                 FROM `dep_options` do, `options` o
-                 WHERE o.id = ?
-                   AND (do.option_acronym = o.acro OR do.option_name = o.name)",
-                [$examOptionId],
-            );
-            $examOptStdIds = array_values(array_filter(array_map(
-                fn($r) => (string)($r['op_id'] ?? ''), $rows,
-            ), fn($v) => $v !== ''));
-
-            // Students enrolled via the new admissions flow store
-            // `student.std_option = options.id` directly (not the legacy
-            // `dep_options.op_id` resolved above). Include the new id so
-            // the post-migration cohort isn't dropped from the roster.
-            if (!in_array((string)$examOptionId, $examOptStdIds, true)) {
-                $examOptStdIds[] = (string)$examOptionId;
-            }
-        }
-
-        // Roster comes ONLY from `module_registrations` — formally enrolled
-        // students for this specific module. No fallback to "all program
-        // students" or "all department students": being in MCS does not
-        // mean a student sits the MCS exam. If nothing is registered yet,
-        // the sheet legitimately renders empty.
-        //
-        // The program-scope filter (st.std_option IN ...) protects modules
-        // that are shared across programs from returning the wrong cohort.
         // The term filter is applied when an exam term is set; otherwise
         // we accept registrations across terms (still scoped to module).
-        $roster = [];
         $args  = [$moduleId];
         $where = "mr.module_id = ? AND mr.status = 'registered'";
         if ($termId !== null) {
             $where .= " AND mr.academic_term_id = ?";
             $args[] = $termId;
-        }
-        if (count($examOptStdIds) > 0) {
-            $placeholders = implode(',', array_fill(0, count($examOptStdIds), '?'));
-            $where .= " AND st.std_option IN ($placeholders)";
-            array_push($args, ...$examOptStdIds);
         }
         $roster = $db->fetchAll(
             "SELECT st.regnumber, st.fname, st.lname,
@@ -1800,13 +1800,27 @@ class AcademicsManagementController extends BaseController
             $args,
         );
 
-        // Resolve the program acronym for each student. Cached lookup so the
-        // same op_id isn't resolved twice.
+        // Resolve the program acronym for each student. Some students have
+        // their `std_option` stored as the legacy `dep_options.op_id`, others
+        // (post-migration cohorts) store the new `options.id` directly — we
+        // try both so cross-programme rows always show a meaningful label.
         $optionLabelByOpId = [];
         $resolveOptionLabel = function ($opId) use ($db, &$optionLabelByOpId) {
             $key = (string)$opId;
             if ($key === '') return null;
             if (array_key_exists($key, $optionLabelByOpId)) return $optionLabelByOpId[$key];
+            // Prefer options.acro / options.code / options.name when std_option
+            // is numeric (post-migration enrollments).
+            if (ctype_digit($key)) {
+                $row = $db->fetchOne(
+                    "SELECT acro, code, name FROM options WHERE id = ? LIMIT 1",
+                    [(int)$key],
+                );
+                if ($row) {
+                    $label = $row['acro'] ?: ($row['code'] ?: $row['name']);
+                    if ($label) return $optionLabelByOpId[$key] = $label;
+                }
+            }
             $row = $db->fetchOne(
                 "SELECT option_acronym FROM dep_options WHERE op_id = ? LIMIT 1",
                 [$key],

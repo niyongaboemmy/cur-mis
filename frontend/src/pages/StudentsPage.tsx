@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useSearchParams, Link } from "react-router-dom";
+import { useSearchParams, Link, useNavigate } from "react-router-dom";
 import {
   Search,
   Loader2,
@@ -184,42 +184,6 @@ function ActiveTab({
         </div>
       </section>
 
-      {/* All students — gender split donut */}
-      {s && s.total > 0 && (() => {
-        const allUnknown = Math.max(0, s.total - s.male - s.female)
-        return (
-          <section className="card p-6">
-            <div className="flex items-start justify-between gap-3 flex-wrap mb-2">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="chip-soft"><GraduationCap className="w-3 h-3" /> All students</span>
-                  <h3 className="text-[15px] font-semibold text-ink-900 dark:text-white">Gender split</h3>
-                </div>
-                <p className="text-[12px] text-ink-500 mt-1">
-                  Every enrolled student — active and inactive. Click a card to open the filtered list.
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-col md:flex-row items-center gap-8">
-              <DonutChart
-                segments={[
-                  { label: 'Male',    value: s.male,      color: '#0A2A5E' },
-                  { label: 'Female',  value: s.female,    color: '#F5C400' },
-                  { label: 'Unknown', value: allUnknown,  color: '#94A3B8' },
-                ]}
-                centerTop="Total"
-                centerBig={s.total.toLocaleString()}
-              />
-              <div className="flex-1 w-full grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <LegendCard label="Male"          value={s.male}      percent={pct(s.male, s.total)}      color="#0A2A5E" onClick={() => onDrill({ student_state: 'all', gender: 'M' })} />
-                <LegendCard label="Female"        value={s.female}    percent={pct(s.female, s.total)}    color="#F5C400" onClick={() => onDrill({ student_state: 'all', gender: 'F' })} />
-                <LegendCard label="Not specified" value={allUnknown}  percent={pct(allUnknown, s.total)}  color="#94A3B8" onClick={() => onDrill({ student_state: 'all', gender: 'unknown' })} />
-              </div>
-            </div>
-          </section>
-        )
-      })()}
-
       {/* Active students — gender split donut */}
       {s && activeGenderTot > 0 && (
         <section className="card p-6">
@@ -382,6 +346,22 @@ function ActiveTab({
               color="#10B981"
               onPick={(r) =>
                 onDrill({ student_state: "active", program: r.value })
+              }
+            />
+            <BreakdownChart
+              title="By campus"
+              rows={s.active_breakdown?.by_campus}
+              color="#8B5CF6"
+              onPick={(r) =>
+                onDrill({ student_state: "active", campus: r.value })
+              }
+            />
+            <BreakdownChart
+              title="By intake"
+              rows={s.active_breakdown?.by_intake}
+              color="#F97316"
+              onPick={(r) =>
+                onDrill({ student_state: "active", intake: r.value })
               }
             />
           </div>
@@ -565,6 +545,8 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
   // the backend can resolve it through the permissive std_option matcher,
   // catching legacy student rows that don't have the canonical option id set.
   const program = sp.get("program") ?? "";
+  const campus = sp.get("campus") ?? "";
+  const intake = sp.get("intake") ?? "";
   const sort_by = sp.get("sort_by") ?? "";
   const sort_dir = (sp.get("sort_dir") as "asc" | "desc") ?? "desc";
   const page = Math.max(1, Number(sp.get("page") || 1));
@@ -626,6 +608,8 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
       department: department || undefined,
       current_level: level || undefined,
       acc_year: selectedYear || undefined,
+      campus: campus || undefined,
+      intake: intake || undefined,
       sort_by: sort_by || undefined,
       sort_dir: sort_dir || undefined,
     };
@@ -639,6 +623,8 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
     level,
     selectedYear,
     program,
+    campus,
+    intake,
     sort_by,
     sort_dir,
   ]);
@@ -660,6 +646,8 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
     department,
     level,
     program,
+    campus,
+    intake,
   ].filter(Boolean).length;
 
   /* ── Filter option lists ──
@@ -881,6 +869,7 @@ function StudentRow({
   s: Student;
   searchParams?: URLSearchParams;
 }) {
+  const navigate = useNavigate();
   const name = [s.fname, s.lname].filter(Boolean).join(" ") || "—";
   const initials = name
     .split(" ")
@@ -891,8 +880,26 @@ function StudentRow({
   const photoSrc = s.photo
     ? studentService.photoUrl(s.id, s.photo as string)
     : null;
+
+  const open = () =>
+    navigate(`/students/${s.id}`, {
+      state: { fromSearch: searchParams?.toString() },
+    });
+
+  // Cmd/Ctrl-click and middle-click should open in a new tab; the inner Link
+  // handles those natively, so we only intercept plain clicks on the row.
+  const onRowClick = (e: React.MouseEvent<HTMLTableRowElement>) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+    if ((e.target as HTMLElement).closest("a,button")) return;
+    open();
+  };
+
   return (
-    <tr>
+    <tr
+      onClick={onRowClick}
+      className="cursor-pointer hover:bg-ink-50/60 dark:hover:bg-ink-800/40 transition-colors"
+      title="Open student"
+    >
       <td>
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-md bg-brand/10 text-brand dark:bg-brand/25 dark:text-gold-400 flex items-center justify-center font-semibold text-[12px] shrink-0 overflow-hidden">
@@ -949,7 +956,7 @@ function StudentRow({
         <Link
           to={`/students/${s.id}`}
           state={{ fromSearch: searchParams?.toString() }}
-          className="btn-secondary btn-sm px-3 py-1.5 rounded-md text-ink-600 dark:text-ink-300 hover:text-brand flex items-center gap-1.5 whitespace-nowrap"
+          className="btn-secondary btn-sm px-3 py-1.5 rounded-md text-ink-600 dark:text-ink-300 hover:text-brand inline-flex items-center gap-1.5 whitespace-nowrap"
           title="View Student"
         >
           <Eye className="w-3.5 h-3.5" />

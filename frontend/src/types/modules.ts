@@ -85,12 +85,18 @@ export interface ModuleRegistration {
   registered_at?:    string
   dropped_at?:       string | null
   // joined
-  module_code?:      string
-  module_name?:      string
-  module_credits?:   number
-  student_fname?:    string
-  student_lname?:    string
-  term_label?:       string
+  module_code?:           string
+  module_name?:           string
+  module_credits?:        number
+  student_id?:            number | null
+  student_fname?:         string
+  student_lname?:         string
+  student_std_option?:    string | null
+  student_current_level?: string | null
+  student_intake?:        string | null
+  student_program_name?:  string | null
+  student_program_code?:  string | null
+  term_label?:            string
 }
 
 export interface CreateModulePayload {

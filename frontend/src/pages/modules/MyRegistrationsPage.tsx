@@ -1,28 +1,45 @@
-import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, Loader2, GraduationCap, Calendar, ClipboardList, Download } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
+import { CalendarClock, CheckCircle2, Loader2, GraduationCap, Calendar, ClipboardList, Download } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { myModulesService } from '@/services/modulesService'
+import { myModulesService, type MyExamRow } from '@/services/modulesService'
 import { academicService } from '@/services/academicService'
 import { marksService } from '@/services/marksService'
 import type { ModuleRegistration } from '@/types/modules'
 
-type Tab = 'available' | 'mine' | 'marks'
+type Tab = 'available' | 'mine' | 'exams' | 'marks'
+
+const VALID_TABS: readonly Tab[] = ['available', 'mine', 'exams', 'marks'] as const
 
 export default function MyRegistrationsPage() {
   const qc = useQueryClient()
 
+  const [sp, setSp] = useSearchParams()
+
   const termsQ = useQuery({ queryKey: ['academic', 'terms'], queryFn: () => academicService.listTerms() })
   const terms = termsQ.data?.data ?? []
-  const [termId, setTermId] = useState<number>(0)
-  useEffect(() => {
-    if (!termId && terms.length) {
-      const current = terms.find((t: any) => t.is_current) ?? terms[0]
-      setTermId(current.id)
-    }
-  }, [terms, termId])
+  const termIdParam = Number(sp.get('term_id') || 0)
+  const termId = termIdParam > 0
+    ? termIdParam
+    : Number((terms.find((t: any) => t.is_current) ?? terms[0])?.id ?? 0)
+  const setTermId = (id: number) => {
+    const next = new URLSearchParams(sp)
+    if (id > 0) next.set('term_id', String(id))
+    else        next.delete('term_id')
+    setSp(next, { replace: true })
+  }
 
-  const [tab, setTab] = useState<Tab>('available')
+  // Tab is driven by the URL so the sidebar can deep-link "My modules"
+  // (mine), "My exams" and "My results" (marks) at the right tab.
+  const tabParam = sp.get('tab') as Tab | null
+  const tab: Tab = tabParam && (VALID_TABS as readonly string[]).includes(tabParam)
+    ? tabParam
+    : 'available'
+  const setTab = (t: Tab) => {
+    const next = new URLSearchParams(sp)
+    next.set('tab', t)
+    setSp(next, { replace: true })
+  }
 
   const eligibleQ = useQuery({
     queryKey: ['my-modules', 'eligible', termId],
@@ -34,6 +51,12 @@ export default function MyRegistrationsPage() {
     queryKey: ['my-modules', 'registrations', termId],
     queryFn: () => myModulesService.registrations({ term_id: termId }),
     enabled: !!termId && tab === 'mine',
+  })
+
+  const examsQ = useQuery({
+    queryKey: ['my-modules', 'exams', termId],
+    queryFn: () => myModulesService.exams({ term_id: termId }),
+    enabled: !!termId && tab === 'exams',
   })
 
   const register = useMutation({
@@ -67,6 +90,7 @@ export default function MyRegistrationsPage() {
 
   const eligible = eligibleQ.data?.data ?? []
   const mine: ModuleRegistration[] = mineQ.data?.data ?? []
+  const exams: MyExamRow[] = examsQ.data?.data ?? []
   const marksData = marksQ.data?.data
   const marksRows = marksData?.rows ?? []
   const marksTotals = marksData?.totals
@@ -103,6 +127,12 @@ export default function MyRegistrationsPage() {
           <GraduationCap className="w-3.5 h-3.5 inline mr-1" /> My registrations
         </button>
         <button
+          className={`px-3 py-1.5 text-[13px] rounded-md ${tab === 'exams' ? 'bg-brand/10 text-brand font-semibold' : 'text-ink-600'}`}
+          onClick={() => setTab('exams')}
+        >
+          <CalendarClock className="w-3.5 h-3.5 inline mr-1" /> My exams
+        </button>
+        <button
           className={`px-3 py-1.5 text-[13px] rounded-md ${tab === 'marks' ? 'bg-brand/10 text-brand font-semibold' : 'text-ink-600'}`}
           onClick={() => setTab('marks')}
         >
@@ -119,6 +149,12 @@ export default function MyRegistrationsPage() {
           canDownload={(marksTotals?.modules ?? 0) > 0}
           onDownload={() => downloadTranscript.mutate()}
         />
+      ) : tab === 'exams' ? (
+        !termId ? (
+          <div className="card p-8 text-center text-ink-400">Pick an academic term to continue.</div>
+        ) : (
+          <MyExamsTab loading={examsQ.isLoading} rows={exams} />
+        )
       ) : !termId ? (
         <div className="card p-8 text-center text-ink-400">Pick an academic term to continue.</div>
       ) : tab === 'available' ? (
@@ -198,6 +234,96 @@ export default function MyRegistrationsPage() {
                       <span className="text-ink-300 text-[12px]">—</span>
                     )}
                   </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ─── My Exams tab ───────────────────────────────────────────────────── */
+
+function MyExamsTab({ loading, rows }: { loading: boolean; rows: MyExamRow[] }) {
+  if (loading) {
+    return <div className="card p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-brand" /></div>
+  }
+  if (rows.length === 0) {
+    return (
+      <div className="card p-8 text-center text-ink-400">
+        You have no scheduled exams for this term yet. Once your registrar publishes the exam timetable for a module
+        you are registered to, it will show up here.
+      </div>
+    )
+  }
+
+  // Scheduled (date present) come first, then unscheduled.
+  const scheduled   = rows.filter((r) => !!r.exam_date)
+  const unscheduled = rows.filter((r) =>  !r.exam_date)
+
+  return (
+    <div className="space-y-4">
+      <div className="card overflow-hidden">
+        <div className="px-4 py-2 border-b border-ink-100 dark:border-ink-700 bg-ink-50 dark:bg-ink-800/40 text-[12px] font-semibold text-ink-700 dark:text-ink-200">
+          Scheduled exams ({scheduled.length})
+        </div>
+        {scheduled.length === 0 ? (
+          <div className="p-6 text-center text-ink-400 text-[12px]">No exam dates have been published yet.</div>
+        ) : (
+          <table className="w-full text-left text-[13px]">
+            <thead>
+              <tr className="bg-ink-50/60 dark:bg-ink-800/30 border-b border-ink-100 dark:border-ink-700">
+                <th className="px-3 py-2 font-bold text-ink-400 text-[10px] uppercase">Code</th>
+                <th className="px-3 py-2 font-bold text-ink-400 text-[10px] uppercase">Module</th>
+                <th className="px-3 py-2 font-bold text-ink-400 text-[10px] uppercase">Term</th>
+                <th className="px-3 py-2 font-bold text-ink-400 text-[10px] uppercase">Component</th>
+                <th className="px-3 py-2 font-bold text-ink-400 text-[10px] uppercase">Date</th>
+                <th className="px-3 py-2 font-bold text-ink-400 text-[10px] uppercase">Time</th>
+                <th className="px-3 py-2 font-bold text-ink-400 text-[10px] uppercase">Campus</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-ink-100 dark:divide-ink-700">
+              {scheduled.map((r) => (
+                <tr key={`${r.module_id}-${r.exam_id ?? 'pending'}`} className="hover:bg-ink-50/50 dark:hover:bg-ink-700/20">
+                  <td className="px-3 py-2 font-mono">{r.module_code}</td>
+                  <td className="px-3 py-2">{r.module_name}</td>
+                  <td className="px-3 py-2 text-ink-500">{r.term_label ?? '—'}</td>
+                  <td className="px-3 py-2 capitalize">{r.component ?? '—'}</td>
+                  <td className="px-3 py-2 font-semibold">{r.exam_date}</td>
+                  <td className="px-3 py-2">
+                    {r.start_time ? `${r.start_time}${r.end_time ? ` – ${r.end_time}` : ''}` : '—'}
+                  </td>
+                  <td className="px-3 py-2 text-ink-500">{r.campus_name ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {unscheduled.length > 0 && (
+        <div className="card overflow-hidden">
+          <div className="px-4 py-2 border-b border-ink-100 dark:border-ink-700 bg-ink-50 dark:bg-ink-800/40 text-[12px] font-semibold text-ink-700 dark:text-ink-200">
+            Awaiting schedule ({unscheduled.length})
+          </div>
+          <table className="w-full text-left text-[13px]">
+            <thead>
+              <tr className="bg-ink-50/60 dark:bg-ink-800/30 border-b border-ink-100 dark:border-ink-700">
+                <th className="px-3 py-2 font-bold text-ink-400 text-[10px] uppercase">Code</th>
+                <th className="px-3 py-2 font-bold text-ink-400 text-[10px] uppercase">Module</th>
+                <th className="px-3 py-2 font-bold text-ink-400 text-[10px] uppercase">Term</th>
+                <th className="px-3 py-2 font-bold text-ink-400 text-[10px] uppercase">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-ink-100 dark:divide-ink-700">
+              {unscheduled.map((r) => (
+                <tr key={`${r.module_id}-pending`}>
+                  <td className="px-3 py-2 font-mono">{r.module_code}</td>
+                  <td className="px-3 py-2">{r.module_name}</td>
+                  <td className="px-3 py-2 text-ink-500">{r.term_label ?? '—'}</td>
+                  <td className="px-3 py-2 text-ink-400 italic">Not yet scheduled</td>
                 </tr>
               ))}
             </tbody>

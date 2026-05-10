@@ -92,7 +92,53 @@ class ModuleModel extends BaseModel
         $moduleIds = array_map(static fn ($r) => (int)$r['module_id'], $rows);
         $offerings = $this->aggregateOfferings($moduleIds);
 
-        $withRels = array_map(function (array $row) use ($offerings) {
+        // When the caller is browsing modules for a specific programme, flag
+        // which of those modules actually have a teaching block for that
+        // programme. We accept either a `module_offerings` row for the
+        // option (the canonical curriculum signal used by the student
+        // profile / exam screens) OR a `module_schedules` row (falls back
+        // to room-level timetabling), so an admin who's only filled one of
+        // the two screens still sees an accurate "Scheduled" badge.
+        $hasProgramFilter = !empty($filters['program']);
+        $scheduledIds = [];
+        $modesByModule = []; // module_id => ['Day', 'Evening', ...]
+        if ($hasProgramFilter && !empty($moduleIds)) {
+            $idsPh = implode(',', array_fill(0, count($moduleIds), '?'));
+            $programId = (int)$filters['program'];
+
+            // Pull every offering for this (program, module set) so we can
+            // both flag is_scheduled AND surface the distinct modes the
+            // module is delivered in (Day / Evening / Weekend / Holiday).
+            $offRows = $this->db->fetchAll(
+                "SELECT module_id, mode
+                 FROM `module_offerings`
+                 WHERE option_id = ? AND module_id IN ($idsPh)",
+                array_merge([$programId], $moduleIds),
+            );
+            foreach ($offRows as $r) {
+                $mid = (int)$r['module_id'];
+                $scheduledIds[$mid] = true;
+                $mode = trim((string)($r['mode'] ?? ''));
+                if ($mode === '') continue;
+                $modesByModule[$mid] ??= [];
+                if (!in_array($mode, $modesByModule[$mid], true)) {
+                    $modesByModule[$mid][] = $mode;
+                }
+            }
+
+            // module_schedules has no option_id, so we just check existence
+            // by module — if an admin has put a session on the timetable
+            // we count it as scheduled regardless of which programme owns it.
+            $schRows = $this->db->fetchAll(
+                "SELECT DISTINCT module_id
+                 FROM `module_schedules`
+                 WHERE module_id IN ($idsPh)",
+                $moduleIds,
+            );
+            foreach ($schRows as $r) $scheduledIds[(int)$r['module_id']] = true;
+        }
+
+        $withRels = array_map(function (array $row) use ($offerings, $scheduledIds, $modesByModule, $hasProgramFilter) {
             $row['prerequisites'] = $this->prereqsFor((int)$row['module_id']);
             $row['programs']      = $this->programsFor((int)$row['module_id']);
             $row['levels']        = $this->levelsFor((int)$row['module_id']);
@@ -100,6 +146,15 @@ class ModuleModel extends BaseModel
             $row['programs_count'] = $agg['programs_count'] ?? 0;
             $row['orders_used']    = $agg['orders_used']    ?? '';
             $row['min_order']      = $agg['min_order']      ?? null;
+            // Always emitted as a real boolean when the caller filtered by
+            // program (even if every module is unscheduled), so the frontend
+            // can rely on it. Null only when no program filter is in play.
+            $row['is_scheduled']    = $hasProgramFilter
+                ? !empty($scheduledIds[(int)$row['module_id']])
+                : null;
+            $row['offering_modes']  = $hasProgramFilter
+                ? array_values($modesByModule[(int)$row['module_id']] ?? [])
+                : null;
             return $row;
         }, $rows);
 

@@ -1,5 +1,5 @@
 import { Routes, Route } from "react-router-dom";
-import { useEffect, Suspense } from "react";
+import { useEffect, Suspense, lazy } from "react";
 import MainLayout from "@/layouts/MainLayout";
 import ProtectedRoute from "@/components/layout/ProtectedRoute";
 import ErrorBoundary from "@/components/layout/ErrorBoundary";
@@ -69,6 +69,7 @@ import MessagesPage from "@/pages/messaging/MessagesPage";
 // Placeholders still in use for modules not yet wired up
 import ExamSchedulesPage from "@/pages/exam/ExamSchedulesPage";
 import ExamResultsPage from "@/pages/exam/ExamResultsPage";
+import DeliberationPage from "@/pages/exam/DeliberationPage";
 
 // Placeholders
 import ProgramsPage from "@/pages/placeholders/ProgramsPage";
@@ -120,7 +121,10 @@ function App() {
               <Route path="/welcome" element={<WelcomePage />} />
               <Route path="/dashboard" element={<AdminDashboardPage />} />
               <Route path="/home" element={<HomePage />} />
-              <Route path="/profile" element={<StudentDetailsPage selfMode />} />
+              <Route
+                path="/profile"
+                element={<StudentDetailsPage selfMode />}
+              />
               <Route path="/messages" element={<MessagesPage />} />
 
               <Route
@@ -568,6 +572,36 @@ function App() {
                   }
                 >
                   <Route path="/logs" element={<LogsPage />} />
+                </Route>
+                <Route
+                  element={
+                    <ProtectedRoute
+                      requiredPermissions={[
+                        PERMISSIONS.MANAGE_EXAMS,
+                        PERMISSIONS.MANAGE_MODULE_SCHEDULES,
+                      ]}
+                    />
+                  }
+                >
+                  <Route path="/exams" element={<ExamSchedulesPage />} />
+                </Route>
+                <Route
+                  element={
+                    <ProtectedRoute
+                      requiredPermissions={[
+                        PERMISSIONS.MANAGE_EXAMS,
+                        PERMISSIONS.VIEW_MODULE_MARKS,
+                        PERMISSIONS.RECORD_MODULE_MARKS,
+                        PERMISSIONS.MANAGE_MODULE_MARKS,
+                      ]}
+                    />
+                  }
+                >
+                  <Route path="/exams/results" element={<ExamResultsPage />} />
+                  <Route
+                    path="/exams/deliberation"
+                    element={<DeliberationPage />}
+                  />
                 </Route>
 
                 {/* Spik-reference placeholder routes — all authenticated users see them. */}

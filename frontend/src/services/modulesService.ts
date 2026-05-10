@@ -112,12 +112,38 @@ export const moduleRegistrationService = {
 }
 
 /* ── Student self-service ────────────────────────────────────────── */
+export interface MyExamRow {
+  module_id:        number
+  module_code:      string
+  module_name:      string
+  module_credits?:  number | null
+  academic_term_id: number
+  term_label?:      string | null
+  exam_id:          number | null
+  component:        string | null
+  exam_date:        string | null
+  start_time:       string | null
+  end_time:         string | null
+  campus_id:        number | null
+  campus_name:      string | null
+  instructor_name:  string | null
+  notes:            string | null
+}
+
 export const myModulesService = {
   eligible: (term_id: number, signal?: AbortSignal) =>
     api.get<Module[]>('/api/modules/my/eligible', { term_id }, signal),
 
   registrations: (params: { term_id?: number } = {}, signal?: AbortSignal) =>
     api.get<ModuleRegistration[]>('/api/modules/my/registrations', params, signal),
+
+  /**
+   * Student-facing exam timetable: every module the user is registered to,
+   * left-joined with `exam_schedules` so modules with no published exam
+   * still surface (with `exam_id: null`). Backed by /api/modules/my/exams.
+   */
+  exams: (params: { term_id?: number } = {}, signal?: AbortSignal) =>
+    api.get<MyExamRow[]>('/api/modules/my/exams', params, signal),
 
   register: (data: SelfRegisterPayload) =>
     api.post<{ id: number }>('/api/modules/my/register', data),

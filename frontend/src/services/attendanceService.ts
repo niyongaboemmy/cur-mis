@@ -185,6 +185,37 @@ export interface SaveRecordsPayload {
   }>
 }
 
+export interface ScheduledBlock {
+  block_id:        number
+  module_id:       number
+  option_id:       number | null
+  module_code:     string
+  module_name:     string
+  level:           number | null
+  program_name:    string | null
+  program_code:    string | null
+  program_acro:    string | null
+  start_date:      string | null
+  end_date:        string | null
+  semesters:       string | null
+  academic_year:   string | null
+  day_of_week:     number | null
+  day_pattern:     string | null
+  start_time:      string | null
+  end_time:        string | null
+  activity:        string | null
+  mode:            string | null
+  year_of_study:   number | null
+  campus_id:       number | null
+  instructor_id:   number | null
+  instructor_name: string | null
+}
+
+export interface ScheduledBlocksResponse {
+  rows:  ScheduledBlock[]
+  count: number
+}
+
 export const attendanceService = {
   overview: (params: {
     academic_term_id?: number | string
@@ -196,6 +227,15 @@ export const attendanceService = {
 
   teachableModules: (params: { academic_term_id?: number | string } = {}) =>
     api.get<TeachableModule[]>('/api/attendance/teachable-modules', params as Record<string, unknown>),
+
+  /** Flat list of every module_offerings block — same data the Module
+   *  scheduling page shows, but unfiltered so the attendance landing
+   *  table can list every scheduled session at once. */
+  scheduledBlocks: (params: { program_id?: number | string; mode?: string } = {}) =>
+    api.get<ScheduledBlocksResponse>(
+      '/api/attendance/scheduled-blocks',
+      params as Record<string, unknown>,
+    ),
 
   listSessions: (params: SessionListParams = {}) =>
     api.get<SessionListResponse>('/api/attendance/sessions', params as Record<string, unknown>),
@@ -227,4 +267,12 @@ export const attendanceService = {
 
   studentSummary: (regnumber: string, params: { academic_term_id?: number | string; limit?: number } = {}) =>
     api.get<StudentAttendanceSummary>(`/api/attendance/students/${regnumber}/summary`, params as Record<string, unknown>),
+
+  /** id-based variant — use when the regnumber may contain slashes (e.g.
+   *  "STD/2026/22699") that would break the path-based route matcher. */
+  studentSummaryById: (studentId: number | string, params: { academic_term_id?: number | string; limit?: number } = {}) =>
+    api.get<StudentAttendanceSummary>(
+      `/api/attendance/students/by-id/${studentId}/summary`,
+      params as Record<string, unknown>,
+    ),
 }

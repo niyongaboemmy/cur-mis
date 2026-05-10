@@ -39,6 +39,38 @@ class StudentController extends BaseController
     }
 
     /**
+     * Resolve the latest admission offer for a student so its admission
+     * letter can be surfaced alongside the uploaded application documents.
+     * Returns null when the student has no offer or when the offer hasn't
+     * had a letter token generated yet (in which case there is nothing to
+     * download).
+     */
+    private function resolveAdmissionOffer(int $studentId): ?array
+    {
+        $row = $this->studentModel->db()->fetchOne(
+            "SELECT ao.id, ao.letter_token, ao.status, ao.letter_sent_at,
+                    sa.application_number
+             FROM `admission_offers` ao
+             LEFT JOIN `student_applications` sa ON sa.id = ao.application_id
+             WHERE ao.student_id = ?
+             ORDER BY ao.id DESC LIMIT 1",
+            [$studentId]
+        );
+
+        if (!$row || empty($row['letter_token'])) {
+            return null;
+        }
+
+        return [
+            'offer_id'           => (int)$row['id'],
+            'letter_token'       => (string)$row['letter_token'],
+            'status'             => $row['status'] ?? null,
+            'letter_sent_at'     => $row['letter_sent_at'] ?? null,
+            'application_number' => $row['application_number'] ?? null,
+        ];
+    }
+
+    /**
      * GET /api/students/:id/documents
      * All documents the student uploaded with their admission application.
      */
@@ -52,18 +84,22 @@ class StudentController extends BaseController
         }
 
         $applicationId = $this->resolveApplicationId($id);
+        $offer         = $this->resolveAdmissionOffer($id);
+
         if (!$applicationId) {
             $this->success($response, [
-                'application_id' => null,
-                'documents'      => [],
+                'application_id'  => null,
+                'documents'       => [],
+                'admission_offer' => $offer,
             ], 'Student has no linked application.');
         }
 
         $documents = $this->docModel->getForApplication($applicationId);
 
         $this->success($response, [
-            'application_id' => $applicationId,
-            'documents'      => $documents,
+            'application_id'  => $applicationId,
+            'documents'       => $documents,
+            'admission_offer' => $offer,
         ], 'Documents fetched successfully.');
     }
 
@@ -151,7 +187,7 @@ class StudentController extends BaseController
         $filterable = [
             'student_state', 'gender', 'faculty', 'department',
             'current_level', 'nationality', 'acc_year', 'program',
-            'std_option',
+            'std_option', 'campus', 'intake',
         ];
 
         foreach ($filterable as $col) {
@@ -304,18 +340,22 @@ class StudentController extends BaseController
         $studentId = (int)$student['id'];
 
         $applicationId = $this->resolveApplicationId($studentId);
+        $offer         = $this->resolveAdmissionOffer($studentId);
+
         if (!$applicationId) {
             $this->success($response, [
-                'application_id' => null,
-                'documents'      => [],
+                'application_id'  => null,
+                'documents'       => [],
+                'admission_offer' => $offer,
             ], 'You have no linked application.');
         }
 
         $documents = $this->docModel->getForApplication($applicationId);
 
         $this->success($response, [
-            'application_id' => $applicationId,
-            'documents'      => $documents,
+            'application_id'  => $applicationId,
+            'documents'       => $documents,
+            'admission_offer' => $offer,
         ], 'Documents fetched successfully.');
     }
 
@@ -498,38 +538,59 @@ class StudentController extends BaseController
             $this->error($response, 'Student not found', 404);
         }
 
-        $errors = ValidationHelper::validate($data, [
-            'fname'      => ['required', 'min:2'],
-            'lname'      => ['required', 'min:2'],
-            'std_option' => ['required'],
-        ]);
+        // PATCH-style: only fields explicitly sent in the body get validated
+        // and persisted. Powers section-by-section saves on the details page,
+        // and stays compatible with the legacy "edit everything" modal which
+        // sends the full payload anyway.
+        $rules = [];
+        if (array_key_exists('fname', $data))      $rules['fname']      = ['required', 'min:2'];
+        if (array_key_exists('lname', $data))      $rules['lname']      = ['required', 'min:2'];
+        if (array_key_exists('std_option', $data)) $rules['std_option'] = ['required'];
+        if (array_key_exists('email', $data))      $rules['email']      = ['email'];
+        if (array_key_exists('marital_status', $data)) $rules['marital_status'] = ['in:single,married,divorced,widowed'];
+        if (array_key_exists('gender', $data))     $rules['gender']     = ['in:M,F,m,f,male,female,Male,Female'];
 
-        if (!empty($errors)) {
-            $this->error($response, 'Validation failed', 422, $errors);
+        if (!empty($rules)) {
+            $errors = ValidationHelper::validate($data, $rules);
+            if (!empty($errors)) {
+                $this->error($response, 'Validation failed', 422, $errors);
+            }
         }
 
-        $option = $this->resolveOption($data['std_option'] ?? null);
-        if (!$option) {
-            $this->error($response, 'Validation failed', 422, ['std_option' => ['Selected program is invalid.']]);
+        // Build the patch from the keys actually present in the request, so a
+        // section update doesn't accidentally null out fields it didn't touch.
+        $patch = [];
+        $stringCols = [
+            'regnumber', 'fname', 'lname', 'phone', 'email', 'gender',
+            'birthdate', 'nationality', 'current_level', 'registration_date',
+            'intake', 'acc_year', 'sponsor', 'marital_status', 'spouse',
+            'disability', 'father', 'mother', 'reference', 'id_card',
+            'country', 'province', 'district', 'sector', 'cell', 'village',
+            'student_state',
+        ];
+        foreach ($stringCols as $col) {
+            if (array_key_exists($col, $data)) {
+                $val = $data[$col];
+                $patch[$col] = is_string($val) ? trim($val) : $val;
+            }
         }
 
-        $this->studentModel->update($id, [
-            'regnumber'         => $data['regnumber'] ?? $student['regnumber'],
-            'fname'             => trim($data['fname']),
-            'lname'             => trim($data['lname']),
-            'phone'             => $data['phone'] ?? null,
-            'email'             => $data['email'] ?? null,
-            'gender'            => $data['gender'] ?? null,
-            'birthdate'         => $data['birthdate'] ?? null,
-            'nationality'       => $data['nationality'] ?? null,
-            'std_option'        => (string)$option['id'],
-            'program'           => $data['program'] ?? $option['name'],
-            'faculty'           => isset($option['faculty_id']) ? (string)$option['faculty_id'] : ($data['faculty'] ?? null),
-            'department'        => isset($option['department_id']) ? (string)$option['department_id'] : ($data['department'] ?? null),
-            'current_level'     => $data['current_level'] ?? null,
-            'registration_date' => $data['registration_date'] ?? null,
-            'student_state'     => $data['student_state'] ?? $student['student_state'],
-        ]);
+        // Programme change recomputes the legacy faculty/department fields
+        // from the chosen option so they stay in sync with the catalog.
+        if (array_key_exists('std_option', $data)) {
+            $option = $this->resolveOption($data['std_option']);
+            if (!$option) {
+                $this->error($response, 'Validation failed', 422, ['std_option' => ['Selected program is invalid.']]);
+            }
+            $patch['std_option'] = (string)$option['id'];
+            $patch['program']    = $data['program'] ?? $option['name'];
+            $patch['faculty']    = isset($option['faculty_id'])    ? (string)$option['faculty_id']    : ($data['faculty']    ?? $student['faculty']);
+            $patch['department'] = isset($option['department_id']) ? (string)$option['department_id'] : ($data['department'] ?? $student['department']);
+        }
+
+        if (!empty($patch)) {
+            $this->studentModel->update($id, $patch);
+        }
 
         $this->success($response, null, 'Student updated successfully.');
     }
@@ -1095,6 +1156,80 @@ class StudentController extends BaseController
             return $ai <=> $bi;
         });
 
+        // Cross-programme registrations: any module the student is registered
+        // to that isn't part of their own programme curriculum. Surfaces
+        // shared / service modules taught from another option (e.g. a Math
+        // student enrolled into a Bio English module) so the profile reflects
+        // every commitment, not just the curriculum view.
+        $curriculumModuleIds = array_map(static fn ($r) => (int)$r['module_id'], $rows);
+        if ($regnumber !== '' && !empty($registrationByModule)) {
+            $extras = [];
+            foreach ($registrationByModule as $mid => $reg) {
+                if (in_array((int)$mid, $curriculumModuleIds, true)) continue;
+                $extras[(int)$mid] = $reg;
+            }
+            if (!empty($extras)) {
+                $ids = array_keys($extras);
+                $ph  = implode(',', array_fill(0, count($ids), '?'));
+                $extraModuleRows = $db->fetchAll(
+                    "SELECT m.module_id, m.module_code, m.module_name, m.module_credits, m.level
+                     FROM `modules` m
+                     WHERE m.module_id IN ($ph)",
+                    $ids,
+                );
+                $extraModules = [];
+                foreach ($extraModuleRows as $er) {
+                    $mid   = (int)$er['module_id'];
+                    $reg   = $extras[$mid] ?? null;
+                    $marks = $marksByModule[$mid] ?? null;
+                    $extraModules[] = [
+                        'module_id'      => $mid,
+                        'module_code'    => (string)$er['module_code'],
+                        'module_name'    => (string)$er['module_name'],
+                        'module_credits' => $er['module_credits'] !== null ? (float)$er['module_credits'] : null,
+                        'module_order'   => null,
+                        'is_scheduled'   => false,
+                        'schedule'       => null,
+                        'registration'   => $reg ? [
+                            'id'               => (int)$reg['registration_id'],
+                            'status'           => (string)$reg['status'],
+                            'grade'            => $reg['grade']            ?? null,
+                            'academic_term_id' => isset($reg['academic_term_id']) ? (int)$reg['academic_term_id'] : null,
+                            'term_label'       => $reg['term_label']       ?? null,
+                            'year_label'       => $reg['year_label']       ?? null,
+                            'registered_at'    => $reg['registered_at']    ?? null,
+                        ] : null,
+                        'marks'          => $marks ? [
+                            'mark_id'          => isset($marks['mark_id']) ? (int)$marks['mark_id'] : null,
+                            'cat_marks'        => $marks['cat_marks'],
+                            'assignment_marks' => $marks['assignment_marks'],
+                            'exam_marks'       => $marks['exam_marks'],
+                            'cat_max'          => $marks['cat_max'],
+                            'assignment_max'   => $marks['assignment_max'],
+                            'exam_max'         => $marks['exam_max'],
+                            'total'            => $marks['total'],
+                            'percentage'       => $marks['percentage'],
+                            'grade'            => $marks['grade'],
+                            'remarks'          => $marks['remarks'],
+                            'is_exempted'      => isset($marks['is_exempted']) ? (bool)(int)$marks['is_exempted'] : false,
+                            'exemption_reason' => $marks['exemption_reason'] ?? null,
+                            'academic_term_id' => isset($marks['academic_term_id']) ? (int)$marks['academic_term_id'] : null,
+                            'term_label'       => $marks['term_label']  ?? null,
+                            'year_label'       => $marks['year_label']  ?? null,
+                        ] : null,
+                    ];
+                }
+                if (!empty($extraModules)) {
+                    $sorted[] = [
+                        'level_id'   => null,
+                        'level_name' => 'Other registrations (outside this programme)',
+                        'modules'    => $extraModules,
+                        'is_extra'   => true,
+                    ];
+                }
+            }
+        }
+
         $programOut = [
             'id'            => (int)$program['id'],
             'name'          => (string)$program['name'],
@@ -1531,6 +1666,32 @@ class StudentController extends BaseController
             LIMIT 20
         ", $yearBind);
 
+        // student.campus stores the campuses.id as a varchar — join for a
+        // human-readable label, fall back to the raw value for legacy rows.
+        $byCampus = $db->fetchAll("
+            SELECT s.campus AS value, c.name AS label, COUNT(*) AS total
+            FROM student s
+            LEFT JOIN campuses c ON c.id = s.campus
+            WHERE LOWER(s.student_state) = 'active'
+              AND s.campus IS NOT NULL AND s.campus <> ''
+              {$yearScopeS}
+            GROUP BY s.campus, c.name
+            ORDER BY total DESC
+            LIMIT 20
+        ", $yearBind);
+
+        // student.intake is free-text (the intake name) — group on it directly.
+        $byIntake = $db->fetchAll("
+            SELECT intake AS value, intake AS label, COUNT(*) AS total
+            FROM student
+            WHERE LOWER(student_state) = 'active'
+              AND intake IS NOT NULL AND intake <> ''
+              {$yearScope}
+            GROUP BY intake
+            ORDER BY total DESC
+            LIMIT 20
+        ", $yearBind);
+
         // Distinct filter values joined to their reference tables so labels are human-readable
         // (student.faculty/department/current_level are stored as numeric IDs as VARCHAR).
         $faculties = $db->fetchAll("
@@ -1614,6 +1775,8 @@ class StudentController extends BaseController
                 'by_department' => $byDepartment,
                 'by_level'      => $byLevel,
                 'by_program'    => $byProgram,
+                'by_campus'     => $byCampus,
+                'by_intake'     => $byIntake,
             ],
             // Kept for backwards compatibility with any older client code
             'by_level'         => $byLevel,

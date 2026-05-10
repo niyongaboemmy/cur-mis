@@ -54,6 +54,8 @@ export interface StudentStats {
     by_department: BreakdownRow[]
     by_level:      BreakdownRow[]
     by_program:    BreakdownRow[]
+    by_campus:     BreakdownRow[]
+    by_intake:     BreakdownRow[]
   }
   facets: {
     faculty:       FacetOption[]
@@ -80,6 +82,10 @@ export interface StudentListParams {
   program?:       string
   /** Catalog program (options.id) the student is assigned to. */
   std_option?:    string | number
+  /** Campus filter — matches student.campus (campuses.id stored as varchar). */
+  campus?:        string | number
+  /** Intake name (free-text on student.intake). */
+  intake?:        string
   sort_by?:       string
   sort_dir?:      'asc' | 'desc'
 }
@@ -88,8 +94,8 @@ export interface StudentPayload {
   fname: string
   lname: string
   /** The catalog program (options.id) the student belongs to — required. */
-  std_option: string | number
-  regnumber?: string
+  std_option: string | number | null
+  regnumber?: string | null
   phone?: string | null
   email?: string | null
   gender?: string | null
@@ -103,7 +109,24 @@ export interface StudentPayload {
   current_level?: string | null
   registration_date?: string | null
   student_state?: string | null
+  intake?: string | null
+  acc_year?: string | null
+  sponsor?: string | null
+  marital_status?: string | null
+  father?: string | null
+  mother?: string | null
+  id_card?: string | null
+  country?: string | null
+  disability?: string | null
+  province?: string | null
+  district?: string | null
+  sector?: string | null
+  cell?: string | null
+  village?: string | null
 }
+
+/** Partial of {@link StudentPayload} for section-by-section admin saves. */
+export type StudentPatch = Partial<StudentPayload>
 
 /* ── Program curriculum + marks (student details page) ───────── */
 
@@ -166,6 +189,10 @@ export interface ProgramLevelGroup {
   level_id:   number | null
   level_name: string
   modules:    ProgramModuleRow[]
+  /** True when this is a synthetic group of registrations to modules
+   *  that aren't part of the student's own programme curriculum
+   *  (cross-programme enrollments). */
+  is_extra?:  boolean
 }
 
 export interface ProgramModulesResponse {
@@ -185,6 +212,23 @@ export interface ProgramModulesResponse {
     faculty_id:    number | null
   } | null
   groups: ProgramLevelGroup[]
+}
+
+/** The student's latest admission offer, as far as the documents tab is
+ *  concerned. Only present when an offer exists and has had a letter token
+ *  generated — otherwise there is no PDF to download yet. */
+export interface AdmissionOfferSummary {
+  offer_id:           number
+  letter_token:       string
+  status:             'pending' | 'accepted' | 'declined' | 'expired' | string | null
+  letter_sent_at:     string | null
+  application_number: string | null
+}
+
+export interface StudentDocumentsResponse {
+  application_id:   number | null
+  documents:        ApplicationDocument[]
+  admission_offer:  AdmissionOfferSummary | null
 }
 
 export const studentService = {
@@ -216,9 +260,10 @@ export const studentService = {
     village:        string | null
   }>) => api.put<Student>(`/api/students/me`, data),
 
-  /** Self-service: documents the authenticated student uploaded with their application. */
+  /** Self-service: documents the authenticated student uploaded with their
+   *  application + the admission letter the registrar issued for them. */
   meDocuments: (signal?: AbortSignal) =>
-    api.get<{ application_id: number | null; documents: ApplicationDocument[] }>(
+    api.get<StudentDocumentsResponse>(
       `/api/students/me/documents`, {}, signal,
     ),
 
@@ -236,16 +281,24 @@ export const studentService = {
   create: (data: StudentPayload) =>
     api.post<{ id: number }>('/api/students', data),
 
-  update: (id: number | string, data: StudentPayload) =>
+  update: (id: number | string, data: StudentPayload | StudentPatch) =>
     api.put<void>(`/api/students/${id}`, data),
 
   remove: (id: number | string) =>
     api.delete<void>(`/api/students/${id}`),
 
   listDocuments: (id: number | string, signal?: AbortSignal) =>
-    api.get<{ application_id: number | null; documents: ApplicationDocument[] }>(
+    api.get<StudentDocumentsResponse>(
       `/api/students/${id}/documents`, {}, signal,
     ),
+
+  /** Public token-gated URL for the admission letter PDF. Works for both
+   *  the student themselves and admin staff viewing a student's documents,
+   *  since the token alone authorizes the download (no JWT required). */
+  admissionLetterUrl: (letterToken: string) => {
+    const base = import.meta.env.VITE_API_URL ?? ''
+    return `${base}/api/portal/admission-letter?token=${encodeURIComponent(letterToken)}`
+  },
 
   documentDownloadUrl: (id: number | string, documentId: number | string) => {
     const token = useAuthStore.getState().token

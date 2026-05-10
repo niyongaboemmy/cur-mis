@@ -380,6 +380,10 @@ export const academicsMgmtService = {
          *  the admin can see which modes the module runs in. Null on
          *  program-wide listings. */
         mode_label:      string | null
+        /** Number of students currently registered for this exam's
+         *  module + term (or any term when the exam has no term). Used
+         *  by the exams list to show the cohort size on each row. */
+        registered_count: number
       }>
     }>(`/api/academics-management/exams`, params, signal),
 

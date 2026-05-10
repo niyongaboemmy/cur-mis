@@ -65,6 +65,7 @@ class ModulesManagementController extends BaseController
 
         $filters = [
             'department' => $request->query('department'),
+            'program'    => $request->query('program'),
             'level'      => $request->query('level'),
             'status'     => $request->query('status'),
             'q'          => $request->query('q'),
@@ -550,6 +551,90 @@ class ModulesManagementController extends BaseController
         ]);
 
         $this->success($response, ['id' => $id], 'Registered.', 201);
+    }
+
+    /**
+     * GET /api/modules/my/exams[?term_id=]
+     *
+     * Returns the authenticated student's personal exam timetable: every
+     * registered (status='registered') module joined LEFT against
+     * `exam_schedules` so modules whose registrar hasn't published an exam
+     * date yet still surface (with `exam_id: null`). Filtered to the
+     * matching academic term when one is supplied. Gated on VIEW_MY_MODULES
+     * by the route group, so admins/teachers without a student record will
+     * just get an empty list.
+     */
+    public function myExams(Request $request, Response $response): never
+    {
+        $termId = (int)($request->query('term_id') ?? 0);
+        $reg    = $this->studentRegnumber($request);
+        if (!$reg) {
+            // Same shape as a "no rows" response — keeps the frontend simple
+            // for non-student users (e.g. teachers) who hit this endpoint.
+            $this->success($response, [], 'No student record linked to this account.');
+        }
+
+        $args  = [$reg];
+        $where = ['mr.student_regnumber = ?', "mr.status = 'registered'"];
+        if ($termId > 0) {
+            $where[] = 'mr.academic_term_id = ?';
+            $args[]  = $termId;
+        }
+        $whereSql = 'WHERE ' . implode(' AND ', $where);
+
+        // The exam_schedules join matches on module_id AND (term_id is NULL
+        // OR term_id = mr.academic_term_id) so we don't accidentally pull
+        // an exam scheduled in a different term onto the student's row.
+        $rows = $this->registrations->db()->fetchAll(
+            "SELECT
+                mr.module_id,
+                mr.academic_term_id,
+                m.module_code,
+                m.module_name,
+                m.module_credits,
+                t.label           AS term_label,
+                es.id             AS exam_id,
+                es.component,
+                es.exam_date,
+                es.start_time,
+                es.end_time,
+                es.campus_id,
+                c.name            AS campus_name,
+                es.instructor_name,
+                es.notes
+             FROM `module_registrations` mr
+             JOIN `modules` m            ON m.module_id = mr.module_id
+             LEFT JOIN `academic_terms` t ON t.id        = mr.academic_term_id
+             LEFT JOIN `exam_schedules` es
+                    ON es.module_id = mr.module_id
+                   AND (es.term_id IS NULL OR es.term_id = mr.academic_term_id)
+             LEFT JOIN `campuses` c       ON c.id        = es.campus_id
+             {$whereSql}
+             ORDER BY (es.exam_date IS NULL) ASC, es.exam_date ASC, es.start_time ASC, m.module_code ASC",
+            $args,
+        );
+
+        $out = [];
+        foreach ($rows as $r) {
+            $out[] = [
+                'module_id'        => (int)$r['module_id'],
+                'academic_term_id' => (int)$r['academic_term_id'],
+                'module_code'      => (string)$r['module_code'],
+                'module_name'      => (string)$r['module_name'],
+                'module_credits'   => $r['module_credits'] !== null ? (int)$r['module_credits'] : null,
+                'term_label'       => $r['term_label']      ?? null,
+                'exam_id'          => $r['exam_id'] !== null ? (int)$r['exam_id'] : null,
+                'component'        => $r['component']       ?? null,
+                'exam_date'        => $r['exam_date']       ?? null,
+                'start_time'       => $r['start_time']      ?? null,
+                'end_time'         => $r['end_time']        ?? null,
+                'campus_id'        => $r['campus_id'] !== null ? (int)$r['campus_id'] : null,
+                'campus_name'      => $r['campus_name']     ?? null,
+                'instructor_name'  => $r['instructor_name'] ?? null,
+                'notes'            => $r['notes']           ?? null,
+            ];
+        }
+        $this->success($response, $out, 'My exam timetable fetched.');
     }
 
     public function selfDrop(Request $request, Response $response): never
