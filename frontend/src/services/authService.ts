@@ -35,4 +35,8 @@ export const authService = {
     api.post<null>('/api/auth/change-password', data),
 
   me: () => api.get<AuthUser>('/api/auth/me'),
+
+  /** Self-service profile update — full_name / email / username / phone. */
+  updateMe: (data: { full_name: string; email: string; username: string; phone?: string }) =>
+    api.put<AuthUser>('/api/auth/me', data),
 }

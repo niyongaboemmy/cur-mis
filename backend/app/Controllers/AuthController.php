@@ -232,7 +232,88 @@ class AuthController extends BaseController
     public function me(Request $request, Response $response): never
     {
         $user = $request->param('_auth_user');
+        // Hydrate phone (and any other column not in the JWT) so the
+        // self-service profile form can show the latest persisted values.
+        $userId = (int)($user['id'] ?? 0);
+        if ($userId > 0) {
+            $row = (new \App\Models\UserModel())->find($userId);
+            if ($row) {
+                $user['phone']    = $row['phone']    ?? null;
+                $user['username'] = $row['username'] ?? ($user['username'] ?? '');
+            }
+        }
         $this->success($response, $user, 'Authenticated user.');
+    }
+
+    /**
+     * PUT /api/auth/me
+     * Self-service profile update for the authenticated user. Lets a user
+     * change their own full_name / email / username / phone without
+     * needing MANAGE_USERS. Email and username must remain unique.
+     */
+    public function updateMe(Request $request, Response $response): never
+    {
+        $authUser = $request->param('_auth_user') ?? [];
+        $userId   = (int)($authUser['id'] ?? 0);
+        if ($userId <= 0) {
+            $this->error($response, 'Unauthorized.', 401);
+        }
+
+        $data = array_map(fn($v) => is_string($v) ? trim($v) : $v, $request->body());
+
+        $errors = ValidationHelper::validate($data, [
+            'full_name' => ['required', 'string'],
+            'email'     => ['required', 'email'],
+            'username'  => ['required', 'string'],
+        ]);
+        if (!empty($errors)) {
+            $this->error($response, 'Validation failed.', 422, $errors);
+        }
+
+        $model = new \App\Models\UserModel();
+        $current = $model->find($userId);
+        if (!$current) {
+            $this->error($response, 'User not found.', 404);
+        }
+
+        // Uniqueness checks — only when the value actually changed.
+        $emailNorm = strtolower((string)$data['email']);
+        if ($emailNorm !== strtolower((string)($current['email'] ?? ''))) {
+            $existing = $model->findBy('email', $emailNorm);
+            if ($existing && (int)$existing['id'] !== $userId) {
+                $this->error($response, 'Email is already in use.', 422, ['email' => ['Email is already in use.']]);
+            }
+        }
+        $usernameNorm = (string)$data['username'];
+        if ($usernameNorm !== (string)($current['username'] ?? '')) {
+            $existing = $model->findBy('username', $usernameNorm);
+            if ($existing && (int)$existing['id'] !== $userId) {
+                $this->error($response, 'Username is already in use.', 422, ['username' => ['Username is already in use.']]);
+            }
+        }
+
+        $model->update($userId, [
+            'full_name' => (string)$data['full_name'],
+            'email'     => $emailNorm,
+            'username'  => $usernameNorm,
+            'phone'     => isset($data['phone']) ? (string)$data['phone'] : null,
+        ]);
+
+        // Return the updated user shape the frontend's auth store expects.
+        $fresh = $model->find($userId);
+        $payload = [
+            'id'        => (int)($fresh['id'] ?? $userId),
+            'email'     => $fresh['email']    ?? '',
+            'username'  => $fresh['username'] ?? '',
+            'full_name' => $fresh['full_name']?? '',
+            'phone'     => $fresh['phone']    ?? null,
+            'role_id'   => $fresh['role_id']  ?? null,
+            'role'      => $authUser['role'] ?? null,
+            'role_name' => $authUser['role_name'] ?? null,
+            'permissions'  => $authUser['permissions']  ?? [],
+            'is_applicant' => $authUser['is_applicant'] ?? false,
+        ];
+        $this->success($response, $payload, 'Profile updated.');
     }
 
     /**

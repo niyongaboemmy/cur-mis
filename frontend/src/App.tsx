@@ -73,7 +73,6 @@ import DeliberationPage from "@/pages/exam/DeliberationPage";
 
 // Placeholders
 import ProgramsPage from "@/pages/placeholders/ProgramsPage";
-import ExamsPage from "@/pages/placeholders/ExamsPage";
 import LogsPage from "@/pages/placeholders/LogsPage";
 import ComingSoonPage from "@/pages/placeholders/ComingSoonPage";
 
@@ -483,11 +482,32 @@ function App() {
                   <Route
                     element={
                       <ProtectedRoute
-                        requiredPermissions={PERMISSIONS.MANAGE_EXAMS}
+                        requiredPermissions={[
+                          PERMISSIONS.MANAGE_EXAMS,
+                          PERMISSIONS.MANAGE_MODULE_SCHEDULES,
+                        ]}
                       />
                     }
                   >
-                    <Route path="/exams" element={<ExamsPage />} />
+                    <Route path="/exams" element={<ExamSchedulesPage />} />
+                  </Route>
+                  <Route
+                    element={
+                      <ProtectedRoute
+                        requiredPermissions={[
+                          PERMISSIONS.MANAGE_EXAMS,
+                          PERMISSIONS.VIEW_MODULE_MARKS,
+                          PERMISSIONS.RECORD_MODULE_MARKS,
+                          PERMISSIONS.MANAGE_MODULE_MARKS,
+                        ]}
+                      />
+                    }
+                  >
+                    <Route path="/exams/results" element={<ExamResultsPage />} />
+                    <Route
+                      path="/exams/deliberation"
+                      element={<DeliberationPage />}
+                    />
                   </Route>
 
                   <Route
@@ -501,7 +521,6 @@ function App() {
                   </Route>
 
                   <Route path="/students/new" element={<ComingSoonPage />} />
-                  <Route path="/students/alumni" element={<ComingSoonPage />} />
                   <Route path="/teachers" element={<ComingSoonPage />} />
                   <Route
                     path="/teachers/schedules"
@@ -531,111 +550,10 @@ function App() {
                     <Route path="/attendance" element={<AttendancePage />} />
                   </Route>
 
-                  <Route path="/exams/results" element={<ComingSoonPage />} />
                   <Route path="/notice" element={<ComingSoonPage />} />
                   <Route path="/transport" element={<ComingSoonPage />} />
                   <Route path="/hostel" element={<ComingSoonPage />} />
                 </Route>
-
-                <Route
-                  element={
-                    <ProtectedRoute
-                      requiredPermissions={[
-                        PERMISSIONS.MANAGE_EXAMS,
-                        PERMISSIONS.MANAGE_MODULE_SCHEDULES,
-                      ]}
-                    />
-                  }
-                >
-                  <Route path="/exams" element={<ExamSchedulesPage />} />
-                </Route>
-                <Route
-                  element={
-                    <ProtectedRoute
-                      requiredPermissions={[
-                        PERMISSIONS.MANAGE_EXAMS,
-                        PERMISSIONS.VIEW_MODULE_MARKS,
-                        PERMISSIONS.RECORD_MODULE_MARKS,
-                        PERMISSIONS.MANAGE_MODULE_MARKS,
-                      ]}
-                    />
-                  }
-                >
-                  <Route path="/exams/results" element={<ExamResultsPage />} />
-                </Route>
-
-                <Route
-                  element={
-                    <ProtectedRoute
-                      requiredPermissions={PERMISSIONS.VIEW_SYSTEM_LOGS}
-                    />
-                  }
-                >
-                  <Route path="/logs" element={<LogsPage />} />
-                </Route>
-                <Route
-                  element={
-                    <ProtectedRoute
-                      requiredPermissions={[
-                        PERMISSIONS.MANAGE_EXAMS,
-                        PERMISSIONS.MANAGE_MODULE_SCHEDULES,
-                      ]}
-                    />
-                  }
-                >
-                  <Route path="/exams" element={<ExamSchedulesPage />} />
-                </Route>
-                <Route
-                  element={
-                    <ProtectedRoute
-                      requiredPermissions={[
-                        PERMISSIONS.MANAGE_EXAMS,
-                        PERMISSIONS.VIEW_MODULE_MARKS,
-                        PERMISSIONS.RECORD_MODULE_MARKS,
-                        PERMISSIONS.MANAGE_MODULE_MARKS,
-                      ]}
-                    />
-                  }
-                >
-                  <Route path="/exams/results" element={<ExamResultsPage />} />
-                  <Route
-                    path="/exams/deliberation"
-                    element={<DeliberationPage />}
-                  />
-                </Route>
-
-                {/* Spik-reference placeholder routes — all authenticated users see them. */}
-                <Route path="/students/new" element={<ComingSoonPage />} />
-                <Route path="/students/alumni" element={<ComingSoonPage />} />
-                <Route path="/teachers" element={<ComingSoonPage />} />
-                <Route
-                  path="/teachers/schedules"
-                  element={<ComingSoonPage />}
-                />
-                <Route path="/library" element={<ComingSoonPage />} />
-                <Route path="/account/billing" element={<ComingSoonPage />} />
-                <Route path="/account/salaries" element={<ComingSoonPage />} />
-                <Route path="/class" element={<ComingSoonPage />} />
-                <Route path="/subject" element={<ComingSoonPage />} />
-                <Route path="/routine" element={<ComingSoonPage />} />
-
-                <Route
-                  element={
-                    <ProtectedRoute
-                      requiredPermissions={[
-                        PERMISSIONS.VIEW_ATTENDANCE,
-                        PERMISSIONS.RECORD_ATTENDANCE,
-                        PERMISSIONS.MANAGE_ATTENDANCE,
-                      ]}
-                    />
-                  }
-                >
-                  <Route path="/attendance" element={<AttendancePage />} />
-                </Route>
-
-                <Route path="/notice" element={<ComingSoonPage />} />
-                <Route path="/transport" element={<ComingSoonPage />} />
-                <Route path="/hostel" element={<ComingSoonPage />} />
               </Route>
             </Route>
           </Route>

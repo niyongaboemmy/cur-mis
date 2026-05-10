@@ -14,7 +14,29 @@ import {
 } from '@/services/deliberationService'
 
 const MODULE_COL_COUNT = 6 // CAT/60, FAT/40, TOT/100, CP, Grade, Verdict
-const FIXED_COLS       = ['INTAKE', 'NO', 'SURNAME', 'FIRST NAME', 'SEX', 'REG NUMBER']
+
+// Fixed left columns — pinned (position: sticky) so the student identity
+// stays visible while the user scrolls horizontally through every module.
+// `w` is the column width in pixels; `left` is the cumulative offset from
+// the scroll container's left edge and is computed below. INTAKE is kept
+// in the Excel export below but intentionally omitted from the grid.
+const FIXED_COL_DEFS = [
+  { key: 'NO',         label: 'NO',         w: 40  },
+  { key: 'SURNAME',    label: 'SURNAME',    w: 140 },
+  { key: 'FIRST_NAME', label: 'FIRST NAME', w: 140 },
+  { key: 'SEX',        label: 'SEX',        w: 44  },
+  { key: 'REG_NUMBER', label: 'REG NUMBER', w: 120 },
+] as const
+
+const FIXED_COL_LEFT = FIXED_COL_DEFS.reduce<number[]>((acc, c, i) => {
+  acc.push(i === 0 ? 0 : acc[i - 1] + FIXED_COL_DEFS[i - 1].w)
+  return acc
+}, [])
+
+// Excel export keeps the legacy 6-column layout (INTAKE included) — the
+// xlsx is the place to slice/filter by intake even when the on-screen grid
+// hides it.
+const FIXED_COLS = ['INTAKE', 'NO', 'SURNAME', 'FIRST NAME', 'SEX', 'REG NUMBER']
 
 const num = (v: unknown): number | null => {
   if (v === null || v === undefined || v === '') return null
@@ -232,7 +254,8 @@ export default function DeliberationPage() {
           <h2 className="text-lg font-bold text-ink-900 dark:text-white">Deliberation</h2>
           <p className="text-[13px] text-ink-500">
             Per-program deliberation grid — every active student on the rows,
-            every module they're registered for on the columns.
+            every module in the program's curriculum on the columns. Cells
+            stay empty until a registration & marks exist.
           </p>
         </div>
         <div className="flex gap-2 items-center flex-wrap">
@@ -325,28 +348,46 @@ export default function DeliberationPage() {
         <>
           {modules.length === 0 && (
             <div className="card p-3 text-[12.5px] text-amber-800 bg-amber-50 dark:bg-amber-500/10 dark:text-amber-200 border border-amber-200 dark:border-amber-500/30">
-              No module registrations are linked to these students for the
-              selected academic year{yearLabel ? ` (${yearLabel})` : ''} —
-              showing the student roster only. Once registrations are recorded
-              under <span className="font-mono">Modules → Registrations</span>,
-              their marks will populate here.
+              {stdOption ? (
+                <>
+                  No modules are mapped to this program's curriculum yet —
+                  showing the student roster only. Add modules to the program
+                  under <span className="font-mono">Academics → Modules / Courses</span>,
+                  then they will appear here as columns.
+                </>
+              ) : (
+                <>
+                  Pick a program above to view its curriculum. Without a
+                  program filter the grid falls back to modules students are
+                  registered for{yearLabel ? ` in ${yearLabel}` : ''}, which
+                  is empty for this selection.
+                </>
+              )}
             </div>
           )}
           <div className="card overflow-auto max-h-[700px]">
             <table
               className="w-full text-left text-[11.5px]"
-              style={{ minWidth: modules.length === 0 ? 720 : 1100 + modules.length * 360 }}
+              style={{ minWidth: modules.length === 0 ? 600 : 900 + modules.length * 360 }}
             >
-              <thead className="sticky top-0 z-10">
+              <thead className="sticky top-0 z-20">
                 {/* Module-name row (or single header row when there are no modules) */}
-                <tr className="bg-sky-50 dark:bg-ink-800/60 border-b border-ink-100 dark:border-ink-700">
-                  {FIXED_COLS.map((h) => (
+                <tr className="bg-sky-50 dark:bg-ink-800 border-b border-ink-100 dark:border-ink-700">
+                  {FIXED_COL_DEFS.map((c, i) => (
                     <th
-                      key={h}
+                      key={c.key}
                       rowSpan={modules.length > 0 ? 2 : 1}
-                      className="px-2 py-2 font-bold text-ink-500 text-[10px] uppercase border-r border-ink-100 dark:border-ink-700 align-bottom whitespace-nowrap"
+                      // sticky top + sticky left → corner cell; z-30 keeps it
+                      // above both the column-only sticky body cells (z-10)
+                      // and the row-only sticky header (z-20).
+                      className="sticky top-0 z-30 px-2 py-2 font-bold text-ink-500 text-[10px] uppercase border-r border-ink-100 dark:border-ink-700 align-bottom whitespace-nowrap bg-sky-50 dark:bg-ink-800"
+                      style={{
+                        left:     FIXED_COL_LEFT[i],
+                        width:    c.w,
+                        minWidth: c.w,
+                      }}
                     >
-                      {h}
+                      {c.label}
                     </th>
                   ))}
                   {modules.map((m) => (
@@ -373,16 +414,18 @@ export default function DeliberationPage() {
                     </>
                   )}
                 </tr>
-                {/* Sub-column row only renders when there are modules. */}
+                {/* Sub-column row only renders when there are modules.
+                     Opaque bg so scrolling body rows don't show through under
+                     the sticky header. */}
                 {modules.length > 0 && (
-                  <tr className="bg-sky-50/60 dark:bg-ink-800/40 border-b border-ink-100 dark:border-ink-700">
+                  <tr className="bg-sky-50 dark:bg-ink-800 border-b border-ink-100 dark:border-ink-700">
                     {modules.flatMap((m) => [
-                      <th key={`${m.module_id}-cat`}      className="px-1.5 py-1 font-semibold text-ink-500 text-[9.5px] uppercase text-center border-r border-ink-100 dark:border-ink-700">CAT/60</th>,
-                      <th key={`${m.module_id}-fat`}      className="px-1.5 py-1 font-semibold text-ink-500 text-[9.5px] uppercase text-center border-r border-ink-100 dark:border-ink-700">FAT/40</th>,
-                      <th key={`${m.module_id}-tot`}      className="px-1.5 py-1 font-semibold text-ink-500 text-[9.5px] uppercase text-center border-r border-ink-100 dark:border-ink-700">TOT/100</th>,
-                      <th key={`${m.module_id}-cp`}       className="px-1.5 py-1 font-semibold text-ink-500 text-[9.5px] uppercase text-center border-r border-ink-100 dark:border-ink-700">CP</th>,
-                      <th key={`${m.module_id}-gr`}       className="px-1.5 py-1 font-semibold text-ink-500 text-[9.5px] uppercase text-center border-r border-ink-100 dark:border-ink-700">GR</th>,
-                      <th key={`${m.module_id}-vd`}       className="px-1.5 py-1 font-semibold text-ink-500 text-[9.5px] uppercase text-center border-r border-ink-100 dark:border-ink-700">VD</th>,
+                      <th key={`${m.module_id}-cat`}      className="px-1.5 py-1 font-semibold text-ink-500 text-[9.5px] uppercase text-center border-r border-ink-100 dark:border-ink-700 bg-sky-50 dark:bg-ink-800">CAT/60</th>,
+                      <th key={`${m.module_id}-fat`}      className="px-1.5 py-1 font-semibold text-ink-500 text-[9.5px] uppercase text-center border-r border-ink-100 dark:border-ink-700 bg-sky-50 dark:bg-ink-800">FAT/40</th>,
+                      <th key={`${m.module_id}-tot`}      className="px-1.5 py-1 font-semibold text-ink-500 text-[9.5px] uppercase text-center border-r border-ink-100 dark:border-ink-700 bg-sky-50 dark:bg-ink-800">TOT/100</th>,
+                      <th key={`${m.module_id}-cp`}       className="px-1.5 py-1 font-semibold text-ink-500 text-[9.5px] uppercase text-center border-r border-ink-100 dark:border-ink-700 bg-sky-50 dark:bg-ink-800">CP</th>,
+                      <th key={`${m.module_id}-gr`}       className="px-1.5 py-1 font-semibold text-ink-500 text-[9.5px] uppercase text-center border-r border-ink-100 dark:border-ink-700 bg-sky-50 dark:bg-ink-800">GR</th>,
+                      <th key={`${m.module_id}-vd`}       className="px-1.5 py-1 font-semibold text-ink-500 text-[9.5px] uppercase text-center border-r border-ink-100 dark:border-ink-700 bg-sky-50 dark:bg-ink-800">VD</th>,
                     ])}
                   </tr>
                 )}
@@ -393,15 +436,45 @@ export default function DeliberationPage() {
                   // Number across the full filtered set, not just the page slice.
                   const ordinal = (pagination.page - 1) * pagination.per_page + i + 1
                   return (
-                    <tr key={s.regnumber} className="hover:bg-ink-50/50 dark:hover:bg-ink-700/20">
-                      <td className="px-2 py-1.5 border-r border-ink-100 dark:border-ink-700 whitespace-nowrap text-ink-600 dark:text-ink-300">
-                        {s.intake ?? '—'}
+                    <tr key={s.regnumber} className="group">
+                      {/*
+                        Pinned student-identity columns. Each is `position: sticky`
+                        with an explicit `left` so the column stays put while the
+                        user scrolls horizontally through the modules. Solid bg is
+                        required — otherwise the scrolling module columns bleed
+                        through. z-10 keeps these above unpinned body cells (z-0)
+                        and below the sticky header (z-20 / corner z-30).
+                      */}
+                      <td
+                        className="sticky z-10 px-2 py-1.5 border-r border-ink-100 dark:border-ink-700 text-ink-500 bg-white dark:bg-ink-900 group-hover:bg-ink-50/80 dark:group-hover:bg-ink-700/30"
+                        style={{ left: FIXED_COL_LEFT[0], width: FIXED_COL_DEFS[0].w, minWidth: FIXED_COL_DEFS[0].w }}
+                      >
+                        {ordinal}
                       </td>
-                      <td className="px-2 py-1.5 border-r border-ink-100 dark:border-ink-700 text-ink-500">{ordinal}</td>
-                      <td className="px-2 py-1.5 border-r border-ink-100 dark:border-ink-700 font-medium">{(s.lname ?? '').trim() || '—'}</td>
-                      <td className="px-2 py-1.5 border-r border-ink-100 dark:border-ink-700">{(s.fname ?? '').trim() || '—'}</td>
-                      <td className="px-2 py-1.5 text-center border-r border-ink-100 dark:border-ink-700">{s.sex ?? '—'}</td>
-                      <td className="px-2 py-1.5 font-mono border-r border-ink-100 dark:border-ink-700 whitespace-nowrap">{s.regnumber}</td>
+                      <td
+                        className="sticky z-10 px-2 py-1.5 border-r border-ink-100 dark:border-ink-700 font-medium bg-white dark:bg-ink-900 group-hover:bg-ink-50/80 dark:group-hover:bg-ink-700/30"
+                        style={{ left: FIXED_COL_LEFT[1], width: FIXED_COL_DEFS[1].w, minWidth: FIXED_COL_DEFS[1].w }}
+                      >
+                        {(s.lname ?? '').trim() || '—'}
+                      </td>
+                      <td
+                        className="sticky z-10 px-2 py-1.5 border-r border-ink-100 dark:border-ink-700 bg-white dark:bg-ink-900 group-hover:bg-ink-50/80 dark:group-hover:bg-ink-700/30"
+                        style={{ left: FIXED_COL_LEFT[2], width: FIXED_COL_DEFS[2].w, minWidth: FIXED_COL_DEFS[2].w }}
+                      >
+                        {(s.fname ?? '').trim() || '—'}
+                      </td>
+                      <td
+                        className="sticky z-10 px-2 py-1.5 text-center border-r border-ink-100 dark:border-ink-700 bg-white dark:bg-ink-900 group-hover:bg-ink-50/80 dark:group-hover:bg-ink-700/30"
+                        style={{ left: FIXED_COL_LEFT[3], width: FIXED_COL_DEFS[3].w, minWidth: FIXED_COL_DEFS[3].w }}
+                      >
+                        {s.sex ?? '—'}
+                      </td>
+                      <td
+                        className="sticky z-10 px-2 py-1.5 font-mono border-r border-ink-100 dark:border-ink-700 whitespace-nowrap bg-white dark:bg-ink-900 group-hover:bg-ink-50/80 dark:group-hover:bg-ink-700/30"
+                        style={{ left: FIXED_COL_LEFT[4], width: FIXED_COL_DEFS[4].w, minWidth: FIXED_COL_DEFS[4].w }}
+                      >
+                        {s.regnumber}
+                      </td>
                       {modules.map((m) => {
                         const c = cellFor(s, m.module_id)
                         const exempted = c?.is_exempted

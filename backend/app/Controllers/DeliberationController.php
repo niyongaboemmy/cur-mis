@@ -111,35 +111,87 @@ class DeliberationController extends BaseController
             $stArgs
         );
 
-        // ── Modules in scope: derived from registrations of EVERY filtered
-        //    student (not just the current page) so the column set stays
-        //    identical as the user pages through. Exclude dropped regs.
-        $modArgs = $stArgs;
-        $modSql  = "SELECT DISTINCT m.module_id, m.module_code, m.module_name,
-                                    m.module_credits, m.level
-                    FROM module_registrations mr
-                    JOIN `student` st       ON st.regnumber = mr.student_regnumber
-                    JOIN modules m          ON m.module_id  = mr.module_id
-                    JOIN academic_terms t   ON t.id         = mr.academic_term_id
-                    WHERE $whereClause
-                      AND mr.status <> 'dropped'";
-        if ($yearId > 0) {
-            $modSql   .= " AND t.academic_year_id = ?";
-            $modArgs[] = $yearId;
+        // ── Modules in scope.
+        //
+        //  • When a program is selected the columns become the program's
+        //    full curriculum (every module mapped to that option via
+        //    `module_programs`). This is the deliberation default — the
+        //    grid shows every module a student in that program *should*
+        //    study, regardless of whether they have registered yet, so
+        //    examiners see gaps as empty cells.
+        //
+        //  • When no program is selected we fall back to the legacy
+        //    behaviour (modules derived from registrations) since the
+        //    cartesian "every active student × every module in the
+        //    catalogue" would be unbounded.
+        //
+        //  A `current_level` filter narrows columns to that level (via
+        //  `module_levels` if present, falling back to the legacy
+        //  `modules.level` column).
+        if ($stdOption !== '') {
+            $modArgs = [(int)$stdOption];
+            $modSql  = "SELECT DISTINCT m.module_id, m.module_code, m.module_name,
+                                        m.module_credits, m.level,
+                                        COALESCE(mp.module_order, 9999) AS module_order
+                        FROM module_programs mp
+                        JOIN modules m ON m.module_id = mp.module_id
+                        WHERE mp.option_id = ?
+                          AND m.status <> 'archived'";
+            if ($level !== '') {
+                $modSql   .= " AND (EXISTS (
+                                       SELECT 1 FROM module_levels ml
+                                       WHERE ml.module_id = m.module_id
+                                         AND ml.level_id  = ?
+                                   )
+                                   OR m.level = ?)";
+                $modArgs[] = (int)$level;
+                $modArgs[] = (int)$level;
+            }
+            $modSql .= " ORDER BY m.level ASC, module_order ASC, m.module_code ASC";
+            $modules = $this->db->fetchAll($modSql, $modArgs);
+        } else {
+            $modArgs = $stArgs;
+            $modSql  = "SELECT DISTINCT m.module_id, m.module_code, m.module_name,
+                                        m.module_credits, m.level
+                        FROM module_registrations mr
+                        JOIN `student` st       ON st.regnumber = mr.student_regnumber
+                        JOIN modules m          ON m.module_id  = mr.module_id
+                        JOIN academic_terms t   ON t.id         = mr.academic_term_id
+                        WHERE $whereClause
+                          AND mr.status <> 'dropped'";
+            if ($yearId > 0) {
+                $modSql   .= " AND t.academic_year_id = ?";
+                $modArgs[] = $yearId;
+            }
+            $modSql .= " ORDER BY m.level ASC, m.module_code ASC";
+            $modules = $this->db->fetchAll($modSql, $modArgs);
         }
-        $modSql .= " ORDER BY m.level ASC, m.module_code ASC";
-        $modules = $this->db->fetchAll($modSql, $modArgs);
 
-        // ── Marks for the page's students × every in-scope module (joined
-        //    so a student with a registration but no marks still yields an
-        //    "—" cell).
+        // ── Marks for the page's students × every in-scope module.
+        //    Pulled directly from `module_marks` so a recorded mark surfaces
+        //    even when the matching `module_registrations` row is missing,
+        //    dropped, or recorded in a different term than the marks. The
+        //    in-scope module set is bounded by the modules collected above
+        //    (program curriculum, or registration-derived fallback) so the
+        //    query never explodes across the full catalogue.
+        //
+        //    NOTE: the academic-year filter intentionally does NOT apply
+        //    here. The deliberation view shows marks for every module the
+        //    student has completed (any term, any year), so previously-passed
+        //    modules carry their marks forward into the current year's grid.
+        //    When a student has marks for the same module across multiple
+        //    terms, we order by `academic_term_id ASC` so the foreach below
+        //    overwrites with the latest term — the most recent attempt wins.
         $marksByReg = [];
         if (count($students) > 0 && count($modules) > 0) {
             $regs    = array_column($students, 'regnumber');
             $regHold = implode(',', array_fill(0, count($regs), '?'));
 
-            $marksArgs = $regs;
-            $marksSql  = "SELECT mr.student_regnumber, mr.module_id,
+            $modIds  = array_map(static fn($m) => (int)$m['module_id'], $modules);
+            $modHold = implode(',', array_fill(0, count($modIds), '?'));
+
+            $marksArgs = array_merge($regs, $modIds);
+            $marksSql  = "SELECT mm.student_regnumber, mm.module_id,
                                  mm.cat1, mm.cat2, mm.cat3, mm.partial_exam,
                                  mm.cats_max,
                                  mm.exam_1st_sitting, mm.exam_2nd_sitting,
@@ -147,19 +199,11 @@ class DeliberationController extends BaseController
                                  mm.percentage, mm.grade, mm.decision,
                                  mm.is_exempted,
                                  m.module_credits
-                          FROM module_registrations mr
-                          JOIN modules m         ON m.module_id = mr.module_id
-                          JOIN academic_terms t  ON t.id = mr.academic_term_id
-                          LEFT JOIN module_marks mm
-                                 ON mm.module_id         = mr.module_id
-                                AND mm.student_regnumber = mr.student_regnumber
-                                AND mm.academic_term_id  = mr.academic_term_id
-                          WHERE mr.student_regnumber IN ($regHold)
-                            AND mr.status <> 'dropped'";
-            if ($yearId > 0) {
-                $marksSql   .= " AND t.academic_year_id = ?";
-                $marksArgs[] = $yearId;
-            }
+                          FROM module_marks mm
+                          JOIN modules m ON m.module_id = mm.module_id
+                          WHERE mm.student_regnumber IN ($regHold)
+                            AND mm.module_id IN ($modHold)
+                          ORDER BY mm.academic_term_id ASC";
             $marksRows = $this->db->fetchAll($marksSql, $marksArgs);
 
             foreach ($marksRows as $r) {

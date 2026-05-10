@@ -127,19 +127,9 @@ const NAV_TREE: NavNode[] = [
         permissions: [PERMISSIONS.VIEW_STUDENTS],
       },
       {
-        to: "/students/alumni",
-        label: "Alumni",
-        permissions: [PERMISSIONS.VIEW_STUDENTS],
-      },
-      {
         to: "/documents/generate",
         label: "Generate Documents",
         permissions: [PERMISSIONS.GENERATE_DOCUMENTS],
-      },
-      {
-        to: "/students",
-        label: "All students",
-        permissions: [PERMISSIONS.VIEW_STUDENTS],
       },
     ],
   },
@@ -238,179 +228,29 @@ const NAV_TREE: NavNode[] = [
       PERMISSIONS.MANAGE_MODULE_ASSIGNMENTS,
       PERMISSIONS.MANAGE_MODULE_REGISTRATIONS,
       PERMISSIONS.VIEW_MY_MODULES,
-      PERMISSIONS.ACCESS_STUDENT_PORTAL,
+      PERMISSIONS.VIEW_MODULE_MARKS,
+      PERMISSIONS.RECORD_MODULE_MARKS,
+      PERMISSIONS.MANAGE_MODULE_MARKS,
+      PERMISSIONS.MANAGE_ACADEMIC_YEARS,
+      PERMISSIONS.MANAGE_ACADEMIC_TERMS,
     ],
     children: [
-      {
-        to: "/my-finance",
-        label: "My Finance",
-        permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL],
-      },
-      {
-        to: "/my-modules",
-        label: "My Registrations",
-        permissions: [PERMISSIONS.VIEW_MY_MODULES],
-      },
-      {
-        to: "/modules/catalog",
-        label: "Catalog",
-        permissions: [PERMISSIONS.MANAGE_MODULES],
-      },
-      {
-        to: "/modules/scheduling",
-        label: "Scheduling",
-        permissions: [PERMISSIONS.MANAGE_MODULE_SCHEDULES],
-      },
-      {
-        to: "/modules/assignments",
-        label: "Assignments",
-        permissions: [PERMISSIONS.MANAGE_MODULE_ASSIGNMENTS],
-      },
-      {
-        to: "/modules/registrations",
-        label: "Registrations",
-        permissions: [PERMISSIONS.MANAGE_MODULE_REGISTRATIONS],
-      },
-
-      {
-        to: "/academic/settings",
-        label: "Academic settings",
-        permissions: [
-          PERMISSIONS.MANAGE_ACADEMIC_YEARS,
-          PERMISSIONS.MANAGE_ACADEMIC_TERMS,
-        ],
-      },
-      {
-        to: "/academic/settings?tab=faculties",
-        label: "Faculties",
-        permissions: [
-          PERMISSIONS.MANAGE_ACADEMIC_YEARS,
-          PERMISSIONS.MANAGE_ACADEMIC_TERMS,
-        ],
-      },
-      {
-        to: "/academic/settings?tab=departments",
-        label: "Departments",
-        permissions: [
-          PERMISSIONS.MANAGE_ACADEMIC_YEARS,
-          PERMISSIONS.MANAGE_ACADEMIC_TERMS,
-        ],
-      },
-      {
-        to: "/academic/settings?tab=options",
-        label: "Programs",
-        permissions: [
-          PERMISSIONS.MANAGE_ACADEMIC_YEARS,
-          PERMISSIONS.MANAGE_ACADEMIC_TERMS,
-        ],
-      },
-      {
-        to: "/academic/settings?tab=modules",
-        label: "Modules / Courses",
-        permissions: [
-          PERMISSIONS.MANAGE_ACADEMIC_YEARS,
-          PERMISSIONS.MANAGE_ACADEMIC_TERMS,
-        ],
-      },
-      {
-        to: "/academic/settings?tab=scheduling",
-        label: "Scheduling",
-        permissions: [
-          PERMISSIONS.MANAGE_ACADEMIC_YEARS,
-          PERMISSIONS.MANAGE_ACADEMIC_TERMS,
-        ],
-      },
-      {
-        to: "/academic/settings?tab=registrations",
-        label: "Registrations",
-        permissions: [
-          PERMISSIONS.MANAGE_ACADEMIC_YEARS,
-          PERMISSIONS.MANAGE_ACADEMIC_TERMS,
-        ],
-      },
-      {
-        to: "/academic/settings?tab=years-terms",
-        label: "Years & terms",
-        permissions: [
-          PERMISSIONS.MANAGE_ACADEMIC_YEARS,
-          PERMISSIONS.MANAGE_ACADEMIC_TERMS,
-        ],
-      },
       // Student self-service — opens the same Program & Marks view that
       // lives under /me/profile so the curriculum, registration state and
       // marks are presented identically across both entry points. Hidden
       // from non-students; teachers get the assignment-driven view below.
-      {
-        to: "/me/profile?tab=curriculum",
-        label: "My modules",
-        roles: ["student"],
-        permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL],
-      },
+      { to: "/me/profile?tab=curriculum", label: "My modules",        roles: ["student"], permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL] },
       // Teacher / staff self-service — modules the user is assigned to
       // teach. Skipped for students since they have the curriculum view
       // above; admin/superadmin already see the full management children.
-      {
-        to: "/my-modules?tab=mine",
-        label: "My modules",
-        permissions: [PERMISSIONS.VIEW_MY_MODULES],
-        hideForRoles: ["student", "superadmin", "admin"],
-      },
-      {
-        to: "/academic/settings?tab=faculties",
-        label: "Faculties",
-        permissions: [
-          PERMISSIONS.MANAGE_ACADEMIC_YEARS,
-          PERMISSIONS.MANAGE_ACADEMIC_TERMS,
-        ],
-      },
-      {
-        to: "/academic/settings?tab=departments",
-        label: "Departments",
-        permissions: [
-          PERMISSIONS.MANAGE_ACADEMIC_YEARS,
-          PERMISSIONS.MANAGE_ACADEMIC_TERMS,
-        ],
-      },
-      {
-        to: "/academic/settings?tab=options",
-        label: "Programs",
-        permissions: [
-          PERMISSIONS.MANAGE_ACADEMIC_YEARS,
-          PERMISSIONS.MANAGE_ACADEMIC_TERMS,
-        ],
-      },
-      {
-        to: "/academic/settings?tab=modules",
-        label: "Modules / Courses",
-        permissions: [
-          PERMISSIONS.MANAGE_ACADEMIC_YEARS,
-          PERMISSIONS.MANAGE_ACADEMIC_TERMS,
-        ],
-      },
-      {
-        to: "/academic/settings?tab=scheduling",
-        label: "Scheduling",
-        permissions: [
-          PERMISSIONS.MANAGE_ACADEMIC_YEARS,
-          PERMISSIONS.MANAGE_ACADEMIC_TERMS,
-        ],
-      },
-      {
-        to: "/academic/settings?tab=registrations",
-        label: "Registrations",
-        permissions: [
-          PERMISSIONS.MANAGE_ACADEMIC_YEARS,
-          PERMISSIONS.MANAGE_ACADEMIC_TERMS,
-        ],
-      },
-      {
-        to: "/academic/settings?tab=years-terms",
-        label: "Years & terms",
-        permissions: [
-          PERMISSIONS.MANAGE_ACADEMIC_YEARS,
-          PERMISSIONS.MANAGE_ACADEMIC_TERMS,
-        ],
-      },
+      { to: "/my-modules?tab=mine",                 label: "My modules",        permissions: [PERMISSIONS.VIEW_MY_MODULES], hideForRoles: ["student", "superadmin", "admin"] },
+      { to: "/academic/settings?tab=faculties",     label: "Faculties",         permissions: [PERMISSIONS.MANAGE_ACADEMIC_YEARS, PERMISSIONS.MANAGE_ACADEMIC_TERMS] },
+      { to: "/academic/settings?tab=departments",   label: "Departments",       permissions: [PERMISSIONS.MANAGE_ACADEMIC_YEARS, PERMISSIONS.MANAGE_ACADEMIC_TERMS] },
+      { to: "/academic/settings?tab=options",       label: "Programs",          permissions: [PERMISSIONS.MANAGE_ACADEMIC_YEARS, PERMISSIONS.MANAGE_ACADEMIC_TERMS] },
+      { to: "/academic/settings?tab=modules",       label: "Modules / Courses", permissions: [PERMISSIONS.MANAGE_ACADEMIC_YEARS, PERMISSIONS.MANAGE_ACADEMIC_TERMS] },
+      { to: "/academic/settings?tab=scheduling",    label: "Scheduling",        permissions: [PERMISSIONS.MANAGE_ACADEMIC_YEARS, PERMISSIONS.MANAGE_ACADEMIC_TERMS] },
+      { to: "/academic/settings?tab=registrations", label: "Registrations",     permissions: [PERMISSIONS.MANAGE_ACADEMIC_YEARS, PERMISSIONS.MANAGE_ACADEMIC_TERMS] },
+      { to: "/academic/settings?tab=years-terms",   label: "Years & terms",     permissions: [PERMISSIONS.MANAGE_ACADEMIC_YEARS, PERMISSIONS.MANAGE_ACADEMIC_TERMS] },
     ],
   },
   {
@@ -481,8 +321,6 @@ const NAV_TREE: NavNode[] = [
     // VIEW_MY_MODULES (so they can see their personal exams + results).
     permissions: [PERMISSIONS.MANAGE_EXAMS, PERMISSIONS.VIEW_MY_MODULES],
     children: [
-      { to: "/exams", label: "Exam schedules" },
-      { to: "/exams/results", label: "Results" },
       // Admin / staff items — gated by MANAGE_EXAMS.
       {
         to: "/exams",
@@ -642,7 +480,6 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
     sub: "Upload required files for your checklist.",
   },
   "/students/new": { title: "Admissions", sub: "New student applications" },
-  "/students/alumni": { title: "Alumni", sub: "CUR alumni directory" },
   "/hr/staff": {
     title: "HR Management",
     sub: "Staff directory, roles and contracts",
@@ -695,8 +532,8 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
     sub: "Fee collection breakdown by category",
   },
   "/account/salaries": { title: "Salaries", sub: "Staff payroll" },
-  "/exams": { title: "Examinations", sub: "Exams, results and transcripts" },
-  "/exams/results": { title: "Exam results", sub: "All examination results" },
+  "/exams":              { title: "Exam schedules", sub: "Plan, edit and view scheduled exam sessions" },
+  "/exams/results":      { title: "Exam results",   sub: "Record and review marks per module and term" },
   "/exams/deliberation": {
     title: "Deliberation",
     sub: "Per-program grid of every active student × every module",
