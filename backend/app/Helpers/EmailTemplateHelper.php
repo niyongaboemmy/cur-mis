@@ -13,6 +13,13 @@ class EmailTemplateHelper
     {
         $appName = getenv('APP_NAME') ?: 'CurMis';
 
+        $logoPath = dirname(__DIR__, 3) . '/frontend/public/logo.png';
+        $logoHtml = '';
+        if (file_exists($logoPath)) {
+            $logoData = base64_encode(file_get_contents($logoPath));
+            $logoHtml = "<img src='data:image/png;base64,{$logoData}' alt='{$appName}' style='height:52px;width:auto;display:block;margin:0 auto 10px auto;'>";
+        }
+
         return "
         <!DOCTYPE html>
         <html>
@@ -21,26 +28,27 @@ class EmailTemplateHelper
             <meta name='viewport' content='width=device-width, initial-scale=1.0'>
             <title>$title</title>
             <style>
-                body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f9fafb; margin: 0; padding: 0; color: #111827; }
-                .wrapper { width: 100%; table-layout: fixed; background-color: #f9fafb; padding-bottom: 40px; }
-                .main { background-color: #ffffff; margin: 40px auto; width: 100%; max-width: 600px; border-radius: 16px; border: 1px solid #e5e7eb; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
-                .header { background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 32px; text-align: center; }
-                .header-logo { color: #ffffff; font-weight: 800; font-size: 24px; letter-spacing: -0.025em; text-decoration: none; }
-                .body { padding: 40px 32px; }
-                .title { font-size: 24px; font-weight: 700; color: #111827; margin-bottom: 16px; line-height: 1.25; }
-                .text { font-size: 16px; line-height: 1.6; color: #4b5563; margin-bottom: 24px; }
-                .otp-container { background-color: #f3f4f6; border-radius: 12px; padding: 24px; text-align: center; margin: 32px 0; border: 1px dashed #d1d5db; }
-                .otp-code { font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 36px; font-weight: 800; color: #1e40af; letter-spacing: 0.25em; }
-                .footer { padding: 32px; text-align: center; background-color: #f9fafb; border-top: 1px solid #e5e7eb; }
-                .footer-text { font-size: 13px; color: #9ca3af; line-height: 1.5; }
-                .button { display: inline-block; padding: 12px 24px; background-color: #1e40af; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; margin-top: 16px; }
+                body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f0f4f8; margin: 0; padding: 0; color: #111827; }
+                .wrapper { width: 100%; table-layout: fixed; background-color: #f0f4f8; padding-bottom: 40px; }
+                .main { background-color: #ffffff; margin: 40px auto; width: 100%; max-width: 600px; border-radius: 18px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 8px 24px -4px rgba(30, 64, 175, 0.10), 0 2px 8px -2px rgba(0,0,0,0.06); }
+                .header { background: linear-gradient(160deg, #1a3a8f 0%, #2563eb 60%, #3b82f6 100%); padding: 36px 32px 28px; text-align: center; }
+                .header-title { color: #ffffff !important; font-weight: 800; font-size: 20px; letter-spacing: 0.03em; display: block; margin: 0; text-shadow: 0 1px 3px rgba(0,0,0,0.18); }
+                .body { padding: 40px 36px; }
+                .title { font-size: 26px; font-weight: 700; color: #0f172a; margin-bottom: 16px; line-height: 1.25; }
+                .text { font-size: 16px; line-height: 1.7; color: #475569; margin-bottom: 24px; }
+                .otp-container { background-color: #f0f4ff; border-radius: 14px; padding: 28px 24px; text-align: center; margin: 32px 0; border: 1.5px solid #e0e7ff; box-shadow: 0 2px 12px rgba(30, 64, 175, 0.10); }
+                .otp-code { font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 40px; font-weight: 800; color: #1e40af; letter-spacing: 0.3em; text-shadow: 0 1px 2px rgba(30,64,175,0.15); }
+                .footer { padding: 28px 32px; text-align: center; background-color: #f8fafc; border-top: 1px solid #e2e8f0; }
+                .footer-text { font-size: 13px; color: #94a3b8; line-height: 1.6; }
+                .button { display: inline-block; padding: 13px 28px; background-color: #1e40af; color: #ffffff !important; text-decoration: none; border-radius: 9px; font-weight: 700; margin-top: 16px; font-size: 15px; letter-spacing: 0.02em; }
             </style>
         </head>
         <body>
             <div class='wrapper'>
                 <div class='main'>
                     <div class='header'>
-                        <a href='#' class='header-logo'>$appName</a>
+                        {$logoHtml}
+                        <span class='header-title'>$appName</span>
                     </div>
                     <div class='body'>
                         <h1 class='title'>$title</h1>
@@ -50,7 +58,7 @@ class EmailTemplateHelper
                     </div>
                     <div class='footer'>
                         <p class='footer-text'>
-                            © " . date('Y') . " $appName. All rights reserved.<br>
+                            &copy; " . date('Y') . " $appName. All rights reserved.<br>
                             This is an automated message, please do not reply.
                         </p>
                     </div>
