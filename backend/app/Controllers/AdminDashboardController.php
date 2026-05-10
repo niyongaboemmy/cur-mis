@@ -91,9 +91,9 @@ class AdminDashboardController extends BaseController
                    AVG(mm.percentage)   AS percent_avg,
                    SUM(mm.total)        AS marks_sum,
                    COUNT(*)             AS modules,
-                   ANY_VALUE(s.fname)    AS fname,
-                   ANY_VALUE(s.lname)    AS lname,
-                   ANY_VALUE(s.acc_year) AS acc_year
+                   MIN(s.fname)    AS fname,
+                   MIN(s.lname)    AS lname,
+                   MIN(s.acc_year) AS acc_year
             FROM module_marks mm
             LEFT JOIN student s ON s.regnumber = mm.student_regnumber
             WHERE mm.percentage IS NOT NULL
