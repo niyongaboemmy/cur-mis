@@ -22,13 +22,17 @@ $router->group('/api/hr/leave', function ($router) {
     $router->post('/requests',              [LeaveController::class, 'store']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::VIEW_HR_EMPLOYEES)]);
 
-// Management: approve / reject / cancel / types CRUD / balance upsert
+// Leave type definitions: MANAGE_LEAVE_TYPES
 $router->group('/api/hr/leave', function ($router) {
-    $router->post('/types',                     [LeaveController::class, 'createLeaveType']);
-    $router->put('/types/:id',                  [LeaveController::class, 'updateLeaveType']);
-    $router->delete('/types/:id',               [LeaveController::class, 'deleteLeaveType']);
-    $router->patch('/requests/:id/approve',     [LeaveController::class, 'approve']);
-    $router->patch('/requests/:id/reject',      [LeaveController::class, 'reject']);
-    $router->delete('/requests/:id',            [LeaveController::class, 'cancel']);
-    $router->post('/balances',                  [LeaveController::class, 'upsertBalance']);
+    $router->post('/types',       [LeaveController::class, 'createLeaveType']);
+    $router->put('/types/:id',    [LeaveController::class, 'updateLeaveType']);
+    $router->delete('/types/:id', [LeaveController::class, 'deleteLeaveType']);
+}, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_LEAVE_TYPES)]);
+
+// Leave request management: MANAGE_LEAVE_REQUESTS
+$router->group('/api/hr/leave', function ($router) {
+    $router->patch('/requests/:id/approve', [LeaveController::class, 'approve']);
+    $router->patch('/requests/:id/reject',  [LeaveController::class, 'reject']);
+    $router->delete('/requests/:id',        [LeaveController::class, 'cancel']);
+    $router->post('/balances',              [LeaveController::class, 'upsertBalance']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_LEAVE_REQUESTS)]);

@@ -240,6 +240,7 @@ class AuthController extends BaseController
             if ($row) {
                 $user['phone']    = $row['phone']    ?? null;
                 $user['username'] = $row['username'] ?? ($user['username'] ?? '');
+                $user['photo']    = $row['photo']    ?? null;
             }
         }
         $this->success($response, $user, 'Authenticated user.');
@@ -307,6 +308,7 @@ class AuthController extends BaseController
             'username'  => $fresh['username'] ?? '',
             'full_name' => $fresh['full_name']?? '',
             'phone'     => $fresh['phone']    ?? null,
+            'photo'     => $fresh['photo']    ?? null,
             'role_id'   => $fresh['role_id']  ?? null,
             'role'      => $authUser['role'] ?? null,
             'role_name' => $authUser['role_name'] ?? null,
@@ -385,5 +387,99 @@ class AuthController extends BaseController
 
         SystemLogService::log('CREATE', 'AUTH', "Applicant portal account claimed for application {$data['application_number']} by {$data['email']}.", null, 'user', ['email' => $data['email'], 'application_number' => $data['application_number']]);
         $this->success($response, $result['data'], $result['message'], 201);
+    }
+
+    /**
+     * POST /api/auth/me/photo
+     * Upload (or replace) the authenticated user's profile photo.
+     */
+    public function uploadMyPhoto(Request $request, Response $response): never
+    {
+        $authUser = (array)($request->param('_auth_user') ?? []);
+        $userId   = (int)($authUser['id'] ?? 0);
+        if ($userId <= 0) {
+            $this->error($response, 'Unauthorized.', 401);
+        }
+
+        $file = $request->file('photo');
+        if (!$file) {
+            $this->error($response, 'No photo file provided.', 422);
+        }
+
+        $allowedMimes = ['image/jpeg', 'image/png', 'image/webp'];
+        if (!in_array($file['type'] ?? '', $allowedMimes, true)) {
+            $this->error($response, 'Invalid file type. Only JPEG, PNG and WebP are allowed.', 422);
+        }
+
+        try {
+            $client   = new \App\Helpers\FileServerClient();
+            $uploaded = $client->upload($file);
+        } catch (\RuntimeException $e) {
+            $this->error($response, $e->getMessage(), 422);
+        }
+
+        $model   = new \App\Models\UserModel();
+        $current = $model->find($userId);
+        $previous = $current['photo'] ?? null;
+
+        $model->update($userId, ['photo' => $uploaded['id']]);
+
+        if ($previous && $previous !== $uploaded['id']) {
+            try { $client->delete($previous); } catch (\Throwable) { /* ignore */ }
+        }
+
+        // Return the photo id so the frontend auth store can update user.photo.
+        $authUser = (array)($request->param('_auth_user') ?? []);
+        $this->success($response, [
+            'photo'        => $uploaded['id'],
+            'id'           => $userId,
+            'email'        => $current['email']     ?? '',
+            'username'     => $current['username']  ?? '',
+            'full_name'    => $current['full_name'] ?? '',
+            'phone'        => $current['phone']     ?? null,
+            'role_id'      => $current['role_id']   ?? null,
+            'role'         => $authUser['role']         ?? null,
+            'role_name'    => $authUser['role_name']    ?? null,
+            'permissions'  => $authUser['permissions']  ?? [],
+            'is_applicant' => $authUser['is_applicant'] ?? false,
+        ], 'Profile photo updated.');
+    }
+
+    /**
+     * GET /api/auth/me/photo
+     * Stream the authenticated user's profile photo inline.
+     */
+    public function downloadMyPhoto(Request $request, Response $response): never
+    {
+        $authUser = (array)($request->param('_auth_user') ?? []);
+        $userId   = (int)($authUser['id'] ?? 0);
+        if ($userId <= 0) {
+            $this->error($response, 'Unauthorized.', 401);
+        }
+
+        $model   = new \App\Models\UserModel();
+        $user    = $model->find($userId);
+        $photoId = $user['photo'] ?? null;
+
+        if (!$photoId) {
+            $this->error($response, 'No profile photo.', 404);
+        }
+
+        try {
+            $client   = new \App\Helpers\FileServerClient();
+            $fileData = $client->download((string)$photoId);
+        } catch (\RuntimeException $e) {
+            $this->error($response, $e->getMessage(), 502);
+        }
+
+        $mime = $fileData['mime'] ?? 'image/jpeg';
+        header('Content-Type: ' . $mime);
+        header('Content-Disposition: inline; filename="' . addslashes($fileData['original_name'] ?? 'photo') . '"');
+        header('Content-Length: ' . strlen($fileData['content']));
+        header('Cache-Control: private, max-age=60');
+        header('X-Content-Type-Options: nosniff');
+
+        echo $fileData['content'];
+        exit;
     }
 }

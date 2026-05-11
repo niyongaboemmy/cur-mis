@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useAuthStore } from '@/store/authStore'
+import { PERMISSIONS } from '@/constants/permissions'
 import {
   Loader2, Save, GraduationCap, Users, Percent,
   CheckCircle2, FileCheck, SendHorizontal, RotateCcw, Lock,
@@ -553,8 +555,15 @@ function MarksEditor({
     setPreview(null)
   }
 
+  const authUser = useAuthStore((s) => s.user)
+  const canWrite =
+    authUser?.role === 'superadmin' ||
+    authUser?.role === 'admin' ||
+    (authUser?.permissions ?? []).includes(PERMISSIONS.RECORD_MODULE_MARKS) ||
+    (authUser?.permissions ?? []).includes(PERMISSIONS.MANAGE_MODULE_MARKS)
+
   const canExport = !!roster && roster.length > 0
-  const canImport = canExport && !isLocked
+  const canImport = canExport && !isLocked && canWrite
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -639,22 +648,26 @@ function MarksEditor({
             >
               <Download className="w-3.5 h-3.5" /> Export
             </button>
-            <button
-              className="btn-ghost btn-sm"
-              disabled={!canImport}
-              onClick={() => fileRef.current?.click()}
-              title="Upload a completed sheet (xlsx, xls, csv, tsv)"
-            >
-              <Upload className="w-3.5 h-3.5" /> Import
-            </button>
-            <button
-              className="btn-primary btn-sm"
-              disabled={save.isPending || isLocked || !roster || roster.length === 0 || dirtyCount === 0}
-              onClick={() => save.mutate()}
-            >
-              {save.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-              {save.isPending ? 'Saving…' : dirtyCount > 0 ? `Save ${dirtyCount} change${dirtyCount === 1 ? '' : 's'}` : 'Save marks'}
-            </button>
+            {canWrite && (
+              <button
+                className="btn-ghost btn-sm"
+                disabled={!canImport}
+                onClick={() => fileRef.current?.click()}
+                title="Upload a completed sheet (xlsx, xls, csv, tsv)"
+              >
+                <Upload className="w-3.5 h-3.5" /> Import
+              </button>
+            )}
+            {canWrite && (
+              <button
+                className="btn-primary btn-sm"
+                disabled={save.isPending || isLocked || !roster || roster.length === 0 || dirtyCount === 0}
+                onClick={() => save.mutate()}
+              >
+                {save.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                {save.isPending ? 'Saving…' : dirtyCount > 0 ? `Save ${dirtyCount} change${dirtyCount === 1 ? '' : 's'}` : 'Save marks'}
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -671,6 +684,7 @@ function MarksEditor({
             classSize={summary?.total_roster ?? 0}
             status={status}
             disabled={isLocked}
+            canWrite={canWrite}
             onWorkflow={(a) => wf.mutate(a)}
             wfPending={wf.isPending}
           />
@@ -882,12 +896,13 @@ function MarksEditor({
 /* ─── small UI bits ──────────────────────────────────────────────────── */
 
 function ModuleHeaderCard({
-  moduleH, classSize, status, disabled, onWorkflow, wfPending,
+  moduleH, classSize, status, disabled, canWrite, onWorkflow, wfPending,
 }: {
   moduleH: MarksModuleHeader
   classSize: number
   status:   MarksWorkflowStatus
   disabled: boolean
+  canWrite: boolean
   onWorkflow: (a: 'open_claims' | 'submit' | 'confirm' | 'reset') => void
   wfPending: boolean
 }) {
@@ -928,38 +943,42 @@ function ModuleHeaderCard({
       </div>
 
       <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-ink-100 dark:border-ink-700">
-        <button
-          className="btn-ghost btn-sm"
-          disabled={wfPending || status === 'claims_open' || status === 'submitted' || status === 'confirmed'}
-          onClick={() => onWorkflow('open_claims')}
-          title="Open the 15-day claims window for students to query their marks"
-        >
-          <FileCheck className="w-3.5 h-3.5" /> Open claims
-        </button>
-        <button
-          className="btn-ghost btn-sm"
-          disabled={wfPending || status === 'submitted' || status === 'confirmed'}
-          onClick={() => onWorkflow('submit')}
-          title="Submit to faculty & close claims"
-        >
-          <SendHorizontal className="w-3.5 h-3.5" /> Submit & close claims
-        </button>
-        <button
-          className="btn-ghost btn-sm"
-          disabled={wfPending || status !== 'submitted'}
-          onClick={() => onWorkflow('confirm')}
-          title="Confirm and send to options"
-        >
-          <CheckCircle2 className="w-3.5 h-3.5" /> Confirm & send to options
-        </button>
-        <button
-          className="btn-ghost btn-sm ml-auto"
-          disabled={wfPending || status === 'draft'}
-          onClick={() => onWorkflow('reset')}
-          title="Re-open editing for this module"
-        >
-          <RotateCcw className="w-3.5 h-3.5" /> Reset to draft
-        </button>
+        {canWrite && (
+          <>
+            <button
+              className="btn-ghost btn-sm"
+              disabled={wfPending || status === 'claims_open' || status === 'submitted' || status === 'confirmed'}
+              onClick={() => onWorkflow('open_claims')}
+              title="Open the 15-day claims window for students to query their marks"
+            >
+              <FileCheck className="w-3.5 h-3.5" /> Open claims
+            </button>
+            <button
+              className="btn-ghost btn-sm"
+              disabled={wfPending || status === 'submitted' || status === 'confirmed'}
+              onClick={() => onWorkflow('submit')}
+              title="Submit to faculty & close claims"
+            >
+              <SendHorizontal className="w-3.5 h-3.5" /> Submit & close claims
+            </button>
+            <button
+              className="btn-ghost btn-sm"
+              disabled={wfPending || status !== 'submitted'}
+              onClick={() => onWorkflow('confirm')}
+              title="Confirm and send to options"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" /> Confirm & send to options
+            </button>
+            <button
+              className="btn-ghost btn-sm ml-auto"
+              disabled={wfPending || status === 'draft'}
+              onClick={() => onWorkflow('reset')}
+              title="Re-open editing for this module"
+            >
+              <RotateCcw className="w-3.5 h-3.5" /> Reset to draft
+            </button>
+          </>
+        )}
         {disabled && (
           <span className="inline-flex items-center gap-1 text-[12px] text-ink-500">
             <Lock className="w-3 h-3" /> Read-only

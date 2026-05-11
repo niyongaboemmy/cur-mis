@@ -1,4 +1,5 @@
 import { api } from "./api";
+import { useAuthStore } from "@/store/authStore";
 
 export interface User {
   id: number;
@@ -8,6 +9,7 @@ export interface User {
   role_id: number;
   role_name?: string;
   is_active: number;
+  photo?: string | null;
 }
 
 export interface UserListResponse {
@@ -45,6 +47,14 @@ const userService = {
 
   deleteUser: async (id: number) => {
     return api.delete<void>(`/api/users/${id}`);
+  },
+
+  /** Token-bearing URL for a user's profile photo. Returns null if no photo set. */
+  photoUrl: (user: User): string | null => {
+    if (!user.photo) return null;
+    const token = useAuthStore.getState().token;
+    const base  = import.meta.env.VITE_API_URL ?? '';
+    return `${base}/api/users/${user.id}/photo?token=${token}&v=${encodeURIComponent(user.photo)}`;
   },
 };
 

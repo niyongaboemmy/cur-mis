@@ -36,7 +36,7 @@ class MaybePermissionMiddleware
 
         $user = (array) $user;
 
-        if (isset($user['role']) && $user['role'] === 'superadmin') {
+        if (isset($user['role']) && in_array($user['role'], ['superadmin', 'admin'], true)) {
             return;
         }
 

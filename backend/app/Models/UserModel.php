@@ -18,6 +18,7 @@ class UserModel extends BaseModel
         'full_name',
         'email',
         'phone',
+        'photo',
         'password',
         'role_id',
         'is_active',

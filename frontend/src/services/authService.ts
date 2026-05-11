@@ -1,5 +1,6 @@
 import { api } from './api'
 import type { AuthUser } from '@/store/authStore'
+import { useAuthStore } from '@/store/authStore'
 
 export interface LoginResponse {
   token: string
@@ -39,4 +40,19 @@ export const authService = {
   /** Self-service profile update — full_name / email / username / phone. */
   updateMe: (data: { full_name: string; email: string; username: string; phone?: string }) =>
     api.put<AuthUser>('/api/auth/me', data),
+
+  /** Direct, token-bearing URL for the authenticated user's profile photo. */
+  myPhotoUrl: (cacheKey?: string | number) => {
+    const token = useAuthStore.getState().token
+    const base  = import.meta.env.VITE_API_URL ?? ''
+    const v     = cacheKey != null ? `&v=${encodeURIComponent(String(cacheKey))}` : ''
+    return `${base}/api/auth/me/photo?token=${token}${v}`
+  },
+
+  /** Upload (or replace) the authenticated user's profile photo. */
+  uploadMyPhoto: (file: File) => {
+    const form = new FormData()
+    form.append('photo', file)
+    return api.upload<{ photo: string }>('/api/auth/me/photo', form)
+  },
 }

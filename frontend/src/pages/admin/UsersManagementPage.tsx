@@ -200,8 +200,23 @@ export default function UsersManagementPage() {
                   <tr key={user.id} className="group">
                     <td>
                       <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center text-primary-700 dark:text-primary-300 font-semibold text-[11px] shrink-0">
-                          {user.full_name.charAt(0).toUpperCase()}
+                        <div className="w-8 h-8 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center text-primary-700 dark:text-primary-300 font-semibold text-[11px] shrink-0 overflow-hidden">
+                          {userService.photoUrl(user) ? (
+                            <img
+                              src={userService.photoUrl(user)!}
+                              alt={user.full_name}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                const img = e.currentTarget as HTMLImageElement;
+                                img.style.display = 'none';
+                                (img.nextElementSibling as HTMLElement | null)?.removeAttribute('style');
+                              }}
+                            />
+                          ) : null}
+                          <UserIcon
+                            className="w-4 h-4"
+                            style={userService.photoUrl(user) ? { display: 'none' } : undefined}
+                          />
                         </div>
                         <div className="min-w-0">
                           <div className="font-semibold text-ink-900 dark:text-white truncate text-[12.5px]">

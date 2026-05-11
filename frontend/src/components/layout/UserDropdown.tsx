@@ -7,6 +7,8 @@ import { useAuthStore } from "@/store/authStore";
 import { useThemeStore } from "@/store/themeStore";
 import { useLogout } from "@/hooks/useAuth";
 import { studentService } from "@/services/studentService";
+import { authService } from "@/services/authService";
+import { PERMISSIONS } from "@/constants/permissions";
 
 export default function UserDropdown() {
   const [isOpen, setIsOpen] = useState(false);
@@ -31,32 +33,28 @@ export default function UserDropdown() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const getInitials = (name: string) =>
-    name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase()
-      .substring(0, 2);
 
-  const userInitials = user?.full_name ? getInitials(user.full_name) : "U";
 
-  // Pull the auth user's student record (if any) so we can use their profile
-  // photo as the avatar across the app. Shares the cache key with the profile
-  // page, so a successful upload there reactively refreshes this avatar too.
-  // Errors (e.g. admins with no student row) are silently ignored — we just
-  // fall back to initials.
-  const meQ = useQuery({
+  // Students: photo lives on their student record.
+  // Non-students: photo lives on the users table, exposed via /api/auth/me/photo.
+  // Use user?.photo (from auth store, updated on upload) as the cache-buster so
+  // the avatar refreshes immediately after a photo upload — no error-state needed.
+  const isStudent = (user?.permissions ?? []).includes(PERMISSIONS.ACCESS_STUDENT_PORTAL);
+
+  const studentQ = useQuery({
     queryKey: ['student', 'me'],
     queryFn:  ({ signal }) => studentService.me(signal),
-    enabled:  !!user,
+    enabled:  !!user && isStudent,
     retry:    false,
     staleTime: 5 * 60_000,
-    // 404 means this user isn't linked to a student row — treat as "no photo".
     throwOnError: false,
   });
-  const photoId = meQ.data?.data?.photo as string | undefined | null;
-  const photoSrc = photoId ? studentService.myPhotoUrl(photoId) : null;
+  const studentPhotoId = studentQ.data?.data?.photo as string | undefined | null;
+
+  const hasPhoto = isStudent ? !!studentPhotoId : !!user?.photo;
+  const photoSrc = isStudent
+    ? (studentPhotoId ? studentService.myPhotoUrl(studentPhotoId) : null)
+    : authService.myPhotoUrl(user?.photo ?? undefined);
 
   return (
     <div className="relative" ref={dropdownRef}>
@@ -65,15 +63,15 @@ export default function UserDropdown() {
         className="flex items-center gap-2.5 py-1 pl-1 pr-2.5 rounded-md hover:bg-ink-100 dark:hover:bg-ink-700 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"
       >
         <div className="h-9 w-9 rounded-full bg-primary-600 flex items-center justify-center text-white font-semibold text-[12px] overflow-hidden">
-          {photoSrc ? (
+          {hasPhoto ? (
             <img
-              src={photoSrc}
+              src={photoSrc!}
               alt={user?.full_name ?? 'User'}
               className="w-full h-full object-cover"
               onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
             />
           ) : (
-            <span>{userInitials}</span>
+            <User className="h-4 w-4" />
           )}
         </div>
         <div className="hidden md:block text-left">
@@ -102,15 +100,15 @@ export default function UserDropdown() {
             <div className="p-4 border-b border-ink-100 dark:border-ink-700">
               <div className="flex items-center gap-3">
                 <div className="h-11 w-11 rounded-md bg-primary-600 flex items-center justify-center text-white text-[15px] font-semibold overflow-hidden">
-                  {photoSrc ? (
+                  {hasPhoto ? (
                     <img
-                      src={photoSrc}
+                      src={photoSrc!}
                       alt={user?.full_name ?? 'User'}
                       className="w-full h-full object-cover"
                       onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
                     />
                   ) : (
-                    <span>{userInitials}</span>
+                    <User className="h-5 w-5" />
                   )}
                 </div>
                 <div className="min-w-0">
@@ -129,7 +127,7 @@ export default function UserDropdown() {
 
             {/* Menu */}
             <div className="p-1.5">
-              <MenuItem icon={<User     className="h-4 w-4" />} onClick={() => go('/me/profile')}>My profile</MenuItem>
+              <MenuItem icon={<User     className="h-4 w-4" />} onClick={() => go((user?.permissions ?? []).includes(PERMISSIONS.ACCESS_STUDENT_PORTAL) ? '/me/profile' : '/profile')}>My profile</MenuItem>
 
               {/* Theme toggle */}
               <button

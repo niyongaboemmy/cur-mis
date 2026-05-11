@@ -24,6 +24,7 @@ import {
   type StudentAttendanceStatus,
 } from "@/services/attendanceService";
 import { useAuthStore } from "@/store/authStore";
+import { PERMISSIONS } from "@/constants/permissions";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import toast from "react-hot-toast";
@@ -119,6 +120,12 @@ export default function StudentDetailsPage({
   };
   const [isEditing, setIsEditing] = useState(false);
 
+  const authUser = useAuthStore((s) => s.user);
+  const canManageStudents =
+    authUser?.role === 'superadmin' ||
+    authUser?.role === 'admin' ||
+    (authUser?.permissions ?? []).includes(PERMISSIONS.MANAGE_STUDENTS);
+
   const fromSearch = location.state?.fromSearch;
   const backUrl =
     fromSearch !== undefined ? `/students?${fromSearch}` : "/students?tab=all";
@@ -203,7 +210,7 @@ export default function StudentDetailsPage({
             <h1 className="text-2xl font-bold text-ink-900 dark:text-white">
               {student.fname} {student.lname}
             </h1>
-            {!selfMode && (
+            {!selfMode && canManageStudents && (
               <>
                 <button
                   onClick={() => setIsEditing(true)}

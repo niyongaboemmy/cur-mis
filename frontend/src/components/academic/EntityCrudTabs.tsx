@@ -32,6 +32,9 @@ import Modal from '@/components/ui/Modal'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import { academicsMgmtService } from '@/services/academicsMgmtService'
 import type { AcMgmtEntity } from '@/types/academic'
+import { useAuthStore } from '@/store/authStore'
+import type { AuthUser } from '@/store/authStore'
+import { PERMISSIONS } from '@/constants'
 
 /* ─────────────────────────────────────────────────────────────
    Entity / field types and the master ENTITIES registry.
@@ -144,6 +147,8 @@ export interface EntityCfg {
   singular: string
   icon: LucideIcon
   pk: string
+  /** Backend MANAGE_* permission required to read and write this entity. */
+  writePermission?: string
   columns: {
     key: string
     label: string
@@ -171,7 +176,7 @@ export interface EntityCfg {
 
 export const ENTITIES: EntityCfg[] = [
   {
-    slug: 'faculties', label: 'Faculties', singular: 'Faculty', icon: Library, pk: 'fac_id',
+    slug: 'faculties', label: 'Faculties', singular: 'Faculty', icon: Library, pk: 'fac_id', writePermission: PERMISSIONS.MANAGE_ACADEMICS,
     columns: [
       { key: 'fac_code',     label: 'Code' },
       { key: 'fac_name',     label: 'Name' },
@@ -196,7 +201,7 @@ export const ENTITIES: EntityCfg[] = [
     defaultSort: { key: 'fac_code', dir: 'asc' },
   },
   {
-    slug: 'departments', label: 'Departments', singular: 'Department', icon: Building2, pk: 'dep_id',
+    slug: 'departments', label: 'Departments', singular: 'Department', icon: Building2, pk: 'dep_id', writePermission: PERMISSIONS.MANAGE_DEPARTMENTS,
     columns: [
       { key: 'dep_code',    label: 'Code' },
       { key: 'dep_name',    label: 'Name' },
@@ -242,7 +247,7 @@ export const ENTITIES: EntityCfg[] = [
     },
   },
   {
-    slug: 'options', label: 'Programs', singular: 'Program', icon: ListTree, pk: 'id',
+    slug: 'options', label: 'Programs', singular: 'Program', icon: ListTree, pk: 'id', writePermission: PERMISSIONS.MANAGE_OPTIONS,
     columns: [
       { key: 'code',          label: 'Code' },
       { key: 'name',          label: 'Program' },
@@ -319,7 +324,7 @@ export const ENTITIES: EntityCfg[] = [
     ],
   },
   {
-    slug: 'modules', label: 'Modules / Courses', singular: 'Module', icon: BookOpen, pk: 'module_id',
+    slug: 'modules', label: 'Modules / Courses', singular: 'Module', icon: BookOpen, pk: 'module_id', writePermission: PERMISSIONS.MANAGE_MODULES,
     columns: [
       { key: 'min_order',      label: 'Order',
         render: (r) => {
@@ -400,7 +405,7 @@ export const ENTITIES: EntityCfg[] = [
     ],
   },
   {
-    slug: 'facility', label: 'Facilities / Rooms', singular: 'Facility', icon: DoorOpen, pk: 'id',
+    slug: 'facility', label: 'Facilities / Rooms', singular: 'Facility', icon: DoorOpen, pk: 'id', writePermission: PERMISSIONS.MANAGE_FACILITIES,
     columns: [
       { key: 'name',      label: 'Name' },
       { key: 'building',  label: 'Building' },
@@ -417,7 +422,7 @@ export const ENTITIES: EntityCfg[] = [
     ],
   },
   {
-    slug: 'schools', label: 'Schools', singular: 'School', icon: SchoolIcon, pk: 'school_id',
+    slug: 'schools', label: 'Schools', singular: 'School', icon: SchoolIcon, pk: 'school_id', writePermission: PERMISSIONS.MANAGE_SCHOOLS,
     columns: [
       { key: 'school_id',      label: '#' },
       { key: 'school_name',    label: 'Name' },
@@ -433,7 +438,7 @@ export const ENTITIES: EntityCfg[] = [
     ],
   },
   {
-    slug: 'degrees', label: 'Degrees', singular: 'Degree', icon: GraduationCap, pk: 'id',
+    slug: 'degrees', label: 'Degrees', singular: 'Degree', icon: GraduationCap, pk: 'id', writePermission: PERMISSIONS.MANAGE_DEGREES,
     columns: [
       { key: 'code',          label: 'Code' },
       { key: 'name',          label: 'Name' },
@@ -451,7 +456,7 @@ export const ENTITIES: EntityCfg[] = [
     ],
   },
   {
-    slug: 'levels', label: 'Levels', singular: 'Level', icon: Layers, pk: 'id',
+    slug: 'levels', label: 'Levels', singular: 'Level', icon: Layers, pk: 'id', writePermission: PERMISSIONS.MANAGE_LEVELS,
     columns: [
       { key: 'name', label: 'Name' },
     ],
@@ -460,7 +465,7 @@ export const ENTITIES: EntityCfg[] = [
     ],
   },
   {
-    slug: 'leave_types', label: 'Leave types', singular: 'Leave type', icon: Plane, pk: 'id',
+    slug: 'leave_types', label: 'Leave types', singular: 'Leave type', icon: Plane, pk: 'id', writePermission: PERMISSIONS.MANAGE_LEAVE_TYPES,
     columns: [
       { key: 'name',         label: 'Name' },
       { key: 'days_allowed', label: 'Days' },
@@ -473,7 +478,7 @@ export const ENTITIES: EntityCfg[] = [
     ],
   },
   {
-    slug: 'campuses', label: 'Campuses', singular: 'Campus', icon: MapPin, pk: 'id',
+    slug: 'campuses', label: 'Campuses', singular: 'Campus', icon: MapPin, pk: 'id', writePermission: PERMISSIONS.MANAGE_CAMPUSES,
     columns: [
       { key: 'name',      label: 'Name' },
       { key: 'code',      label: 'Code' },
@@ -492,7 +497,7 @@ export const ENTITIES: EntityCfg[] = [
     ],
   },
   {
-    slug: 'intakes' as AcMgmtEntity, label: 'Intakes', singular: 'Intake', icon: CalendarDays, pk: 'id',
+    slug: 'intakes' as AcMgmtEntity, label: 'Intakes', singular: 'Intake', icon: CalendarDays, pk: 'id', writePermission: PERMISSIONS.MANAGE_ADMISSIONS,
     columns: [
       { key: 'name',         label: 'Name' },
       { key: 'start_date',   label: 'Start Date' },
@@ -507,6 +512,17 @@ export const ENTITIES: EntityCfg[] = [
     ],
   },
 ]
+
+/* ─────────────────────────────────────────────────────────────
+   Permission helper — mirrors PermissionMiddleware bypass logic.
+   ───────────────────────────────────────────────────────────── */
+
+function canManageEntity(user: AuthUser | null, permission?: string): boolean {
+  if (!user) return false
+  if (user.role === 'superadmin' || user.role === 'admin') return true
+  if (!permission) return true
+  return (user.permissions ?? []).includes(permission)
+}
 
 /* ─────────────────────────────────────────────────────────────
    Public component — a horizontal tab strip plus the active panel.
@@ -534,9 +550,17 @@ export function EntityCrudTabs({
   extraTabs = [],
   ariaLabel = 'Settings sections',
 }: TabsProps) {
+  const user = useAuthStore((state) => state.user)
+
+  // Only show tabs the current user can access (has the required MANAGE_* permission).
+  const visibleEntities = useMemo(
+    () => entities.filter((e) => canManageEntity(user, e.writePermission)),
+    [entities, user],
+  )
+
   const allSlugs = useMemo(
-    () => [...entities.map((e) => e.slug as string), ...extraTabs.map((t) => t.slug)],
-    [entities, extraTabs],
+    () => [...visibleEntities.map((e) => e.slug as string), ...extraTabs.map((t) => t.slug)],
+    [visibleEntities, extraTabs],
   )
   const fallbackSlug = defaultSlug && allSlugs.includes(defaultSlug)
     ? defaultSlug
@@ -563,8 +587,8 @@ export function EntityCrudTabs({
   }, [setSearchParams])
 
   const activeEntity = useMemo(
-    () => entities.find((e) => e.slug === activeSlug) ?? null,
-    [activeSlug, entities],
+    () => visibleEntities.find((e) => e.slug === activeSlug) ?? null,
+    [activeSlug, visibleEntities],
   )
   const activeExtra = useMemo(
     () => extraTabs.find((t) => t.slug === activeSlug) ?? null,
@@ -572,7 +596,7 @@ export function EntityCrudTabs({
   )
 
   const tabItems = [
-    ...entities.map((e) => ({ slug: e.slug as string, label: e.label, icon: e.icon })),
+    ...visibleEntities.map((e) => ({ slug: e.slug as string, label: e.label, icon: e.icon })),
     ...extraTabs.map((t) => ({ slug: t.slug, label: t.label, icon: t.icon })),
   ]
 
@@ -607,7 +631,13 @@ export function EntityCrudTabs({
         </div>
       </nav>
 
-      {activeEntity && <CrudPanel key={activeEntity.slug} entity={activeEntity} />}
+      {activeEntity && (
+        <CrudPanel
+          key={activeEntity.slug}
+          entity={activeEntity}
+          canWrite={canManageEntity(user, activeEntity.writePermission)}
+        />
+      )}
       {activeExtra && <div key={activeExtra.slug}>{activeExtra.render()}</div>}
     </div>
   )
@@ -615,7 +645,7 @@ export function EntityCrudTabs({
 
 /* ───────────────────────────────────────────────────────────── */
 
-function CrudPanel({ entity }: { entity: EntityCfg }) {
+function CrudPanel({ entity, canWrite }: { entity: EntityCfg; canWrite: boolean }) {
   const qc = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
 
@@ -1241,57 +1271,56 @@ function CrudPanel({ entity }: { entity: EntityCfg }) {
               : <Download className="w-3.5 h-3.5" />}
             Export
           </button>
-          <button
-            className="btn-secondary btn-sm"
-            onClick={() => {
-              if (entity.importContextFields?.length) {
-                setImportContextValues({})
-                setImportContextOpen(true)
-              } else {
-                fileInputRef.current?.click()
-              }
-            }}
-            disabled={importing}
-            title={`Import ${entity.label.toLowerCase()} from .xlsx`}
-          >
-            {importing
-              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              : <Upload className="w-3.5 h-3.5" />}
-            Import
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0]
-              if (f) {
-                // Build the payload-side context from picks (skip uiOnly fields).
-                // Multi fields go through as arrays; singles as numbers.
-                const ctx: Record<string, any> = {}
-                for (const field of entity.importContextFields ?? []) {
-                  if (field.uiOnly) continue
-                  const v = importContextValues[field.key]
-                  if (field.multi) {
-                    if (Array.isArray(v) && v.length > 0) {
-                      ctx[field.key] = v.map((x) => Number(x))
-                    }
-                  } else if (v != null && v !== '') {
-                    ctx[field.key] = Number(v)
+          {canWrite && (
+            <>
+              <button
+                className="btn-secondary btn-sm"
+                onClick={() => {
+                  if (entity.importContextFields?.length) {
+                    setImportContextValues({})
+                    setImportContextOpen(true)
+                  } else {
+                    fileInputRef.current?.click()
                   }
-                }
-                buildImportPreview(f, ctx)
-              }
-              e.target.value = ''
-            }}
-          />
-          {/* Modules curriculum (mode/sem/campus) buttons live on the
-              future Schedules tab. The Modules tab keeps it to one
-              Import + one Export. */}
-          <button className="btn-primary btn-sm" onClick={openNew}>
-            <Plus className="w-3.5 h-3.5" /> New {entity.singular.toLowerCase()}
-          </button>
+                }}
+                disabled={importing}
+                title={`Import ${entity.label.toLowerCase()} from .xlsx`}
+              >
+                {importing
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  : <Upload className="w-3.5 h-3.5" />}
+                Import
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (f) {
+                    const ctx: Record<string, any> = {}
+                    for (const field of entity.importContextFields ?? []) {
+                      if (field.uiOnly) continue
+                      const v = importContextValues[field.key]
+                      if (field.multi) {
+                        if (Array.isArray(v) && v.length > 0) {
+                          ctx[field.key] = v.map((x) => Number(x))
+                        }
+                      } else if (v != null && v !== '') {
+                        ctx[field.key] = Number(v)
+                      }
+                    }
+                    buildImportPreview(f, ctx)
+                  }
+                  e.target.value = ''
+                }}
+              />
+              <button className="btn-primary btn-sm" onClick={openNew}>
+                <Plus className="w-3.5 h-3.5" /> New {entity.singular.toLowerCase()}
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -1340,7 +1369,7 @@ function CrudPanel({ entity }: { entity: EntityCfg }) {
                       </th>
                     )
                   })}
-                  <th className="text-right">Actions</th>
+                  {canWrite && <th className="text-right">Actions</th>}
                 </tr>
               </thead>
               <tbody>
@@ -1351,44 +1380,46 @@ function CrudPanel({ entity }: { entity: EntityCfg }) {
                         {c.render ? c.render(r, { lookups }) : (r[c.key] ?? '—')}
                       </td>
                     ))}
-                    <td className="text-right">
-                      <div className="inline-flex items-center gap-1">
-                        {entity.slug === 'options' && (
-                          <button
-                            onClick={() => setCampusFor(r)}
-                            title="Manage campuses for this program"
-                            className="inline-flex items-center gap-1.5 px-2.5 h-7 rounded-md bg-brand/10 text-brand hover:bg-brand/20 dark:bg-brand/20 dark:text-gold-400 dark:hover:bg-brand/30 text-[12px] font-semibold whitespace-nowrap transition-colors ring-1 ring-inset ring-brand/20 dark:ring-brand/30"
-                          >
-                            <MapPin className="w-3.5 h-3.5" />
-                            Campuses
-                            {Array.isArray(r.campus_ids) && r.campus_ids.length > 0 ? (
-                              <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-brand text-white text-[10.5px] font-bold leading-none">
-                                {r.campus_ids.length}
-                              </span>
-                            ) : (
-                              <span className="text-[10.5px] uppercase tracking-wider opacity-70">none</span>
-                            )}
+                    {canWrite && (
+                      <td className="text-right">
+                        <div className="inline-flex items-center gap-1">
+                          {entity.slug === 'options' && (
+                            <button
+                              onClick={() => setCampusFor(r)}
+                              title="Manage campuses for this program"
+                              className="inline-flex items-center gap-1.5 px-2.5 h-7 rounded-md bg-brand/10 text-brand hover:bg-brand/20 dark:bg-brand/20 dark:text-gold-400 dark:hover:bg-brand/30 text-[12px] font-semibold whitespace-nowrap transition-colors ring-1 ring-inset ring-brand/20 dark:ring-brand/30"
+                            >
+                              <MapPin className="w-3.5 h-3.5" />
+                              Campuses
+                              {Array.isArray(r.campus_ids) && r.campus_ids.length > 0 ? (
+                                <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-brand text-white text-[10.5px] font-bold leading-none">
+                                  {r.campus_ids.length}
+                                </span>
+                              ) : (
+                                <span className="text-[10.5px] uppercase tracking-wider opacity-70">none</span>
+                              )}
+                            </button>
+                          )}
+                          <button className="icon-btn" onClick={() => openEdit(r)} aria-label="Edit">
+                            <Pencil className="w-3.5 h-3.5" />
                           </button>
-                        )}
-                        <button className="icon-btn" onClick={() => openEdit(r)} aria-label="Edit">
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          className="icon-btn text-red-500 hover:text-red-600 hover:bg-red-50"
-                          onClick={() => {
-                            if (confirm(`Delete this ${entity.singular.toLowerCase()}?`)) {
-                              deleteM.mutate(r[entity.pk])
-                            }
-                          }}
-                          disabled={deleteM.isPending && deleteM.variables === r[entity.pk]}
-                          aria-label="Delete"
-                        >
-                          {deleteM.isPending && deleteM.variables === r[entity.pk]
-                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            : <Trash2 className="w-3.5 h-3.5" />}
-                        </button>
-                      </div>
-                    </td>
+                          <button
+                            className="icon-btn text-red-500 hover:text-red-600 hover:bg-red-50"
+                            onClick={() => {
+                              if (confirm(`Delete this ${entity.singular.toLowerCase()}?`)) {
+                                deleteM.mutate(r[entity.pk])
+                              }
+                            }}
+                            disabled={deleteM.isPending && deleteM.variables === r[entity.pk]}
+                            aria-label="Delete"
+                          >
+                            {deleteM.isPending && deleteM.variables === r[entity.pk]
+                              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              : <Trash2 className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

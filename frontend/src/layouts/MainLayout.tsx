@@ -162,7 +162,7 @@ const NAV_TREE: NavNode[] = [
       {
         to: "/hr/settings",
         label: "Payroll Settings",
-        permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES],
+        permissions: [PERMISSIONS.MANAGE_HR_EMPLOYEES],
       },
       // { to: "/hr/attendance", label: "Attendance",         permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },
       // { to: "/hr/documents",  label: "Documents",        permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },

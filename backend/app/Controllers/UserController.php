@@ -9,6 +9,7 @@ use Core\Response;
 use App\Models\UserModel;
 use App\Models\RoleModel;
 use App\Helpers\ValidationHelper;
+use App\Helpers\FileServerClient;
 use App\Services\SystemLogService;
 
 class UserController extends BaseController
@@ -180,6 +181,42 @@ class UserController extends BaseController
         $this->userModel->delete($id);
         SystemLogService::log('DELETE', 'USERS', "Deleted user '{$user['email']}' (ID {$id}).", $id, 'user', ['email' => $user['email']], (array) $authUser ?: null);
         $this->success($response, null, 'User deleted successfully.');
+    }
+
+    /**
+     * GET /api/users/:id/photo
+     * Stream the user's profile photo. Used by admin user lists.
+     */
+    public function downloadPhoto(Request $request, Response $response): never
+    {
+        $id   = (int)$request->param('id');
+        $user = $this->userModel->find($id);
+
+        if (!$user) {
+            $this->error($response, 'User not found.', 404);
+        }
+
+        $photoId = $user['photo'] ?? null;
+        if (!$photoId) {
+            $this->error($response, 'No profile photo.', 404);
+        }
+
+        try {
+            $client   = new FileServerClient();
+            $fileData = $client->download((string)$photoId);
+        } catch (\RuntimeException $e) {
+            $this->error($response, $e->getMessage(), 502);
+        }
+
+        $mime = $fileData['mime'] ?? 'image/jpeg';
+        header('Content-Type: ' . $mime);
+        header('Content-Disposition: inline; filename="' . addslashes($fileData['original_name'] ?? 'photo') . '"');
+        header('Content-Length: ' . strlen($fileData['content']));
+        header('Cache-Control: private, max-age=60');
+        header('X-Content-Type-Options: nosniff');
+
+        echo $fileData['content'];
+        exit;
     }
 
     /**

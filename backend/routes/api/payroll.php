@@ -14,20 +14,20 @@ use App\Constants\Permissions;
  * HR Payroll API Routes
  */
 
-// Read: VIEW_HR_EMPLOYEES
+// Read: VIEW_PAYROLL
 $router->group('/api/hr/payroll', function ($router) {
     $router->get('',                 [HrPayrollController::class, 'index']);
     $router->get('/:emp_id/slips',   [HrPayrollController::class, 'slips']);
-}, [AuthMiddleware::class, new PermissionMiddleware(Permissions::VIEW_HR_EMPLOYEES)]);
+}, [AuthMiddleware::class, new PermissionMiddleware(Permissions::VIEW_PAYROLL)]);
 
-// Write: MANAGE_HR_EMPLOYEES
+// Write: MANAGE_PAYROLL
 $router->group('/api/hr/payroll', function ($router) {
     $router->post('',                [HrPayrollController::class, 'upsert']);
     $router->post('/import-excel',   [HrPayrollController::class, 'importFromExcel']);
     $router->post('/copy-period',    [HrPayrollController::class, 'copyPeriod']);
     $router->patch('/:id/status',    [HrPayrollController::class, 'setStatus']);
     $router->delete('/:id',          [HrPayrollController::class, 'destroy']);
-}, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES)]);
+}, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_PAYROLL)]);
 
 // Payroll config: read rates + custom deductions
 $router->group('/api/hr', function ($router) {
@@ -46,23 +46,23 @@ $router->group('/api/hr', function ($router) {
 // Salary: read
 $router->group('/api/hr/payroll/payments', function ($router) {
     $router->get('', [SalaryPaymentController::class, 'index']);
-}, [AuthMiddleware::class, new PermissionMiddleware(Permissions::VIEW_HR_EMPLOYEES)]);
+}, [AuthMiddleware::class, new PermissionMiddleware(Permissions::VIEW_PAYROLL)]);
 
 // Salary: write
 $router->group('/api/hr/payroll/payments', function ($router) {
-    $router->post('',     [SalaryPaymentController::class, 'process']);
+    $router->post('',       [SalaryPaymentController::class, 'process']);
     $router->delete('/:id', [SalaryPaymentController::class, 'destroy']);
-}, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES)]);
+}, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_PAYROLL)]);
 
 // Per-employee deductions: read
 $router->group('/api/hr/employees/:emp_id/deductions', function ($router) {
     $router->get('',        [EmployeeDeductionController::class, 'index']);
     $router->get('/active', [EmployeeDeductionController::class, 'activeForMonth']);
-}, [AuthMiddleware::class, new PermissionMiddleware(Permissions::VIEW_HR_EMPLOYEES)]);
+}, [AuthMiddleware::class, new PermissionMiddleware(Permissions::VIEW_PAYROLL)]);
 
 // Per-employee deductions: write
 $router->group('/api/hr/employees/:emp_id/deductions', function ($router) {
     $router->post('',       [EmployeeDeductionController::class, 'store']);
     $router->put('/:id',    [EmployeeDeductionController::class, 'update']);
     $router->delete('/:id', [EmployeeDeductionController::class, 'destroy']);
-}, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES)]);
+}, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_PAYROLL)]);

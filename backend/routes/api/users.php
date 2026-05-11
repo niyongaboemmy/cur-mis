@@ -17,6 +17,7 @@ $router->group('/api/users', function ($router) {
     $router->post('',      [UserController::class, 'create']);
     $router->get('/:id',   [UserController::class, 'show']);
     $router->put('/:id',   [UserController::class, 'update']);
+    $router->get('/:id/photo', [UserController::class, 'downloadPhoto']);
     $router->patch('/:id/toggle-status', [UserController::class, 'toggleStatus']);
     $router->delete('/:id',              [UserController::class, 'delete']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_USERS)]);

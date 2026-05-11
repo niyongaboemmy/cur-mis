@@ -86,6 +86,11 @@ class Permissions
     // Applicant self-service
     public const MANAGE_OWN_PROFILE = 'MANAGE_OWN_PROFILE';
 
+    // Messaging
+    public const SEND_MESSAGES      = 'SEND_MESSAGES';
+    public const MANAGE_MESSAGES    = 'MANAGE_MESSAGES';
+    public const BROADCAST_MESSAGES = 'BROADCAST_MESSAGES';
+
     /**
      * Get all predefined system permissions.
      *
@@ -150,6 +155,9 @@ class Permissions
             self::ACCESS_STUDENT_PORTAL,
             self::GENERATE_DOCUMENTS,
             self::MANAGE_OWN_PROFILE,
+            self::SEND_MESSAGES,
+            self::MANAGE_MESSAGES,
+            self::BROADCAST_MESSAGES,
         ];
     }
 }

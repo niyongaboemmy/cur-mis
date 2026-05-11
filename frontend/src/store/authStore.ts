@@ -8,6 +8,7 @@ export interface AuthUser {
   full_name:    string
   username?:    string
   phone?:       string | null
+  photo?:       string | null
   role?:        string
   role_name?:   string
   role_id?:     number
