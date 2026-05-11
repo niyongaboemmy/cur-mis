@@ -13,12 +13,11 @@ class EmailTemplateHelper
     {
         $appName = getenv('APP_NAME') ?: 'CurMis';
 
-        $logoPath = dirname(__DIR__, 2) . '/public/logo.png';
-        $logoHtml = '';
-        if (file_exists($logoPath)) {
-            $logoData = base64_encode(file_get_contents($logoPath));
-            $logoHtml = "<img src='data:image/png;base64,{$logoData}' alt='{$appName}' style='height:52px;width:auto;display:block;margin:0 auto 10px auto;'>";
-        }
+        $appUrl   = rtrim(getenv('APP_URL') ?: '', '/');
+        $logoUrl  = $appUrl . '/logo.png';
+        $logoHtml = $appUrl
+            ? "<img src='{$logoUrl}' alt='{$appName}' style='height:52px;width:auto;display:block;margin:0 auto 10px auto;'>"
+            : '';
 
         return "
         <!DOCTYPE html>

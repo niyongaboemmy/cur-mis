@@ -60,11 +60,12 @@ class MailService
      * @param string $altBody The plain text alternative body
      * @return bool True if the email was sent successfully
      */
-    public function send($to, string $subject, string $body, string $altBody = ''): bool
+    public function send(array|string $to, string $subject, string $body, string $altBody = ''): bool
     {
         try {
             $this->mailer->clearAddresses();
-            
+            $this->mailer->clearAttachments();
+
             if (is_array($to) && isset($to['email'])) {
                 $this->mailer->addAddress($to['email'], $to['name'] ?? '');
             } elseif (is_string($to)) {
@@ -74,7 +75,6 @@ class MailService
             $this->mailer->isHTML(true);
             $this->mailer->Subject = $subject;
             $this->mailer->Body    = $body;
-            
             $this->mailer->AltBody = $altBody ?: strip_tags($body);
 
             return (bool) $this->mailer->send();
@@ -87,7 +87,7 @@ class MailService
     /**
      * Send an email with an in-memory binary attachment (e.g. PDF bytes).
      */
-    public function sendWithAttachment($to, string $subject, string $body, string $altBody, string $binaryData, string $filename): bool
+    public function sendWithAttachment(array|string $to, string $subject, string $body, string $altBody, string $binaryData, string $filename): bool
     {
         try {
             $this->mailer->clearAddresses();
