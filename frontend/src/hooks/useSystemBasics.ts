@@ -10,15 +10,21 @@ import { systemService } from '@/services/systemService'
  * result so callers can gate on `isLoading` / `isError`.
  */
 export function useSystemBasics() {
-  const { isAuthenticated } = useAuthStore()
+  const { isAuthenticated, user } = useAuthStore()
   const setBasics  = useSystemStore((s) => s.setBasics)
   const setLoading = useSystemStore((s) => s.setLoading)
   const setError   = useSystemStore((s) => s.setError)
 
+  // Skip the call entirely for roles that don't have VIEW_SYSTEM_BASICS
+  // (e.g. applicants). The backend gates the endpoint with that permission
+  // and a 403 would otherwise spam the console + ErrorBoundary on every
+  // applicant page load.
+  const canView = !!user?.permissions?.includes('VIEW_SYSTEM_BASICS')
+
   const query = useQuery({
     queryKey: ['system', 'basics'],
     queryFn:  () => systemService.getBasics(),
-    enabled:  isAuthenticated,
+    enabled:  isAuthenticated && canView,
     staleTime: 1000 * 60 * 10, // 10 min — rarely changes during a session
   })
 
