@@ -257,13 +257,17 @@ class ApplicationAdminController extends BaseController
 
         $timestamp   = date('Y-m-d H:i:s');
         $newEntry    = "[{$timestamp} — {$actorName}]: " . $data['notes'];
-        $existing    = $application['notes'] ?? '';
+        // The DB column is `internal_notes` (not `notes`). The old code wrote
+        // to a non-existent `notes` field which BaseModel.filterFillable
+        // silently dropped, so admin notes never persisted. Append to the
+        // real column instead.
+        $existing    = $application['internal_notes'] ?? '';
         $combined    = $existing ? $existing . "\n" . $newEntry : $newEntry;
 
-        $this->appModel->update($id, ['notes' => $combined]);
+        $this->appModel->update($id, ['internal_notes' => $combined]);
 
         SystemLogService::log('UPDATE', 'ADMISSIONS', "Added internal note to application ID {$id}.", $id, 'student_application', null, (array) $authUser ?: null);
-        $this->success($response, ['notes' => $combined], 'Note added successfully.');
+        $this->success($response, ['internal_notes' => $combined], 'Note added successfully.');
     }
 
     /**

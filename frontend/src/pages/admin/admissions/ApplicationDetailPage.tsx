@@ -1546,39 +1546,97 @@ export default function ApplicationDetailPage() {
             </div>
           </section>
 
-          {/* Internal Notes */}
+          {/* Internal Notes — admin-only thread, latest at the top */}
           <section className="card p-6 border-brand/20 shadow-sm">
             <SectionHeader
               title="Internal Review Notes"
               sub="Admin-only — never shown to the applicant."
               icon={MessageSquarePlus}
             />
-            <div className="mt-4 space-y-3">
-              <textarea
-                className="input min-h-[100px] text-[13px] bg-brand/5 focus:bg-white transition-colors"
-                placeholder="Admin-only notes…"
-                value={noteInput}
-                onChange={(e) => setNoteInput(e.target.value)}
-              />
-              <div className="flex justify-end">
-                <button
-                  className="btn-primary"
-                  onClick={() =>
-                    noteInput.trim() && addNote.mutate(noteInput.trim())
-                  }
-                  disabled={!noteInput.trim() || addNote.isPending}
-                >
-                  {addNote.isPending && (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  )}
-                  Save Note
-                </button>
-              </div>
-              {app.internal_notes && (
-                <div className="rounded-xl bg-brand/5 p-4 text-[13px] leading-relaxed whitespace-pre-wrap text-ink-800 dark:text-ink-200 border border-brand/10">
-                  {app.internal_notes}
+            <div className="mt-4 space-y-4">
+              {/* Composer */}
+              <div className="rounded-xl border border-brand/10 bg-brand/[0.03] p-3">
+                <textarea
+                  className="input min-h-[80px] text-[13px] bg-white dark:bg-ink-900 focus:bg-white"
+                  placeholder="Add a note for your team…"
+                  value={noteInput}
+                  onChange={(e) => setNoteInput(e.target.value)}
+                  maxLength={1000}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && noteInput.trim()) {
+                      addNote.mutate(noteInput.trim())
+                    }
+                  }}
+                />
+                <div className="flex items-center justify-between mt-2">
+                  <span className="text-[10.5px] text-ink-400">
+                    {noteInput.length}/1000 · ⌘+Enter to save
+                  </span>
+                  <button
+                    className="btn-primary btn-sm"
+                    onClick={() =>
+                      noteInput.trim() && addNote.mutate(noteInput.trim())
+                    }
+                    disabled={!noteInput.trim() || addNote.isPending}
+                  >
+                    {addNote.isPending && (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    )}
+                    Save note
+                  </button>
                 </div>
-              )}
+              </div>
+
+              {/* Thread — parse the appended "[timestamp — actor]: body" lines */}
+              {(() => {
+                const raw = (app.internal_notes ?? '').trim()
+                if (!raw) {
+                  return (
+                    <p className="text-[12px] italic text-ink-400 text-center py-3">
+                      No internal notes yet.
+                    </p>
+                  )
+                }
+                // Each entry starts with a "[…]" prefix; split on newlines
+                // that begin one. The regex keeps the bracket on the
+                // following entry.
+                const entries = raw
+                  .split(/\n(?=\[)/)
+                  .map((line) => {
+                    const m = line.match(/^\[([^\]]+)\]:\s*([\s\S]*)$/)
+                    if (!m) return { meta: '', body: line.trim() }
+                    // meta is "YYYY-MM-DD HH:MM:SS — Author Name"
+                    const parts = m[1].split('—').map((s) => s.trim())
+                    return {
+                      meta: m[1],
+                      when: parts[0] ?? '',
+                      who: parts[1] ?? '',
+                      body: m[2].trim(),
+                    }
+                  })
+                  .reverse() // newest first
+
+                return (
+                  <ul className="space-y-2.5">
+                    {entries.map((e, i) => (
+                      <li
+                        key={i}
+                        className="rounded-lg border border-ink-100 dark:border-ink-800 bg-white dark:bg-ink-900 p-3"
+                      >
+                        <div className="flex items-center justify-between text-[10.5px] text-ink-500">
+                          <span className="font-semibold text-ink-700 dark:text-ink-200">
+                            {(e as any).who || 'Admin'}
+                          </span>
+                          <span>{(e as any).when || ''}</span>
+                        </div>
+                        <p className="text-[12.5px] leading-relaxed text-ink-800 dark:text-ink-200 mt-1.5 whitespace-pre-wrap">
+                          {e.body}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                )
+              })()}
             </div>
           </section>
         </div>
