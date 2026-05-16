@@ -1,37 +1,42 @@
 -- =============================================================================
--- 2026_05_16_060_branch_combined_schema.sql
+-- 2026_05_16_COMBINED_all_migrations.sql
 -- -----------------------------------------------------------------------------
--- One-shot combined migration for every schema change introduced on this
--- branch. Folds together migrations 049 → 059 (registry / campus scoping,
--- application workflow, visa tracking, A-Level fields, campus remap, etc.)
--- into a single deterministic file so:
+-- Single deterministic file that folds every schema change introduced on this
+-- branch (migrations 048 → 060) into one idempotent script.
 --
---   • a fresh environment can reach the current schema with this one file,
---   • production / cPanel deploys don't have to apply 11 files in order,
---   • re-running on an env that already has the individual migrations is a
---     no-op (every change is guarded by INFORMATION_SCHEMA / IF NOT EXISTS
---     / ON DUPLICATE KEY UPDATE).
+-- Safe to run on:
+--   • a fresh database (no individual migration has run)
+--   • a database where some or all individual migrations already ran
+--
+-- Every change is guarded by INFORMATION_SCHEMA checks, IF NOT EXISTS,
+-- ON DUPLICATE KEY UPDATE, or INSERT IGNORE so re-running is a no-op.
 --
 -- Section index:
---   §1.  campuses               — table + 3 institutional rows (Save/Taba/Kigali)
---   §2.  user_campus_assignments — user ↔ campus N:N pivot
---   §3.  roles.enforce_campus_scope — per-role campus lock flag
---   §4.  student                 — registry / international / returning-applicant fields
---   §5.  student_applications    — gender normalise, hide/restore, credit-transfer,
---                                  A-Level, hidden index
---   §6.  application_documents   — applicant_profile_id + verification_comment
---   §7.  student_visa_records    — international student visa renewals
---   §8.  application_pending_notes — shared "why is this pending" thread
---   §9.  settings                — pending_timeout_days default
---   §10. student.campus remap    — legacy free-text labels → campuses.id
+--   §1.  campuses                    — table + 3 institutional rows
+--   §2.  user_campus_assignments     — user ↔ campus N:N pivot
+--   §3.  roles.enforce_campus_scope  — per-role campus lock flag
+--   §4.  student                     — user_id, parent link, level, intl, registry
+--   §5.  staff                       — user_id FK
+--   §6.  api_authorization           — UrubutoPay / third-party API credentials
+--   §7.  fee_structures + fee_invoices — created_by columns
+--   §8.  fee_invoices.status          — add 'cancelled' ENUM value
+--   §9.  fee_payments                 — recorded_by nullable, status enum, student_id type
+--   §10. student_applications         — hide/restore, credit-transfer, A-Level, gender
+--   §11. application_documents        — applicant_profile_id + verification_comment
+--   §12. student_visa_records         — international student visa renewals
+--   §13. application_pending_notes    — shared "why is this pending" thread
+--   §14. settings                     — pending_timeout_days default
+--   §15. student.campus remap         — legacy free-text labels → campuses.id
+--   §16. permissions                  — VIEW_MOBILE_PAYMENTS, VIEW_ONLINE_PAYMENTS_HISTORY, MY_INVOICE
+--   §17. role_permissions             — assign permissions to roles
 -- =============================================================================
 
 
 -- =============================================================================
 -- §1  campuses
 -- -----------------------------------------------------------------------------
--- Mirrors migration 032. Defensive CREATE so this file is self-sufficient
--- on a fresh DB without depending on 032 having run first.
+-- Mirrors migration 032 / 059. Defensive CREATE so this file is self-sufficient
+-- on a fresh DB without depending on prior migrations having run first.
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS `campuses` (
   `id`         INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -62,14 +67,13 @@ ON DUPLICATE KEY UPDATE
 
 
 -- =============================================================================
--- §2  user_campus_assignments  (was migration 049)
+-- §2  user_campus_assignments  (migration 049)
 -- -----------------------------------------------------------------------------
 -- Registry staff can be assigned to one or more campuses; their application
--- list is then auto-scoped to those campuses (when roles.enforce_campus_scope
--- is on).
+-- list is then auto-scoped to those campuses when roles.enforce_campus_scope is ON.
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS `user_campus_assignments` (
-    `id`           INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `id`           INT UNSIGNED     NOT NULL AUTO_INCREMENT,
     `user_id`      INT(10) UNSIGNED NOT NULL,
     `campus_id`    INT UNSIGNED     NOT NULL,
     `assigned_by`  INT(10) UNSIGNED DEFAULT NULL,
@@ -85,10 +89,10 @@ CREATE TABLE IF NOT EXISTS `user_campus_assignments` (
 
 
 -- =============================================================================
--- §3  roles.enforce_campus_scope  (was migration 058)
+-- §3  roles.enforce_campus_scope  (migration 058)
 -- -----------------------------------------------------------------------------
 -- Per-role flag. When ON, every campus-aware admin endpoint restricts the
--- user's view to their assigned campuses (replaces the legacy hardcoded
+-- user's view to their assigned campuses (replaces the old hardcoded
 -- "admin/superadmin always bypass" rule).
 -- =============================================================================
 SET @col := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
@@ -100,14 +104,22 @@ PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
 
 
 -- =============================================================================
--- §4  student — registry / international / returning-applicant fields
+-- §4  student — user_id, parent link, programme level, registry, international
 -- -----------------------------------------------------------------------------
--- Folds together migrations 051 (parent_student_id, programme_level) and
--- 055 (assigned_registry_user_id, is_international).
+-- Folds migrations 048 (user_id), 051 (parent_student_id, programme_level),
+-- and 055 (assigned_registry_user_id, is_international).
 -- =============================================================================
 
--- 4a. parent_student_id — links a returning applicant's new cohort row to
---     their prior one (e.g. UG → Masters).
+-- 4a. user_id — links each student record to its portal login in `users`.
+SET @col := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'student' AND COLUMN_NAME = 'user_id');
+SET @stmt := IF(@col = 0,
+  'ALTER TABLE `student` ADD COLUMN `user_id` INT(10) UNSIGNED DEFAULT NULL AFTER `id`',
+  'SELECT ''student.user_id already exists''');
+PREPARE stmt FROM @stmt; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- 4b. parent_student_id — links a returning applicant's new cohort row to their
+--     prior one (e.g. UG → Masters).
 SET @col := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'student' AND COLUMN_NAME = 'parent_student_id');
 SET @stmt := IF(@col = 0,
@@ -115,7 +127,7 @@ SET @stmt := IF(@col = 0,
   'SELECT 1');
 PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
 
--- 4b. programme_level — each row carries its own programme tier.
+-- 4c. programme_level — each row carries its own programme tier.
 SET @col := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'student' AND COLUMN_NAME = 'programme_level');
 SET @stmt := IF(@col = 0,
@@ -123,7 +135,7 @@ SET @stmt := IF(@col = 0,
   'SELECT 1');
 PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
 
--- 4c. Index for "all programmes for this person" lookup.
+-- 4d. Index for "all programmes for this person" lookup.
 SET @idx := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'student' AND INDEX_NAME = 'idx_student_parent');
 SET @stmt := IF(@idx = 0,
@@ -131,7 +143,7 @@ SET @stmt := IF(@idx = 0,
   'SELECT 1');
 PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
 
--- 4d. assigned_registry_user_id — owner of international student case.
+-- 4e. assigned_registry_user_id — owner of international student case.
 SET @col := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'student' AND COLUMN_NAME = 'assigned_registry_user_id');
 SET @stmt := IF(@col = 0,
@@ -139,7 +151,7 @@ SET @stmt := IF(@col = 0,
   'SELECT 1');
 PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
 
--- 4e. is_international — boolean flag, drives the International Students page.
+-- 4f. is_international — boolean flag, drives the International Students page.
 SET @col := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'student' AND COLUMN_NAME = 'is_international');
 SET @stmt := IF(@col = 0,
@@ -149,13 +161,100 @@ PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
 
 
 -- =============================================================================
--- §5  student_applications — workflow + filter columns
+-- §5  staff — user_id  (migration 048)
 -- -----------------------------------------------------------------------------
--- Folds 052 (gender normalise), 053 (hide/restore), 054 (credit-transfer),
--- 057 (A-Level fields).
+-- Links each staff record to its portal login in the `users` table.
+-- =============================================================================
+SET @col := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'staff' AND COLUMN_NAME = 'user_id');
+SET @stmt := IF(@col = 0,
+  'ALTER TABLE `staff` ADD COLUMN `user_id` INT(10) UNSIGNED DEFAULT NULL AFTER `id`',
+  'SELECT ''staff.user_id already exists''');
+PREPARE stmt FROM @stmt; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+
+-- =============================================================================
+-- §6  api_authorization  (migration 049 — UrubutoPay integration)
+-- -----------------------------------------------------------------------------
+-- Stores the API credential set that UrubutoPay uses to authenticate against us.
+-- Used by UrubutoPayService::authenticateApiUser() and the webhook middleware.
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS `api_authorization` (
+  `id`            INT UNSIGNED  NOT NULL AUTO_INCREMENT,
+  `username`      VARCHAR(80)   NOT NULL,
+  `password`      VARCHAR(255)  NOT NULL COMMENT 'plain, MD5, SHA-1, SHA-256, or bcrypt hash',
+  `token`         VARCHAR(255)  NOT NULL COMMENT 'Bearer token returned to UrubutoPay after auth',
+  `merchant_code` VARCHAR(50)   NULL DEFAULT NULL,
+  `created_at`    DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_api_auth_username` (`username`),
+  UNIQUE KEY `uq_api_auth_token`    (`token`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='UrubutoPay (and any future third-party) API credentials';
+
+
+-- =============================================================================
+-- §7  fee_structures + fee_invoices — created_by columns  (migration 050)
+-- -----------------------------------------------------------------------------
+-- Tables were created from an older draft of migration 022 before this column
+-- was added. ADD COLUMN IF NOT EXISTS is a no-op on re-run.
+-- =============================================================================
+ALTER TABLE `fee_structures`
+  ADD COLUMN IF NOT EXISTS `created_by` INT UNSIGNED NOT NULL DEFAULT 0 AFTER `is_active`;
+
+ALTER TABLE `fee_invoices`
+  ADD COLUMN IF NOT EXISTS `created_by` INT UNSIGNED NOT NULL DEFAULT 0 AFTER `is_system_generated`;
+
+
+-- =============================================================================
+-- §8  fee_invoices.status — add 'cancelled'  (migration 049)
+-- -----------------------------------------------------------------------------
+-- UrubutoPayService queries: status NOT IN ('paid','waived','cancelled').
+-- 'cancelled' was missing from the ENUM definition.
+-- MODIFY COLUMN is safe to re-run with the same definition.
+-- =============================================================================
+ALTER TABLE `fee_invoices`
+  MODIFY COLUMN `status`
+    ENUM('unpaid','partial','paid','overdue','waived','cancelled')
+    NOT NULL DEFAULT 'unpaid';
+
+
+-- =============================================================================
+-- §9  fee_payments — recorded_by nullable, status enum, student_id type
+-- -----------------------------------------------------------------------------
+-- Folds migrations 049 (recorded_by nullable), 052 (status 'reversed'),
+-- and 054 (student_id VARCHAR fix).
 -- =============================================================================
 
--- 5a. Hide/restore (Task 1.9).
+-- 9a. recorded_by: webhook-triggered payments are system-initiated; no human
+--     operator to reference. Column stays nullable; manual payments still carry
+--     the finance officer's user ID.
+ALTER TABLE `fee_payments`
+  MODIFY COLUMN `recorded_by` INT UNSIGNED NULL DEFAULT NULL;
+
+-- 9b. status: add 'reversed' to track UrubutoPay reversals without conflating
+--     them with 'rejected'.
+ALTER TABLE `fee_payments`
+  MODIFY COLUMN `status`
+    ENUM('pending','confirmed','rejected','reversed')
+    NOT NULL DEFAULT 'pending';
+
+-- 9c. student_id: the column was INT UNSIGNED but the system stores registration
+--     numbers like "CUR/BBA/001/2022" (varchar). FeePaymentModel joins on
+--     s.regnumber = fp.student_id, so the column must be VARCHAR.
+--     MODIFY COLUMN to the same type is a no-op on re-run.
+ALTER TABLE `fee_payments`
+  MODIFY COLUMN `student_id` VARCHAR(20) NOT NULL;
+
+
+-- =============================================================================
+-- §10  student_applications — hide/restore, credit-transfer, A-Level, gender
+-- -----------------------------------------------------------------------------
+-- Folds migrations 053 (is_hidden, hidden_*, pending timeout), 054
+-- (credit-transfer fields), 057 (A-Level fields), and 052 (gender normalise).
+-- =============================================================================
+
+-- 10a. Hide/restore flags (Task 1.9).
 SET @col := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'student_applications' AND COLUMN_NAME = 'is_hidden');
 SET @stmt := IF(@col = 0,
@@ -191,7 +290,7 @@ SET @stmt := IF(@idx = 0,
   'SELECT 1');
 PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
 
--- 5b. Credit-transfer / upgrading applicant workflow.
+-- 10b. Credit-transfer / upgrading applicant workflow.
 SET @col := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'student_applications' AND COLUMN_NAME = 'is_credit_transfer');
 SET @stmt := IF(@col = 0,
@@ -227,7 +326,7 @@ SET @stmt := IF(@col = 0,
   'SELECT 1');
 PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
 
--- 5c. A-Level academic fields (was 057, also referenced by 035's header).
+-- 10c. A-Level academic fields (migration 057; also referenced by 035 header).
 SET @col := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'student_applications' AND COLUMN_NAME = 'a2_grades');
 SET @stmt := IF(@col = 0,
@@ -249,9 +348,9 @@ SET @stmt := IF(@col = 0,
   'SELECT 1');
 PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
 
--- 5d. Normalise gender to single letter (M / F / Other). Deterministic for the
---     new gender filter (Task 1.8). Idempotent — once normalised, the WHEN
---     branches re-emit the same value.
+-- 10d. Normalise gender to single letter (M / F / Other) for the gender filter
+--      (Task 1.8). Idempotent — once normalised, the WHEN branches re-emit the
+--      same value so re-running is safe.
 UPDATE `student_applications`
    SET `gender` = CASE
      WHEN UPPER(LEFT(IFNULL(`gender`, ''), 1)) = 'M' THEN 'M'
@@ -263,12 +362,14 @@ UPDATE `student_applications`
 
 
 -- =============================================================================
--- §6  application_documents — applicant_profile_id + verification_comment
+-- §11  application_documents — applicant_profile_id + verification_comment
 -- -----------------------------------------------------------------------------
--- Was migration 056. Adds the profile FK and renames the legacy
--- rejection_notes column to verification_comment without dropping the old
--- one (other tooling may still read it).
+-- Migration 056. Adds the profile FK and adds verification_comment alongside
+-- the legacy rejection_notes column (not dropped to preserve any tooling
+-- that still reads it).
 -- =============================================================================
+
+-- 11a. applicant_profile_id
 SET @col := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'application_documents' AND COLUMN_NAME = 'applicant_profile_id');
 SET @stmt := IF(@col = 0,
@@ -276,6 +377,7 @@ SET @stmt := IF(@col = 0,
   'SELECT 1');
 PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
 
+-- 11b. Index for the upsertForProfile lookup.
 SET @idx := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'application_documents' AND INDEX_NAME = 'idx_ad_profile_type');
 SET @stmt := IF(@idx = 0,
@@ -283,6 +385,7 @@ SET @stmt := IF(@idx = 0,
   'SELECT 1');
 PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
 
+-- 11c. verification_comment (replaces legacy rejection_notes semantically).
 SET @col := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'application_documents' AND COLUMN_NAME = 'verification_comment');
 SET @stmt := IF(@col = 0,
@@ -290,8 +393,8 @@ SET @stmt := IF(@col = 0,
   'SELECT 1');
 PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
 
--- Copy legacy rejection_notes into verification_comment when the old column
--- still exists. Safe to re-run: it only overwrites NULLs in the new column.
+-- 11d. Copy legacy rejection_notes into verification_comment when the old column
+--      still exists. Only overwrites NULLs in the new column.
 SET @legacy := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'application_documents' AND COLUMN_NAME = 'rejection_notes');
 SET @stmt := IF(@legacy = 1,
@@ -299,9 +402,8 @@ SET @stmt := IF(@legacy = 1,
   'SELECT 1');
 PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
 
--- Backfill applicant_profile_id from the application's profile link.
--- Wrapped to skip cleanly if either side of the JOIN doesn't exist yet
--- (very fresh schemas without applicant_profiles).
+-- 11e. Backfill applicant_profile_id from the application's profile link.
+--      Skipped cleanly on fresh schemas that don't have applicant_profiles yet.
 SET @has_ap := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES
                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'applicant_profiles');
 SET @stmt := IF(@has_ap = 1,
@@ -314,13 +416,13 @@ PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
 
 
 -- =============================================================================
--- §7  student_visa_records  (was migration 055)
+-- §12  student_visa_records  (migration 055)
 -- -----------------------------------------------------------------------------
 -- International student visa renewal history. One row per renewal cycle;
--- `is_current=1` marks the live record per student.
+-- is_current=1 marks the live record per student.
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS `student_visa_records` (
-    `id`                INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `id`                INT UNSIGNED     NOT NULL AUTO_INCREMENT,
     `student_id`        INT(11)          NOT NULL,
     `country_of_origin` VARCHAR(100)     NOT NULL,
     `entry_date`        DATE             NOT NULL,
@@ -341,14 +443,13 @@ CREATE TABLE IF NOT EXISTS `student_visa_records` (
 
 
 -- =============================================================================
--- §8  application_pending_notes  (was migration 050)
+-- §13  application_pending_notes  (migration 050)
 -- -----------------------------------------------------------------------------
 -- Shared "why is this pending" thread on an application. Visible to every
--- registry staffer regardless of campus assignment so a colleague can
--- understand why a candidate is being held.
+-- registry staffer regardless of campus assignment.
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS `application_pending_notes` (
-    `id`             INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    `id`             INT UNSIGNED     NOT NULL AUTO_INCREMENT,
     `application_id` INT UNSIGNED     NOT NULL,
     `note`           TEXT             NOT NULL,
     `created_by`     INT(10) UNSIGNED DEFAULT NULL,
@@ -363,11 +464,10 @@ CREATE TABLE IF NOT EXISTS `application_pending_notes` (
 
 
 -- =============================================================================
--- §9  settings — pending_timeout_days default  (was part of migration 053)
+-- §14  settings — pending_timeout_days default  (migration 053)
 -- -----------------------------------------------------------------------------
--- 30-day default for auto-hiding stale pending applications. Admins can
--- tune the value via the Settings page; this only inserts the row when
--- it's missing.
+-- 30-day default for auto-hiding stale pending applications. Admins can tune
+-- the value via the Settings page; this only inserts the row when missing.
 -- =============================================================================
 SET @has_settings := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES
                       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'settings');
@@ -383,17 +483,18 @@ PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
 
 
 -- =============================================================================
--- §10  student.campus — legacy free-text → campuses.id remap (was 059)
+-- §15  student.campus — legacy free-text labels → campuses.id  (migration 059)
 -- -----------------------------------------------------------------------------
--- Switches student.campus from labels like "SAVE-CAMPUS" / "TABA-CAMPUS"
--- to the numeric `campuses.id` (stored as varchar) the app now consumes.
--- IDs are looked up via the unique `code` so this is portable across envs.
+-- Switches student.campus from labels like "SAVE-CAMPUS" / "TABA-CAMPUS" to
+-- the numeric campuses.id (stored as varchar) the app now consumes.
+-- IDs are resolved via the unique `code` column so this is portable across envs.
+-- Once converted, rows no longer match the WHERE clauses so re-running is safe.
 -- =============================================================================
 
--- 10a. Widen column so the new value (and any future longer ID) fits.
+-- 15a. Widen column to hold numeric IDs (and future longer values).
 ALTER TABLE `student` MODIFY `campus` VARCHAR(64) DEFAULT NULL;
 
--- 10b. Remap each legacy variant per campus code.
+-- 15b. Remap each legacy variant per campus code.
 UPDATE `student` s
 JOIN `campuses` c ON c.`code` = 'SAVE'
 SET s.`campus` = CAST(c.`id` AS CHAR)
@@ -409,6 +510,86 @@ JOIN `campuses` c ON c.`code` = 'KIGALI'
 SET s.`campus` = CAST(c.`id` AS CHAR)
 WHERE s.`campus` IN ('KIGALI-CAMPUS', 'KIGALI CAMPUS', 'Kigali Campus', 'KIGALI', 'Kigali', 'kigali', 'kigali-campus');
 
--- 10c. Normalise empty strings to NULL so the column is either a real ID
---      or NULL — matches what the API + filters now assume.
+-- 15c. Normalise empty strings to NULL — column is either a real ID or NULL.
 UPDATE `student` SET `campus` = NULL WHERE `campus` = '';
+
+
+-- =============================================================================
+-- §16  permissions  (migrations 049, 051, 053)
+-- -----------------------------------------------------------------------------
+-- Seeds VIEW_MOBILE_PAYMENTS, VIEW_ONLINE_PAYMENTS_HISTORY, and MY_INVOICE.
+-- All inserts use INSERT IGNORE so re-running is a no-op.
+-- =============================================================================
+
+-- Resolve Finance category id once for all inserts below.
+SET @cat_finance := (SELECT `id` FROM `permission_categories` WHERE `name` = 'Finance' LIMIT 1);
+
+-- VIEW_MOBILE_PAYMENTS — UrubutoPay / USSD mobile money transactions.
+INSERT IGNORE INTO `permissions` (`category_id`, `name`, `slug`, `description`)
+VALUES (
+    @cat_finance,
+    'View Mobile Payments',
+    'VIEW_MOBILE_PAYMENTS',
+    'View UrubutoPay USSD / mobile money payment transactions.'
+);
+
+-- VIEW_ONLINE_PAYMENTS_HISTORY — legacy online payments history table.
+INSERT IGNORE INTO `permissions` (`category_id`, `name`, `slug`, `description`)
+VALUES (
+    @cat_finance,
+    'View Online Payments History',
+    'VIEW_ONLINE_PAYMENTS_HISTORY',
+    'View the legacy online payments history table from UrubutoPay and other gateways.'
+);
+
+-- MY_INVOICE — students view their own invoices and outstanding balance.
+INSERT IGNORE INTO `permissions` (`category_id`, `name`, `slug`, `description`)
+VALUES (
+    @cat_finance,
+    'View My Invoices',
+    'MY_INVOICE',
+    'Students can view their own invoices, payment history and outstanding balance.'
+);
+
+
+-- =============================================================================
+-- §17  role_permissions  (migrations 049, 051, 053)
+-- -----------------------------------------------------------------------------
+-- Assigns the new permissions to the appropriate roles. All inserts use
+-- INSERT IGNORE so re-running is a no-op.
+-- =============================================================================
+
+-- VIEW_MOBILE_PAYMENTS → superadmin, admin, finance_officer
+INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
+SELECT r.`id`, p.`id`
+FROM   `roles`       r
+JOIN   `permissions` p ON p.`slug` = 'VIEW_MOBILE_PAYMENTS'
+WHERE  r.`name` IN ('superadmin', 'admin', 'finance_officer');
+
+-- VIEW_ONLINE_PAYMENTS_HISTORY → superadmin, admin, finance_officer
+INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
+SELECT r.`id`, p.`id`
+FROM   `roles`       r
+JOIN   `permissions` p ON p.`slug` = 'VIEW_ONLINE_PAYMENTS_HISTORY'
+WHERE  r.`name` IN ('superadmin', 'admin', 'finance_officer');
+
+-- MY_INVOICE → student role only
+INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
+SELECT r.`id`, p.`id`
+FROM   `roles`       r
+JOIN   `permissions` p ON p.`slug` = 'MY_INVOICE'
+WHERE  r.`name` = 'student';
+
+-- ACCESS_STUDENT_PORTAL → student role (idempotent guard, was in 049)
+INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
+SELECT r.`id`, p.`id`
+FROM   `roles`       r
+JOIN   `permissions` p ON p.`slug` = 'ACCESS_STUDENT_PORTAL'
+WHERE  r.`name` = 'student';
+
+-- Safety: ensure student role does NOT have VIEW_FINANCE (was in 053).
+DELETE rp FROM `role_permissions` rp
+JOIN `roles`       r ON r.`id` = rp.`role_id`
+JOIN `permissions` p ON p.`id` = rp.`permission_id`
+WHERE r.`name` = 'student'
+  AND p.`slug` = 'VIEW_FINANCE';
