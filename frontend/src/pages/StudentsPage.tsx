@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams, Link, useNavigate } from "react-router-dom";
 import {
@@ -25,6 +25,7 @@ import {
 } from "@/services/studentService";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useSystemStore } from "@/store/systemStore";
+import { useCampusFilterStore } from "@/store/campusFilterStore";
 import StatCard from "@/components/dashboard/StatCard";
 import DonutChart from "@/components/dashboard/DonutChart";
 import BarChart, { type BarDatum } from "@/components/dashboard/BarChart";
@@ -54,11 +55,12 @@ export default function StudentsPage() {
 
   // Global academic year (topnav selector). Empty string = all years.
   const selectedYear = useSystemStore((s) => s.selectedYearLabel);
+  const selectedCampus = useCampusFilterStore((s) => s.selectedCampusId);
 
   // Shared stats — refetched when the global year changes so every metric
   // (counts, charts, breakdowns) re-scopes to the selected academic year.
   const statsQ = useQuery({
-    queryKey: ["student-stats", selectedYear || "all"],
+    queryKey: ["student-stats", selectedYear || "all", selectedCampus],
     queryFn: () =>
       studentService.stats({ acc_year: selectedYear || undefined }),
     staleTime: 60_000,
@@ -527,6 +529,7 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
 
   // Academic year comes from the global topnav selector — not the URL.
   const selectedYear = useSystemStore((s) => s.selectedYearLabel);
+  const selectedCampusId = useCampusFilterStore((s) => s.selectedCampusId);
 
   // Entity data for filters. Departments + programs are loaded once and
   // shown flat — no faculty cascade — so the user can pick either directly.
@@ -630,14 +633,38 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
   ]);
 
   const listQ = useQuery({
-    queryKey: ["students", listParams],
+    queryKey: ["students", listParams, selectedCampusId],
     queryFn: () => studentService.list(listParams),
     placeholderData: (prev) => prev,
   });
 
+  const campusesQ = useQuery({ queryKey: ['acmgmt', 'campuses', 'all'], queryFn: () => academicsMgmtService.list<any>('campuses', { per_page: 200 }), staleTime: 5 * 60_000 });
+  const allCampuses: any[] = campusesQ.data?.data?.data ?? [];
+
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [isBulkUpdating, setIsBulkUpdating] = useState(false);
+  const [bulkCampusId, setBulkCampusId] = useState<string>("");
+
+  const handleBulkUpdate = async () => {
+    if (!bulkCampusId || selectedIds.size === 0) return;
+    try {
+      setIsBulkUpdating(true);
+      await studentService.bulkUpdateCampus(Array.from(selectedIds), Number(bulkCampusId));
+      setSelectedIds(new Set());
+      listQ.refetch();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsBulkUpdating(false);
+    }
+  };
+
   const rows = listQ.data?.data?.data ?? [];
   const total = listQ.data?.data?.total ?? 0;
   const last = listQ.data?.data?.last_page ?? 1;
+
+  // Clear selection when page/filters change
+  useMemo(() => { setSelectedIds(new Set()) }, [listParams]);
 
   const activeFilterCount = [
     gender,
@@ -724,6 +751,28 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
           </div>
 
           <div className="flex items-center gap-2 text-[12.5px] text-ink-500 shrink-0">
+            {selectedIds.size > 0 && (
+              <div className="flex items-center gap-2 bg-brand/5 border border-brand/20 px-3 py-1.5 rounded-md">
+                <span className="text-brand font-medium">{selectedIds.size} selected</span>
+                <select 
+                  className="input input-sm py-0 h-7" 
+                  value={bulkCampusId} 
+                  onChange={e => setBulkCampusId(e.target.value)}
+                >
+                  <option value="">Select campus...</option>
+                  {allCampuses.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+                <button 
+                  onClick={handleBulkUpdate}
+                  disabled={!bulkCampusId || isBulkUpdating}
+                  className="btn-primary btn-sm h-7"
+                >
+                  {isBulkUpdating ? "Updating..." : "Update"}
+                </button>
+              </div>
+            )}
             <Filter className="w-3.5 h-3.5" />
             <span>
               {total.toLocaleString()} result{total === 1 ? "" : "s"}
@@ -806,6 +855,20 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
               <table className="data-table">
                 <thead>
                   <tr>
+                    <th className="w-[40px] pl-4">
+                      <input
+                        type="checkbox"
+                        checked={rows.length > 0 && selectedIds.size === rows.length}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedIds(new Set(rows.map(r => r.id)));
+                          } else {
+                            setSelectedIds(new Set());
+                          }
+                        }}
+                        className="rounded border-ink-300 text-brand focus:ring-brand"
+                      />
+                    </th>
                     <SortableHeader
                       label="Student"
                       field="fname"
@@ -823,6 +886,13 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
                     <SortableHeader
                       label="Contact"
                       field="email"
+                      currentSort={sort_by}
+                      currentDir={sort_dir}
+                      onSort={handleSort}
+                    />
+                    <SortableHeader
+                      label="Campus"
+                      field="campus"
                       currentSort={sort_by}
                       currentDir={sort_dir}
                       onSort={handleSort}
@@ -846,7 +916,18 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
                 </thead>
                 <tbody>
                   {rows.map((s) => (
-                    <StudentRow key={s.id} s={s} searchParams={sp} />
+                    <StudentRow 
+                      key={s.id} 
+                      s={s} 
+                      searchParams={sp} 
+                      isSelected={selectedIds.has(s.id)}
+                      onToggleSelect={(checked) => {
+                        const next = new Set(selectedIds);
+                        if (checked) next.add(s.id);
+                        else next.delete(s.id);
+                        setSelectedIds(next);
+                      }}
+                    />
                   ))}
                 </tbody>
               </table>
@@ -865,9 +946,13 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
 function StudentRow({
   s,
   searchParams,
+  isSelected,
+  onToggleSelect,
 }: {
   s: Student;
   searchParams?: URLSearchParams;
+  isSelected?: boolean;
+  onToggleSelect?: (checked: boolean) => void;
 }) {
   const navigate = useNavigate();
   const name = [s.fname, s.lname].filter(Boolean).join(" ") || "—";
@@ -900,6 +985,14 @@ function StudentRow({
       className="cursor-pointer hover:bg-ink-50/60 dark:hover:bg-ink-800/40 transition-colors"
       title="Open student"
     >
+      <td className="pl-4" onClick={(e) => e.stopPropagation()}>
+        <input
+          type="checkbox"
+          checked={isSelected || false}
+          onChange={(e) => onToggleSelect?.(e.target.checked)}
+          className="rounded border-ink-300 text-brand focus:ring-brand"
+        />
+      </td>
       <td>
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-md bg-brand/10 text-brand dark:bg-brand/25 dark:text-gold-400 flex items-center justify-center font-semibold text-[12px] shrink-0 overflow-hidden">
@@ -941,6 +1034,11 @@ function StudentRow({
           )}
           {!s.email && !s.phone && <span className="text-ink-400">—</span>}
         </div>
+      </td>
+      <td>
+        <span className="text-[12.5px] text-ink-700 dark:text-ink-200">
+          {String(s.campus_name || s.campus || "—")}
+        </span>
       </td>
       <td>
         {s.gender ? (

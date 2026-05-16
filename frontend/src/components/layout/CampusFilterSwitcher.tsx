@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Building2, Check, ChevronDown } from 'lucide-react'
+import { Building2, Check, ChevronDown, Lock } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import userService from '@/services/userService'
 import { useAuthStore } from '@/store/authStore'
@@ -10,28 +10,35 @@ import { useCampusFilterStore } from '@/store/campusFilterStore'
  * single campus they're assigned to. Admins / superadmins can pick any
  * active campus. Renders nothing for applicants and for users with zero
  * campus assignments who aren't admins (one-campus implicit default).
+ *
+ * Auto-select rules:
+ *   • exactly 1 assigned campus → it's picked + the pill is rendered as
+ *     a read-only lock-icon pill (no dropdown, can't be cleared).
+ *   • scope-locked + multiple    → dropdown limited to the user's set,
+ *     first one auto-selected, no "All campuses" escape hatch.
+ *   • free / admin               → full catalog or assignments dropdown;
+ *     first assignment is the default landing pick instead of "All".
+ *
+ * Lock state is derived from `user.assigned_campuses` synchronously so the
+ * pill renders correctly on the very first paint — no flash of "nothing"
+ * waiting for an effect to fire.
  */
 export default function CampusFilterSwitcher() {
   const { user } = useAuthStore()
-  const { selectedCampusId, setSelectedCampusId } = useCampusFilterStore()
+  const { selectedCampusId, setSelectedCampusId, syncFromUser } =
+    useCampusFilterStore()
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement | null>(null)
 
-  /** Called whenever the scope changes — refetch every page that reads
-   *  campus-aware data so the UI flips immediately. We invalidate the
-   *  top-level service prefixes rather than naming individual queries,
-   *  so future pages benefit too. */
-  const setScope = (id: number | null) => {
-    setSelectedCampusId(id)
-    setOpen(false)
-    queryClient.invalidateQueries({ queryKey: ['admin', 'applications'] })
-    queryClient.invalidateQueries({ queryKey: ['admin', 'verifications'] })
-    queryClient.invalidateQueries({ queryKey: ['admin', 'admissions'] })
-    queryClient.invalidateQueries({ queryKey: ['students'] })
-  }
+  // Keep the persisted scope id in sync with the authenticated user (so a
+  // server-side change to their assignments propagates without needing a
+  // page refresh). The store action is idempotent.
+  useEffect(() => {
+    syncFromUser(user as any)
+  }, [user, syncFromUser])
 
-  // Click-away to close.
+  // Click-away to close (no-op when there's no dropdown).
   useEffect(() => {
     if (!open) return
     const onClick = (e: MouseEvent) => {
@@ -41,15 +48,20 @@ export default function CampusFilterSwitcher() {
     return () => window.removeEventListener('mousedown', onClick)
   }, [open])
 
-  const role = (user?.role ?? '').toLowerCase()
-  const isPriviledged = role === 'admin' || role === 'superadmin'
-  const isScopeLocked = !!user?.enforce_campus_scope
+  const role            = (user?.role ?? '').toLowerCase()
+  const isPriviledged   = role === 'admin' || role === 'superadmin'
+  const isScopeLocked   = !!user?.enforce_campus_scope
+  const assignments     = (user?.assigned_campuses ?? []) as Array<{ id: number | string; name: string; code?: string | null; location?: string | null }>
+  // Lock the pill whenever the user has exactly one assignment — the
+  // scope is unambiguous and they have nothing to switch to. Computed
+  // synchronously from the auth payload (not from the store) so the
+  // first render is always correct.
+  const isLockedToOne   = assignments.length === 1
 
-  // Catalog of every active campus — used when admins want to drill into
-  // a campus they aren't formally assigned to. Skipped (and harmless 403'd)
-  // for users without MANAGE_USERS; we fall back to the my-assignments
-  // list below. Scope-locked users never need the catalog.
-  const canSeeCatalog = !!user?.permissions?.includes('MANAGE_USERS') && !isScopeLocked
+  // Catalog of every active campus — admins / superadmins with MANAGE_USERS
+  // can drill into any campus, not just their own assignments. Scope-locked
+  // users never need the catalog (they can't reach outside their set).
+  const canSeeCatalog = !!user?.permissions?.includes('MANAGE_USERS') && !isScopeLocked && !isLockedToOne
   const catalogQ = useQuery({
     queryKey: ['users', 'campuses-catalog'],
     queryFn:  () => userService.listAllCampuses(),
@@ -57,20 +69,48 @@ export default function CampusFilterSwitcher() {
     staleTime: 1000 * 60 * 30,
   })
 
-  // Pick the right source:
-  //   scope-locked → only the user's assigned_campuses (no choices outside)
-  //   admin / catalog-aware → full active-campus catalog
-  //   everyone else → assignments from the auth payload (no extra request)
-  const my = isScopeLocked
-    ? (user?.assigned_campuses ?? [])
-    : ((canSeeCatalog ? catalogQ.data?.data?.campuses : null) ?? (user?.assigned_campuses ?? []))
+  // Pick the right source for the dropdown:
+  //   locked / scope-locked → only the user's assignments
+  //   catalog-capable       → full active-campus catalog (fallback to assignments while loading)
+  //   everyone else         → assignments from the auth payload
+  const my = (isScopeLocked || isLockedToOne)
+    ? assignments
+    : ((canSeeCatalog ? catalogQ.data?.data?.campuses : null) ?? assignments)
 
-  // Hide entirely if the user has nothing meaningful to pick from.
+  // Applicants don't get a campus scope at all.
   if (!user || role === 'applicant') return null
-  if (my.length <= 1) return null
-  if (isPriviledged && !isScopeLocked && my.length === 0) return null
 
-  const selected = my.find((c: any) => Number(c.id) === selectedCampusId) ?? null
+  // No campuses anywhere → nothing meaningful to render.
+  if (my.length === 0) return null
+
+  // Effective selection — prefer the persisted store pick, but fall back
+  // to the user's first assignment so the FIRST render already shows a
+  // sensible default. `syncFromUser` will persist this on the next tick.
+  //
+  // For users with zero assignments (admins with full catalog access),
+  // we deliberately do NOT fall back to the first catalog entry — the
+  // correct default for them is `null` = "All campuses".
+  const storeSelected     = my.find((c: any) => Number(c.id) === selectedCampusId) ?? null
+  const fallbackSelected  = assignments[0] ?? null
+  const selected          = storeSelected ?? fallbackSelected
+
+  // ── Locked single-campus mode ───────────────────────────────────────
+  // Exactly one assignment → render a read-only pill with a lock icon.
+  // No dropdown — the user can SEE the campus they're scoped to but
+  // can't drift off it.
+  if (isLockedToOne && selected) {
+    return (
+      <div
+        className="inline-flex items-center gap-1.5 h-9 px-3 rounded-full border border-ink-200 dark:border-ink-700 bg-ink-50 dark:bg-ink-800/60 text-[12.5px] font-medium text-ink-600 dark:text-ink-300 cursor-not-allowed"
+        title={`Scope is locked to ${selected.name}`}
+      >
+        <Building2 className="w-3.5 h-3.5 text-brand" />
+        <span className="max-w-[160px] truncate">{selected.name}</span>
+        <Lock className="w-3 h-3 text-ink-400" />
+      </div>
+    )
+  }
+
   const label = selected
     ? selected.name
     : isScopeLocked
@@ -78,6 +118,19 @@ export default function CampusFilterSwitcher() {
       : isPriviledged
         ? 'All campuses'
         : 'My campuses'
+
+  /** Refetch every page that reads campus-aware data so the UI flips
+   *  immediately. We invalidate top-level service prefixes rather than
+   *  naming individual queries, so future pages benefit too. */
+  const setScope = (id: number | null) => {
+    setSelectedCampusId(id)
+    setOpen(false)
+    queryClient.invalidateQueries({ queryKey: ['admin', 'applications'] })
+    queryClient.invalidateQueries({ queryKey: ['admin', 'verifications'] })
+    queryClient.invalidateQueries({ queryKey: ['admin', 'admissions'] })
+    queryClient.invalidateQueries({ queryKey: ['students'] })
+    queryClient.invalidateQueries({ queryKey: ['student-stats'] })
+  }
 
   return (
     <div ref={ref} className="relative">
@@ -98,19 +151,23 @@ export default function CampusFilterSwitcher() {
             Scope every page to
           </p>
 
-          <button
-            type="button"
-            onClick={() => setScope(null)}
-            className={
-              'w-full flex items-center justify-between px-3 py-2 text-[12.5px] transition-colors ' +
-              (selectedCampusId == null
-                ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-200 font-semibold'
-                : 'text-ink-700 dark:text-ink-200 hover:bg-ink-50 dark:hover:bg-ink-800')
-            }
-          >
-            <span>{isScopeLocked || !isPriviledged ? 'All my campuses' : 'All campuses'}</span>
-            {selectedCampusId == null && <Check className="w-3.5 h-3.5" />}
-          </button>
+          {/* Scope-locked users can pick any of their campuses but cannot
+              opt out into "all campuses". Hide the All option for them. */}
+          {!isScopeLocked && (
+            <button
+              type="button"
+              onClick={() => setScope(null)}
+              className={
+                'w-full flex items-center justify-between px-3 py-2 text-[12.5px] transition-colors ' +
+                (selectedCampusId == null
+                  ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-200 font-semibold'
+                  : 'text-ink-700 dark:text-ink-200 hover:bg-ink-50 dark:hover:bg-ink-800')
+              }
+            >
+              <span>{isPriviledged ? 'All campuses' : 'All my campuses'}</span>
+              {selectedCampusId == null && <Check className="w-3.5 h-3.5" />}
+            </button>
+          )}
 
           <div className="max-h-72 overflow-y-auto">
             {my.map((c: any) => {

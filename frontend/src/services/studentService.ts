@@ -248,8 +248,24 @@ export const studentService = {
     return api.get<PaginatedResponse<Student>>('/api/students', merged, signal)
   },
 
-  stats: (params: { acc_year?: string } = {}, signal?: AbortSignal) =>
-    api.get<StudentStats>('/api/students/stats', params as Record<string, unknown>, signal),
+  stats: (params: { acc_year?: string; campus?: string | number } = {}, signal?: AbortSignal) => {
+    // Mirror the topbar campus scope onto the stats endpoint so the dashboard
+    // cards / charts always reflect just the user's chosen scope.
+    const scopeId = useCampusFilterStore.getState().selectedCampusId
+    const merged: Record<string, unknown> = { ...(params as Record<string, unknown>) }
+    if (scopeId != null && (merged.campus == null || merged.campus === '')) {
+      merged.campus = String(scopeId)
+    }
+    return api.get<StudentStats>('/api/students/stats', merged, signal)
+  },
+
+  /** Bulk reassign students to a campus. Server applies the change in a
+   *  single transaction and returns the affected row count. */
+  bulkUpdateCampus: (studentIds: Array<number | string>, campusId: number | null) =>
+    api.post<{ updated: number }>(`/api/students/bulk-update-campus`, {
+      student_ids: studentIds,
+      campus_id: campusId,
+    }),
 
   show: (id: number | string, signal?: AbortSignal) =>
     api.get<Student>(`/api/students/${id}`, {}, signal),

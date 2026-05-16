@@ -31,18 +31,26 @@ const STATUS_LABEL: Record<string, string> = {
   draft:                  'Draft',
 }
 
-const STATUSES: { value: ApplicationStatus | ''; label: string }[] = [
-  { value: '',                                     label: 'All statuses' },
-  { value: ApplicationStatus.SUBMITTED,            label: 'Pending' },
+// UI pseudo-status: "Pending" means the active queue ⇒ submitted OR
+// documents_under_review. The backend expands this string in
+// StudentApplicationModel::paginate(), so it's a real filter value
+// even though it isn't a value in the SQL enum.
+const PENDING_FILTER = 'pending' as const
+
+const STATUSES: { value: string; label: string }[] = [
+  { value: '',                                       label: 'All statuses' },
+  // Pseudo-status surfaced first so the dropdown matches the tile.
+  { value: PENDING_FILTER,                           label: 'Pending (queue)' },
+  { value: ApplicationStatus.SUBMITTED,              label: 'Submitted only' },
   { value: ApplicationStatus.DOCUMENTS_UNDER_REVIEW, label: 'Docs under review' },
-  { value: ApplicationStatus.DOCUMENTS_VERIFIED,   label: 'Docs verified' },
-  { value: ApplicationStatus.DOCUMENTS_REJECTED,   label: 'Docs rejected' },
-  { value: ApplicationStatus.REQUESTED_CHANGES,    label: 'Changes requested' },
-  { value: ApplicationStatus.OFFERED,              label: 'Offered' },
-  { value: ApplicationStatus.OFFER_ACCEPTED,       label: 'Fee paid' },
-  { value: ApplicationStatus.OFFER_DECLINED,       label: 'Declined' },
-  { value: ApplicationStatus.ENROLLED,             label: 'Enrolled' },
-  { value: ApplicationStatus.WITHDRAWN,            label: 'Withdrawn' },
+  { value: ApplicationStatus.DOCUMENTS_VERIFIED,     label: 'Docs verified' },
+  { value: ApplicationStatus.DOCUMENTS_REJECTED,     label: 'Docs rejected' },
+  { value: ApplicationStatus.REQUESTED_CHANGES,      label: 'Changes requested' },
+  { value: ApplicationStatus.OFFERED,                label: 'Offered' },
+  { value: ApplicationStatus.OFFER_ACCEPTED,         label: 'Fee paid' },
+  { value: ApplicationStatus.OFFER_DECLINED,         label: 'Declined' },
+  { value: ApplicationStatus.ENROLLED,               label: 'Enrolled' },
+  { value: ApplicationStatus.WITHDRAWN,              label: 'Withdrawn' },
 ]
 
 const STATUS_TONE: Record<string, string> = {
@@ -77,8 +85,10 @@ export default function ApplicationsListPage() {
   const [showHidden, setShowHidden]       = useState(false)
   // Task 1.12 — bulk upload modal state.
   const [showBulkUpload, setShowBulkUpload] = useState(false)
-  // Default to "pending" (submitted) — that's the queue admins act on first.
-  const [status, setStatus] = useState<ApplicationStatus | ''>(ApplicationStatus.SUBMITTED)
+  // Default to the "pending" pseudo-status (submitted OR
+  // documents_under_review) — that's the full active queue admins act
+  // on first, not just the very first stage.
+  const [status, setStatus] = useState<ApplicationStatus | typeof PENDING_FILTER | ''>(PENDING_FILTER)
   const [intake, setIntake] = useState('')
   // Campus is no longer set from this page (global topbar + role flag own
   // scope), but the state stays so the query key changes when a dashboard
@@ -125,11 +135,16 @@ export default function ApplicationsListPage() {
     for (const r of byStatus) counts[r.status] = Number(r.cnt) || 0
     const totalAll = statsQ.data?.data?.total ?? Object.values(counts).reduce((a, b) => a + b, 0)
     const submitted = counts.submitted ?? 0
+    // "Pending" tile = full active review queue (matches the backend's
+    // `pending` pseudo-status filter). Was just `counts.submitted` —
+    // which was always 0 the moment an admin moved an application to
+    // documents_under_review, even though the work wasn't done.
+    const pending = submitted + (counts.documents_under_review ?? 0)
     const inReview = (counts.documents_under_review ?? 0) + (counts.documents_verified ?? 0)
     const offers = (counts.offered ?? 0) + (counts.offer_accepted ?? 0)
     const enrolled = counts.enrolled ?? 0
     const actionNeeded = (counts.documents_rejected ?? 0) + (counts.requested_changes ?? 0)
-    return { totalAll, submitted, inReview, offers, enrolled, actionNeeded }
+    return { totalAll, submitted, pending, inReview, offers, enrolled, actionNeeded }
   }, [statsQ.data])
 
   const modeOptions = useMemo(() => {
@@ -241,10 +256,10 @@ export default function ApplicationsListPage() {
               onClick={() => { setStatus(''); setPage(1) }}
             />
             <StatTile
-              icon={CheckCircle2} label="Pending" value={stats.submitted}
+              icon={CheckCircle2} label="Pending" value={stats.pending}
               accent="bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
-              active={status === ApplicationStatus.SUBMITTED}
-              onClick={() => { setStatus(ApplicationStatus.SUBMITTED); setPage(1) }}
+              active={status === PENDING_FILTER}
+              onClick={() => { setStatus(PENDING_FILTER); setPage(1) }}
             />
             <StatTile
               icon={Clock} label="In Review" value={stats.inReview}

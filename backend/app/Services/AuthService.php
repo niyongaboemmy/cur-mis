@@ -199,8 +199,11 @@ class AuthService
 
     /** Lightweight read of the campuses assigned to a user. Returns
      *  [{id,name,code,location}, ...] — empty array when nothing assigned
-     *  or when the user_campus_assignments table doesn't exist yet. */
-    private function loadAssignedCampuses(int $userId): array
+     *  or when the user_campus_assignments table doesn't exist yet.
+     *
+     *  Public so AuthController::me() can refresh stale JWT payloads
+     *  (users whose tokens pre-date this field still get current data). */
+    public function loadAssignedCampuses(int $userId): array
     {
         if ($userId <= 0) return [];
         try {

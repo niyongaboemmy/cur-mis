@@ -35,10 +35,14 @@ export function useLogin(options?: { onSuccess?: (response: any) => void }) {
           navigate('/verify-otp', { state: { email: payload?.email, devOtp: payload?.dev_otp } })
         } else if (response.data) {
           const { setAuth } = useAuthStore.getState()
-          const user = response.data.user
-          setAuth(user, response.data.token)
+          // Backend's /auth/login returns `role_name`; downstream UI
+          // (including CampusFilterSwitcher) reads `user.role`. Mirror
+          // the field so we don't depend on /auth/me hydrating it later.
+          const u = response.data.user as any
+          if (!u.role && u.role_name) u.role = u.role_name
+          setAuth(u, response.data.token)
           toast.success('Logged in successfully!')
-          
+
           navigate('/')
         }
       } else {

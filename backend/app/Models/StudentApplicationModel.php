@@ -104,8 +104,16 @@ class StudentApplicationModel extends BaseModel
         }
 
         if (!empty($filters['status'])) {
-            $conditions[] = 'sa.status = ?';
-            $bindings[]   = $filters['status'];
+            // "pending" is a UI pseudo-status meaning "anything still in the
+            // active review queue" — covers raw submissions AND those an
+            // admin has already started reviewing. Lets the Pending tile
+            // surface the full to-do list rather than only the first stage.
+            if ($filters['status'] === 'pending') {
+                $conditions[] = "sa.status IN ('submitted', 'documents_under_review')";
+            } else {
+                $conditions[] = 'sa.status = ?';
+                $bindings[]   = $filters['status'];
+            }
         } else {
             // Drafts are applicant-side work-in-progress; never surface them
             // to admin views unless explicitly filtered in.

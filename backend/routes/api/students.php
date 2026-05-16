@@ -43,6 +43,9 @@ $router->group('/api/students', function ($router) {
 
 // Write: requires MANAGE_STUDENTS
 $router->group('/api/students', function ($router) {
+    // Bulk reassign — literal path, registered before any /:id matchers in
+    // this group so it isn't shadowed.
+    $router->post('/bulk-update-campus', [StudentController::class, 'bulkUpdateCampus']);
     $router->post('',              [StudentController::class, 'create']);
     $router->put('/:id',           [StudentController::class, 'update']);
     $router->delete('/:id',        [StudentController::class, 'delete']);

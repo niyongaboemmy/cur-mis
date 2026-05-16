@@ -280,6 +280,41 @@ class StudentController extends BaseController
 
         $paginated = $this->studentModel->paginate($page, $perPage, $where, $bindings, $sortBy, $sortDir);
 
+        // Decorate rows with a human-readable campus_name. One follow-up
+        // query per page keeps the list lightweight without changing the
+        // paginate() contract.
+        $rows = $paginated['data'] ?? [];
+        if (!empty($rows)) {
+            $campusIds = [];
+            foreach ($rows as $r) {
+                $c = $r['campus'] ?? null;
+                if ($c !== null && $c !== '') $campusIds[(string)$c] = true;
+            }
+            $nameById = [];
+            if (!empty($campusIds)) {
+                $ids = array_keys($campusIds);
+                $ph  = implode(',', array_fill(0, count($ids), '?'));
+                $db  = $this->studentModel->db();
+                $catalog = $db->fetchAll(
+                    "SELECT id, name, code FROM `campuses` WHERE id IN ($ph)",
+                    $ids
+                );
+                foreach ($catalog as $c) {
+                    $nameById[(string)$c['id']] = [
+                        'name' => $c['name'],
+                        'code' => $c['code'],
+                    ];
+                }
+            }
+            foreach ($rows as &$r) {
+                $c = (string)($r['campus'] ?? '');
+                $r['campus_name'] = $c !== '' && isset($nameById[$c]) ? $nameById[$c]['name'] : null;
+                $r['campus_code'] = $c !== '' && isset($nameById[$c]) ? $nameById[$c]['code'] : null;
+            }
+            unset($r);
+            $paginated['data'] = $rows;
+        }
+
         $this->success($response, $paginated, 'Students fetched successfully.');
     }
 
@@ -613,6 +648,64 @@ class StudentController extends BaseController
 
         $this->studentModel->delete($id);
         $this->success($response, null, 'Student deleted successfully.');
+    }
+
+    /**
+     * POST /api/students/bulk-update-campus
+     * Reassign many students to a single campus in one transaction. Used by
+     * the students list multi-select toolbar.
+     *
+     * Body: { student_ids: number[]; campus_id: number | null }
+     *   - student_ids: 1..200 student.id values
+     *   - campus_id  : campuses.id, or null to clear the campus
+     */
+    public function bulkUpdateCampus(Request $request, Response $response): never
+    {
+        $data    = $request->body();
+        $ids     = is_array($data['student_ids'] ?? null) ? $data['student_ids'] : [];
+        $campus  = array_key_exists('campus_id', $data) ? $data['campus_id'] : null;
+        $authUser = (array) $request->param('_auth_user');
+
+        // Coerce to ints, drop garbage, cap to a sane batch size.
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids), fn($n) => $n > 0)));
+        if (empty($ids)) {
+            $this->error($response, 'student_ids must contain at least one valid id.', 422);
+        }
+        if (count($ids) > 200) {
+            $this->error($response, 'Cannot bulk-update more than 200 students at once.', 422);
+        }
+
+        // Validate the campus exists (or accept null to clear).
+        $campusIdStr = null;
+        if ($campus !== null && $campus !== '') {
+            $row = $this->studentModel->db()->fetchOne(
+                "SELECT id FROM `campuses` WHERE id = ? LIMIT 1",
+                [(int)$campus]
+            );
+            if (!$row) {
+                $this->error($response, 'Campus not found.', 404);
+            }
+            $campusIdStr = (string)(int)$campus;
+        }
+
+        $db = $this->studentModel->db();
+        $ph = implode(',', array_fill(0, count($ids), '?'));
+        $db->execute(
+            "UPDATE `student` SET `campus` = ?, updated_at = NOW() WHERE id IN ($ph)",
+            array_merge([$campusIdStr], $ids)
+        );
+        $updated = count($ids);
+
+        \App\Services\SystemLogService::log(
+            'UPDATE', 'STUDENTS',
+            "Bulk-updated campus for {$updated} student(s) → "
+                . ($campusIdStr ?? 'cleared'),
+            null, 'student',
+            ['student_ids' => $ids, 'campus_id' => $campusIdStr],
+            $authUser ?: null
+        );
+
+        $this->success($response, ['updated' => $updated], 'Campus updated for ' . $updated . ' student(s).');
     }
 
     /**
@@ -1586,6 +1679,26 @@ class StudentController extends BaseController
             $yearBind  = [];
         }
 
+        // Optional campus filter — driven by the topnav Campus switcher
+        // (sent as `campus` to match how the legacy student.campus column
+        // is stored — a varchar of the campuses.id). Both the unaliased
+        // and `s.` forms are needed so we can append to every aggregate.
+        $campusFilter = trim((string)($request->query('campus') ?? ''));
+        if ($campusFilter !== '') {
+            $campusScope  = " AND campus = ?";
+            $campusScopeS = " AND s.campus = ?";
+            $campusBind   = [$campusFilter];
+        } else {
+            $campusScope = $campusScopeS = '';
+            $campusBind  = [];
+        }
+
+        // Convenience: merge year + campus into a single bound list so each
+        // aggregate uses one consistent params array.
+        $combined  = $yearScope . $campusScope;
+        $combinedS = $yearScopeS . $campusScopeS;
+        $bind      = array_merge($yearBind, $campusBind);
+
         $row = $db->fetchOne("
             SELECT
               COUNT(*) AS total,
@@ -1619,8 +1732,8 @@ class StudentController extends BaseController
               COUNT(DISTINCT CASE WHEN LOWER(student_state) = 'active' AND department <> '' THEN department END) AS active_departments,
               COUNT(DISTINCT CASE WHEN LOWER(student_state) = 'active' AND acc_year <> '' THEN acc_year END) AS active_academic_years
             FROM student
-            WHERE 1=1{$yearScope}
-        ", $yearBind) ?: [];
+            WHERE 1=1{$combined}
+        ", $bind) ?: [];
 
         // Breakdowns — ACTIVE students only. These power the "Active students" overview.
         $byLevel = $db->fetchAll("
@@ -1629,11 +1742,11 @@ class StudentController extends BaseController
             LEFT JOIN levels l ON l.id = s.current_level
             WHERE LOWER(s.student_state) = 'active'
               AND s.current_level IS NOT NULL AND s.current_level <> ''
-              {$yearScopeS}
+              {$combinedS}
             GROUP BY s.current_level, l.name
             ORDER BY s.current_level ASC
             LIMIT 20
-        ", $yearBind);
+        ", $bind);
 
         $byFaculty = $db->fetchAll("
             SELECT s.faculty AS value, f.fac_name AS label, f.fac_code AS code, COUNT(*) AS total
@@ -1641,11 +1754,11 @@ class StudentController extends BaseController
             LEFT JOIN faculty f ON f.fac_id = s.faculty
             WHERE LOWER(s.student_state) = 'active'
               AND s.faculty IS NOT NULL AND s.faculty <> ''
-              {$yearScopeS}
+              {$combinedS}
             GROUP BY s.faculty, f.fac_name, f.fac_code
             ORDER BY total DESC
             LIMIT 20
-        ", $yearBind);
+        ", $bind);
 
         $byDepartment = $db->fetchAll("
             SELECT s.department AS value, d.dep_name AS label, d.dep_acronym AS code, COUNT(*) AS total
@@ -1653,22 +1766,22 @@ class StudentController extends BaseController
             LEFT JOIN departements d ON d.dep_id = s.department
             WHERE LOWER(s.student_state) = 'active'
               AND s.department IS NOT NULL AND s.department <> ''
-              {$yearScopeS}
+              {$combinedS}
             GROUP BY s.department, d.dep_name, d.dep_acronym
             ORDER BY total DESC
             LIMIT 20
-        ", $yearBind);
+        ", $bind);
 
         $byProgram = $db->fetchAll("
             SELECT program AS value, program AS label, COUNT(*) AS total
             FROM student
             WHERE LOWER(student_state) = 'active'
               AND program IS NOT NULL AND program <> ''
-              {$yearScope}
+              {$combined}
             GROUP BY program
             ORDER BY total DESC
             LIMIT 20
-        ", $yearBind);
+        ", $bind);
 
         // student.campus stores the campuses.id as a varchar — join for a
         // human-readable label, fall back to the raw value for legacy rows.
@@ -1678,11 +1791,11 @@ class StudentController extends BaseController
             LEFT JOIN campuses c ON c.id = s.campus
             WHERE LOWER(s.student_state) = 'active'
               AND s.campus IS NOT NULL AND s.campus <> ''
-              {$yearScopeS}
+              {$combinedS}
             GROUP BY s.campus, c.name
             ORDER BY total DESC
             LIMIT 20
-        ", $yearBind);
+        ", $bind);
 
         // student.intake is free-text (the intake name) — group on it directly.
         $byIntake = $db->fetchAll("
@@ -1690,11 +1803,11 @@ class StudentController extends BaseController
             FROM student
             WHERE LOWER(student_state) = 'active'
               AND intake IS NOT NULL AND intake <> ''
-              {$yearScope}
+              {$combined}
             GROUP BY intake
             ORDER BY total DESC
             LIMIT 20
-        ", $yearBind);
+        ", $bind);
 
         // Distinct filter values joined to their reference tables so labels are human-readable
         // (student.faculty/department/current_level are stored as numeric IDs as VARCHAR).
