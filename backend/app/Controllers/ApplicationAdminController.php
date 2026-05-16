@@ -758,73 +758,106 @@ class ApplicationAdminController extends BaseController
     public function getDashboardStats(Request $request, Response $response): never
     {
         $db = \Core\Database::getInstance();
-        
+
+        // Apply the user's campus scope to every aggregate so registry
+        // staff see "Pending: 3 in MY campus" instead of "Pending: 200 system-wide".
+        // The resolver returns null for unscoped users (admins), an int[]
+        // for assigned users, and [] for scope-locked users with no
+        // assignments (which short-circuits to zero counts).
+        $scope = $this->resolveCampusScope((array) $request->param('_auth_user'));
+        $scopeWhere  = '';
+        $scopeParams = [];
+        if (is_array($scope)) {
+            if (empty($scope)) {
+                // 1 = 0 → guaranteed empty result set.
+                $scopeWhere = ' AND 1 = 0';
+            } else {
+                $ph = implode(',', array_fill(0, count($scope), '?'));
+                $scopeWhere = " AND sa.campus_id IN ($ph)";
+                $scopeParams = $scope;
+            }
+        }
+
         // All admin-facing aggregates exclude `draft` applications since those
         // are applicant-side work-in-progress and have not been submitted.
         $statusCounts = $db->fetchAll(
-            "SELECT status, COUNT(*) as cnt
-             FROM student_applications
-             WHERE status <> 'draft'
-             GROUP BY status"
+            "SELECT sa.status, COUNT(*) as cnt
+             FROM student_applications sa
+             WHERE sa.status <> 'draft' {$scopeWhere}
+             GROUP BY sa.status",
+            $scopeParams
         );
 
         $intakeCounts = $db->fetchAll(
-            "SELECT intake, COUNT(*) as cnt
-             FROM student_applications
-             WHERE status <> 'draft'
-             GROUP BY intake"
+            "SELECT sa.intake, COUNT(*) as cnt
+             FROM student_applications sa
+             WHERE sa.status <> 'draft' {$scopeWhere}
+             GROUP BY sa.intake",
+            $scopeParams
         );
 
         $deptCounts = $db->fetchAll(
             "SELECT d.dep_name as label, COUNT(*) as cnt
              FROM student_applications sa
              JOIN departements d ON d.dep_id = sa.department_id
-             WHERE sa.status <> 'draft'
+             WHERE sa.status <> 'draft' {$scopeWhere}
              GROUP BY sa.department_id
-             ORDER BY cnt DESC"
+             ORDER BY cnt DESC",
+            $scopeParams
         );
 
         $genderCounts = $db->fetchAll(
-            "SELECT gender as label, COUNT(*) as cnt
-             FROM student_applications
-             WHERE status <> 'draft'
-             GROUP BY gender"
+            "SELECT sa.gender as label, COUNT(*) as cnt
+             FROM student_applications sa
+             WHERE sa.status <> 'draft' {$scopeWhere}
+             GROUP BY sa.gender",
+            $scopeParams
         );
 
         $campusCounts = $db->fetchAll(
             "SELECT sa.campus_id AS id, c.name AS label, COUNT(*) AS cnt
              FROM student_applications sa
              LEFT JOIN campuses c ON c.id = sa.campus_id
-             WHERE sa.status <> 'draft' AND sa.campus_id IS NOT NULL
+             WHERE sa.status <> 'draft' AND sa.campus_id IS NOT NULL {$scopeWhere}
              GROUP BY sa.campus_id, c.name
-             ORDER BY cnt DESC"
+             ORDER BY cnt DESC",
+            $scopeParams
         );
 
         $modeCounts = $db->fetchAll(
-            "SELECT mode_of_study AS label, COUNT(*) AS cnt
-             FROM student_applications
-             WHERE status <> 'draft' AND mode_of_study IS NOT NULL AND mode_of_study <> ''
-             GROUP BY mode_of_study
-             ORDER BY cnt DESC"
+            "SELECT sa.mode_of_study AS label, COUNT(*) AS cnt
+             FROM student_applications sa
+             WHERE sa.status <> 'draft' AND sa.mode_of_study IS NOT NULL AND sa.mode_of_study <> '' {$scopeWhere}
+             GROUP BY sa.mode_of_study
+             ORDER BY cnt DESC",
+            $scopeParams
         );
 
-        // Full catalogue of options the admin can filter by — every active
-        // campus, plus the canonical modes of study supported by the apply
-        // wizard. These don't depend on whether any application has used them.
-        $allCampuses = $db->fetchAll(
-            "SELECT id, name AS label
-             FROM campuses
-             WHERE is_active = 1
-             ORDER BY name ASC"
-        );
+        // The campus catalogue shown in filter dropdowns. For scope-locked
+        // users we hand back only their assigned campuses so the UI can't
+        // surface campuses they wouldn't have data for.
+        if (is_array($scope) && !empty($scope)) {
+            $ph = implode(',', array_fill(0, count($scope), '?'));
+            $allCampuses = $db->fetchAll(
+                "SELECT id, name AS label FROM campuses WHERE id IN ($ph) AND is_active = 1 ORDER BY name ASC",
+                $scope
+            );
+        } elseif (is_array($scope) && empty($scope)) {
+            $allCampuses = [];
+        } else {
+            $allCampuses = $db->fetchAll(
+                "SELECT id, name AS label FROM campuses WHERE is_active = 1 ORDER BY name ASC"
+            );
+        }
 
         $levelCounts = $db->fetchAll(
             "SELECT sa.level_id AS id, l.name AS label, COUNT(*) AS cnt
              FROM student_applications sa
              LEFT JOIN levels l ON l.id = sa.level_id
-             WHERE sa.status <> 'draft' AND sa.level_id IS NOT NULL
+             WHERE sa.status <> 'draft' AND sa.level_id IS NOT NULL {$scopeWhere}
              GROUP BY sa.level_id, l.name
-             ORDER BY l.name ASC"
+             ORDER BY l.name ASC",
+            $scopeParams
         );
         $allLevels = $db->fetchAll(
             "SELECT id, name AS label FROM levels ORDER BY name ASC"
@@ -837,35 +870,38 @@ class ApplicationAdminController extends BaseController
         ];
 
         $trend = $db->fetchAll(
-            "SELECT DATE(created_at) as date, COUNT(*) as cnt
-             FROM student_applications
-             WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
-               AND status <> 'draft'
-             GROUP BY DATE(created_at)
-             ORDER BY date ASC"
+            "SELECT DATE(sa.created_at) as date, COUNT(*) as cnt
+             FROM student_applications sa
+             WHERE sa.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+               AND sa.status <> 'draft' {$scopeWhere}
+             GROUP BY DATE(sa.created_at)
+             ORDER BY date ASC",
+            $scopeParams
         );
 
         $recent = $db->fetchAll(
             "SELECT sa.application_number, sa.first_name, sa.last_name, sa.status, sa.created_at, d.dep_name as department_name
              FROM student_applications sa
              JOIN departements d ON d.dep_id = sa.department_id
-             WHERE sa.status <> 'draft'
+             WHERE sa.status <> 'draft' {$scopeWhere}
              ORDER BY sa.id DESC
-             LIMIT 8"
+             LIMIT 8",
+            $scopeParams
         );
 
         // Task 1.6 — pending-but-already-admitted desync count. Surfaced as a
-        // banner on the admissions list so registry staff can spot mismatches
-        // (an applicant whose student record exists but whose application
-        // hasn't moved to `enrolled`).
-        $desyncedCount = (int)($db->fetchOne("
-            SELECT COUNT(DISTINCT sa.id) AS cnt
-            FROM student_applications sa
-            JOIN student s
-              ON (sa.email IS NOT NULL AND s.email = sa.email)
-              OR (sa.national_id IS NOT NULL AND sa.national_id <> '' AND s.index_number = sa.national_id)
-            WHERE sa.status NOT IN ('enrolled', 'withdrawn', 'offer_declined')
-        ")['cnt'] ?? 0);
+        // banner on the admissions list so registry staff can spot mismatches.
+        // Scoped by campus too so a registrar's banner doesn't count rows
+        // from campuses they can't act on.
+        $desyncedCount = (int)($db->fetchOne(
+            "SELECT COUNT(DISTINCT sa.id) AS cnt
+             FROM student_applications sa
+             JOIN student s
+               ON (sa.email IS NOT NULL AND s.email = sa.email)
+               OR (sa.national_id IS NOT NULL AND sa.national_id <> '' AND s.index_number = sa.national_id)
+             WHERE sa.status NOT IN ('enrolled', 'withdrawn', 'offer_declined') {$scopeWhere}",
+            $scopeParams
+        )['cnt'] ?? 0);
 
         $this->success($response, [
             'by_status' => $statusCounts,

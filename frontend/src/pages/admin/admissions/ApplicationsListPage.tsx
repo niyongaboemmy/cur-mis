@@ -62,7 +62,6 @@ const STATUS_TONE: Record<string, string> = {
 export default function ApplicationsListPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { user } = useAuthStore()
   const [page, setPage] = useState(1)
   // The "shared why-pending notes" panel — opened from a row's notes badge.
   const [notesAppId, setNotesAppId] = useState<number | null>(null)
@@ -81,7 +80,10 @@ export default function ApplicationsListPage() {
   // Default to "pending" (submitted) — that's the queue admins act on first.
   const [status, setStatus] = useState<ApplicationStatus | ''>(ApplicationStatus.SUBMITTED)
   const [intake, setIntake] = useState('')
-  const [campusId, setCampusId] = useState<number | ''>('')
+  // Campus is no longer set from this page (global topbar + role flag own
+  // scope), but the state stays so the query key changes when a dashboard
+  // tile drill-down or other affordance updates it.
+  const [campusId] = useState<number | ''>('')
   const [mode, setMode] = useState('')
   const [q, setQ] = useState('')
   const [activeTab, setActiveTab] = useState<'list' | 'dashboard'>('list')
@@ -129,26 +131,6 @@ export default function ApplicationsListPage() {
     const actionNeeded = (counts.documents_rejected ?? 0) + (counts.requested_changes ?? 0)
     return { totalAll, submitted, inReview, offers, enrolled, actionNeeded }
   }, [statsQ.data])
-
-  // Filter options use the full catalogue (every active campus / every
-  // canonical mode) so admins can still filter by values that don't yet
-  // appear on any application. Counts are merged in when present.
-  // Users whose role enforces campus scope (roles.enforce_campus_scope=1)
-  // are restricted to their assigned campuses — picking another one would
-  // just return an empty list, so we drop them from the dropdown.
-  const campusOptions = useMemo(() => {
-    const all = ((statsQ.data?.data as any)?.all_campuses ?? []) as { id: number; label: string }[]
-    const counts = new Map<number, number>()
-    for (const r of ((statsQ.data?.data as any)?.by_campus ?? []) as { id: number; cnt: number }[]) {
-      counts.set(Number(r.id), Number(r.cnt) || 0)
-    }
-    let filtered = all
-    if (user?.enforce_campus_scope) {
-      const assignedIds = new Set((user.assigned_campuses ?? []).map((c) => Number(c.id)))
-      filtered = all.filter((c) => assignedIds.has(Number(c.id)))
-    }
-    return filtered.map((c) => ({ id: Number(c.id), label: c.label, cnt: counts.get(Number(c.id)) ?? 0 }))
-  }, [statsQ.data, user])
 
   const modeOptions = useMemo(() => {
     const all = ((statsQ.data?.data as any)?.all_modes ?? []) as { label: string }[]
@@ -248,6 +230,8 @@ export default function ApplicationsListPage() {
             </div>
           )}
 
+          <ScopeHint stats={statsQ.data?.data} />
+
           {/* Stats strip — clicking a tile applies the matching status filter. */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
             <StatTile
@@ -334,26 +318,10 @@ export default function ApplicationsListPage() {
                   ))}
                 </select>
               </div>
-              {/* Hide the campus dropdown entirely for users whose role
-                  is locked to a single assigned campus — there's nothing
-                  for them to choose, the backend already filters. */}
-              {!(user?.enforce_campus_scope && campusOptions.length <= 1) && (
-                <div className="relative">
-                  <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-400 pointer-events-none" />
-                  <select
-                    className="input pl-8 w-44"
-                    value={campusId === '' ? '' : String(campusId)}
-                    onChange={(e) => { setCampusId(e.target.value ? Number(e.target.value) : ''); setPage(1) }}
-                  >
-                    <option value="">
-                      {user?.enforce_campus_scope ? 'My campuses' : 'All campuses'}
-                    </option>
-                    {campusOptions.map((c) => (
-                      <option key={c.id} value={c.id}>{c.label} ({c.cnt})</option>
-                    ))}
-                  </select>
-                </div>
-              )}
+              {/* Inline campus dropdown removed. Scope is now controlled
+                  globally by the topbar Campus switcher + the role-level
+                  enforce_campus_scope flag, so this filter would have been
+                  redundant noise on the toolbar. */}
               <div className="relative">
                 <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-400 pointer-events-none" />
                 <select
@@ -934,6 +902,23 @@ function ApplicantAvatar({
       ) : (
         <span>{initials}</span>
       )}
+    </div>
+  )
+}
+
+/** Small pill above the stat tiles that tells the user which campus(es)
+ *  the numbers reflect. Hidden for users with no campus restriction. */
+function ScopeHint({ stats }: { stats: any }) {
+  const user = useAuthStore((s) => s.user)
+  if (!user) return null
+  const assigned = (user.assigned_campuses ?? []) as Array<{ id: number; name: string }>
+  if (assigned.length === 0) return null
+  const names = assigned.map((c) => c.name).join(', ')
+  const total = Number(stats?.total ?? 0)
+  return (
+    <div className="inline-flex items-center gap-2 self-start px-3 py-1.5 rounded-full bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-200 text-[11.5px] font-medium">
+      <span className="w-1.5 h-1.5 rounded-full bg-primary-500" />
+      Showing <strong>{total.toLocaleString()}</strong> application(s) for {names}
     </div>
   )
 }
