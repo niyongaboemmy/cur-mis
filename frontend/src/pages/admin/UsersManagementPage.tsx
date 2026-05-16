@@ -579,6 +579,7 @@ export default function UsersManagementPage() {
                   <th>User details</th>
                   <th>Role</th>
                   <th>Status</th>
+                  <th>Assigned campus</th>
                   <th className="text-right">Actions</th>
                 </tr>
               </thead>
@@ -589,12 +590,13 @@ export default function UsersManagementPage() {
                       <td><div className="h-8 w-44 bg-ink-100 dark:bg-ink-700 rounded" /></td>
                       <td><div className="h-5 w-20 bg-ink-100 dark:bg-ink-700 rounded-full" /></td>
                       <td><div className="h-5 w-14 bg-ink-100 dark:bg-ink-700 rounded-full" /></td>
+                      <td><div className="h-5 w-24 bg-ink-100 dark:bg-ink-700 rounded-full" /></td>
                       <td><div className="h-6 w-12 ml-auto bg-ink-100 dark:bg-ink-700 rounded" /></td>
                     </tr>
                   ))
                 ) : users.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="text-center py-12 text-ink-500 text-[12.5px]">
+                    <td colSpan={5} className="text-center py-12 text-ink-500 text-[12.5px]">
                       {activeFilterCount > 0 || search
                         ? "No users match your search and filters."
                         : "No users found."}
@@ -642,6 +644,24 @@ export default function UsersManagementPage() {
                           {user.is_active ? <CheckCircle2 className="w-2.5 h-2.5" /> : <XCircle className="w-2.5 h-2.5" />}
                           {user.is_active ? "Active" : "Disabled"}
                         </span>
+                      </td>
+                      <td>
+                        {user.campus_assignments && user.campus_assignments.length > 0 ? (
+                          <div className="flex flex-wrap gap-1 max-w-[280px]">
+                            {user.campus_assignments.map((c) => (
+                              <span
+                                key={c.id}
+                                title={c.location ? `${c.name} — ${c.location}` : c.name}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-200 text-[11px] font-medium"
+                              >
+                                <Building2 className="w-2.5 h-2.5" />
+                                {c.name}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-[11.5px] italic text-ink-400">All campuses</span>
+                        )}
                       </td>
                       <td className="text-right">
                         <div className="flex items-center justify-end gap-0.5">

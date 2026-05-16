@@ -77,9 +77,36 @@ class UserController extends BaseController
         foreach ($roles as $r) {
             $roleMap[$r['id']] = $r['name'];
         }
-        foreach ($paginated['data'] as &$user) {
-            $user['role_name'] = $roleMap[$user['role_id'] ?? 0] ?? 'guest';
+
+        // One follow-up query pulls every (user_id → campuses) for the page.
+        // Used by the Users list to show campus chips per user.
+        $userIds = array_map(static fn($u) => (int)$u['id'], $paginated['data']);
+        $assignmentsByUser = [];
+        if (!empty($userIds)) {
+            $ph = implode(',', array_fill(0, count($userIds), '?'));
+            $rows = $this->userModel->db()->fetchAll(
+                "SELECT uca.user_id, c.id, c.name, c.code, c.location
+                 FROM `user_campus_assignments` uca
+                 JOIN `campuses` c ON c.id = uca.campus_id
+                 WHERE uca.user_id IN ($ph)
+                 ORDER BY c.name ASC",
+                $userIds
+            );
+            foreach ($rows as $r) {
+                $assignmentsByUser[(int)$r['user_id']][] = [
+                    'id'       => (int)$r['id'],
+                    'name'     => $r['name'],
+                    'code'     => $r['code'],
+                    'location' => $r['location'],
+                ];
+            }
         }
+
+        foreach ($paginated['data'] as &$user) {
+            $user['role_name']          = $roleMap[$user['role_id'] ?? 0] ?? 'guest';
+            $user['campus_assignments'] = $assignmentsByUser[(int)$user['id']] ?? [];
+        }
+        unset($user);
 
         $this->success($response, $paginated, 'Users fetched successfully.');
     }

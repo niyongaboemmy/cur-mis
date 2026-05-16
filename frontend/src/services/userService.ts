@@ -10,6 +10,13 @@ export interface User {
   role_name?: string;
   is_active: number;
   photo?: string | null;
+  /** Campuses this user is scoped to (set by Task 1.1). Empty = unscoped. */
+  campus_assignments?: Array<{
+    id: number;
+    name: string;
+    code: string | null;
+    location: string | null;
+  }>;
 }
 
 export interface UserListResponse {
