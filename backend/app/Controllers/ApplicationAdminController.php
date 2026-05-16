@@ -1005,19 +1005,27 @@ HTML;
     public function downloadApplicantPhoto(Request $request, Response $response): never
     {
         $id  = (int)$request->param('id');
+        // Resolve every available photo id in priority order:
+        //   1. applicant_profiles.profile_photo_id  (uploaded via apply wizard)
+        //   2. users.photo                          (user-account photo)
         $row = $this->appModel->db()->fetchOne(
-            "SELECT ap.profile_photo_id
+            "SELECT ap.profile_photo_id, u.photo AS user_photo
              FROM `student_applications` sa
              LEFT JOIN `applicant_profiles` ap ON ap.application_id = sa.id
+             LEFT JOIN `users` u                ON u.id = ap.user_id
              WHERE sa.id = ? LIMIT 1",
             [$id]
         );
-        if (!$row || empty($row['profile_photo_id'])) {
+        $photoId = $row['profile_photo_id'] ?? null;
+        if (empty($photoId)) {
+            $photoId = $row['user_photo'] ?? null;
+        }
+        if (empty($photoId)) {
             $this->error($response, 'No applicant photo.', 404);
         }
         try {
             $client = new \App\Helpers\FileServerClient();
-            $file   = $client->download((string)$row['profile_photo_id']);
+            $file   = $client->download((string)$photoId);
         } catch (\RuntimeException $e) {
             $this->error($response, $e->getMessage(), 502);
         }

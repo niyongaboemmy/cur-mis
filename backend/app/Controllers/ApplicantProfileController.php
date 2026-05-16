@@ -236,6 +236,22 @@ class ApplicantProfileController extends BaseController
             'profile_photo_id' => $uploaded['id'],
         ]);
 
+        // Mirror onto the linked user account so the admin Users list and
+        // the admissions list both render the same picture without the
+        // applicant having to upload twice.
+        $userId = (int)($profile['user_id'] ?? 0);
+        if ($userId > 0) {
+            try {
+                $this->db->execute(
+                    "UPDATE `users` SET photo = ?, updated_at = NOW() WHERE id = ?",
+                    [(string)$uploaded['id'], $userId]
+                );
+            } catch (\Throwable $e) {
+                // Non-blocking — applicant photo upload still succeeds even
+                // if the mirror write fails on a stripped-down user schema.
+            }
+        }
+
         $this->success($response, [
             'profile_photo_id' => $uploaded['id'],
             'url'              => $uploaded['url'] ?? null,

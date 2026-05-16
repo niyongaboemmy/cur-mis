@@ -376,9 +376,19 @@ export default function ApplyPage() {
         if (Object.keys(payload).length > 0) {
           await applicantService.updateApplication(created.id, payload as any);
         }
-        // If the user uploaded a passport photo before the draft existed, push it now.
+        // If the user uploaded a passport photo before the draft existed,
+        // push it now. Surface the failure as a toast so they know to retry —
+        // previously this was silently swallowed and admins saw initials
+        // forever, thinking they'd uploaded.
         if (photoFile) {
-          try { await applicantService.uploadPhoto(photoFile); } catch { /* non-fatal */ }
+          try {
+            await applicantService.uploadPhoto(photoFile);
+          } catch (e: any) {
+            toast.error(
+              e?.response?.data?.message ??
+              'We saved your application but couldn\'t upload your photo. Please retry from your profile.',
+            );
+          }
         }
       } catch (err: any) {
         toast.error(err?.response?.data?.message || "Saved program but couldn't sync earlier steps.");
