@@ -52,8 +52,9 @@ class Permissions
     public const MANAGE_LEAVE_REQUESTS = 'MANAGE_LEAVE_REQUESTS';
 
     // Finance
-    public const VIEW_FINANCE = 'VIEW_FINANCE';
-    public const MANAGE_FINANCE = 'MANAGE_FINANCE';
+    public const VIEW_FINANCE         = 'VIEW_FINANCE';
+    public const MANAGE_FINANCE       = 'MANAGE_FINANCE';
+    public const VIEW_MOBILE_PAYMENTS = 'VIEW_MOBILE_PAYMENTS';
 
     // Admissions
     public const MANAGE_ADMISSION_REQUIREMENTS = 'MANAGE_ADMISSION_REQUIREMENTS';
@@ -138,6 +139,7 @@ class Permissions
             self::VIEW_LEAVE_REQUESTS,
             self::MANAGE_LEAVE_REQUESTS,
             self::MANAGE_FINANCE,
+            self::VIEW_MOBILE_PAYMENTS,
             self::MANAGE_ADMISSION_REQUIREMENTS,
             self::MANAGE_STUDENT_APPLICATIONS,
             self::VERIFY_DOCUMENTS,

@@ -628,3 +628,20 @@ export interface CreateBursaryBulkPayload {
   student_ids?:       string[]
   student_ids_text?:  string
 }
+
+// ─── UrubutoPay Mobile Payments ───────────────────────────────────────────────
+
+export interface MobilePaymentRecord {
+  id:                 number
+  transaction_code:   string
+  amount:             number
+  payment_sub_method: string | null
+  receipt_number:     string | null
+  notes:              string | null
+  payment_date:       string
+  status:             'confirmed'
+  created_at:         string
+  invoice_number:     string | null
+  fee_type:           string | null
+}
+

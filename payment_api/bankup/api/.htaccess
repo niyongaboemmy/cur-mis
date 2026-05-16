@@ -1,0 +1,6 @@
+Options -Indexes
+# Block direct access to class folder
+<FilesMatch "\.(php)$">
+    Order Allow,Deny
+    Allow from all
+</FilesMatch>

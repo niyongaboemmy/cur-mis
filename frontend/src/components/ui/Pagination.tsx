@@ -31,9 +31,9 @@ export default function Pagination({
   if (rangeEnd < lastPage - 1) pages.push('...')
   if (lastPage > 1) pages.push(lastPage)
 
-  const btn = (label: React.ReactNode, page: number, disabled?: boolean, active?: boolean) => (
+  const btn = (keyStr: string, label: React.ReactNode, page: number, disabled?: boolean, active?: boolean) => (
     <button
-      key={String(label)}
+      key={keyStr}
       onClick={() => !disabled && onPageChange(page)}
       disabled={disabled}
       className={cn(
@@ -55,17 +55,17 @@ export default function Pagination({
       </p>
 
       <div className="flex items-center gap-1">
-        {btn(<ChevronsLeft className="h-4 w-4" />, 1,              currentPage === 1)}
-        {btn(<ChevronLeft  className="h-4 w-4" />, currentPage - 1, currentPage === 1)}
+        {btn('first', <ChevronsLeft className="h-4 w-4" />, 1,              currentPage === 1)}
+        {btn('prev',  <ChevronLeft  className="h-4 w-4" />, currentPage - 1, currentPage === 1)}
 
         {pages.map((p, i) =>
           p === '...'
             ? <span key={`ellipsis-${i}`} className="px-1 text-gray-400">…</span>
-            : btn(p, p as number, false, p === currentPage),
+            : btn(`page-${p}`, p, p as number, false, p === currentPage),
         )}
 
-        {btn(<ChevronRight  className="h-4 w-4" />, currentPage + 1, currentPage === lastPage)}
-        {btn(<ChevronsRight className="h-4 w-4" />, lastPage,         currentPage === lastPage)}
+        {btn('next', <ChevronRight  className="h-4 w-4" />, currentPage + 1, currentPage === lastPage)}
+        {btn('last', <ChevronsRight className="h-4 w-4" />, lastPage,         currentPage === lastPage)}
       </div>
     </div>
   )

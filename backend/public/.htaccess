@@ -5,7 +5,7 @@ RewriteEngine On
 RewriteCond %{HTTP:Authorization} .
 RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
 
-# Allow CORS OPTIONS preflight through to index.php
+# Route OPTIONS preflight to PHP so CorsMiddleware can respond
 RewriteCond %{REQUEST_METHOD} OPTIONS
 RewriteRule ^ index.php [QSA,L]
 
