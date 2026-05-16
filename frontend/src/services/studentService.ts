@@ -3,6 +3,7 @@ import type { PaginatedResponse } from '@/types'
 import type { Student } from '@/types/academic'
 import type { ApplicationDocument } from '@/types/admission'
 import { useAuthStore } from '@/store/authStore'
+import { useCampusFilterStore } from '@/store/campusFilterStore'
 
 export interface FacetOption {
   value: string
@@ -235,7 +236,17 @@ export const studentService = {
   list: (
     params: StudentListParams = {},
     signal?: AbortSignal,
-  ) => api.get<PaginatedResponse<Student>>('/api/students', params as Record<string, unknown>, signal),
+  ) => {
+    // Inject the global topbar campus scope. The students endpoint uses
+    // the legacy `campus` parameter (varchar id), so we mirror onto that
+    // key when the caller hasn't already pinned one.
+    const scopeId = useCampusFilterStore.getState().selectedCampusId
+    const merged: Record<string, unknown> = { ...(params as Record<string, unknown>) }
+    if (scopeId != null && (merged.campus == null || merged.campus === '')) {
+      merged.campus = String(scopeId)
+    }
+    return api.get<PaginatedResponse<Student>>('/api/students', merged, signal)
+  },
 
   stats: (params: { acc_year?: string } = {}, signal?: AbortSignal) =>
     api.get<StudentStats>('/api/students/stats', params as Record<string, unknown>, signal),

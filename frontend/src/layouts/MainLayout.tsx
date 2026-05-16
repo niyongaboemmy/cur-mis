@@ -35,6 +35,7 @@ import UserDropdown from "@/components/layout/UserDropdown";
 import MessageNotificationBell from "@/components/layout/MessageNotificationBell";
 import AcademicYearSelector from "@/components/layout/AcademicYearSelector";
 import AcademicTermSelector from "@/components/layout/AcademicTermSelector";
+import CampusFilterSwitcher from "@/components/layout/CampusFilterSwitcher";
 
 import Logo from "@/components/brand/Logo";
 import GlobalSearch from "@/components/layout/GlobalSearch";
@@ -1017,6 +1018,7 @@ export default function MainLayout() {
           <div className="flex items-center gap-2">
             {user?.role !== "applicant" && (
               <>
+                <CampusFilterSwitcher />
                 <AcademicYearSelector />
                 <AcademicTermSelector />
               </>

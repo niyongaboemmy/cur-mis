@@ -1,5 +1,6 @@
 import { api } from '@/services/api'
 import { useAuthStore } from '@/store/authStore'
+import { withCampusScope } from '@/store/campusFilterStore'
 import type { PaginatedResponse } from '@/types'
 import type {
   Faculty, PortalDepartment, DocumentType, AdmissionRequirement,
@@ -123,7 +124,10 @@ export const applicationAdminService = {
     signal?: AbortSignal,
   ) => {
     const { q, ...rest } = params;
-    return api.get<PaginatedResponse<StudentApplication>>('/api/admin/applications', { ...rest, search: q ?? rest.search }, signal);
+    // Inject the global topbar campus scope (no-op when caller already
+    // set campus_id, so the dashboard's per-tile drill-downs still win).
+    const scoped = withCampusScope({ ...rest, search: q ?? rest.search });
+    return api.get<PaginatedResponse<StudentApplication>>('/api/admin/applications', scoped, signal);
   },
   
   getStats: (signal?: AbortSignal) =>
@@ -225,8 +229,16 @@ export const applicationAdminService = {
   exportUrl: (queryString: string) => {
     const token = useAuthStore.getState().token;
     const base = import.meta.env.VITE_API_URL ?? "";
-    const sep = queryString ? "&" : "";
-    return `${base}/api/admin/applications/export?${queryString}${sep}token=${token}`;
+    // Apply the global topbar campus scope to exports too, unless the
+    // queryString already pins a campus_id.
+    const params = new URLSearchParams(queryString);
+    const scoped = withCampusScope({ campus_id: params.get('campus_id') ? Number(params.get('campus_id')) : undefined });
+    if (scoped.campus_id != null && !params.has('campus_id')) {
+      params.set('campus_id', String(scoped.campus_id));
+    }
+    const finalQs = params.toString();
+    const sep = finalQs ? "&" : "";
+    return `${base}/api/admin/applications/export?${finalQs}${sep}token=${token}`;
   },
 
   /** Task 1.12 — bulk applicant upload. */
@@ -257,7 +269,7 @@ export const applicationAdminService = {
         withdrawn_count: number
       }>
       totals: { total: number; new_count: number; accepted_count: number; enrolled_count: number; withdrawn_count: number }
-    }>(`/api/admin/applications/statistics`, params, signal),
+    }>(`/api/admin/applications/statistics`, withCampusScope(params), signal),
 
   bulkUpload: (file: File) => {
     const form = new FormData();
