@@ -404,6 +404,8 @@ class AdmissionController extends BaseController
     {
         $offerId = (int)$request->param('offer_id');
 
+        $this->assertExemptionLetterConfirmedForOffer($response, $offerId);
+
         try {
             $data = $this->service->getLetterData($offerId);
         } catch (\RuntimeException $e) {
@@ -412,6 +414,32 @@ class AdmissionController extends BaseController
 
         $filename = 'admission-letter-' . ($data['application_number'] ?? $offerId) . '.pdf';
         AdmissionLetterPdf::streamPdf($data, $filename);
+    }
+
+    /**
+     * Block admission-letter issuance for credit-transfer applicants whose
+     * exemption letter hasn't been confirmed by both registry and finance.
+     * Bails with a 422 error response when blocked.
+     */
+    private function assertExemptionLetterConfirmedForOffer(Response $response, int $offerId): void
+    {
+        $row = Database::getInstance()->fetchOne(
+            "SELECT sa.is_credit_transfer, sa.exemption_letter_status
+             FROM `admission_offers` ao
+             JOIN `student_applications` sa ON sa.id = ao.application_id
+             WHERE ao.id = ? LIMIT 1",
+            [$offerId]
+        );
+        if (!$row) return;
+        if ((int)($row['is_credit_transfer'] ?? 0) !== 1) return;
+        $status = (string)($row['exemption_letter_status'] ?? 'not_required');
+        if ($status !== 'confirmed') {
+            $this->error(
+                $response,
+                'Admission letter cannot be issued until the exemption letter is confirmed by BOTH registry and finance.',
+                422
+            );
+        }
     }
 
     /**
@@ -454,6 +482,8 @@ class AdmissionController extends BaseController
         $offerId  = (int)$request->param('offer_id');
         $authUser = $request->param('_auth_user');
         $actorId  = (int)($authUser['id'] ?? 0);
+
+        $this->assertExemptionLetterConfirmedForOffer($response, $offerId);
 
         try {
             $result = $this->service->sendAdmissionLetter($offerId, $actorId);

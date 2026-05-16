@@ -27,17 +27,20 @@ class AdmissionOfferModel extends BaseModel
     {
         return $this->db->fetchOne(
             "SELECT ao.*, sa.first_name, sa.last_name, sa.email, sa.phone, sa.gender, sa.birthdate, sa.nationality, sa.address,
+                    sa.national_id,
                     sa.prev_school, sa.prev_qualification, sa.prev_grade, sa.combination, sa.graduation_year,
                     sa.sponsorship, sa.sponsor_name, sa.academic_year_id,
                     sa.intake, sa.program_id, sa.campus_id, sa.mode_of_study, sa.level_id,
                     sa.application_number, sa.status AS application_status,
                     d.dep_name    AS department_name,
                     d.dep_acronym AS department_code,
-                    f.fac_name    AS faculty_name
+                    f.fac_name    AS faculty_name,
+                    l.name        AS level_name
              FROM `admission_offers` ao
              JOIN `student_applications` sa ON sa.id      = ao.application_id
              JOIN `departements`         d  ON d.dep_id   = sa.department_id
              JOIN `faculty`              f  ON f.fac_id   = sa.faculty_id
+             LEFT JOIN `levels`          l  ON l.id       = sa.level_id
              WHERE ao.id = ?
              LIMIT 1",
             [$offerId]

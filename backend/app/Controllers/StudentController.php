@@ -9,18 +9,22 @@ use Core\Response;
 use App\Models\StudentModel;
 use App\Models\ApplicationDocumentModel;
 use App\Models\StudentApplicationModel;
+use App\Models\StudentVisaRecordModel;
 use App\Helpers\ValidationHelper;
 use App\Helpers\FileServerClient;
+use App\Services\SystemLogService;
 
 class StudentController extends BaseController
 {
     private StudentModel $studentModel;
     private ApplicationDocumentModel $docModel;
+    private StudentVisaRecordModel $visaModel;
 
     public function __construct()
     {
         $this->studentModel = new StudentModel();
         $this->docModel     = new ApplicationDocumentModel();
+        $this->visaModel    = new StudentVisaRecordModel();
     }
 
     /**
@@ -1799,5 +1803,147 @@ class StudentController extends BaseController
                 }, $options)),
             ],
         ], 'Student stats fetched.');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Task 1.13 — International student visa tracking.
+    // ─────────────────────────────────────────────────────────────────────
+
+    /**
+     * GET /api/students/international
+     * List students flagged as international plus their current visa
+     * status and days until expiry. Useful for the registry's compliance
+     * tab.
+     */
+    public function listInternational(Request $request, Response $response): never
+    {
+        $db = $this->studentModel->db();
+        $rows = $db->fetchAll("
+            SELECT s.id, s.regnumber, s.fname, s.lname, s.email, s.nationality,
+                   s.assigned_registry_user_id,
+                   u.full_name AS assigned_registry_name,
+                   v.country_of_origin,
+                   v.visa_type,
+                   v.entry_date,
+                   v.visa_issue_date,
+                   v.visa_expiry_date,
+                   CASE WHEN v.visa_expiry_date IS NULL THEN NULL
+                        ELSE DATEDIFF(v.visa_expiry_date, CURDATE()) END AS days_to_expiry
+              FROM `student` s
+              LEFT JOIN `users` u ON u.id = s.assigned_registry_user_id
+              LEFT JOIN `student_visa_records` v
+                ON v.student_id = s.id AND v.is_current = 1
+             WHERE s.is_international = 1
+             ORDER BY days_to_expiry ASC, s.lname ASC
+        ");
+        $this->success($response, ['students' => $rows, 'count' => count($rows)], 'International students fetched.');
+    }
+
+    /**
+     * GET /api/students/:id/visa
+     * List visa records for a student (newest first).
+     */
+    public function listVisaRecords(Request $request, Response $response): never
+    {
+        $id      = (int)$request->param('id');
+        $student = $this->studentModel->find($id);
+        if (!$student) {
+            $this->error($response, 'Student not found.', 404);
+        }
+        $records = $this->visaModel->listForStudent($id);
+        $current = $this->visaModel->currentForStudent($id);
+        $this->success($response, [
+            'records' => $records,
+            'current' => $current,
+        ], 'Visa records fetched.');
+    }
+
+    /**
+     * POST /api/students/:id/visa
+     * Record a new visa (or renewal). Adding a new record automatically
+     * marks the previous current record non-current.
+     */
+    public function addVisaRecord(Request $request, Response $response): never
+    {
+        $id       = (int)$request->param('id');
+        $authUser = (array) $request->param('_auth_user');
+        $student  = $this->studentModel->find($id);
+        if (!$student) {
+            $this->error($response, 'Student not found.', 404);
+        }
+        $data = $request->body();
+        $errors = ValidationHelper::validate($data, [
+            'country_of_origin' => 'required|string|min:2|max:100',
+            'entry_date'        => 'required|regex:/^\d{4}-\d{2}-\d{2}$/',
+            'visa_issue_date'   => 'required|regex:/^\d{4}-\d{2}-\d{2}$/',
+            'visa_expiry_date'  => 'required|regex:/^\d{4}-\d{2}-\d{2}$/',
+        ]);
+        if (!empty($errors)) {
+            $this->error($response, 'Validation failed.', 422, $errors);
+        }
+
+        $db = $this->studentModel->db();
+        $db->beginTransaction();
+        try {
+            $this->visaModel->markAllNonCurrent($id);
+            $newId = (int)$this->visaModel->create([
+                'student_id'        => $id,
+                'country_of_origin' => trim((string)$data['country_of_origin']),
+                'entry_date'        => $data['entry_date'],
+                'visa_issue_date'   => $data['visa_issue_date'],
+                'visa_expiry_date'  => $data['visa_expiry_date'],
+                'visa_type'         => (string)($data['visa_type'] ?? '') ?: null,
+                'notes'             => (string)($data['notes'] ?? '') ?: null,
+                'is_current'        => 1,
+                'created_by'        => (int)($authUser['id'] ?? 0) ?: null,
+            ]);
+            // Flag the student as international (idempotent).
+            $db->execute("UPDATE `student` SET is_international = 1 WHERE id = ?", [$id]);
+            $db->commit();
+        } catch (\Throwable $e) {
+            $db->rollBack();
+            $this->error($response, 'Failed to record visa: ' . $e->getMessage(), 500);
+        }
+
+        SystemLogService::log(
+            'CREATE', 'STUDENTS',
+            "Recorded visa for student ID {$id}.",
+            $id, 'student',
+            ['visa_id' => $newId], $authUser ?: null
+        );
+        $this->success($response, ['id' => $newId], 'Visa record added.', 201);
+    }
+
+    /**
+     * PATCH /api/students/:id/assign-registry
+     * Assign (or clear, with null) the responsible registry officer for an
+     * international student.
+     */
+    public function assignRegistryOfficer(Request $request, Response $response): never
+    {
+        $id       = (int)$request->param('id');
+        $authUser = (array) $request->param('_auth_user');
+        $student  = $this->studentModel->find($id);
+        if (!$student) {
+            $this->error($response, 'Student not found.', 404);
+        }
+        $data        = $request->body();
+        $assignedTo  = isset($data['assigned_registry_user_id']) && $data['assigned_registry_user_id'] !== ''
+            ? (int)$data['assigned_registry_user_id']
+            : null;
+
+        $this->studentModel->db()->execute(
+            "UPDATE `student` SET assigned_registry_user_id = ? WHERE id = ?",
+            [$assignedTo, $id]
+        );
+        SystemLogService::log(
+            'UPDATE', 'STUDENTS',
+            $assignedTo === null
+              ? "Cleared registry officer for student ID {$id}."
+              : "Assigned registry officer (user {$assignedTo}) to student ID {$id}.",
+            $id, 'student',
+            ['assigned_registry_user_id' => $assignedTo], $authUser ?: null
+        );
+        $this->success($response, ['assigned_registry_user_id' => $assignedTo], 'Registry officer updated.');
     }
 }

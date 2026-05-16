@@ -68,4 +68,60 @@ class SystemBasicsController extends BaseController
             'timetable'   => $timetable
         ], 'System basics fetched.');
     }
+
+    /**
+     * GET /api/portal/guidance-videos
+     * Public read of the two guidance video URLs used on the application
+     * portal and the login page. Returns empty strings if not configured.
+     */
+    public function getGuidanceVideos(Request $request, Response $response): never
+    {
+        $apply = $this->settingModel->findBy('key_name', 'video_application_guide_url');
+        $login = $this->settingModel->findBy('key_name', 'video_login_guide_url');
+        $this->success($response, [
+            'video_application_guide_url' => $apply ? (string)$apply['value'] : '',
+            'video_login_guide_url'       => $login ? (string)$login['value'] : '',
+        ], 'Guidance videos fetched.');
+    }
+
+    /**
+     * PUT /api/system/guidance-videos
+     * Admin-only — persist the two guidance video URLs. Empty strings clear them.
+     */
+    public function saveGuidanceVideos(Request $request, Response $response): never
+    {
+        $data  = $request->body();
+        $apply = trim((string)($data['video_application_guide_url'] ?? ''));
+        $login = trim((string)($data['video_login_guide_url']       ?? ''));
+
+        $isUrl = fn(string $v): bool => $v === '' || (bool)filter_var($v, FILTER_VALIDATE_URL);
+        if (!$isUrl($apply) || !$isUrl($login)) {
+            $this->error($response, 'Both fields must be valid URLs (or left blank).', 422);
+        }
+
+        $this->upsertSetting('video_application_guide_url', $apply, 'Public URL of the "How to Apply" guidance video.');
+        $this->upsertSetting('video_login_guide_url',       $login, 'Public URL of the "How to Log In" guidance video.');
+
+        $this->success($response, [
+            'video_application_guide_url' => $apply,
+            'video_login_guide_url'       => $login,
+        ], 'Guidance videos saved.');
+    }
+
+    private function upsertSetting(string $key, string $value, string $description): void
+    {
+        $existing = $this->settingModel->findBy('key_name', $key);
+        if ($existing) {
+            $this->settingModel->update((int)$existing['id'], [
+                'value'       => $value,
+                'description' => $description,
+            ]);
+        } else {
+            $this->settingModel->create([
+                'key_name'    => $key,
+                'value'       => $value,
+                'description' => $description,
+            ]);
+        }
+    }
 }

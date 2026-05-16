@@ -1310,14 +1310,40 @@ export default function ApplicationDetailPage() {
                   {status === ApplicationStatus.OFFER_ACCEPTED ? (
                     <button
                       className="btn-primary py-3 px-8 text-[14px] flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 shadow-xl shadow-green-500/20 mx-auto"
-                      onClick={() => {
-                        if (
-                          window.confirm(
-                            `Finalize registration at level ID ${selectedLevelId} and generate Registration Number?`,
-                          )
-                        ) {
-                          enroll.mutate(selectedLevelId);
+                      onClick={async () => {
+                        // First check whether this applicant already has a
+                        // student row (returning postgraduate scenario). If
+                        // so, surface the existing record(s) before enrolling
+                        // a new one alongside.
+                        try {
+                          const check = await applicationAdminService.returningCheck(appId);
+                          if (check.data?.is_returning) {
+                            const prior = check.data.records[0];
+                            const ok = window.confirm(
+                              `Heads up: this applicant already has a student record\n` +
+                              `(Reg: ${prior?.regnumber ?? 'unknown'}, programme: ${prior?.programme_level ?? 'unknown'}).\n\n` +
+                              `A NEW student record will be created alongside it (e.g. for a Masters cohort), linked back via parent_student_id.\n\n` +
+                              `Proceed?`,
+                            );
+                            if (!ok) return;
+                          } else if (
+                            !window.confirm(
+                              `Finalize registration at level ID ${selectedLevelId} and generate Registration Number?`,
+                            )
+                          ) {
+                            return;
+                          }
+                        } catch {
+                          // Soft-fail: the check is informational only — fall
+                          // back to the original confirm so enrollment isn't
+                          // blocked by a network blip.
+                          if (
+                            !window.confirm(
+                              `Finalize registration at level ID ${selectedLevelId} and generate Registration Number?`,
+                            )
+                          ) return;
                         }
+                        enroll.mutate(selectedLevelId);
                       }}
                       disabled={enroll.isPending}
                     >

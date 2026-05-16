@@ -21,8 +21,11 @@ import {
   TrendingUp,
   UserX,
   Filter,
+  Building2,
+  Plus,
+  Trash2,
 } from "lucide-react";
-import userService, { User, UserStats, UserFilters } from "@/services/userService";
+import userService, { User, UserStats, UserFilters, UserCampusAssignment } from "@/services/userService";
 import { rbacService, Role } from "@/services/rbacService";
 import { toast } from "react-hot-toast";
 import ModalPortal from "@/components/ui/ModalPortal";
@@ -91,6 +94,12 @@ export default function UsersManagementPage() {
   const [formData, setFormData]         = useState({
     full_name: "", email: "", username: "", password: "", role_id: "",
   });
+
+  // ── Campus assignment state (registry scoping) ────────────────────────────
+  const [allCampuses, setAllCampuses]               = useState<{ id: number; name: string; code: string | null; location: string | null }[]>([]);
+  const [userCampuses, setUserCampuses]             = useState<UserCampusAssignment[]>([]);
+  const [campusAssignmentBusy, setCampusAssignmentBusy] = useState(false);
+  const [selectedCampusToAdd, setSelectedCampusToAdd]   = useState<string>("");
 
   const searchTimeout   = useRef<NodeJS.Timeout | null>(null);
   const abortController = useRef<AbortController | null>(null);
@@ -165,18 +174,62 @@ export default function UsersManagementPage() {
   };
 
   // ── User modal helpers ────────────────────────────────────────────────────
-  const handleOpenModal = (user: User | null = null) => {
+  const handleOpenModal = async (user: User | null = null) => {
     if (user) {
       setEditingUser(user);
       setFormData({
         full_name: user.full_name, email: user.email,
         username: user.username, password: "", role_id: user.role_id.toString(),
       });
+      // Load this user's campus assignments + the full active-campus catalog.
+      try {
+        const [assignmentsRes, catalogRes] = await Promise.all([
+          userService.listCampusAssignments(user.id),
+          allCampuses.length ? Promise.resolve(null) : userService.listAllCampuses(),
+        ]);
+        setUserCampuses(assignmentsRes.data?.assignments ?? []);
+        if (catalogRes) setAllCampuses(catalogRes.data?.campuses ?? []);
+      } catch {
+        // Soft-fail — the campus block just shows empty, the rest of the modal still works.
+        setUserCampuses([]);
+      }
     } else {
       setEditingUser(null);
       setFormData({ full_name: "", email: "", username: "", password: "", role_id: "" });
+      setUserCampuses([]);
     }
+    setSelectedCampusToAdd("");
     setShowModal(true);
+  };
+
+  const handleAssignCampus = async () => {
+    if (!editingUser || !selectedCampusToAdd) return;
+    const campusId = Number(selectedCampusToAdd);
+    setCampusAssignmentBusy(true);
+    try {
+      const res = await userService.assignCampus(editingUser.id, campusId);
+      setUserCampuses(res.data?.assignments ?? []);
+      setSelectedCampusToAdd("");
+      toast.success("Campus assigned");
+    } catch (err: any) {
+      toast.error(err.response?.data?.message ?? "Failed to assign campus");
+    } finally {
+      setCampusAssignmentBusy(false);
+    }
+  };
+
+  const handleRevokeCampus = async (campusId: number) => {
+    if (!editingUser) return;
+    setCampusAssignmentBusy(true);
+    try {
+      const res = await userService.revokeCampus(editingUser.id, campusId);
+      setUserCampuses(res.data?.assignments ?? []);
+      toast.success("Campus removed");
+    } catch (err: any) {
+      toast.error(err.response?.data?.message ?? "Failed to remove campus");
+    } finally {
+      setCampusAssignmentBusy(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -735,6 +788,71 @@ export default function UsersManagementPage() {
                       onChange={(e) => setFormData({ ...formData, password: e.target.value })} />
                   </div>
                 </div>
+
+                {editingUser && (
+                  <div className="pt-2 mt-2 border-t hairline">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Building2 className="w-3.5 h-3.5 text-primary-600" />
+                      <h3 className="text-[12.5px] font-semibold text-ink-900 dark:text-white">Campus assignments</h3>
+                    </div>
+                    <p className="text-[11px] text-ink-500 mb-2.5">
+                      Restrict this user to applications belonging to the campus(es) below.
+                      Leave empty for unrestricted access.
+                    </p>
+
+                    {userCampuses.length === 0 ? (
+                      <p className="text-[11.5px] text-ink-500 italic mb-2">No campuses assigned yet.</p>
+                    ) : (
+                      <div className="flex flex-wrap gap-1.5 mb-2.5">
+                        {userCampuses.map((c) => (
+                          <span
+                            key={c.assignment_id}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-200 text-[11.5px] font-medium"
+                          >
+                            <Building2 className="w-3 h-3" />
+                            {c.name}
+                            {c.code && <span className="text-[10px] opacity-70">({c.code})</span>}
+                            <button
+                              type="button"
+                              onClick={() => handleRevokeCampus(c.id)}
+                              disabled={campusAssignmentBusy}
+                              className="ml-0.5 text-primary-700/70 hover:text-red-600 disabled:opacity-50"
+                              title={`Remove ${c.name}`}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-2">
+                      <select
+                        className="input flex-1 text-[12px]"
+                        value={selectedCampusToAdd}
+                        onChange={(e) => setSelectedCampusToAdd(e.target.value)}
+                        disabled={campusAssignmentBusy}
+                      >
+                        <option value="">Add a campus…</option>
+                        {allCampuses
+                          .filter((c) => !userCampuses.some((uc) => uc.id === c.id))
+                          .map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name}{c.code ? ` (${c.code})` : ""}
+                            </option>
+                          ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={handleAssignCampus}
+                        disabled={!selectedCampusToAdd || campusAssignmentBusy}
+                        className="btn-secondary btn-sm"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Add
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 <div className="pt-2 flex gap-2 justify-end">
                   <button type="button" onClick={() => setShowModal(false)} className="btn-secondary">Cancel</button>

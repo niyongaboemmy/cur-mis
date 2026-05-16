@@ -21,9 +21,11 @@ import {
   UploadCloud,
   Receipt,
   Hash,
+  PlayCircle,
 } from "lucide-react";
 import Logo from "@/components/brand/Logo";
 import { portalService, applicantService } from "@/services/admissionService";
+import { systemService } from "@/services/systemService";
 import { useAuthStore } from "@/store/authStore";
 import { useLogout } from "@/hooks/useAuth";
 import DocumentsUploader from "@/components/ui/DocumentsUploader";
@@ -84,12 +86,19 @@ const schema = z.object({
   prev_school:        z.string().min(2, "Required"),
   combination:        z.string().min(1, "Required"),
   a2_grades:          z.string().min(1, "Required"),
-  principal_passes:   z.preprocess(normaliseId, z.number().int().min(0).max(10)),
+  // No practical upper bound: applicants with combined A-Level + equivalents
+  // can legitimately list many principal passes. We keep a sanity ceiling
+  // (20) to catch fat-finger entries.
+  principal_passes:   z.preprocess(normaliseId, z.number().int().min(0).max(20)),
   graduation_year:    z.preprocess(
     normaliseId,
     z.number().int().min(1990).max(CURRENT_YEAR),
   ),
   serial_number:      z.string().min(1, "Required"),
+  // Task 1.11 — credit transfer / upgrading. Optional flag + free-text
+  // previous institution. Required only when the box is ticked.
+  is_credit_transfer:   z.preprocess((v) => v === true || v === 'true' || v === '1' || v === 1, z.boolean()).optional(),
+  credit_transfer_from: z.string().max(255).optional().or(z.literal('')),
 
   // Programs — step 3
   program_id:    numberId("Please select a program"),
@@ -117,6 +126,7 @@ const PERSONAL_FIELDS = [
 
 const ACADEMIC_FIELDS = [
   "prev_school","combination","a2_grades","principal_passes","graduation_year","serial_number",
+  "is_credit_transfer","credit_transfer_from",
 ] as const;
 
 const PROGRAM_FIELDS = ["program_id","campus_id","mode_of_study","level_id","intake"] as const;
@@ -752,6 +762,12 @@ export default function ApplyPage() {
 function Shell({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, user } = useAuthStore();
   const logoutM = useLogout();
+  const videosQ = useQuery({
+    queryKey: ['portal', 'guidance-videos'],
+    queryFn: () => systemService.getGuidanceVideos(),
+    staleTime: 60_000,
+  });
+  const applyUrl = videosQ.data?.data?.video_application_guide_url ?? '';
 
   return (
     <div className="min-h-screen bg-slate-50/50">
@@ -759,6 +775,21 @@ function Shell({ children }: { children: React.ReactNode }) {
         <div className="w-full max-w-7xl mx-auto flex items-center justify-between">
           <Logo />
           <div className="flex items-center gap-4">
+            {applyUrl && (
+              <>
+                <a
+                  href={applyUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 text-[13px] font-medium text-brand hover:underline"
+                  title="Watch the step-by-step guide on how to apply"
+                >
+                  <PlayCircle className="w-4 h-4" />
+                  Watch: How to apply
+                </a>
+                <div className="w-px h-4 bg-ink-200" />
+              </>
+            )}
             {isAuthenticated && user ? (
               <div className="flex items-center gap-3">
                 <span className="text-[13px] font-medium text-ink-900">
@@ -1100,7 +1131,7 @@ function AcademicInfoStep({ form }: { form: ReturnType<typeof useForm<FormValues
             <input
               type="number"
               min={0}
-              max={10}
+              max={20}
               className="input"
               placeholder="4"
               {...form.register("principal_passes", { valueAsNumber: true })}
@@ -1121,6 +1152,38 @@ function AcademicInfoStep({ form }: { form: ReturnType<typeof useForm<FormValues
               {...form.register("serial_number")}
             />
           </Field>
+        </div>
+
+        {/* Task 1.11 — credit transfer flag */}
+        <div className="mt-4 pt-4 border-t border-ink-100 dark:border-ink-700/60">
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              className="mt-0.5 accent-brand"
+              {...form.register("is_credit_transfer")}
+            />
+            <div className="text-[13px] text-ink-700 dark:text-ink-200">
+              <strong>I am applying via credit transfer / upgrading.</strong>
+              <p className="text-[12px] text-ink-500 mt-0.5">
+                Check this if you have prior study credits from another institution. The
+                faculty will then issue an exemption letter before your admission letter is released.
+              </p>
+            </div>
+          </label>
+          {form.watch("is_credit_transfer") && (
+            <div className="mt-3">
+              <Field
+                label="Previous institution / programme"
+                error={errors.credit_transfer_from?.message}
+              >
+                <input
+                  className="input"
+                  placeholder="e.g. UR Huye — BBA, 2022–2024"
+                  {...form.register("credit_transfer_from")}
+                />
+              </Field>
+            </div>
+          )}
         </div>
       </div>
     </div>

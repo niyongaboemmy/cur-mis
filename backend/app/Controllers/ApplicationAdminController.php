@@ -9,26 +9,63 @@ use Core\Response;
 use App\Models\StudentApplicationModel;
 use App\Models\ApplicationDocumentModel;
 use App\Models\ApplicationStatusLogModel;
+use App\Models\ApplicationPendingNoteModel;
+use App\Models\UserCampusAssignmentModel;
 use App\Services\ApplicationService;
 use App\Services\SystemLogService;
 use App\Helpers\ValidationHelper;
 
 class ApplicationAdminController extends BaseController
 {
-    private StudentApplicationModel   $appModel;
-    private ApplicationDocumentModel  $docModel;
-    private ApplicationStatusLogModel $logModel;
-    private ApplicationService        $service;
+    private StudentApplicationModel    $appModel;
+    private ApplicationDocumentModel   $docModel;
+    private ApplicationStatusLogModel  $logModel;
+    private ApplicationPendingNoteModel $pendingNoteModel;
+    private UserCampusAssignmentModel  $campusAssignmentModel;
+    private ApplicationService         $service;
 
     /** Application statuses that are considered final (cannot transition from). */
     private const FINAL_STATUSES = ['enrolled', 'offer_declined'];
 
+    /** Roles that bypass campus scoping (see all applications). */
+    private const UNSCOPED_ROLES = ['superadmin', 'admin'];
+
     public function __construct()
     {
-        $this->appModel = new StudentApplicationModel();
-        $this->docModel = new ApplicationDocumentModel();
-        $this->logModel = new ApplicationStatusLogModel();
-        $this->service  = new ApplicationService();
+        $this->appModel              = new StudentApplicationModel();
+        $this->docModel              = new ApplicationDocumentModel();
+        $this->logModel              = new ApplicationStatusLogModel();
+        $this->pendingNoteModel      = new ApplicationPendingNoteModel();
+        $this->campusAssignmentModel = new UserCampusAssignmentModel();
+        $this->service               = new ApplicationService();
+    }
+
+    /**
+     * Resolve the campus scope to apply for the current user.
+     * Returns:
+     *   - null  → no scoping (admins / superadmins see everything)
+     *   - []    → user is a scoped registry assistant with zero campuses → empty list
+     *   - [...] → restrict to these campus IDs
+     */
+    private function resolveCampusScope(?array $authUser): ?array
+    {
+        if (!$authUser) {
+            return null;
+        }
+        $role = strtolower((string)($authUser['role'] ?? $authUser['role_name'] ?? ''));
+        if (in_array($role, self::UNSCOPED_ROLES, true)) {
+            return null;
+        }
+        $userId = (int)($authUser['id'] ?? 0);
+        if ($userId === 0) {
+            return null;
+        }
+        $assigned = $this->campusAssignmentModel->campusIdsForUser($userId);
+        // No assignments at all means the user hasn't been scoped — fall back
+        // to showing all (matches Task 1.1 spec: "Admins with no campus
+        // assignment see all"). This keeps existing registry users working
+        // until an admin explicitly assigns campuses.
+        return empty($assigned) ? null : $assigned;
     }
 
     /**
@@ -37,6 +74,11 @@ class ApplicationAdminController extends BaseController
      */
     public function index(Request $request, Response $response): never
     {
+        // Cheap pre-pass: auto-hide pending applications older than the
+        // configured timeout. The query is indexed (is_hidden + submitted_at)
+        // and is a no-op on subsequent calls until new rows go stale.
+        $this->autoHideExpiredPending();
+
         $page    = (int)($request->query('page')             ?? 1);
         $perPage = (int)($request->query('per_page')         ?? 15);
         $filters = [
@@ -47,12 +89,58 @@ class ApplicationAdminController extends BaseController
             'campus_id'       => $request->query('campus_id')       ?? '',
             'mode_of_study'   => $request->query('mode_of_study')   ?? '',
             'academic_year_id'=> $request->query('academic_year_id') ?? '',
+            'level_id'        => $request->query('level_id')        ?? '',
+            'gender'          => $request->query('gender')          ?? '',
+            'payment_status'  => $request->query('payment_status')  ?? '',
+            'sort_paid_first' => $request->query('sort_paid_first') ?? '',
         ];
 
         // Remove empty filter keys so they are not used as conditions
         $filters = array_filter($filters, fn($v) => $v !== '');
 
+        // Hidden-row scoping (Task 1.9). Default = exclude hidden.
+        $includeHidden = $request->query('include_hidden') === '1' || $request->query('include_hidden') === 'true';
+        $onlyHidden    = $request->query('only_hidden')    === '1' || $request->query('only_hidden')    === 'true';
+        if ($onlyHidden) {
+            $filters['hidden_filter'] = 'only';
+        } elseif (!$includeHidden) {
+            $filters['hidden_filter'] = 'exclude';
+        }
+
+        // Apply registry campus scoping. If the user has explicit campus
+        // assignments (and is not a top-level admin), restrict the query to
+        // those campus IDs — and intersect with any campus_id filter the
+        // request also passed in so admins can still drill down.
+        $scope = $this->resolveCampusScope((array) $request->param('_auth_user'));
+        if ($scope !== null) {
+            if (!empty($filters['campus_id'])) {
+                $requested = (int)$filters['campus_id'];
+                $filters['campus_scope_ids'] = in_array($requested, $scope, true) ? [$requested] : [];
+                unset($filters['campus_id']);
+            } else {
+                $filters['campus_scope_ids'] = $scope;
+            }
+        }
+
         $result = $this->appModel->paginateFiltered($page, $perPage, $filters);
+
+        // Decorate each row with pending-note count and the most recent note
+        // so the list view can render the shared "why is this pending" panel
+        // without an extra round-trip per row.
+        $rows = $result['data'] ?? [];
+        if (!empty($rows)) {
+            $ids = array_map(fn($r) => (int)$r['id'], $rows);
+            $counts = $this->pendingNoteModel->countsForApplications($ids);
+            $latest = $this->pendingNoteModel->latestForApplications($ids);
+            foreach ($rows as &$row) {
+                $aid = (int)$row['id'];
+                $row['pending_notes_count'] = $counts[$aid] ?? 0;
+                $row['latest_pending_note'] = $latest[$aid] ?? null;
+            }
+            unset($row);
+            $result['data'] = $rows;
+        }
+
         $this->success($response, $result, 'Applications fetched successfully.');
     }
 
@@ -177,6 +265,458 @@ class ApplicationAdminController extends BaseController
         SystemLogService::log('UPDATE', 'ADMISSIONS', "Added internal note to application ID {$id}.", $id, 'student_application', null, (array) $authUser ?: null);
         $this->success($response, ['notes' => $combined], 'Note added successfully.');
     }
+
+    /**
+     * GET /api/admin/applications/statistics
+     * Task 1.14 — flexible counts table for the registry statistics page.
+     * Accepts faculty_id, department_id, option_id (program), campus_id,
+     * mode, level_id, date_from, date_to. Returns row-wise counts per
+     * department + program with totals broken down by lifecycle status.
+     */
+    public function statistics(Request $request, Response $response): never
+    {
+        $facultyId  = (int)($request->query('faculty_id')    ?? 0);
+        $deptId     = (int)($request->query('department_id') ?? 0);
+        $optionId   = (int)($request->query('option_id')     ?? 0);
+        $campusId   = (int)($request->query('campus_id')     ?? 0);
+        $levelId    = (int)($request->query('level_id')      ?? 0);
+        $mode       = (string)($request->query('mode')       ?? '');
+        $dateFrom   = (string)($request->query('date_from')  ?? '');
+        $dateTo     = (string)($request->query('date_to')    ?? '');
+
+        $conds = ["sa.status <> 'draft'"];
+        $bind  = [];
+        if ($facultyId > 0) { $conds[] = 'sa.faculty_id = ?';    $bind[] = $facultyId; }
+        if ($deptId    > 0) { $conds[] = 'sa.department_id = ?'; $bind[] = $deptId; }
+        if ($optionId  > 0) { $conds[] = 'sa.program_id = ?';    $bind[] = $optionId; }
+        if ($campusId  > 0) { $conds[] = 'sa.campus_id = ?';     $bind[] = $campusId; }
+        if ($levelId   > 0) { $conds[] = 'sa.level_id = ?';      $bind[] = $levelId; }
+        if ($mode !== '')   { $conds[] = 'sa.mode_of_study = ?'; $bind[] = $mode; }
+        if ($dateFrom !== ''){ $conds[] = 'sa.created_at >= ?';   $bind[] = $dateFrom . ' 00:00:00'; }
+        if ($dateTo !== '')  { $conds[] = 'sa.created_at <= ?';   $bind[] = $dateTo   . ' 23:59:59'; }
+        $where = 'WHERE ' . implode(' AND ', $conds);
+
+        $db = $this->appModel->db();
+
+        $rows = $db->fetchAll(
+            "SELECT
+                f.fac_name      AS faculty,
+                d.dep_name      AS department,
+                o.name          AS program,
+                COUNT(*)                                                                     AS total,
+                SUM(sa.status IN ('submitted','documents_under_review'))                      AS new_count,
+                SUM(sa.status IN ('documents_verified','offered','offer_accepted'))           AS accepted_count,
+                SUM(sa.status = 'enrolled')                                                   AS enrolled_count,
+                SUM(sa.status IN ('withdrawn','offer_declined'))                              AS withdrawn_count
+             FROM `student_applications` sa
+             LEFT JOIN `departements` d ON d.dep_id = sa.department_id
+             LEFT JOIN `faculty`      f ON f.fac_id = sa.faculty_id
+             LEFT JOIN `options`      o ON o.id     = sa.program_id
+             {$where}
+             GROUP BY sa.faculty_id, sa.department_id, sa.program_id
+             ORDER BY f.fac_name ASC, d.dep_name ASC, o.name ASC",
+            $bind
+        );
+
+        // Totals row.
+        $totals = [
+            'total' => 0, 'new_count' => 0, 'accepted_count' => 0,
+            'enrolled_count' => 0, 'withdrawn_count' => 0,
+        ];
+        foreach ($rows as &$r) {
+            foreach (['total','new_count','accepted_count','enrolled_count','withdrawn_count'] as $k) {
+                $r[$k] = (int)($r[$k] ?? 0);
+                $totals[$k] += $r[$k];
+            }
+        }
+        unset($r);
+
+        $this->success($response, [
+            'rows'    => $rows,
+            'totals'  => $totals,
+            'filters' => compact('facultyId','deptId','optionId','campusId','levelId','mode','dateFrom','dateTo'),
+        ], 'Statistics fetched.');
+    }
+
+    /**
+     * GET /api/admin/applications/bulk-upload-template
+     * Streams a CSV the registry team fills in then re-uploads via
+     * /bulk-upload. Excel opens CSV natively so no XLSX dependency.
+     */
+    public function bulkUploadTemplate(Request $request, Response $response): never
+    {
+        $headers = [
+            'first_name','last_name','email','phone','gender','birthdate',
+            'nationality','national_id','intake','department_id','program_id',
+            'campus_id','mode_of_study','level_id','prev_school','prev_qualification',
+            'prev_grade','combination','graduation_year','sponsorship','sponsor_name',
+            'is_credit_transfer','credit_transfer_from',
+        ];
+        $example = [
+            'John','Doe','john.doe@example.com','+250788000000','M','2000-01-15',
+            'Rwandan','1199000000000000','Jan 2026','12','5',
+            '1','Day','1','Nyamata TSS','A-Level',
+            'A,B,B,C','PCM','2024','self','',
+            '0','',
+        ];
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="bulk-applicant-template.csv"');
+        $out = fopen('php://output', 'w');
+        fwrite($out, "\xEF\xBB\xBF"); // BOM for Excel UTF-8
+        fputcsv($out, $headers);
+        fputcsv($out, $example);
+        fclose($out);
+        exit;
+    }
+
+    /**
+     * POST /api/admin/applications/bulk-upload
+     * Accepts a CSV/XLSX (XLSX support requires PhpSpreadsheet; for now we
+     * parse CSV — the most common interchange format for registry sheets).
+     * Each row becomes a `student_application` row at status `enrolled`,
+     * bypassing the public portal. Returns a per-row success/error summary.
+     */
+    public function bulkUpload(Request $request, Response $response): never
+    {
+        if (empty($_FILES['file']['tmp_name'])) {
+            $this->error($response, 'No file uploaded (expected multipart field "file").', 422);
+        }
+        $authUser = (array) $request->param('_auth_user');
+        $actorId  = (int)($authUser['id'] ?? 0);
+
+        $handle = fopen($_FILES['file']['tmp_name'], 'r');
+        if (!$handle) {
+            $this->error($response, 'Could not open uploaded file.', 500);
+        }
+        // Strip BOM if Excel added one.
+        $first = fgets($handle);
+        $first = preg_replace('/^\xEF\xBB\xBF/', '', $first) ?? '';
+        rewind($handle);
+        // Re-read first line as headers
+        $headers = str_getcsv($first);
+        // Move past header row in handle.
+        fgetcsv($handle);
+
+        $required = ['first_name','last_name','email','intake','department_id'];
+        $results  = ['inserted' => 0, 'errors' => []];
+        $rowNo    = 1; // header is row 1
+        $db       = $this->appModel->db();
+
+        try {
+            $db->beginTransaction();
+            while (($row = fgetcsv($handle)) !== false) {
+                $rowNo++;
+                if (empty(array_filter($row, fn($v) => trim((string)$v) !== ''))) {
+                    continue; // skip blank rows
+                }
+                $assoc = [];
+                foreach ($headers as $i => $h) {
+                    $assoc[trim((string)$h)] = isset($row[$i]) ? trim((string)$row[$i]) : '';
+                }
+                // Required-field gate.
+                foreach ($required as $r) {
+                    if (($assoc[$r] ?? '') === '') {
+                        $results['errors'][] = ['row' => $rowNo, 'message' => "Missing required field '$r'."];
+                        continue 2;
+                    }
+                }
+                // Duplicate by email + intake + department guard.
+                if ($this->appModel->existsActiveForDeptIntake(
+                    (string)$assoc['email'],
+                    (int)$assoc['department_id'],
+                    (string)$assoc['intake'],
+                    (int)($this->service->getActiveAcademicYear()['id'] ?? 0)
+                )) {
+                    $results['errors'][] = ['row' => $rowNo, 'message' => "Duplicate active application for {$assoc['email']}."];
+                    continue;
+                }
+
+                try {
+                    $year = $this->service->getActiveAcademicYear();
+                    $payload = [
+                        'application_number' => $this->service->generateApplicationNumber(),
+                        'academic_year_id'   => (int)$year['id'],
+                        'faculty_id'         => null, // resolved via department
+                        'department_id'      => (int)$assoc['department_id'],
+                        'intake'             => (string)$assoc['intake'],
+                        'first_name'         => (string)$assoc['first_name'],
+                        'last_name'          => (string)$assoc['last_name'],
+                        'email'              => strtolower((string)$assoc['email']),
+                        'phone'              => (string)($assoc['phone'] ?? ''),
+                        'gender'             => (string)($assoc['gender'] ?? ''),
+                        'birthdate'          => (string)($assoc['birthdate'] ?? '') ?: null,
+                        'nationality'        => (string)($assoc['nationality'] ?? 'Rwandan'),
+                        'national_id'        => (string)($assoc['national_id'] ?? '') ?: null,
+                        'program_id'         => isset($assoc['program_id']) && $assoc['program_id'] !== '' ? (int)$assoc['program_id'] : null,
+                        'campus_id'          => isset($assoc['campus_id']) && $assoc['campus_id'] !== '' ? (int)$assoc['campus_id'] : null,
+                        'mode_of_study'      => (string)($assoc['mode_of_study'] ?? '') ?: null,
+                        'level_id'           => isset($assoc['level_id']) && $assoc['level_id'] !== '' ? (int)$assoc['level_id'] : null,
+                        'prev_school'        => (string)($assoc['prev_school'] ?? ''),
+                        'prev_qualification' => (string)($assoc['prev_qualification'] ?? ''),
+                        'prev_grade'         => (string)($assoc['prev_grade'] ?? ''),
+                        'combination'        => (string)($assoc['combination'] ?? '') ?: null,
+                        'graduation_year'    => isset($assoc['graduation_year']) && $assoc['graduation_year'] !== '' ? (int)$assoc['graduation_year'] : null,
+                        'sponsorship'        => (string)($assoc['sponsorship'] ?? 'self'),
+                        'sponsor_name'       => (string)($assoc['sponsor_name'] ?? '') ?: null,
+                        'is_credit_transfer' => !empty($assoc['is_credit_transfer']) ? 1 : 0,
+                        'credit_transfer_from' => (string)($assoc['credit_transfer_from'] ?? '') ?: null,
+                        'status'             => 'documents_verified', // ready for offer + enroll
+                        'submitted_at'       => date('Y-m-d H:i:s'),
+                    ];
+                    // Resolve faculty_id from department.
+                    $dept = $db->fetchOne("SELECT fac_id FROM `departements` WHERE dep_id = ? LIMIT 1", [$payload['department_id']]);
+                    if ($dept) $payload['faculty_id'] = (int)$dept['fac_id'];
+
+                    $appId = (int)$this->appModel->create($payload);
+                    $this->service->logStatusChange(
+                        $appId, null, 'documents_verified', $actorId, 'admin',
+                        'Bulk-imported via registry CSV.'
+                    );
+                    $results['inserted']++;
+                } catch (\Throwable $e) {
+                    $results['errors'][] = ['row' => $rowNo, 'message' => $e->getMessage()];
+                }
+            }
+            $db->commit();
+        } catch (\Throwable $e) {
+            if ($db->getPdo()->inTransaction()) $db->rollBack();
+            $this->error($response, 'Bulk upload failed: ' . $e->getMessage(), 500);
+        } finally {
+            fclose($handle);
+        }
+
+        SystemLogService::log(
+            'CREATE', 'ADMISSIONS',
+            "Bulk-uploaded {$results['inserted']} applicant(s); " . count($results['errors']) . " error(s).",
+            null, 'student_application',
+            $results, $authUser ?: null
+        );
+
+        $this->success($response, $results, 'Bulk upload complete.');
+    }
+
+    /**
+     * PATCH /api/admin/applications/:id/exemption-status
+     * Registry / finance use this to confirm receipt of the exemption letter
+     * for a credit-transfer applicant. When BOTH `received_registry` and
+     * `received_finance` have been recorded, the status auto-advances to
+     * `confirmed` and admission-letter issuance is unblocked.
+     */
+    public function setExemptionStatus(Request $request, Response $response): never
+    {
+        $id       = (int)$request->param('id');
+        $authUser = (array) $request->param('_auth_user');
+        $app      = $this->appModel->find($id);
+        if (!$app) {
+            $this->error($response, 'Application not found.', 404);
+        }
+        if ((int)($app['is_credit_transfer'] ?? 0) !== 1) {
+            $this->error($response, 'Application is not flagged as credit transfer.', 422);
+        }
+
+        $data = $request->body();
+        $action = (string)($data['action'] ?? '');
+        if (!in_array($action, ['received_registry', 'received_finance', 'confirmed', 'pending'], true)) {
+            $this->error($response, 'Invalid action. Must be one of: received_registry, received_finance, confirmed, pending.', 422);
+        }
+
+        $current = (string)($app['exemption_letter_status'] ?? 'pending');
+        $next    = $current;
+
+        // Promote to combined "confirmed" once we've recorded receipt from
+        // both sides. The frontend can also explicitly send action=confirmed
+        // (e.g. director sign-off) to short-circuit.
+        if ($action === 'confirmed') {
+            $next = 'confirmed';
+        } elseif ($action === 'pending') {
+            $next = 'pending';
+        } elseif ($action === 'received_registry') {
+            $next = $current === 'received_finance' ? 'confirmed' : 'received_registry';
+        } elseif ($action === 'received_finance') {
+            $next = $current === 'received_registry' ? 'confirmed' : 'received_finance';
+        }
+
+        $this->appModel->db()->execute(
+            "UPDATE `student_applications`
+             SET exemption_letter_status = ?,
+                 exemption_letter_received_at = CASE WHEN ? = 'confirmed' THEN NOW() ELSE exemption_letter_received_at END,
+                 entry_level_override = COALESCE(?, entry_level_override)
+             WHERE id = ?",
+            [$next, $next, isset($data['entry_level_override']) ? (string)$data['entry_level_override'] : null, $id]
+        );
+
+        SystemLogService::log(
+            'UPDATE', 'ADMISSIONS',
+            "Exemption letter status for application ID {$id} → {$next}.",
+            $id, 'student_application',
+            ['from' => $current, 'to' => $next, 'action' => $action],
+            $authUser ?: null
+        );
+
+        $this->success($response, [
+            'exemption_letter_status' => $next,
+        ], 'Exemption status updated.');
+    }
+
+    /**
+     * PATCH /api/admin/applications/:id/hide
+     * Soft-hide a pending application from the main queue. Registry staff
+     * use this when they want to keep the record but stop it cluttering the
+     * "Pending" list (e.g. while chasing the applicant by phone).
+     */
+    public function hideApplication(Request $request, Response $response): never
+    {
+        $id       = (int)$request->param('id');
+        $authUser = (array) $request->param('_auth_user');
+        $app      = $this->appModel->find($id);
+        if (!$app) {
+            $this->error($response, 'Application not found.', 404);
+        }
+        $reason = trim((string)($request->body()['reason'] ?? ''));
+
+        $this->appModel->db()->execute(
+            "UPDATE `student_applications`
+             SET is_hidden = 1, hidden_at = NOW(), hidden_by = ?, hidden_reason = ?
+             WHERE id = ?",
+            [(int)($authUser['id'] ?? 0) ?: null, $reason !== '' ? $reason : null, $id]
+        );
+
+        SystemLogService::log(
+            'UPDATE', 'ADMISSIONS',
+            "Hid application ID {$id}" . ($reason !== '' ? " — reason: {$reason}" : '.'),
+            $id, 'student_application',
+            ['reason' => $reason], $authUser ?: null
+        );
+        $this->success($response, ['is_hidden' => 1], 'Application hidden.');
+    }
+
+    /**
+     * PATCH /api/admin/applications/:id/restore
+     * Restore a previously hidden application.
+     */
+    public function restoreApplication(Request $request, Response $response): never
+    {
+        $id       = (int)$request->param('id');
+        $authUser = (array) $request->param('_auth_user');
+        $app      = $this->appModel->find($id);
+        if (!$app) {
+            $this->error($response, 'Application not found.', 404);
+        }
+
+        $this->appModel->db()->execute(
+            "UPDATE `student_applications`
+             SET is_hidden = 0, hidden_at = NULL, hidden_by = NULL, hidden_reason = NULL
+             WHERE id = ?",
+            [$id]
+        );
+
+        SystemLogService::log(
+            'UPDATE', 'ADMISSIONS',
+            "Restored application ID {$id}.",
+            $id, 'student_application', null, $authUser ?: null
+        );
+        $this->success($response, ['is_hidden' => 0], 'Application restored.');
+    }
+
+    /**
+     * GET /api/admin/applications/:id/returning-check
+     * Returns whether the applicant already has a `student` row (by email or
+     * national ID). The frontend uses this to warn admins before enrolling a
+     * returning student that a new postgraduate row will be created.
+     */
+    public function returningCheck(Request $request, Response $response): never
+    {
+        $id  = (int)$request->param('id');
+        $app = $this->appModel->find($id);
+        if (!$app) {
+            $this->error($response, 'Application not found.', 404);
+        }
+
+        $email = trim((string)($app['email'] ?? ''));
+        $nid   = trim((string)($app['national_id'] ?? ''));
+        $where = [];
+        $bind  = [];
+        if ($email !== '') { $where[] = 'email = ?';        $bind[] = $email; }
+        if ($nid   !== '') { $where[] = 'index_number = ?'; $bind[] = $nid; }
+        if (empty($where)) {
+            $this->success($response, ['is_returning' => false, 'records' => []], 'No prior records.');
+        }
+
+        $rows = $this->appModel->db()->fetchAll(
+            "SELECT id, regnumber, fname, lname, email, programme_level, acc_year, faculty, department, current_level, student_state
+             FROM `student`
+             WHERE " . implode(' OR ', $where) . "
+             ORDER BY id DESC
+             LIMIT 5",
+            $bind
+        );
+
+        $this->success($response, [
+            'is_returning' => !empty($rows),
+            'records'      => $rows,
+        ], !empty($rows) ? 'Existing student record(s) found.' : 'No prior records.');
+    }
+
+    /**
+     * GET /api/admin/applications/:id/pending-notes
+     * Shared, visible notes recorded against a pending candidate. Every
+     * registry assistant can read them so everyone knows why an applicant
+     * is being held — even across campus assignments.
+     */
+    public function listPendingNotes(Request $request, Response $response): never
+    {
+        $id          = (int)$request->param('id');
+        $application = $this->appModel->find($id);
+
+        if (!$application) {
+            $this->error($response, 'Application not found.', 404);
+        }
+
+        $notes = $this->pendingNoteModel->listForApplication($id);
+        $this->success($response, ['notes' => $notes, 'count' => count($notes)], 'Pending notes fetched.');
+    }
+
+    /**
+     * POST /api/admin/applications/:id/pending-notes
+     * Append a shared, visible note explaining why a candidate is pending.
+     */
+    public function addPendingNote(Request $request, Response $response): never
+    {
+        $id          = (int)$request->param('id');
+        $application = $this->appModel->find($id);
+        $authUser    = (array) $request->param('_auth_user');
+
+        if (!$application) {
+            $this->error($response, 'Application not found.', 404);
+        }
+
+        $data   = $request->body();
+        $errors = ValidationHelper::validate($data, [
+            'note' => 'required|string|min:3|max:1000',
+        ]);
+
+        if (!empty($errors)) {
+            $this->error($response, 'Validation failed.', 422, $errors);
+        }
+
+        $newId = $this->pendingNoteModel->create([
+            'application_id' => $id,
+            'note'           => trim((string)$data['note']),
+            'created_by'     => isset($authUser['id']) ? (int)$authUser['id'] : null,
+        ]);
+
+        SystemLogService::log(
+            'CREATE', 'ADMISSIONS',
+            "Added shared pending note to application ID {$id}.",
+            $id, 'student_application',
+            ['pending_note_id' => $newId],
+            $authUser ?: null
+        );
+
+        $notes = $this->pendingNoteModel->listForApplication($id);
+        $this->success($response, ['notes' => $notes, 'count' => count($notes)], 'Pending note recorded.', 201);
+    }
+
     /**
      * GET /api/admin/applications/stats
      * Dashboard statistics.
@@ -243,6 +783,18 @@ class ApplicationAdminController extends BaseController
              WHERE is_active = 1
              ORDER BY name ASC"
         );
+
+        $levelCounts = $db->fetchAll(
+            "SELECT sa.level_id AS id, l.name AS label, COUNT(*) AS cnt
+             FROM student_applications sa
+             LEFT JOIN levels l ON l.id = sa.level_id
+             WHERE sa.status <> 'draft' AND sa.level_id IS NOT NULL
+             GROUP BY sa.level_id, l.name
+             ORDER BY l.name ASC"
+        );
+        $allLevels = $db->fetchAll(
+            "SELECT id, name AS label FROM levels ORDER BY name ASC"
+        );
         $allModes = [
             ['label' => 'Day'],
             ['label' => 'Evening'],
@@ -268,6 +820,19 @@ class ApplicationAdminController extends BaseController
              LIMIT 8"
         );
 
+        // Task 1.6 — pending-but-already-admitted desync count. Surfaced as a
+        // banner on the admissions list so registry staff can spot mismatches
+        // (an applicant whose student record exists but whose application
+        // hasn't moved to `enrolled`).
+        $desyncedCount = (int)($db->fetchOne("
+            SELECT COUNT(DISTINCT sa.id) AS cnt
+            FROM student_applications sa
+            JOIN student s
+              ON (sa.email IS NOT NULL AND s.email = sa.email)
+              OR (sa.national_id IS NOT NULL AND sa.national_id <> '' AND s.index_number = sa.national_id)
+            WHERE sa.status NOT IN ('enrolled', 'withdrawn', 'offer_declined')
+        ")['cnt'] ?? 0);
+
         $this->success($response, [
             'by_status' => $statusCounts,
             'by_intake' => $intakeCounts,
@@ -277,8 +842,11 @@ class ApplicationAdminController extends BaseController
             'by_mode'   => $modeCounts,
             'all_campuses' => $allCampuses,
             'all_modes'    => $allModes,
+            'all_levels'   => $allLevels,
+            'by_level'     => $levelCounts,
             'trend'     => $trend,
             'recent'    => $recent,
+            'desynced_pending_count' => $desyncedCount,
             'total'     => array_sum(array_column($statusCounts, 'cnt'))
         ], 'Stats fetched.');
     }
@@ -468,5 +1036,36 @@ HTML;
 
         echo $fileData['content'];
         exit;
+    }
+
+    /**
+     * Auto-hide applications that have been stuck in a non-final state
+     * (submitted / under-review / requested_changes / etc.) for longer than
+     * the configured `pending_timeout_days`. Records are only soft-hidden —
+     * they remain queryable via `include_hidden=1` or `only_hidden=1`.
+     */
+    private function autoHideExpiredPending(): void
+    {
+        $db = $this->appModel->db();
+        $row = $db->fetchOne(
+            "SELECT value FROM `settings` WHERE key_name = 'pending_timeout_days' LIMIT 1"
+        );
+        $days = (int)($row['value'] ?? 0);
+        if ($days <= 0) return;
+
+        try {
+            $db->execute(
+                "UPDATE `student_applications`
+                 SET is_hidden = 1, hidden_at = NOW(), hidden_reason = CONCAT('Auto-hidden after ', ?, ' days pending')
+                 WHERE is_hidden = 0
+                   AND status NOT IN ('enrolled','withdrawn','offer_declined')
+                   AND submitted_at IS NOT NULL
+                   AND submitted_at < DATE_SUB(NOW(), INTERVAL ? DAY)",
+                [$days, $days]
+            );
+        } catch (\Throwable $e) {
+            // Non-blocking — a missing column on legacy schemas mustn't take
+            // the admissions list down.
+        }
     }
 }

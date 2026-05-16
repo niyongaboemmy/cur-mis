@@ -94,10 +94,27 @@ $router->group('/api/admin', function ($router) {
         $router->get('',              [ApplicationAdminController::class, 'index']);
         $router->get('/stats',         [ApplicationAdminController::class, 'getDashboardStats']);
         $router->get('/export',        [ApplicationAdminController::class, 'export']);
+        // Bulk upload via CSV (Task 1.12). Literal segments must come before
+        // /:id to win route matching.
+        $router->get('/bulk-upload-template', [ApplicationAdminController::class, 'bulkUploadTemplate']);
+        $router->post('/bulk-upload',         [ApplicationAdminController::class, 'bulkUpload']);
+        // Task 1.14 — applicant statistics report.
+        $router->get('/statistics',           [ApplicationAdminController::class, 'statistics']);
         $router->get('/:id',          [ApplicationAdminController::class, 'show']);
         $router->get('/:id/payment-slip', [ApplicationAdminController::class, 'downloadPaymentSlip']);
         $router->patch('/:id/status', [ApplicationAdminController::class, 'updateStatus']);
         $router->post('/:id/notes',   [ApplicationAdminController::class, 'addNote']);
+        // Shared, visible "why pending" notes — readable by every registry
+        // staff regardless of their campus scope.
+        $router->get('/:id/pending-notes',  [ApplicationAdminController::class, 'listPendingNotes']);
+        $router->post('/:id/pending-notes', [ApplicationAdminController::class, 'addPendingNote']);
+        // Pre-enrollment check: is this applicant already a CUR student?
+        $router->get('/:id/returning-check', [ApplicationAdminController::class, 'returningCheck']);
+        // Hide / restore (Task 1.9)
+        $router->patch('/:id/hide',    [ApplicationAdminController::class, 'hideApplication']);
+        $router->patch('/:id/restore', [ApplicationAdminController::class, 'restoreApplication']);
+        // Credit-transfer exemption-letter status (Task 1.11)
+        $router->patch('/:id/exemption-status', [ApplicationAdminController::class, 'setExemptionStatus']);
         $router->post('/:id/enroll',  [AdmissionController::class, 'initiateEnrollmentByAppId']);
         $router->post('/:id/accept-offer', [AdmissionController::class, 'acceptOfferByAppId']);
     }, [new PermissionMiddleware(Permissions::MANAGE_STUDENT_APPLICATIONS)]);

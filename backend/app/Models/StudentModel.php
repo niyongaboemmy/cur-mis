@@ -9,15 +9,37 @@ class StudentModel extends BaseModel
     // Point to student table, though students view is available for read-only
     protected string $table = 'student';
     protected array $fillable = [
-        'user_id',
+        'user_id', 'parent_student_id',
         'regnumber', 'fname', 'lname', 'phone', 'email', 'gender',
         'birthdate', 'nationality', 'program', 'std_option', 'faculty',
-        'department', 'current_level', 'registration_date', 'student_state',
-        'intake', 'acc_year', 'combination', 'last_school', 'sponsor',
+        'department', 'current_level', 'programme_level',
+        'registration_date', 'student_state',
+        'intake', 'acc_year', 'campus', 'combination', 'last_school', 'sponsor',
         'photo', 'marital_status', 'spouse', 'disability',
         'father', 'mother', 'reference', 'id_card', 'country',
         'province', 'district', 'sector', 'cell', 'village',
+        'index_number',
     ];
+
+    /**
+     * Walk `parent_student_id` upwards to return the student's prior
+     * programme rows (oldest enrollment last). Used to surface the
+     * "previously enrolled as undergraduate" history on the profile.
+     */
+    public function getProgrammeChain(int $studentId): array
+    {
+        $chain   = [];
+        $current = $this->find($studentId);
+        $seen    = [];
+        while ($current && !empty($current['parent_student_id']) && !isset($seen[(int)$current['id']])) {
+            $seen[(int)$current['id']] = true;
+            $parent = $this->find((int)$current['parent_student_id']);
+            if (!$parent) break;
+            $chain[]  = $parent;
+            $current  = $parent;
+        }
+        return $chain;
+    }
 
     /**
      * Resolve the student row tied to an authenticated user.
