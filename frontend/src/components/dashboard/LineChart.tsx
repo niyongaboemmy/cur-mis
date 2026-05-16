@@ -93,8 +93,9 @@ export default function LineChart({ labels, series, yMax, height = 240 }: LineCh
         </text>
       ))}
 
-      {/* Series */}
+      {/* Series — skip empty series so the chart can render an axis only. */}
       {series.map((s, idx) => {
+        if (!s.data || s.data.length === 0) return null
         const pts = s.data.map((v, i) => [xFor(i), yFor(v)] as [number, number])
         const line = toSmoothPath(pts)
         const area = `${line} L${pts[pts.length - 1][0]},${yFor(0)} L${pts[0][0]},${yFor(0)} Z`
