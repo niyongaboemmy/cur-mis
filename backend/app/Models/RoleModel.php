@@ -11,6 +11,7 @@ class RoleModel extends BaseModel
     protected array $fillable = [
         'name',
         'description',
+        'enforce_campus_scope',
     ];
 
     public function getIdByName(string $name): ?int

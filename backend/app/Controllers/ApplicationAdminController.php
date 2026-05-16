@@ -52,20 +52,50 @@ class ApplicationAdminController extends BaseController
         if (!$authUser) {
             return null;
         }
-        $role = strtolower((string)($authUser['role'] ?? $authUser['role_name'] ?? ''));
-        if (in_array($role, self::UNSCOPED_ROLES, true)) {
-            return null;
-        }
         $userId = (int)($authUser['id'] ?? 0);
-        if ($userId === 0) {
-            return null;
+        $role   = strtolower((string)($authUser['role'] ?? $authUser['role_name'] ?? ''));
+
+        // Per-role "enforce campus scope" flag (set from the Permissions
+        // modal) is the explicit source of truth. Falls back to the legacy
+        // hardcoded admin/superadmin bypass when the column hasn't been
+        // set (existing roles default to 0 = no scoping).
+        $enforce = false;
+        if (!empty($authUser['role_id'])) {
+            try {
+                $row = $this->appModel->db()->fetchOne(
+                    "SELECT enforce_campus_scope FROM `roles` WHERE id = ? LIMIT 1",
+                    [(int)$authUser['role_id']]
+                );
+                $enforce = !empty($row) && (int)($row['enforce_campus_scope'] ?? 0) === 1;
+            } catch (\Throwable $e) {
+                // Column missing on a legacy schema — defer to the role-name fallback.
+                $enforce = false;
+            }
         }
-        $assigned = $this->campusAssignmentModel->campusIdsForUser($userId);
-        // No assignments at all means the user hasn't been scoped — fall back
-        // to showing all (matches Task 1.1 spec: "Admins with no campus
-        // assignment see all"). This keeps existing registry users working
-        // until an admin explicitly assigns campuses.
-        return empty($assigned) ? null : $assigned;
+        if (!$enforce) {
+            // Legacy behaviour: admin/superadmin bypass; anyone else with
+            // assignments gets scoped automatically.
+            if (in_array($role, self::UNSCOPED_ROLES, true)) {
+                return null;
+            }
+            if ($userId === 0) {
+                return null;
+            }
+            $assigned = $this->campusAssignmentModel->campusIdsForUser($userId);
+            // No assignments at all means the user hasn't been scoped — fall back
+            // to showing all (matches Task 1.1 spec). This keeps existing registry
+            // users working until an admin explicitly assigns campuses.
+            return empty($assigned) ? null : $assigned;
+        }
+
+        // Role explicitly marks "enforce campus scope": always restrict, even
+        // for admin role names. Zero assignments → empty result set (the
+        // strictest possible interpretation, which is what registrars asked
+        // for so role-mistagged accounts don't accidentally leak data).
+        if ($userId === 0) {
+            return [];
+        }
+        return $this->campusAssignmentModel->campusIdsForUser($userId);
     }
 
     /**

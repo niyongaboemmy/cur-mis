@@ -7,6 +7,9 @@ export interface Role {
   permissions?: string[];
   user_count?: number;
   created_at: string;
+  /** When 1, users with this role only ever see data belonging to the
+   *  campuses they're assigned to — even if they have an "admin" role name. */
+  enforce_campus_scope?: 0 | 1 | boolean;
 }
 
 export interface Permission {
@@ -30,8 +33,13 @@ export const rbacService = {
   createRole: (data: Partial<Role>) => api.post<{ id: number }>('/api/roles', data),
   updateRole: (id: number, data: Partial<Role>) => api.put<null>(`/api/roles/${id}`, data),
   deleteRole: (id: number) => api.delete<null>(`/api/roles/${id}`),
-  assignRolePermissions: (id: number, permissions: number[]) => 
-    api.post<null>(`/api/roles/${id}/permissions`, { permissions }),
+  assignRolePermissions: (id: number, permissions: number[], opts: { enforce_campus_scope?: boolean } = {}) =>
+    api.post<null>(`/api/roles/${id}/permissions`, {
+      permissions,
+      ...(opts.enforce_campus_scope !== undefined
+        ? { enforce_campus_scope: opts.enforce_campus_scope ? 1 : 0 }
+        : {}),
+    }),
 
   // Permissions & Categories
   getPermissions: (signal?: AbortSignal) => api.get<PermissionCategory[]>('/api/permissions', {}, signal),

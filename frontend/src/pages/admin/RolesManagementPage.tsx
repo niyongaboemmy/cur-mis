@@ -33,6 +33,9 @@ export default function RolesManagementPage() {
   const [activeCategoryId, setActiveCategoryId] = useState<number | "all">(
     "all",
   );
+  // Per-role campus scoping toggle (Task: registry asked to restrict
+  // certain roles to data from their assigned campus only).
+  const [enforceCampusScope, setEnforceCampusScope] = useState(false);
 
   // Roles list management
   const [rolesSearchQuery, setRolesSearchQuery] = useState("");
@@ -107,6 +110,7 @@ export default function RolesManagementPage() {
 
   const openPerms = (role: Role) => {
     setSelectedRoleForPerms(role);
+    setEnforceCampusScope(Boolean(role.enforce_campus_scope));
     // Find all permission IDs that match the role's current string slugs
     if (role.permissions && categories.length > 0) {
       const allPerms = categories.flatMap((c) => c.permissions || []);
@@ -134,6 +138,7 @@ export default function RolesManagementPage() {
       await rbacService.assignRolePermissions(
         selectedRoleForPerms.id,
         selectedPerms,
+        { enforce_campus_scope: enforceCampusScope },
       );
       toast.success("Permissions updated successfully");
       setIsPermsOpen(false);
@@ -524,6 +529,33 @@ export default function RolesManagementPage() {
                   <X className="w-6 h-6" />
                 </button>
               </div>
+            </div>
+
+            {/* Campus scope toggle — restrict everything this role sees to
+                the user's assigned campus(es). Saved with the permissions. */}
+            <div className="px-8 py-3 bg-primary-50/40 dark:bg-primary-900/10 border-b border-primary-100 dark:border-primary-900/40">
+              <label className="flex items-start gap-3 cursor-pointer select-none max-w-3xl">
+                <span className="relative inline-flex items-center mt-0.5 shrink-0">
+                  <input
+                    type="checkbox"
+                    className="sr-only peer"
+                    checked={enforceCampusScope}
+                    onChange={(e) => setEnforceCampusScope(e.target.checked)}
+                  />
+                  <span className="w-10 h-6 rounded-full bg-gray-300 dark:bg-gray-700 peer-checked:bg-primary-600 transition-colors" />
+                  <span className="absolute left-0.5 top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-4" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-[13px] font-semibold text-ink-900 dark:text-white">
+                    Show only data from assigned campus(es)
+                  </span>
+                  <span className="block text-[11.5px] text-ink-500 mt-0.5">
+                    When on, every page in the admin app (admissions, students, statistics, exports…)
+                    is automatically filtered to the campus(es) this user is assigned to.
+                    Users with this role can only see records belonging to those campuses.
+                  </span>
+                </span>
+              </label>
             </div>
 
             <div className="flex-1 flex overflow-hidden">
