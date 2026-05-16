@@ -20,6 +20,7 @@ const TABS = [
   { to: '/finance/balance',   label: 'Balance',    icon: Wallet,          end: false, permissions: [PERMISSIONS.VIEW_FINANCE, PERMISSIONS.MANAGE_FINANCE] },
   { to: '/finance/clearance', label: 'Clearance',  icon: ShieldCheck,     end: false, permissions: [PERMISSIONS.VIEW_FINANCE, PERMISSIONS.MANAGE_FINANCE] },
   { to: '/finance/reports',   label: 'Reports',    icon: BarChart3,       end: false, permissions: [PERMISSIONS.VIEW_FINANCE, PERMISSIONS.MANAGE_FINANCE] },
+  { to: '/finance/online-payments', label: 'Online Payments', icon: Receipt, end: false, permissions: [PERMISSIONS.VIEW_ONLINE_PAYMENTS_HISTORY] },
 ]
 
 export default function FinanceHub() {

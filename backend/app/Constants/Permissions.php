@@ -55,6 +55,9 @@ class Permissions
     public const VIEW_FINANCE         = 'VIEW_FINANCE';
     public const MANAGE_FINANCE       = 'MANAGE_FINANCE';
     public const VIEW_MOBILE_PAYMENTS = 'VIEW_MOBILE_PAYMENTS';
+    public const VIEW_ONLINE_PAYMENTS_HISTORY = 'VIEW_ONLINE_PAYMENTS_HISTORY';
+    // Student self-service: view own invoices, payments, and balance
+    public const MY_INVOICE           = 'MY_INVOICE';
 
     // Admissions
     public const MANAGE_ADMISSION_REQUIREMENTS = 'MANAGE_ADMISSION_REQUIREMENTS';
@@ -140,6 +143,8 @@ class Permissions
             self::MANAGE_LEAVE_REQUESTS,
             self::MANAGE_FINANCE,
             self::VIEW_MOBILE_PAYMENTS,
+            self::VIEW_ONLINE_PAYMENTS_HISTORY,
+            self::MY_INVOICE,
             self::MANAGE_ADMISSION_REQUIREMENTS,
             self::MANAGE_STUDENT_APPLICATIONS,
             self::VERIFY_DOCUMENTS,

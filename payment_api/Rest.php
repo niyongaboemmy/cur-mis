@@ -35,6 +35,31 @@ header('Content-Type: application/json; charset=utf-8');
 // ─────────────────────────────────────────────────────────────────────────────
 // Bearer-token guard (skip for the token-claim endpoint itself)
 // ─────────────────────────────────────────────────────────────────────────────
+if (!function_exists('getDbCredentials')) {
+    function getDbCredentials() {
+        $path = __DIR__ . '/../backend/.env';
+        $env = ['host' => 'localhost', 'port' => 3306, 'user' => 'curac_save', 'pass' => 'curac_save', 'db' => 'curac_save'];
+        if (file_exists($path)) {
+            $lines = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+            foreach ($lines as $line) {
+                $line = trim($line);
+                if (str_starts_with($line, '#')) continue;
+                $parts = explode('=', $line, 2);
+                if (count($parts) === 2) {
+                    $k = trim($parts[0]);
+                    $v = trim($parts[1], '"\'');
+                    if ($k === 'DB_HOST') $env['host'] = $v;
+                    if ($k === 'DB_PORT') $env['port'] = (int)$v;
+                    if ($k === 'DB_USERNAME') $env['user'] = $v;
+                    if ($k === 'DB_PASSWORD') $env['pass'] = $v;
+                    if ($k === 'DB_DATABASE') $env['db'] = $v;
+                }
+            }
+        }
+        return $env;
+    }
+}
+
 if (!defined('SKIP_TOKEN_CHECK')) {
 
     /**
@@ -60,20 +85,28 @@ if (!defined('SKIP_TOKEN_CHECK')) {
     $__parts  = $__header ? explode(' ', $__header, 2) : [];
     $__token  = $__parts[1] ?? '';
 
-    $__authDb = new mysqli('localhost', 'curac_save', 'curac_save', 'curac_save');
-    if ($__authDb->connect_error) {
+    $__tokRows = 0;
+    try {
+        $__creds = getDbCredentials();
+        $__authDb = new mysqli($__creds['host'], $__creds['user'], $__creds['pass'], $__creds['db'], $__creds['port']);
+        if ($__authDb->connect_error) {
+            http_response_code(500);
+            echo json_encode(['timestamp' => date('Y-m-d H:i:s'), 'message' => 'Database connection failed', 'status' => 500]);
+            exit;
+        }
+        $__authDb->set_charset('utf8mb4');
+
+        $__stmtTok = $__authDb->prepare('SELECT id FROM api_authorization WHERE token = ? LIMIT 1');
+        $__stmtTok->bind_param('s', $__token);
+        $__stmtTok->execute();
+        $__tokRows = $__stmtTok->get_result()->num_rows;
+        $__stmtTok->close();
+        $__authDb->close();
+    } catch (\Throwable $e) {
         http_response_code(500);
-        echo json_encode(['timestamp' => date('Y-m-d H:i:s'), 'message' => 'Database connection failed', 'status' => 500]);
+        echo json_encode(['timestamp' => date('Y-m-d H:i:s'), 'message' => 'Database connection failed: ' . $e->getMessage(), 'status' => 500]);
         exit;
     }
-    $__authDb->set_charset('utf8mb4');
-
-    $__stmtTok = $__authDb->prepare('SELECT id FROM api_authorization WHERE token = ? LIMIT 1');
-    $__stmtTok->bind_param('s', $__token);
-    $__stmtTok->execute();
-    $__tokRows = $__stmtTok->get_result()->num_rows;
-    $__stmtTok->close();
-    $__authDb->close();
 
     if ($__tokRows === 0) {
         http_response_code(401);
@@ -89,22 +122,35 @@ class Rest
 {
     private mysqli $db;
 
-    private string $host     = 'localhost';
-    private string $user     = 'curac_save';
-    private string $password = 'curac_save';
-    private string $database = 'curac_save';
+    private string $host;
+    private string $user;
+    private string $password;
+    private string $database;
+    private int $port;
 
     public function __construct()
     {
-        $conn = new mysqli($this->host, $this->user, $this->password, $this->database);
-        if ($conn->connect_error) {
+        $creds = getDbCredentials();
+        $this->host     = $creds['host'];
+        $this->user     = $creds['user'];
+        $this->password = $creds['pass'];
+        $this->database = $creds['db'];
+        $this->port     = $creds['port'];
+        try {
+            $conn = new mysqli($this->host, $this->user, $this->password, $this->database, $this->port);
+            if ($conn->connect_error) {
+                http_response_code(500);
+                echo json_encode(['timestamp' => date('Y-m-d H:i:s'), 'message' => 'Database connection failed', 'status' => 500]);
+                exit;
+            }
+            $conn->set_charset('utf8mb4');
+            mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+            $this->db = $conn;
+        } catch (\Throwable $e) {
             http_response_code(500);
-            echo json_encode(['timestamp' => date('Y-m-d H:i:s'), 'message' => 'Database connection failed', 'status' => 500]);
+            echo json_encode(['timestamp' => date('Y-m-d H:i:s'), 'message' => 'Database connection failed: ' . $e->getMessage(), 'status' => 500]);
             exit;
         }
-        $conn->set_charset('utf8mb4');
-        mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
-        $this->db = $conn;
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
@@ -491,6 +537,43 @@ class Rest
         }
         $stmtIns->close();
 
+        // ── Insert into bank_payment ────────────────────────────────────────────
+        try {
+            if ($bankId !== null) {
+                $sqlBank = 'INSERT INTO bank_payment
+                             (trans_code, reg_no, level_id, bank_id, slip_no, invoi_ref,
+                              user, acad_cycle_id, date, fee_category, amount, description,
+                              Remark, action, external_transaction_id, payment_chanel, payment_notifi)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+                $stmtBank = $this->db->prepare($sqlBank);
+                $stmtBank->bind_param(
+                    'sssssssssssssssss',
+                    $transCode, $regnumber, $levelId, $bankId, $slipNumber, $invoiRef,
+                    $user, $accYear, $paymentDate, $feeCategory, $amount, $description,
+                    $remarkVal, $action, $transactionId, $paymentChannel, $action
+                );
+                $stmtBank->execute();
+                $stmtBank->close();
+            } else {
+                $sqlBank = 'INSERT INTO bank_payment
+                             (trans_code, reg_no, level_id, slip_no, invoi_ref,
+                              user, acad_cycle_id, date, fee_category, amount, description,
+                              Remark, action, external_transaction_id, payment_chanel, payment_notifi)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+                $stmtBank = $this->db->prepare($sqlBank);
+                $stmtBank->bind_param(
+                    'ssssssssssssssss',
+                    $transCode, $regnumber, $levelId, $slipNumber, $invoiRef,
+                    $user, $accYear, $paymentDate, $feeCategory, $amount, $description,
+                    $remarkVal, $action, $transactionId, $paymentChannel, $action
+                );
+                $stmtBank->execute();
+                $stmtBank->close();
+            }
+        } catch (\Throwable $e) {
+            error_log('[LegacySync:bank_payment ERROR] ' . $e->getMessage());
+        }
+
         http_response_code(200);
         echo json_encode([
             'timestamp' => $date,
@@ -618,6 +701,33 @@ class Rest
             return;
         }
         $stmtRev->close();
+
+        // ── Insert into bank_payment ────────────────────────────────────────────
+        try {
+            $stmtBank = $this->db->prepare(
+                'INSERT INTO bank_payment
+                    (trans_code, reg_no, level_id, bank_id, slip_no, invoi_ref,
+                     user, acad_cycle_id, date, fee_category, amount, description,
+                     Remark, action, external_transaction_id, payment_chanel, payment_notifi)
+                 VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+            );
+            $regnumber = $orig['student'];
+            $bankId = $orig['bank_id'];
+            $slipNo = $orig['slip_no'];
+            $accYear = $orig['acad_cycle_id'];
+            $channel = $orig['payment_chanel'];
+            $levelId = $orig['level_id'];
+            $stmtBank->bind_param(
+                'ssssssssssssssss',
+                $reversalCode, $regnumber, $levelId, $bankId, $slipNo,
+                $user, $accYear, $date, $feeCategory, $reversalAmount, $description,
+                $remarkV, $notif, $transactionId, $channel, $notif
+            );
+            $stmtBank->execute();
+            $stmtBank->close();
+        } catch (\Throwable $e) {
+            error_log('[LegacySync:bank_payment ERROR] ' . $e->getMessage());
+        }
 
         http_response_code(200);
         echo json_encode([
@@ -803,6 +913,28 @@ class Rest
             return;
         }
         $stmtIns->close();
+
+        // ── Insert into bank_payment ────────────────────────────────────────────
+        try {
+            $bankId = 1; // UrubutoPay / BK
+            $stmtBank = $this->db->prepare(
+                'INSERT INTO bank_payment
+                    (trans_code, reg_no, level_id, bank_id, slip_no, invoi_ref,
+                     user, acad_cycle_id, date, fee_category, amount, description,
+                     Remark, action, external_transaction_id, payment_chanel, payment_notifi)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+            );
+            $stmtBank->bind_param(
+                'sssssssssssssssss',
+                $transCode, $regnumber, $levelId, $bankId, $slipNo, $invoiRef,
+                $user, $accYear, $paymentDate, $feeCategory, $amount, $desc,
+                $remarkVal, $action, $txCode, $channel, $action
+            );
+            $stmtBank->execute();
+            $stmtBank->close();
+        } catch (\Throwable $e) {
+            error_log('[LegacySync:bank_payment ERROR] ' . $e->getMessage());
+        }
 
         // Reconcile immediately — callback is async so no client waiting
         try {

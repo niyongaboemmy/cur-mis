@@ -501,6 +501,53 @@ class FeeController extends BaseController
     }
 
     /**
+     * GET /api/finance/online-payments
+     * List all legacy online payments from the `payment` table.
+     */
+    public function listOnlinePaymentsHistory(Request $request, Response $response): never
+    {
+        $page    = max(1, (int)($request->query('page') ?? 1));
+        $perPage = max(1, min(100, (int)($request->query('per_page') ?? 20)));
+        $keyword = $request->query('keyword') ?? '';
+
+        $offset = ($page - 1) * $perPage;
+
+        $whereClause = "1=1";
+        $params = [];
+
+        if ($keyword) {
+            $whereClause .= " AND (student LIKE ? OR slip_no LIKE ? OR trans_code LIKE ?)";
+            $search = "%{$keyword}%";
+            $params = [$search, $search, $search];
+        }
+
+        $countQuery = "SELECT COUNT(*) as total FROM `payment` WHERE $whereClause";
+        $totalRow = $this->db->fetchOne($countQuery, $params);
+        $total = (int)($totalRow['total'] ?? 0);
+
+        $query = "SELECT * FROM `payment` WHERE $whereClause ORDER BY `date` DESC LIMIT $perPage OFFSET $offset";
+        $data = $this->db->fetchAll($query, $params);
+
+        // Fetch basic dashboard metrics for online payments
+        $metricsQuery = "SELECT COUNT(*) as total_tx, SUM(amount) as total_amount FROM `payment`";
+        $metrics = $this->db->fetchOne($metricsQuery);
+
+        $this->success($response, [
+            'data' => $data,
+            'pagination' => [
+                'current_page' => $page,
+                'per_page'     => $perPage,
+                'total'        => $total,
+                'last_page'    => ceil($total / $perPage),
+            ],
+            'metrics' => [
+                'total_transactions' => (int)($metrics['total_tx'] ?? 0),
+                'total_amount'       => (float)($metrics['total_amount'] ?? 0),
+            ]
+        ], 'Online payments history retrieved.');
+    }
+
+    /**
      * POST /api/finance/payments
      */
     public function recordPayment(Request $request, Response $response): never
@@ -582,6 +629,21 @@ class FeeController extends BaseController
 
         // Now update invoice balance
         $this->invoiceModel->applyPayment((int)$payment['invoice_id'], (float)$payment['amount']);
+
+        // Auto-recompute financial clearance so student status is immediately up to date
+        $invoice = $this->invoiceModel->find((int)$payment['invoice_id']);
+        if ($invoice && !empty($invoice['student_id']) && !empty($invoice['academic_year_id'])) {
+            try {
+                $this->clearanceService->computeAndSave(
+                    (string)$invoice['student_id'],
+                    (int)$invoice['academic_year_id'],
+                    null,
+                    (int)($actor['id'] ?? 0)
+                );
+            } catch (\Throwable $e) {
+                error_log('[Clearance ERROR] approvePayment: ' . $e->getMessage());
+            }
+        }
 
         // Send email receipt
         $this->service->sendPaymentConfirmationEmail($id);

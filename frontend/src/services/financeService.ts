@@ -117,6 +117,28 @@ export const paymentService = {
       signal,
     ),
 
+  getOnlinePaymentsHistory: (
+    params?: {
+      keyword?: string;
+      page?: number;
+      per_page?: number;
+    },
+    signal?: AbortSignal,
+  ) =>
+    api.get<{
+      data: any[];
+      pagination: {
+        current_page: number;
+        per_page: number;
+        total: number;
+        last_page: number;
+      };
+      metrics: {
+        total_transactions: number;
+        total_amount: number;
+      };
+    }>("/api/finance/online-payments", params ?? {}, signal),
+
   record: (data: RecordPaymentPayload & { payment_sub_method?: string }) =>
     api.post<RecordPaymentResult>("/api/finance/payments", data),
 
