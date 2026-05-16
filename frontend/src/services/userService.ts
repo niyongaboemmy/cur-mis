@@ -10,6 +10,13 @@ export interface User {
   role_name?: string;
   is_active: number;
   photo?: string | null;
+  /** Campuses this user is scoped to (set by Task 1.1). Empty = unscoped. */
+  campus_assignments?: Array<{
+    id: number;
+    name: string;
+    code: string | null;
+    location: string | null;
+  }>;
 }
 
 export interface UserListResponse {
@@ -18,6 +25,17 @@ export interface UserListResponse {
   per_page: number;
   current_page: number;
   last_page: number;
+}
+
+export interface UserCampusAssignment {
+  assignment_id: number;
+  id: number;          // campus id
+  name: string;
+  code: string | null;
+  location: string | null;
+  is_active: number;
+  assigned_at: string;
+  assigned_by: number | null;
 }
 
 export interface UserStats {
@@ -90,6 +108,34 @@ const userService = {
     return api.post<{ total_processed: number; created_count: number; skipped_count: number }>(
       `/api/users/bulk-create`,
       data,
+    );
+  },
+
+  listAllCampuses: async (signal?: AbortSignal) => {
+    return api.get<{ campuses: { id: number; name: string; code: string | null; location: string | null; is_active: number }[] }>(
+      `/api/users/campuses-catalog`,
+      {},
+      signal,
+    );
+  },
+
+  listCampusAssignments: async (userId: number, signal?: AbortSignal) => {
+    return api.get<{ assignments: UserCampusAssignment[] }>(
+      `/api/users/${userId}/campuses`,
+      {},
+      signal,
+    );
+  },
+
+  assignCampus: async (userId: number, campusId: number) => {
+    return api.post<{ assignments: UserCampusAssignment[] }>(
+      `/api/users/${userId}/campuses/${campusId}`,
+    );
+  },
+
+  revokeCampus: async (userId: number, campusId: number) => {
+    return api.delete<{ assignments: UserCampusAssignment[] }>(
+      `/api/users/${userId}/campuses/${campusId}`,
     );
   },
 

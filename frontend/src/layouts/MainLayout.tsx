@@ -33,8 +33,7 @@ import {
 } from "react";
 import UserDropdown from "@/components/layout/UserDropdown";
 import MessageNotificationBell from "@/components/layout/MessageNotificationBell";
-import AcademicYearSelector from "@/components/layout/AcademicYearSelector";
-import AcademicTermSelector from "@/components/layout/AcademicTermSelector";
+import CampusFilterSwitcher from "@/components/layout/CampusFilterSwitcher";
 
 import Logo from "@/components/brand/Logo";
 import GlobalSearch from "@/components/layout/GlobalSearch";
@@ -1015,12 +1014,11 @@ export default function MainLayout() {
           </div>
 
           <div className="flex items-center gap-2">
-            {user?.role !== "applicant" && (
-              <>
-                <AcademicYearSelector />
-                <AcademicTermSelector />
-              </>
-            )}
+            {/* Academic year + term selectors moved out of the topbar to
+                Settings → they crowded the row and were rarely changed
+                day-to-day. Campus scope stays — it actively governs every
+                page's data. */}
+            {user?.role !== "applicant" && <CampusFilterSwitcher />}
             <RoundIconBtn label="Notifications" dot>
               <Bell className="w-[18px] h-[18px]" />
             </RoundIconBtn>

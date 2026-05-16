@@ -113,8 +113,24 @@ class ApplicationPortalController extends BaseController
     {
         $db = Database::getInstance();
 
+        // Optional `campus_id` — when supplied, only programs offered at that
+        // campus are returned (prevents applicants from picking a program
+        // that's not physically run at their chosen campus).
+        $campusId = (int)($request->query('campus_id') ?? 0);
+
+        $where = [];
+        $bind  = [];
+        $join  = '';
+        $where[] = '(o.is_active = 1 OR o.is_active IS NULL)';
+        if ($campusId > 0) {
+            $join    = ' INNER JOIN `option_campuses` oc_filter ON oc_filter.option_id = o.id';
+            $where[] = 'oc_filter.campus_id = ?';
+            $bind[]  = $campusId;
+        }
+        $whereSql = empty($where) ? '' : 'WHERE ' . implode(' AND ', $where);
+
         $programs = $db->fetchAll(
-            "SELECT o.id, o.name, o.is_active,
+            "SELECT DISTINCT o.id, o.name, o.is_active,
                     o.department_id,
                     d.dep_name AS department_name, d.dep_acronym AS department_code,
                     d.fac_id AS faculty_id,
@@ -122,8 +138,10 @@ class ApplicationPortalController extends BaseController
              FROM `options` o
              LEFT JOIN `departements` d ON d.dep_id = o.department_id
              LEFT JOIN `faculty` f       ON f.fac_id = d.fac_id
-             WHERE o.is_active = 1 OR o.is_active IS NULL
-             ORDER BY o.name ASC"
+             $join
+             $whereSql
+             ORDER BY o.name ASC",
+            $bind
         );
 
         if (!empty($programs)) {
@@ -241,6 +259,24 @@ class ApplicationPortalController extends BaseController
             $this->error($response, 'The selected department does not belong to this faculty.', 422);
         }
 
+        // Program ↔ Campus sanity check (Task 1.5). If both program_id and
+        // campus_id are supplied, the link must exist in `option_campuses`.
+        $programId = isset($data['program_id']) ? (int)$data['program_id'] : 0;
+        $campusId  = isset($data['campus_id'])  ? (int)$data['campus_id']  : 0;
+        if ($programId > 0 && $campusId > 0) {
+            $link = Database::getInstance()->fetchOne(
+                "SELECT 1 FROM `option_campuses` WHERE option_id = ? AND campus_id = ? LIMIT 1",
+                [$programId, $campusId]
+            );
+            if (!$link) {
+                $this->error(
+                    $response,
+                    'The selected program is not offered at the chosen campus. Please pick a campus that hosts this program.',
+                    422
+                );
+            }
+        }
+
         // Duplicate check: active application for same email + department + intake + year
         if ($this->appModel->existsActiveForDeptIntake($data['email'], $departmentId, $data['intake'], $academicYearId)) {
             $this->error($response, 'An active application already exists for this email, department, and intake.', 409);
@@ -249,12 +285,23 @@ class ApplicationPortalController extends BaseController
         $appNumber = $this->service->generateApplicationNumber();
         $verificationCode = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
 
+        // Task 1.11 — credit transfer / upgrading. The applicant flags it on
+        // the form; the registry confirms exemption letters later.
+        $isCreditTransfer  = !empty($data['is_credit_transfer']) ? 1 : 0;
+        $creditTransferFrom = $isCreditTransfer
+            ? (string)($data['credit_transfer_from'] ?? '')
+            : null;
+        $exemptionLetterStatus = $isCreditTransfer ? 'pending' : 'not_required';
+
         $appId = (int)$this->appModel->create([
             'application_number' => $appNumber,
             'academic_year_id'   => $academicYearId,
             'faculty_id'         => $facultyId,
             'department_id'      => $departmentId,
             'intake'             => $data['intake'],
+            'is_credit_transfer'      => $isCreditTransfer,
+            'credit_transfer_from'    => $creditTransferFrom,
+            'exemption_letter_status' => $exemptionLetterStatus,
             'first_name'         => trim($data['first_name']),
             'last_name'          => trim($data['last_name']),
             'email'              => strtolower(trim($data['email'])),

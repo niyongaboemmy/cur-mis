@@ -421,11 +421,43 @@ class ApplicationService
 
         $applicationId = (int)$offer['application_id'];
 
+        // Detect returning students. A "returning" applicant already has a
+        // `student` row (typically because they completed an undergraduate
+        // programme here and are now enrolling in a Masters/PGDE). We DO NOT
+        // reject — instead, mint a fresh row and link it back via
+        // `parent_student_id` so the profile can show prior cohorts.
+        $applicantEmail = trim((string)($offer['email'] ?? ''));
+        $applicantNid   = trim((string)($offer['national_id'] ?? ''));
+        $parentStudent  = null;
+        if ($applicantEmail !== '' || $applicantNid !== '') {
+            $where  = [];
+            $params = [];
+            if ($applicantEmail !== '') { $where[] = '`email` = ?';       $params[] = $applicantEmail; }
+            if ($applicantNid   !== '') { $where[] = '`index_number` = ?'; $params[] = $applicantNid; }
+            $sql = "SELECT id, regnumber, programme_level FROM `student` WHERE "
+                 . implode(' OR ', $where) . " ORDER BY id DESC LIMIT 1";
+            $parentStudent = $this->db->fetchOne($sql, $params) ?: null;
+        }
+
         // Generate registration number: STD/YYYY/NNNNN
         $year      = date('Y');
         $row       = $this->db->fetchOne("SELECT MAX(id) AS max_id FROM `student`");
         $seq       = ((int)($row['max_id'] ?? 0)) + 1;
         $regNumber = sprintf('STD/%s/%05d', $year, $seq);
+
+        // Best-effort: derive `programme_level` from the offer's `level_id` /
+        // `level_name`. Anything not matching the known tiers falls back to
+        // undergraduate (the column's default).
+        $programmeLevel = 'undergraduate';
+        $levelName = strtolower((string)($offer['level_name'] ?? ''));
+        if ($levelName !== '') {
+            if (str_contains($levelName, 'master'))      $programmeLevel = 'masters';
+            elseif (str_contains($levelName, 'pgde'))    $programmeLevel = 'pgde';
+            elseif (str_contains($levelName, 'phd') || str_contains($levelName, 'doctor'))
+                                                          $programmeLevel = 'phd';
+            elseif (str_contains($levelName, 'diploma')) $programmeLevel = 'diploma';
+            elseif (str_contains($levelName, 'cert'))    $programmeLevel = 'certificate';
+        }
 
         // Resolve the user account that owns this application up front so the
         // student row can be linked back to it via `user_id`. Without that
@@ -455,6 +487,7 @@ class ApplicationService
         // endpoint joins on it to pull the program's modules.
         $studentData = [
             'user_id'           => $applicantUserId > 0 ? $applicantUserId : null,
+            'parent_student_id' => $parentStudent ? (int)$parentStudent['id'] : null,
             'regnumber'         => $regNumber,
             'fname'             => $offer['first_name'],
             'lname'             => $offer['last_name'],
@@ -472,10 +505,12 @@ class ApplicationService
             'last_school'       => $offer['prev_school']   ?? '',
             'sponsor'           => $offer['sponsorship']   ?? '',
             'current_level'     => (string)$levelId,
+            'programme_level'   => $programmeLevel,
             'registration_date' => date('Y-m-d'),
             'student_state'     => 'active',
             'intake'            => $offer['intake'] ?? '',
             'acc_year'          => $accYearLabel,
+            'index_number'      => $applicantNid ?: null,
         ];
 
         $studentId = (int)$this->studentModel->create($studentData);
@@ -493,6 +528,25 @@ class ApplicationService
              WHERE id = ?",
             [$applicationId]
         );
+
+        // Belt-and-braces: re-read and assert the status flipped to enrolled.
+        // The "pending but already admitted" desync (Task 1.6) historically
+        // hit when the UPDATE silently affected 0 rows because the WHERE id
+        // didn't match (e.g. race conditions, stale offer pointers). Fail
+        // loudly so the caller can investigate instead of silently ending up
+        // with a student row + a pending application.
+        $check = $this->db->fetchOne(
+            "SELECT status FROM `student_applications` WHERE id = ? LIMIT 1",
+            [$applicationId]
+        );
+        if (!$check || ($check['status'] ?? '') !== 'enrolled') {
+            throw new \RuntimeException(
+                "Enrollment desync: student row {$studentId} was created but application " .
+                "{$applicationId} did not advance to 'enrolled' (current status: " .
+                ($check['status'] ?? 'unknown') . "). " .
+                "Run scripts/diagnose_pending_enrolled.php --fix to repair."
+            );
+        }
 
         // Convert user account from Applicant to Student
         if ($applicantUserId > 0) {
@@ -540,10 +594,14 @@ class ApplicationService
         }
 
         return [
-            'student_id'   => $studentId,
-            'regnumber'    => $regNumber,
-            'letter_sent'  => !isset($letterResult['error']),
-            'letter_error' => $letterResult['error'] ?? null,
+            'student_id'         => $studentId,
+            'regnumber'          => $regNumber,
+            'parent_student_id'  => $parentStudent ? (int)$parentStudent['id'] : null,
+            'parent_regnumber'   => $parentStudent ? (string)$parentStudent['regnumber'] : null,
+            'programme_level'    => $programmeLevel,
+            'is_returning'       => $parentStudent !== null,
+            'letter_sent'        => !isset($letterResult['error']),
+            'letter_error'       => $letterResult['error'] ?? null,
         ];
     }
 

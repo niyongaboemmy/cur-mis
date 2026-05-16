@@ -1,15 +1,19 @@
-import { useState, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useState, useMemo, useEffect } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
+import { toast } from 'react-hot-toast'
 import {
   Files, Search, ChevronRight, ArrowLeft, ArrowRight, Filter,
   CheckCircle2, Clock, Sparkles, AlertCircle, GraduationCap, FileText,
-  Download, FileSpreadsheet,
+  Download, FileSpreadsheet, StickyNote, X, MessageSquarePlus,
+  EyeOff, RotateCcw, Upload,
 } from 'lucide-react'
 import { applicationAdminService, intakeService } from '@/services/admissionService'
-import { ApplicationStatus } from '@/types/admission'
+import { ApplicationStatus, ApplicationPendingNote } from '@/types/admission'
 import SearchableSelect from '@/components/ui/SearchableSelect'
+import ModalPortal from '@/components/ui/ModalPortal'
 import ApplicationsDashboard from './ApplicationsDashboard'
+import { useAuthStore } from '@/store/authStore'
 
 // On the admin side we relabel `submitted` → `Pending` so the queue
 // is framed as "awaiting review" rather than the raw state-machine name.
@@ -27,18 +31,26 @@ const STATUS_LABEL: Record<string, string> = {
   draft:                  'Draft',
 }
 
-const STATUSES: { value: ApplicationStatus | ''; label: string }[] = [
-  { value: '',                                     label: 'All statuses' },
-  { value: ApplicationStatus.SUBMITTED,            label: 'Pending' },
+// UI pseudo-status: "Pending" means the active queue ⇒ submitted OR
+// documents_under_review. The backend expands this string in
+// StudentApplicationModel::paginate(), so it's a real filter value
+// even though it isn't a value in the SQL enum.
+const PENDING_FILTER = 'pending' as const
+
+const STATUSES: { value: string; label: string }[] = [
+  { value: '',                                       label: 'All statuses' },
+  // Pseudo-status surfaced first so the dropdown matches the tile.
+  { value: PENDING_FILTER,                           label: 'Pending (queue)' },
+  { value: ApplicationStatus.SUBMITTED,              label: 'Submitted only' },
   { value: ApplicationStatus.DOCUMENTS_UNDER_REVIEW, label: 'Docs under review' },
-  { value: ApplicationStatus.DOCUMENTS_VERIFIED,   label: 'Docs verified' },
-  { value: ApplicationStatus.DOCUMENTS_REJECTED,   label: 'Docs rejected' },
-  { value: ApplicationStatus.REQUESTED_CHANGES,    label: 'Changes requested' },
-  { value: ApplicationStatus.OFFERED,              label: 'Offered' },
-  { value: ApplicationStatus.OFFER_ACCEPTED,       label: 'Fee paid' },
-  { value: ApplicationStatus.OFFER_DECLINED,       label: 'Declined' },
-  { value: ApplicationStatus.ENROLLED,             label: 'Enrolled' },
-  { value: ApplicationStatus.WITHDRAWN,            label: 'Withdrawn' },
+  { value: ApplicationStatus.DOCUMENTS_VERIFIED,     label: 'Docs verified' },
+  { value: ApplicationStatus.DOCUMENTS_REJECTED,     label: 'Docs rejected' },
+  { value: ApplicationStatus.REQUESTED_CHANGES,      label: 'Changes requested' },
+  { value: ApplicationStatus.OFFERED,                label: 'Offered' },
+  { value: ApplicationStatus.OFFER_ACCEPTED,         label: 'Fee paid' },
+  { value: ApplicationStatus.OFFER_DECLINED,         label: 'Declined' },
+  { value: ApplicationStatus.ENROLLED,               label: 'Enrolled' },
+  { value: ApplicationStatus.WITHDRAWN,              label: 'Withdrawn' },
 ]
 
 const STATUS_TONE: Record<string, string> = {
@@ -57,11 +69,31 @@ const STATUS_TONE: Record<string, string> = {
 
 export default function ApplicationsListPage() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [page, setPage] = useState(1)
-  // Default to "pending" (submitted) — that's the queue admins act on first.
-  const [status, setStatus] = useState<ApplicationStatus | ''>(ApplicationStatus.SUBMITTED)
+  // The "shared why-pending notes" panel — opened from a row's notes badge.
+  const [notesAppId, setNotesAppId] = useState<number | null>(null)
+  const [notesAppLabel, setNotesAppLabel] = useState<string>('')
+  // Visibility scoping (Task 1.7) — filter applicants by programme level
+  // (Undergraduate / PGDE / Masters / etc.).
+  const [levelId, setLevelId] = useState<number | ''>('')
+  // Task 1.8 — advanced applicant filters.
+  const [gender, setGender]               = useState<string>('')
+  const [paymentStatus, setPaymentStatus] = useState<string>('')
+  const [paidFirst, setPaidFirst]         = useState(false)
+  // Task 1.9 — toggle to view only the hidden applications.
+  const [showHidden, setShowHidden]       = useState(false)
+  // Task 1.12 — bulk upload modal state.
+  const [showBulkUpload, setShowBulkUpload] = useState(false)
+  // Default to the "pending" pseudo-status (submitted OR
+  // documents_under_review) — that's the full active queue admins act
+  // on first, not just the very first stage.
+  const [status, setStatus] = useState<ApplicationStatus | typeof PENDING_FILTER | ''>(PENDING_FILTER)
   const [intake, setIntake] = useState('')
-  const [campusId, setCampusId] = useState<number | ''>('')
+  // Campus is no longer set from this page (global topbar + role flag own
+  // scope), but the state stays so the query key changes when a dashboard
+  // tile drill-down or other affordance updates it.
+  const [campusId] = useState<number | ''>('')
   const [mode, setMode] = useState('')
   const [q, setQ] = useState('')
   const [activeTab, setActiveTab] = useState<'list' | 'dashboard'>('list')
@@ -70,14 +102,19 @@ export default function ApplicationsListPage() {
   const intakes = intakesQ.data?.data ?? []
 
   const listQ = useQuery({
-    queryKey: ['admin', 'applications', page, status, intake, campusId, mode, q],
+    queryKey: ['admin', 'applications', page, status, intake, campusId, mode, q, levelId, gender, paymentStatus, paidFirst, showHidden],
     queryFn: () => applicationAdminService.list({
       page, per_page: 15,
       status: status || undefined,
       intake: intake || undefined,
       campus_id: campusId || undefined,
       mode_of_study: mode || undefined,
+      level_id: levelId || undefined,
+      gender: gender || undefined,
+      payment_status: paymentStatus || undefined,
       q: q || undefined,
+      ...(paidFirst ? { sort_paid_first: '1' as const } : {}),
+      ...(showHidden ? { only_hidden: '1' as const } : {}),
     }),
     placeholderData: (prev) => prev,
   })
@@ -98,23 +135,16 @@ export default function ApplicationsListPage() {
     for (const r of byStatus) counts[r.status] = Number(r.cnt) || 0
     const totalAll = statsQ.data?.data?.total ?? Object.values(counts).reduce((a, b) => a + b, 0)
     const submitted = counts.submitted ?? 0
+    // "Pending" tile = full active review queue (matches the backend's
+    // `pending` pseudo-status filter). Was just `counts.submitted` —
+    // which was always 0 the moment an admin moved an application to
+    // documents_under_review, even though the work wasn't done.
+    const pending = submitted + (counts.documents_under_review ?? 0)
     const inReview = (counts.documents_under_review ?? 0) + (counts.documents_verified ?? 0)
     const offers = (counts.offered ?? 0) + (counts.offer_accepted ?? 0)
     const enrolled = counts.enrolled ?? 0
     const actionNeeded = (counts.documents_rejected ?? 0) + (counts.requested_changes ?? 0)
-    return { totalAll, submitted, inReview, offers, enrolled, actionNeeded }
-  }, [statsQ.data])
-
-  // Filter options use the full catalogue (every active campus / every
-  // canonical mode) so admins can still filter by values that don't yet
-  // appear on any application. Counts are merged in when present.
-  const campusOptions = useMemo(() => {
-    const all = ((statsQ.data?.data as any)?.all_campuses ?? []) as { id: number; label: string }[]
-    const counts = new Map<number, number>()
-    for (const r of ((statsQ.data?.data as any)?.by_campus ?? []) as { id: number; cnt: number }[]) {
-      counts.set(Number(r.id), Number(r.cnt) || 0)
-    }
-    return all.map((c) => ({ id: Number(c.id), label: c.label, cnt: counts.get(Number(c.id)) ?? 0 }))
+    return { totalAll, submitted, pending, inReview, offers, enrolled, actionNeeded }
   }, [statsQ.data])
 
   const modeOptions = useMemo(() => {
@@ -124,6 +154,15 @@ export default function ApplicationsListPage() {
       counts.set(String(r.label), Number(r.cnt) || 0)
     }
     return all.map((m) => ({ label: m.label, cnt: counts.get(m.label) ?? 0 }))
+  }, [statsQ.data])
+
+  const levelOptions = useMemo(() => {
+    const all = ((statsQ.data?.data as any)?.all_levels ?? []) as { id: number; label: string }[]
+    const counts = new Map<number, number>()
+    for (const r of ((statsQ.data?.data as any)?.by_level ?? []) as { id: number; cnt: number }[]) {
+      counts.set(Number(r.id), Number(r.cnt) || 0)
+    }
+    return all.map((l) => ({ id: Number(l.id), label: l.label, cnt: counts.get(Number(l.id)) ?? 0 }))
   }, [statsQ.data])
 
   // Build the export URL (PDF / Excel) so it carries the active filters.
@@ -155,6 +194,14 @@ export default function ApplicationsListPage() {
             Review submissions, verify documents, and manage admission decisions across all intakes.
           </p>
         </div>
+        <button
+          type="button"
+          onClick={() => setShowBulkUpload(true)}
+          className="btn-secondary inline-flex items-center gap-1.5 whitespace-nowrap"
+          title="Bulk import applicants from a CSV template"
+        >
+          <Upload className="w-3.5 h-3.5" /> Bulk upload
+        </button>
       </div>
 
       {/* Tab Switcher */}
@@ -185,6 +232,21 @@ export default function ApplicationsListPage() {
         <ApplicationsDashboard />
       ) : (
         <>
+          {(statsQ.data?.data as any)?.desynced_pending_count > 0 && (
+            <div className="flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 text-amber-900 dark:bg-amber-900/20 dark:border-amber-800 dark:text-amber-100 px-3.5 py-2.5">
+              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+              <div className="text-[12.5px] leading-snug">
+                <strong>{(statsQ.data?.data as any).desynced_pending_count}</strong>
+                {' '}application(s) are pending but may already have a student record.
+                Ask the system administrator to run
+                {' '}<code className="bg-amber-100 dark:bg-amber-900/50 px-1 rounded">scripts/diagnose_pending_enrolled.php --fix</code>
+                {' '}to repair.
+              </div>
+            </div>
+          )}
+
+          <ScopeHint stats={statsQ.data?.data} />
+
           {/* Stats strip — clicking a tile applies the matching status filter. */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
             <StatTile
@@ -194,10 +256,10 @@ export default function ApplicationsListPage() {
               onClick={() => { setStatus(''); setPage(1) }}
             />
             <StatTile
-              icon={CheckCircle2} label="Pending" value={stats.submitted}
+              icon={CheckCircle2} label="Pending" value={stats.pending}
               accent="bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
-              active={status === ApplicationStatus.SUBMITTED}
-              onClick={() => { setStatus(ApplicationStatus.SUBMITTED); setPage(1) }}
+              active={status === PENDING_FILTER}
+              onClick={() => { setStatus(PENDING_FILTER); setPage(1) }}
             />
             <StatTile
               icon={Clock} label="In Review" value={stats.inReview}
@@ -271,19 +333,71 @@ export default function ApplicationsListPage() {
                   ))}
                 </select>
               </div>
+              {/* Inline campus dropdown removed. Scope is now controlled
+                  globally by the topbar Campus switcher + the role-level
+                  enforce_campus_scope flag, so this filter would have been
+                  redundant noise on the toolbar. */}
               <div className="relative">
                 <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-400 pointer-events-none" />
                 <select
                   className="input pl-8 w-44"
-                  value={campusId === '' ? '' : String(campusId)}
-                  onChange={(e) => { setCampusId(e.target.value ? Number(e.target.value) : ''); setPage(1) }}
+                  value={levelId === '' ? '' : String(levelId)}
+                  onChange={(e) => { setLevelId(e.target.value ? Number(e.target.value) : ''); setPage(1) }}
                 >
-                  <option value="">All campuses</option>
-                  {campusOptions.map((c) => (
-                    <option key={c.id} value={c.id}>{c.label} ({c.cnt})</option>
+                  <option value="">All levels</option>
+                  {levelOptions.map((l) => (
+                    <option key={l.id} value={l.id}>{l.label} ({l.cnt})</option>
                   ))}
                 </select>
               </div>
+              <div className="relative">
+                <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-400 pointer-events-none" />
+                <select
+                  className="input pl-8 w-36"
+                  value={gender}
+                  onChange={(e) => { setGender(e.target.value); setPage(1) }}
+                >
+                  <option value="">All genders</option>
+                  <option value="M">Male</option>
+                  <option value="F">Female</option>
+                  <option value="O">Other</option>
+                </select>
+              </div>
+              <div className="relative">
+                <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-400 pointer-events-none" />
+                <select
+                  className="input pl-8 w-40"
+                  value={paymentStatus}
+                  onChange={(e) => { setPaymentStatus(e.target.value); setPage(1) }}
+                >
+                  <option value="">All payment</option>
+                  <option value="paid">Paid</option>
+                  <option value="unpaid">Unpaid</option>
+                </select>
+              </div>
+              <label className="flex items-center gap-1.5 text-[12px] text-ink-600 dark:text-ink-300 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  className="accent-brand"
+                  checked={paidFirst}
+                  onChange={(e) => { setPaidFirst(e.target.checked); setPage(1) }}
+                />
+                Paid first
+              </label>
+              <button
+                type="button"
+                onClick={() => { setShowHidden((v) => !v); setPage(1) }}
+                className={
+                  'inline-flex items-center gap-1.5 text-[12px] font-medium px-2.5 py-1.5 rounded-md transition-colors ' +
+                  (showHidden
+                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200'
+                    : 'bg-ink-50 dark:bg-ink-800 text-ink-600 dark:text-ink-300 hover:bg-ink-100')
+                }
+                title={showHidden ? 'Showing hidden — click to return to the main list' : 'Show only hidden applications'}
+              >
+                <EyeOff className="w-3.5 h-3.5" />
+                {showHidden ? 'Hidden only' : 'Show hidden'}
+              </button>
               <div className="relative">
                 <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-400 pointer-events-none" />
                 <select
@@ -330,42 +444,130 @@ export default function ApplicationsListPage() {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>App #</th>
                   <th>Applicant</th>
-                  <th>Program</th>
-                  <th>Campus</th>
-                  <th>Mode</th>
-                  <th>Intake</th>
+                  <th>Program &amp; placement</th>
                   <th>Status</th>
                   <th>Submitted</th>
+                  <th>Pending notes</th>
                   <th className="text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((a) => (
-                  <tr
-                    key={a.id}
-                    onClick={() => navigate(`/admin/admissions/applications/${a.id}`)}
-                    className="cursor-pointer hover:bg-ink-50/60 dark:hover:bg-ink-800/40 transition-colors"
-                  >
-                    <td className="font-mono text-[12px]">{a.application_number}</td>
-                    <td>
-                      <p className="font-medium text-ink-900 dark:text-ink-100">{a.first_name} {a.last_name}</p>
-                      <p className="text-[11.5px] text-ink-500">{a.email}</p>
-                    </td>
-                    <td>{(a as any).program_name ?? a.department_name ?? `#${a.department_id}`}</td>
-                    <td>{(a as any).campus_name ?? '—'}</td>
-                    <td>{(a as any).mode_of_study ?? '—'}</td>
-                    <td>{a.intake}</td>
-                    <td><span className={STATUS_TONE[a.status] ?? 'chip-soft'}>{STATUS_LABEL[a.status] ?? a.status}</span></td>
-                    <td>{fmt(a.submitted_at ?? a.created_at)}</td>
-                    <td className="text-right" onClick={(e) => e.stopPropagation()}>
-                      <Link to={`/admin/admissions/applications/${a.id}`} className="btn-secondary btn-sm">
-                        View <ChevronRight className="w-3 h-3" />
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
+                {rows.map((a) => {
+                  const noteCount = Number((a as any).pending_notes_count ?? 0)
+                  const latestNote = (a as any).latest_pending_note as
+                    | { note: string; created_by_name: string | null; created_at: string }
+                    | null
+                  const applicantLabel = `${a.first_name ?? ''} ${a.last_name ?? ''}`.trim() || a.application_number
+                  const photoUrl = applicationAdminService.photoUrl(
+                    a.id,
+                    (a as any).applicant_photo_id ?? null,
+                  )
+                  const initials = `${(a.first_name ?? '').charAt(0)}${(a.last_name ?? '').charAt(0)}`.toUpperCase() || '?'
+                  return (
+                    <tr
+                      key={a.id}
+                      onClick={() => navigate(`/admin/admissions/applications/${a.id}`)}
+                      className="cursor-pointer hover:bg-ink-50/60 dark:hover:bg-ink-800/40 transition-colors"
+                    >
+                      <td>
+                        <div className="flex items-center gap-2.5 min-w-[220px]">
+                          <ApplicantAvatar photoUrl={photoUrl} initials={initials} />
+                          <div className="min-w-0">
+                            <p className="font-semibold text-ink-900 dark:text-ink-100 truncate text-[13px]">
+                              {a.first_name} {a.last_name}
+                            </p>
+                            <p className="text-[11px] text-ink-500 truncate">{a.email}</p>
+                            <p className="text-[10.5px] text-ink-400 font-mono mt-0.5">{a.application_number}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="min-w-[220px]">
+                        <p className="text-[12.5px] font-medium text-ink-900 dark:text-ink-100 truncate">
+                          {(a as any).program_name ?? a.department_name ?? `#${a.department_id}`}
+                        </p>
+                        <p className="text-[11px] text-ink-500 truncate">
+                          {(a as any).campus_name ?? '—'}
+                          {(a as any).mode_of_study ? ` · ${(a as any).mode_of_study}` : ''}
+                          {a.intake ? ` · ${a.intake}` : ''}
+                        </p>
+                      </td>
+                      <td><span className={STATUS_TONE[a.status] ?? 'chip-soft'}>{STATUS_LABEL[a.status] ?? a.status}</span></td>
+                      <td className="text-[12px] text-ink-600 whitespace-nowrap">{fmt(a.submitted_at ?? a.created_at)}</td>
+                      <td onClick={(e) => e.stopPropagation()} className="max-w-[260px]">
+                        <button
+                          type="button"
+                          onClick={() => { setNotesAppId(a.id); setNotesAppLabel(applicantLabel) }}
+                          className={
+                            'flex items-start gap-1.5 text-left transition-colors ' +
+                            (noteCount > 0
+                              ? 'text-amber-700 dark:text-amber-300 hover:text-amber-900'
+                              : 'text-ink-400 hover:text-ink-700 dark:hover:text-ink-200')
+                          }
+                          title={noteCount > 0 ? `${noteCount} shared note(s)` : 'Add a shared note'}
+                        >
+                          <StickyNote className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                          {noteCount > 0 && latestNote ? (
+                            <span className="min-w-0">
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide">
+                                <span className="chip-warning !py-0 !px-1.5 text-[10px]">{noteCount}</span>
+                                {latestNote.created_by_name ?? 'Staff'}
+                              </span>
+                              <span className="block text-[11.5px] text-ink-600 dark:text-ink-300 leading-snug line-clamp-2">
+                                {latestNote.note}
+                              </span>
+                            </span>
+                          ) : (
+                            <span className="text-[11.5px] italic">Add note</span>
+                          )}
+                        </button>
+                      </td>
+                      <td className="text-right" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-1">
+                          {(a as any).is_hidden ? (
+                            <button
+                              type="button"
+                              title="Restore from hidden"
+                              onClick={async () => {
+                                try {
+                                  await applicationAdminService.restore(a.id)
+                                  toast.success('Restored')
+                                  queryClient.invalidateQueries({ queryKey: ['admin', 'applications'] })
+                                } catch (e: any) {
+                                  toast.error(e.response?.data?.message ?? 'Failed to restore')
+                                }
+                              }}
+                              className="icon-btn text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              title="Hide from the main queue"
+                              onClick={async () => {
+                                const reason = window.prompt('Optional reason for hiding this application?') ?? ''
+                                try {
+                                  await applicationAdminService.hide(a.id, { reason })
+                                  toast.success('Hidden')
+                                  queryClient.invalidateQueries({ queryKey: ['admin', 'applications'] })
+                                } catch (e: any) {
+                                  toast.error(e.response?.data?.message ?? 'Failed to hide')
+                                }
+                              }}
+                              className="icon-btn text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+                            >
+                              <EyeOff className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          <Link to={`/admin/admissions/applications/${a.id}`} className="btn-secondary btn-sm">
+                            View <ChevronRight className="w-3 h-3" />
+                          </Link>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -375,8 +577,258 @@ export default function ApplicationsListPage() {
           </section>
         </>
       )}
+
+      <PendingNotesModal
+        applicationId={notesAppId}
+        applicantLabel={notesAppLabel}
+        onClose={() => setNotesAppId(null)}
+        onSaved={() => {
+          // Refresh the list so badge counts/previews update.
+          queryClient.invalidateQueries({ queryKey: ['admin', 'applications'] })
+        }}
+      />
+
+      <BulkUploadModal
+        open={showBulkUpload}
+        onClose={() => setShowBulkUpload(false)}
+        onDone={() => {
+          queryClient.invalidateQueries({ queryKey: ['admin', 'applications'] })
+        }}
+      />
     </div>
   )
+}
+
+function BulkUploadModal({
+  open, onClose, onDone,
+}: { open: boolean; onClose: () => void; onDone: () => void }) {
+  const [file, setFile]       = useState<File | null>(null)
+  const [uploading, setUp]    = useState(false)
+  const [result, setResult]   = useState<{ inserted: number; errors: Array<{ row: number; message: string }> } | null>(null)
+
+  useEffect(() => {
+    if (!open) { setFile(null); setResult(null); setUp(false); }
+  }, [open])
+
+  if (!open) return null
+
+  const handleUpload = async () => {
+    if (!file) { toast.error('Pick a file first.'); return; }
+    setUp(true)
+    try {
+      const r = await applicationAdminService.bulkUpload(file)
+      setResult(r.data ?? { inserted: 0, errors: [] })
+      if ((r.data?.inserted ?? 0) > 0) {
+        toast.success(`Inserted ${r.data?.inserted} applicant(s)`)
+        onDone()
+      }
+    } catch (e: any) {
+      toast.error(e.response?.data?.message ?? 'Upload failed')
+    } finally {
+      setUp(false)
+    }
+  }
+
+  return (
+    <ModalPortal>
+      <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 animate-in fade-in">
+        <div className="absolute inset-0 bg-ink-900/60 backdrop-blur-sm" onClick={onClose} />
+        <div className="relative w-full max-w-lg card overflow-hidden flex flex-col max-h-[85vh]">
+          <div className="px-5 py-3.5 border-b hairline flex justify-between items-center">
+            <div>
+              <h2 className="text-[14px] font-semibold text-ink-900 dark:text-white flex items-center gap-2">
+                <Upload className="w-4 h-4 text-brand" />
+                Bulk applicant upload
+              </h2>
+              <p className="section-sub mt-0.5">
+                Import a CSV of direct-entry applicants. Each row becomes a verified application ready for offer + enrollment.
+              </p>
+            </div>
+            <button onClick={onClose} className="icon-btn"><X className="w-4 h-4" /></button>
+          </div>
+
+          <div className="px-5 py-4 space-y-3 flex-1 overflow-y-auto">
+            <a
+              href={applicationAdminService.bulkUploadTemplateUrl()}
+              className="inline-flex items-center gap-1.5 text-[12.5px] text-brand hover:underline"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              Download CSV template
+            </a>
+
+            <div>
+              <label className="label">Choose CSV file</label>
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                className="input"
+                onChange={(e) => { setFile(e.target.files?.[0] ?? null); setResult(null); }}
+              />
+            </div>
+
+            {result && (
+              <div className="border hairline rounded-lg p-3 space-y-1.5 text-[12.5px]">
+                <p className="font-semibold text-emerald-700">
+                  Inserted: {result.inserted}
+                </p>
+                {result.errors.length > 0 && (
+                  <div>
+                    <p className="font-semibold text-red-700">Errors: {result.errors.length}</p>
+                    <ul className="list-disc pl-5 mt-1 space-y-0.5 text-ink-600">
+                      {result.errors.slice(0, 20).map((er, i) => (
+                        <li key={i}>Row {er.row}: {er.message}</li>
+                      ))}
+                      {result.errors.length > 20 && <li>…and {result.errors.length - 20} more</li>}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="px-5 py-3 border-t hairline flex items-center justify-end gap-2">
+            <button onClick={onClose} className="btn-secondary btn-sm">Close</button>
+            <button
+              onClick={handleUpload}
+              disabled={!file || uploading}
+              className="btn-primary btn-sm"
+            >
+              {uploading ? 'Uploading…' : 'Upload'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </ModalPortal>
+  )
+}
+
+function PendingNotesModal({
+  applicationId, applicantLabel, onClose, onSaved,
+}: {
+  applicationId: number | null
+  applicantLabel: string
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [notes, setNotes]   = useState<ApplicationPendingNote[]>([])
+  const [draft, setDraft]   = useState('')
+  const [loading, setLoading] = useState(false)
+  const [saving, setSaving]   = useState(false)
+
+  useEffect(() => {
+    if (!applicationId) return
+    let cancelled = false
+    setLoading(true)
+    setDraft('')
+    applicationAdminService
+      .listPendingNotes(applicationId)
+      .then((res) => { if (!cancelled) setNotes(res.data?.notes ?? []) })
+      .catch(() => { if (!cancelled) toast.error('Failed to load notes') })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [applicationId])
+
+  if (!applicationId) return null
+
+  const handleAdd = async () => {
+    const note = draft.trim()
+    if (note.length < 3) {
+      toast.error('Note must be at least 3 characters.')
+      return
+    }
+    setSaving(true)
+    try {
+      const res = await applicationAdminService.addPendingNote(applicationId, { note })
+      setNotes(res.data?.notes ?? [])
+      setDraft('')
+      onSaved()
+      toast.success('Note added')
+    } catch (e: any) {
+      toast.error(e.response?.data?.message ?? 'Failed to add note')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <ModalPortal>
+      <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 animate-in fade-in">
+        <div className="absolute inset-0 bg-ink-900/60 backdrop-blur-sm" onClick={onClose} />
+        <div className="relative w-full max-w-lg card overflow-hidden animate-in flex flex-col max-h-[85vh]">
+          <div className="px-5 py-3.5 border-b hairline flex justify-between items-center">
+            <div className="min-w-0">
+              <h2 className="text-[14px] font-semibold text-ink-900 dark:text-white flex items-center gap-2">
+                <StickyNote className="w-4 h-4 text-amber-600" />
+                Shared pending notes
+              </h2>
+              <p className="section-sub mt-0.5 truncate">
+                {applicantLabel} — visible to every registry staff member.
+              </p>
+            </div>
+            <button onClick={onClose} className="icon-btn" aria-label="Close">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="px-5 py-3 flex-1 overflow-y-auto space-y-2.5">
+            {loading ? (
+              <div className="text-[12.5px] text-ink-500 py-6 text-center">Loading…</div>
+            ) : notes.length === 0 ? (
+              <div className="text-[12.5px] text-ink-500 py-6 text-center italic">
+                No notes recorded yet. Add the first one below.
+              </div>
+            ) : (
+              notes.map((n) => (
+                <div key={n.id} className="border hairline rounded-lg p-2.5">
+                  <p className="text-[12.5px] text-ink-900 dark:text-ink-100 whitespace-pre-wrap">{n.note}</p>
+                  <p className="text-[10.5px] text-ink-500 mt-1.5 flex items-center justify-between">
+                    <span>{n.created_by_name ?? 'Unknown'}</span>
+                    <span>{fmtDateTime(n.created_at)}</span>
+                  </p>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="px-5 py-3 border-t hairline space-y-2">
+            <label className="label flex items-center gap-1.5">
+              <MessageSquarePlus className="w-3.5 h-3.5" /> Add a shared note
+            </label>
+            <textarea
+              className="input min-h-[72px] text-[12.5px]"
+              placeholder="Explain why this candidate is being held (e.g. awaiting transcript verification)…"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              maxLength={1000}
+              disabled={saving}
+            />
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] text-ink-400">{draft.length}/1000</span>
+              <div className="flex gap-2">
+                <button type="button" onClick={onClose} className="btn-secondary btn-sm">Close</button>
+                <button
+                  type="button"
+                  onClick={handleAdd}
+                  disabled={saving || draft.trim().length < 3}
+                  className="btn-primary btn-sm"
+                >
+                  {saving ? 'Saving…' : 'Add note'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </ModalPortal>
+  )
+}
+
+function fmtDateTime(v: string | null | undefined) {
+  if (!v) return '—'
+  try {
+    const d = new Date(v.replace(' ', 'T'))
+    return isNaN(d.getTime()) ? v : d.toLocaleString()
+  } catch { return v }
 }
 
 function StatTile({
@@ -436,6 +888,52 @@ function Pager({ page, last, onPage }: { page: number; last: number; onPage: (p:
           Next <ArrowRight className="w-3 h-3" />
         </button>
       </div>
+    </div>
+  )
+}
+
+/** Avatar circle. Falls back to gradient initials when no photo is present
+ *  and to initials again if the photo fails to load. */
+function ApplicantAvatar({
+  photoUrl, initials,
+}: { photoUrl: string | null; initials: string }) {
+  return (
+    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-500/15 to-primary-500/5 dark:from-primary-500/30 dark:to-primary-500/10 flex items-center justify-center text-primary-700 dark:text-primary-200 font-bold text-[12px] shrink-0 overflow-hidden ring-1 ring-primary-200/60 dark:ring-primary-900/40">
+      {photoUrl ? (
+        <>
+          <img
+            src={photoUrl}
+            alt=""
+            className="w-full h-full object-cover"
+            onError={(e) => {
+              const img = e.currentTarget as HTMLImageElement
+              img.style.display = 'none'
+              const span = img.nextElementSibling as HTMLElement | null
+              if (span) span.style.removeProperty('display')
+            }}
+          />
+          <span style={{ display: 'none' }}>{initials}</span>
+        </>
+      ) : (
+        <span>{initials}</span>
+      )}
+    </div>
+  )
+}
+
+/** Small pill above the stat tiles that tells the user which campus(es)
+ *  the numbers reflect. Hidden for users with no campus restriction. */
+function ScopeHint({ stats }: { stats: any }) {
+  const user = useAuthStore((s) => s.user)
+  if (!user) return null
+  const assigned = (user.assigned_campuses ?? []) as Array<{ id: number; name: string }>
+  if (assigned.length === 0) return null
+  const names = assigned.map((c) => c.name).join(', ')
+  const total = Number(stats?.total ?? 0)
+  return (
+    <div className="inline-flex items-center gap-2 self-start px-3 py-1.5 rounded-full bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-200 text-[11.5px] font-medium">
+      <span className="w-1.5 h-1.5 rounded-full bg-primary-500" />
+      Showing <strong>{total.toLocaleString()}</strong> application(s) for {names}
     </div>
   )
 }

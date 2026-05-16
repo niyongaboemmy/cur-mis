@@ -66,9 +66,15 @@ export default function DocumentValidationCarousel() {
       }),
     onSuccess: () => {
       toast.success("Document validation saved!");
+      // The application detail page reads ["admin","applications", id]
+      // and the list reads ["admin","applications"] — both render the
+      // verified count, so invalidating only the verifications scope
+      // left the "0/1 Verified" header stale until the user reloaded.
       queryClient.invalidateQueries({ queryKey: ["admin", "verifications", Number(id)] });
       queryClient.invalidateQueries({ queryKey: ["admin", "verifications"] });
-      
+      queryClient.invalidateQueries({ queryKey: ["admin", "applications", Number(id)] });
+      queryClient.invalidateQueries({ queryKey: ["admin", "applications"] });
+
       if (isLast) {
         navigate(`/admin/admissions/applications/${id}`);
       } else {
@@ -82,6 +88,8 @@ export default function DocumentValidationCarousel() {
     toast.success("Changes requested and applicant notified.");
     queryClient.invalidateQueries({ queryKey: ["admin", "verifications", Number(id)] });
     queryClient.invalidateQueries({ queryKey: ["admin", "verifications"] });
+    queryClient.invalidateQueries({ queryKey: ["admin", "applications", Number(id)] });
+    queryClient.invalidateQueries({ queryKey: ["admin", "applications"] });
     navigate(`/admin/admissions/applications/${id}`);
   };
 

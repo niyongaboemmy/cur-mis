@@ -241,7 +241,25 @@ class AuthController extends BaseController
                 $user['phone']    = $row['phone']    ?? null;
                 $user['username'] = $row['username'] ?? ($user['username'] ?? '');
                 $user['photo']    = $row['photo']    ?? null;
+                $user['role_id']  = $row['role_id']  ?? ($user['role_id'] ?? null);
             }
+
+            // Re-resolve role-derived fields + campus assignments from the
+            // DB so users whose JWTs predate these fields (or whose role /
+            // assignments changed after the token was issued) get fresh
+            // data without having to log out and back in.
+            $authService = new \App\Services\AuthService();
+            $roleId      = (int)($user['role_id'] ?? 0);
+            if ($roleId > 0) {
+                $role = (new \App\Models\RoleModel())->find($roleId);
+                if ($role) {
+                    $user['role']                 = $role['name'] ?? ($user['role'] ?? 'guest');
+                    $user['role_name']            = $role['name'] ?? ($user['role_name'] ?? 'guest');
+                    $user['enforce_campus_scope'] = (int)($role['enforce_campus_scope'] ?? 0) === 1;
+                }
+                $user['permissions'] = (new \App\Models\RolePermissionModel())->getSlugsForRole($roleId);
+            }
+            $user['assigned_campuses'] = $authService->loadAssignedCampuses($userId);
         }
         $this->success($response, $user, 'Authenticated user.');
     }

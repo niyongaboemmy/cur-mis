@@ -34,6 +34,11 @@ class StudentApplicationModel extends BaseModel
         'submitted_at', 'reviewed_by', 'reviewed_at',
         'internal_notes', 'rejection_reason', 'ip_address',
         'email_verified', 'verification_code',
+        // Task 1.11 — credit-transfer workflow
+        'is_credit_transfer', 'credit_transfer_from', 'exemption_letter_status',
+        'exemption_letter_received_at', 'entry_level_override',
+        // Task 1.9 — hidden flag
+        'is_hidden', 'hidden_at', 'hidden_by', 'hidden_reason',
     ];
     protected array $hidden = [];
 
@@ -61,12 +66,21 @@ class StudentApplicationModel extends BaseModel
                     d.dep_acronym AS department_code,
                     f.fac_name AS faculty_name, f.fac_code AS faculty_code,
                     ay.label   AS academic_year_label,
-                    ao.student_id, ao.offer_letter_reference
+                    ao.student_id, ao.offer_letter_reference,
+                    o.name     AS program_name,
+                    c.name     AS campus_name, c.code AS campus_code, c.location AS campus_location,
+                    l.name     AS level_name,
+                    COALESCE(ap.profile_photo_id, u.photo) AS applicant_photo_id
              FROM `student_applications` sa
              LEFT JOIN `departements`    d  ON d.dep_id   = sa.department_id
              LEFT JOIN `faculty`         f  ON f.fac_id   = sa.faculty_id
              LEFT JOIN `academic_years`  ay ON ay.id      = sa.academic_year_id
              LEFT JOIN `admission_offers` ao ON ao.application_id = sa.id
+             LEFT JOIN `options`         o  ON o.id       = sa.program_id
+             LEFT JOIN `campuses`        c  ON c.id       = sa.campus_id
+             LEFT JOIN `levels`          l  ON l.id       = sa.level_id
+             LEFT JOIN `applicant_profiles` ap ON ap.application_id = sa.id
+             LEFT JOIN `users`              u  ON u.id = ap.user_id
              WHERE sa.id = ?
              LIMIT 1",
             [$id]
@@ -81,6 +95,7 @@ class StudentApplicationModel extends BaseModel
 
         $conditions = [];
         $bindings   = [];
+        $orderBy    = 'sa.id DESC';
 
         if (!empty($filters['search'])) {
             $s = "%{$filters['search']}%";
@@ -89,8 +104,16 @@ class StudentApplicationModel extends BaseModel
         }
 
         if (!empty($filters['status'])) {
-            $conditions[] = 'sa.status = ?';
-            $bindings[]   = $filters['status'];
+            // "pending" is a UI pseudo-status meaning "anything still in the
+            // active review queue" — covers raw submissions AND those an
+            // admin has already started reviewing. Lets the Pending tile
+            // surface the full to-do list rather than only the first stage.
+            if ($filters['status'] === 'pending') {
+                $conditions[] = "sa.status IN ('submitted', 'documents_under_review')";
+            } else {
+                $conditions[] = 'sa.status = ?';
+                $bindings[]   = $filters['status'];
+            }
         } else {
             // Drafts are applicant-side work-in-progress; never surface them
             // to admin views unless explicitly filtered in.
@@ -117,6 +140,24 @@ class StudentApplicationModel extends BaseModel
             $bindings[]   = (int)$filters['campus_id'];
         }
 
+        // Server-side campus scoping (registry assistants are limited to
+        // applications belonging to the campus(es) assigned to their user).
+        // An empty array passed in means "user has no assignments yet — show
+        // nothing"; null/unset means "no scoping required (admin)".
+        if (isset($filters['campus_scope_ids']) && is_array($filters['campus_scope_ids'])) {
+            $ids = array_values(array_filter(array_map('intval', $filters['campus_scope_ids']), fn($v) => $v > 0));
+            if (empty($ids)) {
+                // Force an empty result set — the user is scoped but has zero campuses.
+                $conditions[] = '1 = 0';
+            } else {
+                $placeholders = implode(',', array_fill(0, count($ids), '?'));
+                $conditions[] = "sa.campus_id IN ($placeholders)";
+                foreach ($ids as $cid) {
+                    $bindings[] = $cid;
+                }
+            }
+        }
+
         if (!empty($filters['mode_of_study'])) {
             $conditions[] = 'sa.mode_of_study = ?';
             $bindings[]   = $filters['mode_of_study'];
@@ -125,6 +166,44 @@ class StudentApplicationModel extends BaseModel
         if (!empty($filters['academic_year_id'])) {
             $conditions[] = 'sa.academic_year_id = ?';
             $bindings[]   = (int)$filters['academic_year_id'];
+        }
+
+        if (!empty($filters['level_id'])) {
+            $conditions[] = 'sa.level_id = ?';
+            $bindings[]   = (int)$filters['level_id'];
+        }
+
+        // Task 1.8 — gender / payment status filters.
+        // Gender values vary across legacy rows ('M'/'F' vs 'Male'/'Female');
+        // we match the leading initial to be tolerant.
+        if (!empty($filters['gender'])) {
+            $g = strtoupper(substr((string)$filters['gender'], 0, 1));
+            if (in_array($g, ['M', 'F', 'O'], true)) {
+                $conditions[] = "UPPER(LEFT(IFNULL(sa.gender, ''), 1)) = ?";
+                $bindings[]   = $g;
+            }
+        }
+
+        if (!empty($filters['payment_status'])) {
+            $ps = (string)$filters['payment_status'];
+            if ($ps === 'paid') {
+                $conditions[] = "sa.payment_slip_file_id IS NOT NULL";
+            } elseif ($ps === 'unpaid') {
+                $conditions[] = "sa.payment_slip_file_id IS NULL";
+            }
+        }
+
+        if (!empty($filters['sort_paid_first'])) {
+            // Pin paid applications to the top, then newest-first within each group.
+            $orderBy = '(sa.payment_slip_file_id IS NOT NULL) DESC, sa.id DESC';
+        }
+
+        if (!empty($filters['hidden_filter'])) {
+            if ($filters['hidden_filter'] === 'exclude') {
+                $conditions[] = '(sa.is_hidden IS NULL OR sa.is_hidden = 0)';
+            } elseif ($filters['hidden_filter'] === 'only') {
+                $conditions[] = 'sa.is_hidden = 1';
+            }
         }
 
         if (!empty($filters['has_pending_docs'])) {
@@ -146,6 +225,7 @@ class StudentApplicationModel extends BaseModel
                     ay.label   AS academic_year_label,
                     o.name     AS program_name,
                     c.name     AS campus_name, c.code AS campus_code, c.location AS campus_location,
+                    COALESCE(ap.profile_photo_id, u.photo) AS applicant_photo_id,
                     (SELECT COUNT(*) FROM application_documents WHERE application_id = sa.id AND verification_status = 'pending') AS pending_docs_count,
                     (SELECT COUNT(*) FROM application_documents WHERE application_id = sa.id AND verification_status = 'verified') AS verified_docs_count,
                     (SELECT COUNT(*) FROM application_documents WHERE application_id = sa.id AND verification_status = 'rejected') AS rejected_docs_count
@@ -155,8 +235,10 @@ class StudentApplicationModel extends BaseModel
              LEFT JOIN `academic_years` ay ON ay.id      = sa.academic_year_id
              LEFT JOIN `options`        o  ON o.id       = sa.program_id
              LEFT JOIN `campuses`       c  ON c.id       = sa.campus_id
+             LEFT JOIN `applicant_profiles` ap ON ap.application_id = sa.id
+             LEFT JOIN `users`              u  ON u.id = ap.user_id
              {$where}
-             ORDER BY sa.id DESC
+             ORDER BY {$orderBy}
              LIMIT ? OFFSET ?",
             [...$bindings, $perPage, $offset]
         );

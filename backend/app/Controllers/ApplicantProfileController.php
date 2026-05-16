@@ -236,6 +236,22 @@ class ApplicantProfileController extends BaseController
             'profile_photo_id' => $uploaded['id'],
         ]);
 
+        // Mirror onto the linked user account so the admin Users list and
+        // the admissions list both render the same picture without the
+        // applicant having to upload twice.
+        $userId = (int)($profile['user_id'] ?? 0);
+        if ($userId > 0) {
+            try {
+                $this->db->execute(
+                    "UPDATE `users` SET photo = ?, updated_at = NOW() WHERE id = ?",
+                    [(string)$uploaded['id'], $userId]
+                );
+            } catch (\Throwable $e) {
+                // Non-blocking — applicant photo upload still succeeds even
+                // if the mirror write fails on a stripped-down user schema.
+            }
+        }
+
         $this->success($response, [
             'profile_photo_id' => $uploaded['id'],
             'url'              => $uploaded['url'] ?? null,
@@ -676,6 +692,41 @@ class ApplicantProfileController extends BaseController
         ]);
 
         $this->success($response, $payload, 'Application details fetched.');
+    }
+
+    /**
+     * GET /api/applicant/application/:id/timeline
+     * Lean status-log endpoint that powers the visual step indicator on
+     * the applicant overview (Task 1.10). Returns the chronological list
+     * of state transitions for the applicant's own application.
+     */
+    public function getApplicationTimeline(Request $request, Response $response): never
+    {
+        $appId = (int)$request->param('id');
+        $application = $this->appModel->find($appId);
+        if (!$application) {
+            $this->error($response, 'Application not found.', 404);
+        }
+        $authUser = (array) $request->param('_auth_user');
+        if (($application['email'] ?? '') !== ($authUser['email'] ?? null)) {
+            $this->error($response, 'Unauthorized.', 403);
+        }
+
+        $rows = $this->db->fetchAll(
+            "SELECT asl.from_status, asl.to_status, asl.actor_type, asl.notes, asl.created_at,
+                    u.full_name AS actor_name
+             FROM `application_status_log` asl
+             LEFT JOIN `users` u ON u.id = asl.actor_id
+             WHERE asl.application_id = ?
+             ORDER BY asl.created_at ASC, asl.id ASC",
+            [$appId]
+        );
+
+        $this->success($response, [
+            'application_id' => $appId,
+            'current_status' => $application['status'],
+            'timeline'       => $rows,
+        ], 'Timeline fetched.');
     }
 
     /**

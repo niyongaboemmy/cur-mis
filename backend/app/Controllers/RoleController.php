@@ -95,10 +95,14 @@ class RoleController extends BaseController
             $this->error($response, 'Role name already exists.', 409);
         }
 
-        $this->roleModel->update($id, [
-            'name' => $data['name'],
-            'description' => $data['description'] ?? null
-        ]);
+        $update = [
+            'name'        => $data['name'],
+            'description' => $data['description'] ?? null,
+        ];
+        if (array_key_exists('enforce_campus_scope', $data)) {
+            $update['enforce_campus_scope'] = !empty($data['enforce_campus_scope']) ? 1 : 0;
+        }
+        $this->roleModel->update($id, $update);
 
         $actor = (array) $request->param('_auth_user');
         SystemLogService::log('UPDATE', 'ROLES', "Updated role ID {$id} to '{$data['name']}'.", $id, 'role', null, $actor ?: null);
@@ -123,7 +127,7 @@ class RoleController extends BaseController
     public function assignPermissions(Request $request, Response $response): never
     {
         $id = (int)$request->param('id');
-        $data = $request->body(); // Expecting json: { "permissions": [1, 5, 8] }
+        $data = $request->body(); // Expecting json: { "permissions": [1, 5, 8], "enforce_campus_scope"?: 0|1 }
 
         if (!$this->roleModel->find($id)) {
             $this->error($response, 'Role not found', 404);
@@ -145,6 +149,14 @@ class RoleController extends BaseController
                 // Ignore foreign key constrain fail if perm ID doesn't exist
                 continue;
             }
+        }
+
+        // The Permissions modal saves the campus-scope toggle alongside the
+        // permission grid in one request, so accept it here as a convenience.
+        if (array_key_exists('enforce_campus_scope', $data)) {
+            $this->roleModel->update($id, [
+                'enforce_campus_scope' => !empty($data['enforce_campus_scope']) ? 1 : 0,
+            ]);
         }
 
         $actor = (array) $request->param('_auth_user');

@@ -9,18 +9,22 @@ use Core\Response;
 use App\Models\StudentModel;
 use App\Models\ApplicationDocumentModel;
 use App\Models\StudentApplicationModel;
+use App\Models\StudentVisaRecordModel;
 use App\Helpers\ValidationHelper;
 use App\Helpers\FileServerClient;
+use App\Services\SystemLogService;
 
 class StudentController extends BaseController
 {
     private StudentModel $studentModel;
     private ApplicationDocumentModel $docModel;
+    private StudentVisaRecordModel $visaModel;
 
     public function __construct()
     {
         $this->studentModel = new StudentModel();
         $this->docModel     = new ApplicationDocumentModel();
+        $this->visaModel    = new StudentVisaRecordModel();
     }
 
     /**
@@ -275,6 +279,41 @@ class StudentController extends BaseController
         $where = $clauses ? implode(' AND ', $clauses) : '';
 
         $paginated = $this->studentModel->paginate($page, $perPage, $where, $bindings, $sortBy, $sortDir);
+
+        // Decorate rows with a human-readable campus_name. One follow-up
+        // query per page keeps the list lightweight without changing the
+        // paginate() contract.
+        $rows = $paginated['data'] ?? [];
+        if (!empty($rows)) {
+            $campusIds = [];
+            foreach ($rows as $r) {
+                $c = $r['campus'] ?? null;
+                if ($c !== null && $c !== '') $campusIds[(string)$c] = true;
+            }
+            $nameById = [];
+            if (!empty($campusIds)) {
+                $ids = array_keys($campusIds);
+                $ph  = implode(',', array_fill(0, count($ids), '?'));
+                $db  = $this->studentModel->db();
+                $catalog = $db->fetchAll(
+                    "SELECT id, name, code FROM `campuses` WHERE id IN ($ph)",
+                    $ids
+                );
+                foreach ($catalog as $c) {
+                    $nameById[(string)$c['id']] = [
+                        'name' => $c['name'],
+                        'code' => $c['code'],
+                    ];
+                }
+            }
+            foreach ($rows as &$r) {
+                $c = (string)($r['campus'] ?? '');
+                $r['campus_name'] = $c !== '' && isset($nameById[$c]) ? $nameById[$c]['name'] : null;
+                $r['campus_code'] = $c !== '' && isset($nameById[$c]) ? $nameById[$c]['code'] : null;
+            }
+            unset($r);
+            $paginated['data'] = $rows;
+        }
 
         $this->success($response, $paginated, 'Students fetched successfully.');
     }
@@ -609,6 +648,64 @@ class StudentController extends BaseController
 
         $this->studentModel->delete($id);
         $this->success($response, null, 'Student deleted successfully.');
+    }
+
+    /**
+     * POST /api/students/bulk-update-campus
+     * Reassign many students to a single campus in one transaction. Used by
+     * the students list multi-select toolbar.
+     *
+     * Body: { student_ids: number[]; campus_id: number | null }
+     *   - student_ids: 1..200 student.id values
+     *   - campus_id  : campuses.id, or null to clear the campus
+     */
+    public function bulkUpdateCampus(Request $request, Response $response): never
+    {
+        $data    = $request->body();
+        $ids     = is_array($data['student_ids'] ?? null) ? $data['student_ids'] : [];
+        $campus  = array_key_exists('campus_id', $data) ? $data['campus_id'] : null;
+        $authUser = (array) $request->param('_auth_user');
+
+        // Coerce to ints, drop garbage, cap to a sane batch size.
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids), fn($n) => $n > 0)));
+        if (empty($ids)) {
+            $this->error($response, 'student_ids must contain at least one valid id.', 422);
+        }
+        if (count($ids) > 200) {
+            $this->error($response, 'Cannot bulk-update more than 200 students at once.', 422);
+        }
+
+        // Validate the campus exists (or accept null to clear).
+        $campusIdStr = null;
+        if ($campus !== null && $campus !== '') {
+            $row = $this->studentModel->db()->fetchOne(
+                "SELECT id FROM `campuses` WHERE id = ? LIMIT 1",
+                [(int)$campus]
+            );
+            if (!$row) {
+                $this->error($response, 'Campus not found.', 404);
+            }
+            $campusIdStr = (string)(int)$campus;
+        }
+
+        $db = $this->studentModel->db();
+        $ph = implode(',', array_fill(0, count($ids), '?'));
+        $db->execute(
+            "UPDATE `student` SET `campus` = ?, updated_at = NOW() WHERE id IN ($ph)",
+            array_merge([$campusIdStr], $ids)
+        );
+        $updated = count($ids);
+
+        \App\Services\SystemLogService::log(
+            'UPDATE', 'STUDENTS',
+            "Bulk-updated campus for {$updated} student(s) → "
+                . ($campusIdStr ?? 'cleared'),
+            null, 'student',
+            ['student_ids' => $ids, 'campus_id' => $campusIdStr],
+            $authUser ?: null
+        );
+
+        $this->success($response, ['updated' => $updated], 'Campus updated for ' . $updated . ' student(s).');
     }
 
     /**
@@ -1582,6 +1679,26 @@ class StudentController extends BaseController
             $yearBind  = [];
         }
 
+        // Optional campus filter — driven by the topnav Campus switcher
+        // (sent as `campus` to match how the legacy student.campus column
+        // is stored — a varchar of the campuses.id). Both the unaliased
+        // and `s.` forms are needed so we can append to every aggregate.
+        $campusFilter = trim((string)($request->query('campus') ?? ''));
+        if ($campusFilter !== '') {
+            $campusScope  = " AND campus = ?";
+            $campusScopeS = " AND s.campus = ?";
+            $campusBind   = [$campusFilter];
+        } else {
+            $campusScope = $campusScopeS = '';
+            $campusBind  = [];
+        }
+
+        // Convenience: merge year + campus into a single bound list so each
+        // aggregate uses one consistent params array.
+        $combined  = $yearScope . $campusScope;
+        $combinedS = $yearScopeS . $campusScopeS;
+        $bind      = array_merge($yearBind, $campusBind);
+
         $row = $db->fetchOne("
             SELECT
               COUNT(*) AS total,
@@ -1615,8 +1732,8 @@ class StudentController extends BaseController
               COUNT(DISTINCT CASE WHEN LOWER(student_state) = 'active' AND department <> '' THEN department END) AS active_departments,
               COUNT(DISTINCT CASE WHEN LOWER(student_state) = 'active' AND acc_year <> '' THEN acc_year END) AS active_academic_years
             FROM student
-            WHERE 1=1{$yearScope}
-        ", $yearBind) ?: [];
+            WHERE 1=1{$combined}
+        ", $bind) ?: [];
 
         // Breakdowns — ACTIVE students only. These power the "Active students" overview.
         $byLevel = $db->fetchAll("
@@ -1625,11 +1742,11 @@ class StudentController extends BaseController
             LEFT JOIN levels l ON l.id = s.current_level
             WHERE LOWER(s.student_state) = 'active'
               AND s.current_level IS NOT NULL AND s.current_level <> ''
-              {$yearScopeS}
+              {$combinedS}
             GROUP BY s.current_level, l.name
             ORDER BY s.current_level ASC
             LIMIT 20
-        ", $yearBind);
+        ", $bind);
 
         $byFaculty = $db->fetchAll("
             SELECT s.faculty AS value, f.fac_name AS label, f.fac_code AS code, COUNT(*) AS total
@@ -1637,11 +1754,11 @@ class StudentController extends BaseController
             LEFT JOIN faculty f ON f.fac_id = s.faculty
             WHERE LOWER(s.student_state) = 'active'
               AND s.faculty IS NOT NULL AND s.faculty <> ''
-              {$yearScopeS}
+              {$combinedS}
             GROUP BY s.faculty, f.fac_name, f.fac_code
             ORDER BY total DESC
             LIMIT 20
-        ", $yearBind);
+        ", $bind);
 
         $byDepartment = $db->fetchAll("
             SELECT s.department AS value, d.dep_name AS label, d.dep_acronym AS code, COUNT(*) AS total
@@ -1649,22 +1766,22 @@ class StudentController extends BaseController
             LEFT JOIN departements d ON d.dep_id = s.department
             WHERE LOWER(s.student_state) = 'active'
               AND s.department IS NOT NULL AND s.department <> ''
-              {$yearScopeS}
+              {$combinedS}
             GROUP BY s.department, d.dep_name, d.dep_acronym
             ORDER BY total DESC
             LIMIT 20
-        ", $yearBind);
+        ", $bind);
 
         $byProgram = $db->fetchAll("
             SELECT program AS value, program AS label, COUNT(*) AS total
             FROM student
             WHERE LOWER(student_state) = 'active'
               AND program IS NOT NULL AND program <> ''
-              {$yearScope}
+              {$combined}
             GROUP BY program
             ORDER BY total DESC
             LIMIT 20
-        ", $yearBind);
+        ", $bind);
 
         // student.campus stores the campuses.id as a varchar — join for a
         // human-readable label, fall back to the raw value for legacy rows.
@@ -1674,11 +1791,11 @@ class StudentController extends BaseController
             LEFT JOIN campuses c ON c.id = s.campus
             WHERE LOWER(s.student_state) = 'active'
               AND s.campus IS NOT NULL AND s.campus <> ''
-              {$yearScopeS}
+              {$combinedS}
             GROUP BY s.campus, c.name
             ORDER BY total DESC
             LIMIT 20
-        ", $yearBind);
+        ", $bind);
 
         // student.intake is free-text (the intake name) — group on it directly.
         $byIntake = $db->fetchAll("
@@ -1686,11 +1803,11 @@ class StudentController extends BaseController
             FROM student
             WHERE LOWER(student_state) = 'active'
               AND intake IS NOT NULL AND intake <> ''
-              {$yearScope}
+              {$combined}
             GROUP BY intake
             ORDER BY total DESC
             LIMIT 20
-        ", $yearBind);
+        ", $bind);
 
         // Distinct filter values joined to their reference tables so labels are human-readable
         // (student.faculty/department/current_level are stored as numeric IDs as VARCHAR).
@@ -1799,5 +1916,147 @@ class StudentController extends BaseController
                 }, $options)),
             ],
         ], 'Student stats fetched.');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Task 1.13 — International student visa tracking.
+    // ─────────────────────────────────────────────────────────────────────
+
+    /**
+     * GET /api/students/international
+     * List students flagged as international plus their current visa
+     * status and days until expiry. Useful for the registry's compliance
+     * tab.
+     */
+    public function listInternational(Request $request, Response $response): never
+    {
+        $db = $this->studentModel->db();
+        $rows = $db->fetchAll("
+            SELECT s.id, s.regnumber, s.fname, s.lname, s.email, s.nationality,
+                   s.assigned_registry_user_id,
+                   u.full_name AS assigned_registry_name,
+                   v.country_of_origin,
+                   v.visa_type,
+                   v.entry_date,
+                   v.visa_issue_date,
+                   v.visa_expiry_date,
+                   CASE WHEN v.visa_expiry_date IS NULL THEN NULL
+                        ELSE DATEDIFF(v.visa_expiry_date, CURDATE()) END AS days_to_expiry
+              FROM `student` s
+              LEFT JOIN `users` u ON u.id = s.assigned_registry_user_id
+              LEFT JOIN `student_visa_records` v
+                ON v.student_id = s.id AND v.is_current = 1
+             WHERE s.is_international = 1
+             ORDER BY days_to_expiry ASC, s.lname ASC
+        ");
+        $this->success($response, ['students' => $rows, 'count' => count($rows)], 'International students fetched.');
+    }
+
+    /**
+     * GET /api/students/:id/visa
+     * List visa records for a student (newest first).
+     */
+    public function listVisaRecords(Request $request, Response $response): never
+    {
+        $id      = (int)$request->param('id');
+        $student = $this->studentModel->find($id);
+        if (!$student) {
+            $this->error($response, 'Student not found.', 404);
+        }
+        $records = $this->visaModel->listForStudent($id);
+        $current = $this->visaModel->currentForStudent($id);
+        $this->success($response, [
+            'records' => $records,
+            'current' => $current,
+        ], 'Visa records fetched.');
+    }
+
+    /**
+     * POST /api/students/:id/visa
+     * Record a new visa (or renewal). Adding a new record automatically
+     * marks the previous current record non-current.
+     */
+    public function addVisaRecord(Request $request, Response $response): never
+    {
+        $id       = (int)$request->param('id');
+        $authUser = (array) $request->param('_auth_user');
+        $student  = $this->studentModel->find($id);
+        if (!$student) {
+            $this->error($response, 'Student not found.', 404);
+        }
+        $data = $request->body();
+        $errors = ValidationHelper::validate($data, [
+            'country_of_origin' => 'required|string|min:2|max:100',
+            'entry_date'        => 'required|regex:/^\d{4}-\d{2}-\d{2}$/',
+            'visa_issue_date'   => 'required|regex:/^\d{4}-\d{2}-\d{2}$/',
+            'visa_expiry_date'  => 'required|regex:/^\d{4}-\d{2}-\d{2}$/',
+        ]);
+        if (!empty($errors)) {
+            $this->error($response, 'Validation failed.', 422, $errors);
+        }
+
+        $db = $this->studentModel->db();
+        $db->beginTransaction();
+        try {
+            $this->visaModel->markAllNonCurrent($id);
+            $newId = (int)$this->visaModel->create([
+                'student_id'        => $id,
+                'country_of_origin' => trim((string)$data['country_of_origin']),
+                'entry_date'        => $data['entry_date'],
+                'visa_issue_date'   => $data['visa_issue_date'],
+                'visa_expiry_date'  => $data['visa_expiry_date'],
+                'visa_type'         => (string)($data['visa_type'] ?? '') ?: null,
+                'notes'             => (string)($data['notes'] ?? '') ?: null,
+                'is_current'        => 1,
+                'created_by'        => (int)($authUser['id'] ?? 0) ?: null,
+            ]);
+            // Flag the student as international (idempotent).
+            $db->execute("UPDATE `student` SET is_international = 1 WHERE id = ?", [$id]);
+            $db->commit();
+        } catch (\Throwable $e) {
+            $db->rollBack();
+            $this->error($response, 'Failed to record visa: ' . $e->getMessage(), 500);
+        }
+
+        SystemLogService::log(
+            'CREATE', 'STUDENTS',
+            "Recorded visa for student ID {$id}.",
+            $id, 'student',
+            ['visa_id' => $newId], $authUser ?: null
+        );
+        $this->success($response, ['id' => $newId], 'Visa record added.', 201);
+    }
+
+    /**
+     * PATCH /api/students/:id/assign-registry
+     * Assign (or clear, with null) the responsible registry officer for an
+     * international student.
+     */
+    public function assignRegistryOfficer(Request $request, Response $response): never
+    {
+        $id       = (int)$request->param('id');
+        $authUser = (array) $request->param('_auth_user');
+        $student  = $this->studentModel->find($id);
+        if (!$student) {
+            $this->error($response, 'Student not found.', 404);
+        }
+        $data        = $request->body();
+        $assignedTo  = isset($data['assigned_registry_user_id']) && $data['assigned_registry_user_id'] !== ''
+            ? (int)$data['assigned_registry_user_id']
+            : null;
+
+        $this->studentModel->db()->execute(
+            "UPDATE `student` SET assigned_registry_user_id = ? WHERE id = ?",
+            [$assignedTo, $id]
+        );
+        SystemLogService::log(
+            'UPDATE', 'STUDENTS',
+            $assignedTo === null
+              ? "Cleared registry officer for student ID {$id}."
+              : "Assigned registry officer (user {$assignedTo}) to student ID {$id}.",
+            $id, 'student',
+            ['assigned_registry_user_id' => $assignedTo], $authUser ?: null
+        );
+        $this->success($response, ['assigned_registry_user_id' => $assignedTo], 'Registry officer updated.');
     }
 }

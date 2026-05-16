@@ -1,11 +1,12 @@
 import { api } from '@/services/api'
 import { useAuthStore } from '@/store/authStore'
+import { withCampusScope } from '@/store/campusFilterStore'
 import type { PaginatedResponse } from '@/types'
 import type {
   Faculty, PortalDepartment, DocumentType, AdmissionRequirement,
   StudentApplication, ApplicationDocument, ApplicationStatusLog,
   ApplicationStatus, MeritCriteria, MeritListRow, AdmissionOffer,
-  ApplicantProfile, AcademicRecord,
+  ApplicantProfile, AcademicRecord, ApplicationPendingNote,
 } from '@/types/admission'
 import type { AcademicYear } from '@/types/academic'
 
@@ -25,7 +26,7 @@ export const portalService = {
   getFacultyDepartments: (facultyId: number, signal?: AbortSignal) =>
     api.get<PortalDepartment[]>(`/api/portal/faculties/${facultyId}/departments`, {}, signal),
 
-  getPrograms: (signal?: AbortSignal) =>
+  getPrograms: (params: { campus_id?: number } = {}, signal?: AbortSignal) =>
     api.get<Array<{
       id:               number
       name:             string
@@ -42,7 +43,7 @@ export const portalService = {
         code:     string | null
         location: string | null
       }>
-    }>>('/api/portal/programs', {}, signal),
+    }>>('/api/portal/programs', params, signal),
 
   getLevels: (signal?: AbortSignal) =>
     api.get<Array<{ id: number; name: string }>>('/api/portal/levels', {}, signal),
@@ -119,11 +120,14 @@ export const admissionRequirementService = {
  * ─────────────────────────────────────────────────────────────── */
 export const applicationAdminService = {
   list: (
-    params: { page?: number; per_page?: number; status?: ApplicationStatus; department_id?: number; intake?: string; campus_id?: number; mode_of_study?: string; search?: string; q?: string } = {},
+    params: { page?: number; per_page?: number; status?: ApplicationStatus | 'pending'; department_id?: number; intake?: string; campus_id?: number; mode_of_study?: string; search?: string; q?: string; level_id?: number; gender?: string; payment_status?: string; include_hidden?: '1'; only_hidden?: '1'; sort_paid_first?: '1' } = {},
     signal?: AbortSignal,
   ) => {
     const { q, ...rest } = params;
-    return api.get<PaginatedResponse<StudentApplication>>('/api/admin/applications', { ...rest, search: q ?? rest.search }, signal);
+    // Inject the global topbar campus scope (no-op when caller already
+    // set campus_id, so the dashboard's per-tile drill-downs still win).
+    const scoped = withCampusScope({ ...rest, search: q ?? rest.search });
+    return api.get<PaginatedResponse<StudentApplication>>('/api/admin/applications', scoped, signal);
   },
   
   getStats: (signal?: AbortSignal) =>
@@ -154,6 +158,54 @@ export const applicationAdminService = {
   addNote: (id: number, data: { notes: string }) =>
     api.post<null>(`/api/admin/applications/${id}/notes`, data),
 
+  listPendingNotes: (id: number, signal?: AbortSignal) =>
+    api.get<{ notes: ApplicationPendingNote[]; count: number }>(
+      `/api/admin/applications/${id}/pending-notes`,
+      {},
+      signal,
+    ),
+
+  addPendingNote: (id: number, data: { note: string }) =>
+    api.post<{ notes: ApplicationPendingNote[]; count: number }>(
+      `/api/admin/applications/${id}/pending-notes`,
+      data,
+    ),
+
+  /**
+   * Pre-enrollment check: does this applicant already have a student record?
+   * Returns the prior records so the admin can confirm before creating a
+   * postgraduate row alongside.
+   */
+  hide:    (id: number, data: { reason?: string } = {}) =>
+    api.patch<{ is_hidden: 1 }>(`/api/admin/applications/${id}/hide`, data),
+  restore: (id: number) =>
+    api.patch<{ is_hidden: 0 }>(`/api/admin/applications/${id}/restore`),
+
+  /** Task 1.11 — credit-transfer exemption-letter workflow. */
+  setExemptionStatus: (id: number, data: {
+    action: 'received_registry' | 'received_finance' | 'confirmed' | 'pending'
+    entry_level_override?: string
+  }) =>
+    api.patch<{ exemption_letter_status: string }>(`/api/admin/applications/${id}/exemption-status`, data),
+
+  returningCheck: (id: number, signal?: AbortSignal) =>
+    api.get<{
+      is_returning: boolean
+      records: Array<{
+        id:              number
+        regnumber:       string | null
+        fname:           string | null
+        lname:           string | null
+        email:           string | null
+        programme_level: string | null
+        acc_year:        string | null
+        faculty:         string | null
+        department:      string | null
+        current_level:   string | null
+        student_state:   string | null
+      }>
+    }>(`/api/admin/applications/${id}/returning-check`, {}, signal),
+
   acceptOfferByAppId: (id: number) =>
     api.post<{ offer_id: number }>(`/api/admin/applications/${id}/accept-offer`),
 
@@ -163,11 +215,69 @@ export const applicationAdminService = {
     return `${base}/api/admin/applications/${id}/payment-slip?token=${token}`;
   },
 
+  /** Inline-streamable URL for the applicant's profile photo. Pass the
+   *  photo id from the row as a cache key so a re-upload busts the
+   *  browser cache. */
+  photoUrl: (id: number, photoCacheKey?: string | null) => {
+    if (!photoCacheKey) return null;
+    const token = useAuthStore.getState().token;
+    const base  = import.meta.env.VITE_API_URL ?? "";
+    const v     = `&v=${encodeURIComponent(String(photoCacheKey))}`;
+    return `${base}/api/admin/applications/${id}/photo?token=${token}${v}`;
+  },
+
   exportUrl: (queryString: string) => {
     const token = useAuthStore.getState().token;
     const base = import.meta.env.VITE_API_URL ?? "";
-    const sep = queryString ? "&" : "";
-    return `${base}/api/admin/applications/export?${queryString}${sep}token=${token}`;
+    // Apply the global topbar campus scope to exports too, unless the
+    // queryString already pins a campus_id.
+    const params = new URLSearchParams(queryString);
+    const scoped = withCampusScope({ campus_id: params.get('campus_id') ? Number(params.get('campus_id')) : undefined });
+    if (scoped.campus_id != null && !params.has('campus_id')) {
+      params.set('campus_id', String(scoped.campus_id));
+    }
+    const finalQs = params.toString();
+    const sep = finalQs ? "&" : "";
+    return `${base}/api/admin/applications/export?${finalQs}${sep}token=${token}`;
+  },
+
+  /** Task 1.12 — bulk applicant upload. */
+  bulkUploadTemplateUrl: () => {
+    const token = useAuthStore.getState().token;
+    const base  = import.meta.env.VITE_API_URL ?? '';
+    return `${base}/api/admin/applications/bulk-upload-template?token=${token}`;
+  },
+
+  /** Task 1.14 — applicant statistics report. */
+  statistics: (
+    params: {
+      faculty_id?: number; department_id?: number; option_id?: number;
+      campus_id?: number; level_id?: number; mode?: string;
+      date_from?: string; date_to?: string;
+    } = {},
+    signal?: AbortSignal,
+  ) =>
+    api.get<{
+      rows: Array<{
+        faculty: string | null
+        department: string | null
+        program: string | null
+        total: number
+        new_count: number
+        accepted_count: number
+        enrolled_count: number
+        withdrawn_count: number
+      }>
+      totals: { total: number; new_count: number; accepted_count: number; enrolled_count: number; withdrawn_count: number }
+    }>(`/api/admin/applications/statistics`, withCampusScope(params), signal),
+
+  bulkUpload: (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return api.upload<{
+      inserted: number;
+      errors: Array<{ row: number; message: string }>;
+    }>(`/api/admin/applications/bulk-upload`, form);
   },
 }
 
@@ -314,6 +424,21 @@ export const applicantService = {
 
   getApplicationDetails: (id: number, signal?: AbortSignal) =>
     api.get<StudentApplication & { document_checklist?: AdmissionRequirement[]; status_log?: ApplicationStatusLog[] }>(`/api/applicant/application/${id}`, {}, signal),
+
+  /** Task 1.10 — lean timeline endpoint for the visual progress stepper. */
+  getApplicationTimeline: (id: number, signal?: AbortSignal) =>
+    api.get<{
+      application_id: number
+      current_status: string
+      timeline: Array<{
+        from_status: string | null
+        to_status:   string
+        actor_type:  'applicant' | 'admin' | 'system'
+        notes:       string | null
+        created_at:  string
+        actor_name:  string | null
+      }>
+    }>(`/api/applicant/application/${id}/timeline`, {}, signal),
 
   updateApplication: (id: number, data: Partial<StudentApplication>) =>
     api.put<null>(`/api/applicant/application/${id}`, data),

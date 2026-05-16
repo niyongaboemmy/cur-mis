@@ -186,6 +186,16 @@ export interface ApplicationStatusLog {
   created_at:     string
 }
 
+export interface ApplicationPendingNote {
+  id:                number
+  application_id:    number
+  note:              string
+  created_by:        number | null
+  created_by_name:   string | null
+  created_by_email?: string | null
+  created_at:        string
+}
+
 export interface MeritCriteria {
   id?:                    number
   department_id:          number

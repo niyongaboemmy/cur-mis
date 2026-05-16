@@ -8,6 +8,8 @@ use Core\Request;
 use Core\Response;
 use App\Models\UserModel;
 use App\Models\RoleModel;
+use App\Models\CampusModel;
+use App\Models\UserCampusAssignmentModel;
 use App\Helpers\ValidationHelper;
 use App\Helpers\FileServerClient;
 use App\Services\SystemLogService;
@@ -16,11 +18,15 @@ class UserController extends BaseController
 {
     private UserModel $userModel;
     private RoleModel $roleModel;
+    private CampusModel $campusModel;
+    private UserCampusAssignmentModel $campusAssignmentModel;
 
     public function __construct()
     {
-        $this->userModel = new UserModel();
-        $this->roleModel = new RoleModel();
+        $this->userModel              = new UserModel();
+        $this->roleModel              = new RoleModel();
+        $this->campusModel            = new CampusModel();
+        $this->campusAssignmentModel  = new UserCampusAssignmentModel();
     }
 
     /**
@@ -71,9 +77,36 @@ class UserController extends BaseController
         foreach ($roles as $r) {
             $roleMap[$r['id']] = $r['name'];
         }
-        foreach ($paginated['data'] as &$user) {
-            $user['role_name'] = $roleMap[$user['role_id'] ?? 0] ?? 'guest';
+
+        // One follow-up query pulls every (user_id → campuses) for the page.
+        // Used by the Users list to show campus chips per user.
+        $userIds = array_map(static fn($u) => (int)$u['id'], $paginated['data']);
+        $assignmentsByUser = [];
+        if (!empty($userIds)) {
+            $ph = implode(',', array_fill(0, count($userIds), '?'));
+            $rows = $this->userModel->db()->fetchAll(
+                "SELECT uca.user_id, c.id, c.name, c.code, c.location
+                 FROM `user_campus_assignments` uca
+                 JOIN `campuses` c ON c.id = uca.campus_id
+                 WHERE uca.user_id IN ($ph)
+                 ORDER BY c.name ASC",
+                $userIds
+            );
+            foreach ($rows as $r) {
+                $assignmentsByUser[(int)$r['user_id']][] = [
+                    'id'       => (int)$r['id'],
+                    'name'     => $r['name'],
+                    'code'     => $r['code'],
+                    'location' => $r['location'],
+                ];
+            }
         }
+
+        foreach ($paginated['data'] as &$user) {
+            $user['role_name']          = $roleMap[$user['role_id'] ?? 0] ?? 'guest';
+            $user['campus_assignments'] = $assignmentsByUser[(int)$user['id']] ?? [];
+        }
+        unset($user);
 
         $this->success($response, $paginated, 'Users fetched successfully.');
     }
@@ -142,6 +175,7 @@ class UserController extends BaseController
             $this->error($response, 'User not found', 404);
         }
 
+        $user['campus_assignments'] = $this->campusAssignmentModel->listForUser($id);
         $this->success($response, $user, 'User details fetched.');
     }
 
@@ -565,5 +599,117 @@ class UserController extends BaseController
         $label = $newStatus === 1 ? 'activated' : 'deactivated';
         SystemLogService::log('UPDATE', 'USERS', "User '{$user['email']}' (ID {$id}) {$label}.", $id, 'user', ['is_active' => $newStatus], $actor ?: null);
         $this->success($response, ['is_active' => $newStatus], 'User status toggled.');
+    }
+
+    /**
+     * GET /api/users/campuses-catalog
+     * Lightweight list of all active campuses — used by the user-edit modal
+     * when assigning campuses to a registry user.
+     */
+    public function campusesCatalog(Request $request, Response $response): never
+    {
+        $rows = $this->campusModel->db()->fetchAll(
+            "SELECT id, name, code, location, is_active
+             FROM `campuses`
+             WHERE is_active = 1
+             ORDER BY name ASC"
+        );
+        $this->success($response, ['campuses' => $rows], 'Campuses fetched.');
+    }
+
+    /**
+     * GET /api/users/:id/campuses
+     * Campus(es) currently assigned to this user.
+     */
+    public function listCampuses(Request $request, Response $response): never
+    {
+        $id   = (int)$request->param('id');
+        $user = $this->userModel->find($id);
+        if (!$user) {
+            $this->error($response, 'User not found', 404);
+        }
+
+        $this->success($response, [
+            'assignments' => $this->campusAssignmentModel->listForUser($id),
+        ], 'Campus assignments fetched.');
+    }
+
+    /**
+     * POST /api/users/:id/campuses/:campus_id
+     * Assign a campus to a user (registry scoping).
+     */
+    public function assignCampus(Request $request, Response $response): never
+    {
+        $id       = (int)$request->param('id');
+        $campusId = (int)$request->param('campus_id');
+        $authUser = (array) $request->param('_auth_user');
+
+        $user = $this->userModel->find($id);
+        if (!$user) {
+            $this->error($response, 'User not found', 404);
+        }
+        $campus = $this->campusModel->find($campusId);
+        if (!$campus) {
+            $this->error($response, 'Campus not found', 404);
+        }
+
+        if ($this->campusAssignmentModel->pairExists($id, $campusId)) {
+            $this->error($response, 'Campus already assigned to this user.', 409);
+        }
+
+        $this->campusAssignmentModel->create([
+            'user_id'     => $id,
+            'campus_id'   => $campusId,
+            'assigned_by' => isset($authUser['id']) ? (int)$authUser['id'] : null,
+        ]);
+
+        SystemLogService::log(
+            'UPDATE', 'USERS',
+            "Assigned campus '{$campus['name']}' to user '{$user['email']}'.",
+            $id, 'user',
+            ['campus_id' => $campusId, 'campus_name' => $campus['name']],
+            $authUser ?: null
+        );
+
+        $this->success($response, [
+            'assignments' => $this->campusAssignmentModel->listForUser($id),
+        ], 'Campus assigned.', 201);
+    }
+
+    /**
+     * DELETE /api/users/:id/campuses/:campus_id
+     * Revoke a user's access to a campus.
+     */
+    public function revokeCampus(Request $request, Response $response): never
+    {
+        $id       = (int)$request->param('id');
+        $campusId = (int)$request->param('campus_id');
+        $authUser = (array) $request->param('_auth_user');
+
+        $user = $this->userModel->find($id);
+        if (!$user) {
+            $this->error($response, 'User not found', 404);
+        }
+        $campus = $this->campusModel->find($campusId);
+        if (!$campus) {
+            $this->error($response, 'Campus not found', 404);
+        }
+
+        $removed = $this->campusAssignmentModel->deletePair($id, $campusId);
+        if ($removed === 0) {
+            $this->error($response, 'Campus was not assigned to this user.', 404);
+        }
+
+        SystemLogService::log(
+            'UPDATE', 'USERS',
+            "Revoked campus '{$campus['name']}' from user '{$user['email']}'.",
+            $id, 'user',
+            ['campus_id' => $campusId, 'campus_name' => $campus['name']],
+            $authUser ?: null
+        );
+
+        $this->success($response, [
+            'assignments' => $this->campusAssignmentModel->listForUser($id),
+        ], 'Campus revoked.');
     }
 }

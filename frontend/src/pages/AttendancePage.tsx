@@ -57,18 +57,18 @@ import type { Student } from '@/types/academic'
 type Tab = 'overview' | 'record' | 'sessions'
 
 const STATUS_OPTIONS: {
-  key:     AttendanceStatus
-  label:   string
-  tone:    string  // active state classes
-  ring:    string  // selected ring color
-  dot:     string  // hex for status dot
-  Icon:    typeof CheckCircle2
+  key: AttendanceStatus
+  label: string
+  tone: string  // active state classes
+  ring: string  // selected ring color
+  dot: string  // hex for status dot
+  Icon: typeof CheckCircle2
 }[] = [
-  { key: 'present', label: 'Present', tone: 'bg-emerald-500 text-white', ring: 'ring-emerald-500/40', dot: '#10B981', Icon: CheckCircle2 },
-  { key: 'late',    label: 'Late',    tone: 'bg-amber-500 text-white',   ring: 'ring-amber-500/40',   dot: '#F59E0B', Icon: Clock        },
-  { key: 'absent',  label: 'Absent',  tone: 'bg-rose-500 text-white',    ring: 'ring-rose-500/40',    dot: '#E11D48', Icon: XCircle      },
-  { key: 'excused', label: 'Excused', tone: 'bg-sky-500 text-white',     ring: 'ring-sky-500/40',     dot: '#0EA5E9', Icon: AlertCircle  },
-]
+    { key: 'present', label: 'Present', tone: 'bg-emerald-500 text-white', ring: 'ring-emerald-500/40', dot: '#10B981', Icon: CheckCircle2 },
+    { key: 'late', label: 'Late', tone: 'bg-amber-500 text-white', ring: 'ring-amber-500/40', dot: '#F59E0B', Icon: Clock },
+    { key: 'absent', label: 'Absent', tone: 'bg-rose-500 text-white', ring: 'ring-rose-500/40', dot: '#E11D48', Icon: XCircle },
+    { key: 'excused', label: 'Excused', tone: 'bg-sky-500 text-white', ring: 'ring-sky-500/40', dot: '#0EA5E9', Icon: AlertCircle },
+  ]
 
 export default function AttendancePage() {
   const [sp, setSp] = useSearchParams()
@@ -78,15 +78,15 @@ export default function AttendancePage() {
   // Permissions
   const { user } = useAuthStore()
   const perms = user?.permissions ?? []
-  const canRecord  = user?.role === 'superadmin' || user?.role === 'admin'
+  const canRecord = user?.role === 'superadmin' || user?.role === 'admin'
     || perms.includes(PERMISSIONS.RECORD_ATTENDANCE)
     || perms.includes(PERMISSIONS.MANAGE_ATTENDANCE)
-  const canManage  = user?.role === 'superadmin' || user?.role === 'admin' || perms.includes(PERMISSIONS.MANAGE_ATTENDANCE)
+  const canManage = user?.role === 'superadmin' || user?.role === 'admin' || perms.includes(PERMISSIONS.MANAGE_ATTENDANCE)
 
   // Term selector — default to active term
-  const basics      = useSystemStore((s) => s.basics)
-  const allTerms    = useMemo<AcademicTerm[]>(() => (basics?.terms ?? []), [basics?.terms])
-  const activeTerm  = basics?.active_term && typeof basics.active_term === 'object' ? (basics.active_term as AcademicTerm) : null
+  const basics = useSystemStore((s) => s.basics)
+  const allTerms = useMemo<AcademicTerm[]>(() => (basics?.terms ?? []), [basics?.terms])
+  const activeTerm = basics?.active_term && typeof basics.active_term === 'object' ? (basics.active_term as AcademicTerm) : null
   const [termId, setTermId] = useState<number>(0)
   useEffect(() => {
     if (termId === 0 && activeTerm?.id) setTermId(activeTerm.id)
@@ -99,7 +99,7 @@ export default function AttendancePage() {
   const setProgramId = (id: number) => {
     const n = new URLSearchParams(sp)
     if (id > 0) n.set('program_id', String(id))
-    else        n.delete('program_id')
+    else n.delete('program_id')
     // Picking / changing program clears any deeper selection.
     n.delete('module_id'); n.delete('m_code'); n.delete('m_name')
     n.delete('session_type'); n.delete('date')
@@ -124,7 +124,7 @@ export default function AttendancePage() {
 
   const teachableQ = useQuery({
     queryKey: ['attendance-teachable', termId],
-    queryFn:  () => attendanceService.teachableModules({ academic_term_id: termId || undefined }),
+    queryFn: () => attendanceService.teachableModules({ academic_term_id: termId || undefined }),
     staleTime: 60_000,
   })
   const allTeachable = teachableQ.data?.data ?? []
@@ -134,7 +134,7 @@ export default function AttendancePage() {
   // belongs to. The user explicitly wants every active schedule visible.
   const termSchedulesQ = useQuery({
     queryKey: ['attendance-all-schedules'],
-    queryFn:  () => moduleScheduleService.list({}),
+    queryFn: () => moduleScheduleService.list({}),
     staleTime: 60_000,
   })
   const scheduledModuleIds = useMemo(
@@ -149,18 +149,18 @@ export default function AttendancePage() {
   const pickedModule = modules.find((m) => m.module_id === moduleId)
     || allTeachable.find((m) => m.module_id === moduleId)
     || (moduleId > 0 ? {
-        module_id:   moduleId,
-        module_code: sp.get('m_code') || 'Module',
-        module_name: sp.get('m_name') || '',
-      } as TeachableModule : null)
+      module_id: moduleId,
+      module_code: sp.get('m_code') || 'Module',
+      module_name: sp.get('m_name') || '',
+    } as TeachableModule : null)
 
   // URL-persisted preferred session type — set when user clicks a calendar entry
   const preferredSessionType = (sp.get('session_type') as SessionType | null) || null
-  const preferredDate         = sp.get('date') || null
+  const preferredDate = sp.get('date') || null
   // Schedule scope from URL — restricts which dates the strip lights up.
-  const scopeDayPattern       = sp.get('days') || null
-  const scopeStartDate        = sp.get('from') || null
-  const scopeEndDate          = sp.get('to')   || null
+  const scopeDayPattern = sp.get('days') || null
+  const scopeStartDate = sp.get('from') || null
+  const scopeEndDate = sp.get('to') || null
 
   // Landing view: no module picked yet → show every scheduled module in
   // the term as a list. Programme is just an optional filter; users no
@@ -177,16 +177,16 @@ export default function AttendancePage() {
         onPickModule={(modId, code, name, scope) => {
           const next = new URLSearchParams(sp)
           next.set('module_id', String(modId))
-          next.set('m_code',    code || '')
-          next.set('m_name',    name || '')
-          next.set('tab',       'record')
+          next.set('m_code', code || '')
+          next.set('m_name', name || '')
+          next.set('tab', 'record')
           next.delete('session_type')
           next.delete('date')
           // Schedule scope — days the strip should keep clickable. Persists
           // via URL so deep-links still constrain the picker correctly.
           if (scope?.day_pattern) next.set('days', scope.day_pattern); else next.delete('days')
-          if (scope?.start_date)  next.set('from', scope.start_date);  else next.delete('from')
-          if (scope?.end_date)    next.set('to',   scope.end_date);    else next.delete('to')
+          if (scope?.start_date) next.set('from', scope.start_date); else next.delete('from')
+          if (scope?.end_date) next.set('to', scope.end_date); else next.delete('to')
           setSp(next, { replace: true })
         }}
       />
@@ -211,7 +211,7 @@ export default function AttendancePage() {
         activeTerm={activeTerm}
       />
 
-      {tab === 'overview'           && <OverviewTab termId={termId} moduleId={moduleId} mineOnly={!canManage && canRecord} />}
+      {tab === 'overview' && <OverviewTab termId={termId} moduleId={moduleId} mineOnly={!canManage && canRecord} />}
       {tab === 'record' && canRecord && (
         scheduledModuleIds.size > 0 && !scheduledModuleIds.has(moduleId) ? (
           <section className="card p-6 text-[13px] text-amber-900 bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:text-amber-100 dark:border-amber-700/60 flex items-start gap-3">
@@ -235,7 +235,7 @@ export default function AttendancePage() {
           />
         )
       )}
-      {tab === 'sessions'           && <SessionsTab termId={termId} moduleId={moduleId} canDelete={canRecord} setTab={setTab} />}
+      {tab === 'sessions' && <SessionsTab termId={termId} moduleId={moduleId} canDelete={canRecord} setTab={setTab} />}
     </div>
   )
 }
@@ -250,21 +250,21 @@ function ModuleHeaderBar({
   pickedModule, modules, onSwitchModule, onBackToCalendar,
   tab, setTab, canRecord, termId, setTermId, allTerms, activeTerm,
 }: {
-  pickedModule:     TeachableModule
-  modules:          TeachableModule[]
-  onSwitchModule:   (id: number) => void
+  pickedModule: TeachableModule
+  modules: TeachableModule[]
+  onSwitchModule: (id: number) => void
   onBackToCalendar: () => void
-  tab:              Tab
-  setTab:           (t: Tab) => void
-  canRecord:        boolean
-  termId:           number
-  setTermId:        (n: number) => void
-  allTerms:         AcademicTerm[]
-  activeTerm:       AcademicTerm | null
+  tab: Tab
+  setTab: (t: Tab) => void
+  canRecord: boolean
+  termId: number
+  setTermId: (n: number) => void
+  allTerms: AcademicTerm[]
+  activeTerm: AcademicTerm | null
 }) {
   const [pickerOpen, setPickerOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
-  const [exporting, setExporting]   = useState(false)
+  const [exporting, setExporting] = useState(false)
   const [pickerLevel, setPickerLevel] = useState<number | 0>(0)
   const [pickerSearch, setPickerSearch] = useState('')
   const moduleId = pickedModule.module_id
@@ -290,7 +290,7 @@ function ModuleHeaderBar({
     const handler = (e: MouseEvent) => {
       const target = e.target as HTMLElement
       if (!target.closest('[data-popover="module-picker"]')) setPickerOpen(false)
-      if (!target.closest('[data-popover="export-menu"]'))   setExportOpen(false)
+      if (!target.closest('[data-popover="export-menu"]')) setExportOpen(false)
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
@@ -387,11 +387,10 @@ function ModuleHeaderBar({
                     key={m.module_id}
                     type="button"
                     onClick={() => { onSwitchModule(m.module_id); setPickerOpen(false); setPickerSearch('') }}
-                    className={`w-full text-left px-3 py-2 flex items-center gap-2 transition-colors ${
-                      isActive
+                    className={`w-full text-left px-3 py-2 flex items-center gap-2 transition-colors ${isActive
                         ? 'bg-brand/10 text-brand'
                         : 'hover:bg-ink-50 dark:hover:bg-ink-700/30'
-                    }`}
+                      }`}
                   >
                     <div className="min-w-0 flex-1">
                       <p className="font-mono text-[12px] font-semibold truncate">{m.module_code}</p>
@@ -419,9 +418,9 @@ function ModuleHeaderBar({
       </div>
 
       <div className="flex items-center gap-1">
-        <TabBtn active={tab === 'overview'} onClick={() => setTab('overview')} icon={BarChart3}      label="Overview" />
-        {canRecord && <TabBtn active={tab === 'record'}   onClick={() => setTab('record')}   icon={ClipboardCheck} label="Record" />}
-        <TabBtn active={tab === 'sessions'} onClick={() => setTab('sessions')} icon={ListIcon}       label="History" />
+        <TabBtn active={tab === 'overview'} onClick={() => setTab('overview')} icon={BarChart3} label="Overview" />
+        {canRecord && <TabBtn active={tab === 'record'} onClick={() => setTab('record')} icon={ClipboardCheck} label="Record" />}
+        <TabBtn active={tab === 'sessions'} onClick={() => setTab('sessions')} icon={ListIcon} label="History" />
       </div>
 
       <div className="ml-auto flex items-center gap-2">
@@ -503,10 +502,10 @@ function downloadBlob(blob: Blob, filename: string) {
 function OverviewTab({ termId, moduleId, mineOnly }: { termId: number; moduleId: number; mineOnly: boolean }) {
   const q = useQuery({
     queryKey: ['attendance-overview', termId, moduleId, mineOnly ? 1 : 0],
-    queryFn:  () => attendanceService.overview({
+    queryFn: () => attendanceService.overview({
       academic_term_id: termId || undefined,
-      module_id:        moduleId || undefined,
-      mine:             mineOnly ? 1 : 0,
+      module_id: moduleId || undefined,
+      mine: mineOnly ? 1 : 0,
     }),
     staleTime: 30_000,
   })
@@ -537,10 +536,10 @@ function OverviewTab({ termId, moduleId, mineOnly }: { termId: number; moduleId:
         </p>
 
         <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-          <StatCard label="Sessions"         value={fmt(t.sessions)}        icon={ClipboardCheck} tone="sky"   />
-          <StatCard label="Avg attendance"   value={`${t.attendance_pct}%`} icon={TrendingDown}   tone="mint"  />
-          <StatCard label="Records marked"   value={fmt(t.records)}         icon={Users}          tone="lilac" />
-          <StatCard label="Modules covered"  value={fmt(t.modules)}         icon={BookOpen}       tone="peach" />
+          <StatCard label="Sessions" value={fmt(t.sessions)} icon={ClipboardCheck} tone="sky" />
+          <StatCard label="Avg attendance" value={`${t.attendance_pct}%`} icon={TrendingDown} tone="mint" />
+          <StatCard label="Records marked" value={fmt(t.records)} icon={Users} tone="lilac" />
+          <StatCard label="Modules covered" value={fmt(t.modules)} icon={BookOpen} tone="peach" />
         </div>
 
         {/* Status breakdown bar */}
@@ -551,15 +550,15 @@ function OverviewTab({ termId, moduleId, mineOnly }: { termId: number; moduleId:
             </div>
             <div className="h-3 rounded-full bg-ink-100 dark:bg-ink-700/50 overflow-hidden flex">
               <Seg v={t.present} tot={t.records} color="#10B981" />
-              <Seg v={t.late}    tot={t.records} color="#F59E0B" />
+              <Seg v={t.late} tot={t.records} color="#F59E0B" />
               <Seg v={t.excused} tot={t.records} color="#0EA5E9" />
-              <Seg v={t.absent}  tot={t.records} color="#E11D48" />
+              <Seg v={t.absent} tot={t.records} color="#E11D48" />
             </div>
             <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2 text-[12px]">
               <Legend color="#10B981" label="Present" v={t.present} tot={t.records} />
-              <Legend color="#F59E0B" label="Late"    v={t.late}    tot={t.records} />
+              <Legend color="#F59E0B" label="Late" v={t.late} tot={t.records} />
               <Legend color="#0EA5E9" label="Excused" v={t.excused} tot={t.records} />
-              <Legend color="#E11D48" label="Absent"  v={t.absent}  tot={t.records} />
+              <Legend color="#E11D48" label="Absent" v={t.absent} tot={t.records} />
             </div>
           </div>
         )}
@@ -670,8 +669,8 @@ function RecordTab({
   initialSessionType?: SessionType | null
   initialDate?: string | null
   scopeDayPattern?: string | null
-  scopeStartDate?:  string | null
-  scopeEndDate?:    string | null
+  scopeStartDate?: string | null
+  scopeEndDate?: string | null
 }) {
   const qc = useQueryClient()
 
@@ -701,8 +700,8 @@ function RecordTab({
   // Auto-lookup session for the (module, date, type) combo
   const findQ = useQuery({
     queryKey: ['attendance-find', moduleId, sessionDate, sessionType],
-    queryFn:  () => attendanceService.findSession({ module_id: moduleId, session_date: sessionDate, session_type: sessionType }),
-    enabled:  moduleId > 0 && !!sessionDate,
+    queryFn: () => attendanceService.findSession({ module_id: moduleId, session_date: sessionDate, session_type: sessionType }),
+    enabled: moduleId > 0 && !!sessionDate,
     staleTime: 10_000,
   })
   const foundSession = findQ.data?.data?.session ?? null
@@ -723,11 +722,11 @@ function RecordTab({
   useEffect(() => {
     if (moduleId > 0 && termId > 0 && sessionDate && !findQ.isLoading && !foundSession && !createMut.isPending) {
       createMut.mutate({
-        module_id:        moduleId,
+        module_id: moduleId,
         academic_term_id: termId,
-        session_date:     sessionDate,
-        session_type:     sessionType,
-        notes:            null,
+        session_date: sessionDate,
+        session_type: sessionType,
+        notes: null,
       })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -781,12 +780,12 @@ function RecordTab({
  * has a recorded session get a checkmark stamp.
  * ═══════════════════════════════════════════════════════════════════════ */
 function DateStrip({ moduleId, selected, onSelect, allowedDows, scopeStartDate, scopeEndDate }: {
-  moduleId:       number
-  selected:       string
-  onSelect:       (iso: string) => void
-  allowedDows:    Set<number> | null
+  moduleId: number
+  selected: string
+  onSelect: (iso: string) => void
+  allowedDows: Set<number> | null
   scopeStartDate: string | null
-  scopeEndDate:   string | null
+  scopeEndDate: string | null
 }) {
   const [monthRef, setMonthRef] = useState(() => {
     const d = new Date(selected + 'T00:00:00')
@@ -801,7 +800,7 @@ function DateStrip({ moduleId, selected, onSelect, allowedDows, scopeStartDate, 
   }, [selected])
 
   const monthStart = useMemo(() => stripDateISO(new Date(monthRef.year, monthRef.month, 1)), [monthRef])
-  const monthEnd   = useMemo(() => stripDateISO(new Date(monthRef.year, monthRef.month + 1, 0)), [monthRef])
+  const monthEnd = useMemo(() => stripDateISO(new Date(monthRef.year, monthRef.month + 1, 0)), [monthRef])
   const monthLabel = useMemo(
     () => new Date(monthRef.year, monthRef.month, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }),
     [monthRef],
@@ -809,10 +808,10 @@ function DateStrip({ moduleId, selected, onSelect, allowedDows, scopeStartDate, 
 
   const sessionsQ = useQuery({
     queryKey: ['attendance-strip-sessions', moduleId, monthStart, monthEnd],
-    queryFn:  () => attendanceService.listSessions({
+    queryFn: () => attendanceService.listSessions({
       module_id: moduleId, date_from: monthStart, date_to: monthEnd, per_page: 200,
     }),
-    enabled:  moduleId > 0,
+    enabled: moduleId > 0,
     staleTime: 30_000,
   })
   const recordedDates = useMemo(() => {
@@ -854,7 +853,7 @@ function DateStrip({ moduleId, selected, onSelect, allowedDows, scopeStartDate, 
   const isSelectable = (iso: string, backendDow: number): boolean => {
     if (iso > today) return false
     if (scopeStartDate && iso < scopeStartDate) return false
-    if (scopeEndDate   && iso > scopeEndDate)   return false
+    if (scopeEndDate && iso > scopeEndDate) return false
     if (allowedDows && !allowedDows.has(backendDow)) return false
     return true
   }
@@ -920,10 +919,10 @@ function DateStrip({ moduleId, selected, onSelect, allowedDows, scopeStartDate, 
         <div className="flex gap-0.5 min-w-max">
           {days.map((d) => {
             const isSelected = d.iso === selected
-            const isToday    = d.iso === today
-            const isFuture   = d.iso > today
-            const allowed    = isSelectable(d.iso, d.backendDow)
-            const recorded   = recordedDates.has(d.iso)
+            const isToday = d.iso === today
+            const isFuture = d.iso > today
+            const allowed = isSelectable(d.iso, d.backendDow)
+            const recorded = recordedDates.has(d.iso)
             const baseTone =
               isSelected
                 ? 'border-brand bg-brand/10 ring-1 ring-brand/20'
@@ -945,14 +944,12 @@ function DateStrip({ moduleId, selected, onSelect, allowedDows, scopeStartDate, 
                 }
                 className={`relative w-12 shrink-0 flex flex-col items-center py-1.5 rounded-md border transition-colors ${baseTone}`}
               >
-                <span className={`text-[10px] uppercase tracking-wider ${
-                  d.jsDow === 0 || d.jsDow === 6 ? 'text-rose-400' : 'text-ink-400'
-                }`}>
+                <span className={`text-[10px] uppercase tracking-wider ${d.jsDow === 0 || d.jsDow === 6 ? 'text-rose-400' : 'text-ink-400'
+                  }`}>
                   {DOW_SHORT[d.jsDow]}
                 </span>
-                <span className={`text-[14px] font-semibold tabular-nums ${
-                  isSelected ? 'text-brand' : isToday ? 'text-amber-700 dark:text-amber-300' : 'text-ink-700 dark:text-ink-200'
-                }`}>
+                <span className={`text-[14px] font-semibold tabular-nums ${isSelected ? 'text-brand' : isToday ? 'text-amber-700 dark:text-amber-300' : 'text-ink-700 dark:text-ink-200'
+                  }`}>
                   {d.day}
                 </span>
                 {recorded && (
@@ -982,8 +979,8 @@ function stripDateISO(d: Date): string {
  *  at start. Returns today (clamped to the window) if no day matches. */
 function mostRecentAllowedDate(
   allowedDows: Set<number> | null,
-  scopeStart:  string | null | undefined,
-  scopeEnd:    string | null | undefined,
+  scopeStart: string | null | undefined,
+  scopeEnd: string | null | undefined,
 ): string {
   const today = new Date()
   const todayIso = stripDateISO(today)
@@ -1012,7 +1009,7 @@ function RosterEditor({ sessionId, onSaved }: { sessionId: number; onSaved?: () 
 
   const q = useQuery({
     queryKey: ['attendance-session', sessionId],
-    queryFn:  () => attendanceService.showSession(sessionId),
+    queryFn: () => attendanceService.showSession(sessionId),
   })
 
   const [edits, setEdits] = useState<Record<string, { status: AttendanceStatus; remarks?: string | null }>>({})
@@ -1023,7 +1020,7 @@ function RosterEditor({ sessionId, onSaved }: { sessionId: number; onSaved?: () 
 
   const sessionData = q.data?.data
   const session = sessionData?.session
-  const roster  = sessionData?.roster ?? []
+  const roster = sessionData?.roster ?? []
   const summary = sessionData?.summary ?? { total_roster: 0, present: 0, absent: 0, late: 0, excused: 0, unmarked: 0 }
 
   const isLocked = session?.is_locked === 1
@@ -1033,7 +1030,7 @@ function RosterEditor({ sessionId, onSaved }: { sessionId: number; onSaved?: () 
   useEffect(() => {
     if (session) {
       if (session.status === 'open' && !isLocked) setEditMode(true)
-      
+
       const init: typeof edits = {}
       for (const r of roster) {
         if (r.record_status) {
@@ -1048,8 +1045,8 @@ function RosterEditor({ sessionId, onSaved }: { sessionId: number; onSaved?: () 
     mutationFn: () => attendanceService.saveRecords(sessionId, {
       records: Object.entries(edits).map(([regnumber, v]) => ({
         student_regnumber: regnumber,
-        status:            v.status,
-        remarks:           v.remarks || null,
+        status: v.status,
+        remarks: v.remarks || null,
       })),
     }),
     onSuccess: (res) => {
@@ -1076,7 +1073,7 @@ function RosterEditor({ sessionId, onSaved }: { sessionId: number; onSaved?: () 
   const visible = useMemo(() => {
     if (!filter) return roster
     const f = filter.toLowerCase()
-    return roster.filter(r => 
+    return roster.filter(r =>
       `${r.fname} ${r.lname} ${r.regnumber}`.toLowerCase().includes(f)
     )
   }, [roster, filter])
@@ -1316,7 +1313,7 @@ function RosterEditor({ sessionId, onSaved }: { sessionId: number; onSaved?: () 
                 ref={(el) => {
                   if (!el) return
                   const someSelected = visible.some((r) => selectedRegs.has(r.regnumber))
-                  const allSelected  = visible.every((r) => selectedRegs.has(r.regnumber))
+                  const allSelected = visible.every((r) => selectedRegs.has(r.regnumber))
                   el.indeterminate = someSelected && !allSelected
                 }}
                 onChange={(e) => {
@@ -1391,12 +1388,12 @@ function RosterEditor({ sessionId, onSaved }: { sessionId: number; onSaved?: () 
 function RosterRowEditor({
   row, canEdit, edit, onChange, isSelected, onSelect,
 }: {
-  row:        RosterRow
-  canEdit:    boolean
+  row: RosterRow
+  canEdit: boolean
   isSelected: boolean
-  onSelect:   (sel: boolean) => void
-  edit?:      { status: AttendanceStatus | null; remarks?: string | null }
-  onChange:   (val: { status: AttendanceStatus | null; remarks?: string | null }) => void
+  onSelect: (sel: boolean) => void
+  edit?: { status: AttendanceStatus | null; remarks?: string | null }
+  onChange: (val: { status: AttendanceStatus | null; remarks?: string | null }) => void
 }) {
   const currentStatus = edit?.status ?? null
   const opt = currentStatus ? STATUS_OPTIONS.find((o) => o.key === currentStatus) : null
@@ -1453,11 +1450,10 @@ function RosterRowEditor({
                     status: isActive ? null : o.key,
                     remarks: edit?.remarks,
                   })}
-                  className={`inline-flex items-center justify-center px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors flex-1 md:flex-none md:min-w-[72px] ${
-                    isActive
+                  className={`inline-flex items-center justify-center px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors flex-1 md:flex-none md:min-w-[72px] ${isActive
                       ? `${o.tone}`
                       : 'text-ink-500 dark:text-ink-300 hover:bg-ink-100 dark:hover:bg-ink-700/60'
-                  } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    } ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}
                   aria-pressed={isActive}
                   aria-label={`Mark ${name} ${o.label}`}
                 >
@@ -1536,19 +1532,19 @@ function SessionsTab({ termId, moduleId, canDelete, setTab }: { termId: number; 
   const effective: SessionListParams = {
     ...params,
     academic_term_id: termId || undefined,
-    module_id:        moduleId || undefined,
+    module_id: moduleId || undefined,
   }
 
   const q = useQuery({
     queryKey: ['attendance-sessions', effective],
-    queryFn:  () => attendanceService.listSessions(effective),
+    queryFn: () => attendanceService.listSessions(effective),
     staleTime: 30_000,
     placeholderData: (prev) => prev,
   })
 
   const delMut = useMutation({
     mutationFn: (id: number) => attendanceService.deleteSession(id),
-    onSuccess:  (res) => {
+    onSuccess: (res) => {
       if (!res.success) return toast.error(res.message || 'Delete failed.')
       toast.success('Session deleted.')
       qc.invalidateQueries({ queryKey: ['attendance-sessions'] })
@@ -1619,7 +1615,7 @@ function SessionsTab({ termId, moduleId, canDelete, setTab }: { termId: number; 
             </thead>
             <tbody>
               {rows.map((r) => {
-                const marked  = Number(r.recorded_count ?? 0)
+                const marked = Number(r.recorded_count ?? 0)
                 const present = Number(r.present_count ?? 0)
                 const pct = marked > 0 ? Math.round((present / marked) * 100) : 0
                 return (
@@ -1664,9 +1660,8 @@ function TabBtn({ active, icon: Icon, label, onClick }: { active: boolean; icon:
   return (
     <button
       onClick={onClick}
-      className={`inline-flex items-center gap-1.5 px-3 py-2 text-[13px] rounded-md transition-colors ${
-        active ? 'bg-brand text-white font-semibold shadow-sm' : 'text-ink-600 dark:text-ink-300 hover:text-ink-900 hover:bg-ink-50 dark:hover:text-white dark:hover:bg-ink-700/40'
-      }`}
+      className={`inline-flex items-center gap-1.5 px-3 py-2 text-[13px] rounded-md transition-colors ${active ? 'bg-brand text-white font-semibold shadow-sm' : 'text-ink-600 dark:text-ink-300 hover:text-ink-900 hover:bg-ink-50 dark:hover:text-white dark:hover:bg-ink-700/40'
+        }`}
     >
       <Icon className="w-3.5 h-3.5" /> {label}
     </button>
@@ -1675,7 +1670,7 @@ function TabBtn({ active, icon: Icon, label, onClick }: { active: boolean; icon:
 
 function StatusChip({ status }: { status: 'open' | 'closed' }) {
   const map = {
-    open:   { Icon: Clock,        klass: 'bg-amber-50 text-amber-700',  label: 'Open' },
+    open: { Icon: Clock, klass: 'bg-amber-50 text-amber-700', label: 'Open' },
     closed: { Icon: CheckCircle2, klass: 'bg-emerald-50 text-emerald-700', label: 'Closed' },
   } as const
   const m = map[status]
@@ -1732,25 +1727,25 @@ function SchedulePicker({
   teachableModuleIds, teachableLoading, programId, onChangeProgram, onPickProgram,
   onPickModule,
 }: {
-  canManage:          boolean
+  canManage: boolean
   teachableModuleIds: number[]
-  teachableLoading:   boolean
-  programId:          number
-  onChangeProgram:    () => void
-  onPickProgram:      (id: number) => void
-  onPickModule:       (
+  teachableLoading: boolean
+  programId: number
+  onChangeProgram: () => void
+  onPickProgram: (id: number) => void
+  onPickModule: (
     moduleId: number,
     code: string,
     name: string,
     scope?: { day_pattern?: string | null; start_date?: string | null; end_date?: string | null },
   ) => void
 }) {
-  const [gLevel, setGLevel]     = useState(0)
-  const [gSearch, setGSearch]   = useState('')
+  const [gLevel, setGLevel] = useState(0)
+  const [gSearch, setGSearch] = useState('')
 
   const programsQ = useQuery({
-    queryKey:  ['portal', 'programs'],
-    queryFn:   () => portalService.getPrograms(),
+    queryKey: ['portal', 'programs'],
+    queryFn: () => portalService.getPrograms(),
     staleTime: 5 * 60_000,
   })
   const program = useMemo(
@@ -1766,7 +1761,7 @@ function SchedulePicker({
   // list of every block across every programme & mode.
   const blocksQ = useQuery({
     queryKey: ['attendance', 'scheduled-blocks', programId || 0],
-    queryFn:  () => attendanceService.scheduledBlocks(
+    queryFn: () => attendanceService.scheduledBlocks(
       programId ? { program_id: programId } : {},
     ),
     staleTime: 60_000,
@@ -1779,7 +1774,7 @@ function SchedulePicker({
     let list = allBlocks
     // Role scope: non-admins only see blocks for modules they teach.
     if (!canManage) list = list.filter((b) => teachableSet.has(Number(b.module_id)))
-    if (gLevel)    list = list.filter((b) => Number(b.level ?? 0) === gLevel)
+    if (gLevel) list = list.filter((b) => Number(b.level ?? 0) === gLevel)
     if (gSearch.trim()) {
       const q = gSearch.toLowerCase()
       list = list.filter((b) =>
@@ -1921,8 +1916,8 @@ function SchedulePicker({
                 {filteredBlocks.map((b) => {
                   const pickScope = {
                     day_pattern: b.day_pattern ?? (b.day_of_week ? String(b.day_of_week) : null),
-                    start_date:  b.start_date,
-                    end_date:    b.end_date,
+                    start_date: b.start_date,
+                    end_date: b.end_date,
                   }
                   const pick = () => onPickModule(b.module_id, b.module_code ?? '', b.module_name ?? '', pickScope)
                   return (
@@ -1965,7 +1960,7 @@ function SchedulePicker({
   )
 }
 
- /** Returns the YYYY-MM-DD of the occurrence of `dow` (1=Mon..7=Sun) in the week of `refDateISO`. */
+/** Returns the YYYY-MM-DD of the occurrence of `dow` (1=Mon..7=Sun) in the week of `refDateISO`. */
 function fmt(n: number | string | null | undefined): string {
   if (n === null || n === undefined) return '—'
   const num = typeof n === 'string' ? Number(n) : n
@@ -1998,7 +1993,7 @@ function EnrollStudentModal({ moduleId, moduleCode, termId, onClose, onSuccess, 
   // session roster is also excluded via `existingRegnumbers`.
   const moduleRegsQ = useQuery({
     queryKey: ['attendance-module-regs-all', moduleId],
-    queryFn:  () => moduleRegistrationService.list({ module_id: moduleId }),
+    queryFn: () => moduleRegistrationService.list({ module_id: moduleId }),
     staleTime: 30_000,
   })
   const studiedSet = useMemo(() => {
@@ -2011,7 +2006,7 @@ function EnrollStudentModal({ moduleId, moduleCode, termId, onClose, onSuccess, 
 
   const studentsQ = useQuery({
     queryKey: ['attendance-students-search', debouncedQ, faculty, department, programId],
-    queryFn:  () => studentService.list({
+    queryFn: () => studentService.list({
       q: debouncedQ || undefined,
       per_page: 200,
       faculty: faculty || undefined,
@@ -2025,7 +2020,7 @@ function EnrollStudentModal({ moduleId, moduleCode, termId, onClose, onSuccess, 
 
   const statsQ = useQuery({
     queryKey: ['student-stats-facets'],
-    queryFn:  () => studentService.stats(),
+    queryFn: () => studentService.stats(),
     staleTime: 300_000,
   })
   const facets = statsQ.data?.data?.facets
@@ -2035,10 +2030,10 @@ function EnrollStudentModal({ moduleId, moduleCode, termId, onClose, onSuccess, 
       const reg = student.regnumber || (student as any).student_regnumber
       if (!reg) throw new Error('Student has no registration number.')
       return moduleRegistrationService.create({
-        module_id:         moduleId,
-        academic_term_id:  termId,
+        module_id: moduleId,
+        academic_term_id: termId,
         student_regnumber: reg,
-        status:            'registered',
+        status: 'registered',
       })
     },
     onSuccess: (res) => {

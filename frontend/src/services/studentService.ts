@@ -3,6 +3,7 @@ import type { PaginatedResponse } from '@/types'
 import type { Student } from '@/types/academic'
 import type { ApplicationDocument } from '@/types/admission'
 import { useAuthStore } from '@/store/authStore'
+import { useCampusFilterStore } from '@/store/campusFilterStore'
 
 export interface FacetOption {
   value: string
@@ -235,10 +236,36 @@ export const studentService = {
   list: (
     params: StudentListParams = {},
     signal?: AbortSignal,
-  ) => api.get<PaginatedResponse<Student>>('/api/students', params as Record<string, unknown>, signal),
+  ) => {
+    // Inject the global topbar campus scope. The students endpoint uses
+    // the legacy `campus` parameter (varchar id), so we mirror onto that
+    // key when the caller hasn't already pinned one.
+    const scopeId = useCampusFilterStore.getState().selectedCampusId
+    const merged: Record<string, unknown> = { ...(params as Record<string, unknown>) }
+    if (scopeId != null && (merged.campus == null || merged.campus === '')) {
+      merged.campus = String(scopeId)
+    }
+    return api.get<PaginatedResponse<Student>>('/api/students', merged, signal)
+  },
 
-  stats: (params: { acc_year?: string } = {}, signal?: AbortSignal) =>
-    api.get<StudentStats>('/api/students/stats', params as Record<string, unknown>, signal),
+  stats: (params: { acc_year?: string; campus?: string | number } = {}, signal?: AbortSignal) => {
+    // Mirror the topbar campus scope onto the stats endpoint so the dashboard
+    // cards / charts always reflect just the user's chosen scope.
+    const scopeId = useCampusFilterStore.getState().selectedCampusId
+    const merged: Record<string, unknown> = { ...(params as Record<string, unknown>) }
+    if (scopeId != null && (merged.campus == null || merged.campus === '')) {
+      merged.campus = String(scopeId)
+    }
+    return api.get<StudentStats>('/api/students/stats', merged, signal)
+  },
+
+  /** Bulk reassign students to a campus. Server applies the change in a
+   *  single transaction and returns the affected row count. */
+  bulkUpdateCampus: (studentIds: Array<number | string>, campusId: number | null) =>
+    api.post<{ updated: number }>(`/api/students/bulk-update-campus`, {
+      student_ids: studentIds,
+      campus_id: campusId,
+    }),
 
   show: (id: number | string, signal?: AbortSignal) =>
     api.get<Student>(`/api/students/${id}`, {}, signal),
@@ -344,6 +371,45 @@ export const studentService = {
   /** Drop a module registration (by registration id). */
   dropModule: (id: number | string, registrationId: number | string) =>
     api.delete<void>(`/api/students/${id}/module-registrations/${registrationId}`),
+
+  /** Task 1.13 — international student visa tracking. */
+  listInternational: (signal?: AbortSignal) =>
+    api.get<{
+      students: Array<{
+        id: number; regnumber: string | null; fname: string | null; lname: string | null;
+        email: string | null; nationality: string | null;
+        assigned_registry_user_id: number | null; assigned_registry_name: string | null;
+        country_of_origin: string | null; visa_type: string | null;
+        entry_date: string | null; visa_issue_date: string | null; visa_expiry_date: string | null;
+        days_to_expiry: number | null;
+      }>
+      count: number
+    }>('/api/students/international', {}, signal),
+
+  listVisaRecords: (id: number | string, signal?: AbortSignal) =>
+    api.get<{
+      records: Array<{
+        id: number; student_id: number; country_of_origin: string;
+        entry_date: string; visa_issue_date: string; visa_expiry_date: string;
+        visa_type: string | null; notes: string | null; is_current: 0 | 1; created_at: string;
+      }>
+      current: any | null
+    }>(`/api/students/${id}/visa`, {}, signal),
+
+  addVisaRecord: (id: number | string, data: {
+    country_of_origin: string
+    entry_date: string
+    visa_issue_date: string
+    visa_expiry_date: string
+    visa_type?: string
+    notes?: string
+  }) => api.post<{ id: number }>(`/api/students/${id}/visa`, data),
+
+  assignRegistryOfficer: (id: number | string, userId: number | null) =>
+    api.patch<{ assigned_registry_user_id: number | null }>(
+      `/api/students/${id}/assign-registry`,
+      { assigned_registry_user_id: userId },
+    ),
 
   /** Direct, token-bearing URL for the student's profile photo. The cache-buster
    *  is what the page passes after a re-upload to force the <img> to refetch. */

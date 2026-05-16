@@ -44,6 +44,8 @@ import AcademicsManagementPage from "@/pages/academic/AcademicsManagementPage";
 import ApplyPage from "@/pages/public/ApplyPage";
 import TrackApplicationPage from "@/pages/public/TrackApplicationPage";
 import AdmissionsHub from "@/pages/admin/admissions/AdmissionsHub";
+import InternationalStudentsPage from "@/pages/admin/InternationalStudentsPage";
+import ApplicationStatisticsPage from "@/pages/admin/admissions/ApplicationStatisticsPage";
 import ApplicationsListPage from "@/pages/admin/admissions/ApplicationsListPage";
 import ApplicationDetailPage from "@/pages/admin/admissions/ApplicationDetailPage";
 import VerificationsPage from "@/pages/admin/admissions/VerificationsPage";
@@ -307,7 +309,18 @@ function App() {
                     element={<DocumentTypesPage />}
                   />
                   <Route path="intakes" element={<IntakesManagementPage />} />
+                  <Route path="intakes" element={<IntakesManagementPage />} />
+                  {/* Task 1.14 — applicant statistics report. */}
+                  <Route
+                    path="statistics"
+                    element={<ApplicationStatisticsPage />}
+                  />
                 </Route>
+                {/* Task 1.13 — international students compliance list. */}
+                <Route
+                  path="/admin/international-students"
+                  element={<InternationalStudentsPage />}
+                />
               </Route>
 
               {/* ── Applicant Portal ── */}

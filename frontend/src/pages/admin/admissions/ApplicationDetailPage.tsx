@@ -30,6 +30,10 @@ import {
   BarChart2,
   ClipboardList,
   UserCheck,
+  X,
+  ZoomIn,
+  FileSearch,
+  Sparkles,
 } from "lucide-react";
 import {
   applicationAdminService,
@@ -41,6 +45,7 @@ import { academicsMgmtService } from "@/services/academicsMgmtService";
 import { ApplicationStatus, VerificationStatus } from "@/types/admission";
 import DocumentPreviewModal from "./DocumentPreviewModal";
 import RequestChangesModal from "./RequestChangesModal";
+import ModalPortal from "@/components/ui/ModalPortal";
 
 const STATUS_OPTIONS: ApplicationStatus[] = [
   ApplicationStatus.SUBMITTED,
@@ -84,71 +89,131 @@ function MultiStepBar({
   setActiveStep: (n: number) => void;
 }) {
   const steps = [
-    { id: 1, label: "Document Validation" },
-    { id: 2, label: "Accepted & Waiting Fee" },
-    { id: 3, label: "Registration Fee Paid" },
-    { id: 4, label: "Enrolled & Registered" },
+    {
+      id: 1,
+      label: "Documents",
+      sublabel: "Verify uploads",
+      icon: FileSearch,
+    },
+    {
+      id: 2,
+      label: "Offered",
+      sublabel: "Awaiting fee",
+      icon: Sparkles,
+    },
+    {
+      id: 3,
+      label: "Fee paid",
+      sublabel: "Ready to enroll",
+      icon: CreditCard,
+    },
+    {
+      id: 4,
+      label: "Enrolled",
+      sublabel: "Reg # issued",
+      icon: UserPlus,
+    },
   ];
 
+  // Progress bar fill percentage — sits behind the step circles.
+  const progressPct =
+    maxStep >= steps.length
+      ? 100
+      : Math.max(0, ((maxStep - 1) / (steps.length - 1)) * 100);
+
   return (
-    <div className="card p-8 mb-8 bg-ink-50/30 dark:bg-ink-800/20 border-brand/10">
-      <div className="flex items-center justify-between relative px-8">
-        <div className="absolute top-5 left-16 right-16 h-0.5 bg-ink-100 dark:bg-ink-800 z-0" />
+    <div className="card overflow-hidden">
+      <div className="px-5 sm:px-8 pt-5 pb-2 flex items-center justify-between">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-ink-400">
+            Admission pipeline
+          </p>
+          <p className="text-[12.5px] text-ink-500 mt-0.5">
+            {maxStep >= steps.length
+              ? "All stages complete — student is enrolled."
+              : `On stage ${maxStep} of ${steps.length}: ${steps[Math.max(0, maxStep - 1)].label}`}
+          </p>
+        </div>
+        <div className="hidden sm:flex items-center gap-1.5 text-[11px] font-medium text-ink-500">
+          <span className="w-2 h-2 rounded-full bg-emerald-500" /> done
+          <span className="w-2 h-2 rounded-full bg-brand ml-2" /> current
+          <span className="w-2 h-2 rounded-full bg-ink-300 dark:bg-ink-700 ml-2" /> pending
+        </div>
+      </div>
+
+      <div className="relative px-5 sm:px-12 pt-6 pb-8">
+        {/* Track: grey baseline + emerald fill up to maxStep. Anchored so
+            the line aligns with the centre of the step circles. */}
+        <div className="absolute top-[44px] left-[40px] right-[40px] sm:left-[64px] sm:right-[64px] h-0.5 bg-ink-100 dark:bg-ink-800 rounded-full" />
         <div
-          className="absolute top-5 left-16 h-0.5 bg-brand transition-all duration-1000 ease-out z-0"
+          className="absolute top-[44px] left-[40px] sm:left-[64px] h-0.5 bg-gradient-to-r from-emerald-500 to-brand rounded-full transition-all duration-700 ease-out"
           style={{
-            width:
-              maxStep >= steps.length
-                ? "calc(100% - 128px)"
-                : `calc(${((maxStep - 1) / (steps.length - 1)) * 100}%)`,
+            width: `calc((100% - 80px) * ${progressPct / 100})`,
           }}
         />
-        {steps.map((step) => {
-          const isCompleted = maxStep > step.id;
-          const isActive = activeStep === step.id;
-          const isClickable = step.id <= maxStep;
-          return (
-            <div
-              key={step.id}
-              className="relative z-10 flex flex-col items-center"
-            >
+
+        <div className="relative z-10 grid grid-cols-4 gap-2">
+          {steps.map((step) => {
+            const Icon = step.icon;
+            const isCompleted = maxStep > step.id;
+            const isCurrent = maxStep === step.id;
+            const isActive = activeStep === step.id;
+            const isClickable = step.id <= maxStep;
+            const dotClass = isCompleted
+              ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/30"
+              : isCurrent
+                ? "bg-brand text-white shadow-lg shadow-brand/30 ring-4 ring-brand/15"
+                : "bg-white dark:bg-ink-800 text-ink-400 border-2 border-ink-200 dark:border-ink-700";
+
+            return (
               <button
+                key={step.id}
                 onClick={() => isClickable && setActiveStep(step.id)}
                 disabled={!isClickable}
-                className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all duration-500 outline-none ${
-                  isCompleted
-                    ? "bg-emerald-500 text-white shadow-emerald-500/20 rotate-0 cursor-pointer hover:bg-emerald-600"
-                    : isActive
-                      ? "bg-brand text-white shadow-brand/20 ring-4 ring-brand/10 scale-110 cursor-default"
-                      : isClickable
-                        ? "bg-white dark:bg-ink-900 border-2 border-brand text-brand cursor-pointer hover:bg-brand/10"
-                        : "bg-white dark:bg-ink-900 border-2 border-ink-200 dark:border-ink-700 text-ink-400 cursor-not-allowed opacity-60"
-                }`}
+                className={
+                  "group flex flex-col items-center text-center transition-all " +
+                  (isClickable
+                    ? "cursor-pointer hover:-translate-y-0.5"
+                    : "cursor-not-allowed opacity-60")
+                }
               >
-                {isCompleted ? (
-                  <CheckCircle2 className="w-5 h-5" />
-                ) : step.id === 3 ? (
-                  <CreditCard className="w-5 h-5" />
-                ) : step.id === 4 ? (
-                  <UserPlus className="w-5 h-5" />
-                ) : (
-                  <span className="text-[14px] font-black">{step.id}</span>
-                )}
+                <span
+                  className={
+                    "w-11 h-11 rounded-2xl flex items-center justify-center transition-all duration-300 " +
+                    dotClass +
+                    (isActive && !isCurrent ? " ring-4 ring-brand/15" : "")
+                  }
+                >
+                  {isCompleted ? (
+                    <CheckCircle2 className="w-5 h-5" />
+                  ) : (
+                    <Icon className="w-5 h-5" />
+                  )}
+                </span>
+                <p
+                  className={
+                    "mt-3 text-[11.5px] font-bold uppercase tracking-wider transition-colors " +
+                    (isCurrent
+                      ? "text-brand"
+                      : isCompleted
+                        ? "text-emerald-700 dark:text-emerald-300"
+                        : "text-ink-500")
+                  }
+                >
+                  {step.label}
+                </p>
+                <p
+                  className={
+                    "text-[10.5px] mt-0.5 transition-colors " +
+                    (isCurrent ? "text-ink-600 dark:text-ink-300" : "text-ink-400")
+                  }
+                >
+                  {step.sublabel}
+                </p>
               </button>
-              <p
-                className={`mt-4 text-[10px] font-black uppercase tracking-[0.2em] text-center max-w-[120px] transition-colors duration-500 ${
-                  isActive
-                    ? "text-brand"
-                    : isCompleted
-                      ? "text-emerald-600"
-                      : "text-ink-400"
-                }`}
-              >
-                {step.label}
-              </p>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -167,6 +232,7 @@ export default function ApplicationDetailPage() {
   const [isRequestChangesOpen, setIsRequestChangesOpen] = useState(false);
   const [activeStep, setActiveStep] = useState(1);
   const [selectedLevelId, setSelectedLevelId] = useState<number>(1);
+  const [photoLightboxOpen, setPhotoLightboxOpen] = useState(false);
 
   const appQ = useQuery({
     queryKey: ["admin", "applications", appId],
@@ -387,22 +453,34 @@ export default function ApplicationDetailPage() {
       <div className="card p-6">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-2xl bg-brand/10 flex items-center justify-center text-brand shrink-0">
-              <FileText className="w-8 h-8" />
-            </div>
+            <ApplicantAvatarLg
+              photoUrl={applicationAdminService.photoUrl(
+                appId,
+                (app as any).applicant_photo_id ?? null,
+              )}
+              initials={`${(app.first_name ?? '').charAt(0)}${(app.last_name ?? '').charAt(0)}`.toUpperCase() || '?'}
+              onClick={() => {
+                if ((app as any).applicant_photo_id) setPhotoLightboxOpen(true);
+              }}
+            />
             <div>
-              <p className="text-[11px] uppercase tracking-widest font-bold text-ink-400">
+              <h2 className="text-[20px] font-bold text-ink-900 dark:text-white leading-tight">
+                {`${app.first_name ?? ''} ${app.last_name ?? ''}`.trim() || 'Unnamed applicant'}
+              </h2>
+              <p className="text-[12px] text-ink-500 mt-0.5 truncate">
+                {app.email ?? '—'}{app.phone ? ` · ${app.phone}` : ''}
+              </p>
+              <p className="text-[11px] uppercase tracking-widest font-bold text-ink-400 mt-2">
                 Application Reference
               </p>
-              <h2 className="text-[24px] font-mono font-black text-brand leading-tight">
+              <p className="text-[14px] font-mono font-bold text-brand leading-tight">
                 {app.application_number}
-              </h2>
-              <div className="flex items-center gap-2 mt-1 flex-wrap">
+              </p>
+              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                 <StatusPill status={status} />
                 {app.submitted_at && (
-                  <span className="text-[13px] text-ink-500 font-medium">
-                    Submitted on{" "}
-                    {new Date(app.submitted_at).toLocaleDateString()}
+                  <span className="text-[12px] text-ink-500 font-medium">
+                    Submitted {new Date(app.submitted_at).toLocaleDateString()}
                   </span>
                 )}
               </div>
@@ -441,7 +519,7 @@ export default function ApplicationDetailPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mt-8">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mt-8">
           <DetailTile
             icon={Building2}
             label="Faculty"
@@ -451,6 +529,19 @@ export default function ApplicationDetailPage() {
             icon={GraduationCap}
             label="Department"
             value={app.department_name ?? `#${app.department_id}`}
+          />
+          <DetailTile
+            icon={MapPin}
+            label="Campus"
+            value={
+              (app as any).campus_name ??
+              ((app as any).campus_id ? `#${(app as any).campus_id}` : '—')
+            }
+          />
+          <DetailTile
+            icon={CalendarDays}
+            label="Mode"
+            value={(app as any).mode_of_study ?? '—'}
           />
           <DetailTile
             icon={Calendar}
@@ -1310,14 +1401,40 @@ export default function ApplicationDetailPage() {
                   {status === ApplicationStatus.OFFER_ACCEPTED ? (
                     <button
                       className="btn-primary py-3 px-8 text-[14px] flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 shadow-xl shadow-green-500/20 mx-auto"
-                      onClick={() => {
-                        if (
-                          window.confirm(
-                            `Finalize registration at level ID ${selectedLevelId} and generate Registration Number?`,
-                          )
-                        ) {
-                          enroll.mutate(selectedLevelId);
+                      onClick={async () => {
+                        // First check whether this applicant already has a
+                        // student row (returning postgraduate scenario). If
+                        // so, surface the existing record(s) before enrolling
+                        // a new one alongside.
+                        try {
+                          const check = await applicationAdminService.returningCheck(appId);
+                          if (check.data?.is_returning) {
+                            const prior = check.data.records[0];
+                            const ok = window.confirm(
+                              `Heads up: this applicant already has a student record\n` +
+                              `(Reg: ${prior?.regnumber ?? 'unknown'}, programme: ${prior?.programme_level ?? 'unknown'}).\n\n` +
+                              `A NEW student record will be created alongside it (e.g. for a Masters cohort), linked back via parent_student_id.\n\n` +
+                              `Proceed?`,
+                            );
+                            if (!ok) return;
+                          } else if (
+                            !window.confirm(
+                              `Finalize registration at level ID ${selectedLevelId} and generate Registration Number?`,
+                            )
+                          ) {
+                            return;
+                          }
+                        } catch {
+                          // Soft-fail: the check is informational only — fall
+                          // back to the original confirm so enrollment isn't
+                          // blocked by a network blip.
+                          if (
+                            !window.confirm(
+                              `Finalize registration at level ID ${selectedLevelId} and generate Registration Number?`,
+                            )
+                          ) return;
                         }
+                        enroll.mutate(selectedLevelId);
                       }}
                       disabled={enroll.isPending}
                     >
@@ -1360,39 +1477,56 @@ export default function ApplicationDetailPage() {
 
         {/* RIGHT: Status History + Internal Notes + Financing */}
         <div className="space-y-6">
-          {/* Status History */}
-          <section className="card p-6">
-            <SectionHeader title="Status History" sub="Progress tracking." />
-            <div className="mt-6 space-y-4">
-              {statusLog.length > 0 ? (
-                <div className="relative pl-4 space-y-6 before:absolute before:left-0 before:top-2 before:bottom-2 before:w-0.5 before:bg-ink-100 dark:before:bg-ink-800">
-                  {statusLog.map((l: any, idx: number) => (
-                    <div key={idx} className="relative">
-                      <div className="absolute -left-[19px] top-1.5 w-2.5 h-2.5 rounded-full bg-brand ring-4 ring-white dark:ring-ink-900" />
-                      <p className="text-[12.5px] font-bold text-ink-900 dark:text-white capitalize">
-                        {l.to_status.replace(/_/g, " ")}
-                        <span className="text-[11px] font-medium text-ink-400 ml-2">
-                          {l.actor_type}
-                        </span>
-                      </p>
-                      <p className="text-[11px] text-ink-400 mt-0.5">
-                        {new Date(l.created_at).toLocaleString()}
-                      </p>
-                      {l.notes && (
-                        <p className="text-[12px] text-ink-500 mt-1 italic">
-                          "{l.notes}"
-                        </p>
-                      )}
-                    </div>
-                  ))}
+          {/* Status History — skip the noisy `draft → draft` save events;
+              they're internal autosave traffic, not state transitions
+              registry users care about. */}
+          {(() => {
+            const meaningful = (statusLog as any[]).filter(
+              (l) => l.to_status && l.to_status !== 'draft'
+            )
+            return (
+              <section className="card p-6">
+                <SectionHeader title="Status History" sub="Decision timeline." />
+                <div className="mt-6">
+                  {meaningful.length > 0 ? (
+                    <ol className="relative pl-5 space-y-5 before:absolute before:left-[6px] before:top-1 before:bottom-1 before:w-px before:bg-ink-100 dark:before:bg-ink-800">
+                      {meaningful.map((l: any, idx: number) => {
+                        const isCurrent = idx === meaningful.length - 1
+                        return (
+                          <li key={idx} className="relative">
+                            <span
+                              className={
+                                'absolute -left-[22px] top-1 w-3 h-3 rounded-full ring-4 ring-white dark:ring-ink-900 ' +
+                                (isCurrent ? 'bg-brand' : 'bg-ink-300 dark:bg-ink-600')
+                              }
+                            />
+                            <p className="text-[12.5px] font-semibold text-ink-900 dark:text-white capitalize">
+                              {l.to_status.replace(/_/g, ' ')}
+                              <span className="ml-2 text-[10.5px] font-normal text-ink-400 uppercase tracking-wider">
+                                {l.actor_type}
+                              </span>
+                            </p>
+                            <p className="text-[11px] text-ink-400 mt-0.5">
+                              {new Date(l.created_at).toLocaleString()}
+                            </p>
+                            {l.notes && (
+                              <p className="text-[12px] text-ink-600 dark:text-ink-300 mt-1 italic leading-snug">
+                                "{l.notes}"
+                              </p>
+                            )}
+                          </li>
+                        )
+                      })}
+                    </ol>
+                  ) : (
+                    <p className="text-[12px] text-ink-400 text-center py-4 italic">
+                      Application hasn't transitioned past submission yet.
+                    </p>
+                  )}
                 </div>
-              ) : (
-                <p className="text-[12px] text-ink-400 text-center py-4">
-                  No history available.
-                </p>
-              )}
-            </div>
-          </section>
+              </section>
+            )
+          })()}
 
           {/* Financing */}
           <section className="card p-6">
@@ -1412,39 +1546,97 @@ export default function ApplicationDetailPage() {
             </div>
           </section>
 
-          {/* Internal Notes */}
+          {/* Internal Notes — admin-only thread, latest at the top */}
           <section className="card p-6 border-brand/20 shadow-sm">
             <SectionHeader
               title="Internal Review Notes"
               sub="Admin-only — never shown to the applicant."
               icon={MessageSquarePlus}
             />
-            <div className="mt-4 space-y-3">
-              <textarea
-                className="input min-h-[100px] text-[13px] bg-brand/5 focus:bg-white transition-colors"
-                placeholder="Admin-only notes…"
-                value={noteInput}
-                onChange={(e) => setNoteInput(e.target.value)}
-              />
-              <div className="flex justify-end">
-                <button
-                  className="btn-primary"
-                  onClick={() =>
-                    noteInput.trim() && addNote.mutate(noteInput.trim())
-                  }
-                  disabled={!noteInput.trim() || addNote.isPending}
-                >
-                  {addNote.isPending && (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  )}
-                  Save Note
-                </button>
-              </div>
-              {app.internal_notes && (
-                <div className="rounded-xl bg-brand/5 p-4 text-[13px] leading-relaxed whitespace-pre-wrap text-ink-800 dark:text-ink-200 border border-brand/10">
-                  {app.internal_notes}
+            <div className="mt-4 space-y-4">
+              {/* Composer */}
+              <div className="rounded-xl border border-brand/10 bg-brand/[0.03] p-3">
+                <textarea
+                  className="input min-h-[80px] text-[13px] bg-white dark:bg-ink-900 focus:bg-white"
+                  placeholder="Add a note for your team…"
+                  value={noteInput}
+                  onChange={(e) => setNoteInput(e.target.value)}
+                  maxLength={1000}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && noteInput.trim()) {
+                      addNote.mutate(noteInput.trim())
+                    }
+                  }}
+                />
+                <div className="flex items-center justify-between mt-2">
+                  <span className="text-[10.5px] text-ink-400">
+                    {noteInput.length}/1000 · ⌘+Enter to save
+                  </span>
+                  <button
+                    className="btn-primary btn-sm"
+                    onClick={() =>
+                      noteInput.trim() && addNote.mutate(noteInput.trim())
+                    }
+                    disabled={!noteInput.trim() || addNote.isPending}
+                  >
+                    {addNote.isPending && (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    )}
+                    Save note
+                  </button>
                 </div>
-              )}
+              </div>
+
+              {/* Thread — parse the appended "[timestamp — actor]: body" lines */}
+              {(() => {
+                const raw = (app.internal_notes ?? '').trim()
+                if (!raw) {
+                  return (
+                    <p className="text-[12px] italic text-ink-400 text-center py-3">
+                      No internal notes yet.
+                    </p>
+                  )
+                }
+                // Each entry starts with a "[…]" prefix; split on newlines
+                // that begin one. The regex keeps the bracket on the
+                // following entry.
+                const entries = raw
+                  .split(/\n(?=\[)/)
+                  .map((line) => {
+                    const m = line.match(/^\[([^\]]+)\]:\s*([\s\S]*)$/)
+                    if (!m) return { meta: '', body: line.trim() }
+                    // meta is "YYYY-MM-DD HH:MM:SS — Author Name"
+                    const parts = m[1].split('—').map((s) => s.trim())
+                    return {
+                      meta: m[1],
+                      when: parts[0] ?? '',
+                      who: parts[1] ?? '',
+                      body: m[2].trim(),
+                    }
+                  })
+                  .reverse() // newest first
+
+                return (
+                  <ul className="space-y-2.5">
+                    {entries.map((e, i) => (
+                      <li
+                        key={i}
+                        className="rounded-lg border border-ink-100 dark:border-ink-800 bg-white dark:bg-ink-900 p-3"
+                      >
+                        <div className="flex items-center justify-between text-[10.5px] text-ink-500">
+                          <span className="font-semibold text-ink-700 dark:text-ink-200">
+                            {(e as any).who || 'Admin'}
+                          </span>
+                          <span>{(e as any).when || ''}</span>
+                        </div>
+                        <p className="text-[12.5px] leading-relaxed text-ink-800 dark:text-ink-200 mt-1.5 whitespace-pre-wrap">
+                          {e.body}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                )
+              })()}
             </div>
           </section>
         </div>
@@ -1463,6 +1655,13 @@ export default function ApplicationDetailPage() {
         applicationId={appId}
         documents={docs}
         onSuccess={requestChangesSuccess}
+      />
+
+      <PhotoLightbox
+        open={photoLightboxOpen}
+        onClose={() => setPhotoLightboxOpen(false)}
+        url={applicationAdminService.photoUrl(appId, (app as any).applicant_photo_id ?? null)}
+        caption={`${app.first_name ?? ''} ${app.last_name ?? ''}`.trim() || app.application_number}
       />
     </div>
   );
@@ -1638,5 +1837,113 @@ function DocStatusPill({ status }: { status: string }) {
     >
       {cfg.label}
     </span>
+  );
+}
+
+/** Large applicant avatar shown in the detail page header. Clickable
+ *  when a photo is set so admins can open the lightbox; falls back to
+ *  initials when no photo or when the image fails to load. */
+function ApplicantAvatarLg({
+  photoUrl, initials, onClick,
+}: { photoUrl: string | null; initials: string; onClick?: () => void }) {
+  const isClickable = !!photoUrl && !!onClick;
+  return (
+    <button
+      type="button"
+      onClick={isClickable ? onClick : undefined}
+      className={
+        "relative w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-gradient-to-br from-primary-500/15 to-primary-500/5 dark:from-primary-500/30 dark:to-primary-500/10 flex items-center justify-center text-primary-700 dark:text-primary-200 font-black text-[22px] shrink-0 overflow-hidden ring-1 ring-primary-200/60 dark:ring-primary-900/40 shadow-sm " +
+        (isClickable
+          ? "cursor-zoom-in hover:ring-2 hover:ring-brand/40 transition-all group"
+          : "cursor-default")
+      }
+      title={isClickable ? "Click to view full size" : undefined}
+      aria-label={isClickable ? "Open applicant photo" : "Applicant initials"}
+    >
+      {photoUrl ? (
+        <>
+          <img
+            src={photoUrl}
+            alt=""
+            className="w-full h-full object-cover"
+            onError={(e) => {
+              const img = e.currentTarget as HTMLImageElement;
+              img.style.display = 'none';
+              const span = img.nextElementSibling as HTMLElement | null;
+              if (span) span.style.removeProperty('display');
+            }}
+          />
+          <span style={{ display: 'none' }}>{initials}</span>
+          {isClickable && (
+            <span className="absolute inset-0 bg-ink-900/0 group-hover:bg-ink-900/30 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+              <ZoomIn className="w-5 h-5 text-white drop-shadow" />
+            </span>
+          )}
+        </>
+      ) : (
+        <span>{initials}</span>
+      )}
+    </button>
+  );
+}
+
+/** Fullscreen photo viewer. Click the backdrop or press Esc to close. */
+function PhotoLightbox({
+  open, onClose, url, caption,
+}: {
+  open: boolean
+  onClose: () => void
+  url: string | null
+  caption?: string
+}) {
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [open, onClose])
+
+  if (!open || !url) return null
+
+  return (
+    <ModalPortal>
+      <div
+        className="fixed inset-0 z-[100] bg-ink-900/90 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in"
+        onClick={onClose}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors"
+          aria-label="Close"
+        >
+          <X className="w-5 h-5" />
+        </button>
+        <div
+          className="relative max-w-5xl max-h-[90vh] flex flex-col items-center gap-4"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <img
+            src={url}
+            alt={caption ?? 'Applicant photo'}
+            className="max-w-full max-h-[80vh] rounded-lg shadow-2xl object-contain"
+          />
+          {caption && (
+            <p className="text-white/80 text-[13px] font-medium">{caption}</p>
+          )}
+          <a
+            href={url}
+            download
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 text-[11.5px] text-white/70 hover:text-white"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Download className="w-3 h-3" />
+            Open in new tab
+          </a>
+        </div>
+      </div>
+    </ModalPortal>
   );
 }

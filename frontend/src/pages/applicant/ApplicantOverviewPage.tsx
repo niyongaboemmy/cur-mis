@@ -19,8 +19,10 @@ import {
   ArrowRight,
   Hash,
   XCircle,
+  PlayCircle,
 } from "lucide-react";
 import { applicantService } from "@/services/admissionService";
+import { systemService } from "@/services/systemService";
 import { ApplicationStatus } from "@/types/admission";
 import Modal from "@/components/ui/Modal";
 import { Field } from "@/components/applicant/ApplicantPortalShared";
@@ -35,6 +37,13 @@ export default function ApplicantOverviewPage() {
   });
   const apps = q.data?.data ?? [];
   const [selectedId, setSelectedId] = useState<number | null>(null);
+
+  const videosQ = useQuery({
+    queryKey: ['portal', 'guidance-videos'],
+    queryFn: () => systemService.getGuidanceVideos(),
+    staleTime: 60_000 * 10,
+  });
+  const loginVideoUrl = videosQ.data?.data?.video_login_guide_url ?? '';
 
   if (q.isLoading)
     return (
@@ -95,6 +104,17 @@ export default function ApplicantOverviewPage() {
               <p className="text-[13px] text-ink-500 mt-1">
                 Track your admission journey, respond to offers, and manage your application files.
               </p>
+              {loginVideoUrl && (
+                <a
+                  href={loginVideoUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 mt-2 text-[12px] font-medium text-brand hover:underline"
+                >
+                  <PlayCircle className="w-3.5 h-3.5" />
+                  Watch: How to log in &amp; reset your password
+                </a>
+              )}
             </div>
             {hasDraft ? (
               <a
@@ -512,8 +532,19 @@ function ApplicationView({ app, onBack }: { app: any; onBack?: () => void }) {
   });
   const details = detailsQ.data?.data;
 
+  const timelineQ = useQuery({
+    queryKey: ["applicant", "application", app.id, "timeline"],
+    queryFn: () => applicantService.getApplicationTimeline(app.id),
+  });
+  const timeline = timelineQ.data?.data;
+
   return (
     <div className="animate-in fade-in slide-in-from-bottom-2 duration-400 space-y-6">
+      <ApplicationStepIndicator
+        currentStatus={app.status}
+        timeline={timeline?.timeline ?? []}
+      />
+
       {/* Offer Banner */}
       {app.status === "offered" && details && (
         <AdmissionOfferBanner
@@ -1020,5 +1051,109 @@ function TabBtn({
     >
       <Icon className="w-4 h-4" /> {label}
     </button>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────────────
+ * Application progress stepper (Task 1.10).
+ * Shows every stage in the admission lifecycle, marks completed stages
+ * with a checkmark + date, highlights the current stage and grays out
+ * what's still ahead.
+ * ──────────────────────────────────────────────────────────────────── */
+const PROGRESS_STAGES: { status: string; label: string }[] = [
+  { status: 'submitted',              label: 'Application Submitted' },
+  { status: 'documents_under_review', label: 'Documents Under Review' },
+  { status: 'documents_verified',     label: 'Documents Verified' },
+  { status: 'offered',                label: 'Offer Made' },
+  { status: 'offer_accepted',         label: 'Offer Accepted' },
+  { status: 'enrolled',               label: 'Enrolled' },
+];
+
+function ApplicationStepIndicator({
+  currentStatus, timeline,
+}: {
+  currentStatus: string
+  timeline: Array<{ to_status: string; created_at: string }>
+}) {
+  if (currentStatus === 'draft' || currentStatus === 'withdrawn') {
+    return null;
+  }
+  // Map status → first date it was reached (for the checkmark label).
+  const reached = new Map<string, string>();
+  for (const entry of timeline) {
+    if (!reached.has(entry.to_status)) reached.set(entry.to_status, entry.created_at);
+  }
+  const currentIdx = (() => {
+    const i = PROGRESS_STAGES.findIndex((s) => s.status === currentStatus);
+    if (i >= 0) return i;
+    // unknown intermediate status — treat as documents review.
+    return 1;
+  })();
+
+  return (
+    <section className="rounded-2xl border border-ink-100 dark:border-ink-800 bg-white dark:bg-ink-900 p-5 sm:p-6">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-[12.5px] font-semibold text-ink-900 dark:text-white uppercase tracking-wider">
+          Application progress
+        </h3>
+        <a
+          href="/messages"
+          className="inline-flex items-center gap-1.5 text-[11.5px] font-medium text-brand hover:underline"
+          title="Open the messaging center to contact the registry"
+        >
+          Contact registry &rarr;
+        </a>
+      </div>
+      <ol className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        {PROGRESS_STAGES.map((stage, idx) => {
+          const done    = idx < currentIdx;
+          const current = idx === currentIdx;
+          const date    = reached.get(stage.status);
+          return (
+            <li key={stage.status} className="relative">
+              <div className={
+                'flex flex-col items-center text-center gap-2 p-3 rounded-xl border transition-colors ' +
+                (done
+                  ? 'border-emerald-200 bg-emerald-50 dark:bg-emerald-900/15 dark:border-emerald-900/50'
+                  : current
+                    ? 'border-brand bg-primary-50 dark:bg-primary-900/20 ring-2 ring-primary-200 dark:ring-primary-900/40'
+                    : 'border-ink-100 dark:border-ink-800 bg-ink-50/50 dark:bg-ink-800/30')
+              }>
+                <span className={
+                  'w-8 h-8 rounded-full flex items-center justify-center text-[12px] font-bold ' +
+                  (done
+                    ? 'bg-emerald-500 text-white'
+                    : current
+                      ? 'bg-brand text-white'
+                      : 'bg-ink-200 dark:bg-ink-700 text-ink-500')
+                }>
+                  {done ? <CheckCircle2 className="w-4 h-4" /> : idx + 1}
+                </span>
+                <p className={
+                  'text-[11.5px] font-semibold leading-tight ' +
+                  (current
+                    ? 'text-brand'
+                    : done
+                      ? 'text-emerald-700 dark:text-emerald-300'
+                      : 'text-ink-500')
+                }>
+                  {stage.label}
+                </p>
+                {date && (
+                  <p className="text-[10px] text-ink-400">
+                    {(() => {
+                      try {
+                        const d = new Date(date.replace(' ', 'T'));
+                        return isNaN(d.getTime()) ? date : d.toLocaleDateString();
+                      } catch { return date; }
+                    })()}
+                  </p>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+    </section>
   );
 }

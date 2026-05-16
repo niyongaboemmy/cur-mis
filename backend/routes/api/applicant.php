@@ -48,6 +48,7 @@ $router->group('/api/applicant', function ($router) {
     // ── Application status & checklist ────────────────────────────────────────
     $router->get('/application',      [ApplicantProfileController::class, 'getApplication']);
     $router->get('/application/:id',  [ApplicantProfileController::class, 'getApplicationDetails']);
+    $router->get('/application/:id/timeline', [ApplicantProfileController::class, 'getApplicationTimeline']);
     $router->put('/application/:id',  [ApplicantProfileController::class, 'updateApplication']);
     $router->post('/application/:id/respond', [ApplicantProfileController::class, 'respondToOffer']);
     $router->get('/application/:id/payment-slip', [ApplicantProfileController::class, 'downloadPaymentSlip']);

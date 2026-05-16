@@ -1,9 +1,10 @@
-import { GraduationCap } from "lucide-react";
+import { GraduationCap, PlayCircle } from "lucide-react";
 import { Link, Navigate } from "react-router-dom";
 import AuthLayout from "@/components/auth/AuthLayout";
 import LoginForm from "@/components/auth/LoginForm";
 import { useQuery } from "@tanstack/react-query";
 import { portalService } from "@/services/admissionService";
+import { systemService } from "@/services/systemService";
 import { useAuthStore } from "@/store/authStore";
 
 export default function LoginPage() {
@@ -16,6 +17,14 @@ export default function LoginPage() {
     enabled: !isAuthenticated,
   });
 
+  const { data: videos } = useQuery({
+    queryKey: ['portal', 'guidance-videos'],
+    queryFn: () => systemService.getGuidanceVideos(),
+    staleTime: 1000 * 60 * 10,
+    enabled: !isAuthenticated,
+  })
+  const loginVideoUrl = videos?.data?.video_login_guide_url ?? ''
+
   if (isAuthenticated) return <Navigate to="/" replace />
 
   const hasActiveIntake = (intakes?.data?.length ?? 0) > 0;
@@ -23,6 +32,21 @@ export default function LoginPage() {
   return (
     <AuthLayout title="Welcome back" subtitle="Sign in to your CUR-MIS account to continue.">
       <LoginForm />
+
+      {loginVideoUrl && (
+        <p className="mt-4 text-center text-xs text-ink-500">
+          New here?{' '}
+          <a
+            href={loginVideoUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 text-brand font-medium hover:underline"
+          >
+            <PlayCircle className="w-3.5 h-3.5" />
+            Watch: How to log in &amp; reset your password
+          </a>
+        </p>
+      )}
 
       {hasActiveIntake ? (
         <div className="mt-8 rounded-xl bg-primary-50/50 p-5 border border-primary-100">

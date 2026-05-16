@@ -28,6 +28,9 @@ $router->group('/api/students', function ($router) {
 // Read-only: any user with VIEW_STUDENTS
 $router->group('/api/students', function ($router) {
     $router->get('/stats',                                [StudentController::class, 'stats']);
+    // Task 1.13 — international students list. Literal segment must come
+    // before /:id so it wins route matching.
+    $router->get('/international',                        [StudentController::class, 'listInternational']);
     $router->get('',                                      [StudentController::class, 'index']);
     $router->get('/:id',                                  [StudentController::class, 'show']);
     $router->get('/:id/photo',                            [StudentController::class, 'downloadPhoto']);
@@ -35,14 +38,21 @@ $router->group('/api/students', function ($router) {
     $router->get('/:id/documents/:document_id/download',  [StudentController::class, 'downloadDocument']);
     $router->get('/:id/program-modules',                  [StudentController::class, 'programModules']);
     $router->get('/:id/program-modules/export',           [StudentController::class, 'programModulesExport']);
+    $router->get('/:id/visa',                             [StudentController::class, 'listVisaRecords']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::VIEW_STUDENTS)]);
 
 // Write: requires MANAGE_STUDENTS
 $router->group('/api/students', function ($router) {
+    // Bulk reassign — literal path, registered before any /:id matchers in
+    // this group so it isn't shadowed.
+    $router->post('/bulk-update-campus', [StudentController::class, 'bulkUpdateCampus']);
     $router->post('',              [StudentController::class, 'create']);
     $router->put('/:id',           [StudentController::class, 'update']);
     $router->delete('/:id',        [StudentController::class, 'delete']);
     $router->post('/:id/photo',    [StudentController::class, 'uploadPhoto']);
+    // Task 1.13 — visa record write + registry officer assignment.
+    $router->post('/:id/visa',           [StudentController::class, 'addVisaRecord']);
+    $router->patch('/:id/assign-registry', [StudentController::class, 'assignRegistryOfficer']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_STUDENTS)]);
 
 // Module exemptions — admin-only override that records a mark for a module
