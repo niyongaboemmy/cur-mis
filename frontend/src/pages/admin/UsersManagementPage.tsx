@@ -22,7 +22,6 @@ import {
   UserX,
   Filter,
   Building2,
-  Plus,
   Trash2,
 } from "lucide-react";
 import userService, { User, UserStats, UserFilters, UserCampusAssignment } from "@/services/userService";
@@ -202,15 +201,19 @@ export default function UsersManagementPage() {
     setShowModal(true);
   };
 
-  const handleAssignCampus = async () => {
-    if (!editingUser || !selectedCampusToAdd) return;
-    const campusId = Number(selectedCampusToAdd);
+  const handleAssignCampus = async (campusIdRaw?: string) => {
+    const raw = campusIdRaw ?? selectedCampusToAdd;
+    if (!editingUser || !raw) return;
+    const campusId = Number(raw);
     setCampusAssignmentBusy(true);
     try {
       const res = await userService.assignCampus(editingUser.id, campusId);
       setUserCampuses(res.data?.assignments ?? []);
       setSelectedCampusToAdd("");
       toast.success("Campus assigned");
+      // Also refresh the main user list so the new chip shows up immediately
+      // on the row behind the modal.
+      fetchData();
     } catch (err: any) {
       toast.error(err.response?.data?.message ?? "Failed to assign campus");
     } finally {
@@ -225,6 +228,8 @@ export default function UsersManagementPage() {
       const res = await userService.revokeCampus(editingUser.id, campusId);
       setUserCampuses(res.data?.assignments ?? []);
       toast.success("Campus removed");
+      // Same as assign — keep the row chips in sync with the modal.
+      fetchData();
     } catch (err: any) {
       toast.error(err.response?.data?.message ?? "Failed to remove campus");
     } finally {
@@ -846,31 +851,34 @@ export default function UsersManagementPage() {
                       </div>
                     )}
 
-                    <div className="flex items-center gap-2">
-                      <select
-                        className="input flex-1 text-[12px]"
-                        value={selectedCampusToAdd}
-                        onChange={(e) => setSelectedCampusToAdd(e.target.value)}
-                        disabled={campusAssignmentBusy}
-                      >
-                        <option value="">Add a campus…</option>
-                        {allCampuses
-                          .filter((c) => !userCampuses.some((uc) => uc.id === c.id))
-                          .map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.name}{c.code ? ` (${c.code})` : ""}
-                            </option>
-                          ))}
-                      </select>
-                      <button
-                        type="button"
-                        onClick={handleAssignCampus}
-                        disabled={!selectedCampusToAdd || campusAssignmentBusy}
-                        className="btn-secondary btn-sm"
-                      >
-                        <Plus className="w-3.5 h-3.5" /> Add
-                      </button>
-                    </div>
+                    <select
+                      className="input text-[12px]"
+                      value={selectedCampusToAdd}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        // Auto-assign as soon as a campus is picked — no
+                        // separate Add click required, so users can't forget
+                        // to commit before clicking Save changes.
+                        if (v) {
+                          handleAssignCampus(v);
+                        } else {
+                          setSelectedCampusToAdd("");
+                        }
+                      }}
+                      disabled={campusAssignmentBusy}
+                    >
+                      <option value="">+ Add a campus…</option>
+                      {allCampuses
+                        .filter((c) => !userCampuses.some((uc) => uc.id === c.id))
+                        .map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}{c.code ? ` (${c.code})` : ""}
+                          </option>
+                        ))}
+                    </select>
+                    <p className="text-[10.5px] text-ink-400 mt-1">
+                      Picking a campus assigns it immediately. Use the trash icon to remove.
+                    </p>
                   </div>
                 )}
 
