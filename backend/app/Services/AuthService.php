@@ -105,13 +105,15 @@ class AuthService
         $model->clearOtp($user['id']);
 
         $userData = $model->find($user['id']);
-        
+
         $roleModel = new RoleModel();
         $role = $roleModel->find($userData['role_id'] ?? 0);
         $userData['role_name'] = $role ? $role['name'] : 'guest';
+        $userData['enforce_campus_scope'] = $role ? (int)($role['enforce_campus_scope'] ?? 0) : 0;
 
         $rolePermModel = new RolePermissionModel();
         $userData['permissions'] = $rolePermModel->getSlugsForRole((int)($userData['role_id'] ?? 0));
+        $userData['assigned_campuses'] = $this->loadAssignedCampuses((int)$userData['id']);
 
         // Include is_applicant from raw user row
         $userData['is_applicant'] = (bool)(int)($user['is_applicant'] ?? 0);
@@ -182,15 +184,37 @@ class AuthService
         $roleModel = new RoleModel();
         $role = $roleModel->find($user['role_id'] ?? 0);
         $user['role_name'] = $role ? $role['name'] : 'guest';
+        $user['enforce_campus_scope'] = $role ? (int)($role['enforce_campus_scope'] ?? 0) : 0;
 
         $rolePermModel = new RolePermissionModel();
         $user['permissions'] = $rolePermModel->getSlugsForRole((int)($user['role_id'] ?? 0));
+        $user['assigned_campuses'] = $this->loadAssignedCampuses((int)$user['id']);
 
         return [
             'success' => true,
             'message' => 'Registration successful.',
             'data'    => $user,
         ];
+    }
+
+    /** Lightweight read of the campuses assigned to a user. Returns
+     *  [{id,name,code,location}, ...] — empty array when nothing assigned
+     *  or when the user_campus_assignments table doesn't exist yet. */
+    private function loadAssignedCampuses(int $userId): array
+    {
+        if ($userId <= 0) return [];
+        try {
+            return \Core\Database::getInstance()->fetchAll(
+                "SELECT c.id, c.name, c.code, c.location
+                 FROM `user_campus_assignments` uca
+                 JOIN `campuses` c ON c.id = uca.campus_id
+                 WHERE uca.user_id = ?
+                 ORDER BY c.name ASC",
+                [$userId]
+            );
+        } catch (\Throwable $e) {
+            return [];
+        }
     }
 
     /**
@@ -518,15 +542,17 @@ class AuthService
             'exp'  => $now + $this->jwtExpiry,
             'sub'  => $user['id'],
             'user' => [
-                'id'           => $user['id'],
-                'email'        => $user['email'],
-                'username'     => $user['username'] ?? '',
-                'full_name'    => $user['full_name'] ?? '',
-                'role'         => $user['role_name'] ?? 'guest',
-                'role_id'      => $user['role_id'] ?? null,
-                'permissions'  => $user['permissions'] ?? [],
-                'is_applicant' => ($user['role_name'] ?? '') === 'applicant',
-                'created_at'   => $user['created_at'] ?? null,
+                'id'                   => $user['id'],
+                'email'                => $user['email'],
+                'username'             => $user['username'] ?? '',
+                'full_name'            => $user['full_name'] ?? '',
+                'role'                 => $user['role_name'] ?? 'guest',
+                'role_id'              => $user['role_id'] ?? null,
+                'permissions'          => $user['permissions'] ?? [],
+                'enforce_campus_scope' => (int)($user['enforce_campus_scope'] ?? 0) === 1,
+                'assigned_campuses'    => $user['assigned_campuses'] ?? [],
+                'is_applicant'         => ($user['role_name'] ?? '') === 'applicant',
+                'created_at'           => $user['created_at'] ?? null,
             ],
         ];
 

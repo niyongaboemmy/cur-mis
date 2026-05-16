@@ -43,12 +43,13 @@ export default function CampusFilterSwitcher() {
 
   const role = (user?.role ?? '').toLowerCase()
   const isPriviledged = role === 'admin' || role === 'superadmin'
+  const isScopeLocked = !!user?.enforce_campus_scope
 
   // Catalog of every active campus — used when admins want to drill into
   // a campus they aren't formally assigned to. Skipped (and harmless 403'd)
   // for users without MANAGE_USERS; we fall back to the my-assignments
-  // list below.
-  const canSeeCatalog = !!user?.permissions?.includes('MANAGE_USERS')
+  // list below. Scope-locked users never need the catalog.
+  const canSeeCatalog = !!user?.permissions?.includes('MANAGE_USERS') && !isScopeLocked
   const catalogQ = useQuery({
     queryKey: ['users', 'campuses-catalog'],
     queryFn:  () => userService.listAllCampuses(),
@@ -56,23 +57,27 @@ export default function CampusFilterSwitcher() {
     staleTime: 1000 * 60 * 30,
   })
 
-  // The user's own assignments (always allowed — endpoint is gated on
-  // MANAGE_USERS only for OTHER users; pulling your own would 403 too).
-  // We use the catalog when available and fall back to "single all" option
-  // when neither is reachable.
-  const my = (canSeeCatalog ? catalogQ.data?.data?.campuses : null) ?? []
+  // Pick the right source:
+  //   scope-locked → only the user's assigned_campuses (no choices outside)
+  //   admin / catalog-aware → full active-campus catalog
+  //   everyone else → assignments from the auth payload (no extra request)
+  const my = isScopeLocked
+    ? (user?.assigned_campuses ?? [])
+    : ((canSeeCatalog ? catalogQ.data?.data?.campuses : null) ?? (user?.assigned_campuses ?? []))
 
-  // Hide entirely if the user has nothing to pick from.
+  // Hide entirely if the user has nothing meaningful to pick from.
   if (!user || role === 'applicant') return null
-  if (!isPriviledged && my.length <= 1) return null
-  if (isPriviledged && my.length === 0) return null
+  if (my.length <= 1) return null
+  if (isPriviledged && !isScopeLocked && my.length === 0) return null
 
   const selected = my.find((c: any) => Number(c.id) === selectedCampusId) ?? null
   const label = selected
     ? selected.name
-    : isPriviledged
-      ? 'All campuses'
-      : 'My campuses'
+    : isScopeLocked
+      ? 'My campuses'
+      : isPriviledged
+        ? 'All campuses'
+        : 'My campuses'
 
   return (
     <div ref={ref} className="relative">
@@ -103,7 +108,7 @@ export default function CampusFilterSwitcher() {
                 : 'text-ink-700 dark:text-ink-200 hover:bg-ink-50 dark:hover:bg-ink-800')
             }
           >
-            <span>{isPriviledged ? 'All campuses' : 'All my campuses'}</span>
+            <span>{isScopeLocked || !isPriviledged ? 'All my campuses' : 'All campuses'}</span>
             {selectedCampusId == null && <Check className="w-3.5 h-3.5" />}
           </button>
 

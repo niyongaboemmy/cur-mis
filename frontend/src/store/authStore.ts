@@ -14,6 +14,17 @@ export interface AuthUser {
   role_id?:     number
   permissions?: string[]
   is_applicant?: boolean
+  /** When true (set from roles.enforce_campus_scope), the UI must hide
+   *  any "all campuses" affordances and limit campus filters to
+   *  assigned_campuses only. */
+  enforce_campus_scope?: boolean
+  /** Campuses this user is assigned to via user_campus_assignments. */
+  assigned_campuses?: Array<{
+    id:       number
+    name:     string
+    code:     string | null
+    location: string | null
+  }>
 }
 
 interface AuthState {

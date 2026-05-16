@@ -13,6 +13,7 @@ import { ApplicationStatus, ApplicationPendingNote } from '@/types/admission'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import ModalPortal from '@/components/ui/ModalPortal'
 import ApplicationsDashboard from './ApplicationsDashboard'
+import { useAuthStore } from '@/store/authStore'
 
 // On the admin side we relabel `submitted` → `Pending` so the queue
 // is framed as "awaiting review" rather than the raw state-machine name.
@@ -61,6 +62,7 @@ const STATUS_TONE: Record<string, string> = {
 export default function ApplicationsListPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { user } = useAuthStore()
   const [page, setPage] = useState(1)
   // The "shared why-pending notes" panel — opened from a row's notes badge.
   const [notesAppId, setNotesAppId] = useState<number | null>(null)
@@ -131,14 +133,22 @@ export default function ApplicationsListPage() {
   // Filter options use the full catalogue (every active campus / every
   // canonical mode) so admins can still filter by values that don't yet
   // appear on any application. Counts are merged in when present.
+  // Users whose role enforces campus scope (roles.enforce_campus_scope=1)
+  // are restricted to their assigned campuses — picking another one would
+  // just return an empty list, so we drop them from the dropdown.
   const campusOptions = useMemo(() => {
     const all = ((statsQ.data?.data as any)?.all_campuses ?? []) as { id: number; label: string }[]
     const counts = new Map<number, number>()
     for (const r of ((statsQ.data?.data as any)?.by_campus ?? []) as { id: number; cnt: number }[]) {
       counts.set(Number(r.id), Number(r.cnt) || 0)
     }
-    return all.map((c) => ({ id: Number(c.id), label: c.label, cnt: counts.get(Number(c.id)) ?? 0 }))
-  }, [statsQ.data])
+    let filtered = all
+    if (user?.enforce_campus_scope) {
+      const assignedIds = new Set((user.assigned_campuses ?? []).map((c) => Number(c.id)))
+      filtered = all.filter((c) => assignedIds.has(Number(c.id)))
+    }
+    return filtered.map((c) => ({ id: Number(c.id), label: c.label, cnt: counts.get(Number(c.id)) ?? 0 }))
+  }, [statsQ.data, user])
 
   const modeOptions = useMemo(() => {
     const all = ((statsQ.data?.data as any)?.all_modes ?? []) as { label: string }[]
@@ -324,19 +334,26 @@ export default function ApplicationsListPage() {
                   ))}
                 </select>
               </div>
-              <div className="relative">
-                <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-400 pointer-events-none" />
-                <select
-                  className="input pl-8 w-44"
-                  value={campusId === '' ? '' : String(campusId)}
-                  onChange={(e) => { setCampusId(e.target.value ? Number(e.target.value) : ''); setPage(1) }}
-                >
-                  <option value="">All campuses</option>
-                  {campusOptions.map((c) => (
-                    <option key={c.id} value={c.id}>{c.label} ({c.cnt})</option>
-                  ))}
-                </select>
-              </div>
+              {/* Hide the campus dropdown entirely for users whose role
+                  is locked to a single assigned campus — there's nothing
+                  for them to choose, the backend already filters. */}
+              {!(user?.enforce_campus_scope && campusOptions.length <= 1) && (
+                <div className="relative">
+                  <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-400 pointer-events-none" />
+                  <select
+                    className="input pl-8 w-44"
+                    value={campusId === '' ? '' : String(campusId)}
+                    onChange={(e) => { setCampusId(e.target.value ? Number(e.target.value) : ''); setPage(1) }}
+                  >
+                    <option value="">
+                      {user?.enforce_campus_scope ? 'My campuses' : 'All campuses'}
+                    </option>
+                    {campusOptions.map((c) => (
+                      <option key={c.id} value={c.id}>{c.label} ({c.cnt})</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="relative">
                 <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-400 pointer-events-none" />
                 <select
