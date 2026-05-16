@@ -102,6 +102,7 @@ $router->group('/api/admin', function ($router) {
         $router->get('/statistics',           [ApplicationAdminController::class, 'statistics']);
         $router->get('/:id',          [ApplicationAdminController::class, 'show']);
         $router->get('/:id/payment-slip', [ApplicationAdminController::class, 'downloadPaymentSlip']);
+        $router->get('/:id/photo',        [ApplicationAdminController::class, 'downloadApplicantPhoto']);
         $router->patch('/:id/status', [ApplicationAdminController::class, 'updateStatus']);
         $router->post('/:id/notes',   [ApplicationAdminController::class, 'addNote']);
         // Shared, visible "why pending" notes — readable by every registry

@@ -387,22 +387,31 @@ export default function ApplicationDetailPage() {
       <div className="card p-6">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-2xl bg-brand/10 flex items-center justify-center text-brand shrink-0">
-              <FileText className="w-8 h-8" />
-            </div>
+            <ApplicantAvatarLg
+              photoUrl={applicationAdminService.photoUrl(
+                appId,
+                (app as any).applicant_photo_id ?? null,
+              )}
+              initials={`${(app.first_name ?? '').charAt(0)}${(app.last_name ?? '').charAt(0)}`.toUpperCase() || '?'}
+            />
             <div>
-              <p className="text-[11px] uppercase tracking-widest font-bold text-ink-400">
+              <h2 className="text-[20px] font-bold text-ink-900 dark:text-white leading-tight">
+                {`${app.first_name ?? ''} ${app.last_name ?? ''}`.trim() || 'Unnamed applicant'}
+              </h2>
+              <p className="text-[12px] text-ink-500 mt-0.5 truncate">
+                {app.email ?? '—'}{app.phone ? ` · ${app.phone}` : ''}
+              </p>
+              <p className="text-[11px] uppercase tracking-widest font-bold text-ink-400 mt-2">
                 Application Reference
               </p>
-              <h2 className="text-[24px] font-mono font-black text-brand leading-tight">
+              <p className="text-[14px] font-mono font-bold text-brand leading-tight">
                 {app.application_number}
-              </h2>
-              <div className="flex items-center gap-2 mt-1 flex-wrap">
+              </p>
+              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                 <StatusPill status={status} />
                 {app.submitted_at && (
-                  <span className="text-[13px] text-ink-500 font-medium">
-                    Submitted on{" "}
-                    {new Date(app.submitted_at).toLocaleDateString()}
+                  <span className="text-[12px] text-ink-500 font-medium">
+                    Submitted {new Date(app.submitted_at).toLocaleDateString()}
                   </span>
                 )}
               </div>
@@ -1386,39 +1395,56 @@ export default function ApplicationDetailPage() {
 
         {/* RIGHT: Status History + Internal Notes + Financing */}
         <div className="space-y-6">
-          {/* Status History */}
-          <section className="card p-6">
-            <SectionHeader title="Status History" sub="Progress tracking." />
-            <div className="mt-6 space-y-4">
-              {statusLog.length > 0 ? (
-                <div className="relative pl-4 space-y-6 before:absolute before:left-0 before:top-2 before:bottom-2 before:w-0.5 before:bg-ink-100 dark:before:bg-ink-800">
-                  {statusLog.map((l: any, idx: number) => (
-                    <div key={idx} className="relative">
-                      <div className="absolute -left-[19px] top-1.5 w-2.5 h-2.5 rounded-full bg-brand ring-4 ring-white dark:ring-ink-900" />
-                      <p className="text-[12.5px] font-bold text-ink-900 dark:text-white capitalize">
-                        {l.to_status.replace(/_/g, " ")}
-                        <span className="text-[11px] font-medium text-ink-400 ml-2">
-                          {l.actor_type}
-                        </span>
-                      </p>
-                      <p className="text-[11px] text-ink-400 mt-0.5">
-                        {new Date(l.created_at).toLocaleString()}
-                      </p>
-                      {l.notes && (
-                        <p className="text-[12px] text-ink-500 mt-1 italic">
-                          "{l.notes}"
-                        </p>
-                      )}
-                    </div>
-                  ))}
+          {/* Status History — skip the noisy `draft → draft` save events;
+              they're internal autosave traffic, not state transitions
+              registry users care about. */}
+          {(() => {
+            const meaningful = (statusLog as any[]).filter(
+              (l) => l.to_status && l.to_status !== 'draft'
+            )
+            return (
+              <section className="card p-6">
+                <SectionHeader title="Status History" sub="Decision timeline." />
+                <div className="mt-6">
+                  {meaningful.length > 0 ? (
+                    <ol className="relative pl-5 space-y-5 before:absolute before:left-[6px] before:top-1 before:bottom-1 before:w-px before:bg-ink-100 dark:before:bg-ink-800">
+                      {meaningful.map((l: any, idx: number) => {
+                        const isCurrent = idx === meaningful.length - 1
+                        return (
+                          <li key={idx} className="relative">
+                            <span
+                              className={
+                                'absolute -left-[22px] top-1 w-3 h-3 rounded-full ring-4 ring-white dark:ring-ink-900 ' +
+                                (isCurrent ? 'bg-brand' : 'bg-ink-300 dark:bg-ink-600')
+                              }
+                            />
+                            <p className="text-[12.5px] font-semibold text-ink-900 dark:text-white capitalize">
+                              {l.to_status.replace(/_/g, ' ')}
+                              <span className="ml-2 text-[10.5px] font-normal text-ink-400 uppercase tracking-wider">
+                                {l.actor_type}
+                              </span>
+                            </p>
+                            <p className="text-[11px] text-ink-400 mt-0.5">
+                              {new Date(l.created_at).toLocaleString()}
+                            </p>
+                            {l.notes && (
+                              <p className="text-[12px] text-ink-600 dark:text-ink-300 mt-1 italic leading-snug">
+                                "{l.notes}"
+                              </p>
+                            )}
+                          </li>
+                        )
+                      })}
+                    </ol>
+                  ) : (
+                    <p className="text-[12px] text-ink-400 text-center py-4 italic">
+                      Application hasn't transitioned past submission yet.
+                    </p>
+                  )}
                 </div>
-              ) : (
-                <p className="text-[12px] text-ink-400 text-center py-4">
-                  No history available.
-                </p>
-              )}
-            </div>
-          </section>
+              </section>
+            )
+          })()}
 
           {/* Financing */}
           <section className="card p-6">
@@ -1664,5 +1690,34 @@ function DocStatusPill({ status }: { status: string }) {
     >
       {cfg.label}
     </span>
+  );
+}
+
+/** Large applicant avatar shown in the detail page header. Falls back to
+ *  initials when no photo is set or when the image fails to load. */
+function ApplicantAvatarLg({
+  photoUrl, initials,
+}: { photoUrl: string | null; initials: string }) {
+  return (
+    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary-500/15 to-primary-500/5 dark:from-primary-500/30 dark:to-primary-500/10 flex items-center justify-center text-primary-700 dark:text-primary-200 font-black text-[20px] shrink-0 overflow-hidden ring-1 ring-primary-200/60 dark:ring-primary-900/40">
+      {photoUrl ? (
+        <>
+          <img
+            src={photoUrl}
+            alt=""
+            className="w-full h-full object-cover"
+            onError={(e) => {
+              const img = e.currentTarget as HTMLImageElement;
+              img.style.display = 'none';
+              const span = img.nextElementSibling as HTMLElement | null;
+              if (span) span.style.removeProperty('display');
+            }}
+          />
+          <span style={{ display: 'none' }}>{initials}</span>
+        </>
+      ) : (
+        <span>{initials}</span>
+      )}
+    </div>
   );
 }

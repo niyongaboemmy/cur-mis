@@ -444,15 +444,11 @@ export default function ApplicationsListPage() {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>App #</th>
                   <th>Applicant</th>
-                  <th>Program</th>
-                  <th>Campus</th>
-                  <th>Mode</th>
-                  <th>Intake</th>
+                  <th>Program &amp; placement</th>
                   <th>Status</th>
                   <th>Submitted</th>
-                  <th>Pending Notes</th>
+                  <th>Pending notes</th>
                   <th className="text-right">Actions</th>
                 </tr>
               </thead>
@@ -463,23 +459,41 @@ export default function ApplicationsListPage() {
                     | { note: string; created_by_name: string | null; created_at: string }
                     | null
                   const applicantLabel = `${a.first_name ?? ''} ${a.last_name ?? ''}`.trim() || a.application_number
+                  const photoUrl = applicationAdminService.photoUrl(
+                    a.id,
+                    (a as any).applicant_photo_id ?? null,
+                  )
+                  const initials = `${(a.first_name ?? '').charAt(0)}${(a.last_name ?? '').charAt(0)}`.toUpperCase() || '?'
                   return (
                     <tr
                       key={a.id}
                       onClick={() => navigate(`/admin/admissions/applications/${a.id}`)}
                       className="cursor-pointer hover:bg-ink-50/60 dark:hover:bg-ink-800/40 transition-colors"
                     >
-                      <td className="font-mono text-[12px]">{a.application_number}</td>
                       <td>
-                        <p className="font-medium text-ink-900 dark:text-ink-100">{a.first_name} {a.last_name}</p>
-                        <p className="text-[11.5px] text-ink-500">{a.email}</p>
+                        <div className="flex items-center gap-2.5 min-w-[220px]">
+                          <ApplicantAvatar photoUrl={photoUrl} initials={initials} />
+                          <div className="min-w-0">
+                            <p className="font-semibold text-ink-900 dark:text-ink-100 truncate text-[13px]">
+                              {a.first_name} {a.last_name}
+                            </p>
+                            <p className="text-[11px] text-ink-500 truncate">{a.email}</p>
+                            <p className="text-[10.5px] text-ink-400 font-mono mt-0.5">{a.application_number}</p>
+                          </div>
+                        </div>
                       </td>
-                      <td>{(a as any).program_name ?? a.department_name ?? `#${a.department_id}`}</td>
-                      <td>{(a as any).campus_name ?? '—'}</td>
-                      <td>{(a as any).mode_of_study ?? '—'}</td>
-                      <td>{a.intake}</td>
+                      <td className="min-w-[220px]">
+                        <p className="text-[12.5px] font-medium text-ink-900 dark:text-ink-100 truncate">
+                          {(a as any).program_name ?? a.department_name ?? `#${a.department_id}`}
+                        </p>
+                        <p className="text-[11px] text-ink-500 truncate">
+                          {(a as any).campus_name ?? '—'}
+                          {(a as any).mode_of_study ? ` · ${(a as any).mode_of_study}` : ''}
+                          {a.intake ? ` · ${a.intake}` : ''}
+                        </p>
+                      </td>
                       <td><span className={STATUS_TONE[a.status] ?? 'chip-soft'}>{STATUS_LABEL[a.status] ?? a.status}</span></td>
-                      <td>{fmt(a.submitted_at ?? a.created_at)}</td>
+                      <td className="text-[12px] text-ink-600 whitespace-nowrap">{fmt(a.submitted_at ?? a.created_at)}</td>
                       <td onClick={(e) => e.stopPropagation()} className="max-w-[260px]">
                         <button
                           type="button"
@@ -874,6 +888,35 @@ function Pager({ page, last, onPage }: { page: number; last: number; onPage: (p:
           Next <ArrowRight className="w-3 h-3" />
         </button>
       </div>
+    </div>
+  )
+}
+
+/** Avatar circle. Falls back to gradient initials when no photo is present
+ *  and to initials again if the photo fails to load. */
+function ApplicantAvatar({
+  photoUrl, initials,
+}: { photoUrl: string | null; initials: string }) {
+  return (
+    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-500/15 to-primary-500/5 dark:from-primary-500/30 dark:to-primary-500/10 flex items-center justify-center text-primary-700 dark:text-primary-200 font-bold text-[12px] shrink-0 overflow-hidden ring-1 ring-primary-200/60 dark:ring-primary-900/40">
+      {photoUrl ? (
+        <>
+          <img
+            src={photoUrl}
+            alt=""
+            className="w-full h-full object-cover"
+            onError={(e) => {
+              const img = e.currentTarget as HTMLImageElement
+              img.style.display = 'none'
+              const span = img.nextElementSibling as HTMLElement | null
+              if (span) span.style.removeProperty('display')
+            }}
+          />
+          <span style={{ display: 'none' }}>{initials}</span>
+        </>
+      ) : (
+        <span>{initials}</span>
+      )}
     </div>
   )
 }

@@ -211,6 +211,17 @@ export const applicationAdminService = {
     return `${base}/api/admin/applications/${id}/payment-slip?token=${token}`;
   },
 
+  /** Inline-streamable URL for the applicant's profile photo. Pass the
+   *  photo id from the row as a cache key so a re-upload busts the
+   *  browser cache. */
+  photoUrl: (id: number, photoCacheKey?: string | null) => {
+    if (!photoCacheKey) return null;
+    const token = useAuthStore.getState().token;
+    const base  = import.meta.env.VITE_API_URL ?? "";
+    const v     = `&v=${encodeURIComponent(String(photoCacheKey))}`;
+    return `${base}/api/admin/applications/${id}/photo?token=${token}${v}`;
+  },
+
   exportUrl: (queryString: string) => {
     const token = useAuthStore.getState().token;
     const base = import.meta.env.VITE_API_URL ?? "";

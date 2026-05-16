@@ -997,6 +997,40 @@ HTML;
     }
 
     /**
+     * GET /api/admin/applications/:id/photo
+     * Stream the applicant's profile photo (uploaded via the apply wizard's
+     * step 1). 404 when none has been uploaded so the UI falls back to its
+     * default avatar.
+     */
+    public function downloadApplicantPhoto(Request $request, Response $response): never
+    {
+        $id  = (int)$request->param('id');
+        $row = $this->appModel->db()->fetchOne(
+            "SELECT ap.profile_photo_id
+             FROM `student_applications` sa
+             LEFT JOIN `applicant_profiles` ap ON ap.application_id = sa.id
+             WHERE sa.id = ? LIMIT 1",
+            [$id]
+        );
+        if (!$row || empty($row['profile_photo_id'])) {
+            $this->error($response, 'No applicant photo.', 404);
+        }
+        try {
+            $client = new \App\Helpers\FileServerClient();
+            $file   = $client->download((string)$row['profile_photo_id']);
+        } catch (\RuntimeException $e) {
+            $this->error($response, $e->getMessage(), 502);
+        }
+        header('Content-Type: ' . ($file['mime'] ?? 'image/jpeg'));
+        header('Content-Disposition: inline; filename="' . addslashes($file['original_name'] ?? 'photo') . '"');
+        header('Content-Length: ' . strlen($file['content']));
+        header('Cache-Control: private, max-age=300');
+        header('X-Content-Type-Options: nosniff');
+        echo $file['content'];
+        exit;
+    }
+
+    /**
      * GET /api/admin/applications/:id/payment-slip
      *
      * Streams the payment slip uploaded against the given application
