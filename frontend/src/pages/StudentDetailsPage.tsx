@@ -69,9 +69,17 @@ import {
   Lock,
   EyeOff,
   Network,
+  AlertCircle,
+  UploadCloud,
 } from "lucide-react";
 import ModalPortal from "@/components/ui/ModalPortal";
 import UserAccountPanel from "@/components/account/UserAccountPanel";
+import CountrySelect from "@/components/ui/CountrySelect";
+import {
+  COUNTRY_BY_NAME,
+  COUNTRY_BY_NATIONALITY,
+  countryFlag,
+} from "@/data/countries";
 
 type Tab =
   | "overview"
@@ -293,7 +301,7 @@ export default function StudentDetailsPage({
         {tab === "overview" && (
           <OverviewTab student={student} stats={stats} selfMode={selfMode} />
         )}
-        {tab === "attendance" && <AttendanceTab student={student} />}
+        {tab === "attendance" && <AttendanceTab student={student} selfMode={selfMode} />}
         {tab === "documents" && (
           <DocumentsTab student={student} selfMode={selfMode} />
         )}
@@ -353,12 +361,16 @@ function OverviewTab({
     stats?.facets?.current_level?.find(
       (f: any) => String(f.value) === String(student.current_level),
     )?.label ?? student.current_level;
+  // The programme is the catalogue option the student is assigned to. The
+  // legacy `student.program` column actually stores the learning mode
+  // (Day/Evening/Weekend), so we deliberately do NOT fall back to it here —
+  // we'd mislabel "Day" as the programme name.
   const programName =
     stats?.facets?.options?.find(
       (o: any) => String(o.value) === String(student.std_option),
     )?.label ??
     app?.program_name ??
-    student.program;
+    null;
 
   const fullName =
     `${student.fname ?? ""} ${student.lname ?? ""}`.trim() || "—";
@@ -389,7 +401,10 @@ function OverviewTab({
 
   const academicYear = pick(student.acc_year, app?.academic_year_label);
   const campus = pick(app?.campus_name);
-  const studyMode = cap(pick(app?.mode_of_study));
+  // Learning mode (Day / Evening / Weekend). Lives on the application as
+  // `mode_of_study` and on the legacy `student.program` column — we check
+  // both so the chip appears for students without a linked application.
+  const studyMode = cap(pick(app?.mode_of_study, student.program));
 
   return (
     <div className="space-y-6">
@@ -455,6 +470,18 @@ function OverviewTab({
           </div>
         </div>
       </section>
+
+      {/* International students — visa info banner + editable section.
+          Rendered as the first block under the hero so the call-to-action
+          is impossible to miss; the banner stays visible until both visa
+          dates AND the document have been recorded. */}
+      {isStudentInternational(student, app) && (
+        <VisaSection
+          studentId={student.id}
+          selfMode={selfMode}
+          studentNationality={pick(student.nationality, app?.nationality) ?? ""}
+        />
+      )}
 
       {/* Two-column responsive layout */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -536,6 +563,352 @@ function OverviewTab({
 
       {selfMode && <ChangePasswordSection />}
     </div>
+  );
+}
+
+/**
+ * Renders a country / nationality string prefixed with its flag emoji.
+ * Falls back to the raw string (or "—") when the value can't be matched.
+ */
+function withFlag(
+  value: string | null | undefined,
+  mode: "country" | "nationality",
+): React.ReactNode {
+  if (!value) return null;
+  const lookup =
+    mode === "nationality" ? COUNTRY_BY_NATIONALITY : COUNTRY_BY_NAME;
+  const country = lookup[value.toLowerCase()];
+  if (!country) return value;
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span aria-hidden className="text-[16px] leading-none">
+        {countryFlag(country.code)}
+      </span>
+      <span>{value}</span>
+    </span>
+  );
+}
+
+/**
+ * Treat the student as international when the explicit flag is set OR the
+ * nationality (on the student row OR on the linked application) isn't one
+ * of the Rwandan demonym spellings.
+ */
+function isStudentInternational(student: any, app?: any): boolean {
+  if (student?.is_international) return true;
+  const n = String(student?.nationality ?? app?.nationality ?? "")
+    .trim()
+    .toLowerCase();
+  if (!n) return false;
+  return !["rwanda", "rwandan", "rwandese", "rwandaise"].includes(n);
+}
+
+/**
+ * VisaSection — overview-tab block for international students.
+ * Always visible (in selfMode and to admins) so the requirement is
+ * impossible to miss. Surfaces current visa info, a missing/expired
+ * banner, and an inline edit form for the two dates + country of origin.
+ */
+function VisaSection({
+  studentId,
+  selfMode,
+  studentNationality,
+}: {
+  studentId: number;
+  selfMode: boolean;
+  studentNationality: string;
+}) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+
+  const visaQ = useQuery<any>({
+    queryKey: selfMode ? ["student-visa", "me"] : ["student-visa", studentId],
+    queryFn: () =>
+      selfMode
+        ? (studentService.meVisa() as Promise<any>)
+        : (studentService.listVisaRecords(studentId) as Promise<any>),
+  });
+
+  // `meVisa` returns `{ is_international, needs_visa, is_expired, current, records }`;
+  // `listVisaRecords` (admin) returns `{ records, current }`. Normalize both.
+  const raw: any = (visaQ.data as any)?.data ?? {};
+  const current = raw.current ?? null;
+  const needsVisa =
+    typeof raw.needs_visa === "boolean"
+      ? raw.needs_visa
+      : !current ||
+        !current.visa_issue_date ||
+        !current.visa_expiry_date ||
+        !current.visa_document_file_id;
+
+  // Days until expiry — used to surface the "expires this week" banner.
+  const daysToExpiry = (() => {
+    if (!current?.visa_expiry_date) return null;
+    const expiry = new Date(current.visa_expiry_date + "T00:00:00");
+    const today  = new Date(new Date().toDateString());
+    return Math.ceil((expiry.getTime() - today.getTime()) / 86400000);
+  })();
+  const isExpired       = daysToExpiry != null && daysToExpiry < 0;
+  const expiringThisWeek = daysToExpiry != null && daysToExpiry >= 0 && daysToExpiry <= 7;
+
+  // Derive country-of-origin from the student's nationality so the field
+  // is auto-filled and non-editable. Falls back to the value already on
+  // the visa record if no nationality is set on the student.
+  const derivedCountry =
+    COUNTRY_BY_NATIONALITY[(studentNationality ?? "").toLowerCase()] ??
+    COUNTRY_BY_NAME[(studentNationality ?? "").toLowerCase()] ??
+    null;
+  const lockedCountryName =
+    derivedCountry?.name ??
+    current?.country_of_origin ??
+    studentNationality ??
+    "";
+
+  const initialForm = () => ({
+    country_of_origin: lockedCountryName,
+    visa_issue_date:   current?.visa_issue_date   ?? "",
+    visa_expiry_date:  current?.visa_expiry_date  ?? "",
+    visa_type:         current?.visa_type         ?? "",
+  });
+  const [form, setForm] = useState(initialForm);
+  useEffect(() => {
+    setForm(initialForm()); /* eslint-disable-next-line */
+  }, [current?.id, lockedCountryName]);
+
+  const saveMutation = useMutation({
+    mutationFn: (payload: typeof form) => studentService.meAddVisa(payload),
+    onSuccess: () => {
+      toast.success("Visa information saved.");
+      setEditing(false);
+      qc.invalidateQueries({ queryKey: ["student-visa"] });
+      qc.invalidateQueries({ queryKey: ["student-documents"] });
+    },
+    onError: (e: any) =>
+      toast.error(e?.response?.data?.message ?? "Failed to save visa info."),
+  });
+
+  const handleSave = () => {
+    if (!form.country_of_origin.trim()) {
+      toast.error("Please pick your country of origin.");
+      return;
+    }
+    if (!form.visa_issue_date || !form.visa_expiry_date) {
+      toast.error("Both visa obtained date and expiration date are required.");
+      return;
+    }
+    if (form.visa_expiry_date <= form.visa_issue_date) {
+      toast.error("Visa expiration date must be after the obtained date.");
+      return;
+    }
+    saveMutation.mutate(form);
+  };
+
+  if (visaQ.isLoading) {
+    return (
+      <section className="card p-6 flex items-center gap-3 text-ink-400">
+        <Loader2 className="w-4 h-4 animate-spin" /> Loading visa status…
+      </section>
+    );
+  }
+
+  // The section's tone escalates: needs > expired > expiring this week >
+  // healthy. We pick the worst-case state for the styling/badge.
+  const alertTone =
+    needsVisa || isExpired
+      ? "amber"
+      : expiringThisWeek
+        ? "rose"
+        : "ok";
+  const wrapperToneClass =
+    alertTone === "amber"
+      ? "bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-900/50"
+      : alertTone === "rose"
+        ? "bg-rose-50 dark:bg-rose-900/10 border-rose-200 dark:border-rose-900/50"
+        : "bg-white dark:bg-ink-900 border-ink-200 dark:border-ink-800";
+  const iconBubbleClass =
+    alertTone === "amber"
+      ? "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300"
+      : alertTone === "rose"
+        ? "bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300"
+        : "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300";
+
+  return (
+    <section className={`rounded-2xl border p-6 ${wrapperToneClass}`}>
+      <div className="flex items-start gap-4">
+        <div
+          className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${iconBubbleClass}`}
+        >
+          {alertTone === "ok" ? (
+            <ShieldCheck className="w-5 h-5" />
+          ) : (
+            <AlertCircle className="w-5 h-5" />
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="text-[15px] font-black text-ink-900 dark:text-white">
+              Visa Information
+            </h3>
+            {needsVisa && (
+              <span className="px-2 py-0.5 rounded-full bg-amber-600 text-white text-[10px] font-bold uppercase tracking-wider">
+                Required
+              </span>
+            )}
+            {isExpired && (
+              <span className="px-2 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-bold uppercase tracking-wider">
+                Expired
+              </span>
+            )}
+            {expiringThisWeek && !isExpired && (
+              <span className="px-2 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-bold uppercase tracking-wider inline-flex items-center gap-1">
+                <CalendarClock className="w-3 h-3" />
+                Expires in {daysToExpiry}d
+              </span>
+            )}
+          </div>
+          <p className="text-[12.5px] text-ink-600 dark:text-ink-300 mt-1 leading-relaxed">
+            {needsVisa
+              ? "As an international student you must record your visa obtained date, visa expiration date, and upload the visa document."
+              : isExpired
+                ? "Your visa has expired. Please renew it and update the dates below, then upload the new visa document."
+                : expiringThisWeek
+                  ? `Heads up — your visa expires in ${daysToExpiry} day${daysToExpiry === 1 ? "" : "s"}. Renew it before the expiration date and update the information here.`
+                  : "Your visa information is on file. Keep it up to date — re-enter the dates after every renewal."}
+          </p>
+        </div>
+        {!editing && (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className={`btn-sm shrink-0 flex items-center gap-1.5 ${
+              needsVisa || isExpired ? "btn-primary" : "btn-secondary"
+            }`}
+          >
+            <Edit className="w-3.5 h-3.5" />
+            {current ? "Update" : "Add Visa Info"}
+          </button>
+        )}
+      </div>
+
+      {/* Read-only view */}
+      {!editing && current && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4 mt-5">
+          <InfoGroup
+            label="Country of Origin"
+            value={withFlag(current.country_of_origin, "country") ?? withFlag(current.country_of_origin, "nationality")}
+            icon={Globe2}
+          />
+          <InfoGroup
+            label="Visa Obtained"
+            value={current.visa_issue_date}
+            icon={CalendarDays}
+          />
+          <InfoGroup
+            label="Visa Expires"
+            value={current.visa_expiry_date}
+            icon={CalendarDays}
+          />
+          <InfoGroup
+            label="Visa Type"
+            value={current.visa_type || "—"}
+            icon={CreditCard}
+          />
+        </div>
+      )}
+
+      {/* Edit form */}
+      {editing && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5 mt-5">
+          <FieldGroup label="Country of Origin" icon={Globe2}>
+            {/* Auto-selected from the student's nationality; not editable. */}
+            <div
+              className="input w-full flex items-center gap-2 bg-ink-50 dark:bg-ink-800 cursor-not-allowed select-none"
+              aria-readonly="true"
+              title="Derived from your nationality. Contact registry to change it."
+            >
+              {derivedCountry ? (
+                <>
+                  <span aria-hidden className="text-[18px] leading-none">
+                    {countryFlag(derivedCountry.code)}
+                  </span>
+                  <span className="flex-1 truncate">{derivedCountry.name}</span>
+                </>
+              ) : (
+                <>
+                  <Globe2 className="w-4 h-4 text-ink-400" />
+                  <span className="flex-1 truncate">
+                    {lockedCountryName || "—"}
+                  </span>
+                </>
+              )}
+              <span className="text-[10px] font-bold uppercase tracking-wider text-ink-400">
+                Auto
+              </span>
+            </div>
+          </FieldGroup>
+          <FieldGroup label="Visa Type (optional)" icon={CreditCard}>
+            <TextInput
+              value={form.visa_type}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, visa_type: e.target.value }))
+              }
+              placeholder="e.g. Student"
+            />
+          </FieldGroup>
+          <FieldGroup label="Visa Obtained Date *" icon={CalendarDays}>
+            <TextInput
+              type="date"
+              value={form.visa_issue_date}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, visa_issue_date: e.target.value }))
+              }
+            />
+          </FieldGroup>
+          <FieldGroup label="Visa Expiration Date *" icon={CalendarDays}>
+            <TextInput
+              type="date"
+              value={form.visa_expiry_date}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, visa_expiry_date: e.target.value }))
+              }
+            />
+          </FieldGroup>
+          <div className="sm:col-span-2 flex items-center justify-end gap-2 pt-2">
+            <button
+              type="button"
+              className="btn-secondary btn-sm"
+              onClick={() => {
+                setForm(initialForm());
+                setEditing(false);
+              }}
+              disabled={saveMutation.isPending}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn-primary btn-sm flex items-center gap-1.5"
+              onClick={handleSave}
+              disabled={saveMutation.isPending}
+            >
+              {saveMutation.isPending && (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              )}
+              Save
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Document hint — points to the Documents tab where the file lives */}
+      {(needsVisa || !current?.visa_document_file_id) && (
+        <p className="mt-5 text-[12px] text-amber-800 dark:text-amber-300 inline-flex items-center gap-2">
+          <UploadCloud className="w-3.5 h-3.5" />
+          Visit the <strong>Documents</strong> tab to upload your visa document
+          (PDF, JPG or PNG).
+        </p>
+      )}
+    </section>
   );
 }
 
@@ -746,9 +1119,11 @@ function PersonalDetailsSection({
               <TextInput value={form.id_card} onChange={set("id_card")} />
             </FieldGroup>
             <FieldGroup label="Nationality" icon={Globe2}>
-              <TextInput
+              <CountrySelect
+                mode="nationality"
                 value={form.nationality}
-                onChange={set("nationality")}
+                onChange={(v) => setForm((f) => ({ ...f, nationality: v }))}
+                placeholder="Select nationality"
               />
             </FieldGroup>
             <FieldGroup label="Father's Name" icon={UsersIcon}>
@@ -758,7 +1133,12 @@ function PersonalDetailsSection({
               <TextInput value={form.mother} onChange={set("mother")} />
             </FieldGroup>
             <FieldGroup label="Country of Residence" icon={MapPin}>
-              <TextInput value={form.country} onChange={set("country")} />
+              <CountrySelect
+                mode="country"
+                value={form.country}
+                onChange={(v) => setForm((f) => ({ ...f, country: v }))}
+                placeholder="Select country"
+              />
             </FieldGroup>
             <FieldGroup label="Disability" icon={Accessibility}>
               <TextInput
@@ -777,7 +1157,7 @@ function PersonalDetailsSection({
             />
             <InfoGroup
               label="Nationality"
-              value={pick(student.nationality, app?.nationality)}
+              value={withFlag(pick(student.nationality, app?.nationality), "nationality")}
               icon={Globe2}
             />
             <InfoGroup
@@ -792,7 +1172,7 @@ function PersonalDetailsSection({
             />
             <InfoGroup
               label="Country of Residence"
-              value={pick(student.country, app?.country_of_residence)}
+              value={withFlag(pick(student.country, app?.country_of_residence), "country")}
               icon={MapPin}
             />
             <InfoGroup
@@ -1144,11 +1524,12 @@ function ProgrammeSection({
   const facultyFacets = (stats?.facets?.faculty ?? []) as FacetLite[];
   const departmentFacets = (stats?.facets?.department ?? []) as FacetLite[];
 
+  // Same rule as the hero card: never fall back to `student.program` —
+  // that column stores the learning mode, not the programme name.
   const programName =
     optionFacets.find((o) => String(o.value) === String(student.std_option))
       ?.label ??
     app?.program_name ??
-    student.program ??
     null;
   const facultyName =
     facultyFacets.find((f) => String(f.value) === String(student.faculty))
@@ -1358,7 +1739,7 @@ function ProgrammeSection({
             />
             <InfoGroup
               label="Mode of Study"
-              value={cap(pick(app?.mode_of_study))}
+              value={cap(pick(app?.mode_of_study, student.program))}
             />
             <InfoGroup
               label="Intake"
@@ -1827,9 +2208,14 @@ function InfoGroup({
   icon: Icon,
 }: {
   label: string;
-  value?: string | null;
+  value?: React.ReactNode;
   icon?: any;
 }) {
+  // String values can be used as a tooltip; non-string ReactNode (e.g. a
+  // flag-wrapped span) is rendered as-is without a title attribute.
+  const titleAttr = typeof value === "string" ? value : "";
+  const isEmpty =
+    value === null || value === undefined || value === "" || value === false;
   return (
     <div className="min-w-0">
       <p className="text-[11px] uppercase tracking-wider text-ink-400 font-bold mb-1">
@@ -1839,9 +2225,9 @@ function InfoGroup({
         {Icon && <Icon className="w-3.5 h-3.5 text-ink-300 shrink-0" />}
         <p
           className="text-[14px] text-ink-900 dark:text-white font-medium truncate"
-          title={value || ""}
+          title={titleAttr}
         >
-          {value || "—"}
+          {isEmpty ? "—" : value}
         </p>
       </div>
     </div>
@@ -3164,19 +3550,26 @@ function SummaryCard({
   );
 }
 
-function AttendanceTab({ student }: { student: any }) {
+function AttendanceTab({ student, selfMode = false }: { student: any; selfMode?: boolean }) {
   // Use the numeric student id — regnumbers like "STD/2026/22699" contain
   // slashes that would break the regnumber-segmented route. The backend
   // resolves the id back to a regnumber server-side.
   const studentId = student?.id as number | string | undefined;
 
   const summaryQ = useQuery({
-    queryKey: ["student-attendance", studentId],
-    queryFn: () => attendanceService.studentSummaryById(studentId as number),
-    enabled: !!studentId,
+    // selfMode hits /api/attendance/me/summary (no permission required); the
+    // by-id variant requires VIEW_ATTENDANCE and is used by staff.
+    queryKey: selfMode
+      ? ["student-attendance", "me"]
+      : ["student-attendance", studentId],
+    queryFn: () =>
+      selfMode
+        ? attendanceService.meSummary()
+        : attendanceService.studentSummaryById(studentId as number),
+    enabled: selfMode || !!studentId,
   });
 
-  if (!studentId) {
+  if (!selfMode && !studentId) {
     return (
       <PlaceholderTab
         icon={Clock}
@@ -3626,17 +4019,49 @@ function DocumentRow({
   studentId: number;
   selfMode?: boolean;
 }) {
+  const qc = useQueryClient();
   const status = String(doc.verification_status || "pending").toLowerCase();
   const typeName = doc.type_name || doc.document_type_name || "Document";
   const fileName = doc.file_original_name || "—";
+  // Synthetic Visa row — backend mints id = "visa". The visa file lives
+  // outside application_documents so it has its own dedicated endpoint.
+  const isVisaRow = !!doc.is_visa;
   const hasFile = !!doc.file_server_id;
+  // Visa rows show an inline preview by default once a file is on record so
+  // the student can confirm the right document was uploaded without leaving
+  // the page. Toggle lets them collapse it if it gets in the way.
+  const [showPreview, setShowPreview] = useState(isVisaRow && hasFile);
+  useEffect(() => {
+    if (isVisaRow && hasFile) setShowPreview(true);
+  }, [isVisaRow, hasFile, doc.file_server_id]);
   // Self-service download bypasses the VIEW_STUDENTS-gated /:id endpoint
-  // and resolves the application from the auth user instead.
-  const url = hasFile
-    ? selfMode
-      ? studentService.meDocumentDownloadUrl(doc.id)
-      : studentService.documentDownloadUrl(studentId, doc.id)
-    : null;
+  // and resolves the application from the auth user instead. Visa rows
+  // use their own /me/visa/document endpoint (clean URL, no synthetic id
+  // in the path).
+  const url = !hasFile
+    ? null
+    : isVisaRow
+      ? selfMode
+        ? studentService.meVisaDocumentUrl()
+        : studentService.visaDocumentUrl(studentId)
+      : selfMode
+        ? studentService.meDocumentDownloadUrl(doc.id)
+        : studentService.documentDownloadUrl(studentId, doc.id);
+
+  // Upload control for the visa row — only the student themselves can
+  // upload (selfMode); admins viewing the page see no upload button.
+  const visaFileRef = useRef<HTMLInputElement | null>(null);
+  const visaUpload = useMutation({
+    mutationFn: (file: File) => studentService.meUploadVisaDocument(file),
+    onSuccess: () => {
+      toast.success("Visa document uploaded.");
+      qc.invalidateQueries({ queryKey: ["student-documents", "me"] });
+      qc.invalidateQueries({ queryKey: ["student-visa", "me"] });
+    },
+    onError: (e: any) =>
+      toast.error(e?.response?.data?.message ?? "Upload failed."),
+  });
+  const canUploadVisa = isVisaRow && selfMode;
 
   const sizeKb = doc.file_size
     ? Math.max(1, Math.round(Number(doc.file_size) / 1024))
@@ -3647,6 +4072,8 @@ function DocumentRow({
       : `${sizeKb} KB`
     : null;
 
+  // For the visa row, the "required" state should read as a friendly
+  // call-to-action rather than a hard error tone, so swap the palette.
   const statusTone =
     status === "verified"
       ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
@@ -3661,56 +4088,161 @@ function DocumentRow({
         ? ShieldX
         : ShieldAlert;
 
+  // Visa rows get a distinct globe icon + tint so they're easy to spot
+  // in the document list, and a softly tinted row background when the
+  // student still needs to upload the file.
+  const iconBubbleClass = isVisaRow
+    ? hasFile
+      ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
+      : "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300"
+    : "bg-brand/10 text-brand";
+  const RowIcon = isVisaRow ? Globe2 : FileText;
+  const rowToneClass =
+    isVisaRow && !hasFile
+      ? "bg-amber-50/40 dark:bg-amber-900/5"
+      : "hover:bg-ink-50/60 dark:hover:bg-ink-800/40";
+
+  const mime = String(doc.file_mime || "").toLowerCase();
+  const isImage = mime.startsWith("image/");
+  const isPdf = mime === "application/pdf";
+
   return (
-    <div className="flex items-center gap-4 p-4 hover:bg-ink-50/60 dark:hover:bg-ink-800/40 transition-colors">
-      <div className="w-10 h-10 rounded-lg bg-brand/10 text-brand flex items-center justify-center shrink-0">
-        <FileText className="w-5 h-5" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <h4 className="text-[13.5px] font-semibold text-ink-900 dark:text-white truncate">
-            {typeName}
-          </h4>
-          <span
-            className={`inline-flex items-center gap-1 text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${statusTone}`}
-          >
-            <StatusIcon className="w-3 h-3" />
-            {status}
-          </span>
+    <div className={`flex flex-col transition-colors ${rowToneClass}`}>
+      <div className="flex items-center gap-4 p-4">
+        <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${iconBubbleClass}`}>
+          <RowIcon className="w-5 h-5" />
         </div>
-        <p className="text-[12px] text-ink-500 truncate mt-0.5">
-          {fileName}
-          {sizeLabel && <span className="text-ink-400"> · {sizeLabel}</span>}
-          {doc.uploaded_at && (
-            <span className="text-ink-400">
-              {" "}
-              · Uploaded {new Date(doc.uploaded_at).toLocaleDateString()}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h4 className="text-[13.5px] font-semibold text-ink-900 dark:text-white truncate">
+              {typeName}
+            </h4>
+            <span
+              className={`inline-flex items-center gap-1 text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${statusTone}`}
+            >
+              <StatusIcon className="w-3 h-3" />
+              {status === "required" ? "Awaiting upload" : status}
             </span>
-          )}
-        </p>
-        {doc.verification_comment && (
-          <p className="text-[11.5px] text-rose-600 mt-1 italic">
-            "{doc.verification_comment}"
+            {isVisaRow && hasFile && (
+              <span className="inline-flex items-center gap-1 text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-600 text-white">
+                <CheckCircle className="w-3 h-3" />
+                Uploaded
+              </span>
+            )}
+          </div>
+          <p className="text-[12px] text-ink-500 truncate mt-0.5">
+            {hasFile ? fileName : "No file uploaded yet"}
+            {sizeLabel && <span className="text-ink-400"> · {sizeLabel}</span>}
+            {doc.uploaded_at && (
+              <span className="text-ink-400">
+                {" "}
+                · Uploaded {new Date(doc.uploaded_at).toLocaleDateString()}
+              </span>
+            )}
           </p>
-        )}
-      </div>
-      {url && (
+          {doc.verification_comment && (
+            <p className={`text-[11.5px] mt-1 italic ${isVisaRow && status === "required" ? "text-amber-700 dark:text-amber-300" : "text-rose-600"}`}>
+              {doc.verification_comment}
+            </p>
+          )}
+        </div>
         <div className="flex items-center gap-2 shrink-0">
-          <a
-            href={url}
-            target="_blank"
-            rel="noreferrer"
-            className="btn-secondary btn-sm flex items-center gap-1.5"
-          >
-            <Eye className="w-3.5 h-3.5" /> View
-          </a>
-          <a
-            href={url}
-            download={fileName}
-            className="btn-primary btn-sm flex items-center gap-1.5"
-          >
-            <Download className="w-3.5 h-3.5" /> Download
-          </a>
+          {isVisaRow && hasFile && url && (
+            <button
+              type="button"
+              onClick={() => setShowPreview((v) => !v)}
+              className="btn-secondary btn-sm flex items-center gap-1.5"
+            >
+              <Eye className="w-3.5 h-3.5" />
+              {showPreview ? "Hide" : "Preview"}
+            </button>
+          )}
+          {url && (
+            <>
+              {!isVisaRow && (
+                <a
+                  href={url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn-secondary btn-sm flex items-center gap-1.5"
+                >
+                  <Eye className="w-3.5 h-3.5" /> View
+                </a>
+              )}
+              <a
+                href={url}
+                download={fileName}
+                className="btn-primary btn-sm flex items-center gap-1.5"
+              >
+                <Download className="w-3.5 h-3.5" /> Download
+              </a>
+            </>
+          )}
+
+          {canUploadVisa && (
+            <>
+              <input
+                ref={visaFileRef}
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) visaUpload.mutate(file);
+                  if (visaFileRef.current) visaFileRef.current.value = "";
+                }}
+              />
+              <button
+                type="button"
+                className="btn-primary btn-sm flex items-center gap-1.5"
+                onClick={() => visaFileRef.current?.click()}
+                disabled={visaUpload.isPending}
+              >
+                {visaUpload.isPending ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <UploadCloud className="w-3.5 h-3.5" />
+                )}
+                {hasFile ? "Replace" : "Upload Visa"}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {isVisaRow && hasFile && url && showPreview && (
+        <div className="px-4 pb-4">
+          <div className="rounded-lg overflow-hidden border border-ink-200 dark:border-ink-700 bg-ink-50 dark:bg-ink-900/40">
+            {isImage ? (
+              <a href={url} target="_blank" rel="noreferrer" className="block">
+                <img
+                  src={url}
+                  alt={fileName}
+                  className="w-full max-h-[480px] object-contain bg-white dark:bg-ink-900"
+                />
+              </a>
+            ) : isPdf ? (
+              <iframe
+                src={url}
+                title={fileName}
+                className="w-full h-[520px] bg-white"
+              />
+            ) : (
+              <div className="p-6 text-center text-[13px] text-ink-500">
+                Inline preview not available for this file type.
+                <div className="mt-2">
+                  <a
+                    href={url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-brand font-semibold underline"
+                  >
+                    Open in a new tab
+                  </a>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

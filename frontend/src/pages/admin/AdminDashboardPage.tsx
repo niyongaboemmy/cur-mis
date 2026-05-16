@@ -14,6 +14,8 @@ import {
   Medal,
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
+import { useCampusFilterStore } from '@/store/campusFilterStore'
+import { useCategoryFilterStore } from '@/store/categoryFilterStore'
 import { api } from '@/services/api'
 import StatCard   from '@/components/dashboard/StatCard'
 import LineChart  from '@/components/dashboard/LineChart'
@@ -73,15 +75,23 @@ export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState<string | null>(null)
 
+  // Global scope from the topbar — refetch whenever either flips so the
+  // dashboard always mirrors the user's chosen campus + category bucket.
+  const campusId = useCampusFilterStore((s) => s.selectedCampusId)
+  const category = useCategoryFilterStore((s) => s.selectedCategory)
+
   useEffect(() => {
     const ctrl = new AbortController()
     setLoading(true)
-    api.get<DashboardData>('/api/admin/dashboard', {}, ctrl.signal)
+    const params: Record<string, string | number> = {}
+    if (campusId != null) params.campus = String(campusId)
+    if (category != null) params.category = category
+    api.get<DashboardData>('/api/admin/dashboard', params, ctrl.signal)
       .then((r) => { setData(r.data ?? null); setError(null) })
       .catch((e) => { if (e?.name !== 'CanceledError') setError(e?.message ?? 'Failed to load') })
       .finally(() => setLoading(false))
     return () => ctrl.abort()
-  }, [])
+  }, [campusId, category])
 
   const toggleRow = (id: string) => {
     setSelected((prev) => {

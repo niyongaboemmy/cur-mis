@@ -18,6 +18,12 @@ use App\Constants\Permissions;
  */
 
 $router->group('/api/attendance', function ($router) {
+    // Self-service: a logged-in student sees their OWN attendance summary
+    // without needing the VIEW_ATTENDANCE permission. Sits outside the
+    // permission-gated group below so it stays accessible to applicant /
+    // student roles.
+    $router->get('/me/summary', [AttendanceController::class, 'meSummary']);
+
     // Read-only
     $router->group('', function ($r) {
         $r->get('/sessions',                   [AttendanceController::class, 'listSessions']);
