@@ -32,29 +32,102 @@ class UserController extends BaseController
         $perPage = (int)($request->query('per_page') ?? 15);
         $search  = $request->query('search') ?? '';
 
-        $where = '';
-        $bindings = [];
+        $conditions = [];
+        $bindings   = [];
 
         if ($search !== '') {
-            $where = "(full_name LIKE ? OR email LIKE ? OR username LIKE ?)";
-            $bindings = ["%$search%", "%$search%", "%$search%"];
+            $conditions[] = "(full_name LIKE ? OR email LIKE ? OR username LIKE ?)";
+            array_push($bindings, "%$search%", "%$search%", "%$search%");
         }
 
-        // We use paginate but we need role names. 
-        // Our BaseModel::paginate is simple. Let's manually do the query for role labels or map them.
+        $roleId = $request->query('role_id') ?? '';
+        if ($roleId !== '') {
+            $conditions[] = "role_id = ?";
+            $bindings[]   = (int) $roleId;
+        }
+
+        $status = $request->query('status') ?? '';
+        if ($status === 'active')   { $conditions[] = "is_active = 1"; }
+        if ($status === 'inactive') { $conditions[] = "is_active = 0"; }
+
+        $isApplicant = $request->query('is_applicant') ?? '';
+        if ($isApplicant !== '') {
+            $conditions[] = "is_applicant = ?";
+            $bindings[]   = (int) $isApplicant;
+        }
+
+        $mustChange = $request->query('must_change_pw') ?? '';
+        if ($mustChange !== '') {
+            $conditions[] = "must_change_pw = ?";
+            $bindings[]   = (int) $mustChange;
+        }
+
+        $where = empty($conditions) ? '' : implode(' AND ', $conditions);
+
         $paginated = $this->userModel->paginate($page, $perPage, $where, $bindings, 'id', 'DESC');
-        
+
         $roles = $this->roleModel->all();
         $roleMap = [];
         foreach ($roles as $r) {
             $roleMap[$r['id']] = $r['name'];
         }
-
         foreach ($paginated['data'] as &$user) {
             $user['role_name'] = $roleMap[$user['role_id'] ?? 0] ?? 'guest';
         }
 
         $this->success($response, $paginated, 'Users fetched successfully.');
+    }
+
+    /**
+     * Aggregate stats for the Users Dashboard tab.
+     * GET /api/users/stats
+     */
+    public function stats(Request $request, Response $response): never
+    {
+        $db = $this->userModel->db();
+
+        $row = $db->fetchOne("
+            SELECT
+                COUNT(*)                                                                             AS total,
+                SUM(is_active = 1)                                                                   AS active,
+                SUM(is_active = 0)                                                                   AS inactive,
+                SUM(is_applicant = 1)                                                                AS applicants,
+                SUM(must_change_pw = 1)                                                              AS must_change_pw,
+                SUM(last_login IS NULL)                                                              AS never_logged_in,
+                SUM(MONTH(created_at) = MONTH(NOW()) AND YEAR(created_at) = YEAR(NOW()))             AS new_this_month
+            FROM `users`
+        ");
+
+        $byRole = $db->fetchAll("
+            SELECT r.name AS role, COUNT(u.id) AS count
+            FROM `users` u
+            JOIN `roles` r ON r.id = u.role_id
+            GROUP BY r.id, r.name
+            ORDER BY count DESC
+        ");
+
+        $byMonth = $db->fetchAll("
+            SELECT DATE_FORMAT(created_at, '%b %Y') AS month,
+                   YEAR(created_at)  AS yr,
+                   MONTH(created_at) AS mo,
+                   COUNT(*)          AS count
+            FROM `users`
+            WHERE created_at >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
+            GROUP BY YEAR(created_at), MONTH(created_at), DATE_FORMAT(created_at, '%b %Y')
+            ORDER BY YEAR(created_at) ASC, MONTH(created_at) ASC
+        ");
+
+        $this->success($response, [
+            'total'          => (int)($row['total']          ?? 0),
+            'active'         => (int)($row['active']         ?? 0),
+            'inactive'       => (int)($row['inactive']       ?? 0),
+            'applicants'     => (int)($row['applicants']     ?? 0),
+            'must_change_pw' => (int)($row['must_change_pw'] ?? 0),
+            'never_logged_in'=> (int)($row['never_logged_in']?? 0),
+            'new_this_month' => (int)($row['new_this_month'] ?? 0),
+            'by_role'        => array_map(fn($r) => ['role' => $r['role'], 'count' => (int)$r['count']], $byRole),
+            'by_month'       => array_map(fn($r) => ['month' => $r['month'], 'count' => (int)$r['count']], $byMonth),
+        ], 'User stats fetched.');
     }
 
     /**
@@ -217,6 +290,261 @@ class UserController extends BaseController
 
         echo $fileData['content'];
         exit;
+    }
+
+    /**
+     * Preview which records would receive accounts in a bulk-create run.
+     * Returns a normalised list: { id, username, full_name, email } for each eligible row.
+     * GET /api/users/bulk-preview?target_table=student|staff|hr_employees
+     */
+    public function bulkPreview(Request $request, Response $response): never
+    {
+        $allowedTables = ['student', 'staff', 'hr_employees'];
+        $targetTable   = $request->query('target_table') ?? '';
+
+        if (!in_array($targetTable, $allowedTables, true)) {
+            $this->error($response, 'Invalid target_table. Must be one of: student, staff, hr_employees.', 422);
+        }
+
+        $db   = $this->userModel->db();
+        $rows = [];
+
+        if ($targetTable === 'student') {
+            $raw = $db->fetchAll(
+                "SELECT id, regnumber, fname, lname, email
+                 FROM `student`
+                 WHERE regnumber IS NOT NULL
+                   AND student_state = 'active'
+                   AND regnumber NOT IN (SELECT username FROM `users`)
+                 ORDER BY fname, lname"
+            );
+            foreach ($raw as $r) {
+                $username = trim((string)($r['regnumber'] ?? ''));
+                if ($username === '') continue;
+                $rows[] = [
+                    'id'        => $r['id'],
+                    'username'  => $username,
+                    'full_name' => trim(($r['fname'] ?? '') . ' ' . ($r['lname'] ?? '')),
+                    'email'     => !empty($r['email']) ? trim($r['email']) : "{$username}@cur.ac.rw",
+                ];
+            }
+        } elseif ($targetTable === 'staff') {
+            $raw = $db->fetchAll(
+                "SELECT id, staff_number, first_name, last_name, email
+                 FROM `staff`
+                 WHERE staff_number IS NOT NULL
+                   AND is_active = 1
+                   AND staff_number NOT IN (SELECT username FROM `users`)
+                 ORDER BY first_name, last_name"
+            );
+            foreach ($raw as $r) {
+                $username = trim((string)($r['staff_number'] ?? ''));
+                if ($username === '') continue;
+                $rows[] = [
+                    'id'        => $r['id'],
+                    'username'  => $username,
+                    'full_name' => trim(($r['first_name'] ?? '') . ' ' . ($r['last_name'] ?? '')),
+                    'email'     => !empty($r['email']) ? trim($r['email']) : "{$username}@cur.ac.rw",
+                ];
+            }
+        } else {
+            $raw = $db->fetchAll(
+                "SELECT e.id, e.emp_code, e.full_name, e.email, e.staff_id
+                 FROM `hr_employees` e
+                 WHERE e.staff_id IS NOT NULL
+                   AND e.emp_code IS NOT NULL
+                   AND e.status = 'Active'
+                   AND e.emp_code NOT IN (SELECT username FROM `users`)
+                 ORDER BY e.full_name"
+            );
+            foreach ($raw as $r) {
+                $username = trim((string)($r['emp_code'] ?? ''));
+                if ($username === '') continue;
+                $rows[] = [
+                    'id'        => $r['id'],
+                    'username'  => $username,
+                    'full_name' => trim((string)($r['full_name'] ?? '')),
+                    'email'     => !empty($r['email']) ? trim($r['email']) : "{$username}@cur.ac.rw",
+                ];
+            }
+        }
+
+        $this->success($response, ['items' => $rows, 'count' => count($rows)], 'Preview fetched.');
+    }
+
+    /**
+     * Bulk-create user accounts for student, staff, or hr_employees records that have no portal access.
+     */
+    public function bulkCreate(Request $request, Response $response): never
+    {
+        $data = $request->body();
+
+        $allowedTables = ['student', 'staff', 'hr_employees'];
+        $targetTable   = $data['target_table'] ?? '';
+        $password      = $data['default_password'] ?? '';
+
+        if (!in_array($targetTable, $allowedTables, true)) {
+            $this->error($response, 'Invalid target_table. Must be one of: student, staff, hr_employees.', 422);
+        }
+
+        if (strlen($password) < 6) {
+            $this->error($response, 'default_password must be at least 6 characters.', 422);
+        }
+
+        $roleNameMap = [
+            'student'      => 'student',
+            'staff'        => 'lecturer',
+            'hr_employees' => 'hr_manager',
+        ];
+
+        $roleId = $this->roleModel->getIdByName($roleNameMap[$targetTable]);
+        if (!$roleId) {
+            $this->error($response, "Role '{$roleNameMap[$targetTable]}' not found in the system.", 500);
+        }
+
+        $hashedPassword = password_hash($password, PASSWORD_BCRYPT);
+        $created = 0;
+        $skipped = 0;
+        $db = $this->userModel->db();
+
+        // Check once whether user_id columns exist (migration 048 may not have run yet)
+        $studentHasUid = !empty($db->fetchAll(
+            "SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'student' AND COLUMN_NAME = 'user_id'"
+        ));
+        $staffHasUid = !empty($db->fetchAll(
+            "SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'staff' AND COLUMN_NAME = 'user_id'"
+        ));
+
+        try {
+            $db->beginTransaction();
+
+            if ($targetTable === 'student') {
+                $rows = $db->fetchAll(
+                    "SELECT id, regnumber, fname, lname, email FROM `student`
+                     WHERE regnumber IS NOT NULL
+                       AND student_state = 'active'
+                       AND regnumber NOT IN (SELECT username FROM `users`)"
+                );
+                foreach ($rows as $row) {
+                    $username = trim((string)($row['regnumber'] ?? ''));
+                    $fullName = trim(($row['fname'] ?? '') . ' ' . ($row['lname'] ?? ''));
+                    $email    = !empty($row['email']) ? trim($row['email']) : "{$username}@cur.ac.rw";
+
+                    if (empty($username) || $this->userModel->exists('username', $username) || $this->userModel->exists('email', $email)) {
+                        $skipped++;
+                        continue;
+                    }
+
+                    $newId = $this->userModel->create([
+                        'username'       => $username,
+                        'full_name'      => $fullName ?: $username,
+                        'email'          => $email,
+                        'password'       => $hashedPassword,
+                        'role_id'        => $roleId,
+                        'is_active'      => 1,
+                        'is_applicant'   => 0,
+                        'must_change_pw' => 1,
+                    ]);
+
+                    if ($studentHasUid) {
+                        $db->execute("UPDATE `student` SET user_id = ? WHERE id = ?", [$newId, $row['id']]);
+                    }
+                    $created++;
+                }
+            } elseif ($targetTable === 'staff') {
+                $rows = $db->fetchAll(
+                    "SELECT id, staff_number, first_name, last_name, email FROM `staff`
+                     WHERE staff_number IS NOT NULL
+                       AND is_active = 1
+                       AND staff_number NOT IN (SELECT username FROM `users`)"
+                );
+                foreach ($rows as $row) {
+                    $username = trim((string)($row['staff_number'] ?? ''));
+                    $fullName = trim(($row['first_name'] ?? '') . ' ' . ($row['last_name'] ?? ''));
+                    $email    = !empty($row['email']) ? trim($row['email']) : "{$username}@cur.ac.rw";
+
+                    if (empty($username) || $this->userModel->exists('username', $username) || $this->userModel->exists('email', $email)) {
+                        $skipped++;
+                        continue;
+                    }
+
+                    $newId = $this->userModel->create([
+                        'username'       => $username,
+                        'full_name'      => $fullName ?: $username,
+                        'email'          => $email,
+                        'password'       => $hashedPassword,
+                        'role_id'        => $roleId,
+                        'is_active'      => 1,
+                        'is_applicant'   => 0,
+                        'must_change_pw' => 1,
+                    ]);
+
+                    if ($staffHasUid) {
+                        $db->execute("UPDATE `staff` SET user_id = ? WHERE id = ?", [$newId, $row['id']]);
+                    }
+                    $created++;
+                }
+            } else {
+                // hr_employees: link via staff.user_id
+                $rows = $db->fetchAll(
+                    "SELECT e.id, e.emp_code, e.full_name, e.email, e.staff_id
+                     FROM `hr_employees` e
+                     WHERE e.staff_id IS NOT NULL
+                       AND e.emp_code IS NOT NULL
+                       AND e.status = 'Active'
+                       AND e.emp_code NOT IN (SELECT username FROM `users`)"
+                );
+                foreach ($rows as $row) {
+                    $username = trim((string)($row['emp_code'] ?? ''));
+                    $fullName = trim((string)($row['full_name'] ?? ''));
+                    $email    = !empty($row['email']) ? trim($row['email']) : "{$username}@cur.ac.rw";
+
+                    if (empty($username) || $this->userModel->exists('username', $username) || $this->userModel->exists('email', $email)) {
+                        $skipped++;
+                        continue;
+                    }
+
+                    $newId = $this->userModel->create([
+                        'username'       => $username,
+                        'full_name'      => $fullName ?: $username,
+                        'email'          => $email,
+                        'password'       => $hashedPassword,
+                        'role_id'        => $roleId,
+                        'is_active'      => 1,
+                        'is_applicant'   => 0,
+                        'must_change_pw' => 1,
+                    ]);
+
+                    if ($staffHasUid) {
+                        $db->execute("UPDATE `staff` SET user_id = ? WHERE id = ?", [$newId, $row['staff_id']]);
+                    }
+                    $created++;
+                }
+            }
+
+            $db->commit();
+        } catch (\Throwable $e) {
+            $db->rollBack();
+            $this->error($response, 'Bulk creation failed: ' . $e->getMessage(), 500);
+        }
+
+        $total = $created + $skipped;
+        $actor = (array) $request->param('_auth_user');
+        SystemLogService::log(
+            'CREATE', 'USERS',
+            "Bulk created {$created} account(s) for '{$targetTable}' ({$skipped} skipped, {$total} total).",
+            null, $targetTable,
+            ['created' => $created, 'skipped' => $skipped, 'total' => $total],
+            $actor ?: null
+        );
+
+        $this->success($response, [
+            'total_processed' => $total,
+            'created_count'   => $created,
+            'skipped_count'   => $skipped,
+        ], "Bulk account creation complete.");
     }
 
     /**

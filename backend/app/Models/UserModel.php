@@ -23,6 +23,7 @@ class UserModel extends BaseModel
         'role_id',
         'is_active',
         'is_applicant',
+        'must_change_pw',
         'reset_token',
         'reset_token_expires_at',
         'otp_code',
