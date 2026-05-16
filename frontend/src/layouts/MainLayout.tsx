@@ -39,7 +39,6 @@ import Logo from "@/components/brand/Logo";
 import GlobalSearch from "@/components/layout/GlobalSearch";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { useSystemBasics } from "@/hooks/useSystemBasics";
-import { PERMISSIONS } from "@/constants";
 
 import {
   Link,
@@ -50,6 +49,7 @@ import {
 } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { useAuthStore } from "@/store/authStore";
+import { PERMISSIONS } from "@/constants/permissions";
 
 /* ------------------------------------------------------------------
  * Nav tree — Home is a direct leaf (no sub-items). Groups with
@@ -238,50 +238,115 @@ const NAV_TREE: NavNode[] = [
       // lives under /me/profile so the curriculum, registration state and
       // marks are presented identically across both entry points. Hidden
       // from non-students; teachers get the assignment-driven view below.
-      { to: "/me/profile?tab=curriculum", label: "My modules",        roles: ["student"], permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL] },
+      {
+        to: "/me/profile?tab=curriculum",
+        label: "My modules",
+        roles: ["student"],
+        permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL],
+      },
       // Teacher / staff self-service — modules the user is assigned to
       // teach. Skipped for students since they have the curriculum view
       // above; admin/superadmin already see the full management children.
-      { to: "/my-modules?tab=mine",                 label: "My modules",        permissions: [PERMISSIONS.VIEW_MY_MODULES], hideForRoles: ["student", "superadmin", "admin"] },
-      { to: "/academic/settings?tab=faculties",     label: "Faculties",         permissions: [PERMISSIONS.MANAGE_ACADEMIC_YEARS, PERMISSIONS.MANAGE_ACADEMIC_TERMS] },
-      { to: "/academic/settings?tab=departments",   label: "Departments",       permissions: [PERMISSIONS.MANAGE_ACADEMIC_YEARS, PERMISSIONS.MANAGE_ACADEMIC_TERMS] },
-      { to: "/academic/settings?tab=options",       label: "Programs",          permissions: [PERMISSIONS.MANAGE_ACADEMIC_YEARS, PERMISSIONS.MANAGE_ACADEMIC_TERMS] },
-      { to: "/academic/settings?tab=modules",       label: "Modules / Courses", permissions: [PERMISSIONS.MANAGE_ACADEMIC_YEARS, PERMISSIONS.MANAGE_ACADEMIC_TERMS] },
-      { to: "/academic/settings?tab=scheduling",    label: "Scheduling",        permissions: [PERMISSIONS.MANAGE_ACADEMIC_YEARS, PERMISSIONS.MANAGE_ACADEMIC_TERMS] },
-      { to: "/academic/settings?tab=registrations", label: "Registrations",     permissions: [PERMISSIONS.MANAGE_ACADEMIC_YEARS, PERMISSIONS.MANAGE_ACADEMIC_TERMS] },
-      { to: "/academic/settings?tab=years-terms",   label: "Years & terms",     permissions: [PERMISSIONS.MANAGE_ACADEMIC_YEARS, PERMISSIONS.MANAGE_ACADEMIC_TERMS] },
+      {
+        to: "/my-modules?tab=mine",
+        label: "My modules",
+        permissions: [PERMISSIONS.VIEW_MY_MODULES],
+        hideForRoles: ["student", "superadmin", "admin"],
+      },
+      {
+        to: "/academic/settings?tab=faculties",
+        label: "Faculties",
+        permissions: [
+          PERMISSIONS.MANAGE_ACADEMIC_YEARS,
+          PERMISSIONS.MANAGE_ACADEMIC_TERMS,
+        ],
+      },
+      {
+        to: "/academic/settings?tab=departments",
+        label: "Departments",
+        permissions: [
+          PERMISSIONS.MANAGE_ACADEMIC_YEARS,
+          PERMISSIONS.MANAGE_ACADEMIC_TERMS,
+        ],
+      },
+      {
+        to: "/academic/settings?tab=options",
+        label: "Programs",
+        permissions: [
+          PERMISSIONS.MANAGE_ACADEMIC_YEARS,
+          PERMISSIONS.MANAGE_ACADEMIC_TERMS,
+        ],
+      },
+      {
+        to: "/academic/settings?tab=modules",
+        label: "Modules / Courses",
+        permissions: [
+          PERMISSIONS.MANAGE_ACADEMIC_YEARS,
+          PERMISSIONS.MANAGE_ACADEMIC_TERMS,
+        ],
+      },
+      {
+        to: "/academic/settings?tab=scheduling",
+        label: "Scheduling",
+        permissions: [
+          PERMISSIONS.MANAGE_ACADEMIC_YEARS,
+          PERMISSIONS.MANAGE_ACADEMIC_TERMS,
+        ],
+      },
+      {
+        to: "/academic/settings?tab=registrations",
+        label: "Registrations",
+        permissions: [
+          PERMISSIONS.MANAGE_ACADEMIC_YEARS,
+          PERMISSIONS.MANAGE_ACADEMIC_TERMS,
+        ],
+      },
+      {
+        to: "/academic/settings?tab=years-terms",
+        label: "Years & terms",
+        permissions: [
+          PERMISSIONS.MANAGE_ACADEMIC_YEARS,
+          PERMISSIONS.MANAGE_ACADEMIC_TERMS,
+        ],
+      },
     ],
   },
   {
     id: "finance",
     label: "Finance",
     icon: CreditCard,
-    permissions: [PERMISSIONS.VIEW_FINANCE, PERMISSIONS.MANAGE_FINANCE],
+    permissions: [
+      PERMISSIONS.VIEW_FINANCE_OVERVIEW,
+      PERMISSIONS.VIEW_FINANCE_BILLING,
+      PERMISSIONS.VIEW_FINANCE_REPORTS,
+      PERMISSIONS.VIEW_FINANCE_STRUCTURES,
+      PERMISSIONS.VIEW_FINANCE_BURSARIES,
+    ],
     children: [
       {
         to: "/finance",
         label: "Overview",
-        permissions: [PERMISSIONS.VIEW_FINANCE, PERMISSIONS.MANAGE_FINANCE],
+        permissions: [PERMISSIONS.VIEW_FINANCE_OVERVIEW],
       },
       {
         to: "/finance/billing",
         label: "Billing",
-        permissions: [PERMISSIONS.VIEW_FINANCE, PERMISSIONS.MANAGE_FINANCE],
+        permissions: [PERMISSIONS.VIEW_FINANCE_BILLING],
       },
       {
         to: "/finance/structures",
         label: "Fee Rates",
-        permissions: [PERMISSIONS.MANAGE_FINANCE],
+        permissions: [PERMISSIONS.VIEW_FINANCE_STRUCTURES],
       },
       {
         to: "/finance/bursaries",
         label: "Bursaries",
-        permissions: [PERMISSIONS.MANAGE_FINANCE],
+        permissions: [PERMISSIONS.VIEW_FINANCE_BURSARIES],
       },
       {
         to: "/finance/reports",
         label: "Reports",
-        permissions: [PERMISSIONS.VIEW_FINANCE, PERMISSIONS.MANAGE_FINANCE],
+        permissions: [PERMISSIONS.VIEW_FINANCE_REPORTS],
       },
     ],
   },
@@ -304,6 +369,14 @@ const NAV_TREE: NavNode[] = [
   // Student self-service — opens the same attendance summary that lives
   // under /me/profile, so the student sees only their own per-module
   // attendance numbers without admin/teacher controls.
+  {
+    id: "student-finance",
+    label: "My Finance",
+    icon: CreditCard,
+    to: "/my-finance",
+    roles: ["student"],
+    permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL, PERMISSIONS.MY_INVOICE],
+  },
   {
     id: "attendance-student",
     label: "Attendance",
@@ -531,8 +604,14 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
     sub: "Fee collection breakdown by category",
   },
   "/account/salaries": { title: "Salaries", sub: "Staff payroll" },
-  "/exams":              { title: "Exam schedules", sub: "Plan, edit and view scheduled exam sessions" },
-  "/exams/results":      { title: "Exam results",   sub: "Record and review marks per module and term" },
+  "/exams": {
+    title: "Exam schedules",
+    sub: "Plan, edit and view scheduled exam sessions",
+  },
+  "/exams/results": {
+    title: "Exam results",
+    sub: "Record and review marks per module and term",
+  },
   "/exams/deliberation": {
     title: "Deliberation",
     sub: "Per-program grid of every active student × every module",
@@ -750,7 +829,7 @@ export default function MainLayout() {
   const hasAccess = useCallback(
     (perms?: string[]) => {
       if (!perms || perms.length === 0) return true;
-      if (user?.role === "superadmin") return true;
+      if (["superadmin", "admin"].includes(user?.role ?? "")) return true;
       return perms.some((p) => (user?.permissions || []).includes(p));
     },
     [user],

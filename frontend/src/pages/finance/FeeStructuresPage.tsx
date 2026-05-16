@@ -2,20 +2,15 @@ import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, Loader2, X, CalendarDays, Layers, SplitSquareHorizontal } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { feeStructureService } from '@/services/financeService'
+import { feeStructureService, feeTypeService } from '@/services/financeService'
 import { academicsMgmtService } from '@/services/academicsMgmtService'
 import { academicService as academicSvc } from '@/services/academicService'
-import type { FeeStructure, CreateFeeStructurePayload, PaymentPlan } from '@/types/finance'
-import { FEE_TYPE_LABELS } from '@/types/finance'
+import type { FeeStructure, CreateFeeStructurePayload, PaymentPlan, FeeTypeRecord } from '@/types/finance'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import Pagination from '@/components/ui/Pagination'
 import { useSystemStore } from '@/store/systemStore'
 import { formatRWF } from '@/utils/formatCurrency'
 import ModalPortal from '@/components/ui/ModalPortal'
-
-const FEE_TYPES: [string, string][] = Object.entries(FEE_TYPE_LABELS).filter(
-  ([k]) => !['ARREARS', 'BURSARY_CREDIT'].includes(k)
-)
 
 const PER_PAGE = 15
 
@@ -57,6 +52,16 @@ export default function FeeStructuresPage() {
     queryFn: () => academicsMgmtService.list<any>('levels', { per_page: 20 }),
   })
   const levels = levelsQ.data?.data?.data ?? []
+
+  const feeTypesQ = useQuery({
+    queryKey: ['finance', 'fee-types'],
+    queryFn: ({ signal }) => feeTypeService.list(signal),
+  })
+  const feeTypes: FeeTypeRecord[] = feeTypesQ.data?.data ?? []
+  const feeTypeOptions = feeTypes
+    .filter((t) => t.is_active && !['ARREARS', 'BURSARY_CREDIT'].includes(t.code))
+    .sort((a, b) => a.sort_order - b.sort_order || a.label.localeCompare(b.label))
+    .map((t) => ({ value: t.code, label: t.label }))
 
   const structuresQ = useQuery({
     queryKey: ['finance', 'structures', yearId],
@@ -148,7 +153,7 @@ export default function FeeStructuresPage() {
                       onClick={() => { setEditing(row); setShowForm(true) }}
                     >
                       <td className="px-4 py-2.5 font-medium">{row.label}</td>
-                      <td className="px-4 py-2.5 text-ink-500">{(FEE_TYPE_LABELS as Record<string, string>)[row.fee_type] ?? row.fee_type}</td>
+                      <td className="px-4 py-2.5 text-ink-500">{feeTypes.find((t) => t.code === row.fee_type)?.label ?? row.fee_type}</td>
                       <td className="px-4 py-2.5 text-ink-500">
                         {row.dept_ids
                           ? (() => {
@@ -205,6 +210,7 @@ export default function FeeStructuresPage() {
           years={years}
           departments={departments}
           levels={levels}
+          feeTypeOptions={feeTypeOptions}
           initial={editing}
           defaultYearId={yearId ? Number(yearId) : undefined}
           onClose={() => setShowForm(false)}
@@ -221,10 +227,11 @@ export default function FeeStructuresPage() {
 // ─── Modal ────────────────────────────────────────────────────────────────────
 
 interface ModalProps {
-  years:         any[]
-  departments:   any[]
-  levels:        any[]
-  initial:       FeeStructure | null
+  years:           any[]
+  departments:     any[]
+  levels:          any[]
+  feeTypeOptions:  { value: string; label: string }[]
+  initial:         FeeStructure | null
   defaultYearId?: number
   onClose:       () => void
   onSaved:       () => void
@@ -273,7 +280,7 @@ function planBreakdown(plan: PaymentPlan, amount: number, count: number) {
   return [{ label: 'Full year payment', amount }]
 }
 
-function FeeStructureModal({ years, departments, levels, initial, defaultYearId, onClose, onSaved }: ModalProps) {
+function FeeStructureModal({ years, departments, levels, feeTypeOptions, initial, defaultYearId, onClose, onSaved }: ModalProps) {
   const parseInitialDepts = (): number[] => {
     if (initial?.dept_ids) return initial.dept_ids.split(',').map(Number).filter(Boolean)
     if (initial?.department_id) return [initial.department_id]
@@ -316,9 +323,8 @@ function FeeStructureModal({ years, departments, levels, initial, defaultYearId,
 
   const set = (k: keyof typeof form, v: any) => setForm(f => ({ ...f, [k]: v }))
 
-  const yearOptions     = years.map((y: any) => ({ value: y.id, label: y.label }))
-  const levelOptions    = levels.map((l: any) => ({ value: l.id, label: l.name }))
-  const feeTypeOptions  = FEE_TYPES.map(([k, v]) => ({ value: k, label: v }))
+  const yearOptions  = years.map((y: any) => ({ value: y.id, label: y.label }))
+  const levelOptions = levels.map((l: any) => ({ value: l.id, label: l.name }))
 
   const activePlan    = form.payment_plan ?? 'full_year'
   const installCount  = Math.max(2, Math.min(12, form.installment_count ?? 4))

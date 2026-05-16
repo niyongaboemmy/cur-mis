@@ -95,6 +95,7 @@ import RefundsPage from "@/pages/finance/RefundsPage";
 import OnlinePaymentsHistoryPage from "@/pages/finance/OnlinePaymentsHistoryPage";
 import SponsorsPage from "@/pages/finance/SponsorsPage";
 import ExpenseCategoriesPage from "@/pages/finance/ExpenseCategoriesPage";
+import FeeTypesPage from "@/pages/finance/FeeTypesPage";
 import ReceiptPdfPage from "@/pages/finance/ReceiptPdfPage";
 import MyFinancePage from "@/pages/finance/MyFinancePage";
 
@@ -229,7 +230,14 @@ function App() {
                   path="/me/profile"
                   element={<StudentDetailsPage selfMode />}
                 />
-                <Route path="/my-finance" element={<MyFinancePage />} />
+                <Route
+                  path="/my-finance"
+                  element={
+                    <ProtectedRoute requiredPermissions={PERMISSIONS.MY_INVOICE} />
+                  }
+                >
+                  <Route index element={<MyFinancePage />} />
+                </Route>
               </Route>
 
               {/* ── Academic Settings ── */}
@@ -425,6 +433,7 @@ function App() {
                     />
                   </Route>
                   <Route path="structures" element={<FeeStructuresPage />} />
+                  <Route path="fee-types" element={<FeeTypesPage />} />
                   <Route path="bursaries" element={<BursariesPage />} />
                   <Route path="sponsors" element={<SponsorsPage />} />
                   <Route path="expenses" element={<ExpensesPage />} />

@@ -14,6 +14,7 @@ use App\Models\StudentFeeOverrideModel;
 use App\Models\SponsorModel;
 use App\Models\ExpenseModel;
 use App\Models\ExpenseCategoryModel;
+use App\Models\FeeTypeModel;
 use App\Models\ExpenseBudgetModel;
 use App\Models\ClearanceModel;
 use App\Services\FeeService;
@@ -32,6 +33,7 @@ class FeeController extends BaseController
     private SponsorModel            $sponsorModel;
     private ExpenseModel            $expenseModel;
     private ExpenseCategoryModel    $expenseCategoryModel;
+    private FeeTypeModel            $feeTypeModel;
     private ExpenseBudgetModel      $budgetModel;
     private ClearanceModel          $clearanceModel;
     private FeeService              $service;
@@ -48,6 +50,7 @@ class FeeController extends BaseController
         $this->sponsorModel         = new SponsorModel();
         $this->expenseModel         = new ExpenseModel();
         $this->expenseCategoryModel = new ExpenseCategoryModel();
+        $this->feeTypeModel         = new FeeTypeModel();
         $this->budgetModel          = new ExpenseBudgetModel();
         $this->clearanceModel       = new ClearanceModel();
         $this->service              = new FeeService();
@@ -117,7 +120,7 @@ class FeeController extends BaseController
         $actor  = $request->param('_auth_user');
         $errors = ValidationHelper::validate($data, [
             'academic_year_id' => 'required|numeric',
-            'fee_type'         => 'required|in:TUITION,REGISTRATION,ADMISSION,HOSTEL,ACADEMIC_DOCUMENT,FINE,REPEAT_MODULE',
+            'fee_type'         => 'required|in:' . implode(',', $this->getActiveFeeCodes()),
             'label'            => 'required|string|max:120',
             'amount'           => 'required|numeric',
         ]);
@@ -336,7 +339,7 @@ class FeeController extends BaseController
         $errors = ValidationHelper::validate($data, [
             'student_id'       => 'required|string',
             'academic_year_id' => 'required|numeric',
-            'fee_type'         => 'required|in:TUITION,REGISTRATION,ADMISSION,HOSTEL,ACADEMIC_DOCUMENT,FINE,REPEAT_MODULE,ARREARS,MODULE_FEE',
+            'fee_type'         => 'required|in:' . implode(',', $this->getActiveFeeCodes()),
             'description'      => 'required|string|max:200',
             'amount_due'       => 'required|numeric',
         ]);
@@ -971,7 +974,7 @@ class FeeController extends BaseController
         $errors = ValidationHelper::validate($data, [
             'student_id'       => 'required|string',
             'academic_year_id' => 'required|numeric',
-            'fee_type'         => 'required|in:TUITION,REGISTRATION,ADMISSION,HOSTEL,ACADEMIC_DOCUMENT,FINE,REPEAT_MODULE',
+            'fee_type'         => 'required|in:' . implode(',', $this->getActiveFeeCodes()),
             'amount'           => 'required|numeric',
         ]);
         if (!empty($errors)) $this->error($response, 'Validation failed.', 422, $errors);
@@ -1252,6 +1255,106 @@ class FeeController extends BaseController
         $perPage = max(1, min(100, (int)($request->query('per_page') ?? 20)));
 
         $this->success($response, $this->expenseModel->listWithDetails($filters, $page, $perPage), 'Expenses retrieved.');
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Fee Types CRUD
+    // ──────────────────────────────────────────────────────────────────────────
+
+    private ?array $_feeCodeCache = null;
+
+    private function getActiveFeeCodes(): array
+    {
+        if ($this->_feeCodeCache === null) {
+            $this->_feeCodeCache = array_column(
+                array_filter(
+                    $this->feeTypeModel->listAll(),
+                    fn ($t) => (int)$t['is_active'] === 1
+                ),
+                'code'
+            );
+        }
+        return $this->_feeCodeCache;
+    }
+
+    /** GET /api/finance/fee-types */
+    public function listFeeTypes(Request $request, Response $response): never
+    {
+        $this->success($response, $this->feeTypeModel->listAll(), 'Fee types retrieved.');
+    }
+
+    /** POST /api/finance/fee-types */
+    public function createFeeType(Request $request, Response $response): never
+    {
+        $data  = $request->body();
+        $actor = $request->param('_auth_user');
+
+        $errors = ValidationHelper::validate($data, [
+            'code'  => 'required|string|max:50',
+            'label' => 'required|string|max:100',
+        ]);
+        if (!empty($errors)) $this->error($response, 'Validation failed.', 422, $errors);
+
+        $code = strtoupper(trim((string)($data['code'] ?? '')));
+        if (!preg_match('/^[A-Z][A-Z0-9_]{0,49}$/', $code)) {
+            $this->error($response, 'Code must start with a letter and contain only uppercase letters, digits, and underscores.', 422);
+        }
+        if ($this->feeTypeModel->findByCode($code)) {
+            $this->error($response, "Fee type code '{$code}' already exists.", 422);
+        }
+
+        $id = $this->feeTypeModel->createWithCode([
+            'code'        => $code,
+            'label'       => trim($data['label']),
+            'description' => isset($data['description']) ? trim($data['description']) : null,
+            'is_active'   => isset($data['is_active'])   ? (int)(bool)$data['is_active'] : 1,
+            'sort_order'  => isset($data['sort_order'])  ? (int)$data['sort_order'] : 0,
+        ]);
+
+        SystemLogService::log('CREATE', 'FINANCE', "Created fee type '{$code}' ('{$data['label']}') ID {$id}.", (int)$id, 'fee_type', ['code' => $code], (array)$actor ?: null);
+        $this->success($response, ['id' => (int)$id], 'Fee type created.', 201);
+    }
+
+    /** PUT /api/finance/fee-types/:id */
+    public function updateFeeType(Request $request, Response $response): never
+    {
+        $id    = (int)$request->param('id');
+        $data  = $request->body();
+        $actor = $request->param('_auth_user');
+
+        $existing = $this->feeTypeModel->find($id);
+        if (!$existing) $this->error($response, 'Fee type not found.', 404);
+
+        $errors = ValidationHelper::validate($data, ['label' => 'required|string|max:100']);
+        if (!empty($errors)) $this->error($response, 'Validation failed.', 422, $errors);
+
+        $this->feeTypeModel->update($id, array_filter([
+            'label'       => trim($data['label']),
+            'description' => isset($data['description']) ? trim($data['description']) : null,
+            'is_active'   => isset($data['is_active'])   ? (int)(bool)$data['is_active'] : null,
+            'sort_order'  => isset($data['sort_order'])  ? (int)$data['sort_order'] : null,
+        ], fn ($v) => $v !== null));
+
+        SystemLogService::log('UPDATE', 'FINANCE', "Updated fee type ID {$id} ('{$existing['code']}').", $id, 'fee_type', null, (array)$actor ?: null);
+        $this->success($response, null, 'Fee type updated.');
+    }
+
+    /** DELETE /api/finance/fee-types/:id */
+    public function deleteFeeType(Request $request, Response $response): never
+    {
+        $id    = (int)$request->param('id');
+        $actor = $request->param('_auth_user');
+
+        $type = $this->feeTypeModel->find($id);
+        if (!$type) $this->error($response, 'Fee type not found.', 404);
+
+        if ($this->feeTypeModel->isCodeInUse($type['code'])) {
+            $this->error($response, "Cannot delete fee type '{$type['code']}' because it is referenced by existing fee structures or invoices.", 422);
+        }
+
+        $this->feeTypeModel->delete($id);
+        SystemLogService::log('DELETE', 'FINANCE', "Deleted fee type ID {$id} ('{$type['code']}').", $id, 'fee_type', null, (array)$actor ?: null);
+        $this->success($response, null, 'Fee type deleted.');
     }
 
     /** GET /api/finance/expenses/categories */

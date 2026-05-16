@@ -38,6 +38,9 @@ import type {
   RefundCategory,
   CreateBursaryBulkPayload,
   MobilePaymentRecord,
+  FeeTypeRecord,
+  CreateFeeTypePayload,
+  UpdateFeeTypePayload,
 } from "@/types/finance";
 
 // ─── Fee Structures ───────────────────────────────────────────────────────────
@@ -528,4 +531,20 @@ export const exportService = {
     a.click();
     document.body.removeChild(a);
   },
+};
+
+// ─── Fee Types ────────────────────────────────────────────────────────────────
+
+export const feeTypeService = {
+  list: (signal?: AbortSignal) =>
+    api.get<FeeTypeRecord[]>("/api/finance/fee-types", {}, signal),
+
+  create: (data: CreateFeeTypePayload) =>
+    api.post<{ id: number }>("/api/finance/fee-types", data),
+
+  update: (id: number, data: UpdateFeeTypePayload) =>
+    api.put<null>(`/api/finance/fee-types/${id}`, data),
+
+  delete: (id: number) =>
+    api.delete<null>(`/api/finance/fee-types/${id}`),
 };

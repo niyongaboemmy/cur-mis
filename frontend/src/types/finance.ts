@@ -286,6 +286,36 @@ export const FEE_TYPE_LABELS: Record<FeeType, string> = {
   MODULE_FEE:        'Module Fee',
 }
 
+// ─── Fee Types (dynamic lookup table) ────────────────────────────────────────
+
+export interface FeeTypeRecord {
+  id:              number
+  code:            string
+  label:           string
+  description:     string | null
+  is_active:       0 | 1
+  sort_order:      number
+  structure_count: number
+  invoice_count:   number
+  created_at:      string
+  updated_at:      string
+}
+
+export interface CreateFeeTypePayload {
+  code:         string
+  label:        string
+  description?: string
+  is_active?:   0 | 1
+  sort_order?:  number
+}
+
+export interface UpdateFeeTypePayload {
+  label:        string
+  description?: string | null
+  is_active?:   0 | 1
+  sort_order?:  number
+}
+
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   CASH:           'Cash',
   BANK_TRANSFER:  'Bank Transfer',

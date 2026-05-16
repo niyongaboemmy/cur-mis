@@ -29,6 +29,7 @@
 --   §15. student.campus remap         — legacy free-text labels → campuses.id
 --   §16. permissions                  — VIEW_MOBILE_PAYMENTS, VIEW_ONLINE_PAYMENTS_HISTORY, MY_INVOICE
 --   §17. role_permissions             — assign permissions to roles
+--   §18. fee_payments                 — add fee_type and academic_year_id columns (migration 061)
 -- =============================================================================
 
 
@@ -593,3 +594,92 @@ JOIN `roles`       r ON r.`id` = rp.`role_id`
 JOIN `permissions` p ON p.`id` = rp.`permission_id`
 WHERE r.`name` = 'student'
   AND p.`slug` = 'VIEW_FINANCE';
+
+
+-- =============================================================================
+-- §18  fee_payments — fee_type and academic_year_id columns  (migration 061)
+-- -----------------------------------------------------------------------------
+-- UrubutoPayService::recordMobilePayment() passes both fields to
+-- FeePaymentModel::create(). Without these columns the INSERT on
+-- /webhook/callback fails with "Unknown column 'fee_type'".
+-- Idempotent: guarded by INFORMATION_SCHEMA existence checks.
+-- =============================================================================
+
+SET @_db = DATABASE();
+
+SET @_q = IF(
+  EXISTS (
+    SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = @_db
+      AND TABLE_NAME  = 'fee_payments'
+      AND COLUMN_NAME = 'fee_type'
+  ),
+  'SELECT 1',
+  'ALTER TABLE `fee_payments`
+     ADD COLUMN `fee_type` VARCHAR(60) NULL DEFAULT NULL
+     COMMENT ''Denormalised from fee_invoices.fee_type''
+     AFTER `amount`'
+);
+PREPARE _s18a FROM @_q; EXECUTE _s18a; DEALLOCATE PREPARE _s18a;
+
+SET @_q = IF(
+  EXISTS (
+    SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = @_db
+      AND TABLE_NAME  = 'fee_payments'
+      AND COLUMN_NAME = 'academic_year_id'
+  ),
+  'SELECT 1',
+  'ALTER TABLE `fee_payments`
+     ADD COLUMN `academic_year_id` INT UNSIGNED NULL DEFAULT NULL
+     COMMENT ''Denormalised from fee_invoices.academic_year_id''
+     AFTER `fee_type`'
+);
+PREPARE _s18b FROM @_q; EXECUTE _s18b; DEALLOCATE PREPARE _s18b;
+
+
+-- =============================================================================
+-- §19  fee_types lookup table + relax ENUM → VARCHAR(50)  (migration 064)
+-- -----------------------------------------------------------------------------
+-- Converts hardcoded fee_type ENUM columns to VARCHAR(50) and introduces a
+-- managed fee_types table so admins can create/edit/delete fee types via the UI.
+-- Seeds the 10 existing types. No FK constraint (codes are historical strings).
+-- Idempotent: guarded by INFORMATION_SCHEMA existence checks.
+-- =============================================================================
+
+SET @_db = DATABASE();
+SET FOREIGN_KEY_CHECKS = 0;
+
+CREATE TABLE IF NOT EXISTS `fee_types` (
+  `id`          INT UNSIGNED  NOT NULL AUTO_INCREMENT,
+  `code`        VARCHAR(50)   NOT NULL COMMENT 'Immutable; stored as value in fee_structures/invoices',
+  `label`       VARCHAR(100)  NOT NULL,
+  `description` TEXT          NULL,
+  `is_active`   TINYINT(1)    NOT NULL DEFAULT 1,
+  `sort_order`  INT           NOT NULL DEFAULT 0,
+  `created_at`  DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`  DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_fee_type_code` (`code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT IGNORE INTO `fee_types` (`code`, `label`, `sort_order`) VALUES
+  ('TUITION','Tuition',1), ('REGISTRATION','Registration',2),
+  ('ADMISSION','Admission',3), ('HOSTEL','Hostel',4),
+  ('ACADEMIC_DOCUMENT','Academic Document',5), ('FINE','Fine',6),
+  ('REPEAT_MODULE','Repeat Module',7), ('ARREARS','Arrears',8),
+  ('BURSARY_CREDIT','Bursary Credit',9), ('MODULE_FEE','Module Fee',10);
+
+SET @_q = IF(EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=@_db AND TABLE_NAME='fee_structures' AND COLUMN_NAME='fee_type' AND DATA_TYPE='enum'),
+  'ALTER TABLE `fee_structures` MODIFY COLUMN `fee_type` VARCHAR(50) NOT NULL','SELECT 1');
+PREPARE _s19a FROM @_q; EXECUTE _s19a; DEALLOCATE PREPARE _s19a;
+
+SET @_q = IF(EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=@_db AND TABLE_NAME='fee_invoices' AND COLUMN_NAME='fee_type' AND DATA_TYPE='enum'),
+  'ALTER TABLE `fee_invoices` MODIFY COLUMN `fee_type` VARCHAR(50) NOT NULL','SELECT 1');
+PREPARE _s19b FROM @_q; EXECUTE _s19b; DEALLOCATE PREPARE _s19b;
+
+SET @_q = IF(EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=@_db AND TABLE_NAME='student_fee_overrides' AND COLUMN_NAME='fee_type' AND DATA_TYPE='enum'),
+  'ALTER TABLE `student_fee_overrides` MODIFY COLUMN `fee_type` VARCHAR(50) NOT NULL','SELECT 1');
+PREPARE _s19c FROM @_q; EXECUTE _s19c; DEALLOCATE PREPARE _s19c;
+
+SET FOREIGN_KEY_CHECKS = 1;
