@@ -680,12 +680,12 @@
             <button class="active" onclick="setApi(1, 'legacy', this)">
               Legacy &nbsp;<code style="font-size: 9px; opacity: 0.7"
                 >/payment_api/token.php</code
-              >
+              >&nbsp;<span style="font-size:9px;background:#f59e0b22;color:#f59e0b;border:1px solid #f59e0b55;border-radius:3px;padding:1px 4px">Testing only</span>
             </button>
             <button onclick="setApi(1, 'modern', this)">
               Modern &nbsp;<code style="font-size: 9px; opacity: 0.7"
                 >/api/payment/webhook/token</code
-              >
+              >&nbsp;<span style="font-size:9px;background:#22c55e22;color:#22c55e;border:1px solid #22c55e55;border-radius:3px;padding:1px 4px">Production</span>
             </button>
           </div>
           <div class="fields">
@@ -747,12 +747,12 @@
             <button class="active" onclick="setApi(2, 'legacy', this)">
               Legacy &nbsp;<code style="font-size: 9px; opacity: 0.7"
                 >/payment_api/getstudent.php</code
-              >
+              >&nbsp;<span style="font-size:9px;background:#f59e0b22;color:#f59e0b;border:1px solid #f59e0b55;border-radius:3px;padding:1px 4px">Testing only</span>
             </button>
             <button onclick="setApi(2, 'modern', this)">
               Modern &nbsp;<code style="font-size: 9px; opacity: 0.7"
                 >/api/payment/webhook/verify</code
-              >
+              >&nbsp;<span style="font-size:9px;background:#22c55e22;color:#22c55e;border:1px solid #22c55e55;border-radius:3px;padding:1px 4px">Production</span>
             </button>
           </div>
           <div class="fields">
@@ -812,12 +812,12 @@
             <button class="active" onclick="setApi(3, 'legacy', this)">
               Legacy &nbsp;<code style="font-size: 9px; opacity: 0.7"
                 >/payment_api/callback.php</code
-              >
+              >&nbsp;<span style="font-size:9px;background:#f59e0b22;color:#f59e0b;border:1px solid #f59e0b55;border-radius:3px;padding:1px 4px">Testing only</span>
             </button>
             <button onclick="setApi(3, 'modern', this)">
               Modern &nbsp;<code style="font-size: 9px; opacity: 0.7"
                 >/api/payment/webhook/callback</code
-              >
+              >&nbsp;<span style="font-size:9px;background:#22c55e22;color:#22c55e;border:1px solid #22c55e55;border-radius:3px;padding:1px 4px">Production</span>
             </button>
           </div>
           <div class="fields">
@@ -915,12 +915,12 @@
             <button class="active" onclick="setApi(4, 'legacy', this)">
               Legacy &nbsp;<code style="font-size: 9px; opacity: 0.7"
                 >/payment_api/cancel_transaction.php</code
-              >
+              >&nbsp;<span style="font-size:9px;background:#f59e0b22;color:#f59e0b;border:1px solid #f59e0b55;border-radius:3px;padding:1px 4px">Testing only</span>
             </button>
             <button onclick="setApi(4, 'modern', this)">
               Modern &nbsp;<code style="font-size: 9px; opacity: 0.7"
                 >/api/payment/webhook/reversal</code
-              >
+              >&nbsp;<span style="font-size:9px;background:#22c55e22;color:#22c55e;border:1px solid #22c55e55;border-radius:3px;padding:1px 4px">Production</span>
             </button>
           </div>
           <div class="fields">
@@ -1403,8 +1403,8 @@
       <td style="font-weight:500">${row.name}</td>
       <td><span class="method-tag">${row.method}</span></td>
       <td class="url-cell">
-        <div style="margin-bottom:3px"><span style="font-size:9px;color:var(--muted);margin-right:4px">Legacy</span>${legacyUrl}</div>
-        ${row.special ? "" : `<div><span style="font-size:9px;color:var(--primary);margin-right:4px">Modern</span>${modernUrl}</div>`}
+        <div style="margin-bottom:3px"><span style="font-size:9px;background:#f59e0b22;color:#f59e0b;border:1px solid #f59e0b55;border-radius:3px;padding:1px 5px;margin-right:6px">Legacy · Testing only</span>${legacyUrl}</div>
+        ${row.special ? "" : `<div style="margin-top:2px"><span style="font-size:9px;background:#22c55e22;color:#22c55e;border:1px solid #22c55e55;border-radius:3px;padding:1px 5px;margin-right:6px">Modern · Production</span>${modernUrl}</div>`}
       </td>
       <td style="white-space:nowrap">
         <button class="copy-url" onclick="copyUrl('${legacyUrl}')">Copy Legacy</button>
