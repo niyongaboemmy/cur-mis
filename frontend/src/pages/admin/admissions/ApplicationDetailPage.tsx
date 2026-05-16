@@ -519,7 +519,7 @@ export default function ApplicationDetailPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mt-8">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mt-8">
           <DetailTile
             icon={Building2}
             label="Faculty"
@@ -529,6 +529,19 @@ export default function ApplicationDetailPage() {
             icon={GraduationCap}
             label="Department"
             value={app.department_name ?? `#${app.department_id}`}
+          />
+          <DetailTile
+            icon={MapPin}
+            label="Campus"
+            value={
+              (app as any).campus_name ??
+              ((app as any).campus_id ? `#${(app as any).campus_id}` : '—')
+            }
+          />
+          <DetailTile
+            icon={CalendarDays}
+            label="Mode"
+            value={(app as any).mode_of_study ?? '—'}
           />
           <DetailTile
             icon={Calendar}

@@ -67,12 +67,18 @@ class StudentApplicationModel extends BaseModel
                     f.fac_name AS faculty_name, f.fac_code AS faculty_code,
                     ay.label   AS academic_year_label,
                     ao.student_id, ao.offer_letter_reference,
+                    o.name     AS program_name,
+                    c.name     AS campus_name, c.code AS campus_code, c.location AS campus_location,
+                    l.name     AS level_name,
                     COALESCE(ap.profile_photo_id, u.photo) AS applicant_photo_id
              FROM `student_applications` sa
              LEFT JOIN `departements`    d  ON d.dep_id   = sa.department_id
              LEFT JOIN `faculty`         f  ON f.fac_id   = sa.faculty_id
              LEFT JOIN `academic_years`  ay ON ay.id      = sa.academic_year_id
              LEFT JOIN `admission_offers` ao ON ao.application_id = sa.id
+             LEFT JOIN `options`         o  ON o.id       = sa.program_id
+             LEFT JOIN `campuses`        c  ON c.id       = sa.campus_id
+             LEFT JOIN `levels`          l  ON l.id       = sa.level_id
              LEFT JOIN `applicant_profiles` ap ON ap.application_id = sa.id
              LEFT JOIN `users`              u  ON u.id = ap.user_id
              WHERE sa.id = ?
