@@ -34,6 +34,7 @@ import {
 import UserDropdown from "@/components/layout/UserDropdown";
 import MessageNotificationBell from "@/components/layout/MessageNotificationBell";
 import CampusFilterSwitcher from "@/components/layout/CampusFilterSwitcher";
+import CategoryFilterSwitcher from "@/components/layout/CategoryFilterSwitcher";
 
 import Logo from "@/components/brand/Logo";
 import GlobalSearch from "@/components/layout/GlobalSearch";
@@ -123,6 +124,11 @@ const NAV_TREE: NavNode[] = [
       {
         to: "/students",
         label: "All students",
+        permissions: [PERMISSIONS.VIEW_STUDENTS],
+      },
+      {
+        to: "/admin/international-students",
+        label: "International students",
         permissions: [PERMISSIONS.VIEW_STUDENTS],
       },
       {
@@ -1019,6 +1025,7 @@ export default function MainLayout() {
                 day-to-day. Campus scope stays — it actively governs every
                 page's data. */}
             {user?.role !== "applicant" && <CampusFilterSwitcher />}
+            {user?.role !== "applicant" && <CategoryFilterSwitcher />}
             <RoundIconBtn label="Notifications" dot>
               <Bell className="w-[18px] h-[18px]" />
             </RoundIconBtn>

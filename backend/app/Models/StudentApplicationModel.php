@@ -16,6 +16,7 @@ class StudentApplicationModel extends BaseModel
         'email', 'phone', 'reference_phone',
         'gender', 'birthdate', 'marital_status',
         'nationality', 'country_of_residence', 'national_id',
+        'visa_obtained_date', 'visa_expiration_date',
         'disability', 'address',
         'province', 'district', 'sector', 'residence_district',
         // Academic background

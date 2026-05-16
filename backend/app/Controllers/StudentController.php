@@ -90,15 +90,14 @@ class StudentController extends BaseController
         $applicationId = $this->resolveApplicationId($id);
         $offer         = $this->resolveAdmissionOffer($id);
 
-        if (!$applicationId) {
-            $this->success($response, [
-                'application_id'  => null,
-                'documents'       => [],
-                'admission_offer' => $offer,
-            ], 'Student has no linked application.');
-        }
+        $documents = $applicationId ? $this->docModel->getForApplication($applicationId) : [];
 
-        $documents = $this->docModel->getForApplication($applicationId);
+        // International students always get the synthetic Visa row injected
+        // at the top — mirrors the self-service /me/documents behavior so
+        // admins viewing the page see the same list of expected docs.
+        if (self::isStudentInternational($student)) {
+            array_unshift($documents, $this->buildVisaDocRow($id));
+        }
 
         $this->success($response, [
             'application_id'  => $applicationId,
@@ -157,24 +156,17 @@ class StudentController extends BaseController
     }
 
     /**
-     * List all students with pagination and search.
+     * Build the WHERE clauses + bindings shared by the paginated student
+     * list (`index`) and the CSV export (`exportCsv`). Returns
+     * `[string $whereSql, array $bindings]`. Both endpoints accept the
+     * same `q` search box and per-column exact-match filters so the
+     * export always mirrors what the user sees on the list page.
+     *
+     * @return array{0:string, 1:array}
      */
-    public function index(Request $request, Response $response): never
+    private function buildListFilters(Request $request): array
     {
-        $page    = (int)($request->query('page') ?? 1);
-        $perPage = (int)($request->query('per_page') ?? 15);
         $search  = $request->query('search') ?? $request->query('q') ?? '';
-        
-        $sortBy  = $request->query('sort_by');
-        $sortDir = strtoupper($request->query('sort_dir') ?? 'DESC');
-
-        $allowedSorts = ['id', 'fname', 'lname', 'regnumber', 'email', 'gender', 'nationality'];
-        if (!in_array($sortBy, $allowedSorts, true)) {
-            $sortBy = 'id';
-        }
-        if (!in_array($sortDir, ['ASC', 'DESC'], true)) {
-            $sortDir = 'DESC';
-        }
 
         $clauses  = [];
         $bindings = [];
@@ -187,96 +179,32 @@ class StudentController extends BaseController
             $bindings[] = "%$search%";
         }
 
-        // Exact-match filter columns accepted from the query string.
-        $filterable = [
-            'student_state', 'gender', 'faculty', 'department',
-            'current_level', 'nationality', 'acc_year', 'program',
-            'std_option', 'campus', 'intake',
-        ];
-
-        foreach ($filterable as $col) {
-            $val = $request->query($col);
-            if ($val !== null && $val !== '') {
-                $lower = strtolower((string)$val);
-                // Treat "rwandan" family as a single bucket for the Rwandan vs Foreign overview
-                if ($col === 'nationality' && $lower === 'rwandan') {
-                    $clauses[]  = "LOWER(nationality) IN ('rwandan','rwandana','rwandese')";
-                } elseif ($col === 'nationality' && $lower === 'foreign') {
-                    $clauses[]  = "(nationality IS NOT NULL AND nationality <> '' AND LOWER(nationality) NOT IN ('rwandan','rwandana','rwandese'))";
-                } elseif ($col === 'nationality' && $lower === 'unknown') {
-                    $clauses[] = "(nationality IS NULL OR nationality = '')";
-                } elseif ($col === 'gender') {
-                    if (in_array($lower, ['m', 'male'], true)) {
-                        $clauses[]  = "LOWER(gender) IN ('m','male')";
-                    } elseif (in_array($lower, ['f', 'female'], true)) {
-                        $clauses[]  = "LOWER(gender) IN ('f','female')";
-                    } elseif ($lower === 'unknown') {
-                        $clauses[] = "(gender IS NULL OR gender = '' OR LOWER(gender) NOT IN ('m','male','f','female'))";
-                    }
-                } elseif ($col === 'acc_year') {
-                    // academic_years.label uses "2024/2025" (slash) while student.acc_year
-                    // is historically stored as "2024-2025" (dash). Accept either format
-                    // from the client and match against both.
-                    $variants = self::accYearVariants((string)$val);
-                    $ph = implode(',', array_fill(0, count($variants), '?'));
-                    $clauses[] = "acc_year IN ($ph)";
-                    foreach ($variants as $v) { $bindings[] = $v; }
-                } elseif ($col === 'std_option') {
-                    // Programme scoping. Match the option through every place
-                    // a programme link can live for a student row — but never
-                    // widen to the option's *department*, otherwise every
-                    // programme in the same department returns the same
-                    // cohort and switching programmes appears to do nothing.
-                    $optionId = (int)$val;
-                    $opt      = null;
-                    if ($optionId > 0) {
-                        $opt = $this->studentModel->db()->fetchOne(
-                            'SELECT id, name, code, acro, department_id
-                             FROM `options` WHERE id = ? LIMIT 1',
-                            [$optionId]
-                        );
-                    }
-
-                    $aliases = [(string)$val];
-                    foreach (['name', 'code', 'acro'] as $f) {
-                        $v = trim((string)($opt[$f] ?? ''));
-                        if ($v !== '') $aliases[] = $v;
-                    }
-                    $aliases = array_values(array_unique($aliases));
-
-                    $sub = [];
-                    foreach ($aliases as $a) {
-                        $sub[] = 'LOWER(TRIM(std_option)) = LOWER(?)';
-                        $bindings[] = $a;
-                        $sub[] = 'LOWER(TRIM(program)) = LOWER(?)';
-                        $bindings[] = $a;
-                    }
-                    if ($optionId > 0) {
-                        $sub[] = 'id IN (
-                            SELECT ao.student_id
-                            FROM `admission_offers` ao
-                            JOIN `student_applications` sa ON sa.id = ao.application_id
-                            WHERE sa.program_id = ?
-                        )';
-                        $bindings[] = $optionId;
-
-                        $sub[] = 'user_id IN (
-                            SELECT ap.user_id
-                            FROM `applicant_profiles` ap
-                            JOIN `student_applications` sa2 ON sa2.id = ap.application_id
-                            WHERE sa2.program_id = ? AND ap.user_id IS NOT NULL
-                        )';
-                        $bindings[] = $optionId;
-                    }
-                    $clauses[] = '(' . implode(' OR ', $sub) . ')';
-                } else {
-                    $clauses[]  = "`$col` = ?";
-                    $bindings[] = $val;
-                }
-            }
-        }
+        $this->applyFilterableClauses($request, $clauses, $bindings);
 
         $where = $clauses ? implode(' AND ', $clauses) : '';
+        return [$where, $bindings];
+    }
+
+    /**
+     * List all students with pagination and search.
+     */
+    public function index(Request $request, Response $response): never
+    {
+        $page    = (int)($request->query('page') ?? 1);
+        $perPage = (int)($request->query('per_page') ?? 15);
+
+        $sortBy  = $request->query('sort_by');
+        $sortDir = strtoupper($request->query('sort_dir') ?? 'DESC');
+
+        $allowedSorts = ['id', 'fname', 'lname', 'regnumber', 'email', 'gender', 'nationality'];
+        if (!in_array($sortBy, $allowedSorts, true)) {
+            $sortBy = 'id';
+        }
+        if (!in_array($sortDir, ['ASC', 'DESC'], true)) {
+            $sortDir = 'DESC';
+        }
+
+        [$where, $bindings] = $this->buildListFilters($request);
 
         $paginated = $this->studentModel->paginate($page, $perPage, $where, $bindings, $sortBy, $sortDir);
 
@@ -381,15 +309,14 @@ class StudentController extends BaseController
         $applicationId = $this->resolveApplicationId($studentId);
         $offer         = $this->resolveAdmissionOffer($studentId);
 
-        if (!$applicationId) {
-            $this->success($response, [
-                'application_id'  => null,
-                'documents'       => [],
-                'admission_offer' => $offer,
-            ], 'You have no linked application.');
-        }
+        $documents = $applicationId ? $this->docModel->getForApplication($applicationId) : [];
 
-        $documents = $this->docModel->getForApplication($applicationId);
+        // International students always get a synthetic "Visa" entry at the
+        // top of their document list — either pointing to the file they've
+        // already uploaded, or a placeholder asking them to upload one.
+        if (self::isStudentInternational($student)) {
+            array_unshift($documents, $this->buildVisaDocRow($studentId));
+        }
 
         $this->success($response, [
             'application_id'  => $applicationId,
@@ -648,6 +575,519 @@ class StudentController extends BaseController
 
         $this->studentModel->delete($id);
         $this->success($response, null, 'Student deleted successfully.');
+    }
+
+    /* ─────────────────────────────────────────────────────────────────
+     *  BULK IMPORT — template / validate (dry-run) / commit
+     *  Mirrors the applicant bulk upload flow. CSV (UTF-8 with BOM) is
+     *  the interchange format — Excel opens it natively and no extra
+     *  PHP dependency is required.
+     * ───────────────────────────────────────────────────────────────── */
+
+    /** Stable column list used by both template generation + bulk import. */
+    private function bulkStudentColumns(): array
+    {
+        return [
+            'regnumber','fname','lname','email','phone','gender','birthdate',
+            'nationality','std_option','current_level','intake','acc_year',
+            'campus','sponsor','marital_status','disability',
+            'father','mother','id_card','country','province','district',
+            'sector','cell','village','registration_date','student_state',
+        ];
+    }
+
+    /** Required keys when importing a student row. */
+    private function bulkStudentRequired(): array
+    {
+        return ['fname','lname','std_option'];
+    }
+
+    /**
+     * GET /api/students/bulk-upload-template
+     * Streams a CSV the registry team fills in then re-uploads via
+     * /bulk-validate (preview) and /bulk-upload (commit). Excel opens CSV
+     * natively so no XLSX dependency.
+     *
+     * Two design notes that matter for non-technical users:
+     *   1. The example row uses real *names* (program, campus) fetched
+     *      from the DB — not raw IDs — because nobody knows that
+     *      "5" means "BSc Computer Science". The import side accepts
+     *      either the name or the id.
+     *   2. Long all-digit fields (id_card, national IDs) are wrapped
+     *      as `="…"` so Excel treats them as text instead of converting
+     *      to scientific notation (1.199E+15). The import side strips
+     *      that wrapper transparently.
+     */
+    public function bulkUploadTemplate(Request $request, Response $response): never
+    {
+        $db = $this->studentModel->db();
+
+        // Use the first real program + campus as the example so the
+        // user sees an end-to-end realistic row instead of opaque ids.
+        $progRow   = $db->fetchOne("SELECT name FROM `options` ORDER BY id ASC LIMIT 1");
+        $campusRow = $db->fetchOne("SELECT name FROM `campuses` ORDER BY id ASC LIMIT 1");
+        $exampleProgram = $progRow['name']   ?? 'BSc Computer Science';
+        $exampleCampus  = $campusRow['name'] ?? 'Main Campus';
+
+        $headers = $this->bulkStudentColumns();
+        // Map header → example value so re-ordering bulkStudentColumns()
+        // doesn't desync the example row.
+        $exampleMap = [
+            'regnumber'        => 'CUR/2026/00001',
+            'fname'            => 'Jane',
+            'lname'            => 'Doe',
+            'email'            => 'jane.doe@example.com',
+            'phone'            => $this->excelText('+250788000000'),
+            'gender'           => 'F',
+            'birthdate'        => '2002-03-14',
+            'nationality'      => 'Rwandan',
+            'std_option'       => $exampleProgram,
+            'current_level'    => '1',
+            'intake'           => 'Jan 2026',
+            'acc_year'         => '2025-2026',
+            'campus'           => $exampleCampus,
+            'sponsor'          => 'self',
+            'marital_status'   => 'single',
+            'disability'       => '',
+            'father'           => 'John Doe',
+            'mother'           => 'Mary Doe',
+            'id_card'          => $this->excelText('1199000000000000'),
+            'country'          => 'Rwanda',
+            'province'         => 'Kigali',
+            'district'         => 'Gasabo',
+            'sector'           => 'Remera',
+            'cell'             => 'Rukiri',
+            'village'          => 'Kabeza',
+            'registration_date'=> '2026-01-15',
+            'student_state'    => 'active',
+        ];
+        $example = array_map(fn($h) => $exampleMap[$h] ?? '', $headers);
+
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="bulk-students-template.csv"');
+        $out = fopen('php://output', 'w');
+        fwrite($out, "\xEF\xBB\xBF"); // BOM for Excel UTF-8
+        // Instructions row (Excel reads it as a comment-style first row);
+        // re-uploading is harmless because we skip rows with no `fname`.
+        fputcsv($out, $headers);
+        fputcsv($out, $example);
+        // Second example row left blank for the user to start typing.
+        fputcsv($out, array_fill(0, count($headers), ''));
+        fclose($out);
+        exit;
+    }
+
+    /**
+     * Wrap a value as `="…"` so Excel keeps it as text when opening the
+     * CSV (otherwise long all-digit values like national IDs are
+     * coerced to scientific notation: "1.199E+15").
+     */
+    private function excelText(string $value): string
+    {
+        if ($value === '') return '';
+        // Escape any embedded double-quotes per Excel's =""..."" convention.
+        $escaped = str_replace('"', '""', $value);
+        return '="' . $escaped . '"';
+    }
+
+    /**
+     * Reverse of excelText() — strips the `="…"` wrapper Excel sometimes
+     * preserves on save so the importer sees the plain value.
+     */
+    private function unwrapExcelText(string $value): string
+    {
+        $v = trim($value);
+        if (strlen($v) >= 4 && str_starts_with($v, '="') && str_ends_with($v, '"')) {
+            return str_replace('""', '"', substr($v, 2, -1));
+        }
+        return $v;
+    }
+
+    /**
+     * Resolve a chosen program (`std_option`) by either numeric id or
+     * case-insensitive name. Returns the same `{ id, name, ... }` shape
+     * as resolveOption() so the rest of the importer doesn't care which
+     * form the spreadsheet used.
+     */
+    private function resolveOptionByIdOrName(string $value): ?array
+    {
+        $v = trim($value);
+        if ($v === '') return null;
+        if (ctype_digit($v)) {
+            return $this->resolveOption($v);
+        }
+        $row = $this->studentModel->db()->fetchOne(
+            "SELECT o.id, o.name, o.department_id, d.fac_id AS faculty_id
+             FROM `options` o
+             LEFT JOIN `departements` d ON d.dep_id = o.department_id
+             WHERE LOWER(o.name) = LOWER(?) LIMIT 1",
+            [$v]
+        );
+        return $row ?: null;
+    }
+
+    /**
+     * Resolve a campus column value (id or case-insensitive name) to
+     * the campus.id stored as a string on the `student` row. Returns
+     * null when the column was left blank, or false when the value
+     * didn't match any campus.
+     */
+    private function resolveCampusByIdOrName(string $value): null|false|string
+    {
+        $v = trim($value);
+        if ($v === '') return null;
+        if (ctype_digit($v)) {
+            $row = $this->studentModel->db()->fetchOne(
+                "SELECT id FROM `campuses` WHERE id = ? LIMIT 1",
+                [(int)$v]
+            );
+            return $row ? (string)(int)$row['id'] : false;
+        }
+        $row = $this->studentModel->db()->fetchOne(
+            "SELECT id FROM `campuses` WHERE LOWER(name) = LOWER(?) LIMIT 1",
+            [$v]
+        );
+        return $row ? (string)(int)$row['id'] : false;
+    }
+
+    /**
+     * POST /api/students/bulk-validate
+     * Dry-run preview: parses the uploaded CSV, normalises rows, checks
+     * required fields + std_option validity + regnumber collisions and
+     * tags each row as `create` (new regnumber) or `update` (existing
+     * regnumber). No DB writes. Powers the modal preview where the user
+     * can fix mismatched values before committing.
+     *
+     * Returns: { headers, rows:[{row_no, action, data, errors:[{field,message}]}],
+     *            summary:{ total, valid, with_errors, to_create, to_update } }
+     */
+    public function bulkValidate(Request $request, Response $response): never
+    {
+        $parsed = $this->parseBulkCsv($response);
+        $headers = $parsed['headers'];
+        $rows    = $parsed['rows'];
+
+        $required = $this->bulkStudentRequired();
+        $result   = [];
+        $tally    = ['total' => 0, 'valid' => 0, 'with_errors' => 0, 'to_create' => 0, 'to_update' => 0];
+
+        foreach ($rows as $entry) {
+            $tally['total']++;
+            $assoc  = $entry['data'];
+            $rowNo  = $entry['row_no'];
+            $errors = [];
+
+            foreach ($required as $r) {
+                if (($assoc[$r] ?? '') === '') {
+                    $errors[] = ['field' => $r, 'message' => "Missing required field '$r'."];
+                }
+            }
+
+            if (($assoc['std_option'] ?? '') !== '') {
+                $opt = $this->resolveOptionByIdOrName((string)$assoc['std_option']);
+                if (!$opt) {
+                    $errors[] = ['field' => 'std_option', 'message' => "Unknown program '{$assoc['std_option']}'. Use the program name or its id."];
+                }
+            }
+
+            if (($assoc['campus'] ?? '') !== '') {
+                $cmp = $this->resolveCampusByIdOrName((string)$assoc['campus']);
+                if ($cmp === false) {
+                    $errors[] = ['field' => 'campus', 'message' => "Unknown campus '{$assoc['campus']}'. Use the campus name or its id."];
+                }
+            }
+
+            if (($assoc['email'] ?? '') !== '' && !filter_var($assoc['email'], FILTER_VALIDATE_EMAIL)) {
+                $errors[] = ['field' => 'email', 'message' => "Invalid email '{$assoc['email']}'."];
+            }
+            if (($assoc['gender'] ?? '') !== '' && !in_array(strtoupper((string)$assoc['gender']), ['M','F','MALE','FEMALE'], true)) {
+                $errors[] = ['field' => 'gender', 'message' => "Gender must be M or F."];
+            }
+            if (($assoc['birthdate'] ?? '') !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}/', (string)$assoc['birthdate'])) {
+                $errors[] = ['field' => 'birthdate', 'message' => "Birthdate must be YYYY-MM-DD."];
+            }
+
+            $action = 'create';
+            $regnum = trim((string)($assoc['regnumber'] ?? ''));
+            if ($regnum !== '') {
+                $existing = $this->studentModel->db()->fetchOne(
+                    "SELECT id, fname, lname FROM `student` WHERE regnumber = ? LIMIT 1",
+                    [$regnum]
+                );
+                if ($existing) {
+                    $action = 'update';
+                }
+            }
+
+            if (empty($errors)) {
+                $tally['valid']++;
+                $action === 'update' ? $tally['to_update']++ : $tally['to_create']++;
+            } else {
+                $tally['with_errors']++;
+            }
+
+            $result[] = [
+                'row_no'  => $rowNo,
+                'action'  => $action,
+                'data'    => $assoc,
+                'errors'  => $errors,
+            ];
+        }
+
+        $this->success($response, [
+            'headers' => $headers,
+            'rows'    => $result,
+            'summary' => $tally,
+        ], 'Preview ready.');
+    }
+
+    /**
+     * POST /api/students/bulk-upload
+     * Commit endpoint. Inserts new students (no regnumber match) and
+     * updates existing rows by regnumber. Rows with validation errors
+     * are skipped and surfaced in the response. Runs in a single
+     * transaction so a fatal parse error never leaves the table in a
+     * half-imported state.
+     *
+     * Body (multipart):
+     *   file: CSV/XLSX (only CSV supported for now)
+     *   patched_rows (optional JSON): [{row_no, data}] — rows the user
+     *     fixed in the preview UI. Their `data` overrides the parsed
+     *     row's values before the row is processed.
+     */
+    public function bulkUpload(Request $request, Response $response): never
+    {
+        $parsed   = $this->parseBulkCsv($response);
+        $rows     = $parsed['rows'];
+        $authUser = (array) $request->param('_auth_user');
+        $actorId  = (int)($authUser['id'] ?? 0);
+
+        // Merge user-supplied patches from the preview UI.
+        $patches = [];
+        $patchRaw = $request->body()['patched_rows'] ?? null;
+        if (is_string($patchRaw)) {
+            $decoded = json_decode($patchRaw, true);
+            if (is_array($decoded)) {
+                foreach ($decoded as $p) {
+                    if (isset($p['row_no']) && isset($p['data']) && is_array($p['data'])) {
+                        $patches[(int)$p['row_no']] = $p['data'];
+                    }
+                }
+            }
+        }
+
+        $required = $this->bulkStudentRequired();
+        $results  = [
+            'inserted'  => 0,
+            'updated'   => 0,
+            // Rows where every value either matched the existing row or
+            // was left blank — there was literally nothing to write.
+            'unchanged' => 0,
+            'skipped'   => 0,
+            'errors'    => [],
+        ];
+        $db       = $this->studentModel->db();
+
+        try {
+            $db->beginTransaction();
+            foreach ($rows as $entry) {
+                $rowNo = $entry['row_no'];
+                $assoc = $entry['data'];
+                if (isset($patches[$rowNo])) {
+                    $assoc = array_merge($assoc, $patches[$rowNo]);
+                }
+
+                // Validate.
+                foreach ($required as $r) {
+                    if (($assoc[$r] ?? '') === '') {
+                        $results['errors'][] = ['row' => $rowNo, 'message' => "Missing required field '$r'."];
+                        $results['skipped']++;
+                        continue 2;
+                    }
+                }
+                $option = $this->resolveOptionByIdOrName((string)$assoc['std_option']);
+                if (!$option) {
+                    $results['errors'][] = ['row' => $rowNo, 'message' => "Unknown program '{$assoc['std_option']}'. Use the program name or its id."];
+                    $results['skipped']++;
+                    continue;
+                }
+                // Resolve campus name/id → numeric id string. Blank stays
+                // blank; an unrecognised value blocks the row instead of
+                // silently dropping the column.
+                $campusVal = (string)($assoc['campus'] ?? '');
+                $campusId  = null;
+                if ($campusVal !== '') {
+                    $resolved = $this->resolveCampusByIdOrName($campusVal);
+                    if ($resolved === false) {
+                        $results['errors'][] = ['row' => $rowNo, 'message' => "Unknown campus '{$campusVal}'."];
+                        $results['skipped']++;
+                        continue;
+                    }
+                    $campusId = $resolved;
+                }
+
+                $regnum = trim((string)($assoc['regnumber'] ?? ''));
+                if ($regnum === '') {
+                    $year   = date('Y');
+                    $regnum = 'CUR/' . $year . '/' . str_pad((string)random_int(1, 99999), 5, '0', STR_PAD_LEFT);
+                }
+
+                $payload = [
+                    'regnumber'         => $regnum,
+                    'fname'             => trim((string)$assoc['fname']),
+                    'lname'             => trim((string)$assoc['lname']),
+                    'email'             => $assoc['email']  ?? null,
+                    'phone'             => $assoc['phone']  ?? null,
+                    'gender'            => $assoc['gender'] ?? null,
+                    'birthdate'         => $assoc['birthdate'] ?? null,
+                    'nationality'       => $assoc['nationality'] ?? 'Rwandan',
+                    'std_option'        => (string)$option['id'],
+                    'program'           => $option['name'] ?? null,
+                    'faculty'           => isset($option['faculty_id'])    ? (string)$option['faculty_id']    : null,
+                    'department'        => isset($option['department_id']) ? (string)$option['department_id'] : null,
+                    'current_level'     => $assoc['current_level'] ?? null,
+                    'intake'            => $assoc['intake'] ?? null,
+                    'acc_year'          => $assoc['acc_year'] ?? null,
+                    'campus'            => $campusId,
+                    'sponsor'           => $assoc['sponsor'] ?? null,
+                    'marital_status'    => $assoc['marital_status'] ?? null,
+                    'disability'        => $assoc['disability'] ?? null,
+                    'father'            => $assoc['father'] ?? null,
+                    'mother'            => $assoc['mother'] ?? null,
+                    'id_card'           => $assoc['id_card'] ?? null,
+                    'country'           => $assoc['country'] ?? null,
+                    'province'          => $assoc['province'] ?? null,
+                    'district'          => $assoc['district'] ?? null,
+                    'sector'            => $assoc['sector'] ?? null,
+                    'cell'              => $assoc['cell'] ?? null,
+                    'village'           => $assoc['village'] ?? null,
+                    'registration_date' => $assoc['registration_date'] ?? date('Y-m-d'),
+                    'student_state'     => $assoc['student_state'] ?? 'active',
+                ];
+                // Which cells the *user* actually provided in this row.
+                // We carry this through so the update branch can diff against
+                // the existing record and skip blanks instead of blanking
+                // existing data with NULLs.
+                $providedKeys = [];
+                foreach ($assoc as $k => $v) {
+                    if (trim((string)$v) !== '') {
+                        $providedKeys[$k] = true;
+                    }
+                }
+                // std_option + campus get resolved to ids above, so flag
+                // their *destination* columns as provided too.
+                if (($assoc['std_option'] ?? '') !== '') {
+                    $providedKeys['std_option']  = true;
+                    $providedKeys['program']     = true;
+                    $providedKeys['faculty']     = true;
+                    $providedKeys['department']  = true;
+                }
+                if ($campusId !== null) $providedKeys['campus'] = true;
+                // Default-fill columns the create branch sets unconditionally
+                // (so a fresh import still gets sensible nationality/state
+                // values even if the user left those blank).
+                $providedKeys['regnumber']    = true;
+                $providedKeys['fname']        = true;
+                $providedKeys['lname']        = true;
+
+                // Drop empty strings so the model writes NULLs where the
+                // user really left a column blank — but only on CREATE.
+                // On UPDATE we never overwrite existing data with NULL.
+                $createPayload = $payload;
+                foreach ($createPayload as $k => $v) {
+                    if ($v === '') $createPayload[$k] = null;
+                }
+
+                try {
+                    $existing = $db->fetchOne(
+                        "SELECT * FROM `student` WHERE regnumber = ? LIMIT 1",
+                        [$payload['regnumber']]
+                    );
+                    if ($existing) {
+                        // Build a patch from only the columns the user
+                        // actually filled in, dropping any that already
+                        // match the existing value. If nothing remains the
+                        // row is left untouched — counted as "unchanged".
+                        $patch = [];
+                        foreach ($payload as $col => $newVal) {
+                            if (!isset($providedKeys[$col])) continue;
+                            if ($newVal === '' || $newVal === null) continue;
+                            // regnumber is the match key — never re-write it.
+                            if ($col === 'regnumber') continue;
+                            $oldVal = $existing[$col] ?? null;
+                            if ((string)$oldVal === (string)$newVal) continue;
+                            $patch[$col] = $newVal;
+                        }
+                        if (empty($patch)) {
+                            $results['unchanged']++;
+                        } else {
+                            $this->studentModel->update((int)$existing['id'], $patch);
+                            $results['updated']++;
+                        }
+                    } else {
+                        $this->studentModel->create($createPayload);
+                        $results['inserted']++;
+                    }
+                } catch (\Throwable $e) {
+                    $results['errors'][] = ['row' => $rowNo, 'message' => $e->getMessage()];
+                    $results['skipped']++;
+                }
+            }
+            $db->commit();
+        } catch (\Throwable $e) {
+            if ($db->getPdo()->inTransaction()) $db->rollBack();
+            $this->error($response, 'Bulk upload failed: ' . $e->getMessage(), 500);
+        }
+
+        SystemLogService::log(
+            'CREATE', 'STUDENTS',
+            "Bulk-imported {$results['inserted']} new + {$results['updated']} updated + {$results['unchanged']} unchanged student(s); {$results['skipped']} skipped.",
+            null, 'student',
+            $results, $authUser ?: null
+        );
+
+        $this->success($response, $results, 'Bulk upload complete.');
+    }
+
+    /**
+     * Open the uploaded file (multipart field `file`), strip the BOM,
+     * read the header line and return an array of associative rows.
+     * Throws an HTTP error response on any IO failure.
+     *
+     * @return array{headers:string[], rows: array<int, array{row_no:int, data:array<string,string>}>}
+     */
+    private function parseBulkCsv(Response $response): array
+    {
+        if (empty($_FILES['file']['tmp_name'])) {
+            $this->error($response, 'No file uploaded (expected multipart field "file").', 422);
+        }
+        $handle = fopen($_FILES['file']['tmp_name'], 'r');
+        if (!$handle) {
+            $this->error($response, 'Could not open uploaded file.', 500);
+        }
+        $first = fgets($handle);
+        $first = preg_replace('/^\xEF\xBB\xBF/', '', $first ?: '') ?? '';
+        $headers = array_map(fn($h) => trim((string)$h), str_getcsv($first));
+
+        $rows = [];
+        $rowNo = 1;
+        while (($row = fgetcsv($handle)) !== false) {
+            $rowNo++;
+            if (empty(array_filter($row, fn($v) => trim((string)$v) !== ''))) {
+                continue;
+            }
+            $assoc = [];
+            foreach ($headers as $i => $h) {
+                // unwrapExcelText() also trims, so excel-text-wrapped IDs
+                // (`="1199…"`) come through as the plain string the user
+                // typed.
+                $assoc[$h] = isset($row[$i]) ? $this->unwrapExcelText((string)$row[$i]) : '';
+            }
+            $rows[] = ['row_no' => $rowNo, 'data' => $assoc];
+        }
+        fclose($handle);
+
+        return ['headers' => $headers, 'rows' => $rows];
     }
 
     /**
@@ -1634,6 +2074,117 @@ class StudentController extends BaseController
     }
 
     /**
+     * Append the per-column exact-match filter clauses to the in-progress
+     * WHERE builder. Pulled out of `index()` so the CSV export can apply
+     * the exact same filter semantics (including nationality buckets,
+     * acc_year format variants, category variants and the std_option
+     * permissive matcher) without duplicating ~80 lines of branching.
+     *
+     * @param array $clauses  Modified in place — new clauses appended.
+     * @param array $bindings Modified in place — new bindings appended.
+     */
+    private function applyFilterableClauses(Request $request, array &$clauses, array &$bindings): void
+    {
+        $filterable = [
+            'student_state', 'gender', 'faculty', 'department',
+            'current_level', 'nationality', 'acc_year', 'program',
+            'std_option', 'campus', 'intake', 'category',
+            // Alias for the legacy `program` column which actually stores the
+            // learning mode (Day / Evening / Weekend). Adding it under its
+            // semantic name keeps the API honest while we live with the
+            // misnamed schema column.
+            'learning_mode',
+        ];
+
+        foreach ($filterable as $col) {
+            $val = $request->query($col);
+            if ($val === null || $val === '') continue;
+            $lower = strtolower((string)$val);
+
+            if ($col === 'learning_mode') {
+                // Maps to the legacy `program` column on `student`.
+                $clauses[]  = 'LOWER(TRIM(program)) = LOWER(?)';
+                $bindings[] = trim((string)$val);
+                continue;
+            }
+
+            if ($col === 'nationality' && $lower === 'rwandan') {
+                $clauses[] = "LOWER(nationality) IN ('rwandan','rwandana','rwandese')";
+            } elseif ($col === 'nationality' && $lower === 'foreign') {
+                $clauses[] = "(nationality IS NOT NULL AND nationality <> '' AND LOWER(nationality) NOT IN ('rwandan','rwandana','rwandese'))";
+            } elseif ($col === 'nationality' && $lower === 'unknown') {
+                $clauses[] = "(nationality IS NULL OR nationality = '')";
+            } elseif ($col === 'gender') {
+                if (in_array($lower, ['m', 'male'], true)) {
+                    $clauses[] = "LOWER(gender) IN ('m','male')";
+                } elseif (in_array($lower, ['f', 'female'], true)) {
+                    $clauses[] = "LOWER(gender) IN ('f','female')";
+                } elseif ($lower === 'unknown') {
+                    $clauses[] = "(gender IS NULL OR gender = '' OR LOWER(gender) NOT IN ('m','male','f','female'))";
+                }
+            } elseif ($col === 'acc_year') {
+                $variants = self::accYearVariants((string)$val);
+                $ph = implode(',', array_fill(0, count($variants), '?'));
+                $clauses[] = "acc_year IN ($ph)";
+                foreach ($variants as $v) { $bindings[] = $v; }
+            } elseif ($col === 'category') {
+                $variants = self::categoryVariants($lower);
+                if (!empty($variants)) {
+                    $ph = implode(',', array_fill(0, count($variants), '?'));
+                    $clauses[] = "LOWER(TRIM(category)) IN ($ph)";
+                    foreach ($variants as $v) { $bindings[] = $v; }
+                }
+            } elseif ($col === 'std_option') {
+                $optionId = (int)$val;
+                $opt = null;
+                if ($optionId > 0) {
+                    $opt = $this->studentModel->db()->fetchOne(
+                        'SELECT id, name, code, acro, department_id
+                         FROM `options` WHERE id = ? LIMIT 1',
+                        [$optionId]
+                    );
+                }
+
+                $aliases = [(string)$val];
+                foreach (['name', 'code', 'acro'] as $f) {
+                    $v = trim((string)($opt[$f] ?? ''));
+                    if ($v !== '') $aliases[] = $v;
+                }
+                $aliases = array_values(array_unique($aliases));
+
+                $sub = [];
+                foreach ($aliases as $a) {
+                    $sub[] = 'LOWER(TRIM(std_option)) = LOWER(?)';
+                    $bindings[] = $a;
+                    $sub[] = 'LOWER(TRIM(program)) = LOWER(?)';
+                    $bindings[] = $a;
+                }
+                if ($optionId > 0) {
+                    $sub[] = 'id IN (
+                        SELECT ao.student_id
+                        FROM `admission_offers` ao
+                        JOIN `student_applications` sa ON sa.id = ao.application_id
+                        WHERE sa.program_id = ?
+                    )';
+                    $bindings[] = $optionId;
+
+                    $sub[] = 'user_id IN (
+                        SELECT ap.user_id
+                        FROM `applicant_profiles` ap
+                        JOIN `student_applications` sa2 ON sa2.id = ap.application_id
+                        WHERE sa2.program_id = ? AND ap.user_id IS NOT NULL
+                    )';
+                    $bindings[] = $optionId;
+                }
+                $clauses[] = '(' . implode(' OR ', $sub) . ')';
+            } else {
+                $clauses[]  = "`$col` = ?";
+                $bindings[] = $val;
+            }
+        }
+    }
+
+    /**
      * Aggregated overview metrics for the Student Registry page.
      * Single round-trip — one aggregate query + one grouped query.
      */
@@ -1655,6 +2206,28 @@ class StudentController extends BaseController
             if (!in_array($v, $variants, true)) $variants[] = $v;
         }
         return $variants;
+    }
+
+    /**
+     * Map a topbar category bucket ("undergraduate" / "postgraduate") to
+     * every spelling that the legacy `student.category` column may hold
+     * (e.g. both "undergraduate" and "under graduate"). All values are
+     * returned lowercase + trimmed so callers can match with
+     * `LOWER(TRIM(category)) IN (?, ?)`. Unknown buckets yield an empty
+     * array so the filter becomes a no-op rather than silently zeroing
+     * the result set.
+     *
+     * @return array<int, string>
+     */
+    private static function categoryVariants(string $value): array
+    {
+        $value = strtolower(trim($value));
+        if ($value === '') return [];
+        return match ($value) {
+            'undergraduate', 'under graduate', 'under-graduate' => ['undergraduate', 'under graduate'],
+            'postgraduate',  'post graduate',  'post-graduate'  => ['postgraduate',  'post graduate'],
+            default => [$value],
+        };
     }
 
     public function stats(Request $request, Response $response): never
@@ -1693,11 +2266,26 @@ class StudentController extends BaseController
             $campusBind  = [];
         }
 
-        // Convenience: merge year + campus into a single bound list so each
-        // aggregate uses one consistent params array.
-        $combined  = $yearScope . $campusScope;
-        $combinedS = $yearScopeS . $campusScopeS;
-        $bind      = array_merge($yearBind, $campusBind);
+        // Optional category filter — driven by the topnav Category switcher
+        // ("undergraduate" / "postgraduate"). Mapped through categoryVariants
+        // so both legacy spellings of each bucket are matched.
+        $categoryFilter   = trim((string)($request->query('category') ?? ''));
+        $categoryVariants = $categoryFilter !== '' ? self::categoryVariants($categoryFilter) : [];
+        if (!empty($categoryVariants)) {
+            $ph = implode(',', array_fill(0, count($categoryVariants), '?'));
+            $categoryScope  = " AND LOWER(TRIM(category)) IN ($ph)";
+            $categoryScopeS = " AND LOWER(TRIM(s.category)) IN ($ph)";
+            $categoryBind   = $categoryVariants;
+        } else {
+            $categoryScope = $categoryScopeS = '';
+            $categoryBind  = [];
+        }
+
+        // Convenience: merge year + campus + category into a single bound
+        // list so each aggregate uses one consistent params array.
+        $combined  = $yearScope . $campusScope . $categoryScope;
+        $combinedS = $yearScopeS . $campusScopeS . $categoryScopeS;
+        $bind      = array_merge($yearBind, $campusBind, $categoryBind);
 
         $row = $db->fetchOne("
             SELECT
@@ -1772,7 +2360,26 @@ class StudentController extends BaseController
             LIMIT 20
         ", $bind);
 
+        // The real programme is the catalogue option the student is assigned
+        // to (`student.std_option` → `options.id`). The legacy `student.program`
+        // column actually stores the learning mode (Day / Evening / Weekend) —
+        // that's broken out below as `byLearningMode`.
         $byProgram = $db->fetchAll("
+            SELECT s.std_option AS value, o.name AS label, COUNT(*) AS total
+            FROM student s
+            LEFT JOIN `options` o ON o.id = s.std_option
+            WHERE LOWER(s.student_state) = 'active'
+              AND s.std_option IS NOT NULL AND s.std_option <> ''
+              {$combinedS}
+            GROUP BY s.std_option, o.name
+            ORDER BY total DESC
+            LIMIT 20
+        ", $bind);
+
+        // student.program is the learning mode (Day / Evening / Weekend) —
+        // not the curriculum. Aggregated separately so the UI can show it on
+        // its own card instead of conflating it with the real programme.
+        $byLearningMode = $db->fetchAll("
             SELECT program AS value, program AS label, COUNT(*) AS total
             FROM student
             WHERE LOWER(student_state) = 'active'
@@ -1888,12 +2495,13 @@ class StudentController extends BaseController
             'active_academic_years'      => (int)($row['active_academic_years']      ?? 0),
 
             'active_breakdown' => [
-                'by_faculty'    => $byFaculty,
-                'by_department' => $byDepartment,
-                'by_level'      => $byLevel,
-                'by_program'    => $byProgram,
-                'by_campus'     => $byCampus,
-                'by_intake'     => $byIntake,
+                'by_faculty'       => $byFaculty,
+                'by_department'    => $byDepartment,
+                'by_level'         => $byLevel,
+                'by_program'       => $byProgram,
+                'by_learning_mode' => $byLearningMode,
+                'by_campus'        => $byCampus,
+                'by_intake'        => $byIntake,
             ],
             // Kept for backwards compatibility with any older client code
             'by_level'         => $byLevel,
@@ -1919,6 +2527,556 @@ class StudentController extends BaseController
     }
 
     // ─────────────────────────────────────────────────────────────────────
+    // Student CSV export — template-driven column picker.
+    //
+    // The Students page lets registry staff export the filtered cohort
+    // to CSV with either a saved/system template or a hand-picked set of
+    // columns. Built around three pieces:
+    //
+    //   • exportColumns()       — describes every available column so the
+    //                             frontend can render its picker. Each
+    //                             entry carries a stable `key`, a
+    //                             human-readable `label` (used as the CSV
+    //                             header) and a `group` for UI grouping.
+    //   • exportCsv()           — streams the CSV. Re-uses buildListFilters
+    //                             so the export always matches the list
+    //                             page exactly (including topbar campus +
+    //                             category scopes).
+    //   • list/save/delete      — CRUD over `student_export_templates`.
+    //     ExportTemplate()        System templates (HLIs → Mifotra) are
+    //                             returned alongside user-owned templates.
+    // ─────────────────────────────────────────────────────────────────────
+
+    /**
+     * Stable column registry powering the export modal + CSV generator.
+     * Each entry is:
+     *   key   — stable identifier persisted in templates
+     *   label — default CSV header text
+     *   group — UI section the picker shows it under
+     *   sql   — SELECT expression bound to the column (lets us join
+     *           catalogues once instead of N+1 lookups per row)
+     *   alias — column alias used when reading the result row back
+     *
+     * `sql` columns are joined into the export query so the resolver can
+     * read them straight from the row without further work. `alias` is
+     * what `array_column` / `$row[$alias]` will use.
+     *
+     * @return array<string, array{label:string, group:string, sql:string, alias:string}>
+     */
+    public static function exportColumns(): array
+    {
+        return [
+            // ── Identity ──
+            'regnumber'        => ['label' => 'Registration Number',  'group' => 'Identity', 'sql' => "s.regnumber",                                    'alias' => 'regnumber'],
+            'fname'            => ['label' => 'First Name',           'group' => 'Identity', 'sql' => "s.fname",                                        'alias' => 'fname'],
+            'lname'            => ['label' => 'Last Name',            'group' => 'Identity', 'sql' => "s.lname",                                        'alias' => 'lname'],
+            'full_name'        => ['label' => 'Full Name',            'group' => 'Identity', 'sql' => "TRIM(CONCAT_WS(' ', s.fname, s.lname))",         'alias' => 'full_name'],
+            'gender'           => ['label' => 'Gender',               'group' => 'Identity', 'sql' => "s.gender",                                       'alias' => 'gender'],
+            'birthdate'        => ['label' => 'Date of Birth',        'group' => 'Identity', 'sql' => "s.birthdate",                                    'alias' => 'birthdate'],
+            'nationality'      => ['label' => 'Nationality',          'group' => 'Identity', 'sql' => "s.nationality",                                  'alias' => 'nationality'],
+            'national_id'      => ['label' => 'National ID / Passport','group' => 'Identity', 'sql' => "s.id_card",                                     'alias' => 'national_id'],
+            'marital_status'   => ['label' => 'Marital Status',       'group' => 'Identity', 'sql' => "s.marital_status",                               'alias' => 'marital_status'],
+
+            // ── Contact ──
+            'email'            => ['label' => 'Email',                'group' => 'Contact',  'sql' => "s.email",                                        'alias' => 'email'],
+            'phone'            => ['label' => 'Phone',                'group' => 'Contact',  'sql' => "s.phone",                                        'alias' => 'phone'],
+
+            // ── Address ──
+            'country'          => ['label' => 'Country',              'group' => 'Address',  'sql' => "s.country",                                      'alias' => 'country'],
+            'province'         => ['label' => 'Province',             'group' => 'Address',  'sql' => "s.province",                                     'alias' => 'province'],
+            'district'         => ['label' => 'District',             'group' => 'Address',  'sql' => "s.district",                                     'alias' => 'district'],
+            'sector'           => ['label' => 'Sector',               'group' => 'Address',  'sql' => "s.sector",                                       'alias' => 'sector'],
+            'cell'             => ['label' => 'Cell',                 'group' => 'Address',  'sql' => "s.cell",                                         'alias' => 'cell'],
+            'village'          => ['label' => 'Village',              'group' => 'Address',  'sql' => "s.village",                                      'alias' => 'village'],
+
+            // ── Family ──
+            'father'           => ['label' => 'Father',               'group' => 'Family',   'sql' => "s.father",                                       'alias' => 'father'],
+            'mother'           => ['label' => 'Mother',               'group' => 'Family',   'sql' => "s.mother",                                       'alias' => 'mother'],
+
+            // ── Disability ──
+            'disability_status'=> ['label' => 'Disability Status',    'group' => 'Disability', 'sql' => "s.disability",                                 'alias' => 'disability_raw'],
+            'disability_type'  => ['label' => 'Disability Type',      'group' => 'Disability', 'sql' => "s.disability",                                 'alias' => 'disability_type'],
+
+            // ── Academics ──
+            'faculty_name'     => ['label' => 'Faculty',              'group' => 'Academics', 'sql' => "f.fac_name",                                    'alias' => 'faculty_name'],
+            'department_name'  => ['label' => 'Department',           'group' => 'Academics', 'sql' => "d.dep_name",                                    'alias' => 'department_name'],
+            'school_name'      => ['label' => 'School',               'group' => 'Academics', 'sql' => "sch.school_name",                               'alias' => 'school_name'],
+            'program_name'     => ['label' => 'Programme Name',       'group' => 'Academics', 'sql' => "COALESCE(o.name, s.program)",                   'alias' => 'program_name'],
+            'campus_name'      => ['label' => 'Campus',               'group' => 'Academics', 'sql' => "c.name",                                        'alias' => 'campus_name'],
+            'current_level'    => ['label' => 'Current Level',        'group' => 'Academics', 'sql' => "COALESCE(lvl.name, s.current_level)",           'alias' => 'current_level'],
+            'programme_level'  => ['label' => 'Qualification Level',  'group' => 'Academics', 'sql' => "s.programme_level",                             'alias' => 'programme_level'],
+            'category'         => ['label' => 'Category',             'group' => 'Academics', 'sql' => "s.category",                                    'alias' => 'category'],
+            'intake'           => ['label' => 'Intake',               'group' => 'Academics', 'sql' => "s.intake",                                      'alias' => 'intake'],
+            'acc_year'         => ['label' => 'Academic Year',        'group' => 'Academics', 'sql' => "s.acc_year",                                    'alias' => 'acc_year'],
+            'student_state'    => ['label' => 'Status',               'group' => 'Academics', 'sql' => "s.student_state",                               'alias' => 'student_state'],
+            'sponsor'          => ['label' => 'Sponsorship',          'group' => 'Academics', 'sql' => "s.sponsor",                                     'alias' => 'sponsor'],
+
+            // ── Origin (secondary school) ──
+            'last_school'      => ['label' => 'Previous School / HLI', 'group' => 'Origin',   'sql' => "s.last_school",                                  'alias' => 'last_school'],
+            'combination'      => ['label' => 'Secondary Combination','group' => 'Origin',   'sql' => "s.combination",                                   'alias' => 'combination'],
+            'grades'           => ['label' => 'Aggregate Scores',     'group' => 'Origin',   'sql' => "s.grades",                                        'alias' => 'grades'],
+            'a2_compl_year'    => ['label' => 'A2 Completion Year',   'group' => 'Origin',   'sql' => "s.A2_compl_year",                                 'alias' => 'a2_compl_year'],
+
+            // ── Dates ──
+            'registration_date'=> ['label' => 'Registration Date',    'group' => 'Dates',    'sql' => "s.registration_date",                            'alias' => 'registration_date'],
+            'started_at_cur'   => ['label' => 'Start Date',           'group' => 'Dates',    'sql' => "s.started_at_cur",                               'alias' => 'started_at_cur'],
+            'expire_date'      => ['label' => 'Expected Completion',  'group' => 'Dates',    'sql' => "s.expire_date",                                  'alias' => 'expire_date'],
+            'accepted_date'    => ['label' => 'Accepted Date',        'group' => 'Dates',    'sql' => "s.accepted_date",                                'alias' => 'accepted_date'],
+        ];
+    }
+
+    /**
+     * System (built-in) export templates surfaced alongside user-saved
+     * ones. Each declares an ordered list of column descriptors. A
+     * descriptor can be either a plain column key (uses the registry's
+     * default label) or `[key, label-override]` so government templates
+     * can match the exact header spelling expected by the receiving
+     * system. We keep the HLI → Mifotra template in-code because its
+     * header labels are policy-driven and shouldn't be editable from the
+     * UI.
+     *
+     * @return list<array{id:string, name:string, columns:array, is_system:bool}>
+     */
+    private function systemExportTemplates(): array
+    {
+        return [
+            [
+                'id'        => 'sys:hli_mifotra',
+                'name'      => 'HLIs Data to MIFOTRA',
+                'is_system' => true,
+                // Mirrors the Mifotra spreadsheet headers verbatim. Some
+                // columns (HLI name, College, High School ID, High School
+                // Location, academic award, Expected completion date) are
+                // derived or constant — see `resolveTemplateCell()` for
+                // their per-row logic.
+                'columns'   => [
+                    ['key' => 'regnumber',         'label' => 'Registration Number'],
+                    ['key' => 'national_id',       'label' => 'National_ID/Passport '],
+                    ['key' => 'nationality',       'label' => 'Nationality'],
+                    ['key' => 'email',             'label' => 'personal email '],
+                    ['key' => 'phone',             'label' => 'Telephone '],
+                    ['key' => 'fname',             'label' => 'First Name'],
+                    ['key' => 'lname',             'label' => 'Last Name'],
+                    ['key' => 'birthdate',         'label' => 'Date of Birth'],
+                    ['key' => 'gender',            'label' => 'Gender'],
+                    ['key' => 'disability_status', 'label' => 'Disablitity status (Yes/No)'],
+                    ['key' => 'disability_type',   'label' => 'Disability type '],
+                    ['key' => 'combination',       'label' => 'Secondary School Combination/previous HLI attended '],
+                    ['key' => '__const:',          'label' => 'High School Location'],
+                    ['key' => '__const:',          'label' => 'High School ID'],
+                    ['key' => 'grades',            'label' => 'Aggregate Secondary School Scores'],
+                    ['key' => '__const:Catholic University of Rwanda', 'label' => 'HLI name'],
+                    ['key' => 'school_name',       'label' => 'College '],
+                    ['key' => 'campus_name',       'label' => 'Campus name'],
+                    ['key' => 'school_name',       'label' => 'School'],
+                    ['key' => 'faculty_name',      'label' => 'Faculty'],
+                    ['key' => 'department_name',   'label' => 'Department'],
+                    ['key' => 'program_name',      'label' => 'Programme Name'],
+                    ['key' => '__award',           'label' => 'academic award '],
+                    ['key' => 'programme_level',   'label' => 'Qualification level '],
+                    ['key' => 'started_at_cur',    'label' => 'Start Date (year)'],
+                    ['key' => 'current_level',     'label' => 'Current of study'],
+                    ['key' => 'expire_date',       'label' => 'Expected completion  date'],
+                    ['key' => 'sponsor',           'label' => 'Sponsorship Status'],
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * GET /api/students/export-columns
+     * Returns the column registry + group order. Drives the picker UI.
+     */
+    public function exportColumnsList(Request $request, Response $response): never
+    {
+        $cols = self::exportColumns();
+        $groups = [];
+        foreach ($cols as $key => $meta) {
+            $groups[$meta['group']] ??= [];
+            $groups[$meta['group']][] = [
+                'key'   => $key,
+                'label' => $meta['label'],
+                'group' => $meta['group'],
+            ];
+        }
+        // Preserve the registry order — convert keyed map to a list so
+        // the client sees the same grouping the backend declared.
+        $out = [];
+        foreach ($groups as $name => $items) {
+            $out[] = ['name' => $name, 'columns' => $items];
+        }
+        $this->success($response, ['groups' => $out], 'Export columns fetched.');
+    }
+
+    /**
+     * GET /api/students/export-templates
+     * Returns system templates + the caller's saved templates.
+     */
+    public function listExportTemplates(Request $request, Response $response): never
+    {
+        $authUser = (array)($request->param('_auth_user') ?? []);
+        $userId   = (int)($authUser['id'] ?? 0);
+
+        $rows = $userId > 0
+            ? $this->studentModel->db()->fetchAll(
+                "SELECT id, name, `columns`, is_system, created_by, created_at, updated_at
+                 FROM `student_export_templates`
+                 WHERE created_by = ? OR is_system = 1
+                 ORDER BY is_system DESC, name ASC",
+                [$userId]
+            )
+            : [];
+
+        $userTemplates = [];
+        foreach ($rows as $r) {
+            $cols = is_string($r['columns']) ? (json_decode($r['columns'], true) ?: []) : (array)$r['columns'];
+            $userTemplates[] = [
+                'id'        => (int)$r['id'],
+                'name'      => (string)$r['name'],
+                'columns'   => $cols,
+                'is_system' => (int)$r['is_system'] === 1,
+                'is_owner'  => (int)($r['created_by'] ?? 0) === $userId,
+                'updated_at'=> $r['updated_at'] ?? $r['created_at'] ?? null,
+            ];
+        }
+
+        $this->success($response, [
+            'templates' => array_merge($this->systemExportTemplates(), $userTemplates),
+        ], 'Export templates fetched.');
+    }
+
+    /**
+     * POST /api/students/export-templates  { name, columns }
+     * Save a new user template. Each user can have many. We dedupe by
+     * (created_by, name) so re-saving with the same name updates in place.
+     */
+    public function saveExportTemplate(Request $request, Response $response): never
+    {
+        $authUser = (array)($request->param('_auth_user') ?? []);
+        $userId   = (int)($authUser['id'] ?? 0);
+        if ($userId <= 0) {
+            $this->error($response, 'Unauthorized.', 401);
+        }
+
+        $data    = (array)$request->body();
+        $name    = trim((string)($data['name'] ?? ''));
+        $columns = $data['columns'] ?? [];
+
+        if ($name === '') {
+            $this->error($response, 'Template name is required.', 422);
+        }
+        if (!is_array($columns) || empty($columns)) {
+            $this->error($response, 'At least one column is required.', 422);
+        }
+
+        // Validate every column key against the registry so we never
+        // persist a typo that would later blow up the CSV generator.
+        $valid = self::exportColumns();
+        $normalised = [];
+        foreach ($columns as $c) {
+            $key = is_array($c) ? (string)($c['key'] ?? '') : (string)$c;
+            if (!isset($valid[$key])) {
+                $this->error($response, "Unknown column: {$key}", 422);
+            }
+            $normalised[] = $key;
+        }
+
+        $db = $this->studentModel->db();
+        $existing = $db->fetchOne(
+            "SELECT id FROM `student_export_templates` WHERE created_by = ? AND name = ? LIMIT 1",
+            [$userId, $name]
+        );
+        $payload = json_encode($normalised, JSON_UNESCAPED_UNICODE);
+
+        if ($existing) {
+            $db->execute(
+                "UPDATE `student_export_templates` SET `columns` = ? WHERE id = ?",
+                [$payload, (int)$existing['id']]
+            );
+            $id = (int)$existing['id'];
+        } else {
+            $db->execute(
+                "INSERT INTO `student_export_templates` (name, `columns`, is_system, created_by) VALUES (?, ?, 0, ?)",
+                [$name, $payload, $userId]
+            );
+            $id = (int)$db->lastInsertId();
+        }
+
+        $this->success($response, [
+            'id'      => $id,
+            'name'    => $name,
+            'columns' => $normalised,
+        ], 'Template saved.');
+    }
+
+    /**
+     * DELETE /api/students/export-templates/:id
+     * Owners can delete their own template. System templates are
+     * immutable — attempting to delete one yields 403.
+     */
+    public function deleteExportTemplate(Request $request, Response $response): never
+    {
+        $authUser = (array)($request->param('_auth_user') ?? []);
+        $userId   = (int)($authUser['id'] ?? 0);
+        $id       = (int)$request->param('id');
+
+        $db = $this->studentModel->db();
+        $row = $db->fetchOne(
+            "SELECT id, created_by, is_system FROM `student_export_templates` WHERE id = ? LIMIT 1",
+            [$id]
+        );
+        if (!$row) {
+            $this->error($response, 'Template not found.', 404);
+        }
+        if ((int)$row['is_system'] === 1) {
+            $this->error($response, 'System templates cannot be deleted.', 403);
+        }
+        if ((int)$row['created_by'] !== $userId) {
+            $this->error($response, 'You can only delete your own templates.', 403);
+        }
+        $db->execute("DELETE FROM `student_export_templates` WHERE id = ?", [$id]);
+        $this->success($response, null, 'Template deleted.');
+    }
+
+    /**
+     * GET /api/students/export
+     *
+     * Streams a CSV of every student that matches the same filters used
+     * by the list page. Columns are driven by `?columns=` (comma-separated
+     * column keys) OR by `?template_id=` (numeric for a saved template,
+     * or the literal `sys:hli_mifotra` for the in-code Mifotra template).
+     *
+     * Templates win when both are provided so the user gets the exact
+     * column ORDER and HEADER LABELS the template specified.
+     */
+    public function exportCsv(Request $request, Response $response): never
+    {
+        $registry = self::exportColumns();
+
+        // ── Resolve column descriptors ─────────────────────────────────
+        // A descriptor is `['key' => string, 'label' => string]`. Loading
+        // a template gives us the ordered list with any HLI-style header
+        // overrides; a raw `columns` list falls back to registry labels.
+        $templateId = $request->query('template_id');
+        $picked     = [];
+
+        if ($templateId !== null && $templateId !== '') {
+            $picked = $this->resolveTemplateColumns((string)$templateId, $request);
+        }
+
+        if (empty($picked)) {
+            $rawCols = trim((string)($request->query('columns') ?? ''));
+            if ($rawCols === '') {
+                $this->error($response, 'No columns selected for export.', 422);
+            }
+            foreach (explode(',', $rawCols) as $k) {
+                $k = trim($k);
+                if ($k === '') continue;
+                if (!isset($registry[$k])) {
+                    $this->error($response, "Unknown column: {$k}", 422);
+                }
+                $picked[] = ['key' => $k, 'label' => $registry[$k]['label']];
+            }
+        }
+
+        if (empty($picked)) {
+            $this->error($response, 'No columns selected for export.', 422);
+        }
+
+        // ── Build the WHERE from the live list filters ─────────────────
+        [$where, $bindings] = $this->buildListFilters($request);
+
+        // Every column key we may need to read (registry + the few
+        // synthetic keys consumed by `resolveTemplateCell`).
+        $neededKeys = [];
+        foreach ($picked as $p) {
+            $k = $p['key'];
+            if (str_starts_with($k, '__')) {
+                // Synthetic columns pull from these fallback fields:
+                if ($k === '__award') {
+                    $neededKeys['programme_level'] = true;
+                    $neededKeys['program_name']    = true;
+                }
+                continue;
+            }
+            $neededKeys[$k] = true;
+        }
+        // Always include the id so an unstable LIMIT/OFFSET still
+        // produces a deterministic ordering on the export.
+        $neededKeys['regnumber'] ??= true;
+
+        $selectParts = ['s.id AS __id'];
+        foreach (array_keys($neededKeys) as $key) {
+            if (!isset($registry[$key])) continue;
+            $meta = $registry[$key];
+            $selectParts[] = "{$meta['sql']} AS `{$meta['alias']}`";
+        }
+        $selectSql = implode(', ', $selectParts);
+
+        $sql = "
+            SELECT {$selectSql}
+            FROM `student` s
+            LEFT JOIN `faculty`      f   ON f.fac_id     = CAST(NULLIF(s.faculty, '')    AS UNSIGNED)
+            LEFT JOIN `departements` d   ON d.dep_id     = CAST(NULLIF(s.department, '') AS UNSIGNED)
+            LEFT JOIN `schools`      sch ON sch.school_id = f.school_id
+            LEFT JOIN `options`      o   ON o.id         = CAST(NULLIF(s.std_option, '') AS UNSIGNED)
+            LEFT JOIN `campuses`     c   ON c.id         = CAST(NULLIF(s.campus, '')     AS UNSIGNED)
+            LEFT JOIN `levels`       lvl ON lvl.id       = CAST(NULLIF(s.current_level, '') AS UNSIGNED)
+            " . ($where !== '' ? " WHERE {$where}" : "") . "
+            ORDER BY s.id DESC
+        ";
+
+        $rows = $this->studentModel->db()->fetchAll($sql, $bindings);
+
+        // ── Stream the CSV ─────────────────────────────────────────────
+        $stamp    = date('Y-m-d_His');
+        $filename = "students_{$stamp}.csv";
+
+        if (!headers_sent()) {
+            header('Content-Type: text/csv; charset=utf-8');
+            header('Content-Disposition: attachment; filename="' . $filename . '"');
+            header('Cache-Control: no-store, no-cache, must-revalidate');
+            header('X-Content-Type-Options: nosniff');
+        }
+
+        $out = fopen('php://output', 'w');
+        // Excel-friendly UTF-8 BOM — without it accented names render as
+        // mojibake when the file is opened in Excel on Windows.
+        fwrite($out, "\xEF\xBB\xBF");
+
+        // Header row — uses the template's label overrides where present.
+        $headers = array_map(static fn(array $p) => $p['label'], $picked);
+        fputcsv($out, $headers);
+
+        foreach ($rows as $row) {
+            $line = [];
+            foreach ($picked as $p) {
+                $line[] = $this->resolveTemplateCell($p['key'], $row, $registry);
+            }
+            fputcsv($out, $line);
+        }
+        fclose($out);
+        exit;
+    }
+
+    /**
+     * Convert a `template_id` argument into a list of
+     * `[key, label]` descriptors. Accepts:
+     *   • `sys:hli_mifotra` (or any future system template id)
+     *   • a numeric id pointing into `student_export_templates`
+     *
+     * Returns `[]` if no match — the caller then falls back to the raw
+     * `?columns=` query parameter.
+     */
+    private function resolveTemplateColumns(string $templateId, Request $request): array
+    {
+        $registry = self::exportColumns();
+
+        if (str_starts_with($templateId, 'sys:')) {
+            foreach ($this->systemExportTemplates() as $tpl) {
+                if ($tpl['id'] === $templateId) {
+                    $out = [];
+                    foreach ($tpl['columns'] as $c) {
+                        $key   = (string)($c['key'] ?? '');
+                        $label = (string)($c['label'] ?? '');
+                        if ($label === '' && isset($registry[$key])) $label = $registry[$key]['label'];
+                        $out[] = ['key' => $key, 'label' => $label];
+                    }
+                    return $out;
+                }
+            }
+            return [];
+        }
+
+        $id = (int)$templateId;
+        if ($id <= 0) return [];
+
+        $authUser = (array)($request->param('_auth_user') ?? []);
+        $userId   = (int)($authUser['id'] ?? 0);
+
+        $row = $this->studentModel->db()->fetchOne(
+            "SELECT `name`, `columns`, `is_system`, `created_by`
+             FROM `student_export_templates`
+             WHERE id = ? AND (is_system = 1 OR created_by = ?) LIMIT 1",
+            [$id, $userId]
+        );
+        if (!$row) return [];
+
+        $cols = is_string($row['columns']) ? (json_decode($row['columns'], true) ?: []) : (array)$row['columns'];
+        $out  = [];
+        foreach ($cols as $c) {
+            $key   = is_array($c) ? (string)($c['key'] ?? '') : (string)$c;
+            $label = is_array($c) ? (string)($c['label'] ?? '') : '';
+            if ($label === '' && isset($registry[$key])) {
+                $label = $registry[$key]['label'];
+            }
+            $out[] = ['key' => $key, 'label' => $label];
+        }
+        return $out;
+    }
+
+    /**
+     * Resolve a single CSV cell value for a row + column key.
+     *
+     * Handles three categories:
+     *   • Synthetic keys prefixed `__` — derived values (constants,
+     *     yes/no flags, computed awards) that aren't a 1-to-1 column on
+     *     the student table.
+     *   • `disability_status` / `disability_type` — both read the same
+     *     `s.disability` column but flatten it to different shapes.
+     *   • Everything else — straight read from the row using the
+     *     registry's `alias`.
+     */
+    private function resolveTemplateCell(string $key, array $row, array $registry): string
+    {
+        // Constants and computed values
+        if (str_starts_with($key, '__const:')) {
+            return substr($key, strlen('__const:'));
+        }
+        if ($key === '__award') {
+            $lvl = strtolower(trim((string)($row['programme_level'] ?? '')));
+            return match (true) {
+                str_contains($lvl, 'phd')                                      => 'PhD',
+                str_contains($lvl, 'master')                                   => 'Masters Degree',
+                str_contains($lvl, 'pgde')                                     => 'Postgraduate Diploma',
+                str_contains($lvl, 'diploma')                                  => 'Diploma',
+                str_contains($lvl, 'certificate')                              => 'Certificate',
+                $lvl === 'undergraduate' || str_contains($lvl, 'under')        => 'Bachelors Degree',
+                default                                                        => '',
+            };
+        }
+
+        if ($key === 'disability_status') {
+            $v = trim((string)($row['disability_raw'] ?? ''));
+            if ($v === '' || in_array(strtolower($v), ['no', 'none', 'n/a', 'na', '0'], true)) {
+                return 'No';
+            }
+            return 'Yes';
+        }
+        if ($key === 'disability_type') {
+            $v = trim((string)($row['disability_type'] ?? ''));
+            if ($v === '' || in_array(strtolower($v), ['no', 'none', 'n/a', 'na', '0'], true)) {
+                return '';
+            }
+            return $v;
+        }
+
+        if ($key === 'gender') {
+            $v = strtolower(trim((string)($row['gender'] ?? '')));
+            return match (true) {
+                in_array($v, ['m', 'male'],   true) => 'Male',
+                in_array($v, ['f', 'female'], true) => 'Female',
+                default                              => '',
+            };
+        }
+
+        if (!isset($registry[$key])) return '';
+        $alias = $registry[$key]['alias'];
+        $v = $row[$alias] ?? null;
+        return $v === null ? '' : (string)$v;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
     // Task 1.13 — International student visa tracking.
     // ─────────────────────────────────────────────────────────────────────
 
@@ -1931,25 +3089,276 @@ class StudentController extends BaseController
     public function listInternational(Request $request, Response $response): never
     {
         $db = $this->studentModel->db();
-        $rows = $db->fetchAll("
-            SELECT s.id, s.regnumber, s.fname, s.lname, s.email, s.nationality,
-                   s.assigned_registry_user_id,
-                   u.full_name AS assigned_registry_name,
-                   v.country_of_origin,
-                   v.visa_type,
-                   v.entry_date,
-                   v.visa_issue_date,
-                   v.visa_expiry_date,
-                   CASE WHEN v.visa_expiry_date IS NULL THEN NULL
-                        ELSE DATEDIFF(v.visa_expiry_date, CURDATE()) END AS days_to_expiry
-              FROM `student` s
-              LEFT JOIN `users` u ON u.id = s.assigned_registry_user_id
-              LEFT JOIN `student_visa_records` v
-                ON v.student_id = s.id AND v.is_current = 1
-             WHERE s.is_international = 1
-             ORDER BY days_to_expiry ASC, s.lname ASC
-        ");
-        $this->success($response, ['students' => $rows, 'count' => count($rows)], 'International students fetched.');
+
+        $page    = max(1, (int)($request->query('page') ?? 1));
+        $perPage = max(1, min(200, (int)($request->query('per_page') ?? 25)));
+        $offset  = ($page - 1) * $perPage;
+
+        [$where, $bindings] = $this->buildInternationalFilters($request);
+
+        $total = (int)($db->fetchOne(
+            "SELECT COUNT(*) AS cnt
+               FROM `student` s
+               LEFT JOIN `student_visa_records` v
+                 ON v.student_id = s.id AND v.is_current = 1
+              WHERE {$where}",
+            $bindings
+        )['cnt'] ?? 0);
+
+        $rows = $db->fetchAll(
+            "SELECT s.id, s.regnumber, s.fname, s.lname, s.email, s.nationality,
+                    s.std_option,
+                    s.assigned_registry_user_id,
+                    u.full_name AS assigned_registry_name,
+                    o.name      AS program_name,
+                    v.country_of_origin,
+                    v.visa_type,
+                    v.entry_date,
+                    v.visa_issue_date,
+                    v.visa_expiry_date,
+                    v.visa_document_file_id,
+                    v.visa_document_original_name,
+                    CASE WHEN v.visa_expiry_date IS NULL THEN NULL
+                         ELSE DATEDIFF(v.visa_expiry_date, CURDATE()) END AS days_to_expiry
+               FROM `student` s
+               LEFT JOIN `users`   u ON u.id = s.assigned_registry_user_id
+               LEFT JOIN `student_visa_records` v
+                  ON v.student_id = s.id AND v.is_current = 1
+               LEFT JOIN `options` o ON CAST(o.id AS CHAR) = s.std_option
+              WHERE {$where}
+              ORDER BY (v.visa_expiry_date IS NULL),
+                       v.visa_expiry_date ASC,
+                       s.lname ASC
+              LIMIT ? OFFSET ?",
+            [...$bindings, $perPage, $offset]
+        );
+
+        // Summary across the current filter set (NOT just the visible page)
+        $summary = $db->fetchOne(
+            "SELECT
+                COUNT(*) AS total,
+                SUM(CASE WHEN v.visa_document_file_id IS NOT NULL THEN 1 ELSE 0 END) AS with_visa_document,
+                SUM(CASE WHEN v.visa_document_file_id IS NULL     THEN 1 ELSE 0 END) AS without_visa_document,
+                SUM(CASE WHEN v.visa_expiry_date IS NOT NULL
+                          AND v.visa_expiry_date < CURDATE()             THEN 1 ELSE 0 END) AS expired,
+                SUM(CASE WHEN v.visa_expiry_date IS NOT NULL
+                          AND v.visa_expiry_date >= CURDATE()
+                          AND DATEDIFF(v.visa_expiry_date, CURDATE()) <= 7
+                                                                          THEN 1 ELSE 0 END) AS expiring_this_week
+               FROM `student` s
+               LEFT JOIN `student_visa_records` v
+                 ON v.student_id = s.id AND v.is_current = 1
+              WHERE {$where}",
+            $bindings
+        ) ?: [];
+
+        // Facets — programs + countries seen across ALL international
+        // students (ignoring the current filter so the dropdown stays usable
+        // even after the user has filtered themselves into a corner).
+        $programFacet = $db->fetchAll(
+            "SELECT o.id AS value, o.name AS label
+               FROM `options` o
+              WHERE o.id IN (
+                SELECT DISTINCT CAST(s.std_option AS UNSIGNED)
+                  FROM `student` s
+                 WHERE s.std_option REGEXP '^[0-9]+$'
+                   AND (
+                     s.is_international = 1
+                     OR (s.nationality IS NOT NULL AND TRIM(s.nationality) <> ''
+                         AND LOWER(TRIM(s.nationality))
+                             NOT IN ('rwanda','rwandan','rwandese','rwandaise'))
+                   )
+              )
+              ORDER BY o.name ASC"
+        );
+
+        // CONVERT both branches to a single collation so the UNION doesn't
+        // trip MySQL error 1271 — `student.nationality` and
+        // `student_visa_records.country_of_origin` may be declared with
+        // different collations even when both are utf8mb4. Also filter out
+        // junk-shaped values (national ID numbers stored in `nationality`
+        // by mistake) so the dropdown stays clean.
+        $countryFacet = $db->fetchAll(
+            "SELECT DISTINCT TRIM(country) AS value, TRIM(country) AS label
+               FROM (
+                 SELECT CONVERT(v2.country_of_origin USING utf8mb4)
+                          COLLATE utf8mb4_unicode_ci AS country
+                   FROM `student_visa_records` v2
+                   JOIN `student` s2 ON s2.id = v2.student_id
+                  WHERE v2.is_current = 1
+                    AND v2.country_of_origin IS NOT NULL
+                    AND v2.country_of_origin <> ''
+                 UNION
+                 SELECT CONVERT(s3.nationality USING utf8mb4)
+                          COLLATE utf8mb4_unicode_ci AS country
+                   FROM `student` s3
+                  WHERE s3.nationality IS NOT NULL AND TRIM(s3.nationality) <> ''
+                    AND LOWER(TRIM(s3.nationality))
+                        NOT IN ('rwanda','rwandan','rwandese','rwandaise')
+               ) AS c
+              WHERE TRIM(c.country) <> ''
+                AND TRIM(c.country) REGEXP '[A-Za-z]'
+                AND TRIM(c.country) NOT REGEXP '^[0-9]+$'
+              ORDER BY value ASC"
+        );
+
+        $this->success($response, [
+            'data'       => $rows,
+            'page'       => $page,
+            'per_page'   => $perPage,
+            'total'      => $total,
+            'last_page'  => $perPage > 0 ? (int)ceil($total / $perPage) : 1,
+            'summary'    => [
+                'total'                 => (int)($summary['total']                 ?? 0),
+                'with_visa_document'    => (int)($summary['with_visa_document']    ?? 0),
+                'without_visa_document' => (int)($summary['without_visa_document'] ?? 0),
+                'expired'               => (int)($summary['expired']               ?? 0),
+                'expiring_this_week'    => (int)($summary['expiring_this_week']    ?? 0),
+            ],
+            'facets'     => [
+                'program' => $programFacet,
+                'country' => $countryFacet,
+            ],
+            // Legacy keys preserved so older callers (admin International page
+            // before the pagination rework) still work without surprises.
+            'students'   => $rows,
+            'count'      => $total,
+        ], 'International students fetched.');
+    }
+
+    /**
+     * GET /api/students/international/export
+     * Stream a UTF-8-BOM CSV (Excel-friendly) of every international
+     * student matching the same filters as listInternational, in the
+     * column order the registry team asked for. Token-auth so the link
+     * can be used as a plain <a href> download.
+     */
+    public function exportInternationalCsv(Request $request, Response $response): never
+    {
+        $db = $this->studentModel->db();
+        [$where, $bindings] = $this->buildInternationalFilters($request);
+
+        $rows = $db->fetchAll(
+            "SELECT s.regnumber, s.fname, s.lname, s.nationality,
+                    o.name      AS program_name,
+                    v.country_of_origin, v.visa_type,
+                    v.visa_issue_date, v.visa_expiry_date,
+                    v.visa_document_file_id,
+                    CASE WHEN v.visa_expiry_date IS NULL THEN NULL
+                         ELSE DATEDIFF(v.visa_expiry_date, CURDATE()) END AS days_to_expiry
+               FROM `student` s
+               LEFT JOIN `student_visa_records` v
+                  ON v.student_id = s.id AND v.is_current = 1
+               LEFT JOIN `options` o ON CAST(o.id AS CHAR) = s.std_option
+              WHERE {$where}
+              ORDER BY (v.visa_expiry_date IS NULL),
+                       v.visa_expiry_date ASC,
+                       s.lname ASC",
+            $bindings
+        );
+
+        $filename = 'international-students-' . date('Ymd-His') . '.csv';
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Cache-Control: private, no-store');
+
+        $out = fopen('php://output', 'wb');
+        // UTF-8 BOM so Excel opens accents/non-ASCII correctly.
+        fwrite($out, "\xEF\xBB\xBF");
+        fputcsv($out, [
+            'Registration #', 'Full name', 'Country of origin', 'Nationality',
+            'Program', 'Visa type', 'Visa obtained date', 'Visa expiration date',
+            'Days to expiry', 'Visa uploaded',
+        ]);
+
+        foreach ($rows as $r) {
+            $full = trim(($r['fname'] ?? '') . ' ' . ($r['lname'] ?? ''));
+            $country = $r['country_of_origin'] ?: $r['nationality'] ?: '';
+            $daysLabel = $r['days_to_expiry'] === null ? '' : (int)$r['days_to_expiry'];
+            fputcsv($out, [
+                $r['regnumber']         ?? '',
+                $full,
+                $country,
+                $r['nationality']       ?? '',
+                $r['program_name']      ?? '',
+                $r['visa_type']         ?? '',
+                $r['visa_issue_date']   ?? '',
+                $r['visa_expiry_date']  ?? '',
+                $daysLabel,
+                $r['visa_document_file_id'] ? 'Yes' : 'No',
+            ]);
+        }
+
+        fclose($out);
+        exit;
+    }
+
+    /**
+     * WHERE clause shared by listInternational + exportInternationalCsv.
+     * Honours search (q), program (std_option / catalog id), country
+     * (matches both nationality and country_of_origin), visa-status, and
+     * visa-document presence filters.
+     *
+     * @return array{0:string, 1:array}
+     */
+    private function buildInternationalFilters(Request $request): array
+    {
+        $clauses  = [
+            // International scope = explicit flag OR a non-Rwandan nationality.
+            "(s.is_international = 1 OR (
+                s.nationality IS NOT NULL AND TRIM(s.nationality) <> ''
+                AND LOWER(TRIM(s.nationality))
+                    NOT IN ('rwanda','rwandan','rwandese','rwandaise')
+            ))",
+        ];
+        $bindings = [];
+
+        $q = trim((string)($request->query('q') ?? $request->query('search') ?? ''));
+        if ($q !== '') {
+            $clauses[]  = "(s.fname LIKE ? OR s.lname LIKE ? OR s.regnumber LIKE ? OR s.email LIKE ?)";
+            $bindings[] = "%{$q}%"; $bindings[] = "%{$q}%";
+            $bindings[] = "%{$q}%"; $bindings[] = "%{$q}%";
+        }
+
+        $program = trim((string)($request->query('program') ?? $request->query('std_option') ?? ''));
+        if ($program !== '') {
+            // student.std_option is stored as a varchar of the option id,
+            // so a numeric filter compares the strings directly.
+            $clauses[]  = "s.std_option = ?";
+            $bindings[] = $program;
+        }
+
+        $country = trim((string)($request->query('country') ?? ''));
+        if ($country !== '') {
+            // Match against either the visa-record country OR the
+            // nationality string, case-insensitively.
+            $clauses[]  = "(LOWER(TRIM(v.country_of_origin)) = LOWER(?) OR LOWER(TRIM(s.nationality)) = LOWER(?))";
+            $bindings[] = $country;
+            $bindings[] = $country;
+        }
+
+        $hasVisa = strtolower(trim((string)($request->query('has_visa_document') ?? '')));
+        if ($hasVisa === 'yes' || $hasVisa === '1' || $hasVisa === 'true') {
+            $clauses[] = "v.visa_document_file_id IS NOT NULL";
+        } elseif ($hasVisa === 'no' || $hasVisa === '0' || $hasVisa === 'false') {
+            $clauses[] = "v.visa_document_file_id IS NULL";
+        }
+
+        $expiry = strtolower(trim((string)($request->query('expiry_status') ?? '')));
+        if ($expiry === 'expired') {
+            $clauses[] = "(v.visa_expiry_date IS NOT NULL AND v.visa_expiry_date < CURDATE())";
+        } elseif ($expiry === 'expiring' || $expiry === 'expiring_soon') {
+            $clauses[] = "(v.visa_expiry_date IS NOT NULL
+                           AND v.visa_expiry_date >= CURDATE()
+                           AND DATEDIFF(v.visa_expiry_date, CURDATE()) <= 7)";
+        } elseif ($expiry === 'active' || $expiry === 'valid') {
+            $clauses[] = "(v.visa_expiry_date IS NOT NULL
+                           AND DATEDIFF(v.visa_expiry_date, CURDATE()) > 7)";
+        } elseif ($expiry === 'missing' || $expiry === 'unknown') {
+            $clauses[] = "v.visa_expiry_date IS NULL";
+        }
+
+        return [implode(' AND ', $clauses), $bindings];
     }
 
     /**
@@ -2058,5 +3467,299 @@ class StudentController extends BaseController
             ['assigned_registry_user_id' => $assignedTo], $authUser ?: null
         );
         $this->success($response, ['assigned_registry_user_id' => $assignedTo], 'Registry officer updated.');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    //  Self-service visa for international students
+    // ─────────────────────────────────────────────────────────────────────
+
+    /**
+     * GET /api/students/me/visa
+     * Return the caller's current visa record (or null if none yet), the
+     * full history, and a `needs_visa` flag the UI uses to decide whether
+     * to show the "visa information missing" banner.
+     */
+    public function meVisa(Request $request, Response $response): never
+    {
+        $student   = $this->resolveSelfStudent($request, $response);
+        $studentId = (int)$student['id'];
+
+        $current = $this->visaModel->currentForStudent($studentId);
+        $records = $this->visaModel->listForStudent($studentId);
+
+        $isInternational = self::isStudentInternational($student);
+        $needsVisa = $isInternational && (
+            !$current
+            || empty($current['visa_issue_date'])
+            || empty($current['visa_expiry_date'])
+            || empty($current['visa_document_file_id'])
+        );
+        $isExpired = $current && !empty($current['visa_expiry_date'])
+            && strtotime((string)$current['visa_expiry_date']) < strtotime(date('Y-m-d'));
+
+        $this->success($response, [
+            'is_international' => $isInternational,
+            'needs_visa'       => $needsVisa,
+            'is_expired'       => (bool)$isExpired,
+            'current'          => $current ?: null,
+            'records'          => $records,
+        ], 'Visa status fetched.');
+    }
+
+    /**
+     * POST /api/students/me/visa
+     * Upsert the caller's current visa dates / country / type. Always creates
+     * a new record (marking older ones non-current) so we keep a renewal
+     * history — even if the student only edits a typo, the audit trail is
+     * preserved. If an existing visa document file is on record, it's
+     * carried forward to the new record.
+     */
+    public function meAddVisa(Request $request, Response $response): never
+    {
+        $student   = $this->resolveSelfStudent($request, $response);
+        $studentId = (int)$student['id'];
+        $authUser  = (array) $request->param('_auth_user');
+
+        $data   = $request->body();
+        $errors = ValidationHelper::validate($data, [
+            'country_of_origin' => 'required|string|min:2|max:100',
+            'visa_issue_date'   => 'required|regex:/^\d{4}-\d{2}-\d{2}$/',
+            'visa_expiry_date'  => 'required|regex:/^\d{4}-\d{2}-\d{2}$/',
+        ]);
+        if (!empty($errors)) {
+            $this->error($response, 'Validation failed.', 422, $errors);
+        }
+
+        if ($data['visa_expiry_date'] <= $data['visa_issue_date']) {
+            $this->error($response, 'Visa expiration date must be after the visa obtained date.', 422);
+        }
+
+        // Carry the existing file id over so the document stays attached
+        // when the student only edits the dates.
+        $prev = $this->visaModel->currentForStudent($studentId);
+
+        $db = $this->studentModel->db();
+        $db->beginTransaction();
+        try {
+            $this->visaModel->markAllNonCurrent($studentId);
+            $newId = (int)$this->visaModel->create([
+                'student_id'                  => $studentId,
+                'country_of_origin'           => trim((string)$data['country_of_origin']),
+                'entry_date'                  => $data['entry_date'] ?? ($prev['entry_date'] ?? $data['visa_issue_date']),
+                'visa_issue_date'             => $data['visa_issue_date'],
+                'visa_expiry_date'            => $data['visa_expiry_date'],
+                'visa_type'                   => trim((string)($data['visa_type'] ?? '')) ?: null,
+                'notes'                       => trim((string)($data['notes']     ?? '')) ?: null,
+                'is_current'                  => 1,
+                'created_by'                  => (int)($authUser['id'] ?? 0) ?: null,
+                'visa_document_file_id'       => $prev['visa_document_file_id']       ?? null,
+                'visa_document_original_name' => $prev['visa_document_original_name'] ?? null,
+                'visa_document_mime'          => $prev['visa_document_mime']          ?? null,
+                'visa_document_size'          => $prev['visa_document_size']          ?? null,
+            ]);
+            $db->execute("UPDATE `student` SET is_international = 1 WHERE id = ?", [$studentId]);
+            $db->commit();
+        } catch (\Throwable $e) {
+            $db->rollBack();
+            $this->error($response, 'Failed to save visa: ' . $e->getMessage(), 500);
+        }
+
+        $this->success($response, ['id' => $newId], 'Visa information saved.', 201);
+    }
+
+    /**
+     * GET /api/students/me/visa/document
+     * Stream the caller's current visa document file. Token-auth like the
+     * other self-service download endpoints — the client appends ?token=…
+     * for direct <a href> downloads.
+     */
+    public function meDownloadVisaDocument(Request $request, Response $response): never
+    {
+        $student   = $this->resolveSelfStudent($request, $response);
+        $studentId = (int)$student['id'];
+
+        $current = $this->visaModel->currentForStudent($studentId);
+        if (!$current || empty($current['visa_document_file_id'])) {
+            $this->error($response, 'No visa document on file.', 404);
+        }
+
+        $this->streamFileServerDownload((string)$current['visa_document_file_id'], $response);
+    }
+
+    /**
+     * GET /api/students/:id/visa/document
+     * Admin / registry-staff equivalent of meDownloadVisaDocument. Gated
+     * behind VIEW_STUDENTS at the route layer.
+     */
+    public function downloadVisaDocument(Request $request, Response $response): never
+    {
+        $studentId = (int)$request->param('id');
+        $student   = $this->studentModel->find($studentId);
+        if (!$student) {
+            $this->error($response, 'Student not found.', 404);
+        }
+
+        $current = $this->visaModel->currentForStudent($studentId);
+        if (!$current || empty($current['visa_document_file_id'])) {
+            $this->error($response, 'No visa document on file.', 404);
+        }
+
+        $this->streamFileServerDownload((string)$current['visa_document_file_id'], $response);
+    }
+
+    /**
+     * POST /api/students/me/visa/document
+     * Multipart upload of the visa scan/photo (field name: `document`).
+     * Attaches the file to the current visa record. If no record exists
+     * yet, a minimal placeholder one is created so the file isn't orphaned;
+     * the student can fill in the dates afterwards via meAddVisa().
+     */
+    public function meUploadVisaDocument(Request $request, Response $response): never
+    {
+        $student   = $this->resolveSelfStudent($request, $response);
+        $studentId = (int)$student['id'];
+
+        if (!self::isStudentInternational($student)) {
+            $this->error($response, 'Visa uploads are only available for international students.', 422);
+        }
+
+        $file = $request->file('document');
+        if (!$file) {
+            $this->error($response, 'No file provided. Upload field must be named "document".', 422);
+        }
+
+        $allowed = ['pdf', 'jpg', 'jpeg', 'png'];
+        $ext     = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        if (!in_array($ext, $allowed, true)) {
+            $this->error($response, "Invalid file type '{$ext}'. Allowed: " . implode(', ', $allowed), 422);
+        }
+
+        try {
+            $client   = new FileServerClient();
+            $uploaded = $client->upload($file);
+        } catch (\RuntimeException $e) {
+            $this->error($response, $e->getMessage(), 422);
+        }
+
+        $db      = $this->studentModel->db();
+        $current = $this->visaModel->currentForStudent($studentId);
+
+        if ($current) {
+            // Just update the current record's file fields — no new history row.
+            $db->execute(
+                "UPDATE `student_visa_records`
+                   SET visa_document_file_id       = ?,
+                       visa_document_original_name = ?,
+                       visa_document_mime          = ?,
+                       visa_document_size          = ?
+                 WHERE id = ?",
+                [
+                    (string)$uploaded['id'],
+                    $uploaded['original_name'],
+                    $uploaded['mime'],
+                    (int)$uploaded['size'],
+                    (int)$current['id'],
+                ]
+            );
+            $visaId = (int)$current['id'];
+        } else {
+            // Placeholder record so the file is owned; dates default to today
+            // and the student is expected to update them via meAddVisa().
+            $today  = date('Y-m-d');
+            $visaId = (int)$this->visaModel->create([
+                'student_id'                  => $studentId,
+                'country_of_origin'           => trim((string)($student['nationality'] ?? 'Unknown')),
+                'entry_date'                  => $today,
+                'visa_issue_date'             => $today,
+                'visa_expiry_date'            => $today,
+                'is_current'                  => 1,
+                'visa_document_file_id'       => (string)$uploaded['id'],
+                'visa_document_original_name' => $uploaded['original_name'],
+                'visa_document_mime'          => $uploaded['mime'],
+                'visa_document_size'          => (int)$uploaded['size'],
+            ]);
+            $db->execute("UPDATE `student` SET is_international = 1 WHERE id = ?", [$studentId]);
+        }
+
+        $this->success($response, [
+            'visa_record_id'    => $visaId,
+            'file_server_id'    => (string)$uploaded['id'],
+            'file_original_name'=> $uploaded['original_name'],
+            'file_mime'         => $uploaded['mime'],
+            'file_size'         => (int)$uploaded['size'],
+        ], 'Visa document uploaded.', 201);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    //  Visa helpers
+    // ─────────────────────────────────────────────────────────────────────
+
+    /**
+     * Is this student row "international"? True when the explicit flag is
+     * set OR the nationality is a non-Rwandan string. Tolerates the common
+     * spellings users enter.
+     */
+    private static function isStudentInternational(array $student): bool
+    {
+        if (!empty($student['is_international'])) return true;
+        $n = strtolower(trim((string)($student['nationality'] ?? '')));
+        if ($n === '') return false;
+        return !in_array($n, ['rwanda', 'rwandan', 'rwandese', 'rwandaise'], true);
+    }
+
+    /**
+     * Build the synthetic "Visa" document row injected at the top of the
+     * student's documents list. Uses pseudo-id -1 so meDownloadDocument
+     * can route the download back to the visa record's file.
+     */
+    private function buildVisaDocRow(int $studentId): array
+    {
+        $current = $this->visaModel->currentForStudent($studentId);
+        $hasFile = $current && !empty($current['visa_document_file_id']);
+
+        return [
+            // Stable, non-numeric synthetic id so the front-end can recognise
+            // the row but never confuse it with a real application_documents id.
+            'id'                  => 'visa',
+            'application_id'      => null,
+            'document_type_id'    => 0,
+            'document_type_name'  => 'Visa Document',
+            'document_type_slug'  => 'visa',
+            'is_required'         => 1,
+            'is_visa'             => true,
+            // file_server_id mirrors the real visa file id so `hasFile` checks
+            // work without special casing in the React row component.
+            'file_server_id'      => $hasFile ? (string)$current['visa_document_file_id'] : null,
+            'file_original_name'  => $hasFile ? $current['visa_document_original_name'] : null,
+            'file_size'           => $hasFile ? (int)$current['visa_document_size']     : null,
+            'file_mime'           => $hasFile ? $current['visa_document_mime']          : null,
+            'verification_status' => $hasFile ? 'verified' : 'required',
+            'verification_comment'=> $hasFile ? null : 'Required for international students. Please upload your visa.',
+            'uploaded_at'         => $hasFile ? ($current['created_at'] ?? null) : null,
+        ];
+    }
+
+    /** Stream a file from the file-server, used by the visa-download branch. */
+    private function streamFileServerDownload(string $fileServerId, Response $response): never
+    {
+        try {
+            $client   = new FileServerClient();
+            $fileData = $client->download($fileServerId);
+        } catch (\RuntimeException $e) {
+            $this->error($response, $e->getMessage(), 502);
+        }
+
+        $mime         = $fileData['mime'] ?? 'application/octet-stream';
+        $isInlineable = str_starts_with($mime, 'image/') || $mime === 'application/pdf';
+        $disposition  = $isInlineable ? 'inline' : 'attachment';
+
+        header('Content-Type: ' . $mime);
+        header('Content-Disposition: ' . $disposition . '; filename="' . addslashes($fileData['original_name']) . '"');
+        header('Content-Length: ' . strlen($fileData['content']));
+        header('Cache-Control: private, no-store');
+        header('X-Content-Type-Options: nosniff');
+
+        echo $fileData['content'];
+        exit;
     }
 }

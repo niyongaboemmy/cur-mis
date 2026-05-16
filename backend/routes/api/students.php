@@ -23,14 +23,30 @@ $router->group('/api/students', function ($router) {
     $router->get('/me/documents',                       [StudentController::class, 'meDocuments']);
     $router->get('/me/documents/:document_id/download', [StudentController::class, 'meDownloadDocument']);
     $router->get('/me/program-modules',                 [StudentController::class, 'meProgramModules']);
+    // Self-service visa for international students.
+    $router->get('/me/visa',                            [StudentController::class, 'meVisa']);
+    $router->post('/me/visa',                           [StudentController::class, 'meAddVisa']);
+    $router->post('/me/visa/document',                  [StudentController::class, 'meUploadVisaDocument']);
+    $router->get('/me/visa/document',                   [StudentController::class, 'meDownloadVisaDocument']);
 }, [AuthMiddleware::class]);
 
 // Read-only: any user with VIEW_STUDENTS
 $router->group('/api/students', function ($router) {
     $router->get('/stats',                                [StudentController::class, 'stats']);
+    // Bulk CSV export (literal segments must come before /:id).
+    $router->get('/export',                               [StudentController::class, 'exportCsv']);
+    $router->get('/export-columns',                       [StudentController::class, 'exportColumnsList']);
+    $router->get('/export-templates',                     [StudentController::class, 'listExportTemplates']);
+    $router->post('/export-templates',                    [StudentController::class, 'saveExportTemplate']);
+    $router->delete('/export-templates/:id',              [StudentController::class, 'deleteExportTemplate']);
+    // Bulk-upload template download is read-only (renders an Excel-compatible
+    // CSV the registry team fills in). Behind VIEW_STUDENTS so anyone able to
+    // look at the list can fetch the template.
+    $router->get('/bulk-upload-template',                 [StudentController::class, 'bulkUploadTemplate']);
     // Task 1.13 — international students list. Literal segment must come
     // before /:id so it wins route matching.
     $router->get('/international',                        [StudentController::class, 'listInternational']);
+    $router->get('/international/export',                 [StudentController::class, 'exportInternationalCsv']);
     $router->get('',                                      [StudentController::class, 'index']);
     $router->get('/:id',                                  [StudentController::class, 'show']);
     $router->get('/:id/photo',                            [StudentController::class, 'downloadPhoto']);
@@ -39,6 +55,7 @@ $router->group('/api/students', function ($router) {
     $router->get('/:id/program-modules',                  [StudentController::class, 'programModules']);
     $router->get('/:id/program-modules/export',           [StudentController::class, 'programModulesExport']);
     $router->get('/:id/visa',                             [StudentController::class, 'listVisaRecords']);
+    $router->get('/:id/visa/document',                    [StudentController::class, 'downloadVisaDocument']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::VIEW_STUDENTS)]);
 
 // Write: requires MANAGE_STUDENTS
@@ -46,6 +63,10 @@ $router->group('/api/students', function ($router) {
     // Bulk reassign — literal path, registered before any /:id matchers in
     // this group so it isn't shadowed.
     $router->post('/bulk-update-campus', [StudentController::class, 'bulkUpdateCampus']);
+    // Bulk import — preview (dry-run) + commit. The preview reuses the same
+    // parser as commit so the modal shows exactly what the upload will do.
+    $router->post('/bulk-validate',      [StudentController::class, 'bulkValidate']);
+    $router->post('/bulk-upload',        [StudentController::class, 'bulkUpload']);
     $router->post('',              [StudentController::class, 'create']);
     $router->put('/:id',           [StudentController::class, 'update']);
     $router->delete('/:id',        [StudentController::class, 'delete']);

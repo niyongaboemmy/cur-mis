@@ -14,6 +14,7 @@ import SearchableSelect from '@/components/ui/SearchableSelect'
 import ModalPortal from '@/components/ui/ModalPortal'
 import ApplicationsDashboard from './ApplicationsDashboard'
 import { useAuthStore } from '@/store/authStore'
+import SharedBulkUploadModal from '@/components/admin/BulkUploadModal'
 
 // On the admin side we relabel `submitted` → `Pending` so the queue
 // is framed as "awaiting review" rather than the raw state-machine name.
@@ -588,117 +589,49 @@ export default function ApplicationsListPage() {
         }}
       />
 
-      <BulkUploadModal
+      <SharedBulkUploadModal
         open={showBulkUpload}
         onClose={() => setShowBulkUpload(false)}
-        onDone={() => {
+        title="Bulk import applicants"
+        description="Download the Excel-compatible CSV template, fill it in, then re-upload to preview. Each new row creates a verified application ready for offer + enrollment."
+        templateUrl={applicationAdminService.bulkUploadTemplateUrl()}
+        requiredFields={['first_name', 'last_name', 'email', 'intake', 'department']}
+        fieldLabels={{
+          first_name: 'First name',
+          last_name: 'Last name',
+          email: 'Email',
+          phone: 'Phone',
+          gender: 'Gender (M/F/O)',
+          birthdate: 'Birthdate (YYYY-MM-DD)',
+          nationality: 'Nationality',
+          national_id: 'National ID',
+          intake: 'Intake',
+          department: 'Department (name or id)',
+          program: 'Program (name or id)',
+          campus: 'Campus (name or id)',
+          mode_of_study: 'Mode of study',
+          level: 'Level (name or id)',
+          prev_school: 'Previous school',
+          prev_qualification: 'Previous qualification',
+          prev_grade: 'Previous grade',
+          combination: 'Combination',
+          graduation_year: 'Graduation year',
+          sponsorship: 'Sponsorship',
+          sponsor_name: 'Sponsor name',
+          is_credit_transfer: 'Credit transfer? (0/1)',
+          credit_transfer_from: 'Credit transfer from',
+        }}
+        onValidate={(file) => applicationAdminService.bulkValidate(file)}
+        onUpload={(file, patches) =>
+          applicationAdminService
+            .bulkUpload(file, patches)
+            .then((r) => ({ data: { inserted: r.data?.inserted ?? 0, errors: r.data?.errors ?? [] } }))
+        }
+        onSuccess={() => {
           queryClient.invalidateQueries({ queryKey: ['admin', 'applications'] })
         }}
       />
     </div>
-  )
-}
-
-function BulkUploadModal({
-  open, onClose, onDone,
-}: { open: boolean; onClose: () => void; onDone: () => void }) {
-  const [file, setFile]       = useState<File | null>(null)
-  const [uploading, setUp]    = useState(false)
-  const [result, setResult]   = useState<{ inserted: number; errors: Array<{ row: number; message: string }> } | null>(null)
-
-  useEffect(() => {
-    if (!open) { setFile(null); setResult(null); setUp(false); }
-  }, [open])
-
-  if (!open) return null
-
-  const handleUpload = async () => {
-    if (!file) { toast.error('Pick a file first.'); return; }
-    setUp(true)
-    try {
-      const r = await applicationAdminService.bulkUpload(file)
-      setResult(r.data ?? { inserted: 0, errors: [] })
-      if ((r.data?.inserted ?? 0) > 0) {
-        toast.success(`Inserted ${r.data?.inserted} applicant(s)`)
-        onDone()
-      }
-    } catch (e: any) {
-      toast.error(e.response?.data?.message ?? 'Upload failed')
-    } finally {
-      setUp(false)
-    }
-  }
-
-  return (
-    <ModalPortal>
-      <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 animate-in fade-in">
-        <div className="absolute inset-0 bg-ink-900/60 backdrop-blur-sm" onClick={onClose} />
-        <div className="relative w-full max-w-lg card overflow-hidden flex flex-col max-h-[85vh]">
-          <div className="px-5 py-3.5 border-b hairline flex justify-between items-center">
-            <div>
-              <h2 className="text-[14px] font-semibold text-ink-900 dark:text-white flex items-center gap-2">
-                <Upload className="w-4 h-4 text-brand" />
-                Bulk applicant upload
-              </h2>
-              <p className="section-sub mt-0.5">
-                Import a CSV of direct-entry applicants. Each row becomes a verified application ready for offer + enrollment.
-              </p>
-            </div>
-            <button onClick={onClose} className="icon-btn"><X className="w-4 h-4" /></button>
-          </div>
-
-          <div className="px-5 py-4 space-y-3 flex-1 overflow-y-auto">
-            <a
-              href={applicationAdminService.bulkUploadTemplateUrl()}
-              className="inline-flex items-center gap-1.5 text-[12.5px] text-brand hover:underline"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5" />
-              Download CSV template
-            </a>
-
-            <div>
-              <label className="label">Choose CSV file</label>
-              <input
-                type="file"
-                accept=".csv,text/csv"
-                className="input"
-                onChange={(e) => { setFile(e.target.files?.[0] ?? null); setResult(null); }}
-              />
-            </div>
-
-            {result && (
-              <div className="border hairline rounded-lg p-3 space-y-1.5 text-[12.5px]">
-                <p className="font-semibold text-emerald-700">
-                  Inserted: {result.inserted}
-                </p>
-                {result.errors.length > 0 && (
-                  <div>
-                    <p className="font-semibold text-red-700">Errors: {result.errors.length}</p>
-                    <ul className="list-disc pl-5 mt-1 space-y-0.5 text-ink-600">
-                      {result.errors.slice(0, 20).map((er, i) => (
-                        <li key={i}>Row {er.row}: {er.message}</li>
-                      ))}
-                      {result.errors.length > 20 && <li>…and {result.errors.length - 20} more</li>}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          <div className="px-5 py-3 border-t hairline flex items-center justify-end gap-2">
-            <button onClick={onClose} className="btn-secondary btn-sm">Close</button>
-            <button
-              onClick={handleUpload}
-              disabled={!file || uploading}
-              className="btn-primary btn-sm"
-            >
-              {uploading ? 'Uploading…' : 'Upload'}
-            </button>
-          </div>
-        </div>
-      </div>
-    </ModalPortal>
   )
 }
 
