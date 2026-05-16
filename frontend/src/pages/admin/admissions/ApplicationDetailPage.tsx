@@ -30,6 +30,10 @@ import {
   BarChart2,
   ClipboardList,
   UserCheck,
+  X,
+  ZoomIn,
+  FileSearch,
+  Sparkles,
 } from "lucide-react";
 import {
   applicationAdminService,
@@ -41,6 +45,7 @@ import { academicsMgmtService } from "@/services/academicsMgmtService";
 import { ApplicationStatus, VerificationStatus } from "@/types/admission";
 import DocumentPreviewModal from "./DocumentPreviewModal";
 import RequestChangesModal from "./RequestChangesModal";
+import ModalPortal from "@/components/ui/ModalPortal";
 
 const STATUS_OPTIONS: ApplicationStatus[] = [
   ApplicationStatus.SUBMITTED,
@@ -84,71 +89,131 @@ function MultiStepBar({
   setActiveStep: (n: number) => void;
 }) {
   const steps = [
-    { id: 1, label: "Document Validation" },
-    { id: 2, label: "Accepted & Waiting Fee" },
-    { id: 3, label: "Registration Fee Paid" },
-    { id: 4, label: "Enrolled & Registered" },
+    {
+      id: 1,
+      label: "Documents",
+      sublabel: "Verify uploads",
+      icon: FileSearch,
+    },
+    {
+      id: 2,
+      label: "Offered",
+      sublabel: "Awaiting fee",
+      icon: Sparkles,
+    },
+    {
+      id: 3,
+      label: "Fee paid",
+      sublabel: "Ready to enroll",
+      icon: CreditCard,
+    },
+    {
+      id: 4,
+      label: "Enrolled",
+      sublabel: "Reg # issued",
+      icon: UserPlus,
+    },
   ];
 
+  // Progress bar fill percentage — sits behind the step circles.
+  const progressPct =
+    maxStep >= steps.length
+      ? 100
+      : Math.max(0, ((maxStep - 1) / (steps.length - 1)) * 100);
+
   return (
-    <div className="card p-8 mb-8 bg-ink-50/30 dark:bg-ink-800/20 border-brand/10">
-      <div className="flex items-center justify-between relative px-8">
-        <div className="absolute top-5 left-16 right-16 h-0.5 bg-ink-100 dark:bg-ink-800 z-0" />
+    <div className="card overflow-hidden">
+      <div className="px-5 sm:px-8 pt-5 pb-2 flex items-center justify-between">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-ink-400">
+            Admission pipeline
+          </p>
+          <p className="text-[12.5px] text-ink-500 mt-0.5">
+            {maxStep >= steps.length
+              ? "All stages complete — student is enrolled."
+              : `On stage ${maxStep} of ${steps.length}: ${steps[Math.max(0, maxStep - 1)].label}`}
+          </p>
+        </div>
+        <div className="hidden sm:flex items-center gap-1.5 text-[11px] font-medium text-ink-500">
+          <span className="w-2 h-2 rounded-full bg-emerald-500" /> done
+          <span className="w-2 h-2 rounded-full bg-brand ml-2" /> current
+          <span className="w-2 h-2 rounded-full bg-ink-300 dark:bg-ink-700 ml-2" /> pending
+        </div>
+      </div>
+
+      <div className="relative px-5 sm:px-12 pt-6 pb-8">
+        {/* Track: grey baseline + emerald fill up to maxStep. Anchored so
+            the line aligns with the centre of the step circles. */}
+        <div className="absolute top-[44px] left-[40px] right-[40px] sm:left-[64px] sm:right-[64px] h-0.5 bg-ink-100 dark:bg-ink-800 rounded-full" />
         <div
-          className="absolute top-5 left-16 h-0.5 bg-brand transition-all duration-1000 ease-out z-0"
+          className="absolute top-[44px] left-[40px] sm:left-[64px] h-0.5 bg-gradient-to-r from-emerald-500 to-brand rounded-full transition-all duration-700 ease-out"
           style={{
-            width:
-              maxStep >= steps.length
-                ? "calc(100% - 128px)"
-                : `calc(${((maxStep - 1) / (steps.length - 1)) * 100}%)`,
+            width: `calc((100% - 80px) * ${progressPct / 100})`,
           }}
         />
-        {steps.map((step) => {
-          const isCompleted = maxStep > step.id;
-          const isActive = activeStep === step.id;
-          const isClickable = step.id <= maxStep;
-          return (
-            <div
-              key={step.id}
-              className="relative z-10 flex flex-col items-center"
-            >
+
+        <div className="relative z-10 grid grid-cols-4 gap-2">
+          {steps.map((step) => {
+            const Icon = step.icon;
+            const isCompleted = maxStep > step.id;
+            const isCurrent = maxStep === step.id;
+            const isActive = activeStep === step.id;
+            const isClickable = step.id <= maxStep;
+            const dotClass = isCompleted
+              ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/30"
+              : isCurrent
+                ? "bg-brand text-white shadow-lg shadow-brand/30 ring-4 ring-brand/15"
+                : "bg-white dark:bg-ink-800 text-ink-400 border-2 border-ink-200 dark:border-ink-700";
+
+            return (
               <button
+                key={step.id}
                 onClick={() => isClickable && setActiveStep(step.id)}
                 disabled={!isClickable}
-                className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all duration-500 outline-none ${
-                  isCompleted
-                    ? "bg-emerald-500 text-white shadow-emerald-500/20 rotate-0 cursor-pointer hover:bg-emerald-600"
-                    : isActive
-                      ? "bg-brand text-white shadow-brand/20 ring-4 ring-brand/10 scale-110 cursor-default"
-                      : isClickable
-                        ? "bg-white dark:bg-ink-900 border-2 border-brand text-brand cursor-pointer hover:bg-brand/10"
-                        : "bg-white dark:bg-ink-900 border-2 border-ink-200 dark:border-ink-700 text-ink-400 cursor-not-allowed opacity-60"
-                }`}
+                className={
+                  "group flex flex-col items-center text-center transition-all " +
+                  (isClickable
+                    ? "cursor-pointer hover:-translate-y-0.5"
+                    : "cursor-not-allowed opacity-60")
+                }
               >
-                {isCompleted ? (
-                  <CheckCircle2 className="w-5 h-5" />
-                ) : step.id === 3 ? (
-                  <CreditCard className="w-5 h-5" />
-                ) : step.id === 4 ? (
-                  <UserPlus className="w-5 h-5" />
-                ) : (
-                  <span className="text-[14px] font-black">{step.id}</span>
-                )}
+                <span
+                  className={
+                    "w-11 h-11 rounded-2xl flex items-center justify-center transition-all duration-300 " +
+                    dotClass +
+                    (isActive && !isCurrent ? " ring-4 ring-brand/15" : "")
+                  }
+                >
+                  {isCompleted ? (
+                    <CheckCircle2 className="w-5 h-5" />
+                  ) : (
+                    <Icon className="w-5 h-5" />
+                  )}
+                </span>
+                <p
+                  className={
+                    "mt-3 text-[11.5px] font-bold uppercase tracking-wider transition-colors " +
+                    (isCurrent
+                      ? "text-brand"
+                      : isCompleted
+                        ? "text-emerald-700 dark:text-emerald-300"
+                        : "text-ink-500")
+                  }
+                >
+                  {step.label}
+                </p>
+                <p
+                  className={
+                    "text-[10.5px] mt-0.5 transition-colors " +
+                    (isCurrent ? "text-ink-600 dark:text-ink-300" : "text-ink-400")
+                  }
+                >
+                  {step.sublabel}
+                </p>
               </button>
-              <p
-                className={`mt-4 text-[10px] font-black uppercase tracking-[0.2em] text-center max-w-[120px] transition-colors duration-500 ${
-                  isActive
-                    ? "text-brand"
-                    : isCompleted
-                      ? "text-emerald-600"
-                      : "text-ink-400"
-                }`}
-              >
-                {step.label}
-              </p>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -167,6 +232,7 @@ export default function ApplicationDetailPage() {
   const [isRequestChangesOpen, setIsRequestChangesOpen] = useState(false);
   const [activeStep, setActiveStep] = useState(1);
   const [selectedLevelId, setSelectedLevelId] = useState<number>(1);
+  const [photoLightboxOpen, setPhotoLightboxOpen] = useState(false);
 
   const appQ = useQuery({
     queryKey: ["admin", "applications", appId],
@@ -393,6 +459,9 @@ export default function ApplicationDetailPage() {
                 (app as any).applicant_photo_id ?? null,
               )}
               initials={`${(app.first_name ?? '').charAt(0)}${(app.last_name ?? '').charAt(0)}`.toUpperCase() || '?'}
+              onClick={() => {
+                if ((app as any).applicant_photo_id) setPhotoLightboxOpen(true);
+              }}
             />
             <div>
               <h2 className="text-[20px] font-bold text-ink-900 dark:text-white leading-tight">
@@ -1516,6 +1585,13 @@ export default function ApplicationDetailPage() {
         documents={docs}
         onSuccess={requestChangesSuccess}
       />
+
+      <PhotoLightbox
+        open={photoLightboxOpen}
+        onClose={() => setPhotoLightboxOpen(false)}
+        url={applicationAdminService.photoUrl(appId, (app as any).applicant_photo_id ?? null)}
+        caption={`${app.first_name ?? ''} ${app.last_name ?? ''}`.trim() || app.application_number}
+      />
     </div>
   );
 }
@@ -1693,13 +1769,26 @@ function DocStatusPill({ status }: { status: string }) {
   );
 }
 
-/** Large applicant avatar shown in the detail page header. Falls back to
- *  initials when no photo is set or when the image fails to load. */
+/** Large applicant avatar shown in the detail page header. Clickable
+ *  when a photo is set so admins can open the lightbox; falls back to
+ *  initials when no photo or when the image fails to load. */
 function ApplicantAvatarLg({
-  photoUrl, initials,
-}: { photoUrl: string | null; initials: string }) {
+  photoUrl, initials, onClick,
+}: { photoUrl: string | null; initials: string; onClick?: () => void }) {
+  const isClickable = !!photoUrl && !!onClick;
   return (
-    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary-500/15 to-primary-500/5 dark:from-primary-500/30 dark:to-primary-500/10 flex items-center justify-center text-primary-700 dark:text-primary-200 font-black text-[20px] shrink-0 overflow-hidden ring-1 ring-primary-200/60 dark:ring-primary-900/40">
+    <button
+      type="button"
+      onClick={isClickable ? onClick : undefined}
+      className={
+        "relative w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-gradient-to-br from-primary-500/15 to-primary-500/5 dark:from-primary-500/30 dark:to-primary-500/10 flex items-center justify-center text-primary-700 dark:text-primary-200 font-black text-[22px] shrink-0 overflow-hidden ring-1 ring-primary-200/60 dark:ring-primary-900/40 shadow-sm " +
+        (isClickable
+          ? "cursor-zoom-in hover:ring-2 hover:ring-brand/40 transition-all group"
+          : "cursor-default")
+      }
+      title={isClickable ? "Click to view full size" : undefined}
+      aria-label={isClickable ? "Open applicant photo" : "Applicant initials"}
+    >
       {photoUrl ? (
         <>
           <img
@@ -1714,10 +1803,76 @@ function ApplicantAvatarLg({
             }}
           />
           <span style={{ display: 'none' }}>{initials}</span>
+          {isClickable && (
+            <span className="absolute inset-0 bg-ink-900/0 group-hover:bg-ink-900/30 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+              <ZoomIn className="w-5 h-5 text-white drop-shadow" />
+            </span>
+          )}
         </>
       ) : (
         <span>{initials}</span>
       )}
-    </div>
+    </button>
+  );
+}
+
+/** Fullscreen photo viewer. Click the backdrop or press Esc to close. */
+function PhotoLightbox({
+  open, onClose, url, caption,
+}: {
+  open: boolean
+  onClose: () => void
+  url: string | null
+  caption?: string
+}) {
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [open, onClose])
+
+  if (!open || !url) return null
+
+  return (
+    <ModalPortal>
+      <div
+        className="fixed inset-0 z-[100] bg-ink-900/90 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in"
+        onClick={onClose}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors"
+          aria-label="Close"
+        >
+          <X className="w-5 h-5" />
+        </button>
+        <div
+          className="relative max-w-5xl max-h-[90vh] flex flex-col items-center gap-4"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <img
+            src={url}
+            alt={caption ?? 'Applicant photo'}
+            className="max-w-full max-h-[80vh] rounded-lg shadow-2xl object-contain"
+          />
+          {caption && (
+            <p className="text-white/80 text-[13px] font-medium">{caption}</p>
+          )}
+          <a
+            href={url}
+            download
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 text-[11.5px] text-white/70 hover:text-white"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Download className="w-3 h-3" />
+            Open in new tab
+          </a>
+        </div>
+      </div>
+    </ModalPortal>
   );
 }
