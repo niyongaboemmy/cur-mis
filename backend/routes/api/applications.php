@@ -97,6 +97,7 @@ $router->group('/api/admin', function ($router) {
         // Bulk upload via CSV (Task 1.12). Literal segments must come before
         // /:id to win route matching.
         $router->get('/bulk-upload-template', [ApplicationAdminController::class, 'bulkUploadTemplate']);
+        $router->post('/bulk-validate',       [ApplicationAdminController::class, 'bulkValidate']);
         $router->post('/bulk-upload',         [ApplicationAdminController::class, 'bulkUpload']);
         // Task 1.14 — applicant statistics report.
         $router->get('/statistics',           [ApplicationAdminController::class, 'statistics']);

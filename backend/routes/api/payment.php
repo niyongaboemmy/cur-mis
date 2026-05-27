@@ -23,7 +23,11 @@ use App\Middleware\UrubutoPayWebhookMiddleware;
 // Token endpoint — no auth (UrubutoPay calls this to get a token)
 $router->post('/api/payment/webhook/token', [UrubutoPayController::class, 'issueToken']);
 
+<<<<<<< HEAD
 // Payer verification + payment callback — validated by UrubutoPayWebhookMiddleware
+=======
+// Payer verification, payment callback, and reversal — validated by UrubutoPayWebhookMiddleware
+>>>>>>> emmy/emmy
 $router->post(
     '/api/payment/webhook/verify',
     [UrubutoPayController::class, 'verifyPayer'],
@@ -34,6 +38,14 @@ $router->post(
     [UrubutoPayController::class, 'paymentCallback'],
     [new UrubutoPayWebhookMiddleware()]
 );
+<<<<<<< HEAD
+=======
+$router->post(
+    '/api/payment/webhook/reversal',
+    [UrubutoPayController::class, 'handleReversal'],
+    [new UrubutoPayWebhookMiddleware()]
+);
+>>>>>>> emmy/emmy
 
 // ── Student Self-Service ──────────────────────────────────────────────────────
 

@@ -810,6 +810,8 @@ class ApplicationService
             'application_number'     => $offer['application_number'],
             'department_name'        => $offer['department_name'],
             'faculty_name'           => $faculty['faculty_name'] ?? '',
+            'level_name'             => $offer['level_name']     ?? '',
+            'mode_of_study'          => $offer['mode_of_study']  ?? 'Day',
             'intake'                 => $intake['intake'] ?? '',
             'academic_year'          => $year['academic_year'] ?? date('Y'),
             'offered_at'             => $offer['offered_at'],

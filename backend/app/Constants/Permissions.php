@@ -52,8 +52,23 @@ class Permissions
     public const MANAGE_LEAVE_REQUESTS = 'MANAGE_LEAVE_REQUESTS';
 
     // Finance
-    public const VIEW_FINANCE = 'VIEW_FINANCE';
-    public const MANAGE_FINANCE = 'MANAGE_FINANCE';
+    public const VIEW_FINANCE         = 'VIEW_FINANCE';
+    public const MANAGE_FINANCE       = 'MANAGE_FINANCE';
+    public const VIEW_FINANCE_OVERVIEW = 'VIEW_FINANCE_OVERVIEW';
+    public const VIEW_FINANCE_BILLING = 'VIEW_FINANCE_BILLING';
+    public const VIEW_FINANCE_APPROVALS = 'VIEW_FINANCE_APPROVALS';
+    public const VIEW_FINANCE_STRUCTURES = 'VIEW_FINANCE_STRUCTURES';
+    public const VIEW_FINANCE_BURSARIES = 'VIEW_FINANCE_BURSARIES';
+    public const VIEW_FINANCE_SPONSORS = 'VIEW_FINANCE_SPONSORS';
+    public const VIEW_FINANCE_EXPENSES = 'VIEW_FINANCE_EXPENSES';
+    public const VIEW_FINANCE_REFUNDS = 'VIEW_FINANCE_REFUNDS';
+    public const VIEW_FINANCE_BALANCE = 'VIEW_FINANCE_BALANCE';
+    public const VIEW_FINANCE_CLEARANCE = 'VIEW_FINANCE_CLEARANCE';
+    public const VIEW_FINANCE_REPORTS = 'VIEW_FINANCE_REPORTS';
+    public const VIEW_MOBILE_PAYMENTS = 'VIEW_MOBILE_PAYMENTS';
+    public const VIEW_ONLINE_PAYMENTS_HISTORY = 'VIEW_ONLINE_PAYMENTS_HISTORY';
+    // Student self-service: view own invoices, payments, and balance
+    public const MY_INVOICE           = 'MY_INVOICE';
 
     // Admissions
     public const MANAGE_ADMISSION_REQUIREMENTS = 'MANAGE_ADMISSION_REQUIREMENTS';
@@ -135,9 +150,23 @@ class Permissions
             self::VIEW_PAYROLL,
             self::MANAGE_PAYROLL,
             self::VIEW_FINANCE,
+            self::VIEW_FINANCE_OVERVIEW,
+            self::VIEW_FINANCE_BILLING,
+            self::VIEW_FINANCE_APPROVALS,
+            self::VIEW_FINANCE_STRUCTURES,
+            self::VIEW_FINANCE_BURSARIES,
+            self::VIEW_FINANCE_SPONSORS,
+            self::VIEW_FINANCE_EXPENSES,
+            self::VIEW_FINANCE_REFUNDS,
+            self::VIEW_FINANCE_BALANCE,
+            self::VIEW_FINANCE_CLEARANCE,
+            self::VIEW_FINANCE_REPORTS,
             self::VIEW_LEAVE_REQUESTS,
             self::MANAGE_LEAVE_REQUESTS,
             self::MANAGE_FINANCE,
+            self::VIEW_MOBILE_PAYMENTS,
+            self::VIEW_ONLINE_PAYMENTS_HISTORY,
+            self::MY_INVOICE,
             self::MANAGE_ADMISSION_REQUIREMENTS,
             self::MANAGE_STUDENT_APPLICATIONS,
             self::VERIFY_DOCUMENTS,

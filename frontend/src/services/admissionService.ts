@@ -271,9 +271,24 @@ export const applicationAdminService = {
       totals: { total: number; new_count: number; accepted_count: number; enrolled_count: number; withdrawn_count: number }
     }>(`/api/admin/applications/statistics`, withCampusScope(params), signal),
 
-  bulkUpload: (file: File) => {
+  /** Dry-run preview — parses the CSV server-side and returns per-row
+   *  validation (missing required fields, duplicates, invalid values)
+   *  so the modal can surface a preview before committing. */
+  bulkValidate: (file: File) => {
     const form = new FormData();
     form.append('file', file);
+    return api.upload<import('./studentService').BulkValidateResponse>(
+      `/api/admin/applications/bulk-validate`,
+      form,
+    );
+  },
+
+  bulkUpload: (file: File, patchedRows?: import('./studentService').BulkPatchedRow[]) => {
+    const form = new FormData();
+    form.append('file', file);
+    if (patchedRows && patchedRows.length > 0) {
+      form.append('patched_rows', JSON.stringify(patchedRows));
+    }
     return api.upload<{
       inserted: number;
       errors: Array<{ row: number; message: string }>;

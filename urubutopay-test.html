@@ -1,0 +1,1423 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>UrubutoPay API Tester · CUR</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #0b1121;
+        --surface: #151c30;
+        --surface2: #1c2540;
+        --border: #2a3654;
+        --primary: #4a7fc1;
+        --accent: #f5c400;
+        --text: #f1f5fd;
+        --muted: #a4b2cf;
+        --success: #22c55e;
+        --error: #ef4444;
+        --warn: #f59e0b;
+        --radius: 10px;
+        --font: "Poppins", system-ui, sans-serif;
+        --mono: "JetBrains Mono", "Fira Code", monospace;
+      }
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family: var(--font);
+        background: var(--bg);
+        color: var(--text);
+        font-size: 13px;
+        line-height: 1.6;
+        min-height: 100vh;
+      }
+
+      /* ── Header ─────────────────────────────────────────────── */
+      .header {
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        padding: 14px 24px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        position: sticky;
+        top: 0;
+        z-index: 100;
+      }
+      .header-logo {
+        width: 36px;
+        height: 36px;
+        background: var(--primary);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        font-size: 16px;
+        color: #fff;
+      }
+      .header-title {
+        font-size: 15px;
+        font-weight: 600;
+      }
+      .header-sub {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 1px;
+      }
+      .header-right {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      /* ── Environment toggle ──────────────────────────────────── */
+      .env-toggle {
+        display: flex;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        overflow: hidden;
+      }
+      .env-toggle label {
+        padding: 5px 14px;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--muted);
+        transition: all 0.2s;
+      }
+      .env-toggle input[type="radio"] {
+        display: none;
+      }
+      .env-toggle input[type="radio"]:checked + label {
+        background: var(--primary);
+        color: #fff;
+      }
+
+      /* ── Main layout ─────────────────────────────────────────── */
+      .main {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 24px 20px 60px;
+      }
+
+      /* ── Token bar ───────────────────────────────────────────── */
+      .token-bar {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 12px 16px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 20px;
+      }
+      .token-label {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        white-space: nowrap;
+      }
+      .token-value {
+        flex: 1;
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--accent);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .token-value.empty {
+        color: var(--muted);
+        font-style: italic;
+      }
+      .btn-run-all {
+        background: var(--primary);
+        color: #fff;
+        border: none;
+        border-radius: 6px;
+        padding: 7px 16px;
+        font-family: var(--font);
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        transition: opacity 0.2s;
+        white-space: nowrap;
+      }
+      .btn-run-all:hover {
+        opacity: 0.85;
+      }
+      .btn-run-all:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      .btn-sm {
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        color: var(--muted);
+        border-radius: 5px;
+        padding: 4px 10px;
+        font-family: var(--font);
+        font-size: 11px;
+        cursor: pointer;
+        transition: color 0.2s;
+      }
+      .btn-sm:hover {
+        color: var(--text);
+      }
+
+      /* ── Step cards ──────────────────────────────────────────── */
+      .step-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        margin-bottom: 16px;
+        overflow: hidden;
+        transition: border-color 0.2s;
+      }
+      .step-card.active {
+        border-color: var(--primary);
+      }
+      .step-card.success {
+        border-color: var(--success);
+      }
+      .step-card.error {
+        border-color: var(--error);
+      }
+
+      .step-header {
+        padding: 12px 16px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        border-bottom: 1px solid var(--border);
+        cursor: pointer;
+        user-select: none;
+      }
+      .step-num {
+        width: 26px;
+        height: 26px;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: 600;
+        flex-shrink: 0;
+      }
+      .step-card.success .step-num {
+        background: var(--success);
+        border-color: var(--success);
+        color: #fff;
+      }
+      .step-card.error .step-num {
+        background: var(--error);
+        border-color: var(--error);
+        color: #fff;
+      }
+
+      .step-info {
+        flex: 1;
+        min-width: 0;
+      }
+      .step-title {
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .step-url {
+        font-family: var(--mono);
+        font-size: 10px;
+        color: var(--muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        margin-top: 1px;
+      }
+      .step-url .method {
+        color: var(--accent);
+        font-weight: 600;
+        margin-right: 5px;
+      }
+
+      .step-badge {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        font-weight: 500;
+      }
+      .badge-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+      }
+      .badge-dot.ok {
+        background: var(--success);
+      }
+      .badge-dot.err {
+        background: var(--error);
+      }
+      .badge-dot.idle {
+        background: var(--muted);
+      }
+      .badge-dot.spin {
+        background: var(--primary);
+        animation: pulse 1s infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.3;
+        }
+      }
+
+      .step-chevron {
+        color: var(--muted);
+        font-size: 14px;
+        transition: transform 0.2s;
+      }
+      .step-card.collapsed .step-chevron {
+        transform: rotate(-90deg);
+      }
+
+      .step-body {
+        padding: 16px;
+      }
+      .step-card.collapsed .step-body {
+        display: none;
+      }
+
+      /* ── API path toggle ─────────────────────────────────────── */
+      .api-toggle {
+        display: flex;
+        gap: 4px;
+        margin-bottom: 14px;
+      }
+      .api-toggle button {
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        color: var(--muted);
+        border-radius: 5px;
+        padding: 4px 12px;
+        font-family: var(--font);
+        font-size: 11px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      .api-toggle button.active {
+        background: var(--primary);
+        border-color: var(--primary);
+        color: #fff;
+      }
+
+      /* ── Form fields ─────────────────────────────────────────── */
+      .fields {
+        display: grid;
+        gap: 10px;
+        margin-bottom: 14px;
+      }
+      .field {
+        display: grid;
+        grid-template-columns: 140px 1fr;
+        align-items: center;
+        gap: 8px;
+      }
+      .field label {
+        font-size: 11px;
+        color: var(--muted);
+        font-weight: 500;
+        text-align: right;
+      }
+      .field input,
+      .field select,
+      .field textarea {
+        background: var(--bg);
+        border: 1px solid var(--border);
+        color: var(--text);
+        border-radius: 6px;
+        padding: 7px 10px;
+        font-family: var(--mono);
+        font-size: 11px;
+        width: 100%;
+        transition: border-color 0.2s;
+      }
+      .field input:focus,
+      .field select:focus,
+      .field textarea:focus {
+        outline: none;
+        border-color: var(--primary);
+      }
+      .field textarea {
+        resize: vertical;
+        min-height: 70px;
+      }
+      .field input::placeholder {
+        color: var(--muted);
+        opacity: 0.6;
+      }
+
+      .field-note {
+        font-size: 10px;
+        color: var(--muted);
+        padding-left: 148px;
+        margin-top: -6px;
+      }
+
+      /* ── Send button ─────────────────────────────────────────── */
+      .send-row {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+      .btn-send {
+        background: var(--primary);
+        color: #fff;
+        border: none;
+        border-radius: 6px;
+        padding: 8px 20px;
+        font-family: var(--font);
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        transition: opacity 0.2s;
+      }
+      .btn-send:hover {
+        opacity: 0.85;
+      }
+      .btn-send:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+
+      /* ── Response panel ──────────────────────────────────────── */
+      .response-panel {
+        margin-top: 14px;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        overflow: hidden;
+      }
+      .response-header {
+        padding: 8px 12px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        border-bottom: 1px solid var(--border);
+        font-size: 11px;
+      }
+      .status-pill {
+        border-radius: 4px;
+        padding: 2px 8px;
+        font-weight: 600;
+        font-size: 11px;
+      }
+      .status-pill.s2xx {
+        background: rgba(34, 197, 94, 0.15);
+        color: var(--success);
+      }
+      .status-pill.s4xx {
+        background: rgba(239, 68, 68, 0.15);
+        color: var(--error);
+      }
+      .status-pill.s5xx {
+        background: rgba(239, 68, 68, 0.15);
+        color: var(--error);
+      }
+      .status-pill.idle {
+        background: var(--surface2);
+        color: var(--muted);
+      }
+      .response-time {
+        color: var(--muted);
+        margin-left: auto;
+      }
+      .btn-copy-resp {
+        background: none;
+        border: none;
+        color: var(--muted);
+        cursor: pointer;
+        font-size: 11px;
+        padding: 2px 4px;
+        font-family: var(--font);
+      }
+      .btn-copy-resp:hover {
+        color: var(--text);
+      }
+
+      .response-body {
+        padding: 12px;
+        font-family: var(--mono);
+        font-size: 11px;
+        max-height: 260px;
+        overflow-y: auto;
+        line-height: 1.7;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+      .response-body:empty::before {
+        content: "No response yet.";
+        color: var(--muted);
+        font-style: italic;
+      }
+
+      /* JSON syntax highlighting */
+      .j-key {
+        color: #79b8ff;
+      }
+      .j-str {
+        color: #9ecbff;
+      }
+      .j-num {
+        color: #f0c274;
+      }
+      .j-bool {
+        color: #79d4a0;
+      }
+      .j-null {
+        color: var(--muted);
+      }
+
+      /* ── Endpoints reference ─────────────────────────────────── */
+      .ref-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 18px;
+        margin-top: 24px;
+      }
+      .ref-title {
+        font-size: 13px;
+        font-weight: 600;
+        margin-bottom: 14px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .ref-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 11px;
+      }
+      .ref-table th {
+        text-align: left;
+        padding: 7px 10px;
+        color: var(--muted);
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        border-bottom: 1px solid var(--border);
+        font-size: 10px;
+      }
+      .ref-table td {
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--border);
+        vertical-align: middle;
+      }
+      .ref-table tr:last-child td {
+        border-bottom: none;
+      }
+      .ref-table .url-cell {
+        font-family: var(--mono);
+        font-size: 10px;
+        color: var(--muted);
+      }
+      .ref-table .url-cell.active-url {
+        color: var(--primary);
+      }
+      .method-tag {
+        display: inline-block;
+        background: rgba(74, 127, 193, 0.15);
+        color: var(--primary);
+        border-radius: 3px;
+        padding: 1px 6px;
+        font-size: 10px;
+        font-weight: 600;
+        font-family: var(--mono);
+      }
+      .copy-url {
+        background: none;
+        border: none;
+        color: var(--muted);
+        cursor: pointer;
+        font-size: 10px;
+        font-family: var(--font);
+        padding: 2px 6px;
+      }
+      .copy-url:hover {
+        color: var(--text);
+      }
+
+      /* ── Toast ───────────────────────────────────────────────── */
+      .toast {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        color: var(--text);
+        padding: 10px 16px;
+        border-radius: 7px;
+        font-size: 12px;
+        opacity: 0;
+        transform: translateY(8px);
+        transition: all 0.25s;
+        pointer-events: none;
+        z-index: 999;
+      }
+      .toast.show {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      /* ── Divider ─────────────────────────────────────────────── */
+      .section-label {
+        font-size: 10px;
+        font-weight: 600;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin: 22px 0 10px;
+      }
+
+      /* ── Scrollbar ───────────────────────────────────────────── */
+      ::-webkit-scrollbar {
+        width: 5px;
+        height: 5px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: var(--border);
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- ── Header ──────────────────────────────────────────────────── -->
+    <header class="header">
+      <div class="header-logo">C</div>
+      <div>
+        <div class="header-title">UrubutoPay API Tester</div>
+        <div class="header-sub">
+          Catholic University of Rwanda · Merchant TH17342831
+        </div>
+      </div>
+      <div class="header-right">
+        <div class="env-toggle">
+          <input type="radio" name="env" id="env-local" value="local" checked />
+          <label for="env-local">Local</label>
+          <input type="radio" name="env" id="env-prod" value="prod" />
+          <label for="env-prod">Production</label>
+        </div>
+      </div>
+    </header>
+
+    <!-- ── Main ────────────────────────────────────────────────────── -->
+    <div class="main">
+      <!-- Token bar -->
+      <div class="token-bar">
+        <span class="token-label">Bearer Token</span>
+        <span class="token-value empty" id="token-display"
+          >No token — run Step 1 first</span
+        >
+        <button class="btn-sm" onclick="copyToken()">Copy</button>
+        <button class="btn-sm" onclick="clearToken()">Clear</button>
+        <button class="btn-run-all" id="btn-run-all" onclick="runAll()">
+          ▶ Run Full Sequence
+        </button>
+      </div>
+
+      <div class="section-label">Endpoint Steps</div>
+
+      <!-- ── STEP 1: Authentication ─────────────────────────────── -->
+      <div class="step-card" id="card-1">
+        <div class="step-header" onclick="toggleCard(1)">
+          <div class="step-num">1</div>
+          <div class="step-info">
+            <div class="step-title">Authentication URL</div>
+            <div class="step-url" id="url-label-1">
+              <span class="method">POST</span><span id="url-display-1"></span>
+            </div>
+          </div>
+          <div class="step-badge" id="badge-1">
+            <div class="badge-dot idle" id="dot-1"></div>
+            <span id="badge-text-1">Idle</span>
+          </div>
+          <span class="step-chevron">▾</span>
+        </div>
+        <div class="step-body">
+          <div class="api-toggle">
+            <button class="active" onclick="setApi(1, 'legacy', this)">
+              Legacy &nbsp;<code style="font-size: 9px; opacity: 0.7"
+                >/payment_api/token.php</code
+              >&nbsp;<span style="font-size:9px;background:#f59e0b22;color:#f59e0b;border:1px solid #f59e0b55;border-radius:3px;padding:1px 4px">Testing only</span>
+            </button>
+            <button onclick="setApi(1, 'modern', this)">
+              Modern &nbsp;<code style="font-size: 9px; opacity: 0.7"
+                >/api/payment/webhook/token</code
+              >&nbsp;<span style="font-size:9px;background:#22c55e22;color:#22c55e;border:1px solid #22c55e55;border-radius:3px;padding:1px 4px">Production</span>
+            </button>
+          </div>
+          <div class="fields">
+            <div class="field">
+              <label>user_name</label>
+              <input
+                type="text"
+                id="f1-username"
+                value="bk_csgd"
+                placeholder="API username"
+              />
+            </div>
+            <div class="field">
+              <label>password</label>
+              <input
+                type="password"
+                id="f1-password"
+                placeholder="API password"
+              />
+            </div>
+          </div>
+          <div class="send-row">
+            <button class="btn-send" id="btn-1" onclick="runStep(1)">
+              Send Request ▶
+            </button>
+          </div>
+          <div class="response-panel">
+            <div class="response-header">
+              <span class="status-pill idle" id="pill-1">—</span>
+              <span id="resp-msg-1" style="color: var(--muted)"
+                >Awaiting response</span
+              >
+              <span class="response-time" id="time-1"></span>
+              <button class="btn-copy-resp" onclick="copyResp(1)">Copy</button>
+            </div>
+            <div class="response-body" id="resp-1"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── STEP 2: Validation ──────────────────────────────────── -->
+      <div class="step-card collapsed" id="card-2">
+        <div class="step-header" onclick="toggleCard(2)">
+          <div class="step-num">2</div>
+          <div class="step-info">
+            <div class="step-title">Validation URL (Payer Verification)</div>
+            <div class="step-url">
+              <span class="method">POST</span><span id="url-display-2"></span>
+            </div>
+          </div>
+          <div class="step-badge" id="badge-2">
+            <div class="badge-dot idle" id="dot-2"></div>
+            <span id="badge-text-2">Idle</span>
+          </div>
+          <span class="step-chevron">▾</span>
+        </div>
+        <div class="step-body">
+          <div class="api-toggle">
+            <button class="active" onclick="setApi(2, 'legacy', this)">
+              Legacy &nbsp;<code style="font-size: 9px; opacity: 0.7"
+                >/payment_api/getstudent.php</code
+              >&nbsp;<span style="font-size:9px;background:#f59e0b22;color:#f59e0b;border:1px solid #f59e0b55;border-radius:3px;padding:1px 4px">Testing only</span>
+            </button>
+            <button onclick="setApi(2, 'modern', this)">
+              Modern &nbsp;<code style="font-size: 9px; opacity: 0.7"
+                >/api/payment/webhook/verify</code
+              >&nbsp;<span style="font-size:9px;background:#22c55e22;color:#22c55e;border:1px solid #22c55e55;border-radius:3px;padding:1px 4px">Production</span>
+            </button>
+          </div>
+          <div class="fields">
+            <div class="field">
+              <label>payer_code</label>
+              <input
+                type="text"
+                id="f2-payer"
+                placeholder="e.g. CUR/BBA/001/2022"
+              />
+            </div>
+            <div class="field">
+              <label>merchant_code</label>
+              <input type="text" id="f2-merchant" value="TH17342831" />
+            </div>
+          </div>
+          <div class="field-note">
+            Uses Bearer token from Step 1 automatically.
+          </div>
+          <div class="send-row" style="margin-top: 14px">
+            <button class="btn-send" id="btn-2" onclick="runStep(2)">
+              Send Request ▶
+            </button>
+          </div>
+          <div class="response-panel">
+            <div class="response-header">
+              <span class="status-pill idle" id="pill-2">—</span>
+              <span id="resp-msg-2" style="color: var(--muted)"
+                >Awaiting response</span
+              >
+              <span class="response-time" id="time-2"></span>
+              <button class="btn-copy-resp" onclick="copyResp(2)">Copy</button>
+            </div>
+            <div class="response-body" id="resp-2"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── STEP 3: Payment Notification ───────────────────────── -->
+      <div class="step-card collapsed" id="card-3">
+        <div class="step-header" onclick="toggleCard(3)">
+          <div class="step-num">3</div>
+          <div class="step-info">
+            <div class="step-title">Payment Notification URL</div>
+            <div class="step-url">
+              <span class="method">POST</span><span id="url-display-3"></span>
+            </div>
+          </div>
+          <div class="step-badge" id="badge-3">
+            <div class="badge-dot idle" id="dot-3"></div>
+            <span id="badge-text-3">Idle</span>
+          </div>
+          <span class="step-chevron">▾</span>
+        </div>
+        <div class="step-body">
+          <div class="api-toggle">
+            <button class="active" onclick="setApi(3, 'legacy', this)">
+              Legacy &nbsp;<code style="font-size: 9px; opacity: 0.7"
+                >/payment_api/callback.php</code
+              >&nbsp;<span style="font-size:9px;background:#f59e0b22;color:#f59e0b;border:1px solid #f59e0b55;border-radius:3px;padding:1px 4px">Testing only</span>
+            </button>
+            <button onclick="setApi(3, 'modern', this)">
+              Modern &nbsp;<code style="font-size: 9px; opacity: 0.7"
+                >/api/payment/webhook/callback</code
+              >&nbsp;<span style="font-size:9px;background:#22c55e22;color:#22c55e;border:1px solid #22c55e55;border-radius:3px;padding:1px 4px">Production</span>
+            </button>
+          </div>
+          <div class="fields">
+            <div class="field">
+              <label>callback_type</label>
+              <select id="f3-type">
+                <option value="PAYMENT">PAYMENT</option>
+                <option value="STATUS_UPDATE">STATUS_UPDATE</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>transaction_code</label>
+              <input type="text" id="f3-txcode" value="TEST-TX-001" />
+            </div>
+            <div class="field">
+              <label>payer_code</label>
+              <input
+                type="text"
+                id="f3-payer"
+                placeholder="e.g. CUR/BBA/001/2022"
+              />
+            </div>
+            <div class="field">
+              <label>amount (RWF)</label>
+              <input type="number" id="f3-amount" value="450000" />
+            </div>
+            <div class="field">
+              <label>service_code</label>
+              <select id="f3-service">
+                <option value="tuition-fees-1258">
+                  tuition-fees-1258 (Tuition Fees)
+                </option>
+                <option value="cursu-fees-8249">
+                  cursu-fees-8249 (CURSU Fees)
+                </option>
+              </select>
+            </div>
+            <div class="field">
+              <label>status</label>
+              <select id="f3-status">
+                <option value="SUCCESSFUL">SUCCESSFUL</option>
+                <option value="FAILED">FAILED</option>
+                <option value="PENDING">PENDING</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>payment_date</label>
+              <input type="text" id="f3-date" />
+            </div>
+          </div>
+          <div class="field-note">
+            Uses Bearer token from Step 1. A unique transaction_code prevents
+            duplicate recording.
+          </div>
+          <div class="send-row" style="margin-top: 14px">
+            <button class="btn-sm" onclick="generateTxCode()">
+              Generate TX Code
+            </button>
+            <button class="btn-send" id="btn-3" onclick="runStep(3)">
+              Send Request ▶
+            </button>
+          </div>
+          <div class="response-panel">
+            <div class="response-header">
+              <span class="status-pill idle" id="pill-3">—</span>
+              <span id="resp-msg-3" style="color: var(--muted)"
+                >Awaiting response</span
+              >
+              <span class="response-time" id="time-3"></span>
+              <button class="btn-copy-resp" onclick="copyResp(3)">Copy</button>
+            </div>
+            <div class="response-body" id="resp-3"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── STEP 4: Payment Reversal ───────────────────────────── -->
+      <div class="step-card collapsed" id="card-4">
+        <div class="step-header" onclick="toggleCard(4)">
+          <div class="step-num">4</div>
+          <div class="step-info">
+            <div class="step-title">Payment Reversal URL</div>
+            <div class="step-url">
+              <span class="method">POST</span><span id="url-display-4"></span>
+            </div>
+          </div>
+          <div class="step-badge" id="badge-4">
+            <div class="badge-dot idle" id="dot-4"></div>
+            <span id="badge-text-4">Idle</span>
+          </div>
+          <span class="step-chevron">▾</span>
+        </div>
+        <div class="step-body">
+          <div class="api-toggle">
+            <button class="active" onclick="setApi(4, 'legacy', this)">
+              Legacy &nbsp;<code style="font-size: 9px; opacity: 0.7"
+                >/payment_api/cancel_transaction.php</code
+              >&nbsp;<span style="font-size:9px;background:#f59e0b22;color:#f59e0b;border:1px solid #f59e0b55;border-radius:3px;padding:1px 4px">Testing only</span>
+            </button>
+            <button onclick="setApi(4, 'modern', this)">
+              Modern &nbsp;<code style="font-size: 9px; opacity: 0.7"
+                >/api/payment/webhook/reversal</code
+              >&nbsp;<span style="font-size:9px;background:#22c55e22;color:#22c55e;border:1px solid #22c55e55;border-radius:3px;padding:1px 4px">Production</span>
+            </button>
+          </div>
+          <div class="fields">
+            <div class="field">
+              <label id="f4-txlabel">transaction_id</label>
+              <input
+                type="text"
+                id="f4-txcode"
+                placeholder="Original transaction code from Step 3"
+              />
+            </div>
+            <div class="field">
+              <label>amount (RWF)</label>
+              <input
+                type="number"
+                id="f4-amount"
+                placeholder="0 = full reversal"
+                value="0"
+              />
+            </div>
+          </div>
+          <div class="field-note">
+            Uses Bearer token from Step 1. Leave amount as 0 to reverse the full
+            original amount.
+          </div>
+          <div class="send-row" style="margin-top: 14px">
+            <button class="btn-sm" onclick="prefillReversal()">
+              ← Use Step 3 TX Code
+            </button>
+            <button class="btn-send" id="btn-4" onclick="runStep(4)">
+              Send Request ▶
+            </button>
+          </div>
+          <div class="response-panel">
+            <div class="response-header">
+              <span class="status-pill idle" id="pill-4">—</span>
+              <span id="resp-msg-4" style="color: var(--muted)"
+                >Awaiting response</span
+              >
+              <span class="response-time" id="time-4"></span>
+              <button class="btn-copy-resp" onclick="copyResp(4)">Copy</button>
+            </div>
+            <div class="response-body" id="resp-4"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Endpoint Reference ─────────────────────────────────── -->
+      <div class="ref-card">
+        <div class="ref-title">
+          📋 Endpoint Reference
+          <span
+            style="
+              font-size: 10px;
+              font-weight: 400;
+              color: var(--muted);
+              margin-left: 4px;
+            "
+            >for bank submission</span
+          >
+        </div>
+        <table class="ref-table" id="ref-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Endpoint</th>
+              <th>Method</th>
+              <th>URL</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="ref-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
+
+    <script>
+      // ── Config ──────────────────────────────────────────────────────────────────
+      const URLS = {
+        local: {
+          legacy: "http://localhost:8888/cur-mis/payment_api",
+          modern: "http://localhost:8888/cur-mis/backend/public",
+        },
+        prod: {
+          legacy: "https://cur.ac.rw/payment_api",
+          modern: "https://cur.ac.rw/umis/api",
+        },
+      };
+
+      const PATHS = {
+        legacy: {
+          1: "/token.php",
+          2: "/getstudent.php",
+          3: "/callback.php",
+          4: "/cancel_transaction.php",
+        },
+        modern: {
+          1: "/api/payment/webhook/token",
+          2: "/api/payment/webhook/verify",
+          3: "/api/payment/webhook/callback",
+          4: "/api/payment/webhook/reversal",
+        },
+      };
+
+      const STEP_NAMES = {
+        1: "Authentication URL",
+        2: "Validation URL",
+        3: "Payment Notification URL",
+        4: "Payment Reversal URL",
+      };
+
+      // ── State ───────────────────────────────────────────────────────────────────
+      let token = "";
+      let apiModes = { 1: "legacy", 2: "legacy", 3: "legacy", 4: "legacy" };
+      let lastResp = {};
+      let runningAll = false;
+
+      // ── Init ────────────────────────────────────────────────────────────────────
+      document.addEventListener("DOMContentLoaded", () => {
+        const isLocal = ["localhost", "127.0.0.1"].includes(location.hostname);
+        document.getElementById(isLocal ? "env-local" : "env-prod").checked =
+          true;
+
+        const now = new Date().toISOString().slice(0, 19) + "Z";
+        document.getElementById("f3-date").value = now;
+        refreshAllURLs();
+        buildRefTable();
+
+        document.querySelectorAll("input[name=env]").forEach((r) =>
+          r.addEventListener("change", () => {
+            refreshAllURLs();
+            buildRefTable();
+          }),
+        );
+      });
+
+      function getEnv() {
+        return (
+          document.querySelector("input[name=env]:checked")?.value || "local"
+        );
+      }
+
+      function getUrl(step) {
+        const env = getEnv();
+        const mode = apiModes[step];
+        return URLS[env][mode] + PATHS[mode][step];
+      }
+
+      function refreshAllURLs() {
+        for (let s = 1; s <= 4; s++) {
+          const el = document.getElementById("url-display-" + s);
+          if (el) el.textContent = getUrl(s);
+        }
+      }
+
+      // ── UI helpers ───────────────────────────────────────────────────────────────
+      function toggleCard(n) {
+        document.getElementById("card-" + n).classList.toggle("collapsed");
+      }
+
+      function setApi(step, mode, btn) {
+        apiModes[step] = mode;
+        btn
+          .closest(".api-toggle")
+          .querySelectorAll("button")
+          .forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        refreshAllURLs();
+        buildRefTable();
+        // Adjust reversal field label for legacy (transaction_id) vs modern (transaction_code)
+        if (step === 4) {
+          document.getElementById("f4-txlabel").textContent =
+            mode === "legacy" ? "transaction_id" : "transaction_code";
+        }
+      }
+
+      function setBadge(step, state, text) {
+        const dot = document.getElementById("dot-" + step);
+        const span = document.getElementById("badge-text-" + step);
+        const card = document.getElementById("card-" + step);
+        dot.className = "badge-dot " + state;
+        span.textContent = text;
+        card.className =
+          "step-card" +
+          (card.classList.contains("collapsed") ? " collapsed" : "") +
+          (state === "ok"
+            ? " success"
+            : state === "err"
+              ? " error"
+              : state === "spin"
+                ? " active"
+                : "");
+      }
+
+      function setPill(step, code) {
+        const pill = document.getElementById("pill-" + step);
+        const cl =
+          code >= 500
+            ? "s5xx"
+            : code >= 400
+              ? "s4xx"
+              : code >= 200
+                ? "s2xx"
+                : "idle";
+        pill.className = "status-pill " + cl;
+        pill.textContent = code || "—";
+      }
+
+      function setRespMsg(step, text) {
+        document.getElementById("resp-msg-" + step).textContent = text;
+      }
+
+      function setTime(step, ms) {
+        document.getElementById("time-" + step).textContent =
+          ms != null ? ms + " ms" : "";
+      }
+
+      function renderJSON(obj) {
+        const str = JSON.stringify(obj, null, 2);
+        return str
+          .replace(
+            /("(?:[^"\\]|\\.)*")(\s*:)/g,
+            '<span class="j-key">$1</span>$2',
+          )
+          .replace(
+            /:\s*("(?:[^"\\]|\\.)*")/g,
+            ': <span class="j-str">$1</span>',
+          )
+          .replace(/:\s*(\d+\.?\d*)/g, ': <span class="j-num">$1</span>')
+          .replace(/:\s*(true|false)/g, ': <span class="j-bool">$1</span>')
+          .replace(/:\s*(null)/g, ': <span class="j-null">$1</span>');
+      }
+
+      function showToast(msg) {
+        const t = document.getElementById("toast");
+        t.textContent = msg;
+        t.classList.add("show");
+        setTimeout(() => t.classList.remove("show"), 2200);
+      }
+
+      // ── Token management ─────────────────────────────────────────────────────────
+      function setToken(t) {
+        token = t;
+        const el = document.getElementById("token-display");
+        if (t) {
+          el.textContent = t;
+          el.classList.remove("empty");
+        } else {
+          el.textContent = "No token — run Step 1 first";
+          el.classList.add("empty");
+        }
+      }
+
+      function copyToken() {
+        if (!token) {
+          showToast("No token yet");
+          return;
+        }
+        navigator.clipboard
+          .writeText(token)
+          .then(() => showToast("Token copied"));
+      }
+
+      function clearToken() {
+        setToken("");
+        showToast("Token cleared");
+      }
+
+      function copyResp(step) {
+        const raw = lastResp[step];
+        if (!raw) {
+          showToast("No response yet");
+          return;
+        }
+        navigator.clipboard
+          .writeText(JSON.stringify(raw, null, 2))
+          .then(() => showToast("Response copied"));
+      }
+
+      // ── Generate unique TX code ──────────────────────────────────────────────────
+      function generateTxCode() {
+        const code = "TEST-TX-" + Date.now().toString(36).toUpperCase();
+        document.getElementById("f3-txcode").value = code;
+      }
+
+      function prefillReversal() {
+        const code = document.getElementById("f3-txcode").value;
+        document.getElementById("f4-txcode").value = code;
+        document.getElementById("card-4").classList.remove("collapsed");
+      }
+
+      // ── Build request payloads ───────────────────────────────────────────────────
+      function buildPayload(step) {
+        switch (step) {
+          case 1:
+            return {
+              user_name: document.getElementById("f1-username").value.trim(),
+              password: document.getElementById("f1-password").value,
+            };
+          case 2: {
+            const mode = apiModes[2];
+            return mode === "legacy"
+              ? {
+                  payer_code: document.getElementById("f2-payer").value.trim(),
+                  merchant_code: document
+                    .getElementById("f2-merchant")
+                    .value.trim(),
+                }
+              : {
+                  payer_code: document.getElementById("f2-payer").value.trim(),
+                  merchant_code: document
+                    .getElementById("f2-merchant")
+                    .value.trim(),
+                };
+          }
+          case 3:
+            return {
+              callback_type: document.getElementById("f3-type").value,
+              transaction_code: document
+                .getElementById("f3-txcode")
+                .value.trim(),
+              payer_code: document.getElementById("f3-payer").value.trim(),
+              amount:
+                parseFloat(document.getElementById("f3-amount").value) || 0,
+              currency: "RWF",
+              payment_date: document.getElementById("f3-date").value.trim(),
+              service_code: document.getElementById("f3-service").value,
+              status: document.getElementById("f3-status").value,
+            };
+          case 4: {
+            const mode = apiModes[4];
+            const field =
+              mode === "legacy" ? "transaction_id" : "transaction_code";
+            return {
+              [field]: document.getElementById("f4-txcode").value.trim(),
+              amount:
+                parseFloat(document.getElementById("f4-amount").value) || 0,
+            };
+          }
+        }
+      }
+
+      // ── Run a single step ────────────────────────────────────────────────────────
+      async function runStep(step, silent = false) {
+        const url = getUrl(step);
+        const payload = buildPayload(step);
+        const headers = { "Content-Type": "application/json" };
+        if (step !== 1 && token) headers["Authorization"] = token;
+
+        setBadge(step, "spin", "Sending…");
+        document.getElementById("btn-" + step).disabled = true;
+        document.getElementById("card-" + step).classList.remove("collapsed");
+
+        const t0 = Date.now();
+        let data, httpCode;
+
+        try {
+          const res = await fetch(url, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(payload),
+          });
+          httpCode = res.status;
+          const ct = res.headers.get("Content-Type") || "";
+          data = ct.includes("application/json")
+            ? await res.json()
+            : { _raw: await res.text() };
+        } catch (e) {
+          data = { error: e.message };
+          httpCode = 0;
+        }
+
+        const ms = Date.now() - t0;
+        lastResp[step] = data;
+
+        // Update response panel
+        document.getElementById("resp-" + step).innerHTML = renderJSON(data);
+        setPill(step, httpCode);
+        setTime(step, ms);
+
+        const ok = httpCode >= 200 && httpCode < 300;
+        setBadge(
+          step,
+          ok ? "ok" : "err",
+          ok ? httpCode + " OK" : httpCode + " Error",
+        );
+
+        const msg = data?.message || (ok ? "Success" : "Request failed");
+        setRespMsg(step, msg);
+        document.getElementById("btn-" + step).disabled = false;
+
+        // Auto-extract token from step 1
+        if (step === 1 && data?.data?.token) {
+          setToken(data.data.token);
+          // Propagate payer_code from step 1 user → step 2/3 payer if empty
+        }
+
+        // Propagate payer_code from step 2 if not set in step 3
+        if (step === 2 && ok) {
+          const pc = document.getElementById("f2-payer").value.trim();
+          if (pc && !document.getElementById("f3-payer").value.trim()) {
+            document.getElementById("f3-payer").value = pc;
+          }
+        }
+
+        if (!silent && !ok) {
+          showToast(
+            "Step " + step + " failed — " + (data?.message || httpCode),
+          );
+        }
+
+        return ok;
+      }
+
+      // ── Run full sequence ────────────────────────────────────────────────────────
+      async function runAll() {
+        if (runningAll) return;
+        runningAll = true;
+        const btn = document.getElementById("btn-run-all");
+        btn.disabled = true;
+        btn.textContent = "⏳ Running…";
+
+        for (let s = 1; s <= 4; s++) {
+          const ok = await runStep(s, true);
+          if (!ok && s <= 2) {
+            showToast("Sequence stopped at Step " + s);
+            break;
+          }
+          await new Promise((r) => setTimeout(r, 300));
+        }
+
+        btn.disabled = false;
+        btn.innerHTML = "▶ Run Full Sequence";
+        runningAll = false;
+        showToast("Sequence complete");
+      }
+
+      // ── Reference table ──────────────────────────────────────────────────────────
+      function buildRefTable() {
+        const env = getEnv();
+        const rows = [
+          { n: 1, name: "1. Authentication URL", method: "POST" },
+          { n: 2, name: "2. Validation URL", method: "POST" },
+          { n: 3, name: "3. Payment Notification URL", method: "POST" },
+          { n: 4, name: "4. Payment Reversal URL", method: "POST" },
+          {
+            n: 5,
+            name: "5. Callback / Redirect URL",
+            method: "GET",
+            special: true,
+          },
+        ];
+
+        const legacyRedirect =
+          env === "local"
+            ? "http://localhost:5173/finance"
+            : "https://cur.ac.rw/umis/finance";
+
+        const tbody = document.getElementById("ref-tbody");
+        tbody.innerHTML = "";
+
+        rows.forEach((row) => {
+          const mode = apiModes[row.n] || "legacy";
+          let legacyUrl, modernUrl;
+
+          if (row.special) {
+            legacyUrl = legacyRedirect;
+            modernUrl = legacyRedirect;
+          } else {
+            legacyUrl = URLS[env].legacy + PATHS.legacy[row.n];
+            modernUrl = URLS[env].modern + PATHS.modern[row.n];
+          }
+
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+      <td style="color:var(--muted);width:28px">${row.n}</td>
+      <td style="font-weight:500">${row.name}</td>
+      <td><span class="method-tag">${row.method}</span></td>
+      <td class="url-cell">
+        <div style="margin-bottom:3px"><span style="font-size:9px;background:#f59e0b22;color:#f59e0b;border:1px solid #f59e0b55;border-radius:3px;padding:1px 5px;margin-right:6px">Legacy · Testing only</span>${legacyUrl}</div>
+        ${row.special ? "" : `<div style="margin-top:2px"><span style="font-size:9px;background:#22c55e22;color:#22c55e;border:1px solid #22c55e55;border-radius:3px;padding:1px 5px;margin-right:6px">Modern · Production</span>${modernUrl}</div>`}
+      </td>
+      <td style="white-space:nowrap">
+        <button class="copy-url" onclick="copyUrl('${legacyUrl}')">Copy Legacy</button>
+        ${row.special ? "" : `<button class="copy-url" onclick="copyUrl('${modernUrl}')">Copy Modern</button>`}
+      </td>
+    `;
+          tbody.appendChild(tr);
+        });
+      }
+
+      function copyUrl(url) {
+        navigator.clipboard.writeText(url).then(() => showToast("URL copied"));
+      }
+    </script>
+  </body>
+</html>

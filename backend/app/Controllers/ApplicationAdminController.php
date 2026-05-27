@@ -379,28 +379,260 @@ class ApplicationAdminController extends BaseController
      */
     public function bulkUploadTemplate(Request $request, Response $response): never
     {
+        $db = $this->appModel->db();
+
+        // Fetch real example values so the user sees a complete row
+        // with real names rather than opaque ids. The import side
+        // accepts either the name or the numeric id for these columns.
+        $deptRow    = $db->fetchOne("SELECT dep_id, dep_name FROM `departements` ORDER BY dep_id ASC LIMIT 1");
+        $progRow    = $db->fetchOne("SELECT id, name FROM `options` ORDER BY id ASC LIMIT 1");
+        $campusRow  = $db->fetchOne("SELECT id, name FROM `campuses` ORDER BY id ASC LIMIT 1");
+        $levelRow   = null;
+        try {
+            $levelRow = $db->fetchOne("SELECT id, name FROM `levels` ORDER BY id ASC LIMIT 1");
+        } catch (\Throwable $e) { /* table may not exist on some snapshots */ }
+
         $headers = [
             'first_name','last_name','email','phone','gender','birthdate',
-            'nationality','national_id','intake','department_id','program_id',
-            'campus_id','mode_of_study','level_id','prev_school','prev_qualification',
+            'nationality','national_id','intake','department','program',
+            'campus','mode_of_study','level','prev_school','prev_qualification',
             'prev_grade','combination','graduation_year','sponsorship','sponsor_name',
             'is_credit_transfer','credit_transfer_from',
         ];
-        $example = [
-            'John','Doe','john.doe@example.com','+250788000000','M','2000-01-15',
-            'Rwandan','1199000000000000','Jan 2026','12','5',
-            '1','Day','1','Nyamata TSS','A-Level',
-            'A,B,B,C','PCM','2024','self','',
-            '0','',
+        $exampleMap = [
+            'first_name'           => 'John',
+            'last_name'            => 'Doe',
+            'email'                => 'john.doe@example.com',
+            'phone'                => $this->excelText('+250788000000'),
+            'gender'               => 'M',
+            'birthdate'            => '2000-01-15',
+            'nationality'          => 'Rwandan',
+            'national_id'          => $this->excelText('1199000000000000'),
+            'intake'               => 'Jan 2026',
+            'department'           => $deptRow['dep_name'] ?? 'Computer Science',
+            'program'              => $progRow['name']     ?? 'BSc Computer Science',
+            'campus'               => $campusRow['name']   ?? 'Main Campus',
+            'mode_of_study'        => 'Day',
+            'level'                => $levelRow['name']    ?? 'Year 1',
+            'prev_school'          => 'Nyamata TSS',
+            'prev_qualification'   => 'A-Level',
+            'prev_grade'           => 'A,B,B,C',
+            'combination'          => 'PCM',
+            'graduation_year'      => '2024',
+            'sponsorship'          => 'self',
+            'sponsor_name'         => '',
+            'is_credit_transfer'   => '0',
+            'credit_transfer_from' => '',
         ];
+        $example = array_map(fn($h) => $exampleMap[$h] ?? '', $headers);
+
         header('Content-Type: text/csv; charset=utf-8');
         header('Content-Disposition: attachment; filename="bulk-applicant-template.csv"');
         $out = fopen('php://output', 'w');
         fwrite($out, "\xEF\xBB\xBF"); // BOM for Excel UTF-8
         fputcsv($out, $headers);
         fputcsv($out, $example);
+        fputcsv($out, array_fill(0, count($headers), ''));
         fclose($out);
         exit;
+    }
+
+    /** Wrap a value as `="…"` so Excel keeps long all-digit strings (national
+     *  IDs, phone numbers) from being coerced to scientific notation. */
+    private function excelText(string $value): string
+    {
+        if ($value === '') return '';
+        return '="' . str_replace('"', '""', $value) . '"';
+    }
+
+    /** Strip the `="…"` wrapper Excel keeps on save so the importer sees
+     *  the plain string the user actually typed. */
+    private function unwrapExcelText(string $value): string
+    {
+        $v = trim($value);
+        if (strlen($v) >= 4 && str_starts_with($v, '="') && str_ends_with($v, '"')) {
+            return str_replace('""', '"', substr($v, 2, -1));
+        }
+        return $v;
+    }
+
+    /** Resolve a department by case-insensitive name or numeric id. */
+    private function resolveDepartmentByIdOrName(string $value): ?int
+    {
+        $v = trim($value);
+        if ($v === '') return null;
+        $db = $this->appModel->db();
+        if (ctype_digit($v)) {
+            $row = $db->fetchOne("SELECT dep_id FROM `departements` WHERE dep_id = ? LIMIT 1", [(int)$v]);
+            return $row ? (int)$row['dep_id'] : null;
+        }
+        $row = $db->fetchOne("SELECT dep_id FROM `departements` WHERE LOWER(dep_name) = LOWER(?) LIMIT 1", [$v]);
+        return $row ? (int)$row['dep_id'] : null;
+    }
+
+    /** Resolve a program / option by case-insensitive name or numeric id. */
+    private function resolveProgramByIdOrName(string $value): ?int
+    {
+        $v = trim($value);
+        if ($v === '') return null;
+        $db = $this->appModel->db();
+        if (ctype_digit($v)) {
+            $row = $db->fetchOne("SELECT id FROM `options` WHERE id = ? LIMIT 1", [(int)$v]);
+            return $row ? (int)$row['id'] : null;
+        }
+        $row = $db->fetchOne("SELECT id FROM `options` WHERE LOWER(name) = LOWER(?) LIMIT 1", [$v]);
+        return $row ? (int)$row['id'] : null;
+    }
+
+    /** Resolve a campus by case-insensitive name or numeric id. */
+    private function resolveCampusByIdOrName(string $value): ?int
+    {
+        $v = trim($value);
+        if ($v === '') return null;
+        $db = $this->appModel->db();
+        if (ctype_digit($v)) {
+            $row = $db->fetchOne("SELECT id FROM `campuses` WHERE id = ? LIMIT 1", [(int)$v]);
+            return $row ? (int)$row['id'] : null;
+        }
+        $row = $db->fetchOne("SELECT id FROM `campuses` WHERE LOWER(name) = LOWER(?) LIMIT 1", [$v]);
+        return $row ? (int)$row['id'] : null;
+    }
+
+    /** Resolve a level by case-insensitive name or numeric id. Returns
+     *  null when the catalog row can't be found (or the table is absent
+     *  on a legacy snapshot — caller falls back to NULL). */
+    private function resolveLevelByIdOrName(string $value): ?int
+    {
+        $v = trim($value);
+        if ($v === '') return null;
+        $db = $this->appModel->db();
+        try {
+            if (ctype_digit($v)) {
+                $row = $db->fetchOne("SELECT id FROM `levels` WHERE id = ? LIMIT 1", [(int)$v]);
+                return $row ? (int)$row['id'] : null;
+            }
+            $row = $db->fetchOne("SELECT id FROM `levels` WHERE LOWER(name) = LOWER(?) LIMIT 1", [$v]);
+            return $row ? (int)$row['id'] : null;
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * POST /api/admin/applications/bulk-validate
+     * Dry-run preview of a bulk applicant CSV. Same parsing rules as
+     * bulkUpload, but commits nothing — used by the import modal to
+     * surface required-field gaps, duplicate-email collisions and the
+     * intended action per row so the user can fix mismatches before
+     * the real upload.
+     */
+    public function bulkValidate(Request $request, Response $response): never
+    {
+        if (empty($_FILES['file']['tmp_name'])) {
+            $this->error($response, 'No file uploaded (expected multipart field "file").', 422);
+        }
+        $handle = fopen($_FILES['file']['tmp_name'], 'r');
+        if (!$handle) {
+            $this->error($response, 'Could not open uploaded file.', 500);
+        }
+        $first = fgets($handle);
+        $first = preg_replace('/^\xEF\xBB\xBF/', '', $first ?: '') ?? '';
+        $headers = array_map(fn($h) => trim((string)$h), str_getcsv($first));
+
+        // The template still accepts the legacy `*_id` column names so
+        // sheets filled from an older download keep working.
+        $required = ['first_name','last_name','email','intake','department'];
+        $year     = $this->service->getActiveAcademicYear();
+        $yearId   = (int)($year['id'] ?? 0);
+        $result   = [];
+        $tally    = ['total' => 0, 'valid' => 0, 'with_errors' => 0, 'to_create' => 0, 'duplicates' => 0];
+        $rowNo    = 1;
+
+        while (($row = fgetcsv($handle)) !== false) {
+            $rowNo++;
+            if (empty(array_filter($row, fn($v) => trim((string)$v) !== ''))) continue;
+
+            $assoc = [];
+            foreach ($headers as $i => $h) {
+                $assoc[$h] = isset($row[$i]) ? $this->unwrapExcelText((string)($row[$i] ?? '')) : '';
+            }
+            // Normalise legacy column aliases.
+            if (!isset($assoc['department']) && isset($assoc['department_id'])) $assoc['department'] = $assoc['department_id'];
+            if (!isset($assoc['program'])    && isset($assoc['program_id']))    $assoc['program']    = $assoc['program_id'];
+            if (!isset($assoc['campus'])     && isset($assoc['campus_id']))     $assoc['campus']     = $assoc['campus_id'];
+            if (!isset($assoc['level'])      && isset($assoc['level_id']))      $assoc['level']      = $assoc['level_id'];
+            $tally['total']++;
+
+            $errors = [];
+            foreach ($required as $r) {
+                if (($assoc[$r] ?? '') === '') {
+                    $errors[] = ['field' => $r, 'message' => "Missing required field '$r'."];
+                }
+            }
+            if (($assoc['email'] ?? '') !== '' && !filter_var($assoc['email'], FILTER_VALIDATE_EMAIL)) {
+                $errors[] = ['field' => 'email', 'message' => "Invalid email '{$assoc['email']}'."];
+            }
+            if (($assoc['gender'] ?? '') !== '' && !in_array(strtoupper((string)$assoc['gender']), ['M','F','O','MALE','FEMALE'], true)) {
+                $errors[] = ['field' => 'gender', 'message' => "Gender must be M, F or O."];
+            }
+            if (($assoc['birthdate'] ?? '') !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}/', (string)$assoc['birthdate'])) {
+                $errors[] = ['field' => 'birthdate', 'message' => "Birthdate must be YYYY-MM-DD."];
+            }
+            $deptId = null;
+            if (($assoc['department'] ?? '') !== '') {
+                $deptId = $this->resolveDepartmentByIdOrName((string)$assoc['department']);
+                if (!$deptId) $errors[] = ['field' => 'department', 'message' => "Unknown department '{$assoc['department']}'. Use the department name or its id."];
+            }
+            if (($assoc['program'] ?? '') !== '') {
+                if (!$this->resolveProgramByIdOrName((string)$assoc['program'])) {
+                    $errors[] = ['field' => 'program', 'message' => "Unknown program '{$assoc['program']}'. Use the program name or its id."];
+                }
+            }
+            if (($assoc['campus'] ?? '') !== '') {
+                if (!$this->resolveCampusByIdOrName((string)$assoc['campus'])) {
+                    $errors[] = ['field' => 'campus', 'message' => "Unknown campus '{$assoc['campus']}'. Use the campus name or its id."];
+                }
+            }
+
+            $action = 'create';
+            if (empty($errors) && $yearId > 0 && $deptId
+                && ($assoc['email'] ?? '') !== ''
+                && ($assoc['intake'] ?? '') !== ''
+            ) {
+                $dup = $this->appModel->existsActiveForDeptIntake(
+                    (string)$assoc['email'],
+                    $deptId,
+                    (string)$assoc['intake'],
+                    $yearId
+                );
+                if ($dup) {
+                    $action = 'duplicate';
+                    $errors[] = ['field' => 'email', 'message' => 'An active application already exists for this email + dept + intake.'];
+                }
+            }
+
+            if (empty($errors)) {
+                $tally['valid']++;
+                $tally['to_create']++;
+            } else {
+                $tally['with_errors']++;
+                if ($action === 'duplicate') $tally['duplicates']++;
+            }
+
+            $result[] = [
+                'row_no' => $rowNo,
+                'action' => $action,
+                'data'   => $assoc,
+                'errors' => $errors,
+            ];
+        }
+        fclose($handle);
+
+        $this->success($response, [
+            'headers' => $headers,
+            'rows'    => $result,
+            'summary' => $tally,
+        ], 'Preview ready.');
     }
 
     /**
@@ -418,6 +650,20 @@ class ApplicationAdminController extends BaseController
         $authUser = (array) $request->param('_auth_user');
         $actorId  = (int)($authUser['id'] ?? 0);
 
+        // Merge user-supplied patches from the preview UI (per-row fixes).
+        $patches = [];
+        $patchRaw = $request->body()['patched_rows'] ?? null;
+        if (is_string($patchRaw)) {
+            $decoded = json_decode($patchRaw, true);
+            if (is_array($decoded)) {
+                foreach ($decoded as $p) {
+                    if (isset($p['row_no']) && isset($p['data']) && is_array($p['data'])) {
+                        $patches[(int)$p['row_no']] = $p['data'];
+                    }
+                }
+            }
+        }
+
         $handle = fopen($_FILES['file']['tmp_name'], 'r');
         if (!$handle) {
             $this->error($response, 'Could not open uploaded file.', 500);
@@ -431,7 +677,7 @@ class ApplicationAdminController extends BaseController
         // Move past header row in handle.
         fgetcsv($handle);
 
-        $required = ['first_name','last_name','email','intake','department_id'];
+        $required = ['first_name','last_name','email','intake','department'];
         $results  = ['inserted' => 0, 'errors' => []];
         $rowNo    = 1; // header is row 1
         $db       = $this->appModel->db();
@@ -445,7 +691,17 @@ class ApplicationAdminController extends BaseController
                 }
                 $assoc = [];
                 foreach ($headers as $i => $h) {
-                    $assoc[trim((string)$h)] = isset($row[$i]) ? trim((string)$row[$i]) : '';
+                    $assoc[trim((string)$h)] = isset($row[$i]) ? $this->unwrapExcelText((string)$row[$i]) : '';
+                }
+                // Legacy *_id column names → new name-based ones so
+                // sheets filled from an older download still work.
+                if (!isset($assoc['department']) && isset($assoc['department_id'])) $assoc['department'] = $assoc['department_id'];
+                if (!isset($assoc['program'])    && isset($assoc['program_id']))    $assoc['program']    = $assoc['program_id'];
+                if (!isset($assoc['campus'])     && isset($assoc['campus_id']))     $assoc['campus']     = $assoc['campus_id'];
+                if (!isset($assoc['level'])      && isset($assoc['level_id']))      $assoc['level']      = $assoc['level_id'];
+                // Apply per-row patches from the preview UI before validation.
+                if (isset($patches[$rowNo])) {
+                    $assoc = array_merge($assoc, $patches[$rowNo]);
                 }
                 // Required-field gate.
                 foreach ($required as $r) {
@@ -454,10 +710,37 @@ class ApplicationAdminController extends BaseController
                         continue 2;
                     }
                 }
+                // Resolve name → id for catalog columns. Bad values are
+                // surfaced row-by-row so the user can fix the sheet.
+                $deptId = $this->resolveDepartmentByIdOrName((string)$assoc['department']);
+                if (!$deptId) {
+                    $results['errors'][] = ['row' => $rowNo, 'message' => "Unknown department '{$assoc['department']}'."];
+                    continue;
+                }
+                $programId = null;
+                if (($assoc['program'] ?? '') !== '') {
+                    $programId = $this->resolveProgramByIdOrName((string)$assoc['program']);
+                    if (!$programId) {
+                        $results['errors'][] = ['row' => $rowNo, 'message' => "Unknown program '{$assoc['program']}'."];
+                        continue;
+                    }
+                }
+                $campusId = null;
+                if (($assoc['campus'] ?? '') !== '') {
+                    $campusId = $this->resolveCampusByIdOrName((string)$assoc['campus']);
+                    if (!$campusId) {
+                        $results['errors'][] = ['row' => $rowNo, 'message' => "Unknown campus '{$assoc['campus']}'."];
+                        continue;
+                    }
+                }
+                $levelId = null;
+                if (($assoc['level'] ?? '') !== '') {
+                    $levelId = $this->resolveLevelByIdOrName((string)$assoc['level']);
+                }
                 // Duplicate by email + intake + department guard.
                 if ($this->appModel->existsActiveForDeptIntake(
                     (string)$assoc['email'],
-                    (int)$assoc['department_id'],
+                    $deptId,
                     (string)$assoc['intake'],
                     (int)($this->service->getActiveAcademicYear()['id'] ?? 0)
                 )) {
@@ -471,7 +754,7 @@ class ApplicationAdminController extends BaseController
                         'application_number' => $this->service->generateApplicationNumber(),
                         'academic_year_id'   => (int)$year['id'],
                         'faculty_id'         => null, // resolved via department
-                        'department_id'      => (int)$assoc['department_id'],
+                        'department_id'      => $deptId,
                         'intake'             => (string)$assoc['intake'],
                         'first_name'         => (string)$assoc['first_name'],
                         'last_name'          => (string)$assoc['last_name'],
@@ -481,10 +764,10 @@ class ApplicationAdminController extends BaseController
                         'birthdate'          => (string)($assoc['birthdate'] ?? '') ?: null,
                         'nationality'        => (string)($assoc['nationality'] ?? 'Rwandan'),
                         'national_id'        => (string)($assoc['national_id'] ?? '') ?: null,
-                        'program_id'         => isset($assoc['program_id']) && $assoc['program_id'] !== '' ? (int)$assoc['program_id'] : null,
-                        'campus_id'          => isset($assoc['campus_id']) && $assoc['campus_id'] !== '' ? (int)$assoc['campus_id'] : null,
+                        'program_id'         => $programId,
+                        'campus_id'          => $campusId,
                         'mode_of_study'      => (string)($assoc['mode_of_study'] ?? '') ?: null,
-                        'level_id'           => isset($assoc['level_id']) && $assoc['level_id'] !== '' ? (int)$assoc['level_id'] : null,
+                        'level_id'           => $levelId,
                         'prev_school'        => (string)($assoc['prev_school'] ?? ''),
                         'prev_qualification' => (string)($assoc['prev_qualification'] ?? ''),
                         'prev_grade'         => (string)($assoc['prev_grade'] ?? ''),

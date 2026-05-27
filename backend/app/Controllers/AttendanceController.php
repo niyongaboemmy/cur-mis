@@ -735,6 +735,43 @@ class AttendanceController extends BaseController
         $this->studentSummary($request, $response);
     }
 
+    /**
+     * Self-service: return the authenticated student's own attendance
+     * summary. Same payload as `studentSummary` — but resolves the
+     * regnumber from the auth user instead of a route param, so it can
+     * sit outside the VIEW_ATTENDANCE permission gate (the student is
+     * only ever shown their own data).
+     */
+    public function meSummary(Request $request, Response $response): never
+    {
+        $user   = (array) ($request->param('_auth_user') ?? []);
+        $userId = (int) ($user['id'] ?? 0);
+        $email  = is_string($user['email'] ?? null) ? $user['email'] : null;
+
+        if ($userId <= 0) {
+            $this->error($response, 'Unauthenticated.', 401);
+        }
+
+        // user_id is set when the student claims their account; email is the
+        // fallback for older rows whose user_id was never backfilled.
+        $row = $this->db->fetchOne(
+            'SELECT regnumber FROM `student` WHERE user_id = ? LIMIT 1',
+            [$userId]
+        );
+        if ((!$row || empty($row['regnumber'])) && $email) {
+            $row = $this->db->fetchOne(
+                'SELECT regnumber FROM `student` WHERE email = ? LIMIT 1',
+                [$email]
+            );
+        }
+        if (!$row || empty($row['regnumber'])) {
+            $this->error($response, 'No student record is linked to your account.', 404);
+        }
+
+        $request->setRouteParams(['regnumber' => (string) $row['regnumber']]);
+        $this->studentSummary($request, $response);
+    }
+
     public function studentSummary(Request $request, Response $response): never
     {
         $reg = trim((string) $request->param('regnumber'));
