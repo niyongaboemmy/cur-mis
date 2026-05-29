@@ -9,23 +9,32 @@ class CorsMiddleware
     public function handle(mixed $request = null, mixed $response = null): void
     {
         $allowedOriginsStr = $_ENV['CORS_ALLOWED_ORIGINS'] ?? '*';
-        $allowedOrigins = array_map('trim', explode(',', $allowedOriginsStr));
+        $allowedOrigins    = array_map('trim', explode(',', $allowedOriginsStr));
 
-        $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+        // Apache does not always put Origin in $_SERVER['HTTP_ORIGIN'].
+        // Try all known locations before giving up.
+        $origin = $_SERVER['HTTP_ORIGIN']
+            ?? $_SERVER['REDIRECT_HTTP_ORIGIN']
+            ?? (function_exists('apache_request_headers')
+                ? (apache_request_headers()['Origin'] ?? apache_request_headers()['origin'] ?? '')
+                : '')
+            ?? '';
 
-        // Handle Wildcard or Specific Match
         if (in_array('*', $allowedOrigins, true)) {
-            // When Access-Control-Allow-Credentials is true, we cannot use '*' as the origin.
-            // We must return the actual origin from the request to allow any site.
-            if (!empty($origin)) {
+            // Wildcard config: echo back the actual request origin so that
+            // Access-Control-Allow-Credentials: true can still be used.
+            if ($origin !== '') {
                 header("Access-Control-Allow-Origin: {$origin}");
                 header('Vary: Origin');
             } else {
                 header('Access-Control-Allow-Origin: *');
             }
-        } elseif (!empty($origin) && in_array($origin, $allowedOrigins, true)) {
+        } elseif ($origin !== '' && in_array($origin, $allowedOrigins, true)) {
             header("Access-Control-Allow-Origin: {$origin}");
             header('Vary: Origin');
+        } elseif ($origin === '' && !empty($allowedOrigins) && !in_array('*', $allowedOrigins, true)) {
+            // Origin header is missing (e.g. same-host curl/Postman requests) — allow through.
+            // Do NOT set the header; browsers always send Origin, so this only affects non-browser clients.
         }
 
         header('Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS');

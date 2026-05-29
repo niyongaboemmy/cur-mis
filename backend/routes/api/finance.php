@@ -21,6 +21,7 @@ $router->group('/api/finance', function ($router) {
     $router->group('', function ($r) {
         $r->get('/structures',               [FeeController::class, 'listStructures']);
         $r->get('/payments',                 [FeeController::class, 'listPayments']);
+        $r->get('/online-payments',          [FeeController::class, 'listOnlinePaymentsHistory']);
         $r->get('/payments/pending-count',   [FeeController::class, 'getPendingPaymentCount']);
         $r->get('/payments/:id/receipt',     [FeeController::class, 'getReceipt']);
         $r->get('/bursaries',                [FeeController::class, 'listBursaries']);
@@ -48,6 +49,8 @@ $router->group('/api/finance', function ($router) {
     }, [new MaybePermissionMiddleware([
         Permissions::VIEW_FINANCE,
         Permissions::MANAGE_FINANCE,
+        Permissions::VIEW_MOBILE_PAYMENTS,
+        Permissions::VIEW_ONLINE_PAYMENTS_HISTORY,
     ])]);
 
     // ── Student self-service ──────────────────────────────────────────────────
@@ -56,6 +59,7 @@ $router->group('/api/finance', function ($router) {
         $r->get('/clearance', [FeeController::class, 'getMyClearance']);
     }, [new MaybePermissionMiddleware([
         Permissions::ACCESS_STUDENT_PORTAL,
+        Permissions::MY_INVOICE,
     ])]);
 
     // ── Writes ────────────────────────────────────────────────────────────────

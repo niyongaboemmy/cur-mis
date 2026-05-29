@@ -4,7 +4,7 @@ import MainLayout from "@/layouts/MainLayout";
 import ProtectedRoute from "@/components/layout/ProtectedRoute";
 import ErrorBoundary from "@/components/layout/ErrorBoundary";
 import { useThemeStore } from "@/store/themeStore";
-import { PERMISSIONS } from "@/constants";
+import { PERMISSIONS } from "@/constants/permissions";
 
 // ── Pages (direct imports — no lazy() to avoid chunk-load failures on cPanel) ──
 import WelcomePage from "@/pages/WelcomePage";
@@ -92,6 +92,7 @@ import AccountBalancePage from "@/pages/finance/AccountBalancePage";
 import ClearancePage from "@/pages/finance/ClearancePage";
 import RevenueReportPage from "@/pages/finance/RevenueReportPage";
 import RefundsPage from "@/pages/finance/RefundsPage";
+import OnlinePaymentsHistoryPage from "@/pages/finance/OnlinePaymentsHistoryPage";
 import SponsorsPage from "@/pages/finance/SponsorsPage";
 import ExpenseCategoriesPage from "@/pages/finance/ExpenseCategoriesPage";
 import ReceiptPdfPage from "@/pages/finance/ReceiptPdfPage";
@@ -119,16 +120,12 @@ function App() {
           {/* Protected — requires valid JWT in Zustand store */}
           <Route element={<ProtectedRoute />}>
             <Route element={<MainLayout />}>
-
               {/* Free to all authenticated users */}
               <Route path="/" element={<WelcomePage />} />
               <Route path="/welcome" element={<WelcomePage />} />
               <Route path="/dashboard" element={<AdminDashboardPage />} />
               <Route path="/home" element={<HomePage />} />
-              <Route
-                path="/profile"
-                element={<UserProfilePage />}
-              />
+              <Route path="/profile" element={<UserProfilePage />} />
               <Route path="/messages" element={<MessagesPage />} />
 
               {/* ── Administration ── */}
@@ -174,10 +171,7 @@ function App() {
                 }
               >
                 <Route path="/students" element={<StudentsPage />} />
-                <Route
-                  path="/students/:id"
-                  element={<StudentDetailsPage />}
-                />
+                <Route path="/students/:id" element={<StudentDetailsPage />} />
               </Route>
 
               {/* ── Document Generation ── */}
@@ -302,28 +296,20 @@ function App() {
                     path="applications/:id"
                     element={<ApplicationDetailPage />}
                   />
-                  <Route
-                    path="verifications"
-                    element={<VerificationsPage />}
-                  />
+                  <Route path="verifications" element={<VerificationsPage />} />
                   <Route
                     path="verifications/:id/validate"
                     element={<DocumentValidationCarousel />}
                   />
                   <Route path="merit" element={<MeritPage />} />
                   <Route path="offers" element={<OffersPage />} />
-                  <Route
-                    path="requirements"
-                    element={<RequirementsPage />}
-                  />
+                  <Route path="requirements" element={<RequirementsPage />} />
                   <Route
                     path="document-types"
                     element={<DocumentTypesPage />}
                   />
-                  <Route
-                    path="intakes"
-                    element={<IntakesManagementPage />}
-                  />
+                  <Route path="intakes" element={<IntakesManagementPage />} />
+                  <Route path="intakes" element={<IntakesManagementPage />} />
                   {/* Task 1.14 — applicant statistics report. */}
                   <Route
                     path="statistics"
@@ -342,16 +328,11 @@ function App() {
                 element={
                   <ProtectedRoute
                     requiredRoles="applicant"
-                    requiredPermissions={[
-                      PERMISSIONS.ACCESS_APPLICANT_PORTAL,
-                    ]}
+                    requiredPermissions={[PERMISSIONS.ACCESS_APPLICANT_PORTAL]}
                   />
                 }
               >
-                <Route
-                  path="/applicant"
-                  element={<ApplicantOverviewPage />}
-                />
+                <Route path="/applicant" element={<ApplicantOverviewPage />} />
                 <Route
                   path="/applicant/documents"
                   element={<ApplicantDocumentsPage />}
@@ -377,10 +358,7 @@ function App() {
                 <Route path="/modules" element={<ModulesHub />}>
                   <Route index element={<ModulesCatalogPage />} />
                   <Route path="catalog" element={<ModulesCatalogPage />} />
-                  <Route
-                    path="scheduling"
-                    element={<ModulesSchedulePage />}
-                  />
+                  <Route path="scheduling" element={<ModulesSchedulePage />} />
                   <Route
                     path="assignments"
                     element={<ModulesAssignmentsPage />}
@@ -401,10 +379,7 @@ function App() {
                   />
                 }
               >
-                <Route
-                  path="/my-modules"
-                  element={<MyRegistrationsPage />}
-                />
+                <Route path="/my-modules" element={<MyRegistrationsPage />} />
               </Route>
 
               {/* ── Programs ── */}
@@ -433,14 +408,23 @@ function App() {
                   <Route index element={<FinanceOverviewPage />} />
                   <Route path="billing" element={<StudentBillingPage />} />
                   <Route path="billing/*" element={<StudentLedgerPage />} />
+                  <Route path="approvals" element={<PaymentApprovalsPage />} />
                   <Route
-                    path="approvals"
-                    element={<PaymentApprovalsPage />}
-                  />
-                  <Route
-                    path="structures"
-                    element={<FeeStructuresPage />}
-                  />
+                    element={
+                      <ProtectedRoute
+                        requiredPermissions={[
+                          PERMISSIONS.VIEW_ONLINE_PAYMENTS_HISTORY,
+                          PERMISSIONS.MANAGE_FINANCE,
+                        ]}
+                      />
+                    }
+                  >
+                    <Route
+                      path="online-payments"
+                      element={<OnlinePaymentsHistoryPage />}
+                    />
+                  </Route>
+                  <Route path="structures" element={<FeeStructuresPage />} />
                   <Route path="bursaries" element={<BursariesPage />} />
                   <Route path="sponsors" element={<SponsorsPage />} />
                   <Route path="expenses" element={<ExpensesPage />} />
@@ -516,23 +500,16 @@ function App() {
               {/* ── Coming soon / placeholder routes ── */}
               <Route path="/students/new" element={<ComingSoonPage />} />
               <Route path="/teachers" element={<ComingSoonPage />} />
-              <Route
-                path="/teachers/schedules"
-                element={<ComingSoonPage />}
-              />
+              <Route path="/teachers/schedules" element={<ComingSoonPage />} />
               <Route path="/library" element={<ComingSoonPage />} />
               <Route path="/account/billing" element={<ComingSoonPage />} />
-              <Route
-                path="/account/salaries"
-                element={<ComingSoonPage />}
-              />
+              <Route path="/account/salaries" element={<ComingSoonPage />} />
               <Route path="/class" element={<ComingSoonPage />} />
               <Route path="/subject" element={<ComingSoonPage />} />
               <Route path="/routine" element={<ComingSoonPage />} />
               <Route path="/notice" element={<ComingSoonPage />} />
               <Route path="/transport" element={<ComingSoonPage />} />
               <Route path="/hostel" element={<ComingSoonPage />} />
-
             </Route>
           </Route>
 

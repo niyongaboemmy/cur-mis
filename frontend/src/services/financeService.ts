@@ -1,4 +1,4 @@
-import { api } from "@/services/api";
+import { api, apiClient } from "@/services/api";
 import type { PaginatedResponse } from "@/types";
 import type {
   FeeStructure,
@@ -37,6 +37,7 @@ import type {
   RefundStatus,
   RefundCategory,
   CreateBursaryBulkPayload,
+  MobilePaymentRecord,
 } from "@/types/finance";
 
 // ─── Fee Structures ───────────────────────────────────────────────────────────
@@ -115,6 +116,28 @@ export const paymentService = {
       params ?? {},
       signal,
     ),
+
+  getOnlinePaymentsHistory: (
+    params?: {
+      keyword?: string;
+      page?: number;
+      per_page?: number;
+    },
+    signal?: AbortSignal,
+  ) =>
+    api.get<{
+      data: any[];
+      pagination: {
+        current_page: number;
+        per_page: number;
+        total: number;
+        last_page: number;
+      };
+      metrics: {
+        total_transactions: number;
+        total_amount: number;
+      };
+    }>("/api/finance/online-payments", params ?? {}, signal),
 
   record: (data: RecordPaymentPayload & { payment_sub_method?: string }) =>
     api.post<RecordPaymentResult>("/api/finance/payments", data),
@@ -252,11 +275,11 @@ export const billingService = {
     faculty_id?: number;
     department_id?: number;
   }) =>
-    api.post<{
-      processed_students: number;
-      total_created: number;
-      total_skipped: number;
-    }>("/api/finance/billing/bulk-generate", data),
+    // No timeout — bulk generation can process hundreds of students and routinely
+    // exceeds the global 15 s API_TIMEOUT.
+    apiClient.post<{ data: { processed_students: number; total_created: number; total_skipped: number; total_updated?: number } }>(
+      "/api/finance/billing/bulk-generate", data, { timeout: 0 }
+    ).then((r) => r.data),
 };
 
 // ─── Expenses ─────────────────────────────────────────────────────────────────
@@ -475,6 +498,16 @@ export const myLedgerService = {
       },
       signal,
     ),
+
+  getPaymentLink: (signal?: AbortSignal) =>
+    api.get<{ checkout_url: string; amount_due: number; currency: string }>(
+      "/api/payment/checkout-link",
+      {},
+      signal,
+    ),
+
+  getMobileHistory: (signal?: AbortSignal) =>
+    api.get<MobilePaymentRecord[]>("/api/payment/history", {}, signal),
 };
 
 // ─── CSV Export ───────────────────────────────────────────────────────────────
