@@ -21,6 +21,10 @@ import {
   ChevronDown,
   PanelLeftClose,
   PanelLeftOpen,
+  Scale,
+  FileText,
+  Award,
+  BarChart2,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -354,6 +358,16 @@ const NAV_TREE: NavNode[] = [
         label: "Reports",
         permissions: [PERMISSIONS.VIEW_FINANCE_REPORTS],
       },
+      {
+        to: "/finance/fines",
+        label: "Fines",
+        permissions: [PERMISSIONS.VIEW_FINES, PERMISSIONS.MANAGE_FINES],
+      },
+      {
+        to: "/finance/overdue-alerts",
+        label: "Overdue Alerts",
+        permissions: [PERMISSIONS.SEND_FEE_ALERTS, PERMISSIONS.MANAGE_FINANCE],
+      },
     ],
   },
   // Staff / teachers / admins — full attendance workspace (record + review).
@@ -475,6 +489,41 @@ const ADMIN_TREE: NavNode[] = [
     ],
   },
   {
+    id: "grading-scale",
+    label: "Grading Scale",
+    icon: Scale,
+    to: "/academic/grading-scale",
+    permissions: [PERMISSIONS.MANAGE_GRADING_SCALES, PERMISSIONS.VIEW_SYSTEM_BASICS],
+  },
+  {
+    id: "transcript-requests",
+    label: "Transcript Requests",
+    icon: FileText,
+    to: "/academic/transcript-requests",
+    permissions: [PERMISSIONS.MANAGE_TRANSCRIPT_REQUESTS],
+  },
+  {
+    id: "graduands",
+    label: "Graduand Management",
+    icon: GraduationCap,
+    to: "/academic/graduands",
+    permissions: [PERMISSIONS.VIEW_GRADUANDS, PERMISSIONS.MANAGE_GRADUANDS],
+  },
+  {
+    id: "academic-certificates",
+    label: "Academic Certificates",
+    icon: Award,
+    to: "/academic/certificates",
+    permissions: [PERMISSIONS.MANAGE_ACADEMIC_CERTIFICATES],
+  },
+  {
+    id: "academic-analytics",
+    label: "Academic Analytics",
+    icon: BarChart2,
+    to: "/academic/analytics",
+    permissions: [PERMISSIONS.VIEW_ACADEMIC_ANALYTICS],
+  },
+  {
     id: "messages",
     label: "Messages",
     icon: MessageSquare,
@@ -514,6 +563,22 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
   "/academic/management": {
     title: "Settings",
     sub: "Schools, degrees, facilities, levels, leave types, campuses and intakes",
+  },
+  "/academic/grading-scale": {
+    title: "Grading Scale",
+    sub: "Configure percentage bands and GPA points for the institution",
+  },
+  "/academic/transcript-requests": {
+    title: "Transcript Requests",
+    sub: "Review and dispatch student official transcript requests",
+  },
+  "/academic/graduands": {
+    title: "Graduand Management",
+    sub: "Graduation eligibility, degree classification and ceremony management",
+  },
+  "/academic/certificates": {
+    title: "Academic Certificates",
+    sub: "Issue, track and dispatch degrees, diplomas and certificates",
   },
 
   "/admin/admissions": {

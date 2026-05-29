@@ -106,6 +106,22 @@ class Permissions
     public const MANAGE_MESSAGES    = 'MANAGE_MESSAGES';
     public const BROADCAST_MESSAGES = 'BROADCAST_MESSAGES';
 
+    // Academic Transcripts Management System (migration 066)
+    public const MANAGE_TRANSCRIPT_REQUESTS   = 'MANAGE_TRANSCRIPT_REQUESTS';
+    public const MANAGE_GRADUANDS             = 'MANAGE_GRADUANDS';
+    public const VIEW_GRADUANDS               = 'VIEW_GRADUANDS';
+    public const MANAGE_GRADING_SCALES        = 'MANAGE_GRADING_SCALES';
+    public const MANAGE_DELIBERATIONS         = 'MANAGE_DELIBERATIONS';
+    public const MANAGE_ACADEMIC_CERTIFICATES = 'MANAGE_ACADEMIC_CERTIFICATES';
+
+    // Fee Fines & Overdue Alerts (migration 067)
+    public const VIEW_FINES      = 'VIEW_FINES';
+    public const MANAGE_FINES    = 'MANAGE_FINES';
+    public const SEND_FEE_ALERTS = 'SEND_FEE_ALERTS';
+
+    // Academic Analytics & Reporting Dashboard
+    public const VIEW_ACADEMIC_ANALYTICS = 'VIEW_ACADEMIC_ANALYTICS';
+
     /**
      * Get all predefined system permissions.
      *
@@ -187,6 +203,16 @@ class Permissions
             self::SEND_MESSAGES,
             self::MANAGE_MESSAGES,
             self::BROADCAST_MESSAGES,
+            self::MANAGE_TRANSCRIPT_REQUESTS,
+            self::MANAGE_GRADUANDS,
+            self::VIEW_GRADUANDS,
+            self::MANAGE_GRADING_SCALES,
+            self::MANAGE_DELIBERATIONS,
+            self::MANAGE_ACADEMIC_CERTIFICATES,
+            self::VIEW_FINES,
+            self::MANAGE_FINES,
+            self::SEND_FEE_ALERTS,
+            self::VIEW_ACADEMIC_ANALYTICS,
         ];
     }
 }
