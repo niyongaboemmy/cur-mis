@@ -38,6 +38,9 @@ import type {
   RefundCategory,
   CreateBursaryBulkPayload,
   MobilePaymentRecord,
+  FeeTypeRecord,
+  CreateFeeTypePayload,
+  UpdateFeeTypePayload,
 } from "@/types/finance";
 
 // ─── Fee Structures ───────────────────────────────────────────────────────────
@@ -528,4 +531,191 @@ export const exportService = {
     a.click();
     document.body.removeChild(a);
   },
+};
+
+// ─── Fee Types ────────────────────────────────────────────────────────────────
+
+export const feeTypeService = {
+  list: (signal?: AbortSignal) =>
+    api.get<FeeTypeRecord[]>("/api/finance/fee-types", {}, signal),
+
+  create: (data: CreateFeeTypePayload) =>
+    api.post<{ id: number }>("/api/finance/fee-types", data),
+
+  update: (id: number, data: UpdateFeeTypePayload) =>
+    api.put<null>(`/api/finance/fee-types/${id}`, data),
+
+  delete: (id: number) =>
+    api.delete<null>(`/api/finance/fee-types/${id}`),
+};
+
+// ─── Fines Management ─────────────────────────────────────────────────────────
+
+export type FineStatus   = 'pending' | 'invoiced' | 'waived' | 'paid';
+export type FineType     =
+  | 'LATE_SUBMISSION'
+  | 'LOST_ID_CARD'
+  | 'LIBRARY_FINE'
+  | 'LATE_REGISTRATION'
+  | 'ACADEMIC_DOCUMENT'
+  | 'OTHER';
+
+export interface Fine {
+  id:             number;
+  student_id:     string;
+  student_name:   string;
+  student_email:  string;
+  fine_type:      FineType;
+  reason:         string;
+  amount:         number;
+  status:         FineStatus;
+  invoice_id:     number | null;
+  invoice_number: string | null;
+  invoice_status: string | null;
+  notes:          string | null;
+  issued_by:      number | null;
+  issued_by_name: string | null;
+  waived_by_name: string | null;
+  waived_at:      string | null;
+  created_at:     string;
+}
+
+export interface FinesSummary {
+  total_fines:      number;
+  total_amount:     number;
+  pending_count:    number;
+  invoiced_count:   number;
+  waived_count:     number;
+  paid_count:       number;
+  pending_amount:   number;
+  invoiced_amount:  number;
+  collected_amount: number;
+}
+
+export interface CreateFinePayload {
+  student_id: string;
+  fine_type:  FineType;
+  reason:     string;
+  amount:     number;
+  notes?:     string;
+}
+
+export interface OverdueInvoice {
+  id:                   number;
+  invoice_number:       string;
+  student_id:           string;
+  student_name:         string;
+  student_email:        string;
+  fee_type:             string;
+  description:          string;
+  amount_due:           number;
+  amount_paid:          number;
+  balance:              number;
+  due_date:             string;
+  status:               string;
+  academic_year_label:  string;
+  days_overdue:         number;
+  alert_count:          number;
+  last_alert_at:        string | null;
+}
+
+export interface OverdueStats {
+  total_overdue:  number;
+  total_balance:  number;
+  due_0_7d:       number;
+  due_8_30d:      number;
+  due_30d_plus:   number;
+}
+
+export interface OverdueAlert {
+  id:                   number;
+  invoice_id:           number;
+  student_id:           string;
+  student_name:         string;
+  student_email:        string;
+  invoice_number:       string;
+  amount_due:           number;
+  due_date:             string;
+  alert_level:          'reminder' | 'warning' | 'final';
+  channel:              'email' | 'system' | 'both';
+  sent_at:              string;
+  sent_by_name:         string | null;
+  email_sent:           number;
+  academic_year_label:  string;
+}
+
+export interface SendAlertsPayload {
+  alert_level?:  'reminder' | 'warning' | 'final';
+  channel?:      'email' | 'system' | 'both';
+  invoice_ids?:  number[];
+}
+
+export interface SendAlertsResult {
+  sent:        number;
+  skipped:     number;
+  emails_sent: number;
+  alert_level: string;
+  channel:     string;
+}
+
+export const finesService = {
+  list: (
+    params?: {
+      student_id?: string;
+      status?:     FineStatus;
+      fine_type?:  FineType;
+      search?:     string;
+      page?:       number;
+      per_page?:   number;
+    },
+    signal?: AbortSignal,
+  ) =>
+    api.get<{ data: Fine[]; total: number; per_page: number; current_page: number; last_page: number; summary: FinesSummary }>(
+      '/api/fines',
+      params ?? {},
+      signal,
+    ),
+
+  create: (data: CreateFinePayload) =>
+    api.post<{ id: number; invoice_id: number; invoice_number: string }>('/api/fines', data),
+
+  update: (id: number, data: Partial<Pick<CreateFinePayload, 'reason' | 'notes' | 'fine_type' | 'amount'>>) =>
+    api.put<null>(`/api/fines/${id}`, data),
+
+  delete: (id: number) =>
+    api.delete<null>(`/api/fines/${id}`),
+
+  waive: (id: number, reason?: string) =>
+    api.patch<null>(`/api/fines/${id}/waive`, { reason }),
+};
+
+// ─── Overdue Alerts ───────────────────────────────────────────────────────────
+
+export const overdueAlertService = {
+  listAlerts: (
+    params?: {
+      student_id?:  string;
+      alert_level?: string;
+      date_from?:   string;
+      date_to?:     string;
+      page?:        number;
+      per_page?:    number;
+    },
+    signal?: AbortSignal,
+  ) =>
+    api.get<{ data: OverdueAlert[]; total: number; per_page: number; current_page: number; last_page: number }>(
+      '/api/fines/alerts',
+      params ?? {},
+      signal,
+    ),
+
+  getOverdueInvoices: (params?: { limit?: number }, signal?: AbortSignal) =>
+    api.get<{ invoices: OverdueInvoice[]; stats: OverdueStats }>(
+      '/api/fines/alerts/overdue',
+      params ?? {},
+      signal,
+    ),
+
+  sendAlerts: (data: SendAlertsPayload) =>
+    api.post<SendAlertsResult>('/api/fines/alerts/send', data),
 };

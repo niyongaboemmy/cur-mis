@@ -189,6 +189,18 @@ export default function ApplicantOverviewPage() {
   );
 }
 
+/* ─── helpers ─────────────────────────────────────────────────────── */
+
+/**
+ * Treat any non-Rwandan applicant as international. Tolerates the
+ * spellings users enter ("Rwanda", "Rwandan", "Rwandese", "Rwandaise").
+ */
+function isInternational(nationality?: string | null): boolean {
+  const n = (nationality ?? "").trim().toLowerCase();
+  if (!n) return false;
+  return !["rwanda", "rwandan", "rwandese", "rwandaise"].includes(n);
+}
+
 /* ─── stats ──────────────────────────────────────────────────────── */
 
 function computeStats(apps: any[]) {
@@ -611,6 +623,34 @@ function ApplicationView({ app, onBack }: { app: any; onBack?: () => void }) {
         </div>
       )}
 
+      {/* International applicants — nudge to add visa info if missing */}
+      {isInternational(details?.nationality ?? app.nationality) &&
+        (!((details as any)?.visa_obtained_date) ||
+          !((details as any)?.visa_expiration_date)) && (
+          <div className="p-5 bg-amber-50 border border-amber-200 dark:bg-amber-900/10 dark:border-amber-900/50 rounded-2xl flex flex-col sm:flex-row items-start gap-4">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center shrink-0">
+              <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-[14px] font-black text-amber-900 dark:text-amber-100">
+                Visa information required
+              </h3>
+              <p className="text-[12.5px] text-amber-800 dark:text-amber-300 mt-1 leading-relaxed">
+                As an international applicant, you must record your{" "}
+                <strong>visa obtained date</strong> and{" "}
+                <strong>visa expiration date</strong>, and upload a copy of
+                your visa in the Documents Checklist.
+              </p>
+            </div>
+            <button
+              onClick={() => setEditing(true)}
+              className="shrink-0 flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-[12px] font-bold transition-colors"
+            >
+              Add Visa Info
+            </button>
+          </div>
+        )}
+
       <ApplicationDetailsView
         application={app}
         onEdit={() => setEditing(true)}
@@ -748,6 +788,11 @@ function AdmissionOfferBanner({
                 email: app.email,
                 application_number: app.application_number,
                 department_name: app.department_name,
+                faculty_name: (app as any).faculty_name,
+                intake: (app as any).intake,
+                level_name: (app as any).level_name,
+                mode_of_study: (app as any).mode_of_study,
+                academic_year: (app as any).academic_year,
                 offered_at: new Date().toISOString(), // Fallback
               }}
             />
@@ -828,6 +873,9 @@ function EditApplicationModal({
         graduation_year: app.graduation_year,
         sponsorship: app.sponsorship,
         sponsor_name: app.sponsor_name,
+        // International (non-Rwandan) applicants — visa fields
+        visa_obtained_date: (app as any).visa_obtained_date ?? "",
+        visa_expiration_date: (app as any).visa_expiration_date ?? "",
       });
     }
   }, [app, form]);
@@ -863,7 +911,23 @@ function EditApplicationModal({
             {activeTab === "details" && (
               <button
                 className="btn-primary"
-                onClick={() => mutation.mutate(form)}
+                onClick={() => {
+                  if (isInternational(form.nationality)) {
+                    if (!form.visa_obtained_date || !form.visa_expiration_date) {
+                      toast.error(
+                        "Visa obtained date and visa expiration date are required for international applicants.",
+                      );
+                      return;
+                    }
+                    if (form.visa_expiration_date <= form.visa_obtained_date) {
+                      toast.error(
+                        "Visa expiration date must be after the visa obtained date.",
+                      );
+                      return;
+                    }
+                  }
+                  mutation.mutate(form);
+                }}
                 disabled={mutation.isPending}
               >
                 {mutation.isPending && (
@@ -951,6 +1015,46 @@ function EditApplicationModal({
               />
             </Field>
           </div>
+
+          {/* International applicants — visa info */}
+          {isInternational(form.nationality) && (
+            <>
+              <div className="sm:col-span-2 pt-4 border-t border-ink-50 dark:border-ink-800 mt-2">
+                <h4 className="text-[13px] font-bold text-ink-900 dark:text-white">
+                  Visa Information
+                  <span className="ml-2 text-[10px] font-semibold uppercase tracking-wider text-amber-700 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-300 px-1.5 py-0.5 rounded">
+                    Required for international applicants
+                  </span>
+                </h4>
+                <p className="text-[12px] text-ink-500 dark:text-ink-400 mt-1">
+                  Please also upload a scan or photo of your visa under the{" "}
+                  <strong>Documents Checklist</strong> tab.
+                </p>
+              </div>
+              <Field label="Visa obtained date *">
+                <input
+                  type="date"
+                  className="input"
+                  value={form.visa_obtained_date ?? ""}
+                  onChange={(e) =>
+                    setForm({ ...form, visa_obtained_date: e.target.value })
+                  }
+                  required
+                />
+              </Field>
+              <Field label="Visa expiration date *">
+                <input
+                  type="date"
+                  className="input"
+                  value={form.visa_expiration_date ?? ""}
+                  onChange={(e) =>
+                    setForm({ ...form, visa_expiration_date: e.target.value })
+                  }
+                  required
+                />
+              </Field>
+            </>
+          )}
 
           <div className="sm:col-span-2 pt-4 border-t border-ink-50 dark:border-ink-800 mt-2">
             <h4 className="text-[13px] font-bold text-ink-900 dark:text-white">

@@ -7,6 +7,7 @@ namespace App\Controllers;
 use Core\Request;
 use Core\Response;
 use Core\Database;
+use App\Services\SystemLogService;
 
 /**
  * Deliberation grid: every active student in scope (program × level × intake)
@@ -267,5 +268,153 @@ class DeliberationController extends BaseController
         if ($v === null || $v === '' ) return null;
         if (!is_numeric($v))            return null;
         return (float)$v;
+    }
+
+    private function authUserId(Request $request): int
+    {
+        $user = (array)($request->param('_auth_user') ?? []);
+        return (int)($user['id'] ?? 0);
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════
+     * Deliberation session management (formal committee workflow)
+     * ═══════════════════════════════════════════════════════════════════ */
+
+    /**
+     * GET /api/deliberation/sessions
+     * List all deliberation sessions, newest first.
+     */
+    public function listSessions(Request $request, Response $response): never
+    {
+        $yearId = (int)($request->query('academic_year_id') ?? 0);
+        $args   = [];
+        $where  = '1=1';
+        if ($yearId > 0) {
+            $where  = 'd.academic_year_id = ?';
+            $args[] = $yearId;
+        }
+
+        $rows = $this->db->fetchAll(
+            "SELECT d.id, d.academic_year_id, d.semester, d.program_id,
+                    d.convened_at, d.notes, d.finalized, d.created_by, d.created_at,
+                    y.label AS year_label,
+                    o.name  AS program_name, o.acro AS program_acronym,
+                    CONCAT(u.first_name,' ',u.last_name) AS created_by_name
+             FROM deliberations d
+             LEFT JOIN academic_years y ON y.id = d.academic_year_id
+             LEFT JOIN options        o ON CAST(o.id AS CHAR) = CAST(d.program_id AS CHAR)
+             LEFT JOIN users          u ON u.id = d.created_by
+             WHERE {$where}
+             ORDER BY d.created_at DESC",
+            $args
+        );
+
+        $this->success($response, $rows, 'Deliberation sessions fetched.');
+    }
+
+    /**
+     * POST /api/deliberation/sessions
+     * Body: { academic_year_id, semester, program_id?, convened_at?, notes? }
+     */
+    public function createSession(Request $request, Response $response): never
+    {
+        $body   = $request->body();
+        $yearId = (int)($body['academic_year_id'] ?? 0);
+        $sem    = (int)($body['semester']         ?? 1);
+
+        if ($yearId <= 0) $this->error($response, 'academic_year_id is required.', 422);
+
+        $this->db->execute(
+            "INSERT INTO deliberations
+               (academic_year_id, semester, program_id, convened_at, notes, created_by)
+             VALUES (?, ?, ?, ?, ?, ?)",
+            [
+                $yearId, $sem,
+                !empty($body['program_id']) ? (int)$body['program_id'] : null,
+                $body['convened_at'] ?? null,
+                $body['notes']       ?? null,
+                $this->authUserId($request) ?: null,
+            ]
+        );
+
+        $id = $this->db->lastInsertId();
+        SystemLogService::log('CREATE','STUDENTS',"Deliberation session #{$id} created",$id,'deliberation');
+        $this->success($response, ['id' => $id], 'Deliberation session created.', 201);
+    }
+
+    /**
+     * PUT /api/deliberation/sessions/:id
+     * Body: { convened_at?, notes?, program_id? }
+     */
+    public function updateSession(Request $request, Response $response): never
+    {
+        $id  = (int)$request->param('id');
+        $row = $this->db->fetchOne(
+            "SELECT id, finalized FROM deliberations WHERE id=? LIMIT 1", [$id]
+        );
+        if (!$row)                $this->error($response, 'Session not found.', 404);
+        if ($row['finalized'])    $this->error($response, 'Cannot edit a finalised session.', 409);
+
+        $body = $request->body();
+        $sets = [];
+        $args = [];
+
+        if (array_key_exists('notes', $body))       { $sets[] = 'notes = ?';       $args[] = $body['notes'];       }
+        if (array_key_exists('convened_at', $body)) { $sets[] = 'convened_at = ?'; $args[] = $body['convened_at']; }
+        if (array_key_exists('program_id', $body))  { $sets[] = 'program_id = ?';  $args[] = (int)$body['program_id'] ?: null; }
+
+        if (empty($sets)) $this->error($response, 'No fields to update.', 422);
+
+        $args[] = $id;
+        $this->db->execute("UPDATE deliberations SET " . implode(', ', $sets) . " WHERE id=?", $args);
+        $this->success($response, null, 'Session updated.');
+    }
+
+    /**
+     * POST /api/deliberation/sessions/:id/finalize
+     * Marks the session as finalised and locks all `module_marks` rows for the
+     * session's program (std_option) and academic year to status='confirmed'.
+     *
+     * Body: { std_option? } — if not provided, uses the session's program_id.
+     */
+    public function finalizeSession(Request $request, Response $response): never
+    {
+        $id  = (int)$request->param('id');
+        $row = $this->db->fetchOne(
+            "SELECT id, finalized, academic_year_id, program_id FROM deliberations WHERE id=? LIMIT 1",
+            [$id]
+        );
+        if (!$row)             $this->error($response, 'Session not found.', 404);
+        if ($row['finalized']) $this->error($response, 'Session is already finalised.', 409);
+
+        $body      = $request->body();
+        $stdOption = !empty($body['std_option']) ? (string)$body['std_option'] : null;
+        $yearId    = (int)$row['academic_year_id'];
+
+        // Lock module_marks for the students in scope: all students in the
+        // program (std_option), for all terms within the academic year.
+        if ($stdOption || $row['program_id']) {
+            $optionVal = $stdOption ?? (string)$row['program_id'];
+
+            $this->db->execute(
+                "UPDATE module_marks mm
+                 JOIN academic_terms t ON t.id = mm.academic_term_id
+                 SET mm.status = 'confirmed',
+                     mm.confirmed_at = COALESCE(mm.confirmed_at, NOW())
+                 WHERE t.academic_year_id = ?
+                   AND mm.student_regnumber IN (
+                       SELECT regnumber FROM `student` WHERE std_option = ?
+                   )
+                   AND mm.status IN ('submitted','claims_open','draft')",
+                [$yearId, $optionVal]
+            );
+        }
+
+        $this->db->execute(
+            "UPDATE deliberations SET finalized=1 WHERE id=?", [$id]
+        );
+
+        SystemLogService::log('APPROVE','STUDENTS',"Deliberation session #{$id} finalised",$id,'deliberation');
+        $this->success($response, null, 'Session finalised and marks locked.');
     }
 }

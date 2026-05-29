@@ -44,16 +44,26 @@ export default function OnlinePaymentsHistoryPage() {
     setPage(1);
   };
 
-  const getStatusBadge = (status: string) => {
-    const s = status?.toLowerCase() || "";
-    if (s === "successful" || s === "success")
+  const getStatusBadge = (p: any) => {
+    const s = String(p.status ?? "").toLowerCase();
+    const isCredit = String(p.payment_notifi ?? "").toLowerCase() === "credit";
+
+    if (isCredit)
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400">
+          <RefreshCcw className="w-3 h-3" />
+          Reversed
+        </span>
+      );
+
+    if (s === "successful" || s === "success" || s === "1")
       return (
         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400">
           <CheckCircle2 className="w-3 h-3" />
           Success
         </span>
       );
-    if (s === "failed")
+    if (s === "failed" || s === "0")
       return (
         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">
           <AlertCircle className="w-3 h-3" />
@@ -63,7 +73,7 @@ export default function OnlinePaymentsHistoryPage() {
     return (
       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
         <Activity className="w-3 h-3" />
-        {status || "Pending"}
+        {p.status || "Pending"}
       </span>
     );
   };
@@ -195,7 +205,7 @@ export default function OnlinePaymentsHistoryPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-center">
-                      {getStatusBadge(p.status)}
+                      {getStatusBadge(p)}
                     </td>
                   </tr>
                 ))

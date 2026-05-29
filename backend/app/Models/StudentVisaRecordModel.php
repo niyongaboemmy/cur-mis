@@ -11,6 +11,9 @@ class StudentVisaRecordModel extends BaseModel
         'student_id', 'country_of_origin', 'entry_date',
         'visa_issue_date', 'visa_expiry_date', 'visa_type',
         'notes', 'is_current', 'created_by',
+        // Visa document file (uploaded by the student)
+        'visa_document_file_id', 'visa_document_original_name',
+        'visa_document_mime', 'visa_document_size',
     ];
 
     /** History (newest first). */

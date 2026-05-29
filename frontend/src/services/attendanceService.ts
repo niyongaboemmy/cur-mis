@@ -275,4 +275,13 @@ export const attendanceService = {
       `/api/attendance/students/by-id/${studentId}/summary`,
       params as Record<string, unknown>,
     ),
+
+  /** Self-service: the authenticated student's own attendance summary.
+   *  Does not require VIEW_ATTENDANCE — the backend resolves the student
+   *  record from the auth user so the caller can only see their own data. */
+  meSummary: (params: { academic_term_id?: number | string; limit?: number } = {}) =>
+    api.get<StudentAttendanceSummary>(
+      `/api/attendance/me/summary`,
+      params as Record<string, unknown>,
+    ),
 }

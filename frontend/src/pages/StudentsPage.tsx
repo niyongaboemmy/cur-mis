@@ -15,6 +15,8 @@ import {
   Filter,
   X,
   Eye,
+  Download,
+  Upload,
 } from "lucide-react";
 import {
   studentService,
@@ -26,10 +28,13 @@ import {
 import { useDebounce } from "@/hooks/useDebounce";
 import { useSystemStore } from "@/store/systemStore";
 import { useCampusFilterStore } from "@/store/campusFilterStore";
+import { useCategoryFilterStore } from "@/store/categoryFilterStore";
 import StatCard from "@/components/dashboard/StatCard";
 import DonutChart from "@/components/dashboard/DonutChart";
 import BarChart, { type BarDatum } from "@/components/dashboard/BarChart";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import StudentExportModal from "@/components/admin/StudentExportModal";
+import BulkUploadModal from "@/components/admin/BulkUploadModal";
 import { academicsMgmtService } from "@/services/academicsMgmtService";
 import type { Student } from "@/types/academic";
 
@@ -56,11 +61,12 @@ export default function StudentsPage() {
   // Global academic year (topnav selector). Empty string = all years.
   const selectedYear = useSystemStore((s) => s.selectedYearLabel);
   const selectedCampus = useCampusFilterStore((s) => s.selectedCampusId);
+  const selectedCategory = useCategoryFilterStore((s) => s.selectedCategory);
 
-  // Shared stats — refetched when the global year changes so every metric
-  // (counts, charts, breakdowns) re-scopes to the selected academic year.
+  // Shared stats — refetched when the global year / campus / category
+  // change so every metric (counts, charts, breakdowns) re-scopes.
   const statsQ = useQuery({
-    queryKey: ["student-stats", selectedYear || "all", selectedCampus],
+    queryKey: ["student-stats", selectedYear || "all", selectedCampus, selectedCategory ?? "all"],
     queryFn: () =>
       studentService.stats({ acc_year: selectedYear || undefined }),
     staleTime: 60_000,
@@ -351,6 +357,14 @@ function ActiveTab({
               }
             />
             <BreakdownChart
+              title="By learning mode"
+              rows={s.active_breakdown?.by_learning_mode}
+              color="#EC4899"
+              onPick={(r) =>
+                onDrill({ student_state: "active", learning_mode: r.value })
+              }
+            />
+            <BreakdownChart
               title="By campus"
               rows={s.active_breakdown?.by_campus}
               color="#8B5CF6"
@@ -530,6 +544,7 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
   // Academic year comes from the global topnav selector — not the URL.
   const selectedYear = useSystemStore((s) => s.selectedYearLabel);
   const selectedCampusId = useCampusFilterStore((s) => s.selectedCampusId);
+  const selectedCategory = useCategoryFilterStore((s) => s.selectedCategory);
 
   // Entity data for filters. Departments + programs are loaded once and
   // shown flat — no faculty cascade — so the user can pick either directly.
@@ -548,6 +563,10 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
   // the backend can resolve it through the permissive std_option matcher,
   // catching legacy student rows that don't have the canonical option id set.
   const program = sp.get("program") ?? "";
+  // Learning mode (Day / Evening / Weekend) — lives in the legacy
+  // `student.program` column server-side, but exposed here under its
+  // semantic name so the UI doesn't mix it up with the real programme.
+  const learning_mode = sp.get("learning_mode") ?? "";
   const campus = sp.get("campus") ?? "";
   const intake = sp.get("intake") ?? "";
   const sort_by = sp.get("sort_by") ?? "";
@@ -613,6 +632,7 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
       acc_year: selectedYear || undefined,
       campus: campus || undefined,
       intake: intake || undefined,
+      learning_mode: learning_mode || undefined,
       sort_by: sort_by || undefined,
       sort_dir: sort_dir || undefined,
     };
@@ -628,12 +648,13 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
     program,
     campus,
     intake,
+    learning_mode,
     sort_by,
     sort_dir,
   ]);
 
   const listQ = useQuery({
-    queryKey: ["students", listParams, selectedCampusId],
+    queryKey: ["students", listParams, selectedCampusId, selectedCategory ?? "all"],
     queryFn: () => studentService.list(listParams),
     placeholderData: (prev) => prev,
   });
@@ -644,6 +665,8 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
   const [bulkCampusId, setBulkCampusId] = useState<string>("");
+  const [exportOpen, setExportOpen] = useState(false);
+  const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
 
   const handleBulkUpdate = async () => {
     if (!bulkCampusId || selectedIds.size === 0) return;
@@ -673,6 +696,7 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
     department,
     level,
     program,
+    learning_mode,
     campus,
     intake,
   ].filter(Boolean).length;
@@ -782,6 +806,23 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
                 <X className="w-3 h-3" /> Clear filters
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => setBulkUploadOpen(true)}
+              className="btn-secondary btn-sm flex items-center gap-1.5"
+              title="Import or update many students from an Excel/CSV template"
+            >
+              <Upload className="w-3.5 h-3.5" /> Bulk upload
+            </button>
+            <button
+              type="button"
+              onClick={() => setExportOpen(true)}
+              disabled={total === 0}
+              className="btn-primary btn-sm flex items-center gap-1.5"
+              title="Export the current student list to CSV"
+            >
+              <Download className="w-3.5 h-3.5" /> Export
+            </button>
           </div>
         </div>
 
@@ -825,6 +866,18 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
               { value: "foreign", label: "Foreign" },
               { value: "unknown", label: "Not specified" },
             ]}
+          />
+          <FilterSelect
+            label="Learning mode"
+            value={learning_mode}
+            onChange={(v) => update({ learning_mode: v })}
+            options={(stats?.active_breakdown?.by_learning_mode ?? []).map(
+              (r: BreakdownRow) => ({
+                value: r.value,
+                label: r.label ?? r.value,
+              }),
+            )}
+            placeholder="Select mode…"
           />
         </div>
       </section>
@@ -936,6 +989,64 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
           </>
         )}
       </section>
+
+      <StudentExportModal
+        open={exportOpen}
+        onClose={() => setExportOpen(false)}
+        totalRecords={total}
+        filters={
+          // Mirror studentService.list exactly so the CSV always matches
+          // the visible cohort. The list builder treats program as an
+          // exclusive mode (it drops every other filter and queries via
+          // std_option), so we do the same here. Global campus +
+          // category live in the topbar stores and are auto-injected by
+          // the service layer.
+          program
+            ? {
+                q:          debouncedQ || undefined,
+                std_option: program,
+              }
+            : {
+                q:             debouncedQ || undefined,
+                gender:        gender || undefined,
+                student_state: state === "all" ? undefined : state,
+                nationality:   nationality || undefined,
+                department:    department || undefined,
+                current_level: level || undefined,
+                acc_year:      selectedYear || undefined,
+                campus:        campus || undefined,
+                intake:        intake || undefined,
+                learning_mode: learning_mode || undefined,
+              }
+        }
+      />
+
+      <BulkUploadModal
+        open={bulkUploadOpen}
+        onClose={() => setBulkUploadOpen(false)}
+        title="Bulk import students"
+        description="Download the Excel-compatible CSV template, fill it in (new rows are added, rows whose reg number already exists get updated), then re-upload to preview."
+        templateUrl={studentService.bulkUploadTemplateUrl()}
+        requiredFields={["fname", "lname", "std_option"]}
+        fieldLabels={{
+          fname: "First name",
+          lname: "Last name",
+          std_option: "Program (name or id)",
+          campus: "Campus (name or id)",
+          current_level: "Current level",
+          regnumber: "Reg number",
+          acc_year: "Academic year",
+          id_card: "National ID / ID card",
+          marital_status: "Marital status",
+          student_state: "State",
+          registration_date: "Registration date",
+          birthdate: "Birthdate (YYYY-MM-DD)",
+          gender: "Gender (M/F)",
+        }}
+        onValidate={(file) => studentService.bulkValidate(file)}
+        onUpload={(file, patches) => studentService.bulkUpload(file, patches)}
+        onSuccess={() => listQ.refetch()}
+      />
     </div>
   );
 }

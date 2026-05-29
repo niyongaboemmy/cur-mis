@@ -54,6 +54,17 @@ class Permissions
     // Finance
     public const VIEW_FINANCE         = 'VIEW_FINANCE';
     public const MANAGE_FINANCE       = 'MANAGE_FINANCE';
+    public const VIEW_FINANCE_OVERVIEW = 'VIEW_FINANCE_OVERVIEW';
+    public const VIEW_FINANCE_BILLING = 'VIEW_FINANCE_BILLING';
+    public const VIEW_FINANCE_APPROVALS = 'VIEW_FINANCE_APPROVALS';
+    public const VIEW_FINANCE_STRUCTURES = 'VIEW_FINANCE_STRUCTURES';
+    public const VIEW_FINANCE_BURSARIES = 'VIEW_FINANCE_BURSARIES';
+    public const VIEW_FINANCE_SPONSORS = 'VIEW_FINANCE_SPONSORS';
+    public const VIEW_FINANCE_EXPENSES = 'VIEW_FINANCE_EXPENSES';
+    public const VIEW_FINANCE_REFUNDS = 'VIEW_FINANCE_REFUNDS';
+    public const VIEW_FINANCE_BALANCE = 'VIEW_FINANCE_BALANCE';
+    public const VIEW_FINANCE_CLEARANCE = 'VIEW_FINANCE_CLEARANCE';
+    public const VIEW_FINANCE_REPORTS = 'VIEW_FINANCE_REPORTS';
     public const VIEW_MOBILE_PAYMENTS = 'VIEW_MOBILE_PAYMENTS';
     public const VIEW_ONLINE_PAYMENTS_HISTORY = 'VIEW_ONLINE_PAYMENTS_HISTORY';
     // Student self-service: view own invoices, payments, and balance
@@ -94,6 +105,22 @@ class Permissions
     public const SEND_MESSAGES      = 'SEND_MESSAGES';
     public const MANAGE_MESSAGES    = 'MANAGE_MESSAGES';
     public const BROADCAST_MESSAGES = 'BROADCAST_MESSAGES';
+
+    // Academic Transcripts Management System (migration 066)
+    public const MANAGE_TRANSCRIPT_REQUESTS   = 'MANAGE_TRANSCRIPT_REQUESTS';
+    public const MANAGE_GRADUANDS             = 'MANAGE_GRADUANDS';
+    public const VIEW_GRADUANDS               = 'VIEW_GRADUANDS';
+    public const MANAGE_GRADING_SCALES        = 'MANAGE_GRADING_SCALES';
+    public const MANAGE_DELIBERATIONS         = 'MANAGE_DELIBERATIONS';
+    public const MANAGE_ACADEMIC_CERTIFICATES = 'MANAGE_ACADEMIC_CERTIFICATES';
+
+    // Fee Fines & Overdue Alerts (migration 067)
+    public const VIEW_FINES      = 'VIEW_FINES';
+    public const MANAGE_FINES    = 'MANAGE_FINES';
+    public const SEND_FEE_ALERTS = 'SEND_FEE_ALERTS';
+
+    // Academic Analytics & Reporting Dashboard
+    public const VIEW_ACADEMIC_ANALYTICS = 'VIEW_ACADEMIC_ANALYTICS';
 
     /**
      * Get all predefined system permissions.
@@ -139,6 +166,17 @@ class Permissions
             self::VIEW_PAYROLL,
             self::MANAGE_PAYROLL,
             self::VIEW_FINANCE,
+            self::VIEW_FINANCE_OVERVIEW,
+            self::VIEW_FINANCE_BILLING,
+            self::VIEW_FINANCE_APPROVALS,
+            self::VIEW_FINANCE_STRUCTURES,
+            self::VIEW_FINANCE_BURSARIES,
+            self::VIEW_FINANCE_SPONSORS,
+            self::VIEW_FINANCE_EXPENSES,
+            self::VIEW_FINANCE_REFUNDS,
+            self::VIEW_FINANCE_BALANCE,
+            self::VIEW_FINANCE_CLEARANCE,
+            self::VIEW_FINANCE_REPORTS,
             self::VIEW_LEAVE_REQUESTS,
             self::MANAGE_LEAVE_REQUESTS,
             self::MANAGE_FINANCE,
@@ -165,6 +203,16 @@ class Permissions
             self::SEND_MESSAGES,
             self::MANAGE_MESSAGES,
             self::BROADCAST_MESSAGES,
+            self::MANAGE_TRANSCRIPT_REQUESTS,
+            self::MANAGE_GRADUANDS,
+            self::VIEW_GRADUANDS,
+            self::MANAGE_GRADING_SCALES,
+            self::MANAGE_DELIBERATIONS,
+            self::MANAGE_ACADEMIC_CERTIFICATES,
+            self::VIEW_FINES,
+            self::MANAGE_FINES,
+            self::SEND_FEE_ALERTS,
+            self::VIEW_ACADEMIC_ANALYTICS,
         ];
     }
 }

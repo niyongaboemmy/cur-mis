@@ -646,6 +646,32 @@ class ApplicantProfileController extends BaseController
             ];
         }
 
+        // Inject the "Visa" requirement for international (non-Rwandan)
+        // applicants whose faculty checklist doesn't already include it,
+        // so they can upload the visa from the Documents tab.
+        if (self::isInternationalApplicant($application['nationality'] ?? '')) {
+            $hasVisa = false;
+            foreach ($requirements as $req) {
+                if (($req['document_type_slug'] ?? '') === 'visa') { $hasVisa = true; break; }
+            }
+            if (!$hasVisa) {
+                $visaType = $this->db->fetchOne(
+                    "SELECT id, name, slug, allowed_extensions FROM `document_types` WHERE slug = 'visa' LIMIT 1"
+                );
+                if ($visaType) {
+                    $requirements[] = [
+                        'document_type_id'    => (int)$visaType['id'],
+                        'document_type_name'  => $visaType['name'],
+                        'document_type_slug'  => $visaType['slug'],
+                        'allowed_extensions'  => $visaType['allowed_extensions'],
+                        'is_required'         => 1,
+                        'notes'               => 'Upload your entry visa (PDF or photo).',
+                        'sort_order'          => 999,
+                    ];
+                }
+            }
+        }
+
         $checklist = array_map(function ($req) use ($uploadedMap) {
             $typeId   = (int)$req['document_type_id'];
             $uploaded = $uploadedMap[$typeId] ?? null;
@@ -769,6 +795,11 @@ class ApplicantProfileController extends BaseController
             'nationality'          => $data['nationality']          ?? null,
             'country_of_residence' => $data['country_of_residence'] ?? null,
             'national_id'          => $data['national_id']          ?? null,
+            // International applicants — visa tracking
+            // Coerce empty strings to null so a cleared date input doesn't
+            // fail the DATE column validation.
+            'visa_obtained_date'   => isset($data['visa_obtained_date'])   && $data['visa_obtained_date']   !== '' ? $data['visa_obtained_date']   : null,
+            'visa_expiration_date' => isset($data['visa_expiration_date']) && $data['visa_expiration_date'] !== '' ? $data['visa_expiration_date'] : null,
             'disability'           => $data['disability']           ?? null,
             'address'              => $data['address']              ?? null,
             'province'             => $data['province']             ?? null,
@@ -1023,6 +1054,23 @@ class ApplicantProfileController extends BaseController
         $requirements = $this->requirementModel->getForFaculty(
             (int)$application['faculty_id']
         );
+
+        // International (non-Rwandan) applicants may always upload the
+        // "visa" document even when their faculty checklist doesn't list it.
+        $visaTypeId = null;
+        if (self::isInternationalApplicant($application['nationality'] ?? '')) {
+            $row = $this->db->fetchOne(
+                "SELECT id, allowed_extensions FROM `document_types` WHERE slug = 'visa' LIMIT 1"
+            );
+            if ($row && (int)$row['id'] === $docTypeId) {
+                $visaTypeId = (int)$row['id'];
+                $requirements[] = [
+                    'document_type_id'   => $visaTypeId,
+                    'allowed_extensions' => $row['allowed_extensions'],
+                    'is_required'        => 1,
+                ];
+            }
+        }
 
         $allowedTypeIds = array_column($requirements, 'document_type_id');
         if (!in_array((string)$docTypeId, $allowedTypeIds, true) && !in_array($docTypeId, $allowedTypeIds, true)) {
@@ -1324,5 +1372,17 @@ class ApplicantProfileController extends BaseController
 
         echo $fileData['content'];
         exit;
+    }
+
+    /**
+     * True for any applicant whose nationality isn't Rwandan. Tolerates
+     * the various spellings users enter ("Rwanda", "Rwandan", "Rwandese",
+     * French "Rwandaise", with/without whitespace, case-insensitive).
+     */
+    private static function isInternationalApplicant(?string $nationality): bool
+    {
+        $n = strtolower(trim((string)$nationality));
+        if ($n === '') return false;
+        return !in_array($n, ['rwanda', 'rwandan', 'rwandese', 'rwandaise'], true);
     }
 }
