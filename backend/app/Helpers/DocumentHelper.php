@@ -7,6 +7,7 @@ namespace App\Helpers;
 use Core\Database;
 use chillerlan\QRCode\QRCode;
 use chillerlan\QRCode\QROptions;
+use chillerlan\QRCode\Output\QROutputInterface;
 
 /**
  * Shared helper for generating official CUR student documents.
@@ -82,7 +83,7 @@ class DocumentHelper
         try {
             if (extension_loaded('gd')) {
                 $opts = new QROptions([
-                    'outputType'  => QRCode::OUTPUT_IMAGE_PNG,
+                    'outputType'  => QROutputInterface::GDIMAGE_PNG,
                     'outputBase64' => true,
                     'scale'        => 5,
                     'eccLevel'     => QRCode::ECC_L,
@@ -91,13 +92,13 @@ class DocumentHelper
                 return '<img src="' . $uri . '" width="' . $sizePx . '" height="' . $sizePx . '" />';
             }
 
-            // SVG fallback (DOMPDF v2 renders basic inline SVG)
+            // SVG fallback (rendered as a data-URI <img> so DOMPDF embeds it).
             $opts = new QROptions([
-                'outputType' => QRCode::OUTPUT_MARKUP_SVG,
+                'outputType' => QROutputInterface::MARKUP_SVG,
                 'eccLevel'   => QRCode::ECC_L,
             ]);
-            $svg = (new QRCode($opts))->render($content);
-            return '<div style="width:' . $sizePx . 'px;height:' . $sizePx . 'px;">' . $svg . '</div>';
+            $uri = (new QRCode($opts))->render($content);
+            return '<img src="' . $uri . '" width="' . $sizePx . '" height="' . $sizePx . '" />';
 
         } catch (\Throwable) {
             return '<div style="width:' . $sizePx . 'px;height:' . $sizePx
