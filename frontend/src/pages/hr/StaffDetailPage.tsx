@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import { hrService, type HrEmployeePayload } from "@/services/hrService";
 import { useAuthStore } from "@/store/authStore";
-import type { HrEmployee, StaffQualification } from "@/types/academic";
+import type { HrEmployee } from "@/types/academic";
 import ModalPortal from "@/components/ui/ModalPortal";
 import { PERMISSIONS } from "@/constants/permissions";
 import StaffQualificationsTab from "./StaffQualificationsTab";
@@ -56,7 +56,7 @@ export default function StaffDetailPage() {
   });
 
   const employee: HrEmployee | undefined = empQ.data?.data ?? undefined;
-  const qualifications: StaffQualification[] = qualQ.data?.data ?? [];
+  const qualifications = qualQ.data?.data ?? [];
 
   if (empQ.isLoading) {
     return (

@@ -1,6 +1,6 @@
 import { api } from '@/services/api'
 import type { PaginatedResponse } from '@/types'
-import type { HrEmployee, StaffQualification, StaffQualificationPayload } from '@/types/academic'
+import type { HrEmployee } from '@/types/academic'
 
 export interface FacetOption {
   value: string
@@ -323,20 +323,6 @@ export const hrService = {
 
   changeEmployeeStatus: (id: number | string, status: string) =>
     api.put<void>(`/api/employees/${id}`, { status }),
-
-  /* ── Staff Qualifications ────────────────────────────────────────── */
-
-  listQualifications: (empId: number | string, signal?: AbortSignal) =>
-    api.get<StaffQualification[]>(`/api/employees/${empId}/qualifications`, {}, signal),
-
-  addQualification: (empId: number | string, data: StaffQualificationPayload) =>
-    api.post<StaffQualification>(`/api/employees/${empId}/qualifications`, data),
-
-  updateQualification: (empId: number | string, qid: number, data: StaffQualificationPayload) =>
-    api.put<StaffQualification>(`/api/employees/${empId}/qualifications/${qid}`, data),
-
-  deleteQualification: (empId: number | string, qid: number) =>
-    api.delete<void>(`/api/employees/${empId}/qualifications/${qid}`),
 
   /* ── Payroll ─────────────────────────────────────────────────────────── */
 
