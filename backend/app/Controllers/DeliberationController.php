@@ -270,6 +270,233 @@ class DeliberationController extends BaseController
         return (float)$v;
     }
 
+    /** Percentage at or above which a module mark is treated as a pass. */
+    private const PASS_MARK = 50.0;
+
+    /* ══════════════════════════════════════════════════════════════════════
+     * Marks-centric deliberation view
+     * ─────────────────────────────────────────────────────────────────────
+     * The program grid above only surfaces *active* students whose modules are
+     * mapped to a program curriculum, which hides the bulk of historic marks.
+     * These endpoints instead start from `module_marks` so EVERY student that
+     * has a recorded mark is listed, with each mark mapped up the hierarchy:
+     *
+     *     module_marks → modules → departements           (department)
+     *                          └→ module_programs → options (program)
+     *
+     * `modules.department` is populated for ~100% of mark-bearing modules, so
+     * the department is the reliable grouping level; program is shown wherever
+     * a module_programs mapping exists.
+     * ═══════════════════════════════════════════════════════════════════ */
+
+    /**
+     * GET /api/deliberation/mark-filters
+     * Department → program hierarchy (only departments that actually have
+     * marks), with per-department student / module / mark counts. Drives the
+     * filter dropdowns in the Students & Marks view.
+     */
+    public function markFilters(Request $request, Response $response): never
+    {
+        $departments = $this->db->fetchAll(
+            "SELECT d.dep_id, d.dep_name, d.dep_acronym,
+                    COUNT(DISTINCT mm.student_regnumber) AS students,
+                    COUNT(DISTINCT mm.module_id)         AS modules,
+                    COUNT(*)                             AS marks
+             FROM module_marks mm
+             JOIN modules m       ON m.module_id = mm.module_id
+             JOIN departements d  ON d.dep_id   = m.department
+             GROUP BY d.dep_id, d.dep_name, d.dep_acronym
+             ORDER BY students DESC, d.dep_name ASC"
+        );
+
+        $programs = $this->db->fetchAll(
+            "SELECT o.id, o.name, o.acro, o.department_id,
+                    COUNT(DISTINCT mp.module_id) AS modules
+             FROM options o
+             LEFT JOIN module_programs mp ON mp.option_id = o.id
+             GROUP BY o.id, o.name, o.acro, o.department_id
+             ORDER BY o.name ASC"
+        );
+
+        $totals = $this->db->fetchOne(
+            "SELECT COUNT(*) AS marks,
+                    COUNT(DISTINCT mm.student_regnumber) AS students,
+                    COUNT(DISTINCT mm.module_id)         AS modules
+             FROM module_marks mm"
+        ) ?: ['marks' => 0, 'students' => 0, 'modules' => 0];
+
+        $this->success($response, [
+            'departments' => $departments,
+            'programs'    => $programs,
+            'pass_mark'   => self::PASS_MARK,
+            'totals'      => [
+                'marks'    => (int)$totals['marks'],
+                'students' => (int)$totals['students'],
+                'modules'  => (int)$totals['modules'],
+            ],
+        ], 'Deliberation mark filters loaded.');
+    }
+
+    /**
+     * GET /api/deliberation/mark-students
+     * Paginated list of every student that has at least one recorded mark,
+     * with a per-student summary. Optional filters: department_id, option_id
+     * (program), current_level, q (search reg / name).
+     */
+    public function markStudents(Request $request, Response $response): never
+    {
+        $deptId   = (int)($request->query('department_id') ?? 0);
+        $optionId = (int)($request->query('option_id')     ?? 0);
+        $level    = trim((string)($request->query('current_level') ?? ''));
+        $q        = trim((string)($request->query('q')     ?? ''));
+        $page     = max(1, (int)($request->query('page')   ?? 1));
+        $perPage  = (int)($request->query('per_page')      ?? 50);
+        if ($perPage <= 0)  $perPage = 50;
+        if ($perPage > 200) $perPage = 200;
+        $offset   = ($page - 1) * $perPage;
+
+        // Shared WHERE — modules ⨝ departements never fans out (1:1), so
+        // COUNT(*) / AVG stay accurate. The program filter restricts the set
+        // of modules via a subquery (also no fan-out).
+        $where = ['1=1'];
+        $args  = [];
+        if ($deptId > 0) {
+            $where[] = 'm.department = ?';
+            $args[]  = $deptId;
+        }
+        if ($optionId > 0) {
+            $where[] = 'mm.module_id IN (SELECT module_id FROM module_programs WHERE option_id = ?)';
+            $args[]  = $optionId;
+        }
+        if ($level !== '') {
+            $where[] = "CAST(NULLIF(st.current_level,'') AS UNSIGNED) = ?";
+            $args[]  = (int)$level;
+        }
+        if ($q !== '') {
+            $where[] = '(mm.student_regnumber LIKE ? OR st.fname LIKE ? OR st.lname LIKE ?)';
+            $like    = "%{$q}%";
+            $args[]  = $like; $args[] = $like; $args[] = $like;
+        }
+        $whereSql = implode(' AND ', $where);
+
+        // Distinct students for pagination.
+        $countRow = $this->db->fetchOne(
+            "SELECT COUNT(*) AS total FROM (
+                 SELECT mm.student_regnumber
+                 FROM module_marks mm
+                 JOIN modules m      ON m.module_id = mm.module_id
+                 LEFT JOIN `student` st ON st.regnumber = mm.student_regnumber
+                 WHERE $whereSql
+                 GROUP BY mm.student_regnumber
+             ) x",
+            $args
+        );
+        $total = (int)($countRow['total'] ?? 0);
+
+        $rows = $this->db->fetchAll(
+            "SELECT mm.student_regnumber AS regnumber,
+                    st.id AS student_id, st.fname, st.lname, st.gender AS sex,
+                    st.current_level, st.intake, st.std_option, st.student_state,
+                    prog.name AS declared_program, prog.acro AS declared_program_acro,
+                    COUNT(DISTINCT mm.module_id) AS modules_count,
+                    COUNT(*)                     AS marks_count,
+                    ROUND(AVG(mm.percentage), 2) AS avg_pct,
+                    SUM(mm.percentage >= ?)      AS passed,
+                    SUM(mm.percentage <  ?)      AS failed,
+                    GROUP_CONCAT(DISTINCT d.dep_name ORDER BY d.dep_name SEPARATOR ' · ') AS departments
+             FROM module_marks mm
+             JOIN modules m          ON m.module_id = mm.module_id
+             LEFT JOIN departements d ON d.dep_id   = m.department
+             LEFT JOIN `student` st   ON st.regnumber = mm.student_regnumber
+             LEFT JOIN options prog   ON CAST(prog.id AS CHAR) = st.std_option
+             WHERE $whereSql
+             GROUP BY mm.student_regnumber, st.id, st.fname, st.lname, st.gender,
+                      st.current_level, st.intake, st.std_option, st.student_state,
+                      prog.name, prog.acro
+             ORDER BY (st.lname IS NULL OR st.lname = ''), st.lname, st.fname, mm.student_regnumber
+             LIMIT $perPage OFFSET $offset",
+            array_merge([self::PASS_MARK, self::PASS_MARK], $args)
+        );
+
+        $lastPage = $total > 0 ? (int)ceil($total / $perPage) : 1;
+
+        $this->success($response, [
+            'students'   => $rows,
+            'pass_mark'  => self::PASS_MARK,
+            'pagination' => [
+                'page'      => $page,
+                'per_page'  => $perPage,
+                'total'     => $total,
+                'last_page' => $lastPage,
+            ],
+        ], 'Students with marks loaded.');
+    }
+
+    /**
+     * GET /api/deliberation/student-marks?regnumber=...
+     * Full marks for one student, each row mapped to its module, department
+     * and (where mapped) program(s) and term.
+     */
+    public function studentMarks(Request $request, Response $response): never
+    {
+        $reg = trim((string)($request->query('regnumber') ?? ''));
+        if ($reg === '') {
+            $this->error($response, 'regnumber is required.', 422);
+        }
+
+        $student = $this->db->fetchOne(
+            "SELECT st.id, st.regnumber, st.fname, st.lname, st.gender AS sex,
+                    st.current_level, st.intake, st.std_option, st.student_state,
+                    prog.name AS declared_program, prog.acro AS declared_program_acro
+             FROM `student` st
+             LEFT JOIN options prog ON CAST(prog.id AS CHAR) = st.std_option
+             WHERE st.regnumber = ? LIMIT 1",
+            [$reg]
+        );
+
+        $marks = $this->db->fetchAll(
+            "SELECT mm.id, mm.module_id, m.module_code, m.module_name,
+                    m.module_credits, m.level,
+                    d.dep_id, d.dep_name,
+                    mm.cat_marks, mm.exam_marks, mm.total, mm.percentage,
+                    mm.grade, mm.decision, mm.status,
+                    t.id AS term_id, t.label AS term_label,
+                    (SELECT GROUP_CONCAT(DISTINCT o.name ORDER BY o.name SEPARATOR ' · ')
+                       FROM module_programs mp
+                       JOIN options o ON o.id = mp.option_id
+                      WHERE mp.module_id = mm.module_id) AS programs
+             FROM module_marks mm
+             JOIN modules m           ON m.module_id = mm.module_id
+             LEFT JOIN departements d  ON d.dep_id   = m.department
+             LEFT JOIN academic_terms t ON t.id      = mm.academic_term_id
+             WHERE mm.student_regnumber = ?
+             ORDER BY d.dep_name ASC, m.level ASC, m.module_code ASC",
+            [$reg]
+        );
+
+        // Per-student roll-up so the detail header can show a quick summary.
+        $passed = 0; $failed = 0; $pctSum = 0.0; $pctCount = 0;
+        foreach ($marks as $mk) {
+            $pct = $this->dec($mk['percentage']);
+            if ($pct !== null) {
+                $pctSum += $pct; $pctCount++;
+                if ($pct >= self::PASS_MARK) $passed++; else $failed++;
+            }
+        }
+
+        $this->success($response, [
+            'student'   => $student ?: ['regnumber' => $reg],
+            'marks'     => $marks,
+            'pass_mark' => self::PASS_MARK,
+            'summary'   => [
+                'modules' => count($marks),
+                'passed'  => $passed,
+                'failed'  => $failed,
+                'avg_pct' => $pctCount > 0 ? round($pctSum / $pctCount, 2) : null,
+            ],
+        ], 'Student marks loaded.');
+    }
+
     private function authUserId(Request $request): int
     {
         $user = (array)($request->param('_auth_user') ?? []);

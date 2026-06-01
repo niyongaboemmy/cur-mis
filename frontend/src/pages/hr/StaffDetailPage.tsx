@@ -20,14 +20,16 @@ import {
   X,
   Save,
   CreditCard,
+  GraduationCap,
 } from "lucide-react";
 import { hrService, type HrEmployeePayload } from "@/services/hrService";
 import { useAuthStore } from "@/store/authStore";
 import type { HrEmployee } from "@/types/academic";
 import ModalPortal from "@/components/ui/ModalPortal";
 import { PERMISSIONS } from "@/constants/permissions";
+import StaffQualificationsTab from "./StaffQualificationsTab";
 
-type Tab = "overview" | "attendance" | "documents";
+type Tab = "overview" | "qualifications" | "attendance" | "documents";
 
 export default function StaffDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -150,6 +152,12 @@ export default function StaffDetailPage() {
             onClick={() => setTab("overview")}
           />
           <TabBtn
+            active={tab === "qualifications"}
+            icon={GraduationCap}
+            label="Qualifications"
+            onClick={() => setTab("qualifications")}
+          />
+          <TabBtn
             active={tab === "attendance"}
             icon={ClipboardCheck}
             label="Attendance"
@@ -165,6 +173,13 @@ export default function StaffDetailPage() {
 
         <div className="p-6">
           {tab === "overview" && <OverviewTab e={employee} />}
+          {tab === "qualifications" && (
+            <StaffQualificationsTab
+              empId={Number(employee.id)}
+              empName={employee.full_name || employee.emp_code}
+              canManage={canManage}
+            />
+          )}
           {tab === "attendance" && (
             <ComingSoon
               icon={ClipboardCheck}
@@ -176,7 +191,7 @@ export default function StaffDetailPage() {
             <ComingSoon
               icon={FileText}
               title="Staff documents"
-              desc="Contracts, national IDs, qualifications, and HR uploads."
+              desc="Contracts, national IDs, and other HR uploads."
             />
           )}
         </div>
