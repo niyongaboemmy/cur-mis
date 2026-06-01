@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
-import { CalendarClock, CheckCircle2, Loader2, GraduationCap, Calendar, ClipboardList, Download, Scale, AlertTriangle, X } from 'lucide-react'
+import { CalendarClock, CheckCircle2, Loader2, GraduationCap, Calendar, ClipboardList, Download, Scale, AlertTriangle, FileText, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { myModulesService, type MyExamRow } from '@/services/modulesService'
 import { academicService } from '@/services/academicService'
@@ -11,6 +11,7 @@ import {
   revaluationService, STATUS_LABELS,
   type Revaluation, type BacklogRow,
 } from '@/services/revaluationService'
+import { transcriptService } from '@/services/transcriptService'
 import type { ModuleRegistration } from '@/types/modules'
 
 type Tab = 'available' | 'mine' | 'exams' | 'marks' | 'revaluation'
@@ -384,7 +385,37 @@ interface MyMarksTabProps {
   onDownload:  () => void
 }
 
+const TR_STATUS_BADGE: Record<string, string> = {
+  pending:    'bg-yellow-100 text-yellow-800',
+  approved:   'bg-green-100 text-green-800',
+  dispatched: 'bg-blue-100 text-blue-800',
+  rejected:   'bg-red-100 text-red-800',
+}
+
 function MyMarksTab({ loading, rows, totals, cgpa, downloading, canDownload, onDownload }: MyMarksTabProps) {
+  const qc = useQueryClient()
+  const [requestOpen, setRequestOpen] = useState(false)
+  const [purpose, setPurpose]         = useState('')
+  const [copies, setCopies]           = useState(1)
+
+  const myRequestsQ = useQuery({
+    queryKey: ['my-transcript-requests'],
+    queryFn:  () => transcriptService.myRequests(),
+  })
+  const myRequests: any[] = myRequestsQ.data?.data ?? []
+
+  const submitRequest = useMutation({
+    mutationFn: () => transcriptService.create({ purpose, copies }),
+    onSuccess: () => {
+      toast.success('Transcript request submitted. Registry will process it shortly.')
+      qc.invalidateQueries({ queryKey: ['my-transcript-requests'] })
+      setRequestOpen(false)
+      setPurpose('')
+      setCopies(1)
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to submit request.'),
+  })
+
   if (loading) {
     return <div className="card p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-brand" /></div>
   }
@@ -416,16 +447,74 @@ function MyMarksTab({ loading, rows, totals, cgpa, downloading, canDownload, onD
         <SumStat label="CGPA"             value={cgpa != null ? cgpa.toFixed(2) : '—'} highlight />
         <SumStat label="Overall grade"    value={totals?.overall_grade ?? '—'} />
         <SumStat label="Decision"         value={totals?.decision ?? '—'} tone={totals?.decision === 'Promoted' ? 'good' : totals?.decision === 'Repeat' ? 'bad' : undefined} />
-        <button
-          className="btn-primary btn-sm ml-auto"
-          disabled={!canDownload || downloading}
-          onClick={onDownload}
-          title={!canDownload ? 'No recorded marks to include in a transcript yet.' : undefined}
-        >
-          {downloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-          {downloading ? 'Preparing…' : 'Download transcript'}
-        </button>
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            className="btn-primary btn-sm"
+            disabled={!canDownload || downloading}
+            onClick={onDownload}
+            title={!canDownload ? 'No recorded marks to include in a transcript yet.' : undefined}
+          >
+            {downloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+            {downloading ? 'Preparing…' : 'Download transcript'}
+          </button>
+          <button
+            className="btn-sm border border-ink-200 dark:border-ink-600 text-ink-700 dark:text-ink-200 hover:bg-ink-50 dark:hover:bg-ink-700 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium"
+            onClick={() => setRequestOpen(true)}
+          >
+            <FileText className="w-3.5 h-3.5" /> Request Official Copy
+          </button>
+        </div>
       </div>
+
+      {/* Previous transcript requests */}
+      {myRequests.length > 0 && (
+        <div className="card p-4">
+          <h3 className="text-[12px] font-semibold text-ink-500 uppercase mb-3">My Transcript Requests</h3>
+          <div className="space-y-2">
+            {myRequests.map((r: any) => (
+              <div key={r.id} className="flex items-center justify-between text-[13px] border-b border-ink-100 dark:border-ink-700 pb-2 last:border-0 last:pb-0">
+                <div>
+                  <span className="font-medium capitalize">{r.request_type}</span>
+                  {r.purpose && <span className="text-ink-400 ml-2">— {r.purpose}</span>}
+                  <span className="text-ink-400 ml-2 text-[11px]">{new Date(r.created_at).toLocaleDateString()}</span>
+                </div>
+                <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-medium capitalize ${TR_STATUS_BADGE[r.status] ?? 'bg-gray-100 text-gray-600'}`}>
+                  {r.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Request modal */}
+      {requestOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white dark:bg-ink-800 rounded-xl shadow-2xl w-full max-w-md mx-4 p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold text-ink-900 dark:text-white">Request Official Transcript</h2>
+              <button onClick={() => setRequestOpen(false)} className="text-ink-400 hover:text-ink-700"><X className="w-5 h-5" /></button>
+            </div>
+            <div>
+              <label className="block text-[12px] font-medium text-ink-600 dark:text-ink-300 mb-1">Purpose (optional)</label>
+              <input value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="e.g. Further studies, Employment…"
+                className="w-full border border-ink-200 dark:border-ink-600 rounded-lg px-3 py-2 text-[13px] outline-none focus:ring-2 focus:ring-brand dark:bg-ink-700 dark:text-white" />
+            </div>
+            <div>
+              <label className="block text-[12px] font-medium text-ink-600 dark:text-ink-300 mb-1">Number of Copies</label>
+              <input type="number" min={1} max={10} value={copies} onChange={(e) => setCopies(Number(e.target.value))}
+                className="w-24 border border-ink-200 dark:border-ink-600 rounded-lg px-3 py-2 text-[13px] outline-none focus:ring-2 focus:ring-brand dark:bg-ink-700 dark:text-white" />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button onClick={() => setRequestOpen(false)} className="btn-sm border border-ink-200 text-ink-700 px-4 py-2 rounded-lg text-[13px]">Cancel</button>
+              <button onClick={() => submitRequest.mutate()} disabled={submitRequest.isPending}
+                className="btn-primary btn-sm px-4 py-2 disabled:opacity-50">
+                {submitRequest.isPending ? 'Submitting…' : 'Submit Request'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Per-year tables */}
       {Array.from(byYear.entries()).map(([year, list]) => (

@@ -41,8 +41,10 @@ SET @stmt := IF(@idx = 0,
 PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
 
 -- Default 30-day timeout for auto-hide. Admin can tune this via Settings.
-INSERT INTO `settings` (`key_name`, `value`, `description`)
-SELECT 'pending_timeout_days', '30',
+-- Supplies `id` explicitly so this works even when the column lacks AUTO_INCREMENT.
+INSERT INTO `settings` (`id`, `key_name`, `value`, `description`)
+SELECT COALESCE((SELECT MAX(`id`) FROM `settings`), 0) + 1,
+       'pending_timeout_days',
+       '30',
        'Auto-hide pending applications older than this many days.'
-  FROM DUAL
  WHERE NOT EXISTS (SELECT 1 FROM `settings` WHERE `key_name` = 'pending_timeout_days');

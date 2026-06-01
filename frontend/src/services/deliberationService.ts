@@ -57,7 +57,43 @@ export interface DeliberationParams {
   per_page?:         number
 }
 
+export interface DeliberationSession {
+  id:             number
+  academic_year_id: number
+  semester:       number
+  program_id:     number | null
+  convened_at:    string | null
+  notes:          string | null
+  finalized:      boolean
+  created_by:     number | null
+  created_at:     string
+  year_label:     string | null
+  program_name:   string | null
+  program_acronym:string | null
+  created_by_name:string | null
+}
+
+export interface CreateSessionPayload {
+  academic_year_id: number
+  semester:         number
+  program_id?:      number
+  convened_at?:     string
+  notes?:           string
+}
+
 export const deliberationService = {
   grid: (params: DeliberationParams = {}, signal?: AbortSignal) =>
     api.get<DeliberationResponse>('/api/deliberation', params as Record<string, unknown>, signal),
+
+  listSessions: (params: { academic_year_id?: number } = {}, signal?: AbortSignal) =>
+    api.get<DeliberationSession[]>('/api/deliberation/sessions', params as Record<string, unknown>, signal),
+
+  createSession: (payload: CreateSessionPayload) =>
+    api.post<{ id: number }>('/api/deliberation/sessions', payload),
+
+  updateSession: (id: number, payload: Partial<CreateSessionPayload>) =>
+    api.put<null>(`/api/deliberation/sessions/${id}`, payload),
+
+  finalizeSession: (id: number, payload: { std_option?: string } = {}) =>
+    api.post<null>(`/api/deliberation/sessions/${id}/finalize`, payload),
 }

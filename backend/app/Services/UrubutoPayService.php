@@ -160,7 +160,7 @@ class UrubutoPayService
 
         // ── Load or auto-create fee_invoices ──────────────────────────────────
         $invoices = $this->db->fetchAll(
-            "SELECT id, fee_type, amount_due, amount_paid, IFNULL(bursary_applied, 0) AS bursary_applied
+            "SELECT id, fee_type, semester, amount_due, amount_paid, IFNULL(bursary_applied, 0) AS bursary_applied
              FROM fee_invoices
              WHERE student_id = ? AND status NOT IN ('paid','waived','cancelled')
              ORDER BY created_at ASC",
@@ -208,6 +208,7 @@ class UrubutoPayService
                 'amount'           => $apply,
                 'fee_type'         => $feeType,
                 'academic_year_id' => $academicYearId,
+                'semester'         => !empty($invoice['semester']) ? (int)$invoice['semester'] : null,
                 'payment_method'   => 'MOBILE_MONEY',
                 'reference_number' => $refNumber,
                 'receipt_number'   => $receiptNumber,

@@ -372,10 +372,11 @@ CREATE TABLE IF NOT EXISTS `application_pending_notes` (
 SET @has_settings := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES
                       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'settings');
 SET @stmt := IF(@has_settings = 1,
-  "INSERT INTO `settings` (`key_name`, `value`, `description`)
-   SELECT 'pending_timeout_days', '30',
+  "INSERT INTO `settings` (`id`, `key_name`, `value`, `description`)
+   SELECT COALESCE((SELECT MAX(`id`) FROM `settings`), 0) + 1,
+          'pending_timeout_days',
+          '30',
           'Auto-hide pending applications older than this many days.'
-     FROM DUAL
     WHERE NOT EXISTS (SELECT 1 FROM `settings` WHERE `key_name` = 'pending_timeout_days')",
   'SELECT 1');
 PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;

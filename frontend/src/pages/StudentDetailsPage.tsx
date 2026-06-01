@@ -23,6 +23,7 @@ import {
   studentIdService,
   type StudentIdCard,
 } from "@/services/studentIdService";
+import { transcriptService } from "@/services/transcriptService";
 import { academicService } from "@/services/academicService";
 import {
   attendanceService,
@@ -4585,6 +4586,13 @@ function EditStudentModal({
 
 /* ─── Transcript tab ───────────────────────────────────────────────── */
 
+const TR_STATUS_BADGE: Record<string, string> = {
+  pending:    'bg-yellow-100 text-yellow-800',
+  approved:   'bg-green-100 text-green-800',
+  dispatched: 'bg-blue-100 text-blue-800',
+  rejected:   'bg-red-100 text-red-800',
+}
+
 function TranscriptTab({ student }: { student: any }) {
   // Use the numeric student id — regnumbers may contain slashes that break
   // the regnumber-segmented route. The backend resolves id → regnumber.
@@ -4599,6 +4607,12 @@ function TranscriptTab({ student }: { student: any }) {
   const gpaQ = useQuery({
     queryKey: ["student-gpa", studentId],
     queryFn: () => gradeService.gpaById(studentId as number),
+    enabled: !!studentId,
+  });
+
+  const requestsQ = useQuery({
+    queryKey: ["transcript-requests-student", studentId],
+    queryFn: () => transcriptService.list({ search: student?.regnumber }),
     enabled: !!studentId,
   });
 
@@ -4730,6 +4744,28 @@ function TranscriptTab({ student }: { student: any }) {
           {download.isPending ? "Preparing…" : "Download transcript (PDF)"}
         </button>
       </div>
+
+      {/* Transcript request history (admin view) */}
+      {(requestsQ.data?.data?.data ?? []).length > 0 && (
+        <div className="card p-4">
+          <h3 className="text-[12px] font-semibold text-ink-500 uppercase mb-3">Transcript Request History</h3>
+          <div className="space-y-2">
+            {(requestsQ.data?.data?.data ?? []).map((r: any) => (
+              <div key={r.id} className="flex items-center justify-between text-[13px] border-b border-ink-100 dark:border-ink-700 pb-2 last:border-0 last:pb-0">
+                <div>
+                  <span className="font-medium capitalize">{r.request_type}</span>
+                  <span className="text-ink-400 ml-2">{r.copies} cop{r.copies !== 1 ? 'ies' : 'y'}</span>
+                  {r.purpose && <span className="text-ink-400 ml-2">— {r.purpose}</span>}
+                  <span className="text-ink-400 ml-2 text-[11px]">{new Date(r.created_at).toLocaleDateString()}</span>
+                </div>
+                <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-medium capitalize ${TR_STATUS_BADGE[r.status] ?? 'bg-gray-100 text-gray-600'}`}>
+                  {r.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Per-year tables */}
       {Array.from(byYear.entries()).map(([year, list]) => (

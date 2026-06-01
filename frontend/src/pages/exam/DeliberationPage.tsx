@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import {
   Loader2,
   Download,
   GraduationCap,
   ChevronLeft,
   ChevronRight,
+  ListChecks,
+  Plus,
+  Lock,
+  X,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
@@ -17,7 +21,10 @@ import {
   type DeliberationModule,
   type DeliberationStudent,
   type DeliberationCell,
+  type DeliberationSession,
 } from "@/services/deliberationService";
+import { useAuthStore } from "@/store/authStore";
+import { PERMISSIONS } from "@/constants/permissions";
 
 const MODULE_COL_COUNT = 6; // CAT/60, FAT/40, TOT/100, CP, Grade, Verdict
 
@@ -66,6 +73,19 @@ const cellFor = (
 ): DeliberationCell | null => s.marks?.[mid] ?? null;
 
 export default function DeliberationPage() {
+  const authUser  = useAuthStore((s) => s.user)
+  const canManage = authUser?.permissions?.includes(PERMISSIONS.MANAGE_DELIBERATIONS)
+                 || authUser?.role === 'superadmin'
+
+  const qc = useQueryClient()
+
+  /* ── session panel state ─────────────────────────────────────── */
+  const [sessionsOpen, setSessionsOpen] = useState(false)
+  const [createOpen, setCreateOpen]     = useState(false)
+  const [newNotes, setNewNotes]         = useState('')
+  const [newConvenedAt, setNewConvenedAt] = useState('')
+  const [newSemester, setNewSemester]   = useState(1)
+
   /* ── filters ──────────────────────────────────────────────────── */
   const yearsQ = useQuery({
     queryKey: ["academic", "years"],
@@ -129,6 +149,41 @@ export default function DeliberationPage() {
     total: 0,
     last_page: 1,
   };
+
+  /* ── deliberation sessions ───────────────────────────────────── */
+  const sessionsQ = useQuery({
+    queryKey: ["deliberation-sessions", yearId],
+    queryFn:  () => deliberationService.listSessions({ academic_year_id: yearId || undefined }),
+    enabled:  sessionsOpen,
+  })
+  const sessions: DeliberationSession[] = sessionsQ.data?.data ?? []
+
+  const createSessionMut = useMutation({
+    mutationFn: () => deliberationService.createSession({
+      academic_year_id: yearId || (years[0]?.id ?? 0),
+      semester: newSemester,
+      program_id: stdOption ? Number(stdOption) : undefined,
+      convened_at: newConvenedAt || undefined,
+      notes: newNotes || undefined,
+    }),
+    onSuccess: () => {
+      toast.success('Session created.')
+      qc.invalidateQueries({ queryKey: ['deliberation-sessions'] })
+      setCreateOpen(false)
+      setNewNotes('')
+      setNewConvenedAt('')
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to create session.'),
+  })
+
+  const finalizeSessionMut = useMutation({
+    mutationFn: (id: number) => deliberationService.finalizeSession(id, { std_option: stdOption || undefined }),
+    onSuccess: () => {
+      toast.success('Session finalised — marks locked.')
+      qc.invalidateQueries({ queryKey: ['deliberation-sessions'] })
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Finalise failed.'),
+  })
 
   /* ── selected program label (for headers/export filename) ─────── */
   const selectedProgram = useMemo(
@@ -380,8 +435,111 @@ export default function DeliberationPage() {
             )}
             {exporting ? "Exporting…" : "Export"}
           </button>
+
+          {/* Sessions button — visible to anyone who can view deliberations */}
+          <button
+            className={`btn-ghost btn-sm ${sessionsOpen ? 'bg-brand/10 text-brand' : ''}`}
+            onClick={() => setSessionsOpen((v) => !v)}
+            title="Manage deliberation sessions"
+          >
+            <ListChecks className="w-3.5 h-3.5" />
+            Sessions
+          </button>
         </div>
       </div>
+
+      {/* Deliberation sessions panel */}
+      {sessionsOpen && (
+        <div className="card p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-[13px] font-semibold text-ink-700 dark:text-ink-200 flex items-center gap-2">
+              <ListChecks className="w-4 h-4" /> Deliberation Sessions
+              {yearId > 0 && <span className="font-normal text-ink-400">— {years.find((y: any) => y.id === yearId)?.label ?? ''}</span>}
+            </h3>
+            {canManage && (
+              <button onClick={() => setCreateOpen(true)} className="btn-primary btn-sm flex items-center gap-1">
+                <Plus className="w-3.5 h-3.5" /> New Session
+              </button>
+            )}
+          </div>
+
+          {sessionsQ.isLoading ? (
+            <div className="text-center py-4"><Loader2 className="w-5 h-5 animate-spin mx-auto text-brand" /></div>
+          ) : sessions.length === 0 ? (
+            <p className="text-[13px] text-ink-400 text-center py-3">No sessions recorded yet.</p>
+          ) : (
+            <div className="divide-y divide-ink-100 dark:divide-ink-700">
+              {sessions.map((s) => (
+                <div key={s.id} className="py-2.5 flex items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2 text-[13px] font-medium text-ink-800 dark:text-ink-100">
+                      Session #{s.id}
+                      {s.finalized && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-green-100 text-green-700 font-semibold">
+                          <Lock className="w-2.5 h-2.5" /> Finalised
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[12px] text-ink-500 mt-0.5 space-x-3">
+                      <span>Sem {s.semester}</span>
+                      {s.year_label     && <span>{s.year_label}</span>}
+                      {s.program_name   && <span>{s.program_acronym ?? s.program_name}</span>}
+                      {s.convened_at    && <span>Convened: {s.convened_at}</span>}
+                      {s.created_by_name && <span>By: {s.created_by_name}</span>}
+                    </div>
+                    {s.notes && <p className="text-[12px] text-ink-400 mt-1 italic">{s.notes}</p>}
+                  </div>
+                  {canManage && !s.finalized && (
+                    <button
+                      onClick={() => { if (window.confirm('Finalise this session? This will lock all marks for the cohort.')) finalizeSessionMut.mutate(s.id) }}
+                      disabled={finalizeSessionMut.isPending}
+                      className="btn-sm border border-orange-300 text-orange-600 hover:bg-orange-50 flex items-center gap-1 px-2 py-1 rounded text-[12px] whitespace-nowrap"
+                    >
+                      <Lock className="w-3 h-3" /> Finalise
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Create session inline form */}
+          {createOpen && (
+            <div className="border-t border-ink-200 dark:border-ink-600 pt-3 space-y-3">
+              <div className="flex items-center justify-between text-[13px] font-medium text-ink-700 dark:text-ink-200">
+                New Session
+                <button onClick={() => setCreateOpen(false)}><X className="w-4 h-4 text-ink-400 hover:text-ink-700" /></button>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <div>
+                  <label className="block text-[11px] text-ink-500 mb-1">Semester</label>
+                  <select value={newSemester} onChange={(e) => setNewSemester(Number(e.target.value))} className="input input-sm w-24">
+                    {[1,2,3].map((s) => <option key={s} value={s}>Sem {s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] text-ink-500 mb-1">Convened At</label>
+                  <input type="date" value={newConvenedAt} onChange={(e) => setNewConvenedAt(e.target.value)} className="input input-sm w-36" />
+                </div>
+                <div className="flex-1 min-w-[180px]">
+                  <label className="block text-[11px] text-ink-500 mb-1">Notes</label>
+                  <input value={newNotes} onChange={(e) => setNewNotes(e.target.value)} placeholder="Committee notes…" className="input input-sm w-full" />
+                </div>
+                <div className="flex items-end">
+                  <button
+                    onClick={() => createSessionMut.mutate()}
+                    disabled={createSessionMut.isPending || !yearId}
+                    className="btn-primary btn-sm disabled:opacity-50"
+                  >
+                    {createSessionMut.isPending ? 'Creating…' : 'Create'}
+                  </button>
+                </div>
+              </div>
+              {!yearId && <p className="text-[11px] text-orange-500">Select an academic year above before creating a session.</p>}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Summary strip */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

@@ -38,6 +38,7 @@ $router->group('/api/finance', function ($router) {
         $r->get('/students/invoices',        [FeeController::class, 'getStudentInvoices']);
         $r->get('/expenses',                 [FeeController::class, 'listExpenses']);
         $r->get('/expenses/categories',      [FeeController::class, 'listExpenseCategories']);
+        $r->get('/fee-types',                [FeeController::class, 'listFeeTypes']);
         $r->get('/clearance',                    [FeeController::class, 'getClearanceStatus']);
         $r->get('/clearance/exam-eligibility',   [FeeController::class, 'getExamEligibility']);
         $r->get('/clearance/bulk',               [FeeController::class, 'getBulkClearance']);
@@ -102,6 +103,10 @@ $router->group('/api/finance', function ($router) {
         $r->post('/expenses/categories',      [FeeController::class, 'createExpenseCategory']);
         $r->put('/expenses/categories/:id',   [FeeController::class, 'updateExpenseCategory']);
         $r->delete('/expenses/categories/:id', [FeeController::class, 'deleteExpenseCategory']);
+
+        $r->post('/fee-types',               [FeeController::class, 'createFeeType']);
+        $r->put('/fee-types/:id',            [FeeController::class, 'updateFeeType']);
+        $r->delete('/fee-types/:id',         [FeeController::class, 'deleteFeeType']);
 
         $r->post('/clearance',               [FeeController::class, 'grantClearance']);
         $r->post('/clearance/bulk',          [FeeController::class, 'runBulkClearance']);
