@@ -14,6 +14,8 @@ class DocumentController extends BaseController
         'to_whom_visa',
         'admission_letter',
         'registration_form',
+        'english_proficiency',
+        'completed_modules',
     ];
 
     /**
@@ -29,10 +31,16 @@ class DocumentController extends BaseController
             $this->error($response, 'Student not found.', 404);
         }
 
+        $modules = in_array($documentType, ['completed_modules'], true)
+            ? DocumentHelper::fetchStudentModules($studentId)
+            : [];
+
         $html = match ($documentType) {
-            'to_whom_visa'      => DocumentHelper::buildVisaLetter($student, preview: true),
-            'admission_letter'  => DocumentHelper::buildAdmissionLetter($student, preview: true),
-            'registration_form' => DocumentHelper::buildRegistrationForm($student, preview: true),
+            'to_whom_visa'         => DocumentHelper::buildVisaLetter($student, preview: true),
+            'admission_letter'     => DocumentHelper::buildAdmissionLetter($student, preview: true),
+            'registration_form'    => DocumentHelper::buildRegistrationForm($student, preview: true),
+            'english_proficiency'  => DocumentHelper::buildEnglishProficiencyCertificate($student, preview: true),
+            'completed_modules'    => DocumentHelper::buildCompletedModulesReport($student, $modules, preview: true),
         };
 
         $this->success($response, ['html' => $html], 'Preview generated.');
@@ -53,18 +61,30 @@ class DocumentController extends BaseController
 
         $reg = preg_replace('/[^A-Za-z0-9_-]/', '', $student['regnumber'] ?? "s{$studentId}");
 
+        $modules = in_array($documentType, ['completed_modules'], true)
+            ? DocumentHelper::fetchStudentModules($studentId)
+            : [];
+
         [$html, $filename] = match ($documentType) {
-            'to_whom_visa'      => [
+            'to_whom_visa'        => [
                 DocumentHelper::buildVisaLetter($student),
                 "visa-letter-{$reg}.pdf",
             ],
-            'admission_letter'  => [
+            'admission_letter'    => [
                 DocumentHelper::buildAdmissionLetter($student),
                 "admission-letter-{$reg}.pdf",
             ],
-            'registration_form' => [
+            'registration_form'   => [
                 DocumentHelper::buildRegistrationForm($student),
                 "registration-form-{$reg}.pdf",
+            ],
+            'english_proficiency' => [
+                DocumentHelper::buildEnglishProficiencyCertificate($student),
+                "English_Proficiency_{$reg}.pdf",
+            ],
+            'completed_modules'   => [
+                DocumentHelper::buildCompletedModulesReport($student, $modules),
+                "Completed_Modules_{$reg}.pdf",
             ],
         };
 
