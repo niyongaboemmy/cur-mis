@@ -510,6 +510,305 @@ class DocumentHelper
         HTML;
     }
 
+    public static function buildEnglishProficiencyCertificate(array $s, bool $preview = false): string
+    {
+        $header    = self::headerHtml();
+        $fullName  = strtoupper(trim(($s['fname'] ?? '') . ' ' . ($s['lname'] ?? '')));
+        $regnumber = htmlspecialchars($s['regnumber'] ?? '—', ENT_QUOTES);
+        $today     = date('d F Y');
+        $issueLoc  = 'TABA';
+
+        $qr = self::qrHtml("https://mis.cur.ac.rw/verify?doc=eng-prof&reg={$s['regnumber']}&d=" . date('Ymd'), 80);
+
+        $previewWatermark = $preview
+            ? '<div style="position:fixed;top:38%;left:10%;color:rgba(200,0,0,0.08);
+                           font-size:90pt;font-weight:bold;transform:rotate(-30deg);
+                           pointer-events:none;z-index:0;white-space:nowrap;">PREVIEW</div>'
+            : '';
+
+        return <<<HTML
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+        <meta charset="UTF-8">
+        <style>
+          * { box-sizing:border-box; margin:0; padding:0; }
+          body {
+            font-family: 'Times New Roman', Times, serif;
+            font-size: 11pt;
+            color: #000;
+            padding: 20px 30px;
+            position: relative;
+          }
+          .outer-border {
+            border: 6px double #1a3a6b;
+            padding: 30px 40px 28px 40px;
+            min-height: 600px;
+            position: relative;
+          }
+          .heading     { text-align:center; font-size:12pt; margin-bottom:6px; }
+          .title       { text-align:center; font-size:16pt; font-weight:bold;
+                         text-decoration:underline; margin:12px 0 28px; letter-spacing:0.5px; }
+          .body-text   { text-align:justify; font-size:11.5pt; line-height:1.8;
+                         margin-bottom:36px; }
+          .date-line   { text-align:center; margin-bottom:32px; font-size:11pt; }
+          .sign-block  { text-align:center; }
+          .sign-name   { font-weight:bold; font-size:11.5pt; }
+          .sign-title  { font-size:11pt; font-style:italic; margin-bottom:16px; }
+          .tagline     { text-align:center; font-style:italic; font-size:11pt; margin-top:20px; }
+          .qr-wrap     { position:absolute; bottom:30px; right:40px; }
+        </style>
+        </head>
+        <body>
+          {$previewWatermark}
+          {$header}
+          <div class="outer-border">
+            <p class="heading">Office of the Academic Registrar</p>
+            <p class="title">ENGLISH PROFICIENCY CERTIFICATE</p>
+
+            <p class="body-text">
+              This is to certify that the student <strong>{$fullName}</strong>,
+              Registration number <strong>{$regnumber}</strong>, has successfully
+              completed all modules for undergraduate studies at
+              <strong>Catholic University of Rwanda</strong> where the medium
+              of instruction is <strong>English</strong>.
+            </p>
+
+            <p class="date-line">Done at {$issueLoc} on {$today}</p>
+
+            <div class="sign-block">
+              <p class="sign-name">MUTAYOMBA Sylvestre</p>
+              <p class="sign-title">Academic Registrar</p>
+            </div>
+
+            <div class="qr-wrap">{$qr}</div>
+
+            <p class="tagline"><em>AUDI ET AUDE</em></p>
+          </div>
+        </body>
+        </html>
+        HTML;
+    }
+
+    /**
+     * Fetch all module marks for a student.
+     * Returns rows with module_code, module_name, level, module_credits, percentage, grade, is_exempted.
+     */
+    public static function fetchStudentModules(int $studentId): array
+    {
+        $db = Database::getInstance();
+
+        return $db->fetchAll(
+            "SELECT m.module_code, m.module_name, m.level, m.module_credits,
+                    mm.percentage, mm.grade, mm.is_exempted
+             FROM module_marks mm
+             LEFT JOIN modules m ON m.module_id = mm.module_id
+             WHERE mm.student_id = ?
+               AND (mm.percentage IS NOT NULL OR mm.is_exempted = 1)
+             ORDER BY m.level ASC, m.module_code ASC",
+            [$studentId]
+        );
+    }
+
+    public static function buildCompletedModulesReport(array $s, array $modules, bool $preview = false): string
+    {
+        $header     = self::headerHtml();
+        $fullName   = strtoupper(trim(($s['fname'] ?? '') . ' ' . ($s['lname'] ?? '')));
+        $regnumber  = htmlspecialchars($s['regnumber'] ?? '—', ENT_QUOTES);
+        $faculty    = htmlspecialchars(
+            isset($s['fac_name']) && $s['fac_name'] !== ''
+                ? 'Faculty of ' . self::normalizeFacultyName($s['fac_name'])
+                : ($s['faculty'] ?? '—'),
+            ENT_QUOTES
+        );
+        $department = htmlspecialchars($s['dep_name']   ?? $s['department'] ?? '—', ENT_QUOTES);
+        $option     = htmlspecialchars($s['option_name'] ?? '-', ENT_QUOTES);
+        $today      = date('d-m-y');
+        $issueLoc   = 'TABA';
+
+        $qr = self::qrHtml(
+            "https://mis.cur.ac.rw/verify?doc=modules&reg={$s['regnumber']}&d=" . date('Ymd'),
+            72
+        );
+
+        // Build table rows and compute totals
+        $tableRows    = '';
+        $totalModules = 0;
+        $totalCredits = 0;
+        $levelGroups  = [];  // level → [credits, passed, failed]
+
+        if (empty($modules)) {
+            $tableRows = '<tr><td colspan="6" style="text-align:center;color:#777;padding:8px 0;">
+                            No modules with marks found.
+                          </td></tr>';
+        } else {
+            foreach ($modules as $r) {
+                $code     = htmlspecialchars($r['module_code'] ?? '', ENT_QUOTES);
+                $name     = htmlspecialchars($r['module_name'] ?? '', ENT_QUOTES);
+                $level    = htmlspecialchars($r['level'] ?? '', ENT_QUOTES);
+                $credits  = (int) ($r['module_credits'] ?? 0);
+                $exempt   = (bool) ($r['is_exempted'] ?? false);
+                $pct      = $r['percentage'] !== null ? (float) $r['percentage'] : null;
+                $grade    = htmlspecialchars($r['grade'] ?? '—', ENT_QUOTES);
+
+                if ($exempt) {
+                    $marksDisplay  = 'Exempted';
+                    $statusDisplay = '<span style="color:#555;">Exempted</span>';
+                } elseif ($pct !== null) {
+                    $marksDisplay  = (string) round($pct) . '%';
+                    $statusDisplay = $pct >= 50
+                        ? '<span style="color:#1a7a1a;font-weight:bold;">Pass</span>'
+                        : '<span style="color:#cc0000;font-weight:bold;">Fail</span>';
+                } else {
+                    $marksDisplay  = '—';
+                    $statusDisplay = '—';
+                }
+
+                $tableRows .= "<tr>
+                    <td>{$code}</td>
+                    <td>{$name}</td>
+                    <td style=\"text-align:center;\">{$level}</td>
+                    <td style=\"text-align:center;\">{$credits}</td>
+                    <td style=\"text-align:center;\">{$marksDisplay}</td>
+                    <td style=\"text-align:center;\">{$statusDisplay}</td>
+                </tr>";
+
+                $totalModules++;
+                if (!$exempt) $totalCredits += $credits;
+
+                $lvl = $r['level'] ?? 'N/A';
+                if (!isset($levelGroups[$lvl])) {
+                    $levelGroups[$lvl] = ['credits' => 0, 'passed' => 0, 'failed' => 0, 'exempted' => 0];
+                }
+                if ($exempt) {
+                    $levelGroups[$lvl]['exempted']++;
+                } elseif ($pct !== null) {
+                    $levelGroups[$lvl]['credits'] += $credits;
+                    if ($pct >= 50) $levelGroups[$lvl]['passed']++;
+                    else            $levelGroups[$lvl]['failed']++;
+                }
+            }
+        }
+
+        // Level breakdown rows
+        $levelRows = '';
+        if (!empty($levelGroups)) {
+            foreach ($levelGroups as $lvl => $data) {
+                $lvlEsc   = htmlspecialchars((string) $lvl, ENT_QUOTES);
+                $levelRows .= "<tr>
+                    <td style=\"padding:3px 8px;\">Level {$lvlEsc}</td>
+                    <td style=\"padding:3px 8px;text-align:center;\">{$data['credits']} credits</td>
+                    <td style=\"padding:3px 8px;text-align:center;color:#1a7a1a;\">{$data['passed']} passed</td>
+                    <td style=\"padding:3px 8px;text-align:center;color:#cc0000;\">{$data['failed']} failed</td>
+                    <td style=\"padding:3px 8px;text-align:center;color:#555;\">{$data['exempted']} exempted</td>
+                </tr>";
+            }
+        } else {
+            $levelRows = '<tr><td colspan="5" style="color:#777;padding:4px 8px;">No level data.</td></tr>';
+        }
+
+        $previewWatermark = $preview
+            ? '<div style="position:fixed;top:38%;left:10%;color:rgba(200,0,0,0.08);
+                           font-size:90pt;font-weight:bold;transform:rotate(-30deg);
+                           pointer-events:none;z-index:0;white-space:nowrap;">PREVIEW</div>'
+            : '';
+
+        return <<<HTML
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+        <meta charset="UTF-8">
+        <style>
+          * { box-sizing:border-box; margin:0; padding:0; }
+          body {
+            font-family: 'Times New Roman', Times, serif;
+            font-size: 10.5pt;
+            color: #000;
+            padding: 28px 40px;
+            position: relative;
+          }
+          .doc-title   { text-align:center; font-weight:bold; font-size:13pt;
+                         margin:10px 0 16px; }
+          .info-lbl    { font-weight:bold; }
+          .modules-tbl { width:100%; border-collapse:collapse; margin:14px 0; font-size:9.5pt; }
+          .modules-tbl th {
+            background:#1a3a6b; color:#fff; padding:5px 8px;
+            border:1px solid #1a3a6b; font-size:9.5pt; text-align:left;
+          }
+          .modules-tbl td {
+            border:1px solid #ccc; padding:4px 8px; vertical-align:middle;
+          }
+          .modules-tbl tr:nth-child(even) td { background:#f5f7fa; }
+          .totals      { margin:8px 0; font-size:10.5pt; }
+          .total-line  { font-weight:bold; margin-bottom:4px; }
+          .breakdown   { margin-top:14px; }
+          .breakdown-tbl { border-collapse:collapse; font-size:9.5pt; margin-top:6px; }
+          .breakdown-tbl td { padding:3px 8px; }
+          .sign-block  { margin-top:22px; }
+          .sign-name   { font-weight:bold; font-size:11pt; }
+          .tagline     { text-align:center; font-style:italic; margin-top:16px; font-size:10.5pt; }
+        </style>
+        </head>
+        <body>
+          {$previewWatermark}
+          {$header}
+
+          <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:10px;">
+            <tr>
+              <td style="vertical-align:top;">
+                <p class="doc-title">Completed Modules Report</p>
+                <p><span class="info-lbl">Name:</span> {$fullName}</p>
+                <p><span class="info-lbl">Reg Number:</span> {$regnumber}</p>
+                <p><span class="info-lbl">Faculty:</span> {$faculty}</p>
+                <p><span class="info-lbl">Department:</span> {$department}</p>
+                <p><span class="info-lbl">Option:</span> {$option}</p>
+              </td>
+              <td width="80" style="vertical-align:top;text-align:right;">{$qr}</td>
+            </tr>
+          </table>
+
+          <p style="font-weight:bold;margin-top:10px;">Modules Overview</p>
+          <table class="modules-tbl">
+            <thead>
+              <tr>
+                <th>Module Code</th>
+                <th>Module Name</th>
+                <th style="text-align:center;">Level</th>
+                <th style="text-align:center;">Credits</th>
+                <th style="text-align:center;">Marks</th>
+                <th style="text-align:center;">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {$tableRows}
+            </tbody>
+          </table>
+
+          <div class="totals">
+            <p class="total-line">Total Modules Covered: {$totalModules} Modules</p>
+            <p class="total-line">Total Credits Covered: {$totalCredits} Credits</p>
+          </div>
+
+          <div class="breakdown">
+            <p style="font-weight:bold;">Level Breakdown</p>
+            <table class="breakdown-tbl">
+              <tbody>{$levelRows}</tbody>
+            </table>
+          </div>
+
+          <div class="sign-block">
+            <p>Done at {$issueLoc}: {$today}</p>
+            <br>
+            <p class="sign-name">MUTAYOMBA Sylvestre</p>
+            <p>Academic Registrar</p>
+          </div>
+
+          <p class="tagline"><em>Audi et Aude</em></p>
+        </body>
+        </html>
+        HTML;
+    }
+
     // ─── PDF / HTML streaming ─────────────────────────────────────────────────
 
     /**
