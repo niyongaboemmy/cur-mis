@@ -308,6 +308,130 @@ class ForumController extends BaseController
         $this->success($response, null, 'Post removed.');
     }
 
+    /* ══════════════════════════════════════════════════════════════════════
+     * Chat-room view — each category is a live room, messages are a flat stream
+     * backed by a single canonical thread. Polled by the client for ~realtime.
+     * ═══════════════════════════════════════════════════════════════════ */
+
+    // GET /api/forums/categories/:id/messages[?after_id=N]
+    /**
+     * Room message stream. With `after_id` returns only newer messages (used by
+     * the client's poll loop); without it returns the most recent 80, ascending.
+     */
+    public function roomMessages(Request $request, Response $response): never
+    {
+        $actor      = (array) $request->param('_auth_user');
+        $categoryId = (int) $request->param('id');
+
+        $cat = $this->categories->find($categoryId);
+        if (!$cat) {
+            $this->error($response, 'Room not found.', 404);
+        }
+        if (!$this->canSeeAudience((string) $cat['audience'], $actor)) {
+            $this->error($response, 'You do not have access to this room.', 403);
+        }
+
+        $threadId = $this->roomThreadId($categoryId, (string) $cat['name'], (int) $actor['id']);
+        $afterId  = (int) ($request->query('after_id') ?? 0);
+
+        if ($afterId > 0) {
+            $rows = $this->db->fetchAll(
+                "SELECT p.id, p.body, p.created_by, p.created_at,
+                        u.full_name AS author_name, u.photo AS author_photo, r.name AS author_role
+                 FROM forum_posts p
+                 LEFT JOIN users u ON u.id = p.created_by
+                 LEFT JOIN roles r ON r.id = u.role_id
+                 WHERE p.thread_id = ? AND p.is_deleted = 0 AND p.id > ?
+                 ORDER BY p.id ASC",
+                [$threadId, $afterId]
+            );
+        } else {
+            $rows = array_reverse($this->db->fetchAll(
+                "SELECT p.id, p.body, p.created_by, p.created_at,
+                        u.full_name AS author_name, u.photo AS author_photo, r.name AS author_role
+                 FROM forum_posts p
+                 LEFT JOIN users u ON u.id = p.created_by
+                 LEFT JOIN roles r ON r.id = u.role_id
+                 WHERE p.thread_id = ? AND p.is_deleted = 0
+                 ORDER BY p.id DESC
+                 LIMIT 80",
+                [$threadId]
+            ));
+        }
+
+        $this->success($response, [
+            'room_thread_id' => $threadId,
+            'messages'       => $rows,
+            'can_moderate'   => $this->canModerate($actor),
+            'me'             => (int) $actor['id'],
+        ], 'Messages fetched.');
+    }
+
+    // POST /api/forums/categories/:id/messages   body: { body }
+    public function postRoomMessage(Request $request, Response $response): never
+    {
+        $actor      = (array) $request->param('_auth_user');
+        $categoryId = (int) $request->param('id');
+        $body       = $request->body();
+
+        $cat = $this->categories->find($categoryId);
+        if (!$cat || !(int) $cat['is_active']) {
+            $this->error($response, 'Room not found.', 404);
+        }
+        if (!$this->canSeeAudience((string) $cat['audience'], $actor)) {
+            $this->error($response, 'You do not have access to this room.', 403);
+        }
+
+        $text = trim((string) ($body['body'] ?? ''));
+        if ($text === '') {
+            $this->error($response, 'Message cannot be empty.', 422);
+        }
+        if (mb_strlen($text) > 4000) {
+            $text = mb_substr($text, 0, 4000);
+        }
+
+        $threadId = $this->roomThreadId($categoryId, (string) $cat['name'], (int) $actor['id']);
+
+        $postId = (int) $this->posts->create([
+            'thread_id'  => $threadId,
+            'body'       => $text,
+            'created_by' => (int) $actor['id'],
+        ]);
+        $this->threads->touch($threadId);
+
+        $msg = $this->db->fetchOne(
+            "SELECT p.id, p.body, p.created_by, p.created_at,
+                    u.full_name AS author_name, u.photo AS author_photo, r.name AS author_role
+             FROM forum_posts p
+             LEFT JOIN users u ON u.id = p.created_by
+             LEFT JOIN roles r ON r.id = u.role_id
+             WHERE p.id = ?",
+            [$postId]
+        );
+        $this->success($response, $msg, 'Message sent.', 201);
+    }
+
+    /**
+     * Get (or lazily create) the canonical message thread that backs a category's
+     * chat room — the oldest non-deleted thread, else a fresh one.
+     */
+    private function roomThreadId(int $categoryId, string $name, int $actorId): int
+    {
+        $row = $this->db->fetchOne(
+            "SELECT id FROM forum_threads WHERE category_id = ? AND is_deleted = 0 ORDER BY id ASC LIMIT 1",
+            [$categoryId]
+        );
+        if ($row && !empty($row['id'])) {
+            return (int) $row['id'];
+        }
+        return (int) $this->threads->create([
+            'category_id'  => $categoryId,
+            'title'        => $name !== '' ? $name : 'Room',
+            'created_by'   => $actorId ?: null,
+            'last_post_at' => date('Y-m-d H:i:s'),
+        ]);
+    }
+
     /* ── helpers ──────────────────────────────────────────────────────────── */
 
     private function canModerate(array $actor): bool

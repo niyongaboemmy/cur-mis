@@ -45,6 +45,24 @@ export interface ForumPost {
   updated_at:   string
 }
 
+export interface ForumMessage {
+  id:           number
+  body:         string
+  created_by:   number | null
+  author_name:  string | null
+  author_photo: string | null
+  author_role:  string | null
+  created_at:   string
+  pending?:     boolean
+}
+
+export interface RoomMessages {
+  room_thread_id: number
+  messages:       ForumMessage[]
+  can_moderate:   boolean
+  me:             number
+}
+
 export interface CategoryInput {
   name:         string
   description?: string | null
@@ -77,4 +95,13 @@ export const forumService = {
   reply: (threadId: number, body: string) =>
     api.post<ForumPost>(`/api/forums/threads/${threadId}/posts`, { body }),
   deletePost: (id: number) => api.delete<void>(`/api/forums/posts/${id}`),
+
+  // Chat-room view (live message stream per category)
+  roomMessages: (categoryId: number, afterId?: number) =>
+    api.get<RoomMessages>(
+      `/api/forums/categories/${categoryId}/messages`,
+      afterId ? { after_id: afterId } : {},
+    ),
+  sendMessage: (categoryId: number, body: string) =>
+    api.post<ForumMessage>(`/api/forums/categories/${categoryId}/messages`, { body }),
 }

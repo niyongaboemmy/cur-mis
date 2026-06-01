@@ -18,6 +18,9 @@ $router->group('/api/forums', function ($router) {
     // Read + participate — VIEW_FORUMS.
     $router->group('', function ($r) {
         $r->get('/categories',                 [ForumController::class, 'listCategories']);
+        // Chat-room view (live message stream per category)
+        $r->get('/categories/:id/messages',    [ForumController::class, 'roomMessages']);
+        $r->post('/categories/:id/messages',   [ForumController::class, 'postRoomMessage']);
         $r->get('/categories/:id/threads',     [ForumController::class, 'listThreads']);
         $r->post('/categories/:id/threads',    [ForumController::class, 'createThread']);
         $r->get('/threads/:id',                [ForumController::class, 'showThread']);
