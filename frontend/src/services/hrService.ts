@@ -1,6 +1,6 @@
 import { api } from '@/services/api'
 import type { PaginatedResponse } from '@/types'
-import type { HrEmployee, StaffQualification, StaffQualificationPayload } from '@/types/academic'
+import type { HrEmployee } from '@/types/academic'
 
 export interface FacetOption {
   value: string
@@ -210,6 +210,62 @@ export interface ActiveDeductionsResponse {
   total:      number
 }
 
+/* ── Faculty profile: qualifications & subjects ─────────────────────────── */
+
+export type QualificationType = 'Degree' | 'Certification' | 'Other'
+
+export interface StaffQualification {
+  id:             number
+  employee_id:    number
+  qual_type:      QualificationType
+  title:          string
+  field_of_study: string | null
+  institution:    string | null
+  year_obtained:  number | null
+  grade:          string | null
+  reference_no:   string | null
+  expiry_date:    string | null
+  document_url:   string | null
+  notes:          string | null
+  created_at:     string
+  updated_at:     string
+}
+
+export interface StaffQualificationPayload {
+  qual_type:       QualificationType
+  title:           string
+  field_of_study?: string | null
+  institution?:    string | null
+  year_obtained?:  number | null
+  grade?:          string | null
+  reference_no?:   string | null
+  expiry_date?:    string | null
+  document_url?:   string | null
+  notes?:          string | null
+}
+
+export type SubjectProficiency = 'Beginner' | 'Intermediate' | 'Advanced' | 'Expert'
+
+export interface StaffSubject {
+  id:               number
+  employee_id:      number
+  subject_name:     string
+  proficiency:      SubjectProficiency
+  years_experience: number | null
+  is_primary:       number | boolean
+  notes:            string | null
+  created_at:       string
+  updated_at:       string
+}
+
+export interface StaffSubjectPayload {
+  subject_name:      string
+  proficiency:       SubjectProficiency
+  years_experience?: number | null
+  is_primary?:       boolean
+  notes?:            string | null
+}
+
 /* ── Salary Payment types ───────────────────────────────────────────────── */
 
 export type PaymentMethod = 'Bank Transfer' | 'Cash' | 'MoMo'
@@ -268,20 +324,6 @@ export const hrService = {
   changeEmployeeStatus: (id: number | string, status: string) =>
     api.put<void>(`/api/employees/${id}`, { status }),
 
-  /* ── Staff Qualifications ────────────────────────────────────────── */
-
-  listQualifications: (empId: number | string, signal?: AbortSignal) =>
-    api.get<StaffQualification[]>(`/api/employees/${empId}/qualifications`, {}, signal),
-
-  addQualification: (empId: number | string, data: StaffQualificationPayload) =>
-    api.post<StaffQualification>(`/api/employees/${empId}/qualifications`, data),
-
-  updateQualification: (empId: number | string, qid: number, data: StaffQualificationPayload) =>
-    api.put<StaffQualification>(`/api/employees/${empId}/qualifications/${qid}`, data),
-
-  deleteQualification: (empId: number | string, qid: number) =>
-    api.delete<void>(`/api/employees/${empId}/qualifications/${qid}`),
-
   /* ── Payroll ─────────────────────────────────────────────────────────── */
 
   payrollList: (params: PayrollListParams = {}, signal?: AbortSignal) =>
@@ -334,6 +376,34 @@ export const hrService = {
 
   deleteEmployeeDeduction: (empId: number | string, id: number) =>
     api.delete<void>(`/api/hr/employees/${empId}/deductions/${id}`),
+
+  /* ── Faculty qualifications & credentials ────────────────────────────── */
+
+  listQualifications: (empId: number | string, signal?: AbortSignal) =>
+    api.get<StaffQualification[]>(`/api/hr/employees/${empId}/qualifications`, {}, signal),
+
+  addQualification: (empId: number | string, data: StaffQualificationPayload) =>
+    api.post<StaffQualification>(`/api/hr/employees/${empId}/qualifications`, data),
+
+  updateQualification: (empId: number | string, id: number, data: StaffQualificationPayload) =>
+    api.put<StaffQualification>(`/api/hr/employees/${empId}/qualifications/${id}`, data),
+
+  deleteQualification: (empId: number | string, id: number) =>
+    api.delete<void>(`/api/hr/employees/${empId}/qualifications/${id}`),
+
+  /* ── Teaching subjects / specialisations ─────────────────────────────── */
+
+  listSubjects: (empId: number | string, signal?: AbortSignal) =>
+    api.get<StaffSubject[]>(`/api/hr/employees/${empId}/subjects`, {}, signal),
+
+  addSubject: (empId: number | string, data: StaffSubjectPayload) =>
+    api.post<StaffSubject>(`/api/hr/employees/${empId}/subjects`, data),
+
+  updateSubject: (empId: number | string, id: number, data: StaffSubjectPayload) =>
+    api.put<StaffSubject>(`/api/hr/employees/${empId}/subjects/${id}`, data),
+
+  deleteSubject: (empId: number | string, id: number) =>
+    api.delete<void>(`/api/hr/employees/${empId}/subjects/${id}`),
 
   /* ── Payroll Config ──────────────────────────────────────────────────── */
 

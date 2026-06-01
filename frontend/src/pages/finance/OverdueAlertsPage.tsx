@@ -367,7 +367,7 @@ export default function OverdueAlertsPage() {
                         <td className="px-5 py-3.5 text-center">
                           {alert.email_sent
                             ? <CheckCircle2 className="w-4 h-4 text-green-500 mx-auto" />
-                            : <AlertTriangle className="w-4 h-4 text-amber-400 mx-auto" title="Email not delivered" />
+                            : <span title="Email not delivered"><AlertTriangle className="w-4 h-4 text-amber-400 mx-auto" /></span>
                           }
                         </td>
                         <td className="px-5 py-3.5 text-xs text-ink-500">{alert.sent_by_name ?? '—'}</td>

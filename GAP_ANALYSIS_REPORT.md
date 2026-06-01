@@ -112,12 +112,18 @@ The current `DeliberationPage` is a read-only grid. Missing: committee-level gra
 
 | Requirement | Status | Notes |
 |---|---|---|
-| Faculty Profile Management (personal, qualifications, subjects) | ⚠️ | `StaffListPage`/`StaffDetailPage` covers personal info; qualifications/credentials tracking is absent |
+| Faculty Profile Management (personal, qualifications, subjects) | ✅ | `StaffDetailPage` → **Qualifications** tab (`StaffQualificationsTab`) adds structured degrees, certifications and teaching subjects on top of the existing personal info |
 | Course Assignment | ✅ | `ModuleAssignmentModel`, `ModulesAssignmentsPage` |
 
-#### Gap 7 — Faculty Qualifications & Credentials Tracking
+#### Gap 7 — Faculty Qualifications & Credentials Tracking — ✅ Resolved (2026-06-01)
 
-Staff profiles capture basic personal details but there is no structured data capture for: academic qualifications (degrees held, institution, year), professional certifications, or teaching specialisations. This is required for Faculty Profile Management as specified.
+The staff detail page now has a **Qualifications** tab backed by two new tables (`staff_qualifications`, `staff_subjects`) and a dedicated `StaffProfileController`:
+
+- **Academic qualifications** — degree/title, field of study, institution, year obtained, grade/class.
+- **Professional certifications** — issuing body, reference/licence number, expiry date (with an "expired" warning), optional document link.
+- **Teaching subjects / specialisations** — subject name, proficiency level, years of experience, primary-specialisation flag.
+
+Full CRUD is exposed under `/api/hr/employees/:emp_id/qualifications` and `/api/hr/employees/:emp_id/subjects`, gated by `VIEW_HR_EMPLOYEES` (read) and `MANAGE_HR_EMPLOYEES` (write). Migration: `2026_06_01_071_create_staff_qualifications_and_subjects.sql`.
 
 ---
 

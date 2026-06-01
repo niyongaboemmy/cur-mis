@@ -10,6 +10,8 @@ import {
   Plus,
   Lock,
   X,
+  LayoutGrid,
+  Users,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
@@ -23,8 +25,11 @@ import {
   type DeliberationCell,
   type DeliberationSession,
 } from "@/services/deliberationService";
+import DeliberationMarksView from "./DeliberationMarksView";
 import { useAuthStore } from "@/store/authStore";
 import { PERMISSIONS } from "@/constants/permissions";
+
+type DeliberationMode = "grid" | "marks";
 
 const MODULE_COL_COUNT = 6; // CAT/60, FAT/40, TOT/100, CP, Grade, Verdict
 
@@ -78,6 +83,9 @@ export default function DeliberationPage() {
                  || authUser?.role === 'superadmin'
 
   const qc = useQueryClient()
+
+  /* ── view mode ───────────────────────────────────────────────── */
+  const [mode, setMode] = useState<DeliberationMode>("grid")
 
   /* ── session panel state ─────────────────────────────────────── */
   const [sessionsOpen, setSessionsOpen] = useState(false)
@@ -361,13 +369,38 @@ export default function DeliberationPage() {
           <h2 className="text-lg font-bold text-ink-900 dark:text-white">
             Deliberation
           </h2>
-          <p className="text-[13px] text-ink-500">
-            Per-program deliberation grid — every active student on the rows,
-            every module in the program's curriculum on the columns. Cells stay
-            empty until a registration & marks exist.
+          <p className="text-[13px] text-ink-500 max-w-2xl">
+            {mode === "grid"
+              ? `Per-program deliberation grid — every active student on the rows, every module in the program's curriculum on the columns. Cells stay empty until a registration & marks exist.`
+              : `Every student that has a recorded mark, with each mark mapped to its module, program and department. Use this to review all marks regardless of registration.`}
           </p>
+          {/* Mode toggle */}
+          <div className="inline-flex mt-3 rounded-lg border border-ink-200 dark:border-ink-700 p-0.5 bg-ink-50 dark:bg-ink-800">
+            <button
+              onClick={() => setMode("grid")}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-[12.5px] rounded-md transition-colors ${
+                mode === "grid"
+                  ? "bg-white dark:bg-ink-700 shadow-sm text-brand font-semibold"
+                  : "text-ink-500 hover:text-ink-800 dark:hover:text-ink-100"
+              }`}
+            >
+              <LayoutGrid className="w-3.5 h-3.5" /> Program grid
+            </button>
+            <button
+              onClick={() => setMode("marks")}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-[12.5px] rounded-md transition-colors ${
+                mode === "marks"
+                  ? "bg-white dark:bg-ink-700 shadow-sm text-brand font-semibold"
+                  : "text-ink-500 hover:text-ink-800 dark:hover:text-ink-100"
+              }`}
+            >
+              <Users className="w-3.5 h-3.5" /> Students &amp; marks
+            </button>
+          </div>
         </div>
-        <div className="flex gap-2 items-center flex-wrap">
+        <div
+          className={`flex gap-2 items-center flex-wrap ${mode === "marks" ? "hidden" : ""}`}
+        >
           <select
             className="input input-sm w-44"
             value={yearId || ""}
@@ -448,6 +481,10 @@ export default function DeliberationPage() {
         </div>
       </div>
 
+      {mode === "marks" && <DeliberationMarksView />}
+
+      {mode === "grid" && (
+       <>
       {/* Deliberation sessions panel */}
       {sessionsOpen && (
         <div className="card p-4 space-y-3">
@@ -860,6 +897,8 @@ export default function DeliberationPage() {
             </button>
           </div>
         </div>
+      )}
+       </>
       )}
     </div>
   );

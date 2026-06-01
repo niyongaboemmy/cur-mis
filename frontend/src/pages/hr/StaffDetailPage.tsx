@@ -21,26 +21,15 @@ import {
   Save,
   CreditCard,
   GraduationCap,
-  Award,
-  BookOpen,
-  Plus,
-  Trash2,
-  ChevronDown,
-  ChevronUp,
 } from "lucide-react";
 import { hrService, type HrEmployeePayload } from "@/services/hrService";
 import { useAuthStore } from "@/store/authStore";
-import type { HrEmployee, StaffQualification, StaffQualificationPayload, QualificationType } from "@/types/academic";
+import type { HrEmployee } from "@/types/academic";
 import ModalPortal from "@/components/ui/ModalPortal";
 import { PERMISSIONS } from "@/constants/permissions";
+import StaffQualificationsTab from "./StaffQualificationsTab";
 
 type Tab = "overview" | "qualifications" | "attendance" | "documents";
-
-const QUAL_TYPES: { value: QualificationType; label: string; icon: React.ComponentType<{ className?: string }>; color: string }[] = [
-  { value: "Academic",               label: "Academic Degree",         icon: GraduationCap, color: "#0A2A5E" },
-  { value: "Certification",          label: "Professional Cert.",      icon: Award,         color: "#10B981" },
-  { value: "Teaching Specialisation",label: "Teaching Specialisation", icon: BookOpen,      color: "#F5C400" },
-];
 
 export default function StaffDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -67,7 +56,7 @@ export default function StaffDetailPage() {
   });
 
   const employee: HrEmployee | undefined = empQ.data?.data ?? undefined;
-  const qualifications: StaffQualification[] = qualQ.data?.data ?? [];
+  const qualifications = qualQ.data?.data ?? [];
 
   if (empQ.isLoading) {
     return (
@@ -169,8 +158,8 @@ export default function StaffDetailPage() {
       {/* Tabs */}
       <section className="card p-0 overflow-hidden">
         <div className="flex items-center gap-1 p-1.5 border-b border-ink-100 dark:border-ink-700 bg-ink-50/50 dark:bg-ink-700/20 overflow-x-auto">
-          <TabBtn active={tab === "overview"}       icon={UserIcon}      label="Overview"        onClick={() => setTab("overview")} />
-          <TabBtn active={tab === "qualifications"} icon={GraduationCap} label="Qualifications"  onClick={() => setTab("qualifications")}
+          <TabBtn active={tab === "overview"}       icon={UserIcon}       label="Overview"       onClick={() => setTab("overview")} />
+          <TabBtn active={tab === "qualifications"} icon={GraduationCap}  label="Qualifications" onClick={() => setTab("qualifications")}
             badge={qualifications.length > 0 ? qualifications.length : undefined} />
           <TabBtn active={tab === "attendance"}     icon={ClipboardCheck} label="Attendance"     onClick={() => setTab("attendance")} />
           <TabBtn active={tab === "documents"}      icon={FileText}       label="Documents"      onClick={() => setTab("documents")} />
@@ -179,12 +168,10 @@ export default function StaffDetailPage() {
         <div className="p-6">
           {tab === "overview" && <OverviewTab e={employee} />}
           {tab === "qualifications" && (
-            <QualificationsTab
-              employeeId={employee.id}
-              qualifications={qualifications}
-              loading={qualQ.isLoading}
-              canManage={canManage && user?.role === "superadmin" ||
-                (user?.permissions || []).includes(PERMISSIONS.MANAGE_HR_EMPLOYEES)}
+            <StaffQualificationsTab
+              empId={Number(employee.id)}
+              empName={employee.full_name || employee.emp_code}
+              canManage={canManage}
             />
           )}
           {tab === "attendance" && (
@@ -198,7 +185,7 @@ export default function StaffDetailPage() {
             <ComingSoon
               icon={FileText}
               title="Staff documents"
-              desc="Contracts, national IDs, qualifications, and HR uploads."
+              desc="Contracts, national IDs, and other HR uploads."
             />
           )}
         </div>
@@ -212,423 +199,6 @@ export default function StaffDetailPage() {
         />
       )}
     </div>
-  );
-}
-
-/* ─────────────────────────────────────────────────────────────
-   Qualifications Tab
-   ───────────────────────────────────────────────────────────── */
-function QualificationsTab({
-  employeeId,
-  qualifications,
-  loading,
-  canManage,
-}: {
-  employeeId: number
-  qualifications: StaffQualification[]
-  loading: boolean
-  canManage: boolean
-}) {
-  const [addOpen, setAddOpen]   = useState(false);
-  const [editItem, setEditItem] = useState<StaffQualification | null>(null);
-
-  const grouped = QUAL_TYPES.map((t) => ({
-    ...t,
-    items: qualifications.filter((q) => q.type === t.value),
-  }));
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center gap-2 py-10 text-ink-500">
-        <Loader2 className="w-4 h-4 animate-spin" /> Loading qualifications…
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-5">
-      {/* Header row */}
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h3 className="text-[15px] font-semibold text-ink-900 dark:text-white">
-            Qualifications &amp; Credentials
-          </h3>
-          <p className="text-[12px] text-ink-500 mt-0.5">
-            Academic degrees, professional certifications, and teaching specialisations.
-          </p>
-        </div>
-        {canManage && (
-          <button className="btn-primary btn-sm" onClick={() => setAddOpen(true)}>
-            <Plus className="w-3.5 h-3.5" /> Add qualification
-          </button>
-        )}
-      </div>
-
-      {qualifications.length === 0 ? (
-        <div className="py-14 flex flex-col items-center gap-3 text-center">
-          <div className="w-14 h-14 rounded-2xl bg-brand/10 text-brand flex items-center justify-center">
-            <GraduationCap className="w-6 h-6" />
-          </div>
-          <div>
-            <p className="text-[14px] font-semibold text-ink-800 dark:text-ink-100">No qualifications recorded</p>
-            <p className="text-[12px] text-ink-500 mt-1">
-              {canManage
-                ? 'Click "Add qualification" to record degrees, certifications or teaching specialisations.'
-                : "No qualifications have been added for this staff member yet."}
-            </p>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {grouped.map(({ value, label, icon: Icon, color, items }) =>
-            items.length === 0 ? null : (
-              <QualGroup
-                key={value}
-                label={label}
-                icon={Icon}
-                color={color}
-                items={items}
-                canManage={canManage}
-                onEdit={(q) => setEditItem(q)}
-                onDeleted={() => {}}
-                employeeId={employeeId}
-              />
-            )
-          )}
-        </div>
-      )}
-
-      {addOpen && (
-        <QualificationModal
-          employeeId={employeeId}
-          onClose={() => setAddOpen(false)}
-          onSaved={() => setAddOpen(false)}
-        />
-      )}
-      {editItem && (
-        <QualificationModal
-          employeeId={employeeId}
-          existing={editItem}
-          onClose={() => setEditItem(null)}
-          onSaved={() => setEditItem(null)}
-        />
-      )}
-    </div>
-  );
-}
-
-function QualGroup({
-  label, icon: Icon, color, items, canManage, onEdit, employeeId,
-}: {
-  label: string
-  icon: React.ComponentType<{ className?: string }>
-  color: string
-  items: StaffQualification[]
-  canManage: boolean
-  onEdit: (q: StaffQualification) => void
-  onDeleted: () => void
-  employeeId: number
-}) {
-  const [expanded, setExpanded] = useState(true);
-  const qc = useQueryClient();
-
-  const deleteMut = useMutation({
-    mutationFn: (qid: number) => hrService.deleteQualification(employeeId, qid),
-    onSuccess: () => {
-      toast.success("Qualification removed.");
-      qc.invalidateQueries({ queryKey: ["hr-employee-qualifications"] });
-    },
-    onError: () => toast.error("Failed to remove qualification."),
-  });
-
-  return (
-    <div className="rounded-xl border border-ink-100 dark:border-ink-700 overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setExpanded((e) => !e)}
-        className="w-full flex items-center gap-3 px-4 py-3 bg-ink-50/60 dark:bg-ink-700/30 hover:bg-ink-50 dark:hover:bg-ink-700/50 transition-colors"
-      >
-        <span className="flex items-center justify-center w-7 h-7 rounded-lg" style={{ backgroundColor: `${color}1A`, color }}>
-          <Icon className="w-4 h-4" />
-        </span>
-        <span className="text-[13px] font-semibold text-ink-800 dark:text-ink-100 flex-1 text-left">{label}</span>
-        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ color, backgroundColor: `${color}1A` }}>
-          {items.length}
-        </span>
-        {expanded ? <ChevronUp className="w-4 h-4 text-ink-400" /> : <ChevronDown className="w-4 h-4 text-ink-400" />}
-      </button>
-
-      {expanded && (
-        <div className="divide-y divide-ink-100 dark:divide-ink-700">
-          {items.map((q) => (
-            <div key={q.id} className="px-5 py-4 flex items-start gap-4 group">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <p className="text-[13.5px] font-semibold text-ink-900 dark:text-ink-100">{q.title}</p>
-                  {q.grade_result && (
-                    <span className="text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ color, backgroundColor: `${color}1A` }}>
-                      {q.grade_result}
-                    </span>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-[12px] text-ink-500">
-                  {q.institution && (
-                    <span className="inline-flex items-center gap-1">
-                      <Building2 className="w-3 h-3" /> {q.institution}
-                    </span>
-                  )}
-                  {q.field_of_study && (
-                    <span className="inline-flex items-center gap-1">
-                      <BookOpen className="w-3 h-3" /> {q.field_of_study}
-                    </span>
-                  )}
-                  {q.year_obtained && (
-                    <span className="inline-flex items-center gap-1">
-                      <Calendar className="w-3 h-3" /> {q.year_obtained}
-                    </span>
-                  )}
-                </div>
-                {q.description && (
-                  <p className="text-[12px] text-ink-500 mt-1.5 leading-relaxed">{q.description}</p>
-                )}
-              </div>
-              {canManage && (
-                <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button
-                    className="btn-secondary btn-sm"
-                    title="Edit"
-                    onClick={() => onEdit(q)}
-                  >
-                    <Pencil className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    className="btn-secondary btn-sm text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
-                    title="Delete"
-                    disabled={deleteMut.isPending}
-                    onClick={() => {
-                      if (confirm(`Remove "${q.title}"?`)) deleteMut.mutate(q.id);
-                    }}
-                  >
-                    {deleteMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ─────────────────────────────────────────────────────────────
-   Add / Edit Qualification Modal
-   ───────────────────────────────────────────────────────────── */
-function QualificationModal({
-  employeeId,
-  existing,
-  onClose,
-  onSaved,
-}: {
-  employeeId: number
-  existing?: StaffQualification
-  onClose: () => void
-  onSaved: () => void
-}) {
-  const qc = useQueryClient();
-  const isEdit = !!existing;
-
-  const [form, setForm] = useState<StaffQualificationPayload>({
-    type:           (existing?.type as QualificationType) ?? "Academic",
-    title:          existing?.title          ?? "",
-    institution:    existing?.institution    ?? "",
-    field_of_study: existing?.field_of_study ?? "",
-    year_obtained:  existing?.year_obtained  ?? "",
-    grade_result:   existing?.grade_result   ?? "",
-    description:    existing?.description    ?? "",
-  });
-
-  const set = <K extends keyof StaffQualificationPayload>(k: K, v: StaffQualificationPayload[K]) =>
-    setForm((p) => ({ ...p, [k]: v }));
-
-  const mut = useMutation({
-    mutationFn: () => {
-      const payload: StaffQualificationPayload = {
-        ...form,
-        institution:    form.institution    || undefined,
-        field_of_study: form.field_of_study || undefined,
-        year_obtained:  form.year_obtained !== "" && form.year_obtained !== null ? Number(form.year_obtained) : null,
-        grade_result:   form.grade_result   || undefined,
-        description:    form.description    || undefined,
-      };
-      return isEdit
-        ? hrService.updateQualification(employeeId, existing!.id, payload)
-        : hrService.addQualification(employeeId, payload);
-    },
-    onSuccess: () => {
-      toast.success(isEdit ? "Qualification updated." : "Qualification added.");
-      qc.invalidateQueries({ queryKey: ["hr-employee-qualifications"] });
-      onSaved();
-    },
-    onError: (e: any) => toast.error(e?.response?.data?.message ?? "Save failed"),
-  });
-
-  const F = ({ label, required: req, children }: { label: string; required?: boolean; children: React.ReactNode }) => (
-    <label className="block">
-      <span className="text-[12px] font-medium text-ink-700 dark:text-ink-300 mb-1 block">
-        {label}{req && <span className="text-red-500 ml-0.5">*</span>}
-      </span>
-      {children}
-    </label>
-  );
-
-  const selectedType = QUAL_TYPES.find((t) => t.value === form.type)!;
-
-  return (
-    <ModalPortal>
-      <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-ink-900/50 backdrop-blur-sm">
-        <div className="bg-white dark:bg-ink-800 rounded-xl shadow-xl w-full max-w-lg max-h-[92vh] overflow-hidden flex flex-col">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-ink-100 dark:border-ink-700">
-            <div>
-              <h3 className="text-[15px] font-semibold text-ink-900 dark:text-white">
-                {isEdit ? "Edit qualification" : "Add qualification"}
-              </h3>
-              <p className="text-[12px] text-ink-500">
-                {isEdit ? "Update the qualification details below." : "Record a degree, certification, or specialisation."}
-              </p>
-            </div>
-            <button onClick={onClose} className="icon-btn"><X className="w-4 h-4" /></button>
-          </div>
-
-          <form
-            onSubmit={(e) => { e.preventDefault(); mut.mutate(); }}
-            className="flex-1 overflow-y-auto p-6 space-y-4"
-          >
-            {/* Type selector — visual card picks */}
-            <div>
-              <span className="text-[12px] font-medium text-ink-700 dark:text-ink-300 mb-2 block">
-                Type <span className="text-red-500">*</span>
-              </span>
-              <div className="grid grid-cols-3 gap-2">
-                {QUAL_TYPES.map(({ value, label, icon: Icon, color }) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => set("type", value)}
-                    className={`flex flex-col items-center gap-1.5 p-3 rounded-lg border-2 transition-all text-center ${
-                      form.type === value
-                        ? "border-current shadow-sm"
-                        : "border-ink-100 dark:border-ink-700 hover:border-ink-200 dark:hover:border-ink-600"
-                    }`}
-                    style={form.type === value ? { borderColor: color, backgroundColor: `${color}0D` } : {}}
-                  >
-                    <span style={{ color: form.type === value ? color : undefined }}><Icon className="w-5 h-5" /></span>
-                    <span className="text-[11px] font-semibold leading-tight" style={{ color: form.type === value ? color : undefined }}>
-                      {label}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <F label="Title / Name" required>
-              <input
-                required
-                className="input"
-                placeholder={
-                  form.type === "Academic"
-                    ? "e.g. MSc Computer Science"
-                    : form.type === "Certification"
-                      ? "e.g. Oracle Certified Professional"
-                      : "e.g. Advanced Database Systems"
-                }
-                value={form.title}
-                onChange={(e) => set("title", e.target.value)}
-              />
-            </F>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <F label="Institution / Awarding body">
-                <input
-                  className="input"
-                  placeholder="e.g. University of Rwanda"
-                  value={form.institution ?? ""}
-                  onChange={(e) => set("institution", e.target.value)}
-                />
-              </F>
-              {form.type === "Academic" && (
-                <F label="Field of study">
-                  <input
-                    className="input"
-                    placeholder="e.g. Computer Science"
-                    value={form.field_of_study ?? ""}
-                    onChange={(e) => set("field_of_study", e.target.value)}
-                  />
-                </F>
-              )}
-              <F label="Year obtained">
-                <input
-                  type="number"
-                  min={1950}
-                  max={new Date().getFullYear()}
-                  className="input"
-                  placeholder={String(new Date().getFullYear())}
-                  value={form.year_obtained ?? ""}
-                  onChange={(e) => set("year_obtained", e.target.value)}
-                />
-              </F>
-              <F label="Grade / Result">
-                <input
-                  className="input"
-                  placeholder="e.g. First Class, Distinction"
-                  value={form.grade_result ?? ""}
-                  onChange={(e) => set("grade_result", e.target.value)}
-                />
-              </F>
-            </div>
-
-            <F label="Notes / Description">
-              <textarea
-                rows={3}
-                className="input resize-none"
-                placeholder="Any additional details…"
-                value={form.description ?? ""}
-                onChange={(e) => set("description", e.target.value)}
-              />
-            </F>
-
-            {/* Preview chip */}
-            {form.title && (
-              <div className="rounded-lg border border-ink-100 dark:border-ink-700 p-3 bg-ink-50/50 dark:bg-ink-700/20">
-                <p className="text-[11px] uppercase tracking-wider text-ink-400 mb-1.5">Preview</p>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span style={{ color: selectedType.color }}><selectedType.icon className="w-4 h-4" /></span>
-                  <span className="text-[13px] font-semibold text-ink-900 dark:text-ink-100">{form.title}</span>
-                  {form.grade_result && (
-                    <span className="text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ color: selectedType.color, backgroundColor: `${selectedType.color}1A` }}>
-                      {form.grade_result}
-                    </span>
-                  )}
-                </div>
-                {(form.institution || form.year_obtained) && (
-                  <p className="text-[12px] text-ink-500 mt-1">
-                    {[form.institution, form.year_obtained].filter(Boolean).join(" · ")}
-                  </p>
-                )}
-              </div>
-            )}
-
-            <div className="flex justify-end gap-2 pt-2 border-t border-ink-100 dark:border-ink-700">
-              <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-              <button type="submit" disabled={mut.isPending} className="btn-primary">
-                {mut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                {isEdit ? "Save changes" : "Add qualification"}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </ModalPortal>
   );
 }
 

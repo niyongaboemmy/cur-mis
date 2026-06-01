@@ -14,6 +14,8 @@ import {
   Search,
   Bell,
   MessageSquare,
+  Megaphone,
+  MessagesSquare,
   ShieldCheck,
   LayoutDashboard,
   ClipboardCheck,
@@ -435,6 +437,16 @@ const NAV_TREE: NavNode[] = [
         label: "Deliberation",
         permissions: [PERMISSIONS.MANAGE_EXAMS],
       },
+      {
+        to: "/exams/grading-scale",
+        label: "Grading scale & GPA",
+        permissions: [PERMISSIONS.MANAGE_GRADING_SCALES],
+      },
+      {
+        to: "/exams/revaluations",
+        label: "Revaluations",
+        permissions: [PERMISSIONS.MANAGE_REVALUATIONS],
+      },
       // Student self-service — gated by VIEW_MY_MODULES, hidden from admins
       // who already have the admin views above.
       {
@@ -549,6 +561,20 @@ const ADMIN_TREE: NavNode[] = [
     permissions: [PERMISSIONS.SEND_MESSAGES],
   },
   {
+    id: "announcements",
+    label: "Announcements",
+    icon: Megaphone,
+    to: "/announcements",
+    permissions: [PERMISSIONS.VIEW_ANNOUNCEMENTS],
+  },
+  {
+    id: "forums",
+    label: "Forums",
+    icon: MessagesSquare,
+    to: "/forums",
+    permissions: [PERMISSIONS.VIEW_FORUMS],
+  },
+  {
     id: "logs",
     label: "System logs",
     icon: Activity,
@@ -559,6 +585,10 @@ const ADMIN_TREE: NavNode[] = [
 
 const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
   "/messages": { title: "Messages", sub: "Internal communications" },
+  "/announcements": { title: "Announcements", sub: "Exam schedules, results, holidays and notices" },
+  "/exams/grading-scale": { title: "Grading scale & GPA", sub: "Configure grade bands and grade points" },
+  "/exams/revaluations": { title: "Revaluation requests", sub: "Review and process result re-marks" },
+  "/forums": { title: "Discussion forums", sub: "Community discussions" },
   "/": {
     title: "Admin Dashboard",
     sub: "Welcome back to Catholic University of Rwanda",

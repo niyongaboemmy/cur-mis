@@ -89,7 +89,7 @@ export default function FinesManagementPage() {
 
   // ── Mutations ─────────────────────────────────────────────────────────────
 
-  const saveMut = useMutation({
+  const saveMut = useMutation<any, any, FormState>({
     mutationFn: (f: FormState) => {
       if (isEditing && editingId !== null) {
         return finesService.update(editingId, {
