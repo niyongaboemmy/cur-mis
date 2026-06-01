@@ -18,6 +18,11 @@ import {
   type MyMarksRow,
   type MyMarksTotals,
 } from "@/services/marksService";
+import { gradeService } from "@/services/gradeService";
+import {
+  studentIdService,
+  type StudentIdCard,
+} from "@/services/studentIdService";
 import { transcriptService } from "@/services/transcriptService";
 import { academicService } from "@/services/academicService";
 import {
@@ -72,6 +77,7 @@ import {
   Network,
   AlertCircle,
   UploadCloud,
+  RefreshCw,
 } from "lucide-react";
 import ModalPortal from "@/components/ui/ModalPortal";
 import UserAccountPanel from "@/components/account/UserAccountPanel";
@@ -88,7 +94,8 @@ type Tab =
   | "documents"
   | "curriculum"
   | "finance"
-  | "transcript";
+  | "transcript"
+  | "idcard";
 const VALID_TABS: readonly Tab[] = [
   "overview",
   "attendance",
@@ -96,6 +103,7 @@ const VALID_TABS: readonly Tab[] = [
   "curriculum",
   "finance",
   "transcript",
+  "idcard",
 ] as const;
 
 interface StudentDetailsPageProps {
@@ -295,6 +303,14 @@ export default function StudentDetailsPage({
           icon={FileText}
           label="Transcript"
         />
+        {!selfMode && (
+          <TabButton
+            active={tab === "idcard"}
+            onClick={() => setTab("idcard")}
+            icon={CreditCard}
+            label="ID Card"
+          />
+        )}
       </div>
 
       {/* Tab Content */}
@@ -317,6 +333,7 @@ export default function StudentDetailsPage({
           />
         )}
         {tab === "transcript" && <TranscriptTab student={student} />}
+        {tab === "idcard" && !selfMode && <IdCardTab student={student} />}
       </div>
 
       {!selfMode && isEditing && (
@@ -4587,6 +4604,12 @@ function TranscriptTab({ student }: { student: any }) {
     enabled: !!studentId,
   });
 
+  const gpaQ = useQuery({
+    queryKey: ["student-gpa", studentId],
+    queryFn: () => gradeService.gpaById(studentId as number),
+    enabled: !!studentId,
+  });
+
   const requestsQ = useQuery({
     queryKey: ["transcript-requests-student", studentId],
     queryFn: () => transcriptService.list({ search: student?.regnumber }),
@@ -4688,6 +4711,12 @@ function TranscriptTab({ student }: { student: any }) {
           icon={<GraduationCap className="w-4 h-4" />}
           label="Overall grade"
           value={totals?.overall_grade ?? "—"}
+        />
+        <TStat
+          icon={<GraduationCap className="w-4 h-4" />}
+          label="CGPA"
+          value={gpaQ.data?.data?.cgpa != null ? gpaQ.data.data.cgpa.toFixed(2) : "—"}
+          highlight
         />
         <TStat
           icon={<CheckCircle className="w-4 h-4" />}
@@ -4892,4 +4921,181 @@ function tFmt(v: string | number | null | undefined): string {
   if (v === null || v === undefined || v === "") return "—";
   const n = Number(v);
   return Number.isFinite(n) ? String(n) : "—";
+}
+
+/* ─── ID Card tab ─────────────────────────────────────────────────────── */
+
+function IdCardTab({ student }: { student: any }) {
+  const studentId = student?.id as number | string | undefined;
+  const authUser = useAuthStore((s) => s.user);
+  const canManage =
+    ["superadmin", "admin"].includes(authUser?.role ?? "") ||
+    (authUser?.permissions ?? []).includes(PERMISSIONS.MANAGE_STUDENT_IDS);
+
+  const qc = useQueryClient();
+  const [preview, setPreview] = useState<string | null>(null);
+
+  const histQ = useQuery({
+    queryKey: ["student-id-card", studentId],
+    queryFn: () => studentIdService.history(studentId as number),
+    enabled: !!studentId,
+  });
+
+  const issueMut = useMutation({
+    mutationFn: () => studentIdService.issue(studentId as number),
+    onSuccess: () => {
+      toast.success("ID card issued.");
+      qc.invalidateQueries({ queryKey: ["student-id-card", studentId] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? "Could not issue card."),
+  });
+
+  const revokeMut = useMutation({
+    mutationFn: (cardId: number) => studentIdService.revoke(cardId),
+    onSuccess: () => {
+      toast.success("ID card revoked.");
+      qc.invalidateQueries({ queryKey: ["student-id-card", studentId] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? "Could not revoke card."),
+  });
+
+  const downloadMut = useMutation({
+    mutationFn: () => studentIdService.download(studentId as number),
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? "Could not download card."),
+  });
+
+  const previewMut = useMutation({
+    mutationFn: () => studentIdService.preview(studentId as number),
+    onSuccess: (res) => setPreview(res.data?.html ?? null),
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? "Could not load preview."),
+  });
+
+  if (!studentId) {
+    return (
+      <div className="card p-8 text-center text-ink-400">
+        This student record is missing an internal id, so an ID card cannot be generated.
+      </div>
+    );
+  }
+
+  if (histQ.isLoading) {
+    return (
+      <div className="card p-8 text-center">
+        <Loader2 className="w-6 h-6 animate-spin mx-auto text-brand" />
+      </div>
+    );
+  }
+
+  const active: StudentIdCard | null = histQ.data?.data?.active ?? null;
+  const history: StudentIdCard[] = histQ.data?.data?.history ?? [];
+  const expired = active ? new Date(active.expiry_date) < new Date() : false;
+
+  return (
+    <div className="space-y-4">
+      <div className="card p-4 flex flex-wrap items-center gap-4">
+        <div className="w-10 h-10 rounded-xl bg-brand/10 text-brand grid place-items-center">
+          <CreditCard className="w-5 h-5" />
+        </div>
+        <div className="flex-1 min-w-[200px]">
+          <h3 className="font-semibold text-ink-900 dark:text-ink-50">Student ID card</h3>
+          {active ? (
+            <p className="text-[13px] text-ink-500">
+              Barcode <span className="font-mono">{active.barcode}</span> · issued{" "}
+              {new Date(active.issue_date).toLocaleDateString()} · expires{" "}
+              <span className={expired ? "text-red-600 font-medium" : ""}>
+                {new Date(active.expiry_date).toLocaleDateString()}
+              </span>
+              {expired && " (expired)"}
+            </p>
+          ) : (
+            <p className="text-[13px] text-ink-400">No active card. Issue one to enable printing.</p>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 ml-auto">
+          {active && (
+            <>
+              <button className="btn-ghost btn-sm" disabled={previewMut.isPending} onClick={() => previewMut.mutate()}>
+                {previewMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Eye className="w-3.5 h-3.5" />}
+                Preview
+              </button>
+              <button className="btn-primary btn-sm" disabled={downloadMut.isPending} onClick={() => downloadMut.mutate()}>
+                {downloadMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                {downloadMut.isPending ? "Preparing…" : "Print / PDF"}
+              </button>
+            </>
+          )}
+          {canManage && (
+            <button className="btn-ghost btn-sm" disabled={issueMut.isPending} onClick={() => issueMut.mutate()}>
+              {issueMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+              {active ? "Re-issue" : "Issue card"}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* History */}
+      {history.length > 0 && (
+        <div className="card overflow-hidden">
+          <div className="px-4 py-2 border-b border-ink-100 dark:border-ink-700 bg-ink-50 dark:bg-ink-800/40 text-[12px] font-semibold text-ink-700 dark:text-ink-200">
+            Issuance history
+          </div>
+          <table className="w-full text-left text-[13px]">
+            <thead>
+              <tr className="bg-ink-50/60 dark:bg-ink-800/30 border-b border-ink-100 dark:border-ink-700 text-[10px] uppercase text-ink-400">
+                <th className="px-3 py-2 font-bold">Barcode</th>
+                <th className="px-3 py-2 font-bold">Issued</th>
+                <th className="px-3 py-2 font-bold">Expires</th>
+                <th className="px-3 py-2 font-bold">Status</th>
+                {canManage && <th className="px-3 py-2 font-bold text-right">Actions</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {history.map((c) => (
+                <tr key={c.id} className="border-b border-ink-50 dark:border-ink-800/60">
+                  <td className="px-3 py-2 font-mono text-ink-600 dark:text-ink-300">{c.barcode}</td>
+                  <td className="px-3 py-2">{new Date(c.issue_date).toLocaleDateString()}</td>
+                  <td className="px-3 py-2">{new Date(c.expiry_date).toLocaleDateString()}</td>
+                  <td className="px-3 py-2">
+                    {Number(c.is_active)
+                      ? <span className="text-emerald-600 font-medium">Active</span>
+                      : <span className="text-ink-400">Revoked</span>}
+                  </td>
+                  {canManage && (
+                    <td className="px-3 py-2 text-right">
+                      {Number(c.is_active) === 1 && (
+                        <button
+                          className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30 text-red-500"
+                          title="Revoke"
+                          disabled={revokeMut.isPending}
+                          onClick={() => revokeMut.mutate(c.id)}
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Preview modal */}
+      {preview !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/60 backdrop-blur-sm p-4">
+          <div className="card w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-ink-100 dark:border-ink-700">
+              <h3 className="font-semibold text-ink-900 dark:text-ink-50">ID card preview</h3>
+              <button className="p-1 text-ink-400 hover:text-ink-700" onClick={() => setPreview(null)}>
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <iframe srcDoc={preview} title="ID card preview" className="w-full flex-1 min-h-[420px] bg-white" />
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }

@@ -40,7 +40,7 @@ import AppraisalPage from "@/pages/hr/AppraisalPage";
 // Academic
 import AcademicSettingsPage from "@/pages/academic/AcademicSettingsPage";
 import AcademicsManagementPage from "@/pages/academic/AcademicsManagementPage";
-import GradingScalePage from "@/pages/academic/GradingScalePage";
+import AcademicGradingScalePage from "@/pages/academic/GradingScalePage";
 import TranscriptRequestsPage from "@/pages/academic/TranscriptRequestsPage";
 import GraduandManagementPage from "@/pages/academic/GraduandManagementPage";
 import AcademicCertificatesPage from "@/pages/academic/AcademicCertificatesPage";
@@ -78,10 +78,16 @@ import MyRegistrationsPage from "@/pages/modules/MyRegistrationsPage";
 
 // Messaging
 import MessagesPage from "@/pages/messaging/MessagesPage";
+import AnnouncementsPage from "@/pages/announcements/AnnouncementsPage";
+import ForumsPage from "@/pages/forums/ForumsPage";
+import ForumThreadPage from "@/pages/forums/ForumThreadPage";
+import VerifyStudentPage from "@/pages/public/VerifyStudentPage";
 // Placeholders still in use for modules not yet wired up
 import ExamSchedulesPage from "@/pages/exam/ExamSchedulesPage";
 import ExamResultsPage from "@/pages/exam/ExamResultsPage";
 import DeliberationPage from "@/pages/exam/DeliberationPage";
+import GradingScalePage from "@/pages/exam/GradingScalePage";
+import RevaluationsPage from "@/pages/exam/RevaluationsPage";
 
 // Placeholders
 import ProgramsPage from "@/pages/placeholders/ProgramsPage";
@@ -128,6 +134,7 @@ function App() {
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/apply" element={<ApplyPage />} />
           <Route path="/apply/track" element={<TrackApplicationPage />} />
+          <Route path="/verify/student" element={<VerifyStudentPage />} />
 
           {/* Protected — requires valid JWT in Zustand store */}
           <Route element={<ProtectedRoute />}>
@@ -139,6 +146,9 @@ function App() {
               <Route path="/home" element={<HomePage />} />
               <Route path="/profile" element={<UserProfilePage />} />
               <Route path="/messages" element={<MessagesPage />} />
+              <Route path="/announcements" element={<AnnouncementsPage />} />
+              <Route path="/forums" element={<ForumsPage />} />
+              <Route path="/forums/threads/:id" element={<ForumThreadPage />} />
 
               {/* ── Administration ── */}
               <Route
@@ -297,7 +307,7 @@ function App() {
               <Route
                 element={<ProtectedRoute requiredPermissions={[PERMISSIONS.VIEW_SYSTEM_BASICS]} />}
               >
-                <Route path="/academic/grading-scale" element={<GradingScalePage />} />
+                <Route path="/academic/grading-scale" element={<AcademicGradingScalePage />} />
               </Route>
 
               {/* ── Transcript Requests ── */}
@@ -564,6 +574,26 @@ function App() {
                   path="/exams/deliberation"
                   element={<DeliberationPage />}
                 />
+              </Route>
+
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={[PERMISSIONS.MANAGE_GRADING_SCALES]}
+                  />
+                }
+              >
+                <Route path="/exams/grading-scale" element={<GradingScalePage />} />
+              </Route>
+
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={[PERMISSIONS.MANAGE_REVALUATIONS]}
+                  />
+                }
+              >
+                <Route path="/exams/revaluations" element={<RevaluationsPage />} />
               </Route>
 
               {/* ── System Logs ── */}

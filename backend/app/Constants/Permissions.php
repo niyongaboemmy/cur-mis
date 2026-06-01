@@ -21,6 +21,7 @@ class Permissions
     // Academic Registry
     public const VIEW_STUDENTS = 'VIEW_STUDENTS';
     public const MANAGE_STUDENTS = 'MANAGE_STUDENTS';
+    public const MANAGE_STUDENT_IDS = 'MANAGE_STUDENT_IDS';
     public const MANAGE_ACADEMICS = 'MANAGE_ACADEMICS';
     public const MANAGE_DEGREES = 'MANAGE_DEGREES';
     public const MANAGE_FACILITIES = 'MANAGE_FACILITIES';
@@ -41,6 +42,7 @@ class Permissions
     public const VIEW_MODULE_MARKS = 'VIEW_MODULE_MARKS';
     public const RECORD_MODULE_MARKS = 'RECORD_MODULE_MARKS';
     public const MANAGE_MODULE_MARKS = 'MANAGE_MODULE_MARKS';
+    public const MANAGE_GRADING_SCALES = 'MANAGE_GRADING_SCALES';
 
     // HR Management
     public const VIEW_HR_EMPLOYEES = 'VIEW_HR_EMPLOYEES';
@@ -81,6 +83,7 @@ class Permissions
     // Examinations
     public const VIEW_EXAMS = 'VIEW_EXAMS';
     public const MANAGE_EXAMS = 'MANAGE_EXAMS';
+    public const MANAGE_REVALUATIONS = 'MANAGE_REVALUATIONS';
 
     // Attendance
     public const VIEW_ATTENDANCE = 'VIEW_ATTENDANCE';
@@ -106,11 +109,18 @@ class Permissions
     public const MANAGE_MESSAGES    = 'MANAGE_MESSAGES';
     public const BROADCAST_MESSAGES = 'BROADCAST_MESSAGES';
 
+    // Announcements
+    public const VIEW_ANNOUNCEMENTS   = 'VIEW_ANNOUNCEMENTS';
+    public const MANAGE_ANNOUNCEMENTS = 'MANAGE_ANNOUNCEMENTS';
+
+    // Forums
+    public const VIEW_FORUMS     = 'VIEW_FORUMS';
+    public const MODERATE_FORUMS = 'MODERATE_FORUMS';
+
     // Academic Transcripts Management System (migration 066)
     public const MANAGE_TRANSCRIPT_REQUESTS   = 'MANAGE_TRANSCRIPT_REQUESTS';
     public const MANAGE_GRADUANDS             = 'MANAGE_GRADUANDS';
     public const VIEW_GRADUANDS               = 'VIEW_GRADUANDS';
-    public const MANAGE_GRADING_SCALES        = 'MANAGE_GRADING_SCALES';
     public const MANAGE_DELIBERATIONS         = 'MANAGE_DELIBERATIONS';
     public const MANAGE_ACADEMIC_CERTIFICATES = 'MANAGE_ACADEMIC_CERTIFICATES';
 
@@ -151,6 +161,7 @@ class Permissions
             self::MANAGE_SETTINGS,
             self::VIEW_STUDENTS,
             self::MANAGE_STUDENTS,
+            self::MANAGE_STUDENT_IDS,
             self::MANAGE_ACADEMICS,
             self::MANAGE_DEGREES,
             self::MANAGE_FACILITIES,
@@ -169,6 +180,7 @@ class Permissions
             self::VIEW_MODULE_MARKS,
             self::RECORD_MODULE_MARKS,
             self::MANAGE_MODULE_MARKS,
+            self::MANAGE_GRADING_SCALES,
             self::VIEW_HR_EMPLOYEES,
             self::MANAGE_HR_EMPLOYEES,
             self::MANAGE_LEAVE_TYPES,
@@ -200,6 +212,7 @@ class Permissions
             self::MANAGE_MERIT_LIST,
             self::VIEW_EXAMS,
             self::MANAGE_EXAMS,
+            self::MANAGE_REVALUATIONS,
             self::VIEW_ATTENDANCE,
             self::RECORD_ATTENDANCE,
             self::MANAGE_ATTENDANCE,
@@ -212,10 +225,13 @@ class Permissions
             self::SEND_MESSAGES,
             self::MANAGE_MESSAGES,
             self::BROADCAST_MESSAGES,
+            self::VIEW_ANNOUNCEMENTS,
+            self::MANAGE_ANNOUNCEMENTS,
+            self::VIEW_FORUMS,
+            self::MODERATE_FORUMS,
             self::MANAGE_TRANSCRIPT_REQUESTS,
             self::MANAGE_GRADUANDS,
             self::VIEW_GRADUANDS,
-            self::MANAGE_GRADING_SCALES,
             self::MANAGE_DELIBERATIONS,
             self::MANAGE_ACADEMIC_CERTIFICATES,
             self::VIEW_FINES,

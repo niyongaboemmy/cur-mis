@@ -18,8 +18,13 @@ use App\Constants\Permissions;
 $router->group('/api/deliberation', function ($router) {
     // Read-only: grid + session list
     $router->group('', function ($r) {
-        $r->get('',          [DeliberationController::class, 'grid']);
-        $r->get('/sessions', [DeliberationController::class, 'listSessions']);
+        $r->get('',               [DeliberationController::class, 'grid']);
+        $r->get('/sessions',      [DeliberationController::class, 'listSessions']);
+        // Marks-centric view: every student that has marks, mapped to
+        // module → program → department.
+        $r->get('/mark-filters',  [DeliberationController::class, 'markFilters']);
+        $r->get('/mark-students', [DeliberationController::class, 'markStudents']);
+        $r->get('/student-marks', [DeliberationController::class, 'studentMarks']);
     }, [new MaybePermissionMiddleware([
         Permissions::VIEW_MODULE_MARKS,
         Permissions::RECORD_MODULE_MARKS,
