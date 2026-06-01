@@ -179,3 +179,29 @@ export interface HrEmployee {
   bank?:          string | null
   bank_account?:  string | null
 }
+
+export type QualificationType = 'Academic' | 'Certification' | 'Teaching Specialisation'
+
+export interface StaffQualification {
+  id:             number
+  employee_id:    number
+  type:           QualificationType
+  title:          string
+  institution:    string | null
+  field_of_study: string | null
+  year_obtained:  number | string | null
+  grade_result:   string | null
+  description:    string | null
+  created_at:     string
+  updated_at:     string
+}
+
+export interface StaffQualificationPayload {
+  type:            QualificationType
+  title:           string
+  institution?:    string
+  field_of_study?: string
+  year_obtained?:  number | string | null
+  grade_result?:   string
+  description?:    string
+}

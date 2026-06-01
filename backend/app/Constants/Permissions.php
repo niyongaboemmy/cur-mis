@@ -122,6 +122,15 @@ class Permissions
     // Academic Analytics & Reporting Dashboard
     public const VIEW_ACADEMIC_ANALYTICS = 'VIEW_ACADEMIC_ANALYTICS';
 
+    // Gate Management Module (migration 069)
+    public const VIEW_GATE_LOGS = 'VIEW_GATE_LOGS';
+    public const MANAGE_GATE    = 'MANAGE_GATE';
+    public const ACCESS_GATE    = 'ACCESS_GATE';
+
+    // Employee Appraisal Module (migration 070)
+    public const VIEW_APPRAISALS   = 'VIEW_APPRAISALS';
+    public const MANAGE_APPRAISALS = 'MANAGE_APPRAISALS';
+
     /**
      * Get all predefined system permissions.
      *
@@ -213,6 +222,11 @@ class Permissions
             self::MANAGE_FINES,
             self::SEND_FEE_ALERTS,
             self::VIEW_ACADEMIC_ANALYTICS,
+            self::VIEW_GATE_LOGS,
+            self::MANAGE_GATE,
+            self::ACCESS_GATE,
+            self::VIEW_APPRAISALS,
+            self::MANAGE_APPRAISALS,
         ];
     }
 }

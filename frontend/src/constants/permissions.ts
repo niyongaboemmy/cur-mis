@@ -121,6 +121,15 @@ export const PERMISSIONS = {
 
   // Academic Analytics & Reporting Dashboard
   VIEW_ACADEMIC_ANALYTICS: 'VIEW_ACADEMIC_ANALYTICS',
+
+  // Gate Management Module (migration 069)
+  VIEW_GATE_LOGS: 'VIEW_GATE_LOGS',
+  MANAGE_GATE:    'MANAGE_GATE',
+  ACCESS_GATE:    'ACCESS_GATE',
+
+  // Employee Appraisal Module (migration 070)
+  VIEW_APPRAISALS:   'VIEW_APPRAISALS',
+  MANAGE_APPRAISALS: 'MANAGE_APPRAISALS',
 } as const;
 
 export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];

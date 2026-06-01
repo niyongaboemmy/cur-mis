@@ -35,6 +35,7 @@ import PayrollSlipPage from "@/pages/hr/PayrollSlipPage";
 import PaymentsPage from "@/pages/hr/PaymentsPage";
 import HrSettingsPage from "@/pages/hr/HrSettingsPage";
 import LeavePage from "@/pages/hr/LeavePage";
+import AppraisalPage from "@/pages/hr/AppraisalPage";
 
 // Academic
 import AcademicSettingsPage from "@/pages/academic/AcademicSettingsPage";
@@ -44,6 +45,9 @@ import TranscriptRequestsPage from "@/pages/academic/TranscriptRequestsPage";
 import GraduandManagementPage from "@/pages/academic/GraduandManagementPage";
 import AcademicCertificatesPage from "@/pages/academic/AcademicCertificatesPage";
 import AcademicAnalyticsPage from "@/pages/academic/AcademicAnalyticsPage";
+
+// Gate Management Module
+import GateManagementPage from "@/pages/gate/GateManagementPage";
 
 // Admissions / Student Management Module
 import ApplyPage from "@/pages/public/ApplyPage";
@@ -212,6 +216,7 @@ function App() {
                 <Route path="/hr/payroll/:id" element={<PayrollSlipPage />} />
                 <Route path="/hr/payments" element={<PaymentsPage />} />
                 <Route path="/hr/leave" element={<LeavePage />} />
+                <Route path="/hr/appraisals" element={<AppraisalPage />} />
               </Route>
 
               {/* ── HR Management — manage only ── */}
@@ -321,6 +326,21 @@ function App() {
                 element={<ProtectedRoute requiredPermissions={[PERMISSIONS.VIEW_ACADEMIC_ANALYTICS]} />}
               >
                 <Route path="/academic/analytics" element={<AcademicAnalyticsPage />} />
+              </Route>
+
+              {/* ── Gate Management ── */}
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={[
+                      PERMISSIONS.ACCESS_GATE,
+                      PERMISSIONS.MANAGE_GATE,
+                      PERMISSIONS.VIEW_GATE_LOGS,
+                    ]}
+                  />
+                }
+              >
+                <Route path="/gate" element={<GateManagementPage />} />
               </Route>
 
               {/* ── Admissions ── */}

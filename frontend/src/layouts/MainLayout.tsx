@@ -25,6 +25,7 @@ import {
   FileText,
   Award,
   BarChart2,
+  ScanLine,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -167,6 +168,11 @@ const NAV_TREE: NavNode[] = [
         to: "/hr/leave",
         label: "Leave",
         permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES],
+      },
+      {
+        to: "/hr/appraisals",
+        label: "Appraisals",
+        permissions: [PERMISSIONS.VIEW_APPRAISALS, PERMISSIONS.VIEW_HR_EMPLOYEES],
       },
       {
         to: "/hr/settings",
@@ -524,6 +530,18 @@ const ADMIN_TREE: NavNode[] = [
     permissions: [PERMISSIONS.VIEW_ACADEMIC_ANALYTICS],
   },
   {
+    id: "gate-management",
+    label: "Gate Management",
+    icon: ScanLine,
+    to: "/gate",
+    hideForRoles: ["student", "applicant"],
+    permissions: [
+      PERMISSIONS.ACCESS_GATE,
+      PERMISSIONS.MANAGE_GATE,
+      PERMISSIONS.VIEW_GATE_LOGS,
+    ],
+  },
+  {
     id: "messages",
     label: "Messages",
     icon: MessageSquare,
@@ -552,6 +570,7 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
   "/roles": { title: "Roles", sub: "Who can do what in the system" },
   "/permissions": { title: "Permissions", sub: "Fine-grained access control" },
   "/logs": { title: "System logs", sub: "Audit trail across the platform" },
+  "/gate": { title: "Gate Management", sub: "Student access verification — payment & registration" },
   "/students": {
     title: "Students",
     sub: "CUR student registry",
@@ -638,6 +657,10 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
   "/hr/leave": {
     title: "Leave Management",
     sub: "Leave requests, approvals and balances",
+  },
+  "/hr/appraisals": {
+    title: "Employee Appraisals",
+    sub: "Performance appraisal cycles, KPIs and staff reviews",
   },
   "/hr/attendance": {
     title: "Staff attendance",
