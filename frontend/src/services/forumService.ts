@@ -1,18 +1,22 @@
 import { api } from '@/services/api'
+import { useAuthStore } from '@/store/authStore'
+
+const FORUM_API = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '')
 
 export type ForumAudience = 'all' | 'students' | 'staff' | 'faculty' | 'admin'
 
 export interface ForumCategory {
-  id:            number
-  name:          string
-  slug:          string
-  description:   string | null
-  audience:      ForumAudience
-  is_active:     number | boolean
-  sort_order:    number
-  thread_count?: number
-  post_count?:   number
-  last_activity?: string | null
+  id:               number
+  name:             string
+  slug:             string
+  description:      string | null
+  audience:         ForumAudience
+  is_active:        number | boolean
+  sort_order:       number
+  thread_count?:    number
+  post_count?:      number
+  last_message_id?: number | null
+  last_activity?:   string | null
 }
 
 export interface ForumThread {
@@ -46,14 +50,24 @@ export interface ForumPost {
 }
 
 export interface ForumMessage {
-  id:           number
-  body:         string
-  created_by:   number | null
-  author_name:  string | null
-  author_photo: string | null
-  author_role:  string | null
-  created_at:   string
-  pending?:     boolean
+  id:               number
+  body:             string
+  created_by:       number | null
+  author_name:      string | null
+  author_photo:     string | null
+  author_role:      string | null
+  created_at:       string
+  attachment_id?:   string | null
+  attachment_name?: string | null
+  attachment_mime?: string | null
+  pending?:         boolean
+}
+
+export interface ForumUpload {
+  file_id: string
+  name:    string
+  mime:    string
+  size:    number | null
 }
 
 export interface RoomMessages {
@@ -102,6 +116,28 @@ export const forumService = {
       `/api/forums/categories/${categoryId}/messages`,
       afterId ? { after_id: afterId } : {},
     ),
-  sendMessage: (categoryId: number, body: string) =>
-    api.post<ForumMessage>(`/api/forums/categories/${categoryId}/messages`, { body }),
+  sendMessage: (
+    categoryId: number,
+    body: string,
+    attachment?: { id: string; name: string; mime: string },
+  ) =>
+    api.post<ForumMessage>(`/api/forums/categories/${categoryId}/messages`, {
+      body,
+      attachment_id:   attachment?.id,
+      attachment_name: attachment?.name,
+      attachment_mime: attachment?.mime,
+    }),
+
+  /** Upload an image/PDF to attach to a message. */
+  uploadAttachment: (file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.upload<ForumUpload>('/api/forums/upload', form)
+  },
+
+  /** Absolute, token-bearing URL for an attachment or avatar (usable in <img src>). */
+  fileUrl: (fileId: string) => {
+    const token = useAuthStore.getState().token ?? ''
+    return `${FORUM_API}/api/forums/file/${encodeURIComponent(fileId)}?token=${encodeURIComponent(token)}`
+  },
 }

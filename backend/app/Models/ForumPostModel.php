@@ -13,6 +13,7 @@ class ForumPostModel extends BaseModel
 
     protected array $fillable = [
         'thread_id', 'body', 'created_by', 'is_deleted',
+        'attachment_id', 'attachment_name', 'attachment_mime',
     ];
 
     /** Posts in a thread, oldest first, with author info. */

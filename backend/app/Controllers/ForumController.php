@@ -12,6 +12,7 @@ use App\Models\ForumThreadModel;
 use App\Models\ForumPostModel;
 use App\Models\AnnouncementModel;
 use App\Helpers\ValidationHelper;
+use App\Helpers\FileServerClient;
 use App\Services\SystemLogService;
 
 /**
@@ -313,6 +314,11 @@ class ForumController extends BaseController
      * backed by a single canonical thread. Polled by the client for ~realtime.
      * ═══════════════════════════════════════════════════════════════════ */
 
+    private const MSG_COLS =
+        "p.id, p.body, p.attachment_id, p.attachment_name, p.attachment_mime,
+         p.created_by, p.created_at,
+         u.full_name AS author_name, u.photo AS author_photo, r.name AS author_role";
+
     // GET /api/forums/categories/:id/messages[?after_id=N]
     /**
      * Room message stream. With `after_id` returns only newer messages (used by
@@ -333,11 +339,11 @@ class ForumController extends BaseController
 
         $threadId = $this->roomThreadId($categoryId, (string) $cat['name'], (int) $actor['id']);
         $afterId  = (int) ($request->query('after_id') ?? 0);
+        $cols     = self::MSG_COLS;
 
         if ($afterId > 0) {
             $rows = $this->db->fetchAll(
-                "SELECT p.id, p.body, p.created_by, p.created_at,
-                        u.full_name AS author_name, u.photo AS author_photo, r.name AS author_role
+                "SELECT {$cols}
                  FROM forum_posts p
                  LEFT JOIN users u ON u.id = p.created_by
                  LEFT JOIN roles r ON r.id = u.role_id
@@ -347,8 +353,7 @@ class ForumController extends BaseController
             );
         } else {
             $rows = array_reverse($this->db->fetchAll(
-                "SELECT p.id, p.body, p.created_by, p.created_at,
-                        u.full_name AS author_name, u.photo AS author_photo, r.name AS author_role
+                "SELECT {$cols}
                  FROM forum_posts p
                  LEFT JOIN users u ON u.id = p.created_by
                  LEFT JOIN roles r ON r.id = u.role_id
@@ -367,6 +372,49 @@ class ForumController extends BaseController
         ], 'Messages fetched.');
     }
 
+    // POST /api/forums/upload  (multipart: file) — image/PDF for a chat message
+    public function uploadAttachment(Request $request, Response $response): never
+    {
+        $file = $request->file('file');
+        if (!$file) {
+            $this->error($response, 'No file provided.', 422);
+        }
+        try {
+            $uploaded = (new FileServerClient())->upload($file);
+        } catch (\RuntimeException $e) {
+            $this->error($response, $e->getMessage(), 422);
+        }
+        $this->success($response, [
+            'file_id' => $uploaded['id'],
+            'name'    => $uploaded['original_name'],
+            'mime'    => $uploaded['mime'],
+            'size'    => $uploaded['size'] ?? null,
+        ], 'Uploaded.', 201);
+    }
+
+    // GET /api/forums/file/:fileId[?token=] — stream an attachment or avatar inline
+    /** Used as the <img>/download src; auth via ?token= so it works in src attrs. */
+    public function streamFile(Request $request, Response $response): never
+    {
+        $fileId = (string) $request->param('fileId');
+        if ($fileId === '') {
+            $this->error($response, 'File id required.', 422);
+        }
+        try {
+            $file = (new FileServerClient())->download($fileId);
+        } catch (\Throwable) {
+            $this->error($response, 'File not found.', 404);
+        }
+        $mime = $file['mime'] ?? 'application/octet-stream';
+        header('Content-Type: ' . $mime);
+        header('Content-Disposition: inline; filename="' . addslashes($file['original_name'] ?? 'file') . '"');
+        header('Content-Length: ' . strlen($file['content']));
+        header('Cache-Control: private, max-age=300');
+        header('X-Content-Type-Options: nosniff');
+        echo $file['content'];
+        exit;
+    }
+
     // POST /api/forums/categories/:id/messages   body: { body }
     public function postRoomMessage(Request $request, Response $response): never
     {
@@ -382,8 +430,12 @@ class ForumController extends BaseController
             $this->error($response, 'You do not have access to this room.', 403);
         }
 
-        $text = trim((string) ($body['body'] ?? ''));
-        if ($text === '') {
+        $text       = trim((string) ($body['body'] ?? ''));
+        $attachId   = trim((string) ($body['attachment_id'] ?? '')) ?: null;
+        $attachName = $attachId ? (trim((string) ($body['attachment_name'] ?? '')) ?: 'file') : null;
+        $attachMime = $attachId ? (trim((string) ($body['attachment_mime'] ?? '')) ?: 'application/octet-stream') : null;
+
+        if ($text === '' && !$attachId) {
             $this->error($response, 'Message cannot be empty.', 422);
         }
         if (mb_strlen($text) > 4000) {
@@ -393,15 +445,18 @@ class ForumController extends BaseController
         $threadId = $this->roomThreadId($categoryId, (string) $cat['name'], (int) $actor['id']);
 
         $postId = (int) $this->posts->create([
-            'thread_id'  => $threadId,
-            'body'       => $text,
-            'created_by' => (int) $actor['id'],
+            'thread_id'       => $threadId,
+            'body'            => $text,
+            'created_by'      => (int) $actor['id'],
+            'attachment_id'   => $attachId,
+            'attachment_name' => $attachName,
+            'attachment_mime' => $attachMime,
         ]);
         $this->threads->touch($threadId);
 
-        $msg = $this->db->fetchOne(
-            "SELECT p.id, p.body, p.created_by, p.created_at,
-                    u.full_name AS author_name, u.photo AS author_photo, r.name AS author_role
+        $cols = self::MSG_COLS;
+        $msg  = $this->db->fetchOne(
+            "SELECT {$cols}
              FROM forum_posts p
              LEFT JOIN users u ON u.id = p.created_by
              LEFT JOIN roles r ON r.id = u.role_id

@@ -40,6 +40,9 @@ class ForumCategoryModel extends BaseModel
                     (SELECT COUNT(*) FROM forum_posts p
                        JOIN forum_threads t2 ON t2.id = p.thread_id
                        WHERE t2.category_id = c.id AND p.is_deleted = 0 AND t2.is_deleted = 0) AS post_count,
+                    (SELECT MAX(p2.id) FROM forum_posts p2
+                       JOIN forum_threads t4 ON t4.id = p2.thread_id
+                       WHERE t4.category_id = c.id AND p2.is_deleted = 0 AND t4.is_deleted = 0) AS last_message_id,
                     (SELECT MAX(t3.last_post_at) FROM forum_threads t3 WHERE t3.category_id = c.id AND t3.is_deleted = 0) AS last_activity
              FROM forum_categories c
              WHERE c.audience IN ({$ph}) {$activeSql}

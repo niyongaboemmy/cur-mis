@@ -21,6 +21,9 @@ $router->group('/api/forums', function ($router) {
         // Chat-room view (live message stream per category)
         $r->get('/categories/:id/messages',    [ForumController::class, 'roomMessages']);
         $r->post('/categories/:id/messages',   [ForumController::class, 'postRoomMessage']);
+        // Attachments + avatar/file streaming (token in query so it works in <img src>)
+        $r->post('/upload',                    [ForumController::class, 'uploadAttachment']);
+        $r->get('/file/:fileId',               [ForumController::class, 'streamFile']);
         $r->get('/categories/:id/threads',     [ForumController::class, 'listThreads']);
         $r->post('/categories/:id/threads',    [ForumController::class, 'createThread']);
         $r->get('/threads/:id',                [ForumController::class, 'showThread']);

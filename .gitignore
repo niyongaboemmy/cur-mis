@@ -90,3 +90,6 @@ coverage/
 !.yarn/versions
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Large local DB dumps (do not commit — exceed GitHub 100MB limit)
+curac_cur_mis(Iyabo).sql
