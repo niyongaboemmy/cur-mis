@@ -25,7 +25,10 @@ class UrubutoPayWebhookMiddleware
 
         if ($token !== '') {
             $row = $this->db->fetchOne(
-                'SELECT id FROM api_authorization WHERE token = ? LIMIT 1',
+                'SELECT id FROM api_authorization
+                  WHERE token = ?
+                    AND (token_expires_at IS NULL OR token_expires_at > NOW())
+                  LIMIT 1',
                 [$token]
             );
             if ($row) {
@@ -36,7 +39,7 @@ class UrubutoPayWebhookMiddleware
         http_response_code(401);
         header('Content-Type: application/json; charset=utf-8');
         echo json_encode([
-            'timestamp' => date('Y-m-d\TH:i:s\Z'),
+            'timestamp' => date('Y-m-d H:i:s'),
             'status'    => 401,
             'message'   => 'Wrong Authentication',
         ]);

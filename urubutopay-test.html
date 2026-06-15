@@ -177,6 +177,14 @@
         overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
       }
       .token-value.empty { color: var(--muted); font-style: italic; }
+      .token-expiry {
+        font-size: 11px; font-weight: 500; white-space: nowrap; padding: 3px 9px;
+        border-radius: 5px; border: 1px solid var(--border);
+      }
+      .token-expiry.ok   { color: var(--success); border-color: rgba(34,197,94,0.3); background: rgba(34,197,94,0.08); }
+      .token-expiry.warn { color: var(--warn);    border-color: rgba(245,158,11,0.3); background: rgba(245,158,11,0.08); }
+      .token-expiry.dead { color: var(--error);   border-color: rgba(239,68,68,0.3);  background: rgba(239,68,68,0.08); }
+      .token-expiry.none { color: var(--muted);   border-color: var(--border); background: transparent; }
       .btn-run-all {
         background: var(--primary); color: #fff; border: none;
         border-radius: 6px; padding: 7px 16px;
@@ -444,6 +452,7 @@
       <div class="token-bar">
         <span class="token-label">Bearer Token</span>
         <span class="token-value empty" id="token-display">No token — run Step 1 first</span>
+        <span class="token-expiry none" id="token-expiry">No expiry</span>
         <button class="btn-sm" onclick="copyToken()">Copy</button>
         <button class="btn-sm" onclick="clearToken()">Clear</button>
         <button class="btn-run-all" id="btn-run-all" onclick="runAll()">▶ Run Full Sequence</button>
@@ -517,7 +526,7 @@
         <div class="step-body">
           <div class="api-toggle">
             <button class="active" onclick="setApi(2,'legacy',this)">
-              Legacy &nbsp;<code style="font-size:9px;opacity:.7">/payment_api/getstudent.php</code>&nbsp;<span style="font-size:9px;background:#f59e0b22;color:#f59e0b;border:1px solid #f59e0b55;border-radius:3px;padding:1px 4px">Testing only</span>
+              Legacy &nbsp;<code style="font-size:9px;opacity:.7">/payment_api/payer/verify</code>&nbsp;<span style="font-size:9px;background:#f59e0b22;color:#f59e0b;border:1px solid #f59e0b55;border-radius:3px;padding:1px 4px">Testing only</span>
             </button>
             <button onclick="setApi(2,'modern',this)">
               Modern &nbsp;<code style="font-size:9px;opacity:.7">/api/payment/webhook/verify</code>&nbsp;<span style="font-size:9px;background:#22c55e22;color:#22c55e;border:1px solid #22c55e55;border-radius:3px;padding:1px 4px">Production</span>
@@ -577,11 +586,10 @@
               <label>callback_type</label>
               <select id="f3-type">
                 <option value="PAYMENT">PAYMENT</option>
-                <option value="STATUS_UPDATE">STATUS_UPDATE</option>
               </select>
             </div>
             <div class="field">
-              <label>transaction_code</label>
+              <label>transaction_id</label>
               <input type="text" id="f3-txcode" value="TEST-TX-001" />
             </div>
             <div class="field">
@@ -594,7 +602,7 @@
             </div>
             <!-- ── Dynamic service selection ── -->
             <div class="field">
-              <label>service_code</label>
+              <label>payment_purpose_code</label>
               <select id="f3-service" onchange="onServiceChange()">
                 <option value="tuition-fees-1258" data-amount="0">tuition-fees-1258 — TUITION FEES</option>
                 <option value="cursu-fees-8249"   data-amount="0">cursu-fees-8249 — CURSU FEES</option>
@@ -605,15 +613,17 @@
               &nbsp;·&nbsp; <span style="color:var(--muted)">from Step 2 verify response</span>
             </div>
             <div class="field">
-              <label>status</label>
+              <label>transaction_status</label>
               <select id="f3-status">
-                <option value="SUCCESSFUL">SUCCESSFUL</option>
+                <option value="VALID">VALID</option>
+                <option value="PENDING_SETTLEMENT">PENDING_SETTLEMENT</option>
                 <option value="FAILED">FAILED</option>
                 <option value="PENDING">PENDING</option>
+                <option value="INITIATED">INITIATED</option>
               </select>
             </div>
             <div class="field">
-              <label>payment_date</label>
+              <label>payment_date_time</label>
               <input type="text" id="f3-date" />
             </div>
           </div>
@@ -719,26 +729,27 @@
         prod:  { legacy: 'https://cur.ac.rw/payment_api',            modern: 'https://cur.ac.rw/umis/api' },
       };
       const PATHS = {
-        legacy: { 1:'/token.php', 2:'/getstudent.php', 3:'/callback.php', 4:'/cancel_transaction.php' },
+        legacy: { 1:'/token.php', 2:'/payer/verify', 3:'/callback.php', 4:'/cancel_transaction.php' },
         modern: { 1:'/api/payment/webhook/token', 2:'/api/payment/webhook/verify', 3:'/api/payment/webhook/callback', 4:'/api/payment/webhook/reversal' },
       };
       const STEP_NAMES = { 1:'Authentication URL', 2:'Validation URL', 3:'Payment Notification URL', 4:'Payment Reversal URL' };
 
       // ── State ────────────────────────────────────────────────────────────────
       let token = '';
+      let tokenExpiresAt = null; // Date object, 2h from issue
       let apiModes = { 1:'legacy', 2:'legacy', 3:'legacy', 4:'legacy' };
       let lastResp = {};
       let runningAll = false;
       let pwVisible = { local: false, prod: false };
-      // Services populated from Step 2 verify response
       let verifiedServices = [];
+      let expiryTimer = null;
 
       // ── Init ─────────────────────────────────────────────────────────────────
       document.addEventListener('DOMContentLoaded', () => {
         const isLocal = ['localhost','127.0.0.1'].includes(location.hostname);
         document.getElementById(isLocal ? 'env-local' : 'env-prod').checked = true;
 
-        document.getElementById('f3-date').value = new Date().toISOString().slice(0,19) + 'Z';
+        document.getElementById('f3-date').value = fmtDateLocal(new Date());
         refreshAllURLs();
         buildRefTable();
         syncMerchantField();
@@ -871,6 +882,12 @@
         setTimeout(() => t.classList.remove('show'), 2200);
       }
 
+      // ── Date helpers ─────────────────────────────────────────────────────────
+      function fmtDateLocal(d) {
+        const pad = n => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+      }
+
       // ── Token management ─────────────────────────────────────────────────────
       function setToken(t) {
         token = t;
@@ -878,15 +895,49 @@
         if (t) {
           el.textContent = t;
           el.classList.remove('empty');
+          tokenExpiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000); // 2 hours
+          startExpiryCountdown();
         } else {
           el.textContent = 'No token — run Step 1 first';
           el.classList.add('empty');
+          tokenExpiresAt = null;
+          clearInterval(expiryTimer);
+          const exp = document.getElementById('token-expiry');
+          exp.textContent = 'No expiry';
+          exp.className = 'token-expiry none';
         }
+      }
+
+      function startExpiryCountdown() {
+        clearInterval(expiryTimer);
+        updateExpiryDisplay();
+        expiryTimer = setInterval(updateExpiryDisplay, 1000);
+      }
+
+      function updateExpiryDisplay() {
+        if (!tokenExpiresAt) return;
+        const exp = document.getElementById('token-expiry');
+        const secsLeft = Math.floor((tokenExpiresAt - Date.now()) / 1000);
+        if (secsLeft <= 0) {
+          exp.textContent = 'Expired';
+          exp.className = 'token-expiry dead';
+          clearInterval(expiryTimer);
+          showToast('⚠ Token expired — re-run Step 1');
+          return;
+        }
+        const h = Math.floor(secsLeft / 3600);
+        const m = Math.floor((secsLeft % 3600) / 60);
+        const s = secsLeft % 60;
+        const label = h > 0
+          ? `${h}h ${String(m).padStart(2,'0')}m`
+          : `${String(m).padStart(2,'0')}m ${String(s).padStart(2,'0')}s`;
+        exp.textContent = 'Expires in ' + label;
+        exp.className = 'token-expiry ' + (secsLeft < 300 ? 'warn' : 'ok');
       }
 
       function copyToken() {
         if (!token) { showToast('No token yet'); return; }
-        navigator.clipboard.writeText(token).then(() => showToast('Token copied'));
+        navigator.clipboard.writeText('Bearer ' + token).then(() => showToast('Token copied (Bearer prefix included)'));
       }
 
       function clearToken() { setToken(''); showToast('Token cleared'); }
@@ -968,14 +1019,15 @@
             };
           case 3:
             return {
-              callback_type:    document.getElementById('f3-type').value,
-              transaction_code: document.getElementById('f3-txcode').value.trim(),
-              payer_code:       document.getElementById('f3-payer').value.trim(),
-              amount:           parseFloat(document.getElementById('f3-amount').value) || 0,
-              currency:         'RWF',
-              payment_date:     document.getElementById('f3-date').value.trim(),
-              service_code:     document.getElementById('f3-service').value,
-              status:           document.getElementById('f3-status').value,
+              callback_type:        document.getElementById('f3-type').value,
+              transaction_id:       document.getElementById('f3-txcode').value.trim(),
+              payer_code:           document.getElementById('f3-payer').value.trim(),
+              amount:               parseFloat(document.getElementById('f3-amount').value) || 0,
+              currency:             'RWF',
+              payment_date_time:    document.getElementById('f3-date').value.trim(),
+              payment_purpose_code: document.getElementById('f3-service').value,
+              transaction_status:   document.getElementById('f3-status').value,
+              merchant_code:        document.getElementById('f2-merchant').value.trim(),
             };
           case 4: {
             const mode  = apiModes[4];
@@ -993,7 +1045,7 @@
         const url     = getUrl(step);
         const payload = buildPayload(step);
         const headers = { 'Content-Type': 'application/json' };
-        if (step !== 1 && token) headers['Authorization'] = token;
+        if (step !== 1 && token) headers['Authorization'] = 'Bearer ' + token;
 
         setBadge(step, 'spin', 'Sending…');
         document.getElementById('btn-' + step).disabled = true;
@@ -1068,11 +1120,11 @@
       function buildRefTable() {
         const env = getEnv();
         const rows = [
-          { n:1, name:'1. Authentication URL',      method:'POST' },
-          { n:2, name:'2. Validation URL',           method:'POST' },
-          { n:3, name:'3. Payment Notification URL', method:'POST' },
+          { n:1, name:'1. Authentication URL',       method:'POST' },
+          { n:2, name:'2. Payer Validation URL',     method:'POST' },
+          { n:3, name:'3. Payment Callback URL',     method:'POST' },
           { n:4, name:'4. Payment Reversal URL',     method:'POST' },
-          { n:5, name:'5. Callback / Redirect URL',  method:'GET', special:true },
+          { n:5, name:'5. Callback / Redirect URL',  method:'GET',  special:true },
         ];
         const legacyRedirect = env === 'local' ? 'http://localhost:5173/finance' : 'https://cur.ac.rw/umis/finance';
         const tbody = document.getElementById('ref-tbody');

@@ -37,7 +37,7 @@ class UrubutoPayController extends BaseController
             http_response_code(400);
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode([
-                'timestamp' => date('Y-m-d\TH:i:s\Z'),
+                'timestamp' => date('Y-m-d H:i:s'),
                 'status'    => 400,
                 'message'   => 'user_name and password are required',
             ]);
@@ -49,7 +49,7 @@ class UrubutoPayController extends BaseController
             http_response_code(401);
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode([
-                'timestamp' => date('Y-m-d\TH:i:s\Z'),
+                'timestamp' => date('Y-m-d H:i:s'),
                 'status'    => 401,
                 'message'   => 'Wrong Authentication',
             ]);
@@ -59,7 +59,7 @@ class UrubutoPayController extends BaseController
         http_response_code(200);
         header('Content-Type: application/json; charset=utf-8');
         echo json_encode([
-            'timestamp' => date('Y-m-d\TH:i:s\Z'),
+            'timestamp' => date('Y-m-d H:i:s'),
             'status'    => 200,
             'data'      => ['token' => $result['token']],
         ]);
@@ -83,7 +83,7 @@ class UrubutoPayController extends BaseController
             http_response_code(400);
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode([
-                'timestamp' => date('Y-m-d\TH:i:s\Z'),
+                'timestamp' => date('Y-m-d H:i:s'),
                 'status'    => 400,
                 'message'   => 'payer_code and merchant_code are required',
             ]);
@@ -95,9 +95,9 @@ class UrubutoPayController extends BaseController
             http_response_code(404);
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode([
-                'timestamp' => date('Y-m-d\TH:i:s\Z'),
+                'timestamp' => date('Y-m-d H:i:s'),
                 'status'    => 404,
-                'message'   => 'Payer not found',
+                'message'   => 'no data found for the given payer code',
             ]);
             exit;
         }
@@ -105,7 +105,8 @@ class UrubutoPayController extends BaseController
         http_response_code(200);
         header('Content-Type: application/json; charset=utf-8');
         echo json_encode([
-            'timestamp' => date('Y-m-d\TH:i:s\Z'),
+            'timestamp' => date('Y-m-d H:i:s'),
+            'message'   => 'validated successfully',
             'status'    => 200,
             'data'      => $payer,
         ]);
@@ -128,7 +129,7 @@ class UrubutoPayController extends BaseController
             http_response_code(400);
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode([
-                'timestamp' => date('Y-m-d\TH:i:s\Z'),
+                'timestamp' => date('Y-m-d H:i:s'),
                 'status'    => 400,
                 'message'   => 'Empty request body',
             ]);
@@ -141,7 +142,7 @@ class UrubutoPayController extends BaseController
             http_response_code(400);
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode([
-                'timestamp' => date('Y-m-d\TH:i:s\Z'),
+                'timestamp' => date('Y-m-d H:i:s'),
                 'status'    => 400,
                 'message'   => $result['message'],
             ]);
@@ -151,9 +152,14 @@ class UrubutoPayController extends BaseController
         http_response_code(200);
         header('Content-Type: application/json; charset=utf-8');
         echo json_encode([
-            'timestamp' => date('Y-m-d\TH:i:s\Z'),
+            'timestamp' => date('Y-m-d H:i:s'),
             'status'    => 200,
             'message'   => $result['message'],
+            'data'      => [
+                'internal_transaction_id' => $result['internal_tx_id'] ?? '',
+                'external_transaction_id' => $result['external_tx_id'] ?? '',
+                'payer_phone_number'      => $result['payer_phone_number'] ?? '',
+            ],
         ]);
         exit;
     }
@@ -176,7 +182,7 @@ class UrubutoPayController extends BaseController
             http_response_code(400);
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode([
-                'timestamp' => date('Y-m-d\TH:i:s\Z'),
+                'timestamp' => date('Y-m-d H:i:s'),
                 'status'    => 400,
                 'message'   => 'transaction_code is required',
             ]);
@@ -189,7 +195,7 @@ class UrubutoPayController extends BaseController
             http_response_code(400);
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode([
-                'timestamp' => date('Y-m-d\TH:i:s\Z'),
+                'timestamp' => date('Y-m-d H:i:s'),
                 'status'    => 400,
                 'message'   => $result['message'],
             ]);
@@ -200,7 +206,7 @@ class UrubutoPayController extends BaseController
             http_response_code(404);
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode([
-                'timestamp' => date('Y-m-d\TH:i:s\Z'),
+                'timestamp' => date('Y-m-d H:i:s'),
                 'status'    => 404,
                 'message'   => $result['message'],
             ]);
@@ -210,7 +216,7 @@ class UrubutoPayController extends BaseController
         http_response_code(200);
         header('Content-Type: application/json; charset=utf-8');
         echo json_encode([
-            'timestamp'       => date('Y-m-d\TH:i:s\Z'),
+            'timestamp'       => date('Y-m-d H:i:s'),
             'status'          => 200,
             'message'         => $result['message'],
             'data'            => [
