@@ -887,7 +887,7 @@ function CrossProgramEnrollModal({
     })
     return out
     // studentQueries identity changes on every render; gate on the data refs.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [studentQueries.map((q) => q.data).join('|'), thisTermByReg, otherPrograms])
 
   const enrollableCount = rows.filter((r) => r.canEnroll).length

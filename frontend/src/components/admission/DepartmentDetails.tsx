@@ -104,7 +104,7 @@ export default function DepartmentDetails({ dept, open, onClose, onUpdated }: Pr
       program_level:        dept.program_level ?? 'undergraduate',
       allowed_combinations: deptCombos,
     })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [dept?.dep_id])
 
   const addCombo = () => {
