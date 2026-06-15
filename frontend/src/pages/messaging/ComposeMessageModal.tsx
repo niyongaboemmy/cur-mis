@@ -51,13 +51,14 @@ function useDebounce<T>(value: T, delay: number): T {
 interface Props {
   open:    boolean
   onClose: () => void
+  onSent?: (conversationId: number) => void
 }
 
 /* ------------------------------------------------------------------ */
 /* Component                                                            */
 /* ------------------------------------------------------------------ */
 
-export default function ComposeMessageModal({ open, onClose }: Props) {
+export default function ComposeMessageModal({ open, onClose, onSent }: Props) {
   const qc = useQueryClient()
 
   /* Form state */
@@ -151,9 +152,11 @@ export default function ComposeMessageModal({ open, onClose }: Props) {
         type:       mode === 'individual' ? 'direct' : 'broadcast',
       })
     },
-    onSuccess: () => {
+    onSuccess: (res) => {
       toast.success('Message sent')
       qc.invalidateQueries({ queryKey: ['messages'] })
+      const convId = res.data?.conversation?.id
+      if (convId) onSent?.(convId)
       handleClose()
     },
     onError: (e: unknown) => {
