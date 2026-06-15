@@ -67,7 +67,16 @@ class Database
     public function query(string $sql, array $bindings = []): PDOStatement
     {
         $stmt = $this->pdo->prepare($sql);
-        $stmt->execute($bindings);
+        try {
+            $stmt->execute($bindings);
+        } catch (PDOException $e) {
+            error_log(sprintf('[DB] %s — SQL: %s — Bindings: %s',
+                $e->getMessage(),
+                preg_replace('/\s+/', ' ', trim($sql)),
+                json_encode($bindings)
+            ));
+            throw $e;
+        }
         return $stmt;
     }
 
