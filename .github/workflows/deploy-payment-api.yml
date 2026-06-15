@@ -2,9 +2,8 @@ name: Deploy — Payment API
 
 # Target: /home/curac/public_html/payment_api/
 # URL:    https://cur.ac.rw/payment_api/
-# Method: cPanel UAPI over HTTPS (port 2083) — SSH/FTP blocked on this server.
-#
-# Standalone PHP app — no Composer dependencies, no build step.
+# Method: cPanel UAPI (port 2083) for upload; PHP helper for extraction.
+#         cPanel has no zip-extract API — .github/scripts/extract-inplace.php handles it.
 #
 # Required GitHub Secret:
 #   CPANEL_PASS — cPanel account password
@@ -46,50 +45,39 @@ jobs:
           cd ..
           echo "Archive size: $(du -sh payment-api.zip | cut -f1)"
 
-      - name: Upload archive → public_html/payment_api/
+      - name: Upload & extract
         env:
           CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
         run: |
-          # Remove leftover zip from any previous failed run
-          echo "Pre-delete: $(curl -s -k -u "$CPANEL_USER:$CPANEL_PASS" -G \
-            --data-urlencode "files-0-file=/public_html/payment_api/payment-api.zip" \
-            --data-urlencode "files-0-type=file" \
-            "$CPANEL_URL/execute/Fileman/delete_files")" || true
+          TOKEN=$(openssl rand -hex 16)
 
-          RESPONSE=$(curl -s -k \
-            -u "$CPANEL_USER:$CPANEL_PASS" \
+          # Inject token + zip name into the PHP extractor template
+          sed -e "s/DEPLOY_TOKEN/$TOKEN/" \
+              -e "s/DEPLOY_ZIP_NAME/payment-api.zip/" \
+              .github/scripts/extract-inplace.php > _extract.php
+
+          # Upload zip (overwrite=1 handles stale zips from failed previous runs)
+          R=$(curl -s -k -u "$CPANEL_USER:$CPANEL_PASS" \
             -F "dir=/public_html/payment_api" \
             -F "overwrite=1" \
             -F "file-1=@payment-api.zip;type=application/zip" \
             "$CPANEL_URL/execute/Fileman/upload_files")
-          echo "Upload: $RESPONSE"
-          [ "$(echo "$RESPONSE" | jq -r '.status // 0')" = "1" ] || { echo "Upload failed"; exit 1; }
+          echo "Upload zip: $R"
+          [ "$(echo "$R" | jq -r '.status // 0')" = "1" ] || { echo "Zip upload failed"; exit 1; }
 
-      - name: Extract archive on server
-        env:
-          CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
-        run: |
-          RESPONSE=$(curl -s -k \
-            -u "$CPANEL_USER:$CPANEL_PASS" \
-            -G \
-            --data-urlencode "cpanel_jsonapi_version=2" \
-            --data-urlencode "cpanel_jsonapi_module=Fileman" \
-            --data-urlencode "cpanel_jsonapi_func=extractfile" \
-            --data-urlencode "file=/public_html/payment_api/payment-api.zip" \
-            --data-urlencode "dir=/public_html/payment_api/" \
-            "https://cpanel.cur.ac.rw:2083/json-api/cpanel")
-          echo "Extract: $RESPONSE"
-          ERROR=$(echo "$RESPONSE" | jq -r '.cpanelresult.error // ""')
-          [ -z "$ERROR" ] || { echo "Extract failed: $ERROR"; exit 1; }
+          # Upload extractor script
+          R=$(curl -s -k -u "$CPANEL_USER:$CPANEL_PASS" \
+            -F "dir=/public_html/payment_api" \
+            -F "overwrite=1" \
+            -F "file-1=@_extract.php;type=text/plain" \
+            "$CPANEL_URL/execute/Fileman/upload_files")
+          echo "Upload extractor: $R"
+          [ "$(echo "$R" | jq -r '.status // 0')" = "1" ] || { echo "Extractor upload failed"; exit 1; }
 
-      - name: Delete archive from server
-        env:
-          CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
-        run: |
-          curl -s -k -u "$CPANEL_USER:$CPANEL_PASS" -G \
-            --data-urlencode "files-0-file=/public_html/payment_api/payment-api.zip" \
-            --data-urlencode "files-0-type=file" \
-            "$CPANEL_URL/execute/Fileman/delete_files" > /dev/null
+          # Trigger extraction — script self-destructs and deletes the zip
+          RESULT=$(curl -s -k "https://cur.ac.rw/payment_api/_extract.php?token=$TOKEN")
+          echo "Extract result: $RESULT"
+          [ "$RESULT" = "ok" ] || { echo "Extraction failed: $RESULT"; exit 1; }
 
       - name: Write job summary
         if: always()

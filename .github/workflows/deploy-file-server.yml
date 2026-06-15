@@ -1,11 +1,12 @@
 name: Deploy — File Server (CDN)
 
-# Method: cPanel UAPI over HTTPS (port 2083) — SSH/FTP blocked on this server.
+# Method: cPanel UAPI (port 2083) for upload; PHP helper for extraction.
+#         cPanel has no zip-extract API — .github/scripts/ templates handle it.
 # composer install runs on the GitHub Actions runner; vendor/ is zipped and uploaded.
 #
 # Server layout after deploy:
-#   /home/curac/file-server/              — PHP source + vendor/ (outside public_html)
-#   /home/curac/public_html/umis/cdn/     — only file-server/public/ (web entry point)
+#   /home/curac/file-server/          — PHP source + vendor/ (outside public_html)
+#   /home/curac/public_html/umis/cdn/ — only file-server/public/ (web entry point)
 #
 # Required GitHub Secrets:
 #   CPANEL_PASS       — cPanel account password
@@ -77,109 +78,75 @@ jobs:
           cd ../..
           echo "Public archive: $(du -sh fileserver-public.zip | cut -f1)"
 
-      # ── Ensure ~/file-server/ directory exists on server ─────────────────────
-      - name: Ensure ~/file-server/ directory exists
-        env:
-          CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
-        run: |
-          curl -s -k \
-            -u "$CPANEL_USER:$CPANEL_PASS" \
-            -G \
-            --data-urlencode "path=/" \
-            --data-urlencode "name=file-server" \
-            "$CPANEL_URL/execute/Fileman/mkdir" > /dev/null || true
-
       # ── Deploy source to ~/file-server/ ──────────────────────────────────────
-      - name: Upload file-server source → ~/file-server/
+      # Zip is uploaded to home root (NOT public_html) to keep source off the web.
+      # Extraction is triggered via a one-time PHP script placed in public_html/umis/cdn/.
+      # The script calculates home = __DIR__/../../.. (cdn→umis→public_html→home).
+      - name: Upload & extract file-server source → ~/file-server/
         env:
           CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
         run: |
-          # Remove leftover zip from any previous failed run
-          echo "Pre-delete: $(curl -s -k -u "$CPANEL_USER:$CPANEL_PASS" -G \
-            --data-urlencode "files-0-file=/file-server/fileserver-src.zip" \
-            --data-urlencode "files-0-type=file" \
-            "$CPANEL_URL/execute/Fileman/delete_files")" || true
+          TOKEN=$(openssl rand -hex 16)
 
-          RESPONSE=$(curl -s -k \
-            -u "$CPANEL_USER:$CPANEL_PASS" \
-            -F "dir=/file-server" \
+          sed -e "s/DEPLOY_TOKEN/$TOKEN/" \
+              -e "s|DEPLOY_OFFSET|/../../..|" \
+              -e "s/DEPLOY_ZIP_NAME/fileserver-src.zip/" \
+              -e "s/DEPLOY_DEST_DIR/file-server/" \
+              .github/scripts/extract-from-home.php > _extract_src.php
+
+          # Upload zip to home root (not inside public_html)
+          R=$(curl -s -k -u "$CPANEL_USER:$CPANEL_PASS" \
+            -F "dir=/" \
             -F "overwrite=1" \
             -F "file-1=@fileserver-src.zip;type=application/zip" \
             "$CPANEL_URL/execute/Fileman/upload_files")
-          echo "Upload: $RESPONSE"
-          [ "$(echo "$RESPONSE" | jq -r '.status // 0')" = "1" ] || { echo "Upload failed"; exit 1; }
+          echo "Upload zip: $R"
+          [ "$(echo "$R" | jq -r '.status // 0')" = "1" ] || { echo "Zip upload failed"; exit 1; }
 
-      - name: Extract file-server source on server
-        env:
-          CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
-        run: |
-          RESPONSE=$(curl -s -k \
-            -u "$CPANEL_USER:$CPANEL_PASS" \
-            -G \
-            --data-urlencode "cpanel_jsonapi_version=2" \
-            --data-urlencode "cpanel_jsonapi_module=Fileman" \
-            --data-urlencode "cpanel_jsonapi_func=extractfile" \
-            --data-urlencode "file=/file-server/fileserver-src.zip" \
-            --data-urlencode "dir=/file-server/" \
-            "https://cpanel.cur.ac.rw:2083/json-api/cpanel")
-          echo "Extract: $RESPONSE"
-          ERROR=$(echo "$RESPONSE" | jq -r '.cpanelresult.error // ""')
-          [ -z "$ERROR" ] || { echo "Extract failed: $ERROR"; exit 1; }
+          # Upload extractor to cdn/ (web-accessible)
+          R=$(curl -s -k -u "$CPANEL_USER:$CPANEL_PASS" \
+            -F "dir=/public_html/umis/cdn" \
+            -F "overwrite=1" \
+            -F "file-1=@_extract_src.php;type=text/plain" \
+            "$CPANEL_URL/execute/Fileman/upload_files")
+          echo "Upload extractor: $R"
+          [ "$(echo "$R" | jq -r '.status // 0')" = "1" ] || { echo "Extractor upload failed"; exit 1; }
 
-      - name: Delete source archive from server
-        env:
-          CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
-        run: |
-          curl -s -k -u "$CPANEL_USER:$CPANEL_PASS" -G \
-            --data-urlencode "files-0-file=/file-server/fileserver-src.zip" \
-            --data-urlencode "files-0-type=file" \
-            "$CPANEL_URL/execute/Fileman/delete_files" > /dev/null
+          # Trigger extraction — script self-destructs and deletes the zip
+          RESULT=$(curl -s -k "https://cur.ac.rw/umis/cdn/_extract_src.php?token=$TOKEN")
+          echo "Extract result: $RESULT"
+          [ "$RESULT" = "ok" ] || { echo "Extraction failed: $RESULT"; exit 1; }
 
       # ── Deploy public/ to ~/public_html/umis/cdn/ ────────────────────────────
-      - name: Upload file-server/public/ → public_html/umis/cdn/
+      - name: Upload & extract file-server/public/ → public_html/umis/cdn/
         env:
           CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
         run: |
-          # Remove leftover zip from any previous failed run
-          echo "Pre-delete: $(curl -s -k -u "$CPANEL_USER:$CPANEL_PASS" -G \
-            --data-urlencode "files-0-file=/public_html/umis/cdn/fileserver-public.zip" \
-            --data-urlencode "files-0-type=file" \
-            "$CPANEL_URL/execute/Fileman/delete_files")" || true
+          TOKEN=$(openssl rand -hex 16)
 
-          RESPONSE=$(curl -s -k \
-            -u "$CPANEL_USER:$CPANEL_PASS" \
+          sed -e "s/DEPLOY_TOKEN/$TOKEN/" \
+              -e "s/DEPLOY_ZIP_NAME/fileserver-public.zip/" \
+              .github/scripts/extract-inplace.php > _extract_pub.php
+
+          R=$(curl -s -k -u "$CPANEL_USER:$CPANEL_PASS" \
             -F "dir=/public_html/umis/cdn" \
             -F "overwrite=1" \
             -F "file-1=@fileserver-public.zip;type=application/zip" \
             "$CPANEL_URL/execute/Fileman/upload_files")
-          echo "Upload: $RESPONSE"
-          [ "$(echo "$RESPONSE" | jq -r '.status // 0')" = "1" ] || { echo "Upload failed"; exit 1; }
+          echo "Upload zip: $R"
+          [ "$(echo "$R" | jq -r '.status // 0')" = "1" ] || { echo "Zip upload failed"; exit 1; }
 
-      - name: Extract file-server public on server
-        env:
-          CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
-        run: |
-          RESPONSE=$(curl -s -k \
-            -u "$CPANEL_USER:$CPANEL_PASS" \
-            -G \
-            --data-urlencode "cpanel_jsonapi_version=2" \
-            --data-urlencode "cpanel_jsonapi_module=Fileman" \
-            --data-urlencode "cpanel_jsonapi_func=extractfile" \
-            --data-urlencode "file=/public_html/umis/cdn/fileserver-public.zip" \
-            --data-urlencode "dir=/public_html/umis/cdn/" \
-            "https://cpanel.cur.ac.rw:2083/json-api/cpanel")
-          echo "Extract: $RESPONSE"
-          ERROR=$(echo "$RESPONSE" | jq -r '.cpanelresult.error // ""')
-          [ -z "$ERROR" ] || { echo "Extract failed: $ERROR"; exit 1; }
+          R=$(curl -s -k -u "$CPANEL_USER:$CPANEL_PASS" \
+            -F "dir=/public_html/umis/cdn" \
+            -F "overwrite=1" \
+            -F "file-1=@_extract_pub.php;type=text/plain" \
+            "$CPANEL_URL/execute/Fileman/upload_files")
+          echo "Upload extractor: $R"
+          [ "$(echo "$R" | jq -r '.status // 0')" = "1" ] || { echo "Extractor upload failed"; exit 1; }
 
-      - name: Delete public archive from server
-        env:
-          CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
-        run: |
-          curl -s -k -u "$CPANEL_USER:$CPANEL_PASS" -G \
-            --data-urlencode "files-0-file=/public_html/umis/cdn/fileserver-public.zip" \
-            --data-urlencode "files-0-type=file" \
-            "$CPANEL_URL/execute/Fileman/delete_files" > /dev/null
+          RESULT=$(curl -s -k "https://cur.ac.rw/umis/cdn/_extract_pub.php?token=$TOKEN")
+          echo "Extract result: $RESULT"
+          [ "$RESULT" = "ok" ] || { echo "Extraction failed: $RESULT"; exit 1; }
 
       - name: Write job summary
         if: always()
