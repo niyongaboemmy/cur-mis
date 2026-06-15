@@ -303,7 +303,7 @@ class Rest
             'timestamp' => $date,
             'status'    => 200,
             'data'      => [
-                'token' => $newToken,
+                'token' => 'Bearer ' . $newToken,
             ],
         ]);
     }

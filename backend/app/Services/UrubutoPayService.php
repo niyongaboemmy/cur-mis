@@ -88,7 +88,7 @@ class UrubutoPayService
         );
 
         return [
-            'token'         => $newToken,
+            'token'         => 'Bearer ' . $newToken,
             'merchant_code' => $row['merchant_code'] ?? self::MERCHANT_CODE,
         ];
     }

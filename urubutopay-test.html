@@ -937,7 +937,7 @@
 
       function copyToken() {
         if (!token) { showToast('No token yet'); return; }
-        navigator.clipboard.writeText('Bearer ' + token).then(() => showToast('Token copied (Bearer prefix included)'));
+        navigator.clipboard.writeText(token).then(() => showToast('Token copied'));
       }
 
       function clearToken() { setToken(''); showToast('Token cleared'); }
@@ -1045,7 +1045,7 @@
         const url     = getUrl(step);
         const payload = buildPayload(step);
         const headers = { 'Content-Type': 'application/json' };
-        if (step !== 1 && token) headers['Authorization'] = 'Bearer ' + token;
+        if (step !== 1 && token) headers['Authorization'] = token;
 
         setBadge(step, 'spin', 'Sending…');
         document.getElementById('btn-' + step).disabled = true;
