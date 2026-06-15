@@ -37,9 +37,15 @@ class UrubutoPayService
     private const CHECKOUT_BASE   = 'https://urubutopay.rw/pay-now';
     private const LEGACY_BANK_ID  = 1;      // tbl_bank.bank_id for BK
     private const FEE_CATEGORY_BK = '147';  // legacy fee_category for bank payments
-    private const SERVICES = [
-        ['service_code' => 'tuition-fees-1258', 'service_name' => 'TUITION FEES', 'amount' => 0, 'currency' => 'RWF'],
-        ['service_code' => 'cursu-fees-8249',   'service_name' => 'CURSU FEES',   'amount' => 0, 'currency' => 'RWF'],
+    // UrubutoPay-registered service codes — these are fixed by the gateway, never change
+    private const SERVICE_MAP = [
+        'TUITION'      => ['service_code' => 'tuition-fees-1258', 'service_name' => 'TUITION FEES'],
+        'REGISTRATION' => ['service_code' => 'cursu-fees-8249',   'service_name' => 'CURSU FEES'],
+        'ADMISSION'    => ['service_code' => 'cursu-fees-8249',   'service_name' => 'CURSU FEES'],
+        'HOSTEL'       => ['service_code' => 'cursu-fees-8249',   'service_name' => 'CURSU FEES'],
+        'FINE'         => ['service_code' => 'cursu-fees-8249',   'service_name' => 'CURSU FEES'],
+        'ARREARS'      => ['service_code' => 'tuition-fees-1258', 'service_name' => 'TUITION FEES'],
+        'MODULE_FEE'   => ['service_code' => 'tuition-fees-1258', 'service_name' => 'TUITION FEES'],
     ];
 
     public function __construct()
@@ -92,14 +98,76 @@ class UrubutoPayService
             strtoupper($student['fname'] ?? '') . ' ' . strtoupper($student['lname'] ?? '')
         );
 
+        $services = $this->buildServices($student['regnumber']);
+
         return [
             'payer_names'     => $payer_names,
             'merchant_code'   => $merchantCode,
             'payer_code'      => $student['regnumber'],
-            'service_code'    => self::SERVICES[0]['service_code'],
+            'service_code'    => $services[0]['service_code'],
             'commission_rate' => 0,
-            'services'        => self::SERVICES,
+            'services'        => $services,
         ];
+    }
+
+    /**
+     * Build the UrubutoPay services list dynamically from the student's outstanding
+     * fee_invoices balances. Each fee_type maps to a UrubutoPay service_code registered
+     * on the gateway. Amounts reflect actual outstanding balance so the student sees
+     * what they owe on the USSD screen instead of always 0.
+     *
+     * service_codes are fixed by UrubutoPay (pre-registered) — only amounts are dynamic.
+     * If the student has no open invoices, returns the full service list with amount=0
+     * so the USSD session can still proceed (student pays a custom amount).
+     */
+    private function buildServices(string $studentId): array
+    {
+        // Sum outstanding balance per fee_type from open invoices
+        $rows = $this->db->fetchAll(
+            "SELECT fee_type,
+                    GREATEST(0, ROUND(SUM(amount_due - amount_paid - IFNULL(bursary_applied, 0)), 2)) AS outstanding
+             FROM fee_invoices
+             WHERE student_id = ?
+               AND status NOT IN ('paid', 'waived', 'cancelled')
+             GROUP BY fee_type
+             HAVING outstanding > 0
+             ORDER BY fee_type",
+            [$studentId]
+        );
+
+        // Accumulate amounts per gateway service_code (multiple fee_types can map to one)
+        $buckets = [];
+        foreach ($rows as $row) {
+            $type = strtoupper((string)$row['fee_type']);
+            $map  = self::SERVICE_MAP[$type] ?? null;
+            if (!$map) {
+                continue;
+            }
+            $code = $map['service_code'];
+            if (!isset($buckets[$code])) {
+                $buckets[$code] = ['service_code' => $code, 'service_name' => $map['service_name'], 'amount' => 0.0, 'currency' => 'RWF'];
+            }
+            $buckets[$code]['amount'] += (float)$row['outstanding'];
+        }
+
+        // Round final amounts to nearest integer (RWF has no cents)
+        foreach ($buckets as &$b) {
+            $b['amount'] = (int)round($b['amount']);
+        }
+        unset($b);
+
+        // Always include both registered service codes so UrubutoPay can display the menu.
+        // Services with no outstanding balance get amount=0 (student can still pay ad-hoc).
+        $defaults = [
+            'tuition-fees-1258' => ['service_code' => 'tuition-fees-1258', 'service_name' => 'TUITION FEES', 'amount' => 0, 'currency' => 'RWF'],
+            'cursu-fees-8249'   => ['service_code' => 'cursu-fees-8249',   'service_name' => 'CURSU FEES',   'amount' => 0, 'currency' => 'RWF'],
+        ];
+
+        foreach ($buckets as $code => $service) {
+            $defaults[$code] = $service;
+        }
+
+        return array_values($defaults);
     }
 
     // ── Payment Callback ──────────────────────────────────────────────────────
