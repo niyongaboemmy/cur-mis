@@ -49,29 +49,14 @@ class DocumentHelper
 
     // ─── Shared layout parts ──────────────────────────────────────────────────
 
-    /** Returns an <img> data-URI for the CUR letterhead bar, or a CSS fallback. */
+    /**
+     * Repeating CUR letterhead, shown at the top of every page.
+     * Pair the returned markup with {@see PdfLayout::pageCss()} in the
+     * document's <style> block so DOMPDF reserves room for it on each page.
+     */
     private static function headerHtml(): string
     {
-        $imgPath = dirname(__DIR__, 2) . '/../template_docs/header_bar.jpeg';
-
-        if (file_exists($imgPath)) {
-            $src = 'data:image/jpeg;base64,' . base64_encode((string) file_get_contents($imgPath));
-            return '<div style="margin-bottom:18px;">
-                        <img src="' . $src . '" style="width:100%;max-height:90px;object-fit:contain;" />
-                    </div>';
-        }
-
-        // CSS text fallback when image file is missing
-        return '<div style="border-bottom:2px solid #333;padding-bottom:6px;margin-bottom:18px;text-align:center;">
-                    <strong style="font-size:13pt;font-family:serif;letter-spacing:1px;">
-                        CATHOLIC UNIVERSITY OF RWANDA
-                    </strong><br>
-                    <span style="font-size:8.5pt;">P.o Box 49 Butare/Huye – RWANDA</span><br>
-                    <span style="font-size:8pt;">
-                        Registry: 250 733 214 677 &nbsp;–&nbsp; Administration: 250 733 214 678<br>
-                        email: catholic.university.rwanda@gmail.com &nbsp;|&nbsp; website: www.cur.ac.rw
-                    </span>
-                </div>';
+        return PdfLayout::headerHtml();
     }
 
     /**
@@ -112,6 +97,7 @@ class DocumentHelper
     public static function buildAdmissionLetter(array $s, bool $preview = false): string
     {
         $header     = self::headerHtml();
+        $pageCss    = PdfLayout::pageCss(44, 28);
         $fullName   = strtoupper(trim(($s['fname'] ?? '') . ' ' . ($s['lname'] ?? '')));
         $today      = date('m-d-Y');
         $facultyRaw = $s['fac_name'] ?? $s['faculty'] ?? '';
@@ -137,12 +123,13 @@ class DocumentHelper
         <head>
         <meta charset="UTF-8">
         <style>
+          {$pageCss}
           * { box-sizing:border-box; margin:0; padding:0; }
           body {
             font-family: 'Times New Roman', Times, serif;
             font-size: 11pt;
             color: #000;
-            padding: 30px 44px 28px 44px;
+            padding: 0;
             line-height: 1.55;
             position: relative;
           }
@@ -236,6 +223,7 @@ class DocumentHelper
     public static function buildVisaLetter(array $s, bool $preview = false): string
     {
         $header     = self::headerHtml();
+        $pageCss    = PdfLayout::pageCss(44, 28);
         $fullName   = strtoupper(trim(($s['fname'] ?? '') . ' ' . ($s['lname'] ?? '')));
         $today      = self::ordinalDate();
         $faculty    = htmlspecialchars($s['fac_name']   ?? $s['faculty']    ?? '', ENT_QUOTES);
@@ -264,12 +252,13 @@ class DocumentHelper
         <head>
         <meta charset="UTF-8">
         <style>
+          {$pageCss}
           * { box-sizing:border-box; margin:0; padding:0; }
           body {
             font-family: 'Times New Roman', Times, serif;
             font-size: 11pt;
             color: #000;
-            padding: 30px 44px 28px 44px;
+            padding: 0;
             line-height: 1.6;
             position: relative;
           }
@@ -347,6 +336,7 @@ class DocumentHelper
     public static function buildRegistrationForm(array $s, bool $preview = false): string
     {
         $header     = self::headerHtml();
+        $pageCss    = PdfLayout::pageCss(36, 22);
         $surname    = htmlspecialchars(strtoupper($s['lname'] ?? ''), ENT_QUOTES);
         $firstName  = htmlspecialchars(strtoupper($s['fname'] ?? ''), ENT_QUOTES);
         $regnumber  = htmlspecialchars($s['regnumber']   ?? '—',    ENT_QUOTES);
@@ -384,12 +374,13 @@ class DocumentHelper
         <head>
         <meta charset="UTF-8">
         <style>
+          {$pageCss}
           * { box-sizing:border-box; margin:0; padding:0; }
           body {
             font-family: 'Times New Roman', Times, serif;
             font-size: 9.5pt;
             color: #000;
-            padding: 22px 36px 22px 36px;
+            padding: 0;
             position: relative;
           }
           .form-title { text-align:center; font-weight:bold; text-decoration:underline;
@@ -513,6 +504,7 @@ class DocumentHelper
     public static function buildEnglishProficiencyCertificate(array $s, bool $preview = false): string
     {
         $header    = self::headerHtml();
+        $pageCss   = PdfLayout::pageCss(30, 20);
         $fullName  = strtoupper(trim(($s['fname'] ?? '') . ' ' . ($s['lname'] ?? '')));
         $regnumber = htmlspecialchars($s['regnumber'] ?? '—', ENT_QUOTES);
         $today     = date('d F Y');
@@ -532,12 +524,13 @@ class DocumentHelper
         <head>
         <meta charset="UTF-8">
         <style>
+          {$pageCss}
           * { box-sizing:border-box; margin:0; padding:0; }
           body {
             font-family: 'Times New Roman', Times, serif;
             font-size: 11pt;
             color: #000;
-            padding: 20px 30px;
+            padding: 0;
             position: relative;
           }
           .outer-border {
@@ -613,6 +606,7 @@ class DocumentHelper
     public static function buildCompletedModulesReport(array $s, array $modules, bool $preview = false): string
     {
         $header     = self::headerHtml();
+        $pageCss    = PdfLayout::pageCss(40, 28);
         $fullName   = strtoupper(trim(($s['fname'] ?? '') . ' ' . ($s['lname'] ?? '')));
         $regnumber  = htmlspecialchars($s['regnumber'] ?? '—', ENT_QUOTES);
         $faculty    = htmlspecialchars(
@@ -719,12 +713,13 @@ class DocumentHelper
         <head>
         <meta charset="UTF-8">
         <style>
+          {$pageCss}
           * { box-sizing:border-box; margin:0; padding:0; }
           body {
             font-family: 'Times New Roman', Times, serif;
             font-size: 10.5pt;
             color: #000;
-            padding: 28px 40px;
+            padding: 0;
             position: relative;
           }
           .doc-title   { text-align:center; font-weight:bold; font-size:13pt;
@@ -827,6 +822,7 @@ class DocumentHelper
             $pdf->loadHtml($html);
             $pdf->setPaper('A4', 'portrait');
             $pdf->render();
+            PdfLayout::stampHeader($pdf);
             $pdf->stream($filename, ['Attachment' => 1]); // force download
             exit;
         }

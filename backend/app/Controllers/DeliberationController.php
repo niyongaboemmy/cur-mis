@@ -526,7 +526,7 @@ class DeliberationController extends BaseController
                     d.convened_at, d.notes, d.finalized, d.created_by, d.created_at,
                     y.label AS year_label,
                     o.name  AS program_name, o.acro AS program_acronym,
-                    CONCAT(u.first_name,' ',u.last_name) AS created_by_name
+                    u.full_name AS created_by_name
              FROM deliberations d
              LEFT JOIN academic_years y ON y.id = d.academic_year_id
              LEFT JOIN options        o ON CAST(o.id AS CHAR) = CAST(d.program_id AS CHAR)

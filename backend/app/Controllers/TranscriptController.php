@@ -62,7 +62,7 @@ class TranscriptController extends BaseController
                        tr.dispatch_notes, tr.fee_paid, tr.created_at, tr.updated_at,
                        s.regnumber, s.fname, s.lname,
                        y.label AS year_label,
-                       CONCAT(u.first_name,' ',u.last_name) AS reviewed_by_name
+                       u.full_name AS reviewed_by_name
                 FROM transcript_requests tr
                 LEFT JOIN `student`        s ON s.id = tr.student_id
                 LEFT JOIN academic_years   y ON y.id = tr.academic_year_id

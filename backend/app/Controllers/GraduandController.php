@@ -161,7 +161,7 @@ class GraduandController extends BaseController
                     g.status, g.approved_by, g.approved_at, g.created_at,
                     s.regnumber, s.fname, s.lname, s.faculty, s.department,
                     y.label AS year_label,
-                    CONCAT(u.first_name,' ',u.last_name) AS approved_by_name
+                    u.full_name AS approved_by_name
              FROM graduands g
              LEFT JOIN `student`      s ON s.id = g.student_id
              LEFT JOIN academic_years y ON y.id = g.academic_year_id

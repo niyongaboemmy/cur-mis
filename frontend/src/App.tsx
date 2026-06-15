@@ -32,9 +32,11 @@ import HrAttendancePage from "@/pages/hr/HrAttendancePage";
 import HrDocumentsPage from "@/pages/hr/HrDocumentsPage";
 import PayrollPage from "@/pages/hr/PayrollPage";
 import PayrollSlipPage from "@/pages/hr/PayrollSlipPage";
+import MyPayrollPage from "@/pages/hr/MyPayrollPage";
 import PaymentsPage from "@/pages/hr/PaymentsPage";
 import HrSettingsPage from "@/pages/hr/HrSettingsPage";
 import LeavePage from "@/pages/hr/LeavePage";
+import MyLeavePage from "@/pages/hr/MyLeavePage";
 import AppraisalPage from "@/pages/hr/AppraisalPage";
 
 // Academic
@@ -145,6 +147,9 @@ function App() {
               <Route path="/dashboard" element={<AdminDashboardPage />} />
               <Route path="/home" element={<HomePage />} />
               <Route path="/profile" element={<UserProfilePage />} />
+              {/* Self-service payroll — every authenticated user sees their own
+                  payslip history; data is scoped server-side to their account. */}
+              <Route path="/me/payroll" element={<MyPayrollPage />} />
               <Route path="/messages" element={<MessagesPage />} />
               <Route path="/announcements" element={<AnnouncementsPage />} />
               <Route path="/forums" element={<ForumsPage />} />
@@ -225,8 +230,22 @@ function App() {
                 <Route path="/hr/payroll" element={<PayrollPage />} />
                 <Route path="/hr/payroll/:id" element={<PayrollSlipPage />} />
                 <Route path="/hr/payments" element={<PaymentsPage />} />
-                <Route path="/hr/leave" element={<LeavePage />} />
                 <Route path="/hr/appraisals" element={<AppraisalPage />} />
+              </Route>
+
+              {/* ── Leave management — any HR viewer OR leave view/approve role ── */}
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={[
+                      PERMISSIONS.VIEW_HR_EMPLOYEES,
+                      PERMISSIONS.VIEW_LEAVE_REQUESTS,
+                      PERMISSIONS.MANAGE_LEAVE_REQUESTS,
+                    ]}
+                  />
+                }
+              >
+                <Route path="/hr/leave" element={<LeavePage />} />
               </Route>
 
               {/* ── HR Management — manage only ── */}
@@ -238,6 +257,17 @@ function App() {
                 }
               >
                 <Route path="/hr/settings" element={<HrSettingsPage />} />
+              </Route>
+
+              {/* ── Staff self-service: leave ── */}
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={PERMISSIONS.REQUEST_LEAVE}
+                  />
+                }
+              >
+                <Route path="/me/leave" element={<MyLeavePage />} />
               </Route>
 
               {/* ── Student self-service ── */}

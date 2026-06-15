@@ -14,6 +14,13 @@ use App\Constants\Permissions;
  * HR Payroll API Routes
  */
 
+// Self-service: any authenticated user may view their OWN payslip history.
+// Intentionally NOT gated by VIEW_PAYROLL — the controller scopes results to
+// the employee record linked to the caller's account.
+$router->group('/api/me/payroll', function ($router) {
+    $router->get('', [HrPayrollController::class, 'mySlips']);
+}, [AuthMiddleware::class]);
+
 // Read: VIEW_PAYROLL
 $router->group('/api/hr/payroll', function ($router) {
     $router->get('',                 [HrPayrollController::class, 'index']);

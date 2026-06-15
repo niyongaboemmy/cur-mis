@@ -11,7 +11,9 @@ use App\Models\LeaveRequestModel;
 use App\Models\LeaveBalanceModel;
 use App\Models\HrEmployeeModel;
 use App\Helpers\ValidationHelper;
+use App\Helpers\EmailTemplateHelper;
 use App\Services\SystemLogService;
+use App\Services\MailService;
 
 class LeaveController extends BaseController
 {
@@ -146,7 +148,8 @@ class LeaveController extends BaseController
         $bindings = [];
 
         if ($search !== '') {
-            $clauses[]  = "(CONCAT(e.employee_fname,' ',e.employee_lname) LIKE ?)";
+            $clauses[]  = "(CONCAT(e.employee_fname,' ',e.employee_lname) LIKE ? OR u.full_name LIKE ?)";
+            $bindings[] = "%{$search}%";
             $bindings[] = "%{$search}%";
         }
         if ($status !== '') {
@@ -173,7 +176,8 @@ class LeaveController extends BaseController
         $countRow = $db->fetchOne(
             "SELECT COUNT(*) AS n
              FROM leave_requests lr
-             JOIN employees e ON e.employee_id = lr.employee_id
+             LEFT JOIN employees e ON e.employee_id = lr.employee_id
+             LEFT JOIN users     u ON u.id = lr.user_id
              $where",
             $bindings
         );
@@ -183,9 +187,11 @@ class LeaveController extends BaseController
             "SELECT
                lr.id,
                lr.employee_id,
-               CONCAT(e.employee_fname,' ',e.employee_lname) AS employee_name,
-               e.employee_post      AS department,
-               e.employee_position  AS position,
+               lr.user_id,
+               COALESCE(CONCAT(e.employee_fname,' ',e.employee_lname), u.full_name, 'Unknown') AS employee_name,
+               COALESCE(e.employee_post, '')     AS department,
+               COALESCE(e.employee_position, '') AS position,
+               u.email              AS requester_email,
                lr.leave_type_id,
                lt.name              AS leave_type_name,
                lt.color             AS leave_type_color,
@@ -199,7 +205,8 @@ class LeaveController extends BaseController
                lr.reviewed_at,
                lr.created_at
              FROM leave_requests lr
-             JOIN employees  e  ON e.employee_id = lr.employee_id
+             LEFT JOIN employees  e  ON e.employee_id = lr.employee_id
+             LEFT JOIN users      u  ON u.id = lr.user_id
              JOIN leave_types lt ON lt.id = lr.leave_type_id
              $where
              ORDER BY lr.created_at DESC
@@ -225,15 +232,17 @@ class LeaveController extends BaseController
         $db  = $this->requestModel->db();
         $row = $db->fetchOne(
             "SELECT
-               lr.id, lr.employee_id,
-               CONCAT(e.employee_fname,' ',e.employee_lname) AS employee_name,
-               e.employee_post AS department, e.employee_position AS position,
+               lr.id, lr.employee_id, lr.user_id,
+               COALESCE(CONCAT(e.employee_fname,' ',e.employee_lname), u.full_name, 'Unknown') AS employee_name,
+               COALESCE(e.employee_post, '') AS department, COALESCE(e.employee_position, '') AS position,
+               u.email AS requester_email,
                lr.leave_type_id,
                lt.name AS leave_type_name, lt.color AS leave_type_color, lt.is_paid,
                lr.start_date, lr.end_date, lr.days_requested,
                lr.reason, lr.status, lr.review_comment, lr.reviewed_at, lr.created_at
              FROM leave_requests lr
-             JOIN employees e   ON e.employee_id = lr.employee_id
+             LEFT JOIN employees e   ON e.employee_id = lr.employee_id
+             LEFT JOIN users     u   ON u.id = lr.user_id
              JOIN leave_types lt ON lt.id = lr.leave_type_id
              WHERE lr.id = ? LIMIT 1",
             [$id]
@@ -326,9 +335,10 @@ class LeaveController extends BaseController
             $this->error($response, "Cannot approve a request with status '{$row['status']}'.", 409);
         }
 
-        $body      = $request->body();
-        $comment   = trim((string)($body['comment'] ?? ''));
-        $reviewerId = (int)($body['reviewer_id'] ?? 0);
+        $actor      = (array) $request->param('_auth_user');
+        $body       = $request->body();
+        $comment    = trim((string)($body['comment'] ?? ''));
+        $reviewerId = (int)($body['reviewer_id'] ?? ($actor['id'] ?? 0));
 
         $this->requestModel->update($id, [
             'status'         => 'Approved',
@@ -337,16 +347,21 @@ class LeaveController extends BaseController
             'reviewed_at'    => date('Y-m-d H:i:s'),
         ]);
 
-        // Update leave balance — add used days
-        $this->adjustBalance(
-            (int)$row['employee_id'],
-            (int)$row['leave_type_id'],
-            (float)$row['days_requested'],
-            +1
-        );
+        // Update leave balance — add used days (employee-based requests only;
+        // self-service user requests have no employee balance row).
+        if (!empty($row['employee_id'])) {
+            $this->adjustBalance(
+                (int)$row['employee_id'],
+                (int)$row['leave_type_id'],
+                (float)$row['days_requested'],
+                +1
+            );
+        }
 
-        $actor = (array) $request->param('_auth_user');
-        SystemLogService::log('APPROVE', 'HR', "Approved leave request ID {$id} for employee {$row['employee_id']} ({$row['days_requested']} days).", $id, 'leave_request', ['employee_id' => $row['employee_id'], 'days' => $row['days_requested']], $actor ?: null);
+        // Notify the requester by email.
+        $this->notifyRequester($row, 'Approved', $comment);
+
+        SystemLogService::log('APPROVE', 'HR', "Approved leave request ID {$id} ({$row['days_requested']} days).", $id, 'leave_request', ['employee_id' => $row['employee_id'], 'user_id' => $row['user_id'] ?? null, 'days' => $row['days_requested']], $actor ?: null);
         $this->success($response, null, 'Leave request approved.');
     }
 
@@ -364,9 +379,10 @@ class LeaveController extends BaseController
             $this->error($response, "Cannot reject a request with status '{$row['status']}'.", 409);
         }
 
-        $body    = $request->body();
-        $comment = trim((string)($body['comment'] ?? ''));
-        $reviewerId = (int)($body['reviewer_id'] ?? 0);
+        $actor      = (array) $request->param('_auth_user');
+        $body       = $request->body();
+        $comment    = trim((string)($body['comment'] ?? ''));
+        $reviewerId = (int)($body['reviewer_id'] ?? ($actor['id'] ?? 0));
 
         if ($comment === '') {
             $this->error($response, 'A rejection reason/comment is required.', 422);
@@ -379,8 +395,10 @@ class LeaveController extends BaseController
             'reviewed_at'    => date('Y-m-d H:i:s'),
         ]);
 
-        $actor = (array) $request->param('_auth_user');
-        SystemLogService::log('REJECT', 'HR', "Rejected leave request ID {$id} for employee {$row['employee_id']}. Reason: {$comment}.", $id, 'leave_request', ['employee_id' => $row['employee_id'], 'comment' => $comment], $actor ?: null);
+        // Notify the requester by email.
+        $this->notifyRequester($row, 'Rejected', $comment);
+
+        SystemLogService::log('REJECT', 'HR', "Rejected leave request ID {$id}. Reason: {$comment}.", $id, 'leave_request', ['employee_id' => $row['employee_id'], 'user_id' => $row['user_id'] ?? null, 'comment' => $comment], $actor ?: null);
         $this->success($response, null, 'Leave request rejected.');
     }
 
@@ -396,7 +414,7 @@ class LeaveController extends BaseController
             $this->error($response, 'Leave request not found.', 404);
         }
 
-        if ($row['status'] === 'Approved') {
+        if ($row['status'] === 'Approved' && !empty($row['employee_id'])) {
             // Reverse the balance deduction
             $this->adjustBalance(
                 (int)$row['employee_id'],
@@ -407,8 +425,137 @@ class LeaveController extends BaseController
         }
 
         $this->requestModel->update($id, ['status' => 'Cancelled']);
+
+        // Notify the requester by email.
+        $this->notifyRequester($row, 'Cancelled');
+
         $actor = (array) $request->param('_auth_user');
-        SystemLogService::log('UPDATE', 'HR', "Cancelled leave request ID {$id} for employee {$row['employee_id']}.", $id, 'leave_request', ['employee_id' => $row['employee_id']], $actor ?: null);
+        SystemLogService::log('UPDATE', 'HR', "Cancelled leave request ID {$id}.", $id, 'leave_request', ['employee_id' => $row['employee_id'], 'user_id' => $row['user_id'] ?? null], $actor ?: null);
+        $this->success($response, null, 'Leave request cancelled.');
+    }
+
+    // ──────────────────────────────────────────────────────────
+    // Leave Requests — self-service (any staff)
+    // ──────────────────────────────────────────────────────────
+
+    /**
+     * GET /api/hr/leave/my-requests
+     * The signed-in user's own leave requests.
+     */
+    public function myRequests(Request $request, Response $response): never
+    {
+        $actor  = (array) $request->param('_auth_user');
+        $userId = (int)($actor['id'] ?? 0);
+        if ($userId <= 0) {
+            $this->error($response, 'Unable to identify the current user.', 401);
+        }
+
+        $rows = $this->requestModel->db()->fetchAll(
+            "SELECT
+               lr.id,
+               lr.leave_type_id,
+               lt.name  AS leave_type_name,
+               lt.color AS leave_type_color,
+               lt.is_paid,
+               lr.start_date,
+               lr.end_date,
+               lr.days_requested,
+               lr.reason,
+               lr.status,
+               lr.review_comment,
+               lr.reviewed_at,
+               lr.created_at
+             FROM leave_requests lr
+             JOIN leave_types lt ON lt.id = lr.leave_type_id
+             WHERE lr.user_id = ?
+             ORDER BY lr.created_at DESC",
+            [$userId]
+        );
+
+        $this->success($response, $rows, 'Your leave requests fetched.');
+    }
+
+    /**
+     * POST /api/hr/leave/my-requests
+     * File a leave request for yourself.
+     */
+    public function submitOwn(Request $request, Response $response): never
+    {
+        $actor  = (array) $request->param('_auth_user');
+        $userId = (int)($actor['id'] ?? 0);
+        if ($userId <= 0) {
+            $this->error($response, 'Unable to identify the current user.', 401);
+        }
+
+        $data   = $request->body();
+        $errors = ValidationHelper::validate($data, [
+            'leave_type_id' => ['required', 'numeric'],
+            'start_date'    => ['required'],
+            'end_date'      => ['required'],
+        ]);
+        if (!empty($errors)) {
+            $this->error($response, 'Validation failed.', 422, $errors);
+        }
+
+        $typeId = (int)$data['leave_type_id'];
+        if (!$this->typeModel->find($typeId)) {
+            $this->error($response, 'Leave type not found.', 404);
+        }
+
+        $start = $data['start_date'];
+        $end   = $data['end_date'];
+        $days  = $this->calcBusinessDays($start, $end);
+        if ($days <= 0) {
+            $this->error($response, 'End date must be on or after start date and include at least one working day.', 422);
+        }
+
+        // Block overlapping pending/approved requests for the same user.
+        $overlap = $this->requestModel->db()->fetchOne(
+            "SELECT COUNT(*) AS n FROM leave_requests
+             WHERE user_id = ?
+               AND status IN ('Pending','Approved')
+               AND start_date <= ? AND end_date >= ?",
+            [$userId, $end, $start]
+        );
+        if ((int)($overlap['n'] ?? 0) > 0) {
+            $this->error($response, 'You already have a pending or approved leave overlapping these dates.', 409);
+        }
+
+        $id = $this->requestModel->create([
+            'user_id'        => $userId,
+            'leave_type_id'  => $typeId,
+            'start_date'     => $start,
+            'end_date'       => $end,
+            'days_requested' => $days,
+            'reason'         => trim($data['reason'] ?? ''),
+            'status'         => 'Pending',
+        ]);
+
+        SystemLogService::log('CREATE', 'HR', "Self-service leave request submitted ({$days} days, {$start} to {$end}).", (int)$id, 'leave_request', ['user_id' => $userId, 'days' => $days, 'start' => $start, 'end' => $end], $actor ?: null);
+
+        $this->success($response, $this->requestModel->find($id), 'Leave request submitted.', 201);
+    }
+
+    /**
+     * DELETE /api/hr/leave/my-requests/:id
+     * Cancel your own pending request.
+     */
+    public function cancelOwn(Request $request, Response $response): never
+    {
+        $actor  = (array) $request->param('_auth_user');
+        $userId = (int)($actor['id'] ?? 0);
+        $id     = (int)$request->param('id');
+
+        $row = $this->requestModel->find($id);
+        if (!$row || (int)($row['user_id'] ?? 0) !== $userId) {
+            $this->error($response, 'Leave request not found.', 404);
+        }
+        if ($row['status'] !== 'Pending') {
+            $this->error($response, "Only pending requests can be cancelled. This request is '{$row['status']}'.", 409);
+        }
+
+        $this->requestModel->update($id, ['status' => 'Cancelled']);
+        SystemLogService::log('UPDATE', 'HR', "Self-service leave request ID {$id} cancelled by requester.", $id, 'leave_request', ['user_id' => $userId], $actor ?: null);
         $this->success($response, null, 'Leave request cancelled.');
     }
 
@@ -574,6 +721,97 @@ class LeaveController extends BaseController
     // ──────────────────────────────────────────────────────────
     // Helpers
     // ──────────────────────────────────────────────────────────
+
+    /**
+     * Resolve the email recipient for a request row. Self-service requests are
+     * linked to a login (users.id); legacy employee requests have no email on
+     * record, so they cannot be notified.
+     *
+     * @return array{email:string,name:string}|null
+     */
+    private function resolveRecipient(array $row): ?array
+    {
+        if (!empty($row['user_id'])) {
+            $u = $this->requestModel->db()->fetchOne(
+                "SELECT email, full_name FROM users WHERE id = ? LIMIT 1",
+                [(int)$row['user_id']]
+            );
+            if ($u && !empty($u['email'])) {
+                return ['email' => $u['email'], 'name' => (string)($u['full_name'] ?? '')];
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Email the requester when their leave request status changes.
+     * Never throws — email failure must not roll back the status change.
+     */
+    private function notifyRequester(array $row, string $status, string $comment = ''): void
+    {
+        $recipient = $this->resolveRecipient($row);
+        if (!$recipient) {
+            return;
+        }
+
+        $type     = $this->typeModel->find((int)$row['leave_type_id']);
+        $typeName = htmlspecialchars($type['name'] ?? 'Leave');
+        $name     = htmlspecialchars($recipient['name'] !== '' ? $recipient['name'] : 'there');
+        $days     = rtrim(rtrim(number_format((float)$row['days_requested'], 1), '0'), '.');
+
+        try {
+            $start = (new \DateTime($row['start_date']))->format('j M Y');
+            $end   = (new \DateTime($row['end_date']))->format('j M Y');
+        } catch (\Exception) {
+            $start = (string)$row['start_date'];
+            $end   = (string)$row['end_date'];
+        }
+
+        $color = match ($status) {
+            'Approved'  => '#059669',
+            'Rejected'  => '#dc2626',
+            'Cancelled' => '#d97706',
+            default     => '#1e40af',
+        };
+
+        $lead = match ($status) {
+            'Approved'  => "Good news — your leave request has been <strong style=\"color:{$color}\">approved</strong>.",
+            'Rejected'  => "Your leave request has been <strong style=\"color:{$color}\">rejected</strong>.",
+            'Cancelled' => "Your leave request has been <strong style=\"color:{$color}\">cancelled</strong>.",
+            default     => "Your leave request status is now <strong>{$status}</strong>.",
+        };
+
+        $commentHtml = '';
+        if (trim($comment) !== '') {
+            $label = $status === 'Rejected' ? 'Reason' : 'Note from reviewer';
+            $commentHtml = "<p style='margin:14px 0 0 0;'><strong>{$label}:</strong> " . htmlspecialchars($comment) . '</p>';
+        }
+
+        $content = "
+            Dear {$name},<br><br>
+            {$lead}<br><br>
+            <div style='background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px;margin:18px 0;'>
+                <p style='margin:0 0 6px 0;'><strong>Leave type:</strong> {$typeName}</p>
+                <p style='margin:0 0 6px 0;'><strong>Dates:</strong> {$start} &rarr; {$end}</p>
+                <p style='margin:0 0 6px 0;'><strong>Working days:</strong> {$days}</p>
+                <p style='margin:0;'><strong>Status:</strong> <span style='color:{$color};font-weight:700;'>{$status}</span></p>
+                {$commentHtml}
+            </div>
+            You can review your leave history any time from your staff portal.
+        ";
+
+        $title = "Leave Request {$status}";
+
+        try {
+            (new MailService())->send(
+                ['email' => $recipient['email'], 'name' => $recipient['name']],
+                $title,
+                EmailTemplateHelper::wrap($title, $content)
+            );
+        } catch (\Throwable $e) {
+            error_log('Leave notification email failed: ' . $e->getMessage());
+        }
+    }
 
     /** Count business days (Mon–Fri) between two date strings inclusive. */
     private function calcBusinessDays(string $start, string $end): float

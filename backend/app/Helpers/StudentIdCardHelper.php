@@ -188,6 +188,16 @@ class StudentIdCardHelper
         if ($photoRef === '') return null;
         if (str_starts_with($photoRef, 'data:image')) return $photoRef;
 
+        // 0) Legacy CUR filename (e.g. "photo_6a1af….jpg") → fetch straight from
+        //    the old photo store and embed; skips the file server (never has these).
+        $legacyUrl = \App\Helpers\PhotoHelper::legacyUrl($photoRef);
+        if ($legacyUrl !== null) {
+            $bytes = @file_get_contents($legacyUrl, false, stream_context_create(['http' => ['timeout' => 5]]));
+            return ($bytes !== false && strlen($bytes) > 100)
+                ? 'data:image/jpeg;base64,' . base64_encode($bytes)
+                : null;
+        }
+
         // 1) File server (most student photos are stored here by file id).
         try {
             $client = new FileServerClient();

@@ -130,9 +130,9 @@ export default function PayAllModal({
   const [notes, setNotes] = useState("");
 
   /* ── Selection & exclusion reasons ───────────────────────────────── */
-  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [selected, setSelected] = useState<Set<number | string>>(new Set());
   const [exclusionReasons, setExclusionReasons] = useState<
-    Record<number, string>
+    Record<string | number, string>
   >({});
   const [seeded, setSeeded] = useState(false);
 
@@ -147,7 +147,7 @@ export default function PayAllModal({
   } | null>(null);
   const [showSkipped, setShowSkipped] = useState(false);
 
-  const reasonRefs = useRef<Record<number, HTMLInputElement | null>>({});
+  const reasonRefs = useRef<Record<string | number, HTMLInputElement | null>>({});
 
   /* ── Fetch ────────────────────────────────────────────────────────── */
   const { data: payrollRes, isLoading } = useQuery({
@@ -188,7 +188,7 @@ export default function PayAllModal({
 
   /* ── Pre-computed amounts ─────────────────────────────────────────── */
   const amounts = useMemo(() => {
-    const map: Record<number, ReturnType<typeof computeBreakdown>> = {};
+    const map: Record<string | number, ReturnType<typeof computeBreakdown>> = {};
     for (const r of eligible) {
       if (r.payroll_id != null && Number(r.net_salary ?? 0) > 0) {
         map[r.id] = {
@@ -223,7 +223,7 @@ export default function PayAllModal({
       setExclusionReasons({});
     }
   };
-  const toggle = (empId: number) => {
+  const toggle = (empId: number | string) => {
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(empId)) {
@@ -240,7 +240,7 @@ export default function PayAllModal({
       return next;
     });
   };
-  const setReason = (empId: number, v: string) =>
+  const setReason = (empId: number | string, v: string) =>
     setExclusionReasons((p) => ({ ...p, [empId]: v }));
 
   const selectedRows = eligible.filter((r) => selected.has(r.id));

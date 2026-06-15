@@ -28,6 +28,8 @@ import {
   Award,
   BarChart2,
   ScanLine,
+  Wallet,
+  CalendarDays,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -124,6 +126,26 @@ const NAV_TREE: NavNode[] = [
     permissions: [PERMISSIONS.ACCESS_APPLICANT_PORTAL],
   },
   {
+    // Self-service payslips — available to every staff account regardless of
+    // HR permissions. Hidden from students/applicants (handled by their own
+    // portals). Server scopes the data to the signed-in user's employee record.
+    id: "my-payroll",
+    label: "My Payroll",
+    icon: Wallet,
+    to: "/me/payroll",
+    hideForRoles: ["student", "applicant"],
+  },
+  {
+    // Self-service leave — any staff member with REQUEST_LEAVE can file and
+    // track their own leave requests. Hidden from students/applicants.
+    id: "my-leave",
+    label: "My Leave",
+    icon: CalendarDays,
+    to: "/me/leave",
+    permissions: [PERMISSIONS.REQUEST_LEAVE],
+    hideForRoles: ["student", "applicant"],
+  },
+  {
     id: "students-group",
     label: "Students",
     icon: GraduationCap,
@@ -150,7 +172,11 @@ const NAV_TREE: NavNode[] = [
     id: "hr-management",
     label: "HR Management",
     icon: Briefcase,
-    permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES],
+    permissions: [
+      PERMISSIONS.VIEW_HR_EMPLOYEES,
+      PERMISSIONS.VIEW_LEAVE_REQUESTS,
+      PERMISSIONS.MANAGE_LEAVE_REQUESTS,
+    ],
     children: [
       {
         to: "/hr/staff",
@@ -170,7 +196,11 @@ const NAV_TREE: NavNode[] = [
       {
         to: "/hr/leave",
         label: "Leave",
-        permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES],
+        permissions: [
+          PERMISSIONS.VIEW_HR_EMPLOYEES,
+          PERMISSIONS.VIEW_LEAVE_REQUESTS,
+          PERMISSIONS.MANAGE_LEAVE_REQUESTS,
+        ],
       },
       {
         to: "/hr/appraisals",
@@ -680,6 +710,10 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
   "/hr/payroll": {
     title: "Payroll",
     sub: "Monthly salary breakdown and payslips",
+  },
+  "/me/payroll": {
+    title: "My Payroll",
+    sub: "Your personal payslip history and salary breakdown",
   },
   "/hr/payments": {
     title: "Salary Payments",

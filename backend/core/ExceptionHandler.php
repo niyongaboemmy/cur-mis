@@ -21,6 +21,16 @@ class ExceptionHandler
      */
     private static function emitCorsHeaders(): void
     {
+        // Headers can't be sent once output has started. A large response body
+        // (e.g. the full students list) flushes PHP's output buffer mid-script,
+        // so by the time this runs on shutdown the headers are already sent —
+        // calling header() then emits a "headers already sent" warning that the
+        // error handler turns into an exception and APPENDS to the body,
+        // corrupting otherwise-valid JSON. Bail out instead.
+        if (headers_sent()) {
+            return;
+        }
+
         // Avoid duplicate headers if CorsMiddleware already ran
         $existing = array_map('strtolower', headers_list());
         foreach ($existing as $h) {
