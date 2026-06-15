@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 import SearchableSelect from '@/components/ui/SearchableSelect'
+import RoleGroupedSelect, { type GroupedOption } from '@/components/ui/RoleGroupedSelect'
 import { academicsMgmtService } from '@/services/academicsMgmtService'
 import { academicService } from '@/services/academicService'
 import { useSessionStorage } from '@/hooks/useSessionStorage'
@@ -32,6 +33,9 @@ interface ExamFormState {
   start_time:       string
   end_time:         string
   campus_id:        number | ''
+  /** Transient selection aid for the lecturer picker; only `instructor_name`
+   *  is persisted (exam_schedules stores the name, not an id). */
+  instructor_id:    number | ''
   instructor_name:  string
   notes:            string
 }
@@ -46,6 +50,7 @@ const blankForm = (): ExamFormState => ({
   start_time:      '',
   end_time:        '',
   campus_id:       '',
+  instructor_id:   '',
   instructor_name: '',
   notes:           '',
 })
@@ -91,6 +96,35 @@ export default function ExamsPanel() {
     staleTime: 5 * 60 * 1000,
   })
   const campuses = (campusesQ.data?.data?.data ?? []) as Array<{ id: number; name: string }>
+
+  /* Lecturers / staff — the same pool used on the Scheduling tab (HR employees
+     + staff user accounts), so any lecturer can be set as exam proctor. */
+  const instructorsQ = useQuery({
+    queryKey: ['scheduling', 'instructors'],
+    queryFn:  () => academicsMgmtService.getInstructors(),
+    staleTime: 5 * 60 * 1000,
+  })
+  const instructors = (instructorsQ.data?.data?.rows ?? []) as Array<{ id: number; full_name: string; position: string | null }>
+  const instructorOptions: GroupedOption[] = useMemo(
+    () => instructors.map((i) => ({
+      value: i.id,
+      label: i.full_name,
+      sub: i.position ?? undefined,
+      group: (i.position ?? '').trim() || 'Other',
+    })),
+    [instructors],
+  )
+  const instructorById = useMemo(() => {
+    const m = new Map<number, string>()
+    instructors.forEach((i) => m.set(i.id, i.full_name))
+    return m
+  }, [instructors])
+  /** Map a stored lecturer name back onto a picker id (for edit pre-selection). */
+  const instructorIdByName = useMemo(() => {
+    const m = new Map<string, number>()
+    instructors.forEach((i) => m.set(i.full_name.trim().toLowerCase(), i.id))
+    return m
+  }, [instructors])
 
   /* the universe of "active" modules — modules that already have a
      teaching block. The admin picks from these when scheduling an exam. */
@@ -149,10 +183,10 @@ export default function ExamsPanel() {
 
   const openCreate = () => {
     setEditingId(null)
-    // Pre-fill term with the active one if available so admins don't
-    // have to hunt for it.
+    // Pre-fill term with the active one if available, and inherit the program
+    // already selected in the toolbar above (the module pick refines it).
     const activeTerm = terms.find((t) => !!t.is_current)
-    setForm({ ...blankForm(), term_id: activeTerm?.id ?? '' })
+    setForm({ ...blankForm(), term_id: activeTerm?.id ?? '', option_id: filterOption || '' })
     setFormOpen(true)
   }
 
@@ -170,6 +204,7 @@ export default function ExamsPanel() {
       start_time:      row.start_time ? row.start_time.slice(0, 5) : '',
       end_time:        row.end_time   ? row.end_time.slice(0, 5)   : '',
       campus_id:       row.campus_id ?? '',
+      instructor_id:   instructorIdByName.get((row.instructor_name ?? '').trim().toLowerCase()) ?? '',
       instructor_name: row.instructor_name ?? '',
       notes:           row.notes ?? '',
     })
@@ -271,6 +306,11 @@ export default function ExamsPanel() {
     })),
     [programs],
   )
+  const programLabelById = useMemo(() => {
+    const m = new Map<number, string>()
+    programs.forEach((p) => m.set(Number(p.id), p.code ? `${p.code} · ${p.name}` : p.name))
+    return m
+  }, [programs])
 
   const campusOptions = useMemo(
     () => campuses.map((c) => ({ value: Number(c.id), label: c.name })),
@@ -612,13 +652,13 @@ export default function ExamsPanel() {
 
           <div>
             <label className="label">Program</label>
-            <SearchableSelect
-              options={[{ value: 0, label: '— none —' }, ...programOptions]}
-              value={form.option_id === '' ? 0 : Number(form.option_id)}
-              onChange={(v) => setForm({ ...form, option_id: v && Number(v) > 0 ? Number(v) : '' })}
-              placeholder="Select program"
-              allLabel="— none —"
-            />
+            {/* Inherited from the program filter above / the picked module —
+                shown read-only so it isn't re-selected per exam. */}
+            <div className="input input-sm flex items-center bg-ink-50 dark:bg-ink-800/40">
+              {form.option_id === ''
+                ? <span className="text-ink-400 truncate">From selected module / filter</span>
+                : <span className="text-ink-700 dark:text-ink-200 truncate">{programLabelById.get(Number(form.option_id)) ?? `Program #${form.option_id}`}</span>}
+            </div>
           </div>
           <div>
             <label className="label">Campus</label>
@@ -633,13 +673,23 @@ export default function ExamsPanel() {
 
           <div>
             <label className="label">Lecturer / proctor</label>
-            <input
-              type="text"
-              className="input"
-              placeholder="e.g. Mr. Mugisha Eric"
-              value={form.instructor_name}
-              onChange={(e) => setForm({ ...form, instructor_name: e.target.value })}
-            />
+            {form.instructor_id === '' && form.instructor_name ? (
+              <div className="flex items-center gap-2 input input-sm">
+                <span className="italic text-ink-700 dark:text-ink-200 truncate flex-1">{form.instructor_name}</span>
+                <span className="chip-warning !text-[10px]">unmatched</span>
+                <button type="button" className="text-[11.5px] text-brand hover:underline" onClick={() => setForm({ ...form, instructor_name: '' })}>Pick from list</button>
+              </div>
+            ) : (
+              <RoleGroupedSelect
+                options={instructorOptions}
+                value={form.instructor_id === '' ? '' : Number(form.instructor_id)}
+                onChange={(v) => setForm({ ...form, instructor_id: v === '' ? '' : Number(v), instructor_name: v === '' ? '' : (instructorById.get(Number(v)) ?? '') })}
+                placeholder="Search staff by name or role…"
+                allLabel="— unassigned —"
+                ariaLabel="Lecturer / proctor"
+                showSubOnTrigger
+              />
+            )}
           </div>
           <div>
             <label className="label">Academic year</label>

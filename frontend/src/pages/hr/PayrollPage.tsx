@@ -857,7 +857,7 @@ export default function PayrollPage() {
       {/* Per-employee deductions modal */}
       {deductionsEmployee && (
         <EmployeeDeductionsModal
-          empId={deductionsEmployee.id}
+          empId={Number(deductionsEmployee.id)}
           empName={deductionsEmployee.full_name}
           onClose={() => setDeductionsEmployee(null)}
         />

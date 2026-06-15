@@ -5,11 +5,11 @@ import { AlertTriangle, Trash2, Pencil, Plus, Loader2, ChevronDown, X, Calendar,
 import * as htmlToImage from 'html-to-image'
 import jsPDF from 'jspdf'
 import SearchableSelect from '@/components/ui/SearchableSelect'
+import RoleGroupedSelect, { type GroupedOption } from '@/components/ui/RoleGroupedSelect'
 import { moduleScheduleService, moduleCatalogService, moduleAssignmentService } from '@/services/modulesService'
 import { academicService } from '@/services/academicService'
 import { academicsMgmtService } from '@/services/academicsMgmtService'
 import { portalService } from '@/services/admissionService'
-import { hrService } from '@/services/hrService'
 import { useModulesScopeStore } from '@/store/modulesScopeStore'
 import type { Module, ModuleScheduleRow, ScheduleConflict, SchedulePayload } from '@/types/modules'
 
@@ -324,39 +324,29 @@ export default function ModulesSchedulePage() {
   })
   const moduleAssignments = assignmentsQ.data?.data ?? []
 
-  // All staff — for the "pick any teacher" dropdown
+  // Lecturers / staff — the same unified pool used on the Scheduling & Exams
+  // tabs (HR employees + staff user accounts). Ids are namespaced server-side so
+  // a user-account lecturer (e.g. one with no HR record) can be assigned too.
   const staffQ = useQuery({
-    queryKey: ['hr', 'employees', 'all'],
-    queryFn: () => hrService.listEmployees({ per_page: 500 }),
+    queryKey: ['scheduling', 'instructors'],
+    queryFn: () => academicsMgmtService.getInstructors(),
     staleTime: 5 * 60_000,
   })
-  const allStaff: any[] = staffQ.data?.data?.data ?? []
+  const allStaff = (staffQ.data?.data?.rows ?? []) as Array<{ id: number; full_name: string; position: string | null }>
+  const staffOptions: GroupedOption[] = useMemo(
+    () => allStaff.map((s) => ({
+      value: s.id,
+      label: s.full_name,
+      sub: s.position ?? undefined,
+      group: (s.position ?? '').trim() || 'Other',
+    })),
+    [allStaff],
+  )
 
   // Staff selection (independent of module_assignment_id — created on save if needed)
   const [selectedStaffId, setSelectedStaffId] = useState<number | null>(null)
-  const [staffPickerOpen, setStaffPickerOpen] = useState(false)
-  const [staffSearch, setStaffSearch] = useState('')
-  const staffPickerRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    if (!staffPickerOpen) return
-    const onDoc = (e: MouseEvent) => { if (staffPickerRef.current && !staffPickerRef.current.contains(e.target as Node)) setStaffPickerOpen(false) }
-    document.addEventListener('mousedown', onDoc)
-    return () => document.removeEventListener('mousedown', onDoc)
-  }, [staffPickerOpen])
-
-  const filteredStaff = useMemo(() => {
-    const q = staffSearch.trim().toLowerCase()
-    if (!q) return allStaff
-    return allStaff.filter((s: any) =>
-      String(s.full_name ?? '').toLowerCase().includes(q) ||
-      String(s.position ?? '').toLowerCase().includes(q) ||
-      String(s.email ?? '').toLowerCase().includes(q) ||
-      String(s.emp_code ?? '').toLowerCase().includes(q),
-    )
-  }, [allStaff, staffSearch])
-
-  const selectedStaff = allStaff.find((s: any) => Number(s.id) === selectedStaffId)
+  const selectedStaff = allStaff.find((s) => Number(s.id) === selectedStaffId)
 
   useEffect(() => {
     if (!draft.module_id || !draft.room_id || !draft.academic_term_id) { setConflicts([]); return }
@@ -396,7 +386,7 @@ export default function ModulesSchedulePage() {
       toast.success(editingId ? 'Schedule updated' : 'Schedule added')
       setDraft({ ...EMPTY, academic_term_id: termId })
       setEditingId(null); setConflicts([])
-      setSelectedStaffId(null); setStaffSearch('')
+      setSelectedStaffId(null)
       qc.invalidateQueries({ queryKey: ['modules', 'schedules', termId] })
     },
     onError: (e: any) => { const c = e?.response?.data?.errors?.conflicts; if (c) { setConflicts(c); toast.error('Conflicts detected') } else toast.error(e?.message ?? e?.response?.data?.message ?? 'Save failed') },
@@ -625,78 +615,18 @@ export default function ModulesSchedulePage() {
                       <span className="text-ink-600 mb-1 flex items-center gap-1">
                         <User className="w-3 h-3" />Teacher <span className="text-ink-400 font-normal text-[11px]">(opt.)</span>
                       </span>
-                      <div className="relative" ref={staffPickerRef}>
-                        <button
-                          type="button"
-                          disabled={!draft.module_id}
-                          className="input input-sm w-full text-left flex items-center justify-between gap-2"
-                          onClick={() => setStaffPickerOpen((o) => !o)}
-                        >
-                          {selectedStaff ? (
-                            <span className="flex items-center gap-1.5 truncate">
-                              <span className="w-5 h-5 rounded-full bg-brand/15 text-brand text-[10px] font-bold flex items-center justify-center shrink-0">
-                                {String(selectedStaff.full_name ?? '?').split(' ').map((p: string) => p[0]).slice(0, 2).join('').toUpperCase()}
-                              </span>
-                              <span className="truncate">{selectedStaff.full_name}</span>
-                            </span>
-                          ) : (
-                            <span className="text-ink-400">Pick a teacher…</span>
-                          )}
-                          <span className="flex items-center gap-1 shrink-0">
-                            {selectedStaff && (
-                              <span
-                                role="button"
-                                aria-label="Clear teacher"
-                                className="icon-btn"
-                                onClick={(e) => { e.stopPropagation(); setSelectedStaffId(null) }}
-                              ><X className="w-3 h-3" /></span>
-                            )}
-                            <ChevronDown className={`w-3.5 h-3.5 text-ink-400 transition-transform ${staffPickerOpen ? 'rotate-180' : ''}`} />
-                          </span>
-                        </button>
-
-                        {staffPickerOpen && (
-                          <div className="absolute z-30 top-full left-0 right-0 mt-1 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-700 rounded-lg shadow-xl overflow-hidden">
-                            <div className="p-1.5 border-b border-ink-100 dark:border-ink-700">
-                              <input
-                                autoFocus
-                                placeholder="Search staff by name, role, email…"
-                                value={staffSearch}
-                                onChange={(e) => setStaffSearch(e.target.value)}
-                                className="input input-sm w-full"
-                              />
-                            </div>
-                            <div className="max-h-60 overflow-y-auto">
-                              {staffQ.isLoading ? (
-                                <div className="p-3 text-center"><Loader2 className="w-4 h-4 animate-spin mx-auto text-brand" /></div>
-                              ) : filteredStaff.length === 0 ? (
-                                <p className="p-3 text-center text-ink-400 text-[12px]">No staff match.</p>
-                              ) : filteredStaff.map((s: any) => {
-                                const isAssigned = moduleAssignments.some((a: any) => Number(a.staff_id) === Number(s.id))
-                                const initials = String(s.full_name ?? '?').split(' ').map((p: string) => p[0]).slice(0, 2).join('').toUpperCase()
-                                return (
-                                  <button
-                                    key={s.id}
-                                    type="button"
-                                    className={`w-full text-left px-3 py-2 text-[12.5px] flex items-center gap-2 transition-colors ${selectedStaffId === Number(s.id) ? 'bg-brand/10 text-brand' : 'hover:bg-ink-50 dark:hover:bg-ink-700/30'}`}
-                                    onClick={() => { setSelectedStaffId(Number(s.id)); setStaffPickerOpen(false); setStaffSearch('') }}
-                                  >
-                                    <span className="w-7 h-7 rounded-full bg-brand/15 text-brand text-[11px] font-bold flex items-center justify-center shrink-0">{initials}</span>
-                                    <span className="flex-1 min-w-0">
-                                      <div className="font-semibold truncate">{s.full_name}</div>
-                                      <div className="text-[11px] text-ink-500 truncate">{s.position ?? 'Staff'}{s.email ? ` · ${s.email}` : ''}</div>
-                                    </span>
-                                    {isAssigned && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 whitespace-nowrap">already on module</span>}
-                                  </button>
-                                )
-                              })}
-                            </div>
-                            <div className="p-1.5 border-t border-ink-100 dark:border-ink-700 text-right">
-                              <span className="text-[10px] text-ink-400">{filteredStaff.length} of {allStaff.length} staff</span>
-                            </div>
-                          </div>
-                        )}
-                      </div>
+                      {/* Same unified lecturer pool as the Scheduling & Exams tabs
+                          (HR employees + staff user accounts). */}
+                      <RoleGroupedSelect
+                        options={staffOptions}
+                        value={selectedStaffId ?? ''}
+                        onChange={(v) => setSelectedStaffId(v === '' ? null : Number(v))}
+                        placeholder={draft.module_id ? 'Search staff by name or role…' : 'Pick a module first'}
+                        allLabel="— no teacher —"
+                        ariaLabel="Teacher"
+                        disabled={!draft.module_id}
+                        showSubOnTrigger
+                      />
                     </div>
                   </div>
                   {selectedStaff && draft.module_id > 0 && !moduleAssignments.some((a: any) => Number(a.staff_id) === selectedStaffId) && (

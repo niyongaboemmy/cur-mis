@@ -84,6 +84,9 @@ class ModuleMarksController extends BaseController
                 $ids[(int)$r['employee_id']] = true;
             }
         } catch (\Throwable) { /* employees.user_id not present yet — ignore */ }
+        // A module can also be assigned directly against the user account, via the
+        // namespaced instructor id (InstructorDirectory::USER_OFFSET + users.id).
+        $ids[\App\Helpers\InstructorDirectory::USER_OFFSET + $uid] = true;
         return array_keys($ids);
     }
 

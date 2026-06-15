@@ -99,7 +99,11 @@ const DEFAULT_CFG: PayrollConfig = {
   cbhi_employer_rate: 5,
 };
 
-type RowEx = PayrollRow & {
+// Payroll rows are real employees, so their id is numeric — narrow the id that
+// HrEmployee widened to `number | string` (for the directory's "user-<id>" rows)
+// back to `number` here, since payroll keys selection/maps by employee id.
+type RowEx = Omit<PayrollRow, "id"> & {
+  id: number;
   payroll_status?: string;
   bank?: string | null;
   bank_account?: string | null;
