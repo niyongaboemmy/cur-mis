@@ -1,24 +1,18 @@
 name: Deploy — File Server (CDN)
 
-# No SSH/terminal on cPanel — composer install runs on the GitHub Actions runner.
-# The pre-built vendor/ is uploaded together with the source via FTP.
+# Method: rsync over SFTP (port 22) — server does not support FTP/FTPS
+# composer install runs on the GitHub Actions runner; vendor/ is uploaded via rsync.
 #
-# SECURE server layout after this workflow runs:
+# SECURE server layout:
 #   /home/curac/file-server/              ← PHP source + vendor/ OUTSIDE public_html
 #   /home/curac/public_html/umis/cdn/     ← ONLY file-server/public/ (web entry point)
 #
-# file-server/public/index.php auto-detects $_FS_ROOT via DOCUMENT_ROOT:
-#   DOCUMENT_ROOT = /home/curac/public_html/umis/cdn
-#   → $_FS_ROOT   = /home/curac/file-server   ✓
-#
-# !! AFTER FIRST SUCCESSFUL DEPLOY: delete public_html/umis/file-server/ via
-#    cPanel File Manager — it currently exposes source code on the web.
+# !! AFTER FIRST SUCCESSFUL DEPLOY: delete public_html/umis/file-server/ via cPanel
+#    File Manager — it currently exposes source code on the web.
 #
 # Required GitHub Secrets  (repo → Settings → Secrets and variables → Actions → Secrets):
-#   FTP_HOST          — e.g. cur.ac.rw  (or ftp.cur.ac.rw)
-#   FTP_USERNAME      — curac
-#   FTP_PASSWORD      — cPanel account password
-#   FILE_SERVER_ENV   — full contents of file-server/.env (production)
+#   SFTP_PRIVATE_KEY  — private key whose public half is in server ~/.ssh/authorized_keys
+#   FILE_SERVER_ENV   — full contents of file-server/.env.production
 
 on:
   push:
@@ -40,73 +34,63 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ── PHP + Composer setup ──────────────────────────────────────────────────
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.1'
           tools: composer:v2
           coverage: none
 
-      # ── Build vendor/ locally ─────────────────────────────────────────────────
       - name: composer install (no dev, optimized)
         run: composer install --no-dev --optimize-autoloader --no-interaction
         working-directory: file-server
 
-      # ── Write .env from secret ────────────────────────────────────────────────
       - name: Create file-server/.env from secret
         env:
           FILE_SERVER_ENV: ${{ secrets.FILE_SERVER_ENV }}
         run: printf '%s' "$FILE_SERVER_ENV" > file-server/.env
 
-      # ── Ensure storage/uploads placeholder exists ─────────────────────────────
-      # The .gitkeep in storage/uploads/ is committed; this creates the dir if missing.
-      - name: Ensure storage/uploads/.gitkeep exists
+      - name: Ensure storage/uploads placeholder exists
         run: mkdir -p file-server/storage/uploads && touch file-server/storage/uploads/.gitkeep
 
-      # ── FTP: source + vendor/ → ~/file-server/ ───────────────────────────────
-      # Everything except file-server/public/ goes to home dir (outside web).
-      # storage/uploads/* is excluded — never overwrite user-uploaded files on deploy.
-      - name: FTP deploy file-server source → ~/file-server/
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+      - name: Load SSH private key
+        uses: webfactory/ssh-agent@v0.9.0
         with:
-          server: ${{ secrets.FTP_HOST }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          protocol: ftps
-          port: 21
-          local-dir: ./file-server/
-          server-dir: ./file-server/
-          exclude: |
-            **/.DS_Store
-            **/__MACOSX/**
-            **/public/**
-            **/storage/uploads/*
-            !**/storage/uploads/.gitkeep
-            **/composer.phar
-            **/.gitkeep
+          ssh-private-key: ${{ secrets.SFTP_PRIVATE_KEY }}
 
-      # ── FTP: file-server/public/ → ~/public_html/umis/cdn/ ───────────────────
-      - name: FTP deploy file-server/public/ → public_html/umis/cdn/
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.FTP_HOST }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          protocol: ftps
-          port: 21
-          local-dir: ./file-server/public/
-          server-dir: ./public_html/umis/cdn/
-          exclude: |
-            **/.DS_Store
-            **/__MACOSX/**
+      - name: Add server to known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -p 22 cur.ac.rw >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      # Source + vendor/ + .env → ~/file-server/ (outside public_html)
+      # storage/uploads/* excluded — never overwrite user-uploaded files
+      - name: rsync file-server source → ~/file-server/
+        run: |
+          rsync -avz \
+            --exclude='.DS_Store' \
+            --exclude='__MACOSX/' \
+            --exclude='public/' \
+            --exclude='storage/uploads/*' \
+            --exclude='composer.phar' \
+            -e "ssh -p 22" \
+            file-server/ \
+            curac@cur.ac.rw:~/file-server/
+
+      # Only file-server/public/ → ~/public_html/umis/cdn/
+      - name: rsync file-server/public/ → public_html/umis/cdn/
+        run: |
+          rsync -avz --delete \
+            --exclude='.DS_Store' \
+            --exclude='__MACOSX/' \
+            -e "ssh -p 22" \
+            file-server/public/ \
+            curac@cur.ac.rw:~/public_html/umis/cdn/
 
       - name: Write job summary
         if: always()
         run: |
           echo "## File Server Deploy — ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
-          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
           echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Source | \`~/file-server/\` (outside public_html) |" >> $GITHUB_STEP_SUMMARY
           echo "| Web root | \`~/public_html/umis/cdn/\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Health URL | https://cur.ac.rw/umis/cdn/health |" >> $GITHUB_STEP_SUMMARY
+          echo "| Health | https://cur.ac.rw/umis/cdn/health |" >> $GITHUB_STEP_SUMMARY

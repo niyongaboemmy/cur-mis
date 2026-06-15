@@ -1,24 +1,18 @@
 name: Deploy — Backend (PHP API)
 
-# No SSH/terminal on cPanel — composer install runs on the GitHub Actions runner.
-# The pre-built vendor/ is uploaded together with the source via FTP.
+# Method: rsync over SFTP (port 22) — server does not support FTP/FTPS
+# composer install runs on the GitHub Actions runner; vendor/ is uploaded via rsync.
 #
-# SECURE server layout after this workflow runs:
+# SECURE server layout:
 #   /home/curac/backend/              ← PHP source + vendor/ OUTSIDE public_html
 #   /home/curac/public_html/umis/api/ ← ONLY backend/public/ (web entry point)
 #
-# backend/public/index.php auto-detects BASE_PATH via DOCUMENT_ROOT:
-#   DOCUMENT_ROOT = /home/curac/public_html/umis/api
-#   → BASE_PATH   = /home/curac/backend   ✓
-#
-# !! AFTER FIRST SUCCESSFUL DEPLOY: delete public_html/umis/backend/ via
-#    cPanel File Manager — it currently exposes source + .env on the web.
+# !! AFTER FIRST SUCCESSFUL DEPLOY: delete public_html/umis/backend/ via cPanel
+#    File Manager — it currently exposes source + .env on the web.
 #
 # Required GitHub Secrets  (repo → Settings → Secrets and variables → Actions → Secrets):
-#   FTP_HOST        — e.g. cur.ac.rw  (or ftp.cur.ac.rw)
-#   FTP_USERNAME    — curac
-#   FTP_PASSWORD    — cPanel account password
-#   BACKEND_ENV     — full contents of backend/.env (production)
+#   SFTP_PRIVATE_KEY  — private key whose public half is in server ~/.ssh/authorized_keys
+#   BACKEND_ENV       — full contents of backend/.env.production
 
 on:
   push:
@@ -40,72 +34,63 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ── PHP + Composer setup ──────────────────────────────────────────────────
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.1'
           tools: composer:v2
           coverage: none
 
-      # ── Build vendor/ locally ─────────────────────────────────────────────────
       - name: composer install (no dev, optimized)
         run: composer install --no-dev --optimize-autoloader --no-interaction
         working-directory: backend
 
-      # ── Write .env from secret ────────────────────────────────────────────────
-      # Creates backend/.env on the runner (gitignored, so not in checkout).
-      # Uploaded to ~/backend/.env via FTP below — never exposed in git.
       - name: Create backend/.env from secret
         env:
           BACKEND_ENV: ${{ secrets.BACKEND_ENV }}
         run: printf '%s' "$BACKEND_ENV" > backend/.env
 
-      # ── FTP: source + vendor/ → ~/backend/ ───────────────────────────────────
-      # Everything except backend/public/ goes to the home directory (outside web).
-      - name: FTP deploy backend source → ~/backend/
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+      - name: Load SSH private key
+        uses: webfactory/ssh-agent@v0.9.0
         with:
-          server: ${{ secrets.FTP_HOST }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          protocol: ftps
-          port: 21
-          local-dir: ./backend/
-          server-dir: ./backend/
-          exclude: |
-            **/.DS_Store
-            **/__MACOSX/**
-            **/public/**
-            **/logs/**
-            **/composer.phar
-            **/test_*.php
-            **/.gitkeep
+          ssh-private-key: ${{ secrets.SFTP_PRIVATE_KEY }}
 
-      # ── FTP: backend/public/ → ~/public_html/umis/api/ ───────────────────────
-      # Only the web entry-point files go into the web-accessible folder.
-      # --dangerous-clean-slate is NOT set — keeps server files not in git
-      # (cPanel state files, etc.).
-      - name: FTP deploy backend/public/ → public_html/umis/api/
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.FTP_HOST }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          protocol: ftps
-          port: 21
-          local-dir: ./backend/public/
-          server-dir: ./public_html/umis/api/
-          exclude: |
-            **/.DS_Store
-            **/__MACOSX/**
+      - name: Add server to known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -p 22 cur.ac.rw >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      # Source + vendor/ + .env → ~/backend/ (outside public_html)
+      # public/ excluded here — deployed separately below
+      - name: rsync backend source → ~/backend/
+        run: |
+          rsync -avz \
+            --exclude='.DS_Store' \
+            --exclude='__MACOSX/' \
+            --exclude='public/' \
+            --exclude='logs/' \
+            --exclude='storage/uploads/*' \
+            --exclude='composer.phar' \
+            --exclude='test_*.php' \
+            -e "ssh -p 22" \
+            backend/ \
+            curac@cur.ac.rw:~/backend/
+
+      # Only backend/public/ → ~/public_html/umis/api/ (web entry point)
+      # --delete cleans up accidental files (Windows error log etc.)
+      - name: rsync backend/public/ → public_html/umis/api/
+        run: |
+          rsync -avz --delete \
+            --exclude='.DS_Store' \
+            --exclude='__MACOSX/' \
+            -e "ssh -p 22" \
+            backend/public/ \
+            curac@cur.ac.rw:~/public_html/umis/api/
 
       - name: Write job summary
         if: always()
         run: |
           echo "## Backend Deploy — ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
-          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
           echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Source | \`~/backend/\` (outside public_html) |" >> $GITHUB_STEP_SUMMARY
           echo "| Web root | \`~/public_html/umis/api/\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Health URL | https://cur.ac.rw/umis/api/api/health |" >> $GITHUB_STEP_SUMMARY
+          echo "| Health | https://cur.ac.rw/umis/api/api/health |" >> $GITHUB_STEP_SUMMARY

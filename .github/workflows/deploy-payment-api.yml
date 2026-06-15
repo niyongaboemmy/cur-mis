@@ -2,17 +2,12 @@ name: Deploy — Payment API
 
 # Target: /home/curac/public_html/payment_api/
 # URL:    https://cur.ac.rw/payment_api/
+# Method: rsync over SFTP (port 22) — server does not support FTP/FTPS
 #
-# This is a standalone PHP app with no Composer dependencies.
-# Files are uploaded directly via FTP — no build step needed.
-#
-# The payment_api sits at the root of public_html (not inside umis/).
-# It is treated as its own independent deployment unit.
+# Standalone PHP app — no Composer dependencies, no build step.
 #
 # Required GitHub Secrets  (repo → Settings → Secrets and variables → Actions → Secrets):
-#   FTP_HOST      — e.g. cur.ac.rw  (or ftp.cur.ac.rw)
-#   FTP_USERNAME  — curac
-#   FTP_PASSWORD  — cPanel account password
+#   SFTP_PRIVATE_KEY  — private key whose public half is in server ~/.ssh/authorized_keys
 
 on:
   push:
@@ -34,33 +29,35 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Deploy payment_api/ directly to public_html/payment_api/.
-      # Excludes test/debug files, Mac artifacts, and the accidental
-      # Windows error log currently present on the server.
-      - name: FTP deploy → public_html/payment_api/
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+      - name: Load SSH private key
+        uses: webfactory/ssh-agent@v0.9.0
         with:
-          server: ${{ secrets.FTP_HOST }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          protocol: ftps
-          port: 21
-          local-dir: ./payment_api/
-          server-dir: ./public_html/payment_api/
-          exclude: |
-            **/.DS_Store
-            **/__MACOSX/**
-            **/apitest.html
-            **/test.html
-            **/text.html
-            **/debug.php
+          ssh-private-key: ${{ secrets.SFTP_PRIVATE_KEY }}
+
+      - name: Add server to known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -p 22 cur.ac.rw >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      # Deploy payment_api/ directly to public_html/payment_api/.
+      # Excludes test/debug files and the accidental Windows error log on the server.
+      - name: rsync payment_api/ → public_html/payment_api/
+        run: |
+          rsync -avz \
+            --exclude='.DS_Store' \
+            --exclude='__MACOSX/' \
+            --exclude='apitest.html' \
+            --exclude='test.html' \
+            --exclude='text.html' \
+            --exclude='debug.php' \
+            -e "ssh -p 22" \
+            payment_api/ \
+            curac@cur.ac.rw:~/public_html/payment_api/
 
       - name: Write job summary
         if: always()
         run: |
           echo "## Payment API Deploy — ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
-          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
           echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Target | \`~/public_html/payment_api/\` |" >> $GITHUB_STEP_SUMMARY
           echo "| URL | https://cur.ac.rw/payment_api/ |" >> $GITHUB_STEP_SUMMARY

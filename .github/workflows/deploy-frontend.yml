@@ -2,11 +2,12 @@ name: Deploy — Frontend (React SPA)
 
 # Target: /home/curac/public_html/umis/
 # URL:    https://cur.ac.rw/umis/
+# Method: rsync over SFTP (port 22) — server does not support FTP/FTPS
 #
 # Required GitHub Secrets  (repo → Settings → Secrets and variables → Actions → Secrets):
-#   FTP_HOST      — FTP server hostname, e.g. cur.ac.rw  (or ftp.cur.ac.rw)
-#   FTP_USERNAME  — cPanel username: curac
-#   FTP_PASSWORD  — cPanel account password (or FTP-specific password from cPanel → FTP Accounts)
+#   SFTP_PRIVATE_KEY  — contents of ~/.ssh/curac_deploy  (the private key)
+#                       Generate: ssh-keygen -t ed25519 -C "github-deploy" -f ~/.ssh/curac_deploy
+#                       Then add ~/.ssh/curac_deploy.pub to server /home/curac/.ssh/authorized_keys
 
 on:
   push:
@@ -42,41 +43,38 @@ jobs:
         run: npm run type-check
         working-directory: frontend
 
-      # frontend/.env.production is committed to git and read by Vite automatically.
-      # It already contains VITE_API_URL=https://cur.ac.rw/umis/api
       - name: Build production bundle
         run: npm run build
         working-directory: frontend
 
-      # Upload dist/ contents to public_html/umis/ via FTP.
-      # The action tracks a state file on the server and only uploads changed files
-      # on subsequent runs — first deploy is slow, all others are fast.
-      # --exclude keeps the api/, backend/, cdn/, file-server/ folders untouched.
-      - name: FTP deploy → public_html/umis/
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+      - name: Load SSH private key
+        uses: webfactory/ssh-agent@v0.9.0
         with:
-          server: ${{ secrets.FTP_HOST }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          protocol: ftps
-          port: 21
-          local-dir: ./frontend/dist/
-          server-dir: ./public_html/umis/
-          exclude: |
-            **/.DS_Store
-            **/__MACOSX/**
-            **/api/**
-            **/backend/**
-            **/cdn/**
-            **/file-server/**
-            **/template_docs/**
+          ssh-private-key: ${{ secrets.SFTP_PRIVATE_KEY }}
+
+      - name: Add server to known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -p 22 cur.ac.rw >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: rsync dist → public_html/umis/
+        run: |
+          rsync -avz --delete \
+            --exclude='.DS_Store' \
+            --exclude='__MACOSX/' \
+            --exclude='api/' \
+            --exclude='backend/' \
+            --exclude='cdn/' \
+            --exclude='file-server/' \
+            --exclude='template_docs/' \
+            -e "ssh -p 22" \
+            frontend/dist/ \
+            curac@cur.ac.rw:~/public_html/umis/
 
       - name: Write job summary
         if: always()
         run: |
           echo "## Frontend Deploy — ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
-          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
           echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Target | \`public_html/umis/\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Target | \`~/public_html/umis/\` |" >> $GITHUB_STEP_SUMMARY
           echo "| URL | https://cur.ac.rw/umis/ |" >> $GITHUB_STEP_SUMMARY
