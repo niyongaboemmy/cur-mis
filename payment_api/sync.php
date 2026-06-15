@@ -8,7 +8,8 @@
 require_once __DIR__ . '/Rest.php';          // runs token guard
 require_once __DIR__ . '/payment_reconciler.php';
 
-$conn = new mysqli('localhost', 'curac_save', 'curac_save', 'curac_save');
+$creds = getDbCredentials();
+$conn  = new mysqli($creds['host'], $creds['user'], $creds['pass'], $creds['db'], $creds['port']);
 $conn->set_charset('utf8mb4');
 
 $reconciler = new PaymentReconciler($conn);
