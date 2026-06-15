@@ -2,8 +2,11 @@ name: Deploy — Payment API
 
 # Target: /home/curac/public_html/payment_api/
 # URL:    https://cur.ac.rw/payment_api/
-# Method: cPanel UAPI (port 2083) for upload; PHP helper for extraction.
-#         cPanel has no zip-extract API — .github/scripts/extract-inplace.php handles it.
+# Method: cPanel UAPI (port 2083) upload + one-time PHP helper for extraction.
+#
+# Extraction — stage-then-swap:
+#   Files are extracted to a temp dir, then rename()d into the live directory.
+#   rename() is atomic on the same filesystem — near-zero window of mixed files.
 #
 # Required GitHub Secret:
 #   CPANEL_PASS — cPanel account password
@@ -23,6 +26,9 @@ concurrency:
 env:
   CPANEL_URL: https://cpanel.cur.ac.rw:2083
   CPANEL_USER: curac
+  # Base64-encoded staged PHP extractor. Placeholders DEPLOY_TOKEN and
+  # DEPLOY_ZIP_NAME are replaced by sed at runtime. Avoids heredoc in YAML.
+  EXTRACTOR_B64: PD9waHAKaWYgKCgkX0dFVFsndG9rZW4nXSA/PyAnJykgIT09ICdERVBMT1lfVE9LRU4nKSB7IGh0dHBfcmVzcG9uc2VfY29kZSg0MDMpOyBkaWUoJ2ZvcmJpZGRlbicpOyB9CiR6aXAgPSBfX0RJUl9fIC4gJy9ERVBMT1lfWklQX05BTUUnOwokc3RhZ2luZyA9IF9fRElSX18gLiAnL19kc18nIC4gdGltZSgpOwokeiA9IG5ldyBaaXBBcmNoaXZlOwppZiAoJHotPm9wZW4oJHppcCkgIT09IFRSVUUpIHsgaHR0cF9yZXNwb25zZV9jb2RlKDUwMCk7IGVjaG8gJ2ZhaWxlZDogJy4kei0+Z2V0U3RhdHVzU3RyaW5nKCk7IGV4aXQ7IH0KaWYgKCFta2Rpcigkc3RhZ2luZywgMDc1NSwgdHJ1ZSkpIHsgaHR0cF9yZXNwb25zZV9jb2RlKDUwMCk7IGVjaG8gJ2ZhaWxlZDogc3RhZ2luZyc7IGV4aXQ7IH0KJHotPmV4dHJhY3RUbygkc3RhZ2luZyk7ICR6LT5jbG9zZSgpOyB1bmxpbmsoJHppcCk7CiRpdCA9IG5ldyBSZWN1cnNpdmVJdGVyYXRvckl0ZXJhdG9yKG5ldyBSZWN1cnNpdmVEaXJlY3RvcnlJdGVyYXRvcigkc3RhZ2luZywgUmVjdXJzaXZlRGlyZWN0b3J5SXRlcmF0b3I6OlNLSVBfRE9UUyksIFJlY3Vyc2l2ZUl0ZXJhdG9ySXRlcmF0b3I6OlNFTEZfRklSU1QpOwpmb3JlYWNoICgkaXQgYXMgJGYpIHsgJHJlbCA9IHN1YnN0cigkZi0+Z2V0UGF0aG5hbWUoKSwgc3RybGVuKCRzdGFnaW5nKSsxKTsgJGQgPSBfX0RJUl9fLicvJy4kcmVsOyBpZiAoJGYtPmlzRGlyKCkpIHsgaWYgKCFpc19kaXIoJGQpKSBta2RpcigkZCwwNzU1LHRydWUpOyB9IGVsc2UgeyAkZGQgPSBkaXJuYW1lKCRkKTsgaWYgKCFpc19kaXIoJGRkKSkgbWtkaXIoJGRkLDA3NTUsdHJ1ZSk7IHJlbmFtZSgkZi0+Z2V0UGF0aG5hbWUoKSwkZCk7IH0gfQokY2wgPSBuZXcgUmVjdXJzaXZlSXRlcmF0b3JJdGVyYXRvcihuZXcgUmVjdXJzaXZlRGlyZWN0b3J5SXRlcmF0b3IoJHN0YWdpbmcsIFJlY3Vyc2l2ZURpcmVjdG9yeUl0ZXJhdG9yOjpTS0lQX0RPVFMpLCBSZWN1cnNpdmVJdGVyYXRvckl0ZXJhdG9yOjpDSElMRF9GSVJTVCk7CmZvcmVhY2ggKCRjbCBhcyAkZikgeyAkZi0+aXNEaXIoKSA/IHJtZGlyKCRmLT5nZXRQYXRobmFtZSgpKSA6IHVubGluaygkZi0+Z2V0UGF0aG5hbWUoKSk7IH0KQHJtZGlyKCRzdGFnaW5nKTsKaWYgKGZ1bmN0aW9uX2V4aXN0cygnb3BjYWNoZV9yZXNldCcpKSBvcGNhY2hlX3Jlc2V0KCk7CnVubGluayhfX0ZJTEVfXyk7IGVjaG8gJ29rJzsK
 
 jobs:
   deploy:
@@ -51,10 +57,10 @@ jobs:
         run: |
           TOKEN=$(openssl rand -hex 16)
 
-          # Inject token + zip name into the PHP extractor template
-          sed -e "s/DEPLOY_TOKEN/$TOKEN/" \
-              -e "s/DEPLOY_ZIP_NAME/payment-api.zip/" \
-              .github/scripts/extract-inplace.php > _extract.php
+          # Decode base64 template, inject one-time token + zip name
+          echo "$EXTRACTOR_B64" | base64 -d \
+            | sed -e "s/DEPLOY_TOKEN/$TOKEN/" -e "s/DEPLOY_ZIP_NAME/payment-api.zip/" \
+            > _extract.php
 
           # Upload zip (overwrite=1 handles stale zips from failed previous runs)
           R=$(curl -s -k -u "$CPANEL_USER:$CPANEL_PASS" \
@@ -65,7 +71,7 @@ jobs:
           echo "Upload zip: $R"
           [ "$(echo "$R" | jq -r '.status // 0')" = "1" ] || { echo "Zip upload failed"; exit 1; }
 
-          # Upload extractor script
+          # Upload extractor
           R=$(curl -s -k -u "$CPANEL_USER:$CPANEL_PASS" \
             -F "dir=/public_html/payment_api" \
             -F "overwrite=1" \
@@ -74,7 +80,7 @@ jobs:
           echo "Upload extractor: $R"
           [ "$(echo "$R" | jq -r '.status // 0')" = "1" ] || { echo "Extractor upload failed"; exit 1; }
 
-          # Trigger extraction — script self-destructs and deletes the zip
+          # Trigger extraction — stages files then swaps atomically, self-destructs
           RESULT=$(curl -s -k "https://cur.ac.rw/payment_api/_extract.php?token=$TOKEN")
           echo "Extract result: $RESULT"
           [ "$RESULT" = "ok" ] || { echo "Extraction failed: $RESULT"; exit 1; }

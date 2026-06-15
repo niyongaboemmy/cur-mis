@@ -273,12 +273,7 @@ export default function WelcomePage() {
   const isApplicant = role === "applicant" || user?.is_applicant;
   const isSuperadmin = role === "superadmin";
 
-  if (isApplicant) {
-    return (
-      <ApplicantWelcome firstName={user?.full_name?.split(" ")[0] ?? "there"} />
-    );
-  }
-
+  // Hooks must run unconditionally — all useMemo calls before any early return.
   const firstName = useMemo(
     () => user?.full_name?.split(" ")[0] ?? "there",
     [user],
@@ -300,6 +295,13 @@ export default function WelcomePage() {
       return qa.permissions.some((p) => userPerms.includes(p));
     });
   }, [role, userPerms, isSuperadmin]);
+
+  // Early return AFTER all hooks so Rules of Hooks are satisfied.
+  if (isApplicant) {
+    return (
+      <ApplicantWelcome firstName={user?.full_name?.split(" ")[0] ?? "there"} />
+    );
+  }
 
   const isStudent = role === "student";
   const dashLink = isApplicant

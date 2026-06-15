@@ -1,8 +1,11 @@
 name: Deploy — File Server (CDN)
 
-# Method: cPanel UAPI (port 2083) for upload; PHP helper for extraction.
-#         cPanel has no zip-extract API — .github/scripts/ templates handle it.
+# Method: cPanel UAPI (port 2083) upload + one-time PHP helpers for extraction.
 # composer install runs on the GitHub Actions runner; vendor/ is zipped and uploaded.
+#
+# Extraction — stage-then-swap:
+#   Each zip is extracted to a temp dir, then files are rename()d into place.
+#   rename() is atomic on the same filesystem — near-zero window of mixed files.
 #
 # Server layout after deploy:
 #   /home/curac/file-server/          — PHP source + vendor/ (outside public_html)
@@ -10,7 +13,7 @@ name: Deploy — File Server (CDN)
 #
 # Required GitHub Secrets:
 #   CPANEL_PASS       — cPanel account password
-#   FILE_SERVER_ENV   — full contents of file-server/.env.production
+#   FILE_SERVER_ENV   — full contents of file-server/.env
 
 on:
   push:
@@ -27,6 +30,10 @@ concurrency:
 env:
   CPANEL_URL: https://cpanel.cur.ac.rw:2083
   CPANEL_USER: curac
+
+  EXTRACTOR_INPLACE_B64: PD9waHAKaWYgKCgkX0dFVFsndG9rZW4nXSA/PyAnJykgIT09ICdERVBMT1lfVE9LRU4nKSB7IGh0dHBfcmVzcG9uc2VfY29kZSg0MDMpOyBkaWUoJ2ZvcmJpZGRlbicpOyB9CiR6aXAgPSBfX0RJUl9fIC4gJy9ERVBMT1lfWklQX05BTUUnOwokc3RhZ2luZyA9IF9fRElSX18gLiAnL19kc18nIC4gdGltZSgpOwokeiA9IG5ldyBaaXBBcmNoaXZlOwppZiAoJHotPm9wZW4oJHppcCkgIT09IFRSVUUpIHsgaHR0cF9yZXNwb25zZV9jb2RlKDUwMCk7IGVjaG8gJ2ZhaWxlZDogJy4kei0+Z2V0U3RhdHVzU3RyaW5nKCk7IGV4aXQ7IH0KaWYgKCFta2Rpcigkc3RhZ2luZywgMDc1NSwgdHJ1ZSkpIHsgaHR0cF9yZXNwb25zZV9jb2RlKDUwMCk7IGVjaG8gJ2ZhaWxlZDogc3RhZ2luZyc7IGV4aXQ7IH0KJHotPmV4dHJhY3RUbygkc3RhZ2luZyk7ICR6LT5jbG9zZSgpOyB1bmxpbmsoJHppcCk7CiRpdCA9IG5ldyBSZWN1cnNpdmVJdGVyYXRvckl0ZXJhdG9yKG5ldyBSZWN1cnNpdmVEaXJlY3RvcnlJdGVyYXRvcigkc3RhZ2luZywgUmVjdXJzaXZlRGlyZWN0b3J5SXRlcmF0b3I6OlNLSVBfRE9UUyksIFJlY3Vyc2l2ZUl0ZXJhdG9ySXRlcmF0b3I6OlNFTEZfRklSU1QpOwpmb3JlYWNoICgkaXQgYXMgJGYpIHsgJHJlbCA9IHN1YnN0cigkZi0+Z2V0UGF0aG5hbWUoKSwgc3RybGVuKCRzdGFnaW5nKSsxKTsgJGQgPSBfX0RJUl9fLicvJy4kcmVsOyBpZiAoJGYtPmlzRGlyKCkpIHsgaWYgKCFpc19kaXIoJGQpKSBta2RpcigkZCwwNzU1LHRydWUpOyB9IGVsc2UgeyAkZGQgPSBkaXJuYW1lKCRkKTsgaWYgKCFpc19kaXIoJGRkKSkgbWtkaXIoJGRkLDA3NTUsdHJ1ZSk7IHJlbmFtZSgkZi0+Z2V0UGF0aG5hbWUoKSwkZCk7IH0gfQokY2wgPSBuZXcgUmVjdXJzaXZlSXRlcmF0b3JJdGVyYXRvcihuZXcgUmVjdXJzaXZlRGlyZWN0b3J5SXRlcmF0b3IoJHN0YWdpbmcsIFJlY3Vyc2l2ZURpcmVjdG9yeUl0ZXJhdG9yOjpTS0lQX0RPVFMpLCBSZWN1cnNpdmVJdGVyYXRvckl0ZXJhdG9yOjpDSElMRF9GSVJTVCk7CmZvcmVhY2ggKCRjbCBhcyAkZikgeyAkZi0+aXNEaXIoKSA/IHJtZGlyKCRmLT5nZXRQYXRobmFtZSgpKSA6IHVubGluaygkZi0+Z2V0UGF0aG5hbWUoKSk7IH0KQHJtZGlyKCRzdGFnaW5nKTsKaWYgKGZ1bmN0aW9uX2V4aXN0cygnb3BjYWNoZV9yZXNldCcpKSBvcGNhY2hlX3Jlc2V0KCk7CnVubGluayhfX0ZJTEVfXyk7IGVjaG8gJ29rJzsK
+
+  EXTRACTOR_HOME_B64: PD9waHAKaWYgKCgkX0dFVFsndG9rZW4nXSA/PyAnJykgIT09ICdERVBMT1lfVE9LRU4nKSB7IGh0dHBfcmVzcG9uc2VfY29kZSg0MDMpOyBkaWUoJ2ZvcmJpZGRlbicpOyB9CiRob21lID0gcmVhbHBhdGgoX19ESVJfXyAuICcvREVQTE9ZX09GRlNFVCcpOwokemlwID0gJGhvbWUgLiAnL0RFUExPWV9aSVBfTkFNRSc7CiRkZXN0ID0gJGhvbWUgLiAnL0RFUExPWV9ERVNUX0RJUic7CiRzdGFnaW5nID0gJGhvbWUgLiAnL19kc18nIC4gdGltZSgpOwokeiA9IG5ldyBaaXBBcmNoaXZlOwppZiAoJHotPm9wZW4oJHppcCkgIT09IFRSVUUpIHsgaHR0cF9yZXNwb25zZV9jb2RlKDUwMCk7IGVjaG8gJ2ZhaWxlZDogJy4kei0+Z2V0U3RhdHVzU3RyaW5nKCk7IGV4aXQ7IH0KaWYgKCFpc19kaXIoJGRlc3QpKSBta2RpcigkZGVzdCwgMDc1NSwgdHJ1ZSk7CmlmICghbWtkaXIoJHN0YWdpbmcsIDA3NTUsIHRydWUpKSB7IGh0dHBfcmVzcG9uc2VfY29kZSg1MDApOyBlY2hvICdmYWlsZWQ6IHN0YWdpbmcnOyBleGl0OyB9CiR6LT5leHRyYWN0VG8oJHN0YWdpbmcpOyAkei0+Y2xvc2UoKTsgdW5saW5rKCR6aXApOwokaXQgPSBuZXcgUmVjdXJzaXZlSXRlcmF0b3JJdGVyYXRvcihuZXcgUmVjdXJzaXZlRGlyZWN0b3J5SXRlcmF0b3IoJHN0YWdpbmcsIFJlY3Vyc2l2ZURpcmVjdG9yeUl0ZXJhdG9yOjpTS0lQX0RPVFMpLCBSZWN1cnNpdmVJdGVyYXRvckl0ZXJhdG9yOjpTRUxGX0ZJUlNUKTsKZm9yZWFjaCAoJGl0IGFzICRmKSB7ICRyZWwgPSBzdWJzdHIoJGYtPmdldFBhdGhuYW1lKCksIHN0cmxlbigkc3RhZ2luZykrMSk7ICRkID0gJGRlc3QuJy8nLiRyZWw7IGlmICgkZi0+aXNEaXIoKSkgeyBpZiAoIWlzX2RpcigkZCkpIG1rZGlyKCRkLDA3NTUsdHJ1ZSk7IH0gZWxzZSB7ICRkZCA9IGRpcm5hbWUoJGQpOyBpZiAoIWlzX2RpcigkZGQpKSBta2RpcigkZGQsMDc1NSx0cnVlKTsgcmVuYW1lKCRmLT5nZXRQYXRobmFtZSgpLCRkKTsgfSB9CiRjbCA9IG5ldyBSZWN1cnNpdmVJdGVyYXRvckl0ZXJhdG9yKG5ldyBSZWN1cnNpdmVEaXJlY3RvcnlJdGVyYXRvcigkc3RhZ2luZywgUmVjdXJzaXZlRGlyZWN0b3J5SXRlcmF0b3I6OlNLSVBfRE9UUyksIFJlY3Vyc2l2ZUl0ZXJhdG9ySXRlcmF0b3I6OkNISUxEX0ZJUlNUKTsKZm9yZWFjaCAoJGNsIGFzICRmKSB7ICRmLT5pc0RpcigpID8gcm1kaXIoJGYtPmdldFBhdGhuYW1lKCkpIDogdW5saW5rKCRmLT5nZXRQYXRobmFtZSgpKTsgfQpAcm1kaXIoJHN0YWdpbmcpOwp1bmxpbmsoX19GSUxFX18pOyBlY2hvICdvayc7Cg==
 
 jobs:
   deploy:
@@ -54,7 +61,7 @@ jobs:
       - name: Ensure storage/uploads placeholder exists
         run: mkdir -p file-server/storage/uploads && touch file-server/storage/uploads/.gitkeep
 
-      # ── Archive 1: source + vendor/ + .env → ~/file-server/ ─────────────────
+      # ── Archive 1: source + vendor/ + .env ───────────────────────────────────
       # storage/uploads/* excluded — never overwrite user-uploaded files.
       - name: Create file-server source archive
         run: |
@@ -68,7 +75,7 @@ jobs:
           cd ..
           echo "Source archive: $(du -sh fileserver-src.zip | cut -f1)"
 
-      # ── Archive 2: file-server/public/ only → ~/public_html/umis/cdn/ ────────
+      # ── Archive 2: file-server/public/ only ──────────────────────────────────
       - name: Create file-server public archive
         run: |
           cd file-server/public
@@ -78,23 +85,23 @@ jobs:
           cd ../..
           echo "Public archive: $(du -sh fileserver-public.zip | cut -f1)"
 
-      # ── Deploy source to ~/file-server/ ──────────────────────────────────────
-      # Zip is uploaded to home root (NOT public_html) to keep source off the web.
-      # Extraction is triggered via a one-time PHP script placed in public_html/umis/cdn/.
-      # The script calculates home = __DIR__/../../.. (cdn→umis→public_html→home).
+      # ── Step 1: Deploy source to ~/file-server/ ───────────────────────────────
+      # Zip goes to home root (outside public_html — keeps source off the web).
+      # Extractor in cdn/ calculates home via __DIR__/../../..
       - name: Upload & extract file-server source → ~/file-server/
         env:
           CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
         run: |
           TOKEN=$(openssl rand -hex 16)
 
-          sed -e "s/DEPLOY_TOKEN/$TOKEN/" \
-              -e "s|DEPLOY_OFFSET|/../../..|" \
-              -e "s/DEPLOY_ZIP_NAME/fileserver-src.zip/" \
-              -e "s/DEPLOY_DEST_DIR/file-server/" \
-              .github/scripts/extract-from-home.php > _extract_src.php
+          echo "$EXTRACTOR_HOME_B64" | base64 -d \
+            | sed -e "s/DEPLOY_TOKEN/$TOKEN/" \
+                  -e "s|DEPLOY_OFFSET|/../../..|" \
+                  -e "s/DEPLOY_ZIP_NAME/fileserver-src.zip/" \
+                  -e "s/DEPLOY_DEST_DIR/file-server/" \
+            > _extract_src.php
 
-          # Upload zip to home root (not inside public_html)
+          # Upload zip to home root (not in public_html)
           R=$(curl -s -k -u "$CPANEL_USER:$CPANEL_PASS" \
             -F "dir=/" \
             -F "overwrite=1" \
@@ -112,21 +119,20 @@ jobs:
           echo "Upload extractor: $R"
           [ "$(echo "$R" | jq -r '.status // 0')" = "1" ] || { echo "Extractor upload failed"; exit 1; }
 
-          # Trigger extraction — script self-destructs and deletes the zip
           RESULT=$(curl -s -k "https://cur.ac.rw/umis/cdn/_extract_src.php?token=$TOKEN")
           echo "Extract result: $RESULT"
           [ "$RESULT" = "ok" ] || { echo "Extraction failed: $RESULT"; exit 1; }
 
-      # ── Deploy public/ to ~/public_html/umis/cdn/ ────────────────────────────
+      # ── Step 2: Deploy public/ to ~/public_html/umis/cdn/ ────────────────────
       - name: Upload & extract file-server/public/ → public_html/umis/cdn/
         env:
           CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
         run: |
           TOKEN=$(openssl rand -hex 16)
 
-          sed -e "s/DEPLOY_TOKEN/$TOKEN/" \
-              -e "s/DEPLOY_ZIP_NAME/fileserver-public.zip/" \
-              .github/scripts/extract-inplace.php > _extract_pub.php
+          echo "$EXTRACTOR_INPLACE_B64" | base64 -d \
+            | sed -e "s/DEPLOY_TOKEN/$TOKEN/" -e "s/DEPLOY_ZIP_NAME/fileserver-public.zip/" \
+            > _extract_pub.php
 
           R=$(curl -s -k -u "$CPANEL_USER:$CPANEL_PASS" \
             -F "dir=/public_html/umis/cdn" \
@@ -155,4 +161,3 @@ jobs:
           echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Source | \`~/file-server/\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Web root | \`~/public_html/umis/cdn/\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Health | https://cur.ac.rw/umis/cdn/health |" >> $GITHUB_STEP_SUMMARY
