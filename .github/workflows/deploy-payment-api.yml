@@ -1,0 +1,66 @@
+name: Deploy — Payment API
+
+# Target: /home/curac/public_html/payment_api/
+# URL:    https://cur.ac.rw/payment_api/
+#
+# This is a standalone PHP app with no Composer dependencies.
+# Files are uploaded directly via FTP — no build step needed.
+#
+# The payment_api sits at the root of public_html (not inside umis/).
+# It is treated as its own independent deployment unit.
+#
+# Required GitHub Secrets  (repo → Settings → Secrets and variables → Actions → Secrets):
+#   FTP_HOST      — e.g. cur.ac.rw  (or ftp.cur.ac.rw)
+#   FTP_USERNAME  — curac
+#   FTP_PASSWORD  — cPanel account password
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'payment_api/**'
+      - '.github/workflows/deploy-payment-api.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-payment-api
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy Payment API
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Deploy payment_api/ directly to public_html/payment_api/.
+      # Excludes test/debug files, Mac artifacts, and the accidental
+      # Windows error log currently present on the server.
+      - name: FTP deploy → public_html/payment_api/
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_HOST }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftps
+          port: 21
+          local-dir: ./payment_api/
+          server-dir: ./public_html/payment_api/
+          exclude: |
+            **/.DS_Store
+            **/__MACOSX/**
+            **/apitest.html
+            **/test.html
+            **/text.html
+            **/debug.php
+
+      - name: Write job summary
+        if: always()
+        run: |
+          echo "## Payment API Deploy — ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Target | \`~/public_html/payment_api/\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| URL | https://cur.ac.rw/payment_api/ |" >> $GITHUB_STEP_SUMMARY

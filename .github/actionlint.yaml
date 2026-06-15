@@ -1,0 +1,5 @@
+# actionlint configuration
+# Suppresses "context access might be invalid" warnings for secrets and vars
+# that are defined in GitHub repo settings, not in the workflow files themselves.
+self-hosted-runner:
+  labels: []

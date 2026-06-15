@@ -1,0 +1,82 @@
+name: Deploy — Frontend (React SPA)
+
+# Target: /home/curac/public_html/umis/
+# URL:    https://cur.ac.rw/umis/
+#
+# Required GitHub Secrets  (repo → Settings → Secrets and variables → Actions → Secrets):
+#   FTP_HOST      — FTP server hostname, e.g. cur.ac.rw  (or ftp.cur.ac.rw)
+#   FTP_USERNAME  — cPanel username: curac
+#   FTP_PASSWORD  — cPanel account password (or FTP-specific password from cPanel → FTP Accounts)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/deploy-frontend.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-frontend
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    name: Build & Deploy React SPA
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: TypeScript type-check
+        run: npm run type-check
+        working-directory: frontend
+
+      # frontend/.env.production is committed to git and read by Vite automatically.
+      # It already contains VITE_API_URL=https://cur.ac.rw/umis/api
+      - name: Build production bundle
+        run: npm run build
+        working-directory: frontend
+
+      # Upload dist/ contents to public_html/umis/ via FTP.
+      # The action tracks a state file on the server and only uploads changed files
+      # on subsequent runs — first deploy is slow, all others are fast.
+      # --exclude keeps the api/, backend/, cdn/, file-server/ folders untouched.
+      - name: FTP deploy → public_html/umis/
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_HOST }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftps
+          port: 21
+          local-dir: ./frontend/dist/
+          server-dir: ./public_html/umis/
+          exclude: |
+            **/.DS_Store
+            **/__MACOSX/**
+            **/api/**
+            **/backend/**
+            **/cdn/**
+            **/file-server/**
+            **/template_docs/**
+
+      - name: Write job summary
+        if: always()
+        run: |
+          echo "## Frontend Deploy — ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Target | \`public_html/umis/\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| URL | https://cur.ac.rw/umis/ |" >> $GITHUB_STEP_SUMMARY
