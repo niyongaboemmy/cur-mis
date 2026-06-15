@@ -114,6 +114,7 @@ class MessageController extends BaseController
 
         $errors = ValidationHelper::validate($body, [
             'recipients' => ['required'],
+            'body'       => ['required', 'min:1'],
         ]);
         if (!empty($errors)) {
             $this->error($response, 'Validation failed.', 422, $errors);
@@ -123,27 +124,59 @@ class MessageController extends BaseController
         $type          = in_array($body['type'] ?? '', ['direct', 'broadcast'], true)
                          ? $body['type'] : 'direct';
         $subject       = trim($body['subject'] ?? '');
+        $messageBody   = trim($body['body'] ?? '');
+        $sendEmail     = filter_var($body['send_email'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $channel       = $sendEmail ? 'system_email' : 'system';
 
-        $recipientIds = array_values(array_filter(
-            $this->expandRecipients($rawRecipients, $actor),
-            fn($id) => $id !== $authId
-        ));
+        $recipientIds = array_values($this->expandRecipients($rawRecipients, $actor));
 
         if (empty($recipientIds)) {
             $this->error($response, 'No valid recipients found.', 422);
         }
 
-        // For 1:1 direct: find or restore existing conversation
+        // Auto-generate subject from participant first names when none provided
+        if ($subject === '') {
+            $allIds     = array_unique(array_merge([$authId], $recipientIds));
+            $ph         = implode(',', array_fill(0, count($allIds), '?'));
+            $nameRows   = $this->db->fetchAll("SELECT full_name FROM users WHERE id IN ({$ph})", $allIds);
+            $firstNames = array_map(fn($r) => explode(' ', trim($r['full_name']))[0], $nameRows);
+            $subject    = count($firstNames) <= 3
+                ? implode(' & ', $firstNames)
+                : implode(', ', array_slice($firstNames, 0, 3)) . ' +' . (count($firstNames) - 3) . ' more';
+        }
+
+        // For 1:1 direct: find or restore existing conversation, then post message into it
         if ($type === 'direct' && count($recipientIds) === 1) {
             $existingId = $this->convModel->findDirect($authId, $recipientIds[0]);
             if ($existingId) {
                 $this->convModel->restoreParticipant($existingId, $authId);
+                $allParticipants = $this->convModel->getParticipantIds($existingId);
+                $msgRecipients   = array_values(array_filter($allParticipants, fn($id) => $id !== $authId));
+
+                $msgId = $this->db->transaction(function () use ($authId, $existingId, $messageBody, $channel, $msgRecipients): int {
+                    $id = (int) $this->messageModel->create([
+                        'conversation_id'  => $existingId,
+                        'sender_id'        => $authId,
+                        'body'             => $messageBody,
+                        'delivery_channel' => $channel,
+                        'has_attachment'   => 0,
+                        'is_draft'         => 0,
+                    ]);
+                    $this->messageModel->createRecipients($id, $msgRecipients);
+                    $this->db->execute("UPDATE conversations SET updated_at = NOW() WHERE id = ?", [$existingId]);
+                    return $id;
+                });
+
+                $this->dispatchEmail($msgId, $actor, $messageBody, $sendEmail, $msgRecipients);
+
                 $conv = $this->convModel->find($existingId);
-                $this->success($response, ['conversation' => $conv, 'existing' => true], 'Conversation found.');
+                $this->success($response, ['conversation' => $conv, 'existing' => true], 'Message sent to existing conversation.');
             }
         }
 
-        $convId = $this->db->transaction(function () use ($authId, $type, $subject, $recipientIds): int {
+        // Create new conversation with first message in a single transaction
+        $msgId  = null;
+        $convId = $this->db->transaction(function () use ($authId, $type, $subject, $recipientIds, $messageBody, $channel, &$msgId): int {
             $id = (int) $this->convModel->create([
                 'subject'    => $subject ?: null,
                 'type'       => $type,
@@ -155,8 +188,21 @@ class MessageController extends BaseController
                 $this->convModel->addParticipant($id, $uid);
             }
 
+            $msgId = (int) $this->messageModel->create([
+                'conversation_id'  => $id,
+                'sender_id'        => $authId,
+                'body'             => $messageBody,
+                'delivery_channel' => $channel,
+                'has_attachment'   => 0,
+                'is_draft'         => 0,
+            ]);
+            $this->messageModel->createRecipients($msgId, $recipientIds);
+            $this->db->execute("UPDATE conversations SET updated_at = NOW() WHERE id = ?", [$id]);
+
             return $id;
         });
+
+        $this->dispatchEmail($msgId, $actor, $messageBody, $sendEmail, $recipientIds);
 
         SystemLogService::log('CREATE', 'MESSAGING',
             "User {$authId} created conversation {$convId} with " . count($recipientIds) . " recipient(s).",
@@ -291,38 +337,7 @@ class MessageController extends BaseController
         });
 
         // Email dispatch — fire-and-forget after DB commit
-        if ($sendEmail && !empty($recipientIds)) {
-            $ph         = implode(',', array_fill(0, count($recipientIds), '?'));
-            $recipients = $this->db->fetchAll(
-                "SELECT id, email, full_name FROM users WHERE id IN ({$ph})",
-                $recipientIds
-            );
-
-            $senderName  = $actor['full_name'] ?? 'A colleague';
-            $plainBody   = strip_tags($body['body']);
-            $htmlBody    = '<p>You have a new message from <strong>' . htmlspecialchars($senderName) . '</strong>:</p>'
-                         . '<blockquote style="border-left:3px solid #0A2A5E;padding:8px 16px;color:#333;">'
-                         . nl2br(htmlspecialchars($plainBody))
-                         . '</blockquote>'
-                         . '<p><a href="' . ($_ENV['APP_FRONTEND_URL'] ?? '') . '/messages">Open in CUR-MIS</a></p>';
-
-            $mail = new MailService();
-            foreach ($recipients as $rec) {
-                $sent = $mail->send(
-                    ['email' => $rec['email'], 'name' => $rec['full_name']],
-                    "New message from {$senderName}",
-                    $htmlBody,
-                    $plainBody
-                );
-
-                if ($sent) {
-                    $this->db->execute(
-                        "UPDATE message_recipients SET email_sent = 1 WHERE message_id = ? AND user_id = ?",
-                        [$msgId, $rec['id']]
-                    );
-                }
-            }
-        }
+        $this->dispatchEmail($msgId, $actor, trim($body['body']), $sendEmail, $recipientIds);
 
         SystemLogService::log('CREATE', 'MESSAGING',
             "User {$authId} sent message {$msgId} in conversation {$convId}.",
@@ -483,6 +498,61 @@ class MessageController extends BaseController
         ], 'Attachment uploaded.', 201);
     }
 
+    // ── GET /api/messages/conversations/:id/participants ──────────────────────
+
+    public function getConversationParticipants(Request $request, Response $response): never
+    {
+        $actor  = (array) $request->param('_auth_user');
+        $authId = (int) $actor['id'];
+        $convId = (int) $request->param('id');
+
+        if (!$this->convModel->isParticipant($convId, $authId)) {
+            $this->error($response, 'Conversation not found.', 404);
+        }
+
+        $participants = $this->convModel->getParticipants($convId);
+        $this->success($response, $participants, 'Participants fetched.');
+    }
+
+    // ── Email dispatch helper ─────────────────────────────────────────────────
+
+    private function dispatchEmail(int $msgId, array $actor, string $messageBody, bool $sendEmail, array $recipientIds): void
+    {
+        if (!$sendEmail || empty($recipientIds)) {
+            return;
+        }
+
+        $ph         = implode(',', array_fill(0, \count($recipientIds), '?'));
+        $recipients = $this->db->fetchAll(
+            "SELECT id, email, full_name FROM users WHERE id IN ({$ph})",
+            $recipientIds
+        );
+
+        $senderName = $actor['full_name'] ?? 'A colleague';
+        $plainBody  = strip_tags($messageBody);
+        $htmlBody   = '<p>You have a new message from <strong>' . htmlspecialchars($senderName) . '</strong>:</p>'
+                    . '<blockquote style="border-left:3px solid #0A2A5E;padding:8px 16px;color:#333;">'
+                    . nl2br(htmlspecialchars($plainBody))
+                    . '</blockquote>'
+                    . '<p><a href="' . ($_ENV['APP_FRONTEND_URL'] ?? '') . '/messages">Open in CUR-MIS</a></p>';
+
+        $mail = new MailService();
+        foreach ($recipients as $rec) {
+            $sent = $mail->send(
+                ['email' => $rec['email'], 'name' => $rec['full_name']],
+                "New message from {$senderName}",
+                $htmlBody,
+                $plainBody
+            );
+            if ($sent) {
+                $this->db->execute(
+                    "UPDATE message_recipients SET email_sent = 1 WHERE message_id = ? AND user_id = ?",
+                    [$msgId, $rec['id']]
+                );
+            }
+        }
+    }
+
     // ── GET /api/messages/recipients/search ──────────────────────────────────
     /**
      * Autocomplete search for the ComposeModal.
@@ -491,9 +561,8 @@ class MessageController extends BaseController
      */
     public function searchRecipients(Request $request, Response $response): never
     {
-        $actor  = (array) $request->param('_auth_user');
-        $authId = (int) $actor['id'];
-        $q      = trim((string) ($request->query('q') ?? ''));
+        $actor = (array) $request->param('_auth_user');
+        $q     = trim((string) ($request->query('q') ?? ''));
 
         $users = [];
         if ($q !== '') {
@@ -503,14 +572,13 @@ class MessageController extends BaseController
                 FROM users u
                 LEFT JOIN roles r ON r.id = u.role_id
                 WHERE u.is_active = 1
-                  AND u.id != ?
                   AND (u.full_name LIKE ? OR u.email LIKE ?)
                 LIMIT 20
-            ", [$authId, $like, $like]);
+            ", [$like, $like]);
         }
 
         $roleGroups = [];
-        $isAdmin    = in_array($actor['role'] ?? '', ['superadmin', 'admin'], true);
+        $isAdmin    = \in_array($actor['role'] ?? '', ['superadmin', 'admin'], true);
 
         if ($isAdmin) {
             $allGroups = [

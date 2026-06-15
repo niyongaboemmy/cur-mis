@@ -2,8 +2,10 @@ import { api } from './api'
 import type {
   Conversation,
   Message,
+  MessageAttachment,
   UnreadCountResponse,
   RecipientOption,
+  Participant,
   CreateConversationPayload,
   SendMessagePayload,
 } from '@/types/messaging'
@@ -17,7 +19,7 @@ export const messageService = {
     api.get<PaginatedResponse<Message>>(`/api/messages/conversations/${id}/messages`, { page } as Record<string, unknown>),
 
   createConversation: (payload: CreateConversationPayload) =>
-    api.post<Conversation>('/api/messages/conversations', payload),
+    api.post<{ conversation: Conversation; existing: boolean }>('/api/messages/conversations', payload),
 
   sendMessage: (id: number, payload: SendMessagePayload) =>
     api.post<Message>(`/api/messages/conversations/${id}/messages`, payload),
@@ -41,4 +43,14 @@ export const messageService = {
 
   deleteConversation: (id: number) =>
     api.delete<void>(`/api/messages/conversations/${id}`),
+
+  getParticipants: (conversationId: number) =>
+    api.get<Participant[]>(`/api/messages/conversations/${conversationId}/participants`),
+
+  uploadAttachment: (messageId: number, file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    form.append('message_id', String(messageId))
+    return api.upload<MessageAttachment>('/api/messages/attachments', form)
+  },
 }

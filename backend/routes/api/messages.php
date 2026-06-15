@@ -33,6 +33,9 @@ $router->group('/api/messages', function ($router) {
     // File attachment upload (multipart/form-data, field: 'file')
     $router->post('/attachments', [MessageController::class, 'uploadAttachment']);
 
+    // Conversation participants
+    $router->get('/conversations/:id/participants', [MessageController::class, 'getConversationParticipants']);
+
     // Recipient autocomplete for ComposeModal
     $router->get('/recipients/search', [MessageController::class, 'searchRecipients']);
 

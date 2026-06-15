@@ -5,6 +5,7 @@ import {
   Loader2, AlertTriangle, TrendingUp, CheckCircle2, Users,
   BarChart3, TrendingDown, Wallet, Banknote, ArrowRight,
   Clock, XCircle, AlertCircle, Activity,
+  Settings2, BookOpenCheck, ShieldCheck,
 } from "lucide-react";
 import {
   financeReportService, balanceService, billingService,
@@ -84,7 +85,7 @@ export default function FinanceOverviewPage() {
     select: (res) => (res?.data as any)?.data as FeeBursary[] ?? [],
   });
 
-  if (basicsLoading || (!activeYear && !summaryQ.isFetched)) {
+  if (basicsLoading || (!basics && !summaryQ.isFetched)) {
     return <div className="flex items-center justify-center py-16"><Loader2 className="w-5 h-5 animate-spin text-brand" /></div>;
   }
   if (!activeYear) {
@@ -155,27 +156,95 @@ export default function FinanceOverviewPage() {
       </div>
 
       {/* ── Workflow Tracker ── */}
-      <div className="card p-4 flex items-center justify-between relative overflow-hidden">
-        <div className="absolute top-9 left-12 right-12 h-0.5 bg-ink-100 dark:bg-ink-700 z-0 hidden md:block" />
-        {[
-          { step: 1, label: "Fee Structures", desc: "Define term fees",       active: expected === 0,                      done: expected > 0,   link: "/finance/structures" },
-          { step: 2, label: "Invoicing",       desc: "Generate bills",         active: expected > 0 && collected === 0,     done: collected > 0,  link: "/finance/billing"    },
-          { step: 3, label: "Payments",        desc: "Receive & approve",      active: collected > 0 && pct < 100,          done: pct >= 100,     link: "/finance/billing"    },
-          { step: 4, label: "Clearance",       desc: "Finalize accounts",      active: pct >= 100,                          done: false,          link: "/finance/clearance"  },
-        ].map((s) => (
-          <Link key={s.step} to={s.link}
-            className={`relative z-10 flex flex-col items-center gap-2 group transition-all p-2 rounded-xl hover:bg-ink-50 dark:hover:bg-ink-800/50 ${s.active ? "opacity-100 scale-105" : s.done ? "opacity-100" : "opacity-40 grayscale"}`}
-          >
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shadow-sm transition-colors ${s.active ? "bg-brand text-white shadow-brand/30 ring-4 ring-brand/10" : s.done ? "bg-green-500 text-white" : "bg-ink-100 text-ink-400 dark:bg-ink-800"}`}>
-              {s.done ? <CheckCircle2 className="w-5 h-5" /> : s.step}
+      {(() => {
+        const steps = [
+          { step: 1, label: "Fee Structures", desc: "Define term fees",    icon: Settings2,     active: expected === 0,              done: expected > 0,  link: "/finance/structures" },
+          { step: 2, label: "Invoicing",      desc: "Generate bills",      icon: BookOpenCheck, active: expected > 0 && collected === 0, done: collected > 0, link: "/finance/billing"    },
+          { step: 3, label: "Payments",       desc: "Receive & approve",   icon: Banknote,      active: collected > 0 && pct < 100,  done: pct >= 100,    link: "/finance/billing"    },
+          { step: 4, label: "Clearance",      desc: "Finalize accounts",   icon: ShieldCheck,   active: pct >= 100,                  done: false,         link: "/finance/clearance"  },
+        ];
+        const activeIdx = steps.findIndex((s) => s.active);
+        return (
+          <div className="card overflow-hidden">
+            {/* top accent bar */}
+            <div className="h-1 w-full bg-gradient-to-r from-brand via-brand/60 to-ink-100 dark:to-ink-700" />
+            <div className="px-6 py-5">
+              <div className="flex items-center gap-1">
+                {steps.map((s, i) => {
+                  const Icon = s.icon;
+                  return (
+                    <div key={s.step} className="flex items-center flex-1 min-w-0">
+                      {/* Step pill */}
+                      <Link
+                        to={s.link}
+                        className={`group relative flex flex-col sm:flex-row items-center sm:items-start gap-3 flex-1 min-w-0 rounded-xl px-3 py-3 transition-all duration-200
+                          ${s.active
+                            ? "bg-brand/10 dark:bg-brand/15 ring-1 ring-brand/20 dark:ring-brand/30 shadow-sm"
+                            : s.done
+                            ? "hover:bg-green-50/60 dark:hover:bg-green-900/10"
+                            : "hover:bg-ink-50 dark:hover:bg-ink-800/40 opacity-50"
+                          }`}
+                      >
+                        {/* Circle badge */}
+                        <div className={`shrink-0 w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200
+                          ${s.active
+                            ? "bg-brand text-white shadow-md shadow-brand/30"
+                            : s.done
+                            ? "bg-green-500 text-white shadow-sm shadow-green-500/20"
+                            : "bg-ink-100 dark:bg-ink-700 text-ink-400 dark:text-ink-500"
+                          }`}
+                        >
+                          {s.done
+                            ? <CheckCircle2 className="w-4 h-4" />
+                            : <Icon className="w-4 h-4" />
+                          }
+                        </div>
+                        {/* Text */}
+                        <div className="text-center sm:text-left min-w-0">
+                          <div className="flex items-center gap-1.5 justify-center sm:justify-start">
+                            <span className={`text-[10px] font-semibold uppercase tracking-widest
+                              ${s.active ? "text-brand" : s.done ? "text-green-600 dark:text-green-400" : "text-ink-400"}`}>
+                              Step {s.step}
+                            </span>
+                            {s.done && (
+                              <span className="text-[9px] font-bold uppercase tracking-wider bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-1.5 py-0.5 rounded-full">Done</span>
+                            )}
+                            {s.active && (
+                              <span className="text-[9px] font-bold uppercase tracking-wider bg-brand/10 text-brand px-1.5 py-0.5 rounded-full animate-pulse">Active</span>
+                            )}
+                          </div>
+                          <p className={`text-[13px] font-semibold leading-tight mt-0.5 truncate
+                            ${s.active ? "text-ink-900 dark:text-white" : s.done ? "text-ink-700 dark:text-ink-200" : "text-ink-400 dark:text-ink-500"}`}>
+                            {s.label}
+                          </p>
+                          <p className={`text-[11px] hidden sm:block mt-0.5 truncate
+                            ${s.active ? "text-ink-500 dark:text-ink-400" : "text-ink-400 dark:text-ink-500"}`}>
+                            {s.desc}
+                          </p>
+                        </div>
+                      </Link>
+
+                      {/* Connector */}
+                      {i < steps.length - 1 && (
+                        <div className="shrink-0 mx-1 flex flex-col items-center gap-0.5">
+                          <div className={`w-8 h-0.5 rounded-full transition-colors duration-300
+                            ${i < activeIdx || (activeIdx === -1 && steps[i].done)
+                              ? "bg-green-400 dark:bg-green-600"
+                              : i === activeIdx
+                              ? "bg-gradient-to-r from-brand to-ink-200 dark:to-ink-600"
+                              : "bg-ink-200 dark:bg-ink-700"
+                            }`}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-            <div className="text-center">
-              <p className={`text-xs font-bold uppercase tracking-wider ${s.active ? "text-brand" : "text-ink-600 dark:text-ink-300"}`}>{s.label}</p>
-              <p className="text-[10px] text-ink-400 hidden sm:block mt-0.5">{s.desc}</p>
-            </div>
-          </Link>
-        ))}
-      </div>
+          </div>
+        );
+      })()}
 
       {/* ── Alert banners ── */}
       {overdue > 0 && (
