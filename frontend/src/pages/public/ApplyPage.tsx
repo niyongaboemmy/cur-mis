@@ -205,7 +205,7 @@ export default function ApplyPage() {
   useEffect(() => {
     const cachedStep = hydrateFromCache();
     if (cachedStep && cachedStep >= 1 && cachedStep <= 3) setStep(cachedStep);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   // Autosave every form change to localStorage until a server draft has been

@@ -898,7 +898,7 @@ export default function MainLayout() {
         set.add(node.id);
     }
     return set;
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);  
 
   const [openIds, setOpenIds] = useState<Set<string>>(initiallyOpen);
 
@@ -928,7 +928,7 @@ export default function MainLayout() {
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, collapsed ? "1" : "0");
-    } catch {}
+    } catch { /* ignore */ }
   }, [collapsed]);
 
   const toggleGroup = useCallback((id: string) => {

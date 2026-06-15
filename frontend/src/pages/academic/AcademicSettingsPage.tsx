@@ -865,7 +865,7 @@ function SchedulingPanel() {
     })
     setWorking(next)
     setOriginalIds(ids)
-  }, [schedulesQ.data])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [schedulesQ.data])   
 
   const blocksOf = (moduleId: number): WorkingBlock[] => working[moduleId] ?? []
   const setBlocks = (moduleId: number, list: WorkingBlock[]) => {

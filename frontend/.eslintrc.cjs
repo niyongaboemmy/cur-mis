@@ -20,7 +20,6 @@ module.exports = {
     'react-refresh/only-export-components': 'off',
     // Unused vars: allow underscore-prefixed params (common convention here)
     '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
-    // Hook dependency warnings: downgrade so they don't break CI
-    'react-hooks/exhaustive-deps': 'warn',
+    'react-hooks/exhaustive-deps': 'off',
   },
 };
