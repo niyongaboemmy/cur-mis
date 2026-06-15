@@ -345,7 +345,7 @@ export default function SchedulingPanel() {
       const active = terms.find((t) => !!t.is_current)
       if (active) setTermId(active.id)
     }
-  }, [terms, termId])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [terms, termId])
   const termStart = selectedTerm?.start_date ?? ''
   const termEnd   = selectedTerm?.end_date   ?? ''
 
@@ -404,7 +404,7 @@ export default function SchedulingPanel() {
     setWorking(next)
     setOriginalIds(ids)
     setOriginalById(byId)
-  }, [schedulesQ.data])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [schedulesQ.data])
 
   const blocksOf = (moduleId: number): WorkingBlock[] => working[moduleId] ?? []
   const setBlocks = (moduleId: number, list: WorkingBlock[]) => setWorking((prev) => ({ ...prev, [moduleId]: list }))
@@ -543,9 +543,9 @@ export default function SchedulingPanel() {
       if (statusFilter === 'has' && n === 0) return false
       return true
     })
-  }, [sortedModules, search, statusFilter, working])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sortedModules, search, statusFilter, working])
 
-  const scheduledCount = useMemo(() => sortedModules.filter((m) => blocksOf(m.module_id).length > 0).length, [sortedModules, working])  // eslint-disable-line react-hooks/exhaustive-deps
+  const scheduledCount = useMemo(() => sortedModules.filter((m) => blocksOf(m.module_id).length > 0).length, [sortedModules, working])
 
   // `/` focuses the module search.
   useEffect(() => {
@@ -906,7 +906,7 @@ function ScheduleModuleModal({
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [editingKey, confirmDelete, onClose])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [editingKey, confirmDelete, onClose])
 
   return (
     <ModalPortal>
