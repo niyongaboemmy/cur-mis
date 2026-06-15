@@ -45,7 +45,7 @@ import CategoryFilterSwitcher from "@/components/layout/CategoryFilterSwitcher";
 
 import Logo from "@/components/brand/Logo";
 import GlobalSearch from "@/components/layout/GlobalSearch";
-import AiChatWidget from "@/components/layout/AiChatWidget";
+// import AiChatWidget from "@/components/layout/AiChatWidget"; // re-enable when ANTHROPIC_API_KEY is set
 import { useCurrentUser } from "@/hooks/useAuth";
 import { useSystemBasics } from "@/hooks/useSystemBasics";
 
