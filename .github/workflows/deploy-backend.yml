@@ -92,6 +92,12 @@ jobs:
         env:
           CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
         run: |
+          # Remove leftover zip from any previous failed run (ignore error if not found)
+          curl -s -k -u "$CPANEL_USER:$CPANEL_PASS" -G \
+            --data-urlencode "files-0-file=/backend/backend-src.zip" \
+            --data-urlencode "files-0-type=file" \
+            "$CPANEL_URL/execute/Fileman/delete_files" > /dev/null || true
+
           RESPONSE=$(curl -s -k \
             -u "$CPANEL_USER:$CPANEL_PASS" \
             -F "dir=/backend" \
@@ -131,6 +137,12 @@ jobs:
         env:
           CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
         run: |
+          # Remove leftover zip from any previous failed run
+          curl -s -k -u "$CPANEL_USER:$CPANEL_PASS" -G \
+            --data-urlencode "files-0-file=/public_html/umis/api/backend-public.zip" \
+            --data-urlencode "files-0-type=file" \
+            "$CPANEL_URL/execute/Fileman/delete_files" > /dev/null || true
+
           RESPONSE=$(curl -s -k \
             -u "$CPANEL_USER:$CPANEL_PASS" \
             -F "dir=/public_html/umis/api" \
