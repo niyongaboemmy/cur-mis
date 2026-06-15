@@ -7,18 +7,6 @@ namespace App\Services;
 use Core\Database;
 use App\Models\FeeInvoiceModel;
 use App\Models\FeePaymentModel;
-<<<<<<< HEAD
-use App\Services\SystemLogService;
-
-class UrubutoPayService
-{
-    private Database        $db;
-    private FeeInvoiceModel $invoiceModel;
-    private FeePaymentModel $paymentModel;
-
-    private const MERCHANT_CODE   = 'TH17342831';
-    private const CHECKOUT_BASE   = 'https://urubutopay.rw/pay-now';
-=======
 use App\Services\ClearanceService;
 use App\Services\SystemLogService;
 
@@ -49,7 +37,6 @@ class UrubutoPayService
     private const CHECKOUT_BASE   = 'https://urubutopay.rw/pay-now';
     private const LEGACY_BANK_ID  = 1;      // tbl_bank.bank_id for BK
     private const FEE_CATEGORY_BK = '147';  // legacy fee_category for bank payments
->>>>>>> emmy/emmy
     private const SERVICES = [
         ['service_code' => 'tuition-fees-1258', 'service_name' => 'TUITION FEES', 'amount' => 0, 'currency' => 'RWF'],
         ['service_code' => 'cursu-fees-8249',   'service_name' => 'CURSU FEES',   'amount' => 0, 'currency' => 'RWF'],
@@ -57,33 +44,16 @@ class UrubutoPayService
 
     public function __construct()
     {
-<<<<<<< HEAD
-        $this->db           = Database::getInstance();
-        $this->invoiceModel = new FeeInvoiceModel();
-        $this->paymentModel = new FeePaymentModel();
-=======
         $this->db               = Database::getInstance();
         $this->invoiceModel     = new FeeInvoiceModel();
         $this->paymentModel     = new FeePaymentModel();
         $this->clearanceService = new ClearanceService();
->>>>>>> emmy/emmy
     }
 
     // ── Authentication ────────────────────────────────────────────────────────
 
-<<<<<<< HEAD
-    /**
-     * Validate UrubutoPay API credentials and return the stored bearer token.
-     * Supports plain-text, MD5, SHA-1, SHA-256, and bcrypt passwords.
-     * Returns null when credentials are invalid.
-     */
     public function authenticateApiUser(string $username, string $password): ?array
     {
-        // Column is `username` (not `user_name`) in api_authorization table
-=======
-    public function authenticateApiUser(string $username, string $password): ?array
-    {
->>>>>>> emmy/emmy
         $row = $this->db->fetchOne(
             'SELECT token, merchant_code, password AS stored_pw FROM api_authorization WHERE username = ? LIMIT 1',
             [$username]
@@ -94,17 +64,10 @@ class UrubutoPayService
 
         $stored = (string)$row['stored_pw'];
         $valid  = $password === $stored
-<<<<<<< HEAD
-            || md5($password)              === $stored
-            || sha1($password)             === $stored
-            || hash('sha256', $password)   === $stored
-            || (function_exists('password_verify') && password_verify($password, $stored));
-=======
             || md5($password)            === $stored
             || sha1($password)           === $stored
             || hash('sha256', $password) === $stored
             || function_exists('password_verify') && password_verify($password, $stored);
->>>>>>> emmy/emmy
 
         if (!$valid) {
             return null;
@@ -118,13 +81,6 @@ class UrubutoPayService
 
     // ── Payer Validation ──────────────────────────────────────────────────────
 
-<<<<<<< HEAD
-    /**
-     * Validate that a student exists and return the UrubutoPay-spec payer payload.
-     * Returns null when the student is not found.
-     */
-=======
->>>>>>> emmy/emmy
     public function validatePayer(string $payerCode, string $merchantCode): ?array
     {
         $student = $this->lookupStudent($payerCode);
@@ -132,13 +88,9 @@ class UrubutoPayService
             return null;
         }
 
-<<<<<<< HEAD
-        $payer_names = trim(strtoupper($student['fname'] ?? '') . ' ' . strtoupper($student['lname'] ?? ''));
-=======
         $payer_names = trim(
             strtoupper($student['fname'] ?? '') . ' ' . strtoupper($student['lname'] ?? '')
         );
->>>>>>> emmy/emmy
 
         return [
             'payer_names'     => $payer_names,
@@ -154,12 +106,6 @@ class UrubutoPayService
 
     /**
      * Record an incoming UrubutoPay PAYMENT callback.
-<<<<<<< HEAD
-     * Applies the amount to the student's oldest unpaid invoices (waterfall).
-     *
-     * @param array $cb  Decoded callback JSON body
-     * @return array{status:string, payment_id:int|null, message:string}
-=======
      *
      * Flow:
      *  1. Validate fields and filter non-SUCCESSFUL callbacks
@@ -169,7 +115,6 @@ class UrubutoPayService
      *  5. Apply waterfall across oldest unpaid invoices → fee_payments
      *  6. Sync to legacy `payment` + `bank_payment` tables
      *  7. Recompute financial clearance
->>>>>>> emmy/emmy
      */
     public function recordMobilePayment(array $cb): array
     {
@@ -184,31 +129,6 @@ class UrubutoPayService
         $paymentDate = trim((string)($cb['payment_date'] ?? date('Y-m-d H:i:s')));
 
         if ($txCode === '' || $payerCode === '' || $amount <= 0) {
-<<<<<<< HEAD
-            return ['status' => 'error', 'payment_id' => null, 'message' => 'Invalid callback data'];
-        }
-
-        // Idempotency — check if any payment with this transaction code already exists
-        $existing = $this->db->fetchOne(
-            "SELECT id FROM fee_payments WHERE reference_number = ? OR reference_number LIKE ? LIMIT 1",
-            [$txCode, $txCode . '-%']
-        );
-        if ($existing) {
-            return ['status' => 'duplicate', 'payment_id' => (int)$existing['id'], 'message' => 'Payment already recorded'];
-        }
-
-        $student = $this->lookupStudent($payerCode);
-        if (!$student) {
-            return ['status' => 'error', 'payment_id' => null, 'message' => 'Student not found'];
-        }
-
-        $studentId   = (string)$student['regnumber'];
-        $subMethod   = $this->resolveSubMethod($cb);
-
-        // Waterfall: apply payment to oldest unpaid/partial invoices first
-        $invoices = $this->db->fetchAll(
-            "SELECT id, amount_due, amount_paid, IFNULL(bursary_applied, 0) AS bursary_applied
-=======
             return ['status' => 'error', 'payment_id' => null, 'message' => 'Invalid callback data: transaction_code, payer_code and amount are required'];
         }
 
@@ -241,17 +161,12 @@ class UrubutoPayService
         // ── Load or auto-create fee_invoices ──────────────────────────────────
         $invoices = $this->db->fetchAll(
             "SELECT id, fee_type, semester, amount_due, amount_paid, IFNULL(bursary_applied, 0) AS bursary_applied
->>>>>>> emmy/emmy
              FROM fee_invoices
              WHERE student_id = ? AND status NOT IN ('paid','waived','cancelled')
              ORDER BY created_at ASC",
             [$studentId]
         );
 
-<<<<<<< HEAD
-        $remaining      = $amount;
-        $firstPaymentId = null;
-=======
         if (empty($invoices)) {
             // No invoices yet — auto-create a placeholder TUITION invoice
             $invoiceNumber = 'AUTO-BANK-' . $studentId . '-' . time();
@@ -271,7 +186,6 @@ class UrubutoPayService
         $remaining      = $amount;
         $firstPaymentId = null;
         $firstInvoiceId = null;
->>>>>>> emmy/emmy
         $appliedCount   = 0;
 
         foreach ($invoices as $invoice) {
@@ -285,26 +199,6 @@ class UrubutoPayService
             $apply         = min($remaining, $gap);
             $receiptNumber = $this->generateReceiptNumber();
             $refNumber     = $txCode . ($appliedCount > 0 ? '-' . ($appliedCount + 1) : '');
-<<<<<<< HEAD
-
-            $paymentId = (int)$this->paymentModel->create([
-                'invoice_id'       => (int)$invoice['id'],
-                'student_id'       => $studentId,
-                'amount'           => $apply,
-                'payment_method'   => 'MOBILE_MONEY',
-                'payment_sub_method' => $subMethod,
-                'reference_number' => $refNumber,
-                'receipt_number'   => $receiptNumber,
-                'status'           => 'confirmed',
-                'notes'            => 'UrubutoPay USSD/mobile — service: ' . $serviceCode . ', tx: ' . $txCode,
-                'paid_at'          => $paymentDate,
-            ]);
-
-            $this->invoiceModel->applyPayment((int)$invoice['id'], $apply);
-
-            if ($firstPaymentId === null) {
-                $firstPaymentId = $paymentId;
-=======
             $invoiceId     = (int)$invoice['id'];
             $feeType       = (string)($invoice['fee_type'] ?? 'TUITION');
 
@@ -329,14 +223,11 @@ class UrubutoPayService
             if ($firstPaymentId === null) {
                 $firstPaymentId = $paymentId;
                 $firstInvoiceId = $invoiceId;
->>>>>>> emmy/emmy
             }
             $remaining -= $apply;
             $appliedCount++;
         }
 
-<<<<<<< HEAD
-=======
         // ── Sync to legacy payment + bank_payment tables ──────────────────────
         $this->writeLegacyDebit($studentId, $txCode, $amount, $paymentDate, $serviceCode, $student, $firstInvoiceId);
 
@@ -349,7 +240,6 @@ class UrubutoPayService
             }
         }
 
->>>>>>> emmy/emmy
         SystemLogService::log(
             'CREATE',
             'FINANCE',
@@ -366,14 +256,6 @@ class UrubutoPayService
         ];
     }
 
-<<<<<<< HEAD
-    // ── Checkout URL ──────────────────────────────────────────────────────────
-
-    /**
-     * Build UrubutoPay hosted checkout URL for the given student.
-     * Returns the URL, outstanding balance, and currency.
-     */
-=======
     // ── Payment Reversal ──────────────────────────────────────────────────────
 
     /**
@@ -507,7 +389,6 @@ class UrubutoPayService
 
     // ── Checkout URL ──────────────────────────────────────────────────────────
 
->>>>>>> emmy/emmy
     public function generateCheckoutUrl(string $regNumber): array
     {
         $merchantCode = $_ENV['URUBUTOPAY_MERCHANT_CODE'] ?? self::MERCHANT_CODE;
@@ -526,26 +407,6 @@ class UrubutoPayService
     // ── Mobile Payment History ────────────────────────────────────────────────
 
     /**
-<<<<<<< HEAD
-     * Return recent MOBILE_MONEY confirmed payments for a student.
-     *
-     * @return array<int,array<string,mixed>>
-     */
-    public function getMobilePaymentHistory(string $regNumber, int $limit = 10): array
-    {
-        return $this->db->fetchAll(
-            "SELECT fp.id,
-                    fp.reference_number AS transaction_code,
-                    fp.amount,
-                    fp.payment_sub_method,
-                    fp.receipt_number,
-                    fp.notes,
-                    fp.paid_at AS payment_date,
-                    fp.status,
-                    fp.created_at,
-                    fi.invoice_number,
-                    fi.fee_type
-=======
      * Returns confirmed payments from BOTH modern (fee_payments) and legacy
      * (payment table where user='UrubutoPay') tables, deduped by transaction_code.
      */
@@ -562,22 +423,15 @@ class UrubutoPayService
                 fp.paid_at            AS payment_date,
                 fi.fee_type,
                 'mobile_money'        AS source
->>>>>>> emmy/emmy
              FROM fee_payments fp
              LEFT JOIN fee_invoices fi ON fi.id = fp.invoice_id
              WHERE fp.student_id = ?
                AND fp.payment_method = 'MOBILE_MONEY'
-<<<<<<< HEAD
-               AND fp.status = 'confirmed'
-=======
                AND fp.status IN ('confirmed','reversed')
->>>>>>> emmy/emmy
              ORDER BY fp.paid_at DESC
              LIMIT {$limit}",
             [$regNumber]
         );
-<<<<<<< HEAD
-=======
 
         $modernTxCodes = array_column($modern, 'transaction_code');
 
@@ -744,7 +598,6 @@ class UrubutoPayService
         } catch (\Throwable $e) {
             error_log('[LegacySync:bank_payment Credit ERROR] ' . $e->getMessage());
         }
->>>>>>> emmy/emmy
     }
 
     // ── Private Helpers ───────────────────────────────────────────────────────
@@ -752,12 +605,8 @@ class UrubutoPayService
     private function lookupStudent(string $payerCode): ?array
     {
         $row = $this->db->fetchOne(
-<<<<<<< HEAD
-            "SELECT regnumber, fname, lname FROM student WHERE regnumber = ? LIMIT 1",
-=======
             "SELECT regnumber, fname, lname, acc_year, current_level
              FROM student WHERE regnumber = ? LIMIT 1",
->>>>>>> emmy/emmy
             [$payerCode]
         );
         return $row ?: null;
@@ -793,8 +642,6 @@ class UrubutoPayService
         }
         return 'MTN_MOMO';
     }
-<<<<<<< HEAD
-=======
 
     private function resolveAcademicYearId(string $studentId): ?int
     {
@@ -824,5 +671,4 @@ class UrubutoPayService
         $random = strtoupper(substr(bin2hex(random_bytes(2)), 0, 4));
         return $prefix . '-' . $base . '-' . $random;
     }
->>>>>>> emmy/emmy
 }

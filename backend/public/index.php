@@ -42,9 +42,11 @@ $dotenv->required([
     'DB_HOST',
     'DB_DATABASE',
     'DB_USERNAME',
-    'DB_PASSWORD',
     'JWT_SECRET',
 ])->notEmpty();
+
+// DB_PASSWORD must exist but may be empty (XAMPP default root has no password)
+$dotenv->required('DB_PASSWORD');
 
 // Register global exception/error handler before any application code runs.
 // In production this returns structured JSON; in debug mode it includes a stack trace.

@@ -33,8 +33,6 @@ class UrubutoPayController extends BaseController
         $username = trim((string)($body['user_name'] ?? ''));
         $password = trim((string)($body['password'] ?? ''));
 
-<<<<<<< HEAD
-=======
         if ($username === '' || $password === '') {
             http_response_code(400);
             header('Content-Type: application/json; charset=utf-8');
@@ -46,7 +44,6 @@ class UrubutoPayController extends BaseController
             exit;
         }
 
->>>>>>> emmy/emmy
         $result = $this->service->authenticateApiUser($username, $password);
         if (!$result) {
             http_response_code(401);
@@ -82,8 +79,6 @@ class UrubutoPayController extends BaseController
         $payerCode    = trim((string)($body['payer_code'] ?? ''));
         $merchantCode = trim((string)($body['merchant_code'] ?? ''));
 
-<<<<<<< HEAD
-=======
         if ($payerCode === '' || $merchantCode === '') {
             http_response_code(400);
             header('Content-Type: application/json; charset=utf-8');
@@ -95,7 +90,6 @@ class UrubutoPayController extends BaseController
             exit;
         }
 
->>>>>>> emmy/emmy
         $payer = $this->service->validatePayer($payerCode, $merchantCode);
         if (!$payer) {
             http_response_code(404);
@@ -122,20 +116,12 @@ class UrubutoPayController extends BaseController
 
     /**
      * POST /api/payment/webhook/callback
-<<<<<<< HEAD
-     * UrubutoPay calls this after a payment is confirmed.
-=======
      * UrubutoPay calls this after a payment completes.
      * Auto-records payment, reconciles invoices, and updates clearance.
->>>>>>> emmy/emmy
      * Protected by UrubutoPayWebhookMiddleware.
      */
     public function paymentCallback(Request $request, Response $response): never
     {
-<<<<<<< HEAD
-        $cb     = $request->body();
-        $result = $this->service->recordMobilePayment($cb);
-=======
         $body = $request->body();
 
         if (empty($body)) {
@@ -150,7 +136,6 @@ class UrubutoPayController extends BaseController
         }
 
         $result = $this->service->recordMobilePayment($body);
->>>>>>> emmy/emmy
 
         if ($result['status'] === 'error') {
             http_response_code(400);
@@ -173,82 +158,6 @@ class UrubutoPayController extends BaseController
         exit;
     }
 
-<<<<<<< HEAD
-    // ── Student: Get checkout link ────────────────────────────────────────────
-
-    /**
-     * GET /api/payment/checkout-link
-     * Returns the UrubutoPay hosted checkout URL and outstanding balance
-     * for the authenticated student.
-     */
-    public function getCheckoutLink(Request $request, Response $response): never
-    {
-        $user      = $request->input('_auth_user', []);
-        $regNumber = $user['regnumber'] ?? $user['username'] ?? '';
-
-        if (!$regNumber) {
-            // Try fetching from student table using user_id
-            $userId = (int)($user['id'] ?? 0);
-            if ($userId) {
-                $student = $this->db->fetchOne(
-                    'SELECT regnumber FROM student WHERE user_id = ? LIMIT 1',
-                    [$userId]
-                );
-                $regNumber = $student['regnumber'] ?? '';
-            }
-        }
-
-        if (!$regNumber) {
-            http_response_code(404);
-            header('Content-Type: application/json; charset=utf-8');
-            echo json_encode(['success' => false, 'message' => 'Student record not found.']);
-            exit;
-        }
-
-        $data = $this->service->generateCheckoutUrl($regNumber);
-
-        http_response_code(200);
-        header('Content-Type: application/json; charset=utf-8');
-        echo json_encode($data);
-        exit;
-    }
-
-    // ── Student: Get mobile payment history ───────────────────────────────────
-
-    /**
-     * GET /api/payment/history
-     * Returns the last 20 confirmed MOBILE_MONEY payments for the authenticated student.
-     */
-    public function getMobileHistory(Request $request, Response $response): never
-    {
-        $user      = $request->input('_auth_user', []);
-        $regNumber = $user['regnumber'] ?? $user['username'] ?? '';
-
-        if (!$regNumber) {
-            $userId = (int)($user['id'] ?? 0);
-            if ($userId) {
-                $student = $this->db->fetchOne(
-                    'SELECT regnumber FROM student WHERE user_id = ? LIMIT 1',
-                    [$userId]
-                );
-                $regNumber = $student['regnumber'] ?? '';
-            }
-        }
-
-        if (!$regNumber) {
-            http_response_code(404);
-            header('Content-Type: application/json; charset=utf-8');
-            echo json_encode(['success' => false, 'message' => 'Student record not found.']);
-            exit;
-        }
-
-        $history = $this->service->getMobilePaymentHistory($regNumber, 20);
-
-        http_response_code(200);
-        header('Content-Type: application/json; charset=utf-8');
-        echo json_encode($history);
-        exit;
-=======
     // ── Webhook: Payment reversal ─────────────────────────────────────────────
 
     /**
@@ -380,6 +289,5 @@ class UrubutoPayController extends BaseController
         }
 
         return null;
->>>>>>> emmy/emmy
     }
 }

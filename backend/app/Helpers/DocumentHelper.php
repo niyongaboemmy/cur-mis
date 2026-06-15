@@ -82,8 +82,8 @@ class DocumentHelper
         try {
             if (extension_loaded('gd')) {
                 $opts = new QROptions([
-                    'outputType'  => QRCode::OUTPUT_IMAGE_PNG,
-                    'outputBase64' => true,
+                    'outputType'   => QRCode::OUTPUT_IMAGE_PNG,
+                    'imageBase64'  => true,
                     'scale'        => 5,
                     'eccLevel'     => QRCode::ECC_L,
                 ]);
