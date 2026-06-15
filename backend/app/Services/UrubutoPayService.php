@@ -33,7 +33,7 @@ class UrubutoPayService
     private FeePaymentModel  $paymentModel;
     private ClearanceService $clearanceService;
 
-    private const MERCHANT_CODE   = 'TH17342831';
+    private const MERCHANT_CODE   = '';  // always resolved from DB or .env — never hardcode
     private const CHECKOUT_BASE   = 'https://urubutopay.rw/pay-now';
     private const LEGACY_BANK_ID  = 1;      // tbl_bank.bank_id for BK
     private const FEE_CATEGORY_BK = '147';  // legacy fee_category for bank payments
@@ -95,7 +95,7 @@ class UrubutoPayService
         return [
             'payer_names'     => $payer_names,
             'merchant_code'   => $merchantCode,
-            'payer_code'      => $payerCode,
+            'payer_code'      => $student['regnumber'],
             'service_code'    => self::SERVICES[0]['service_code'],
             'commission_rate' => 0,
             'services'        => self::SERVICES,
@@ -126,7 +126,8 @@ class UrubutoPayService
         $payerCode   = trim((string)($cb['payer_code'] ?? ''));
         $amount      = (float)($cb['amount'] ?? 0);
         $serviceCode = trim((string)($cb['service_code'] ?? ''));
-        $paymentDate = trim((string)($cb['payment_date'] ?? date('Y-m-d H:i:s')));
+        $rawDate     = trim((string)($cb['payment_date'] ?? ''));
+        $paymentDate = $rawDate !== '' ? date('Y-m-d H:i:s', strtotime($rawDate)) : date('Y-m-d H:i:s');
 
         if ($txCode === '' || $payerCode === '' || $amount <= 0) {
             return ['status' => 'error', 'payment_id' => null, 'message' => 'Invalid callback data: transaction_code, payer_code and amount are required'];
@@ -169,7 +170,7 @@ class UrubutoPayService
 
         if (empty($invoices)) {
             // No invoices yet — auto-create a placeholder TUITION invoice
-            $invoiceNumber = 'AUTO-BANK-' . $studentId . '-' . time();
+            $invoiceNumber = 'AUTO-' . substr(md5($studentId . $txCode), 0, 24);
             $this->db->execute(
                 "INSERT INTO fee_invoices
                  (invoice_number, student_id, academic_year_id, semester, fee_type, description,
@@ -324,7 +325,7 @@ class UrubutoPayService
 
                 $this->db->execute(
                     "UPDATE fee_payments
-                     SET status = 'reversed', updated_at = NOW(),
+                     SET status = 'reversed',
                          notes = CONCAT(COALESCE(notes,''), ' [REVERSED]')
                      WHERE id = ?",
                     [(int)$payment['id']]
@@ -391,7 +392,12 @@ class UrubutoPayService
 
     public function generateCheckoutUrl(string $regNumber): array
     {
-        $merchantCode = $_ENV['URUBUTOPAY_MERCHANT_CODE'] ?? self::MERCHANT_CODE;
+        // Prefer .env, then fall back to the merchant_code stored in api_authorization (DB is authoritative)
+        $merchantCode = $_ENV['URUBUTOPAY_MERCHANT_CODE'] ?? '';
+        if ($merchantCode === '') {
+            $row = $this->db->fetchOne('SELECT merchant_code FROM api_authorization LIMIT 1', []);
+            $merchantCode = (string)($row['merchant_code'] ?? '');
+        }
         $checkoutBase = $_ENV['URUBUTOPAY_CHECKOUT_URL']  ?? self::CHECKOUT_BASE;
         $checkoutUrl  = $checkoutBase . '?mhcd=' . urlencode($merchantCode) . '&pycd=' . urlencode($regNumber);
 
@@ -417,7 +423,7 @@ class UrubutoPayService
             "SELECT
                 fp.reference_number  AS transaction_code,
                 fp.amount,
-                fp.payment_sub_method AS channel,
+                fp.payment_method AS channel,
                 fp.receipt_number,
                 fp.status,
                 fp.paid_at            AS payment_date,
@@ -604,6 +610,16 @@ class UrubutoPayService
 
     private function lookupStudent(string $payerCode): ?array
     {
+        $clean = ltrim($payerCode, '0');
+        if ($clean !== $payerCode) {
+            $row = $this->db->fetchOne(
+                "SELECT regnumber, fname, lname, acc_year, current_level
+                 FROM student WHERE regnumber = ? LIMIT 1",
+                [$clean]
+            );
+            if ($row) return $row;
+        }
+
         $row = $this->db->fetchOne(
             "SELECT regnumber, fname, lname, acc_year, current_level
              FROM student WHERE regnumber = ? LIMIT 1",
