@@ -134,8 +134,10 @@ export default function MyFinancePage() {
     setPayLoading(true);
     setPayError(null);
     try {
-      const res = await myLedgerService.getPaymentLink();
-      window.open(res?.data?.checkout_url, "_blank", "noopener,noreferrer");
+      const res = await myLedgerService.getPaymentLink()
+      if (res.data?.checkout_url) {
+        window.open(res.data.checkout_url, '_blank', 'noopener,noreferrer')
+      }
     } catch {
       setPayError("Could not generate payment link. Please try again.");
     } finally {

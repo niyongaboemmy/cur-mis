@@ -35,10 +35,19 @@ import PayrollSlipPage from "@/pages/hr/PayrollSlipPage";
 import PaymentsPage from "@/pages/hr/PaymentsPage";
 import HrSettingsPage from "@/pages/hr/HrSettingsPage";
 import LeavePage from "@/pages/hr/LeavePage";
+import AppraisalPage from "@/pages/hr/AppraisalPage";
 
 // Academic
 import AcademicSettingsPage from "@/pages/academic/AcademicSettingsPage";
 import AcademicsManagementPage from "@/pages/academic/AcademicsManagementPage";
+import AcademicGradingScalePage from "@/pages/academic/GradingScalePage";
+import TranscriptRequestsPage from "@/pages/academic/TranscriptRequestsPage";
+import GraduandManagementPage from "@/pages/academic/GraduandManagementPage";
+import AcademicCertificatesPage from "@/pages/academic/AcademicCertificatesPage";
+import AcademicAnalyticsPage from "@/pages/academic/AcademicAnalyticsPage";
+
+// Gate Management Module
+import GateManagementPage from "@/pages/gate/GateManagementPage";
 
 // Admissions / Student Management Module
 import ApplyPage from "@/pages/public/ApplyPage";
@@ -69,10 +78,16 @@ import MyRegistrationsPage from "@/pages/modules/MyRegistrationsPage";
 
 // Messaging
 import MessagesPage from "@/pages/messaging/MessagesPage";
+import AnnouncementsPage from "@/pages/announcements/AnnouncementsPage";
+import ForumsPage from "@/pages/forums/ForumsPage";
+import ForumThreadPage from "@/pages/forums/ForumThreadPage";
+import VerifyStudentPage from "@/pages/public/VerifyStudentPage";
 // Placeholders still in use for modules not yet wired up
 import ExamSchedulesPage from "@/pages/exam/ExamSchedulesPage";
 import ExamResultsPage from "@/pages/exam/ExamResultsPage";
 import DeliberationPage from "@/pages/exam/DeliberationPage";
+import GradingScalePage from "@/pages/exam/GradingScalePage";
+import RevaluationsPage from "@/pages/exam/RevaluationsPage";
 
 // Placeholders
 import ProgramsPage from "@/pages/placeholders/ProgramsPage";
@@ -98,6 +113,8 @@ import ExpenseCategoriesPage from "@/pages/finance/ExpenseCategoriesPage";
 import FeeTypesPage from "@/pages/finance/FeeTypesPage";
 import ReceiptPdfPage from "@/pages/finance/ReceiptPdfPage";
 import MyFinancePage from "@/pages/finance/MyFinancePage";
+import FinesManagementPage from "@/pages/finance/FinesManagementPage";
+import OverdueAlertsPage from "@/pages/finance/OverdueAlertsPage";
 
 function App() {
   const initTheme = useThemeStore((state) => state.initTheme);
@@ -117,6 +134,7 @@ function App() {
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/apply" element={<ApplyPage />} />
           <Route path="/apply/track" element={<TrackApplicationPage />} />
+          <Route path="/verify/student" element={<VerifyStudentPage />} />
 
           {/* Protected — requires valid JWT in Zustand store */}
           <Route element={<ProtectedRoute />}>
@@ -128,6 +146,9 @@ function App() {
               <Route path="/home" element={<HomePage />} />
               <Route path="/profile" element={<UserProfilePage />} />
               <Route path="/messages" element={<MessagesPage />} />
+              <Route path="/announcements" element={<AnnouncementsPage />} />
+              <Route path="/forums" element={<ForumsPage />} />
+              <Route path="/forums/threads/:id" element={<ForumThreadPage />} />
 
               {/* ── Administration ── */}
               <Route
@@ -205,6 +226,7 @@ function App() {
                 <Route path="/hr/payroll/:id" element={<PayrollSlipPage />} />
                 <Route path="/hr/payments" element={<PaymentsPage />} />
                 <Route path="/hr/leave" element={<LeavePage />} />
+                <Route path="/hr/appraisals" element={<AppraisalPage />} />
               </Route>
 
               {/* ── HR Management — manage only ── */}
@@ -279,6 +301,56 @@ function App() {
                   path="/academic/management"
                   element={<AcademicsManagementPage />}
                 />
+              </Route>
+
+              {/* ── Grading Scale ── */}
+              <Route
+                element={<ProtectedRoute requiredPermissions={[PERMISSIONS.VIEW_SYSTEM_BASICS]} />}
+              >
+                <Route path="/academic/grading-scale" element={<AcademicGradingScalePage />} />
+              </Route>
+
+              {/* ── Transcript Requests ── */}
+              <Route
+                element={<ProtectedRoute requiredPermissions={[PERMISSIONS.MANAGE_TRANSCRIPT_REQUESTS]} />}
+              >
+                <Route path="/academic/transcript-requests" element={<TranscriptRequestsPage />} />
+              </Route>
+
+              {/* ── Graduand Management ── */}
+              <Route
+                element={<ProtectedRoute requiredPermissions={[PERMISSIONS.VIEW_GRADUANDS, PERMISSIONS.MANAGE_GRADUANDS]} />}
+              >
+                <Route path="/academic/graduands" element={<GraduandManagementPage />} />
+              </Route>
+
+              {/* ── Academic Certificates ── */}
+              <Route
+                element={<ProtectedRoute requiredPermissions={[PERMISSIONS.MANAGE_ACADEMIC_CERTIFICATES]} />}
+              >
+                <Route path="/academic/certificates" element={<AcademicCertificatesPage />} />
+              </Route>
+
+              {/* ── Academic Analytics Dashboard ── */}
+              <Route
+                element={<ProtectedRoute requiredPermissions={[PERMISSIONS.VIEW_ACADEMIC_ANALYTICS]} />}
+              >
+                <Route path="/academic/analytics" element={<AcademicAnalyticsPage />} />
+              </Route>
+
+              {/* ── Gate Management ── */}
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={[
+                      PERMISSIONS.ACCESS_GATE,
+                      PERMISSIONS.MANAGE_GATE,
+                      PERMISSIONS.VIEW_GATE_LOGS,
+                    ]}
+                  />
+                }
+              >
+                <Route path="/gate" element={<GateManagementPage />} />
               </Route>
 
               {/* ── Admissions ── */}
@@ -445,6 +517,30 @@ function App() {
                   <Route path="clearance" element={<ClearancePage />} />
                   <Route path="refunds" element={<RefundsPage />} />
                   <Route path="reports" element={<RevenueReportPage />} />
+                  <Route
+                    element={
+                      <ProtectedRoute
+                        requiredPermissions={[
+                          PERMISSIONS.VIEW_FINES,
+                          PERMISSIONS.MANAGE_FINES,
+                        ]}
+                      />
+                    }
+                  >
+                    <Route path="fines" element={<FinesManagementPage />} />
+                  </Route>
+                  <Route
+                    element={
+                      <ProtectedRoute
+                        requiredPermissions={[
+                          PERMISSIONS.SEND_FEE_ALERTS,
+                          PERMISSIONS.MANAGE_FINANCE,
+                        ]}
+                      />
+                    }
+                  >
+                    <Route path="overdue-alerts" element={<OverdueAlertsPage />} />
+                  </Route>
                 </Route>
               </Route>
 
@@ -478,6 +574,26 @@ function App() {
                   path="/exams/deliberation"
                   element={<DeliberationPage />}
                 />
+              </Route>
+
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={[PERMISSIONS.MANAGE_GRADING_SCALES]}
+                  />
+                }
+              >
+                <Route path="/exams/grading-scale" element={<GradingScalePage />} />
+              </Route>
+
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={[PERMISSIONS.MANAGE_REVALUATIONS]}
+                  />
+                }
+              >
+                <Route path="/exams/revaluations" element={<RevaluationsPage />} />
               </Route>
 
               {/* ── System Logs ── */}

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Controllers\HrEmployeeController;
+use App\Controllers\StaffQualificationController;
 use App\Middleware\AuthMiddleware;
 use App\Middleware\PermissionMiddleware;
 use App\Constants\Permissions;
@@ -24,4 +25,16 @@ $router->group('/api/employees', function ($router) {
     $router->put('/:id',                 [HrEmployeeController::class, 'update']);
     $router->delete('/:id',              [HrEmployeeController::class, 'delete']);
     $router->patch('/:id/toggle-status', [HrEmployeeController::class, 'toggleStatus']);
+}, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES)]);
+
+// Qualifications — read: VIEW_HR_EMPLOYEES
+$router->group('/api/employees', function ($router) {
+    $router->get('/:id/qualifications', [StaffQualificationController::class, 'index']);
+}, [AuthMiddleware::class, new PermissionMiddleware(Permissions::VIEW_HR_EMPLOYEES)]);
+
+// Qualifications — write: MANAGE_HR_EMPLOYEES
+$router->group('/api/employees', function ($router) {
+    $router->post('/:id/qualifications',          [StaffQualificationController::class, 'create']);
+    $router->put('/:id/qualifications/:qid',      [StaffQualificationController::class, 'update']);
+    $router->delete('/:id/qualifications/:qid',   [StaffQualificationController::class, 'delete']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES)]);

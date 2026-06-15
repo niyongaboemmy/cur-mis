@@ -88,7 +88,7 @@ class PaymentReconciler
 
         // 3. No invoice → auto-create one, then apply full amount
         if (empty($invoices)) {
-            $newInvId = $this->createInvoice($studentId, $payAmount, $pay);
+            $newInvId = $this->createInvoice($studentId, $payAmount, $pay, $transCode);
             if (!$newInvId) return [];
 
             $this->applyToInvoice(
@@ -349,7 +349,7 @@ class PaymentReconciler
      * fee_type defaults to 'TUITION' (valid ENUM value).
      * is_system_generated = 1 flags it as auto-created.
      */
-    private function createInvoice(string $studentId, float $amount, array $pay): ?int
+    private function createInvoice(string $studentId, float $amount, array $pay, string $transCode = ''): ?int
     {
         // Resolve academic_year_id if possible
         $acadYearId = null;
@@ -357,7 +357,7 @@ class PaymentReconciler
             $val  = (string)$pay['acad_cycle_id'];
             $stmt = $this->db->prepare(
                 "SELECT id FROM academic_years
-                 WHERE year_name = ? OR CAST(id AS CHAR) = ?
+                 WHERE label = ? OR CAST(id AS CHAR) = ?
                  LIMIT 1"
             );
             $stmt->bind_param('ss', $val, $val);
@@ -367,7 +367,7 @@ class PaymentReconciler
             if ($row) $acadYearId = (int)$row['id'];
         }
 
-        $invoiceNumber = 'AUTO-BANK-' . $studentId . '-' . time();
+        $invoiceNumber = 'AUTO-' . ($transCode ?: substr(md5($studentId . time()), 0, 24));
         $feeType       = 'TUITION';
         $description   = 'Auto-created from bank/mobile payment';
         $semester      = max(1, (int)($pay['SESSION'] ?? 1));

@@ -14,6 +14,8 @@ import {
   Search,
   Bell,
   MessageSquare,
+  Megaphone,
+  MessagesSquare,
   ShieldCheck,
   LayoutDashboard,
   ClipboardCheck,
@@ -21,6 +23,11 @@ import {
   ChevronDown,
   PanelLeftClose,
   PanelLeftOpen,
+  Scale,
+  FileText,
+  Award,
+  BarChart2,
+  ScanLine,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -163,6 +170,11 @@ const NAV_TREE: NavNode[] = [
         to: "/hr/leave",
         label: "Leave",
         permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES],
+      },
+      {
+        to: "/hr/appraisals",
+        label: "Appraisals",
+        permissions: [PERMISSIONS.VIEW_APPRAISALS, PERMISSIONS.VIEW_HR_EMPLOYEES],
       },
       {
         to: "/hr/settings",
@@ -354,6 +366,16 @@ const NAV_TREE: NavNode[] = [
         label: "Reports",
         permissions: [PERMISSIONS.VIEW_FINANCE_REPORTS],
       },
+      {
+        to: "/finance/fines",
+        label: "Fines",
+        permissions: [PERMISSIONS.VIEW_FINES, PERMISSIONS.MANAGE_FINES],
+      },
+      {
+        to: "/finance/overdue-alerts",
+        label: "Overdue Alerts",
+        permissions: [PERMISSIONS.SEND_FEE_ALERTS, PERMISSIONS.MANAGE_FINANCE],
+      },
     ],
   },
   // Staff / teachers / admins — full attendance workspace (record + review).
@@ -415,6 +437,16 @@ const NAV_TREE: NavNode[] = [
         label: "Deliberation",
         permissions: [PERMISSIONS.MANAGE_EXAMS],
       },
+      {
+        to: "/exams/grading-scale",
+        label: "Grading scale & GPA",
+        permissions: [PERMISSIONS.MANAGE_GRADING_SCALES],
+      },
+      {
+        to: "/exams/revaluations",
+        label: "Revaluations",
+        permissions: [PERMISSIONS.MANAGE_REVALUATIONS],
+      },
       // Student self-service — gated by VIEW_MY_MODULES, hidden from admins
       // who already have the admin views above.
       {
@@ -475,11 +507,72 @@ const ADMIN_TREE: NavNode[] = [
     ],
   },
   {
+    id: "grading-scale",
+    label: "Grading Scale",
+    icon: Scale,
+    to: "/academic/grading-scale",
+    permissions: [PERMISSIONS.MANAGE_GRADING_SCALES, PERMISSIONS.VIEW_SYSTEM_BASICS],
+  },
+  {
+    id: "transcript-requests",
+    label: "Transcript Requests",
+    icon: FileText,
+    to: "/academic/transcript-requests",
+    permissions: [PERMISSIONS.MANAGE_TRANSCRIPT_REQUESTS],
+  },
+  {
+    id: "graduands",
+    label: "Graduand Management",
+    icon: GraduationCap,
+    to: "/academic/graduands",
+    permissions: [PERMISSIONS.VIEW_GRADUANDS, PERMISSIONS.MANAGE_GRADUANDS],
+  },
+  {
+    id: "academic-certificates",
+    label: "Academic Certificates",
+    icon: Award,
+    to: "/academic/certificates",
+    permissions: [PERMISSIONS.MANAGE_ACADEMIC_CERTIFICATES],
+  },
+  {
+    id: "academic-analytics",
+    label: "Academic Analytics",
+    icon: BarChart2,
+    to: "/academic/analytics",
+    permissions: [PERMISSIONS.VIEW_ACADEMIC_ANALYTICS],
+  },
+  {
+    id: "gate-management",
+    label: "Gate Management",
+    icon: ScanLine,
+    to: "/gate",
+    hideForRoles: ["student", "applicant"],
+    permissions: [
+      PERMISSIONS.ACCESS_GATE,
+      PERMISSIONS.MANAGE_GATE,
+      PERMISSIONS.VIEW_GATE_LOGS,
+    ],
+  },
+  {
     id: "messages",
     label: "Messages",
     icon: MessageSquare,
     to: "/messages",
     permissions: [PERMISSIONS.SEND_MESSAGES],
+  },
+  {
+    id: "announcements",
+    label: "Announcements",
+    icon: Megaphone,
+    to: "/announcements",
+    permissions: [PERMISSIONS.VIEW_ANNOUNCEMENTS],
+  },
+  {
+    id: "forums",
+    label: "Forums",
+    icon: MessagesSquare,
+    to: "/forums",
+    permissions: [PERMISSIONS.VIEW_FORUMS],
   },
   {
     id: "logs",
@@ -492,6 +585,10 @@ const ADMIN_TREE: NavNode[] = [
 
 const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
   "/messages": { title: "Messages", sub: "Internal communications" },
+  "/announcements": { title: "Announcements", sub: "Exam schedules, results, holidays and notices" },
+  "/exams/grading-scale": { title: "Grading scale & GPA", sub: "Configure grade bands and grade points" },
+  "/exams/revaluations": { title: "Revaluation requests", sub: "Review and process result re-marks" },
+  "/forums": { title: "Discussion forums", sub: "Community discussions" },
   "/": {
     title: "Admin Dashboard",
     sub: "Welcome back to Catholic University of Rwanda",
@@ -503,6 +600,7 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
   "/roles": { title: "Roles", sub: "Who can do what in the system" },
   "/permissions": { title: "Permissions", sub: "Fine-grained access control" },
   "/logs": { title: "System logs", sub: "Audit trail across the platform" },
+  "/gate": { title: "Gate Management", sub: "Student access verification — payment & registration" },
   "/students": {
     title: "Students",
     sub: "CUR student registry",
@@ -514,6 +612,22 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
   "/academic/management": {
     title: "Settings",
     sub: "Schools, degrees, facilities, levels, leave types, campuses and intakes",
+  },
+  "/academic/grading-scale": {
+    title: "Grading Scale",
+    sub: "Configure percentage bands and GPA points for the institution",
+  },
+  "/academic/transcript-requests": {
+    title: "Transcript Requests",
+    sub: "Review and dispatch student official transcript requests",
+  },
+  "/academic/graduands": {
+    title: "Graduand Management",
+    sub: "Graduation eligibility, degree classification and ceremony management",
+  },
+  "/academic/certificates": {
+    title: "Academic Certificates",
+    sub: "Issue, track and dispatch degrees, diplomas and certificates",
   },
 
   "/admin/admissions": {
@@ -573,6 +687,10 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
   "/hr/leave": {
     title: "Leave Management",
     sub: "Leave requests, approvals and balances",
+  },
+  "/hr/appraisals": {
+    title: "Employee Appraisals",
+    sub: "Performance appraisal cycles, KPIs and staff reviews",
   },
   "/hr/attendance": {
     title: "Staff attendance",

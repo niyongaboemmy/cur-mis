@@ -49,7 +49,12 @@ const DOCUMENT_TYPES: DocType[] = [
     label: "English Proficiency Certificate",
     description:
       "Certificate confirming that the medium of instruction at CUR is English.",
-    comingSoon: true,
+  },
+  {
+    key: "completed_modules",
+    label: "Completed Modules Report",
+    description:
+      "Official report of all modules with recorded marks, total credits, and level breakdown.",
   },
 ];
 

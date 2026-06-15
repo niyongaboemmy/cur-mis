@@ -210,6 +210,62 @@ export interface ActiveDeductionsResponse {
   total:      number
 }
 
+/* ── Faculty profile: qualifications & subjects ─────────────────────────── */
+
+export type QualificationType = 'Degree' | 'Certification' | 'Other'
+
+export interface StaffQualification {
+  id:             number
+  employee_id:    number
+  qual_type:      QualificationType
+  title:          string
+  field_of_study: string | null
+  institution:    string | null
+  year_obtained:  number | null
+  grade:          string | null
+  reference_no:   string | null
+  expiry_date:    string | null
+  document_url:   string | null
+  notes:          string | null
+  created_at:     string
+  updated_at:     string
+}
+
+export interface StaffQualificationPayload {
+  qual_type:       QualificationType
+  title:           string
+  field_of_study?: string | null
+  institution?:    string | null
+  year_obtained?:  number | null
+  grade?:          string | null
+  reference_no?:   string | null
+  expiry_date?:    string | null
+  document_url?:   string | null
+  notes?:          string | null
+}
+
+export type SubjectProficiency = 'Beginner' | 'Intermediate' | 'Advanced' | 'Expert'
+
+export interface StaffSubject {
+  id:               number
+  employee_id:      number
+  subject_name:     string
+  proficiency:      SubjectProficiency
+  years_experience: number | null
+  is_primary:       number | boolean
+  notes:            string | null
+  created_at:       string
+  updated_at:       string
+}
+
+export interface StaffSubjectPayload {
+  subject_name:      string
+  proficiency:       SubjectProficiency
+  years_experience?: number | null
+  is_primary?:       boolean
+  notes?:            string | null
+}
+
 /* ── Salary Payment types ───────────────────────────────────────────────── */
 
 export type PaymentMethod = 'Bank Transfer' | 'Cash' | 'MoMo'
@@ -321,6 +377,34 @@ export const hrService = {
   deleteEmployeeDeduction: (empId: number | string, id: number) =>
     api.delete<void>(`/api/hr/employees/${empId}/deductions/${id}`),
 
+  /* ── Faculty qualifications & credentials ────────────────────────────── */
+
+  listQualifications: (empId: number | string, signal?: AbortSignal) =>
+    api.get<StaffQualification[]>(`/api/hr/employees/${empId}/qualifications`, {}, signal),
+
+  addQualification: (empId: number | string, data: StaffQualificationPayload) =>
+    api.post<StaffQualification>(`/api/hr/employees/${empId}/qualifications`, data),
+
+  updateQualification: (empId: number | string, id: number, data: StaffQualificationPayload) =>
+    api.put<StaffQualification>(`/api/hr/employees/${empId}/qualifications/${id}`, data),
+
+  deleteQualification: (empId: number | string, id: number) =>
+    api.delete<void>(`/api/hr/employees/${empId}/qualifications/${id}`),
+
+  /* ── Teaching subjects / specialisations ─────────────────────────────── */
+
+  listSubjects: (empId: number | string, signal?: AbortSignal) =>
+    api.get<StaffSubject[]>(`/api/hr/employees/${empId}/subjects`, {}, signal),
+
+  addSubject: (empId: number | string, data: StaffSubjectPayload) =>
+    api.post<StaffSubject>(`/api/hr/employees/${empId}/subjects`, data),
+
+  updateSubject: (empId: number | string, id: number, data: StaffSubjectPayload) =>
+    api.put<StaffSubject>(`/api/hr/employees/${empId}/subjects/${id}`, data),
+
+  deleteSubject: (empId: number | string, id: number) =>
+    api.delete<void>(`/api/hr/employees/${empId}/subjects/${id}`),
+
   /* ── Payroll Config ──────────────────────────────────────────────────── */
 
   getPayrollConfig: (signal?: AbortSignal) =>
@@ -340,6 +424,56 @@ export const hrService = {
 
   deleteCustomDeduction: (id: number) =>
     api.delete<void>(`/api/hr/config/deductions/${id}`),
+
+  /* ── Appraisals ─────────────────────────────────────────────────────── */
+
+  appraisalStats: (signal?: AbortSignal) =>
+    api.get<AppraisalStats>('/api/appraisals/stats', {}, signal),
+
+  listAppraisalPeriods: (params?: { status?: string; year?: number }, signal?: AbortSignal) =>
+    api.get<AppraisalPeriod[]>('/api/appraisals/periods', (params ?? {}) as Record<string, unknown>, signal),
+
+  createAppraisalPeriod: (data: AppraisalPeriodPayload) =>
+    api.post<AppraisalPeriod>('/api/appraisals/periods', data),
+
+  updateAppraisalPeriod: (id: number, data: AppraisalPeriodPayload) =>
+    api.put<AppraisalPeriod>(`/api/appraisals/periods/${id}`, data),
+
+  setAppraisalPeriodStatus: (id: number, status: AppraisalPeriodStatus) =>
+    api.patch<{ status: string }>(`/api/appraisals/periods/${id}/status`, { status }),
+
+  deleteAppraisalPeriod: (id: number) =>
+    api.delete<void>(`/api/appraisals/periods/${id}`),
+
+  initiateAppraisals: (periodId: number) =>
+    api.post<{ created: number; skipped: number }>(`/api/appraisals/periods/${periodId}/initiate`, {}),
+
+  listCriteria: (periodId: number, signal?: AbortSignal) =>
+    api.get<AppraisalCriterion[]>(`/api/appraisals/periods/${periodId}/criteria`, {}, signal),
+
+  addCriterion: (periodId: number, data: AppraisalCriterionPayload) =>
+    api.post<AppraisalCriterion>(`/api/appraisals/periods/${periodId}/criteria`, data),
+
+  updateCriterion: (periodId: number, cid: number, data: AppraisalCriterionPayload) =>
+    api.put<void>(`/api/appraisals/periods/${periodId}/criteria/${cid}`, data),
+
+  deleteCriterion: (periodId: number, cid: number) =>
+    api.delete<void>(`/api/appraisals/periods/${periodId}/criteria/${cid}`),
+
+  listAppraisals: (params?: { period_id?: number; employee_id?: number; status?: string }, signal?: AbortSignal) =>
+    api.get<Appraisal[]>('/api/appraisals', (params ?? {}) as Record<string, unknown>, signal),
+
+  showAppraisal: (id: number, signal?: AbortSignal) =>
+    api.get<Appraisal>(`/api/appraisals/${id}`, {}, signal),
+
+  saveSelfAssessment: (id: number, data: SelfAssessmentPayload) =>
+    api.patch<Appraisal>(`/api/appraisals/${id}/self`, data),
+
+  saveSupervisorReview: (id: number, data: SupervisorReviewPayload) =>
+    api.patch<Appraisal>(`/api/appraisals/${id}/supervisor`, data),
+
+  saveHrReview: (id: number, data: HrReviewPayload) =>
+    api.patch<Appraisal>(`/api/appraisals/${id}/hr`, data),
 
   /* ── Leave Management ───────────────────────────────────────────────── */
 
@@ -478,6 +612,136 @@ export interface UpsertLeaveBalancePayload {
 }
 
 /* ── Leave stats ─────────────────────────────────────────────────────────── */
+
+/* ── Appraisal types ─────────────────────────────────────────────────────── */
+
+export type AppraisalPeriodType = 'Annual' | 'Semi-Annual' | 'Quarterly' | 'Custom'
+export type AppraisalPeriodStatus = 'Draft' | 'Active' | 'Closed'
+export type AppraisalStatus = 'Draft' | 'Self-Review' | 'Supervisor-Review' | 'HR-Review' | 'Completed'
+export type AppraisalGrade = 'Excellent' | 'Good' | 'Satisfactory' | 'Needs Improvement'
+
+export interface AppraisalPeriod {
+  id:                  number
+  title:               string
+  period_type:         AppraisalPeriodType
+  year:                number
+  start_date:          string
+  end_date:            string
+  submission_deadline: string | null
+  status:              AppraisalPeriodStatus
+  description:         string | null
+  criteria_count:      number
+  appraisal_count:     number
+  created_at:          string
+  updated_at:          string
+}
+
+export interface AppraisalPeriodPayload {
+  title:               string
+  period_type:         AppraisalPeriodType
+  year:                number
+  start_date:          string
+  end_date:            string
+  submission_deadline?: string | null
+  status?:             AppraisalPeriodStatus
+  description?:        string | null
+}
+
+export interface AppraisalCriterion {
+  id:          number
+  period_id:   number
+  name:        string
+  description: string | null
+  weight:      number
+  max_score:   number
+  sort_order:  number
+}
+
+export interface AppraisalCriterionPayload {
+  name:         string
+  description?: string | null
+  weight?:      number
+  max_score?:   number
+  sort_order?:  number
+}
+
+export interface AppraisalRating {
+  id:                  number
+  appraisal_id:        number
+  criterion_id:        number
+  criterion_name:      string
+  criterion_description: string | null
+  weight:              number
+  max_score:           number
+  sort_order:          number
+  self_score:          number | null
+  supervisor_score:    number | null
+  self_comment:        string | null
+  supervisor_comment:  string | null
+}
+
+export interface Appraisal {
+  id:                     number
+  period_id:              number
+  employee_id:            number
+  employee_name:          string
+  department:             string | null
+  position:               string | null
+  period_title:           string
+  period_year:            number
+  submission_deadline:    string | null
+  status:                 AppraisalStatus
+  self_comment:           string | null
+  supervisor_comment:     string | null
+  hr_comment:             string | null
+  self_total_score:       number | null
+  supervisor_total_score: number | null
+  final_score:            number | null
+  final_grade:            AppraisalGrade | null
+  submitted_at:           string | null
+  supervisor_reviewed_at: string | null
+  completed_at:           string | null
+  ratings:                AppraisalRating[]
+  created_at:             string
+  updated_at:             string
+}
+
+export interface AppraisalStats {
+  periods:   number
+  active:    number
+  total:     number
+  completed: number
+  pending:   number
+  inReview:  number
+  byStatus:  { status: string; total: number }[]
+}
+
+export interface AppraisalRatingPayload {
+  criterion_id:        number
+  self_score?:         number | null
+  self_comment?:       string | null
+  supervisor_score?:   number | null
+  supervisor_comment?: string | null
+}
+
+export interface SelfAssessmentPayload {
+  self_comment?: string | null
+  ratings:       AppraisalRatingPayload[]
+  submit?:       boolean
+}
+
+export interface SupervisorReviewPayload {
+  supervisor_comment?: string | null
+  ratings:             AppraisalRatingPayload[]
+  submit?:             boolean
+}
+
+export interface HrReviewPayload {
+  hr_comment?:   string | null
+  final_score?:  number | null
+  final_grade?:  AppraisalGrade | null
+  complete?:     boolean
+}
 
 export interface LeaveStats {
   pending:             number

@@ -1,3 +1,6 @@
+# ── AI Tool State ─────────────────────────────────────────────────────────────
+.refact/
+
 # ── Logs & Reports ────────────────────────────────────────────────────────────
 logs
 *.log
@@ -53,6 +56,9 @@ dist/
 .serverless/
 .fusebox/
 
+# ── Refact AI ────────────────────────────────────────────────────────────────
+.refact/
+
 # ── IDE & OS Specific ─────────────────────────────────────────────────────────
 .vscode/
 .idea/
@@ -90,3 +96,6 @@ coverage/
 !.yarn/versions
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Large local DB dumps (do not commit — exceed GitHub 100MB limit)
+curac_cur_mis(Iyabo).sql

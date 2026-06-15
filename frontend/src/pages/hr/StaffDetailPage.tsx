@@ -20,14 +20,16 @@ import {
   X,
   Save,
   CreditCard,
+  GraduationCap,
 } from "lucide-react";
 import { hrService, type HrEmployeePayload } from "@/services/hrService";
 import { useAuthStore } from "@/store/authStore";
 import type { HrEmployee } from "@/types/academic";
 import ModalPortal from "@/components/ui/ModalPortal";
 import { PERMISSIONS } from "@/constants/permissions";
+import StaffQualificationsTab from "./StaffQualificationsTab";
 
-type Tab = "overview" | "attendance" | "documents";
+type Tab = "overview" | "qualifications" | "attendance" | "documents";
 
 export default function StaffDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -46,7 +48,15 @@ export default function StaffDetailPage() {
     enabled: !!id,
   });
 
+  const qualQ = useQuery({
+    queryKey: ["hr-employee-qualifications", id],
+    queryFn: () => hrService.listQualifications(id!),
+    enabled: !!id,
+    staleTime: 30_000,
+  });
+
   const employee: HrEmployee | undefined = empQ.data?.data ?? undefined;
+  const qualifications = qualQ.data?.data ?? [];
 
   if (empQ.isLoading) {
     return (
@@ -109,6 +119,11 @@ export default function StaffDetailPage() {
                   {employee.status || "Unknown"}
                 </span>
               )}
+              {qualifications.length > 0 && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand/10 text-brand text-[11px] font-semibold">
+                  <GraduationCap className="w-3 h-3" /> {qualifications.length} qualification{qualifications.length !== 1 ? "s" : ""}
+                </span>
+              )}
             </div>
             <p className="text-[13px] text-ink-500 mt-1">
               {employee.position || "—"} · {employee.department || "—"}
@@ -142,29 +157,23 @@ export default function StaffDetailPage() {
 
       {/* Tabs */}
       <section className="card p-0 overflow-hidden">
-        <div className="flex items-center gap-1 p-1.5 border-b border-ink-100 dark:border-ink-700 bg-ink-50/50 dark:bg-ink-700/20">
-          <TabBtn
-            active={tab === "overview"}
-            icon={UserIcon}
-            label="Overview"
-            onClick={() => setTab("overview")}
-          />
-          <TabBtn
-            active={tab === "attendance"}
-            icon={ClipboardCheck}
-            label="Attendance"
-            onClick={() => setTab("attendance")}
-          />
-          <TabBtn
-            active={tab === "documents"}
-            icon={FileText}
-            label="Documents"
-            onClick={() => setTab("documents")}
-          />
+        <div className="flex items-center gap-1 p-1.5 border-b border-ink-100 dark:border-ink-700 bg-ink-50/50 dark:bg-ink-700/20 overflow-x-auto">
+          <TabBtn active={tab === "overview"}       icon={UserIcon}       label="Overview"       onClick={() => setTab("overview")} />
+          <TabBtn active={tab === "qualifications"} icon={GraduationCap}  label="Qualifications" onClick={() => setTab("qualifications")}
+            badge={qualifications.length > 0 ? qualifications.length : undefined} />
+          <TabBtn active={tab === "attendance"}     icon={ClipboardCheck} label="Attendance"     onClick={() => setTab("attendance")} />
+          <TabBtn active={tab === "documents"}      icon={FileText}       label="Documents"      onClick={() => setTab("documents")} />
         </div>
 
         <div className="p-6">
           {tab === "overview" && <OverviewTab e={employee} />}
+          {tab === "qualifications" && (
+            <StaffQualificationsTab
+              empId={Number(employee.id)}
+              empName={employee.full_name || employee.emp_code}
+              canManage={canManage}
+            />
+          )}
           {tab === "attendance" && (
             <ComingSoon
               icon={ClipboardCheck}
@@ -176,7 +185,7 @@ export default function StaffDetailPage() {
             <ComingSoon
               icon={FileText}
               title="Staff documents"
-              desc="Contracts, national IDs, qualifications, and HR uploads."
+              desc="Contracts, national IDs, and other HR uploads."
             />
           )}
         </div>
@@ -612,16 +621,18 @@ function TabBtn({
   icon: Icon,
   label,
   onClick,
+  badge,
 }: {
   active: boolean;
   icon: React.ComponentType<{ className?: string }>;
   label: string;
   onClick: () => void;
+  badge?: number;
 }) {
   return (
     <button
       onClick={onClick}
-      className={`inline-flex items-center gap-1.5 px-3 py-2 text-[13px] rounded-md transition-colors ${
+      className={`inline-flex items-center gap-1.5 px-3 py-2 text-[13px] rounded-md transition-colors shrink-0 ${
         active
           ? "bg-white dark:bg-ink-800 shadow-sm text-brand font-semibold"
           : "text-ink-600 dark:text-ink-300 hover:text-ink-900 dark:hover:text-white"
@@ -629,6 +640,11 @@ function TabBtn({
     >
       <Icon className="w-3.5 h-3.5" />
       {label}
+      {badge !== undefined && badge > 0 && (
+        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-brand text-white text-[10px] font-bold">
+          {badge > 9 ? "9+" : badge}
+        </span>
+      )}
     </button>
   );
 }

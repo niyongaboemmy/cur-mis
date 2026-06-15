@@ -1,15 +1,22 @@
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
-import { CalendarClock, CheckCircle2, Loader2, GraduationCap, Calendar, ClipboardList, Download } from 'lucide-react'
+import { CalendarClock, CheckCircle2, Loader2, GraduationCap, Calendar, ClipboardList, Download, Scale, AlertTriangle, FileText, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { myModulesService, type MyExamRow } from '@/services/modulesService'
 import { academicService } from '@/services/academicService'
 import { marksService } from '@/services/marksService'
+import { gradeService } from '@/services/gradeService'
+import {
+  revaluationService, STATUS_LABELS,
+  type Revaluation, type BacklogRow,
+} from '@/services/revaluationService'
+import { transcriptService } from '@/services/transcriptService'
 import type { ModuleRegistration } from '@/types/modules'
 
-type Tab = 'available' | 'mine' | 'exams' | 'marks'
+type Tab = 'available' | 'mine' | 'exams' | 'marks' | 'revaluation'
 
-const VALID_TABS: readonly Tab[] = ['available', 'mine', 'exams', 'marks'] as const
+const VALID_TABS: readonly Tab[] = ['available', 'mine', 'exams', 'marks', 'revaluation'] as const
 
 export default function MyRegistrationsPage() {
   const qc = useQueryClient()
@@ -83,6 +90,24 @@ export default function MyRegistrationsPage() {
     enabled: tab === 'marks',
   })
 
+  const gpaQ = useQuery({
+    queryKey: ['my-gpa'],
+    queryFn: () => gradeService.myGpa(),
+    enabled: tab === 'marks',
+  })
+
+  const revReqQ = useQuery({
+    queryKey: ['my-revaluations'],
+    queryFn: () => revaluationService.myRequests(),
+    enabled: tab === 'revaluation',
+  })
+
+  const backlogQ = useQuery({
+    queryKey: ['my-backlog'],
+    queryFn: () => revaluationService.myBacklog(),
+    enabled: tab === 'revaluation',
+  })
+
   const downloadTranscript = useMutation({
     mutationFn: () => marksService.downloadTranscript(),
     onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Could not download transcript'),
@@ -138,13 +163,27 @@ export default function MyRegistrationsPage() {
         >
           <ClipboardList className="w-3.5 h-3.5 inline mr-1" /> My marks
         </button>
+        <button
+          className={`px-3 py-1.5 text-[13px] rounded-md ${tab === 'revaluation' ? 'bg-brand/10 text-brand font-semibold' : 'text-ink-600'}`}
+          onClick={() => setTab('revaluation')}
+        >
+          <Scale className="w-3.5 h-3.5 inline mr-1" /> Revaluation & backlog
+        </button>
       </div>
 
-      {tab === 'marks' ? (
+      {tab === 'revaluation' ? (
+        <MyRevaluationTab
+          loadingReq={revReqQ.isLoading}
+          loadingBacklog={backlogQ.isLoading}
+          requests={revReqQ.data?.data ?? []}
+          backlog={backlogQ.data?.data ?? []}
+        />
+      ) : tab === 'marks' ? (
         <MyMarksTab
           loading={marksQ.isLoading}
           rows={marksRows}
           totals={marksTotals}
+          cgpa={gpaQ.data?.data?.cgpa ?? null}
           downloading={downloadTranscript.isPending}
           canDownload={(marksTotals?.modules ?? 0) > 0}
           onDownload={() => downloadTranscript.mutate()}
@@ -340,12 +379,43 @@ interface MyMarksTabProps {
   loading:     boolean
   rows:        import('@/services/marksService').MyMarksRow[]
   totals?:     import('@/services/marksService').MyMarksTotals
+  cgpa?:       number | null
   downloading: boolean
   canDownload: boolean
   onDownload:  () => void
 }
 
-function MyMarksTab({ loading, rows, totals, downloading, canDownload, onDownload }: MyMarksTabProps) {
+const TR_STATUS_BADGE: Record<string, string> = {
+  pending:    'bg-yellow-100 text-yellow-800',
+  approved:   'bg-green-100 text-green-800',
+  dispatched: 'bg-blue-100 text-blue-800',
+  rejected:   'bg-red-100 text-red-800',
+}
+
+function MyMarksTab({ loading, rows, totals, cgpa, downloading, canDownload, onDownload }: MyMarksTabProps) {
+  const qc = useQueryClient()
+  const [requestOpen, setRequestOpen] = useState(false)
+  const [purpose, setPurpose]         = useState('')
+  const [copies, setCopies]           = useState(1)
+
+  const myRequestsQ = useQuery({
+    queryKey: ['my-transcript-requests'],
+    queryFn:  () => transcriptService.myRequests(),
+  })
+  const myRequests: any[] = myRequestsQ.data?.data ?? []
+
+  const submitRequest = useMutation({
+    mutationFn: () => transcriptService.create({ purpose, copies }),
+    onSuccess: () => {
+      toast.success('Transcript request submitted. Registry will process it shortly.')
+      qc.invalidateQueries({ queryKey: ['my-transcript-requests'] })
+      setRequestOpen(false)
+      setPurpose('')
+      setCopies(1)
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to submit request.'),
+  })
+
   if (loading) {
     return <div className="card p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-brand" /></div>
   }
@@ -374,18 +444,77 @@ function MyMarksTab({ loading, rows, totals, downloading, canDownload, onDownloa
         <SumStat label="Modules"          value={totals?.modules ?? 0} />
         <SumStat label="Total credits"    value={totals?.total_credits ?? 0} />
         <SumStat label="Weighted average" value={totals?.weighted_average != null ? `${totals.weighted_average}%` : '—'} highlight />
+        <SumStat label="CGPA"             value={cgpa != null ? cgpa.toFixed(2) : '—'} highlight />
         <SumStat label="Overall grade"    value={totals?.overall_grade ?? '—'} />
         <SumStat label="Decision"         value={totals?.decision ?? '—'} tone={totals?.decision === 'Promoted' ? 'good' : totals?.decision === 'Repeat' ? 'bad' : undefined} />
-        <button
-          className="btn-primary btn-sm ml-auto"
-          disabled={!canDownload || downloading}
-          onClick={onDownload}
-          title={!canDownload ? 'No recorded marks to include in a transcript yet.' : undefined}
-        >
-          {downloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-          {downloading ? 'Preparing…' : 'Download transcript'}
-        </button>
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            className="btn-primary btn-sm"
+            disabled={!canDownload || downloading}
+            onClick={onDownload}
+            title={!canDownload ? 'No recorded marks to include in a transcript yet.' : undefined}
+          >
+            {downloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+            {downloading ? 'Preparing…' : 'Download transcript'}
+          </button>
+          <button
+            className="btn-sm border border-ink-200 dark:border-ink-600 text-ink-700 dark:text-ink-200 hover:bg-ink-50 dark:hover:bg-ink-700 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium"
+            onClick={() => setRequestOpen(true)}
+          >
+            <FileText className="w-3.5 h-3.5" /> Request Official Copy
+          </button>
+        </div>
       </div>
+
+      {/* Previous transcript requests */}
+      {myRequests.length > 0 && (
+        <div className="card p-4">
+          <h3 className="text-[12px] font-semibold text-ink-500 uppercase mb-3">My Transcript Requests</h3>
+          <div className="space-y-2">
+            {myRequests.map((r: any) => (
+              <div key={r.id} className="flex items-center justify-between text-[13px] border-b border-ink-100 dark:border-ink-700 pb-2 last:border-0 last:pb-0">
+                <div>
+                  <span className="font-medium capitalize">{r.request_type}</span>
+                  {r.purpose && <span className="text-ink-400 ml-2">— {r.purpose}</span>}
+                  <span className="text-ink-400 ml-2 text-[11px]">{new Date(r.created_at).toLocaleDateString()}</span>
+                </div>
+                <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-medium capitalize ${TR_STATUS_BADGE[r.status] ?? 'bg-gray-100 text-gray-600'}`}>
+                  {r.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Request modal */}
+      {requestOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white dark:bg-ink-800 rounded-xl shadow-2xl w-full max-w-md mx-4 p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold text-ink-900 dark:text-white">Request Official Transcript</h2>
+              <button onClick={() => setRequestOpen(false)} className="text-ink-400 hover:text-ink-700"><X className="w-5 h-5" /></button>
+            </div>
+            <div>
+              <label className="block text-[12px] font-medium text-ink-600 dark:text-ink-300 mb-1">Purpose (optional)</label>
+              <input value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="e.g. Further studies, Employment…"
+                className="w-full border border-ink-200 dark:border-ink-600 rounded-lg px-3 py-2 text-[13px] outline-none focus:ring-2 focus:ring-brand dark:bg-ink-700 dark:text-white" />
+            </div>
+            <div>
+              <label className="block text-[12px] font-medium text-ink-600 dark:text-ink-300 mb-1">Number of Copies</label>
+              <input type="number" min={1} max={10} value={copies} onChange={(e) => setCopies(Number(e.target.value))}
+                className="w-24 border border-ink-200 dark:border-ink-600 rounded-lg px-3 py-2 text-[13px] outline-none focus:ring-2 focus:ring-brand dark:bg-ink-700 dark:text-white" />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button onClick={() => setRequestOpen(false)} className="btn-sm border border-ink-200 text-ink-700 px-4 py-2 rounded-lg text-[13px]">Cancel</button>
+              <button onClick={() => submitRequest.mutate()} disabled={submitRequest.isPending}
+                className="btn-primary btn-sm px-4 py-2 disabled:opacity-50">
+                {submitRequest.isPending ? 'Submitting…' : 'Submit Request'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Per-year tables */}
       {Array.from(byYear.entries()).map(([year, list]) => (
@@ -462,4 +591,163 @@ function fmt(v: string | number | null | undefined): string {
   if (v === null || v === undefined || v === '') return '—'
   const n = Number(v)
   return Number.isFinite(n) ? String(n) : '—'
+}
+
+/* ─── Revaluation & backlog tab ──────────────────────────────────────────── */
+
+interface MyRevaluationTabProps {
+  loadingReq:     boolean
+  loadingBacklog: boolean
+  requests:       Revaluation[]
+  backlog:        BacklogRow[]
+}
+
+function statusTone(s: Revaluation['status']) {
+  return {
+    pending:   'text-amber-600',
+    approved:  'text-blue-600',
+    processed: 'text-emerald-600',
+    rejected:  'text-red-600',
+  }[s]
+}
+
+function MyRevaluationTab({ loadingReq, loadingBacklog, requests, backlog }: MyRevaluationTabProps) {
+  const qc = useQueryClient()
+  const [target, setTarget] = useState<BacklogRow | null>(null)
+  const [reason, setReason] = useState('')
+
+  // mark_ids that already have an open request, to disable the button.
+  const openMarkIds = new Set(
+    requests.filter((r) => r.status === 'pending' || r.status === 'approved').map((r) => r.exam_id),
+  )
+
+  const submit = useMutation({
+    mutationFn: () => revaluationService.request(target!.mark_id, reason.trim()),
+    onSuccess: () => {
+      toast.success('Revaluation request submitted.')
+      setTarget(null); setReason('')
+      qc.invalidateQueries({ queryKey: ['my-revaluations'] })
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Could not submit request.'),
+  })
+
+  return (
+    <div className="space-y-4">
+      {/* Backlog */}
+      <div className="card overflow-hidden">
+        <div className="px-4 py-2 border-b border-ink-100 dark:border-ink-700 bg-ink-50 dark:bg-ink-800/40 text-[12px] font-semibold text-ink-700 dark:text-ink-200">
+          Backlog — failed modules
+        </div>
+        {loadingBacklog ? (
+          <div className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-brand" /></div>
+        ) : backlog.length === 0 ? (
+          <div className="p-6 text-center text-ink-400 text-[13px]">
+            No backlog — you have no failed modules on record. 🎉
+          </div>
+        ) : (
+          <table className="w-full text-left text-[13px]">
+            <thead>
+              <tr className="bg-ink-50/60 dark:bg-ink-800/30 border-b border-ink-100 dark:border-ink-700 text-[10px] uppercase text-ink-400">
+                <th className="px-3 py-2 font-bold">Module</th>
+                <th className="px-3 py-2 font-bold">Year / term</th>
+                <th className="px-3 py-2 font-bold text-center">Mark</th>
+                <th className="px-3 py-2 font-bold text-center">Grade</th>
+                <th className="px-3 py-2 font-bold text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {backlog.map((b) => (
+                <tr key={b.mark_id} className="border-b border-ink-50 dark:border-ink-800/60">
+                  <td className="px-3 py-2">
+                    <div className="font-medium">{b.module_code}</div>
+                    <div className="text-[11px] text-ink-400 max-w-[200px] truncate">{b.module_name}</div>
+                  </td>
+                  <td className="px-3 py-2 text-ink-500">{b.year_label ?? '—'} · {b.term_label ?? '—'}</td>
+                  <td className="px-3 py-2 text-center font-semibold text-red-600">{b.percentage != null ? `${b.percentage}%` : '—'}</td>
+                  <td className="px-3 py-2 text-center">{b.grade ?? '—'}</td>
+                  <td className="px-3 py-2 text-right">
+                    {openMarkIds.has(b.mark_id) ? (
+                      <span className="text-[11px] text-amber-600">Request open</span>
+                    ) : (
+                      <button className="btn-ghost btn-sm" onClick={() => { setTarget(b); setReason('') }}>
+                        <Scale className="w-3.5 h-3.5" /> Request revaluation
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* My requests */}
+      <div className="card overflow-hidden">
+        <div className="px-4 py-2 border-b border-ink-100 dark:border-ink-700 bg-ink-50 dark:bg-ink-800/40 text-[12px] font-semibold text-ink-700 dark:text-ink-200">
+          My revaluation requests
+        </div>
+        {loadingReq ? (
+          <div className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-brand" /></div>
+        ) : requests.length === 0 ? (
+          <div className="p-6 text-center text-ink-400 text-[13px]">You haven't requested any revaluations yet.</div>
+        ) : (
+          <table className="w-full text-left text-[13px]">
+            <thead>
+              <tr className="bg-ink-50/60 dark:bg-ink-800/30 border-b border-ink-100 dark:border-ink-700 text-[10px] uppercase text-ink-400">
+                <th className="px-3 py-2 font-bold">Module</th>
+                <th className="px-3 py-2 font-bold">Reason</th>
+                <th className="px-3 py-2 font-bold text-center">Current</th>
+                <th className="px-3 py-2 font-bold text-center">New</th>
+                <th className="px-3 py-2 font-bold">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {requests.map((r) => (
+                <tr key={r.id} className="border-b border-ink-50 dark:border-ink-800/60 align-top">
+                  <td className="px-3 py-2 font-medium">{r.module_code ?? `#${r.exam_id}`}</td>
+                  <td className="px-3 py-2 text-ink-600 dark:text-ink-300 max-w-[240px]"><span className="line-clamp-2">{r.reason}</span></td>
+                  <td className="px-3 py-2 text-center">{r.current_marks != null ? `${r.current_marks}%` : '—'}</td>
+                  <td className="px-3 py-2 text-center font-semibold text-brand">{r.new_marks != null ? `${r.new_marks}%` : '—'}</td>
+                  <td className={`px-3 py-2 font-medium ${statusTone(r.status)}`}>{STATUS_LABELS[r.status]}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Request modal */}
+      {target && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/60 backdrop-blur-sm p-4">
+          <div className="card w-full max-w-md">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-ink-100 dark:border-ink-700">
+              <h3 className="font-semibold text-ink-900 dark:text-ink-50">Request revaluation</h3>
+              <button className="p-1 text-ink-400 hover:text-ink-700" onClick={() => setTarget(null)}><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-5 space-y-4 text-[13px]">
+              <div className="flex items-start gap-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 p-3 text-amber-700 dark:text-amber-300">
+                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                <span>
+                  You are requesting a re-mark of <b>{target.module_code}</b> ({target.module_name}),
+                  currently <b>{target.percentage}%</b>. A revaluation fee may apply.
+                </span>
+              </div>
+              <div>
+                <label className="label">Reason for the request</label>
+                <textarea className="input min-h-[100px]" value={reason}
+                  placeholder="Explain why you believe this result should be re-checked…"
+                  onChange={(e) => setReason(e.target.value)} />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 px-5 py-3 border-t border-ink-100 dark:border-ink-700">
+              <button className="btn-ghost btn-sm" onClick={() => setTarget(null)}>Cancel</button>
+              <button className="btn-primary btn-sm" disabled={reason.trim().length < 5 || submit.isPending} onClick={() => submit.mutate()}>
+                {submit.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Scale className="w-4 h-4" />} Submit request
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }

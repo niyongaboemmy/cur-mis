@@ -6,6 +6,7 @@ export type DocumentType =
   | 'admission_letter'
   | 'registration_form'
   | 'english_proficiency'
+  | 'completed_modules'
 
 function base() {
   return import.meta.env.VITE_API_URL ?? ''
