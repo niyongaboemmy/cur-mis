@@ -1,18 +1,15 @@
 name: Deploy — Backend (PHP API)
 
-# Method: rsync over SFTP (port 22) — server does not support FTP/FTPS
-# composer install runs on the GitHub Actions runner; vendor/ is uploaded via rsync.
+# Method: cPanel UAPI over HTTPS (port 2083) — SSH/FTP blocked on this server.
+# composer install runs on the GitHub Actions runner; vendor/ is zipped and uploaded.
 #
-# SECURE server layout:
-#   /home/curac/backend/              ← PHP source + vendor/ OUTSIDE public_html
-#   /home/curac/public_html/umis/api/ ← ONLY backend/public/ (web entry point)
+# Server layout after deploy:
+#   /home/curac/backend/              — PHP source + vendor/ (outside public_html)
+#   /home/curac/public_html/umis/api/ — only backend/public/ (web entry point)
 #
-# !! AFTER FIRST SUCCESSFUL DEPLOY: delete public_html/umis/backend/ via cPanel
-#    File Manager — it currently exposes source + .env on the web.
-#
-# Required GitHub Secrets  (repo → Settings → Secrets and variables → Actions → Secrets):
-#   SFTP_PRIVATE_KEY  — private key whose public half is in server ~/.ssh/authorized_keys
-#   BACKEND_ENV       — full contents of backend/.env.production
+# Required GitHub Secrets:
+#   CPANEL_PASS   — cPanel account password
+#   BACKEND_ENV   — full contents of backend/.env.production
 
 on:
   push:
@@ -25,6 +22,10 @@ on:
 concurrency:
   group: deploy-backend
   cancel-in-progress: false
+
+env:
+  CPANEL_URL: https://cpanel.cur.ac.rw:2083
+  CPANEL_USER: curac
 
 jobs:
   deploy:
@@ -49,48 +50,118 @@ jobs:
           BACKEND_ENV: ${{ secrets.BACKEND_ENV }}
         run: printf '%s' "$BACKEND_ENV" > backend/.env
 
-      - name: Load SSH private key
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.SFTP_PRIVATE_KEY }}
-
-      - name: Add server to known_hosts
+      # ── Archive 1: backend source + vendor/ + .env → ~/backend/ ─────────────
+      # Excludes public/ (deployed separately) and unnecessary files.
+      - name: Create backend source archive
         run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan -p 22 cur.ac.rw >> ~/.ssh/known_hosts 2>/dev/null || true
+          cd backend
+          zip -r ../backend-src.zip . \
+            --exclude './public/*' \
+            --exclude './*.phar' \
+            --exclude './test_*.php' \
+            --exclude './logs/*.log' \
+            --exclude './__MACOSX*' \
+            --exclude './.DS_Store'
+          cd ..
+          echo "Source archive: $(du -sh backend-src.zip | cut -f1)"
 
-      # Source + vendor/ + .env → ~/backend/ (outside public_html)
-      # public/ excluded here — deployed separately below
-      - name: rsync backend source → ~/backend/
+      # ── Archive 2: backend/public/ only → ~/public_html/umis/api/ ───────────
+      - name: Create backend public archive
         run: |
-          rsync -avz \
-            --exclude='.DS_Store' \
-            --exclude='__MACOSX/' \
-            --exclude='public/' \
-            --exclude='logs/' \
-            --exclude='storage/uploads/*' \
-            --exclude='composer.phar' \
-            --exclude='test_*.php' \
-            -e "ssh -p 22" \
-            backend/ \
-            curac@cur.ac.rw:~/backend/
+          cd backend/public
+          zip -r ../../backend-public.zip . \
+            --exclude './__MACOSX*' \
+            --exclude './.DS_Store'
+          cd ../..
+          echo "Public archive: $(du -sh backend-public.zip | cut -f1)"
 
-      # Only backend/public/ → ~/public_html/umis/api/ (web entry point)
-      # --delete cleans up accidental files (Windows error log etc.)
-      - name: rsync backend/public/ → public_html/umis/api/
+      # ── Ensure ~/backend/ directory exists on server ─────────────────────────
+      - name: Ensure ~/backend/ directory exists
+        env:
+          CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
         run: |
-          rsync -avz --delete \
-            --exclude='.DS_Store' \
-            --exclude='__MACOSX/' \
-            -e "ssh -p 22" \
-            backend/public/ \
-            curac@cur.ac.rw:~/public_html/umis/api/
+          curl -s -k \
+            -u "$CPANEL_USER:$CPANEL_PASS" \
+            -G \
+            --data-urlencode "path=/" \
+            --data-urlencode "name=backend" \
+            "$CPANEL_URL/execute/Fileman/mkdir" > /dev/null || true
+
+      # ── Deploy source to ~/backend/ ──────────────────────────────────────────
+      - name: Upload backend source → ~/backend/
+        env:
+          CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
+        run: |
+          RESPONSE=$(curl -s -k \
+            -u "$CPANEL_USER:$CPANEL_PASS" \
+            -F "dir=/backend" \
+            -F "file-1=@backend-src.zip;type=application/zip" \
+            "$CPANEL_URL/execute/Fileman/upload_files")
+          echo "Upload: $RESPONSE"
+          [ "$(echo "$RESPONSE" | jq -r '.status // 0')" = "1" ] || { echo "Upload failed"; exit 1; }
+
+      - name: Extract backend source on server
+        env:
+          CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
+        run: |
+          RESPONSE=$(curl -s -k \
+            -u "$CPANEL_USER:$CPANEL_PASS" \
+            -G \
+            --data-urlencode "dir=/backend" \
+            --data-urlencode "file=backend-src.zip" \
+            "$CPANEL_URL/execute/Fileman/extract_file")
+          echo "Extract: $RESPONSE"
+          [ "$(echo "$RESPONSE" | jq -r '.status // 0')" = "1" ] || { echo "Extract failed"; exit 1; }
+
+      - name: Delete source archive from server
+        env:
+          CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
+        run: |
+          curl -s -k -u "$CPANEL_USER:$CPANEL_PASS" -G \
+            --data-urlencode "files-0-file=/backend/backend-src.zip" \
+            --data-urlencode "files-0-type=file" \
+            "$CPANEL_URL/execute/Fileman/delete_files" > /dev/null
+
+      # ── Deploy public/ to ~/public_html/umis/api/ ────────────────────────────
+      - name: Upload backend/public/ → public_html/umis/api/
+        env:
+          CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
+        run: |
+          RESPONSE=$(curl -s -k \
+            -u "$CPANEL_USER:$CPANEL_PASS" \
+            -F "dir=/public_html/umis/api" \
+            -F "file-1=@backend-public.zip;type=application/zip" \
+            "$CPANEL_URL/execute/Fileman/upload_files")
+          echo "Upload: $RESPONSE"
+          [ "$(echo "$RESPONSE" | jq -r '.status // 0')" = "1" ] || { echo "Upload failed"; exit 1; }
+
+      - name: Extract backend public on server
+        env:
+          CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
+        run: |
+          RESPONSE=$(curl -s -k \
+            -u "$CPANEL_USER:$CPANEL_PASS" \
+            -G \
+            --data-urlencode "dir=/public_html/umis/api" \
+            --data-urlencode "file=backend-public.zip" \
+            "$CPANEL_URL/execute/Fileman/extract_file")
+          echo "Extract: $RESPONSE"
+          [ "$(echo "$RESPONSE" | jq -r '.status // 0')" = "1" ] || { echo "Extract failed"; exit 1; }
+
+      - name: Delete public archive from server
+        env:
+          CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
+        run: |
+          curl -s -k -u "$CPANEL_USER:$CPANEL_PASS" -G \
+            --data-urlencode "files-0-file=/public_html/umis/api/backend-public.zip" \
+            --data-urlencode "files-0-type=file" \
+            "$CPANEL_URL/execute/Fileman/delete_files" > /dev/null
 
       - name: Write job summary
         if: always()
         run: |
           echo "## Backend Deploy — ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
           echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Source | \`~/backend/\` (outside public_html) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Source | \`~/backend/\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Web root | \`~/public_html/umis/api/\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Health | https://cur.ac.rw/umis/api/api/health |" >> $GITHUB_STEP_SUMMARY

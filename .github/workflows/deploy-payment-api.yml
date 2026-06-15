@@ -2,12 +2,12 @@ name: Deploy — Payment API
 
 # Target: /home/curac/public_html/payment_api/
 # URL:    https://cur.ac.rw/payment_api/
-# Method: rsync over SFTP (port 22) — server does not support FTP/FTPS
+# Method: cPanel UAPI over HTTPS (port 2083) — SSH/FTP blocked on this server.
 #
 # Standalone PHP app — no Composer dependencies, no build step.
 #
-# Required GitHub Secrets  (repo → Settings → Secrets and variables → Actions → Secrets):
-#   SFTP_PRIVATE_KEY  — private key whose public half is in server ~/.ssh/authorized_keys
+# Required GitHub Secret:
+#   CPANEL_PASS — cPanel account password
 
 on:
   push:
@@ -21,6 +21,10 @@ concurrency:
   group: deploy-payment-api
   cancel-in-progress: false
 
+env:
+  CPANEL_URL: https://cpanel.cur.ac.rw:2083
+  CPANEL_USER: curac
+
 jobs:
   deploy:
     name: Deploy Payment API
@@ -29,30 +33,52 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Load SSH private key
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.SFTP_PRIVATE_KEY }}
-
-      - name: Add server to known_hosts
+      - name: Create deployment archive
         run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan -p 22 cur.ac.rw >> ~/.ssh/known_hosts 2>/dev/null || true
+          cd payment_api
+          zip -r ../payment-api.zip . \
+            --exclude './__MACOSX*' \
+            --exclude './.DS_Store' \
+            --exclude './apitest.html' \
+            --exclude './test.html' \
+            --exclude './text.html' \
+            --exclude './debug.php'
+          cd ..
+          echo "Archive size: $(du -sh payment-api.zip | cut -f1)"
 
-      # Deploy payment_api/ directly to public_html/payment_api/.
-      # Excludes test/debug files and the accidental Windows error log on the server.
-      - name: rsync payment_api/ → public_html/payment_api/
+      - name: Upload archive → public_html/payment_api/
+        env:
+          CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
         run: |
-          rsync -avz \
-            --exclude='.DS_Store' \
-            --exclude='__MACOSX/' \
-            --exclude='apitest.html' \
-            --exclude='test.html' \
-            --exclude='text.html' \
-            --exclude='debug.php' \
-            -e "ssh -p 22" \
-            payment_api/ \
-            curac@cur.ac.rw:~/public_html/payment_api/
+          RESPONSE=$(curl -s -k \
+            -u "$CPANEL_USER:$CPANEL_PASS" \
+            -F "dir=/public_html/payment_api" \
+            -F "file-1=@payment-api.zip;type=application/zip" \
+            "$CPANEL_URL/execute/Fileman/upload_files")
+          echo "Upload: $RESPONSE"
+          [ "$(echo "$RESPONSE" | jq -r '.status // 0')" = "1" ] || { echo "Upload failed"; exit 1; }
+
+      - name: Extract archive on server
+        env:
+          CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
+        run: |
+          RESPONSE=$(curl -s -k \
+            -u "$CPANEL_USER:$CPANEL_PASS" \
+            -G \
+            --data-urlencode "dir=/public_html/payment_api" \
+            --data-urlencode "file=payment-api.zip" \
+            "$CPANEL_URL/execute/Fileman/extract_file")
+          echo "Extract: $RESPONSE"
+          [ "$(echo "$RESPONSE" | jq -r '.status // 0')" = "1" ] || { echo "Extract failed"; exit 1; }
+
+      - name: Delete archive from server
+        env:
+          CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
+        run: |
+          curl -s -k -u "$CPANEL_USER:$CPANEL_PASS" -G \
+            --data-urlencode "files-0-file=/public_html/payment_api/payment-api.zip" \
+            --data-urlencode "files-0-type=file" \
+            "$CPANEL_URL/execute/Fileman/delete_files" > /dev/null
 
       - name: Write job summary
         if: always()

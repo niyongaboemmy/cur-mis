@@ -1,17 +1,14 @@
 name: Deploy — File Server (CDN)
 
-# Method: rsync over SFTP (port 22) — server does not support FTP/FTPS
-# composer install runs on the GitHub Actions runner; vendor/ is uploaded via rsync.
+# Method: cPanel UAPI over HTTPS (port 2083) — SSH/FTP blocked on this server.
+# composer install runs on the GitHub Actions runner; vendor/ is zipped and uploaded.
 #
-# SECURE server layout:
-#   /home/curac/file-server/              ← PHP source + vendor/ OUTSIDE public_html
-#   /home/curac/public_html/umis/cdn/     ← ONLY file-server/public/ (web entry point)
+# Server layout after deploy:
+#   /home/curac/file-server/              — PHP source + vendor/ (outside public_html)
+#   /home/curac/public_html/umis/cdn/     — only file-server/public/ (web entry point)
 #
-# !! AFTER FIRST SUCCESSFUL DEPLOY: delete public_html/umis/file-server/ via cPanel
-#    File Manager — it currently exposes source code on the web.
-#
-# Required GitHub Secrets  (repo → Settings → Secrets and variables → Actions → Secrets):
-#   SFTP_PRIVATE_KEY  — private key whose public half is in server ~/.ssh/authorized_keys
+# Required GitHub Secrets:
+#   CPANEL_PASS       — cPanel account password
 #   FILE_SERVER_ENV   — full contents of file-server/.env.production
 
 on:
@@ -25,6 +22,10 @@ on:
 concurrency:
   group: deploy-file-server
   cancel-in-progress: false
+
+env:
+  CPANEL_URL: https://cpanel.cur.ac.rw:2083
+  CPANEL_USER: curac
 
 jobs:
   deploy:
@@ -52,45 +53,117 @@ jobs:
       - name: Ensure storage/uploads placeholder exists
         run: mkdir -p file-server/storage/uploads && touch file-server/storage/uploads/.gitkeep
 
-      - name: Load SSH private key
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.SFTP_PRIVATE_KEY }}
-
-      - name: Add server to known_hosts
+      # ── Archive 1: source + vendor/ + .env → ~/file-server/ ─────────────────
+      # storage/uploads/* excluded — never overwrite user-uploaded files.
+      - name: Create file-server source archive
         run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan -p 22 cur.ac.rw >> ~/.ssh/known_hosts 2>/dev/null || true
+          cd file-server
+          zip -r ../fileserver-src.zip . \
+            --exclude './public/*' \
+            --exclude './storage/uploads/*' \
+            --exclude './*.phar' \
+            --exclude './__MACOSX*' \
+            --exclude './.DS_Store'
+          cd ..
+          echo "Source archive: $(du -sh fileserver-src.zip | cut -f1)"
 
-      # Source + vendor/ + .env → ~/file-server/ (outside public_html)
-      # storage/uploads/* excluded — never overwrite user-uploaded files
-      - name: rsync file-server source → ~/file-server/
+      # ── Archive 2: file-server/public/ only → ~/public_html/umis/cdn/ ────────
+      - name: Create file-server public archive
         run: |
-          rsync -avz \
-            --exclude='.DS_Store' \
-            --exclude='__MACOSX/' \
-            --exclude='public/' \
-            --exclude='storage/uploads/*' \
-            --exclude='composer.phar' \
-            -e "ssh -p 22" \
-            file-server/ \
-            curac@cur.ac.rw:~/file-server/
+          cd file-server/public
+          zip -r ../../fileserver-public.zip . \
+            --exclude './__MACOSX*' \
+            --exclude './.DS_Store'
+          cd ../..
+          echo "Public archive: $(du -sh fileserver-public.zip | cut -f1)"
 
-      # Only file-server/public/ → ~/public_html/umis/cdn/
-      - name: rsync file-server/public/ → public_html/umis/cdn/
+      # ── Ensure ~/file-server/ directory exists on server ─────────────────────
+      - name: Ensure ~/file-server/ directory exists
+        env:
+          CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
         run: |
-          rsync -avz --delete \
-            --exclude='.DS_Store' \
-            --exclude='__MACOSX/' \
-            -e "ssh -p 22" \
-            file-server/public/ \
-            curac@cur.ac.rw:~/public_html/umis/cdn/
+          curl -s -k \
+            -u "$CPANEL_USER:$CPANEL_PASS" \
+            -G \
+            --data-urlencode "path=/" \
+            --data-urlencode "name=file-server" \
+            "$CPANEL_URL/execute/Fileman/mkdir" > /dev/null || true
+
+      # ── Deploy source to ~/file-server/ ──────────────────────────────────────
+      - name: Upload file-server source → ~/file-server/
+        env:
+          CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
+        run: |
+          RESPONSE=$(curl -s -k \
+            -u "$CPANEL_USER:$CPANEL_PASS" \
+            -F "dir=/file-server" \
+            -F "file-1=@fileserver-src.zip;type=application/zip" \
+            "$CPANEL_URL/execute/Fileman/upload_files")
+          echo "Upload: $RESPONSE"
+          [ "$(echo "$RESPONSE" | jq -r '.status // 0')" = "1" ] || { echo "Upload failed"; exit 1; }
+
+      - name: Extract file-server source on server
+        env:
+          CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
+        run: |
+          RESPONSE=$(curl -s -k \
+            -u "$CPANEL_USER:$CPANEL_PASS" \
+            -G \
+            --data-urlencode "dir=/file-server" \
+            --data-urlencode "file=fileserver-src.zip" \
+            "$CPANEL_URL/execute/Fileman/extract_file")
+          echo "Extract: $RESPONSE"
+          [ "$(echo "$RESPONSE" | jq -r '.status // 0')" = "1" ] || { echo "Extract failed"; exit 1; }
+
+      - name: Delete source archive from server
+        env:
+          CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
+        run: |
+          curl -s -k -u "$CPANEL_USER:$CPANEL_PASS" -G \
+            --data-urlencode "files-0-file=/file-server/fileserver-src.zip" \
+            --data-urlencode "files-0-type=file" \
+            "$CPANEL_URL/execute/Fileman/delete_files" > /dev/null
+
+      # ── Deploy public/ to ~/public_html/umis/cdn/ ────────────────────────────
+      - name: Upload file-server/public/ → public_html/umis/cdn/
+        env:
+          CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
+        run: |
+          RESPONSE=$(curl -s -k \
+            -u "$CPANEL_USER:$CPANEL_PASS" \
+            -F "dir=/public_html/umis/cdn" \
+            -F "file-1=@fileserver-public.zip;type=application/zip" \
+            "$CPANEL_URL/execute/Fileman/upload_files")
+          echo "Upload: $RESPONSE"
+          [ "$(echo "$RESPONSE" | jq -r '.status // 0')" = "1" ] || { echo "Upload failed"; exit 1; }
+
+      - name: Extract file-server public on server
+        env:
+          CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
+        run: |
+          RESPONSE=$(curl -s -k \
+            -u "$CPANEL_USER:$CPANEL_PASS" \
+            -G \
+            --data-urlencode "dir=/public_html/umis/cdn" \
+            --data-urlencode "file=fileserver-public.zip" \
+            "$CPANEL_URL/execute/Fileman/extract_file")
+          echo "Extract: $RESPONSE"
+          [ "$(echo "$RESPONSE" | jq -r '.status // 0')" = "1" ] || { echo "Extract failed"; exit 1; }
+
+      - name: Delete public archive from server
+        env:
+          CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
+        run: |
+          curl -s -k -u "$CPANEL_USER:$CPANEL_PASS" -G \
+            --data-urlencode "files-0-file=/public_html/umis/cdn/fileserver-public.zip" \
+            --data-urlencode "files-0-type=file" \
+            "$CPANEL_URL/execute/Fileman/delete_files" > /dev/null
 
       - name: Write job summary
         if: always()
         run: |
           echo "## File Server Deploy — ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
           echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Source | \`~/file-server/\` (outside public_html) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Source | \`~/file-server/\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Web root | \`~/public_html/umis/cdn/\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Health | https://cur.ac.rw/umis/cdn/health |" >> $GITHUB_STEP_SUMMARY
