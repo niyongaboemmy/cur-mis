@@ -51,7 +51,7 @@ export default function EmployeeDeductionsModal({
   empName,
   onClose,
 }: {
-  empId: number
+  empId: number | string
   empName: string
   onClose: () => void
 }) {
@@ -258,7 +258,7 @@ export default function EmployeeDeductionsModal({
 function DeductionForm({
   empId, initial, pending: _pending, onSaved, onCancel,
 }: {
-  empId: number
+  empId: number | string
   initial?: EmployeeDeduction
   pending: boolean
   onSaved: () => void
