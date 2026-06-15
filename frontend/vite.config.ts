@@ -24,6 +24,10 @@ export default defineConfig(({ mode }) => {
 
     server: {
       port: 5173,
+      // Bind to 0.0.0.0 so other devices on the same LAN can reach the dev
+      // server (e.g. http://<your-LAN-IP>:5173). The /api proxy below still
+      // runs on this machine and forwards to the local MAMP backend.
+      host: true,
       proxy: {
         "/api": {
           // In dev, Vite proxies /api/* to the local PHP backend.

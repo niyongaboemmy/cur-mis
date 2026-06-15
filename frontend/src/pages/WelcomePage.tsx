@@ -317,6 +317,16 @@ export default function WelcomePage() {
   const greeting = getGreeting();
   const dateLabel = formatNow();
 
+  // Applicants get a dedicated welcome screen. This early return MUST come
+  // after every hook above so the hook count stays constant between renders
+  // (e.g. when the "/" route instance is reused across a user switch) —
+  // otherwise React throws "Rendered more hooks than during the previous render."
+  if (isApplicant) {
+    return (
+      <ApplicantWelcome firstName={user?.full_name?.split(" ")[0] ?? "there"} />
+    );
+  }
+
   return (
     <div className="min-h-[calc(100vh-64px)] flex flex-col">
       {/* ── hero banner ─────────────────────────────────────────────── */}

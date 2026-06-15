@@ -99,3 +99,11 @@ vite.config.ts.timestamp-*
 
 # Large local DB dumps (do not commit — exceed GitHub 100MB limit)
 curac_cur_mis(Iyabo).sql
+
+# Local working data dumps in repo root (legacy exports used for migrations, not code).
+# Root-only glob so it never touches backend/database/migrations/*.sql.
+/*.sql
+
+# Handover deliverables and one-off reports (not application code).
+deliverables/
+IDENTITY_CONSOLIDATION_REPORT.md

@@ -45,6 +45,7 @@ class AdmissionLetterPdf
             $dompdf->loadHtml($html);
             $dompdf->setPaper('A4', 'portrait');
             $dompdf->render();
+            PdfLayout::stampHeader($dompdf);
             $dompdf->stream($filename, ['Attachment' => true]);
             exit;
         }
@@ -75,6 +76,7 @@ class AdmissionLetterPdf
         $dompdf->loadHtml($html);
         $dompdf->setPaper('A4', 'portrait');
         $dompdf->render();
+        PdfLayout::stampHeader($dompdf);
 
         return $dompdf->output();
     }

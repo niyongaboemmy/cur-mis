@@ -62,15 +62,41 @@ class ModuleMarksController extends BaseController
         return $row ? (int)$row['id'] : null;
     }
 
+    /**
+     * Every `module_assignments.staff_id` candidate for the auth user — resolves
+     * the person across BOTH the `staff` table (`staff.user_id`) and the linked
+     * HR `employees` record (`employees.user_id`). So whatever a module was
+     * assigned against — a staff row or the user's employee record — it shows up
+     * as "assigned to me".
+     *
+     * @return int[]
+     */
+    private function authStaffIds(Request $request): array
+    {
+        $uid = $this->authUserId($request);
+        if ($uid <= 0) return [];
+        $ids = [];
+        foreach ($this->db->fetchAll("SELECT id FROM staff WHERE user_id = ?", [$uid]) as $r) {
+            $ids[(int)$r['id']] = true;
+        }
+        try {
+            foreach ($this->db->fetchAll("SELECT employee_id FROM employees WHERE user_id = ?", [$uid]) as $r) {
+                $ids[(int)$r['employee_id']] = true;
+            }
+        } catch (\Throwable) { /* employees.user_id not present yet — ignore */ }
+        return array_keys($ids);
+    }
+
     /** null = full scope, [] = none, else list of module ids the user may record for. */
     private function teachableModuleIds(Request $request): ?array
     {
         if ($this->hasPerm($request, Permissions::MANAGE_MODULE_MARKS)) return null;
-        $staffId = $this->authStaffId($request);
-        if ($staffId === null) return [];
+        $staffIds = $this->authStaffIds($request);
+        if (empty($staffIds)) return [];
+        $ph   = implode(',', array_fill(0, count($staffIds), '?'));
         $rows = $this->db->fetchAll(
-            "SELECT DISTINCT module_id FROM module_assignments WHERE staff_id = ?",
-            [$staffId]
+            "SELECT DISTINCT module_id FROM module_assignments WHERE staff_id IN ($ph)",
+            $staffIds
         );
         return array_map(fn($r) => (int)$r['module_id'], $rows);
     }
@@ -145,18 +171,19 @@ class ModuleMarksController extends BaseController
                 []
             );
         } else {
-            $staffId = $this->authStaffId($request);
-            if ($staffId === null) {
+            $staffIds = $this->authStaffIds($request);
+            if (empty($staffIds)) {
                 $this->success($response, [], 'No staff profile linked to this user.');
             }
+            $ph  = implode(',', array_fill(0, count($staffIds), '?'));
             $sql = "SELECT DISTINCT m.module_id, m.module_code, m.module_name, m.level,
                            ma.academic_term_id
                     FROM module_assignments ma
                     JOIN modules m ON m.module_id = ma.module_id
-                    WHERE ma.staff_id = ?"
+                    WHERE ma.staff_id IN ($ph)"
                     . ($termId > 0 ? " AND ma.academic_term_id = ?" : "")
                     . " ORDER BY m.module_code ASC";
-            $bindings = [$staffId];
+            $bindings = $staffIds;
             if ($termId > 0) $bindings[] = $termId;
             $rows = $this->db->fetchAll($sql, $bindings);
         }

@@ -201,6 +201,110 @@ class HrPayrollController extends BaseController
     }
 
     /**
+     * GET /api/me/payroll
+     * Self-service payslip history for the currently authenticated user.
+     *
+     * Any logged-in account can call this — it is NOT gated by VIEW_PAYROLL,
+     * because each user only ever sees their OWN payslips. The user account is
+     * matched to an `employees` record (which has no FK to `users`) by, in
+     * order: the email stored in `employee_username`, the login username, then
+     * an exact full-name match. When nothing matches we return an empty
+     * payload (employee = null) rather than an error so the UI can show a
+     * friendly "no payslips linked to your account" state.
+     */
+    public function mySlips(Request $request, Response $response): never
+    {
+        $authUser = (array)($request->param('_auth_user') ?? []);
+        if ((int)($authUser['id'] ?? 0) <= 0) {
+            $this->error($response, 'Unauthorized.', 401);
+        }
+
+        $employee = $this->resolveSelfEmployee($authUser);
+
+        // No linked employee record — return an empty (but successful) payload
+        // so the front-end renders the empty state instead of an error screen.
+        if (!$employee) {
+            $this->success($response, [
+                'employee' => null,
+                'slips'    => [],
+            ], 'No employee record is linked to your account.');
+        }
+
+        $empId = (int)$employee['id'];
+
+        $fromYear  = $request->query('from_year')  !== null ? (int)$request->query('from_year')  : null;
+        $fromMonth = $request->query('from_month') !== null ? (int)$request->query('from_month') : null;
+        $toYear    = $request->query('to_year')    !== null ? (int)$request->query('to_year')    : null;
+        $toMonth   = $request->query('to_month')   !== null ? (int)$request->query('to_month')   : null;
+
+        // Keep historical nets consistent with the latest deduction setup,
+        // mirroring the admin slips() endpoint.
+        $this->syncPayrollNets($empId, $this->payrollModel->db());
+
+        $slips = $this->payrollModel->getSlips($empId, $fromYear, $fromMonth, $toYear, $toMonth);
+
+        $this->success($response, [
+            'employee' => $employee,
+            'slips'    => $slips,
+        ], 'Payslips fetched.');
+    }
+
+    /**
+     * Resolve the `employees` record that belongs to the authenticated user.
+     *
+     * The two tables are not linked by a foreign key, so we fall back through
+     * a few best-effort matches. Returns the employee row (aliased to the
+     * front-end shape) or null when no confident match exists.
+     */
+    private function resolveSelfEmployee(array $authUser): ?array
+    {
+        $db       = $this->payrollModel->db();
+        $email    = strtolower(trim((string)($authUser['email']     ?? '')));
+        $username = strtolower(trim((string)($authUser['username']  ?? '')));
+        $fullName = strtolower(trim((string)preg_replace('/\s+/', ' ', (string)($authUser['full_name'] ?? ''))));
+
+        $select = "SELECT
+               e.employee_id                                   AS id,
+               e.employee_idcard                               AS emp_code,
+               CONCAT(e.employee_fname, ' ', e.employee_lname) AS full_name,
+               e.employee_gender                               AS gender,
+               e.employee_post                                 AS department,
+               e.employee_position                             AS position,
+               e.employee_status                               AS contract_type,
+               e.account_status                                AS status,
+               e.employee_reg_date                             AS start_date,
+               e.employee_phone                                AS phone,
+               NULL                                            AS email,
+               e.salary                                        AS salary
+             FROM employees e ";
+
+        // 1. Email — stored in employees.employee_username in this dataset.
+        if ($email !== '') {
+            $row = $db->fetchOne($select . "WHERE LOWER(TRIM(e.employee_username)) = ? LIMIT 1", [$email]);
+            if ($row) return $row;
+        }
+
+        // 2. Login username.
+        if ($username !== '' && $username !== $email) {
+            $row = $db->fetchOne($select . "WHERE LOWER(TRIM(e.employee_username)) = ? LIMIT 1", [$username]);
+            if ($row) return $row;
+        }
+
+        // 3. Exact full-name match, tolerating column order + stray whitespace.
+        if ($fullName !== '') {
+            $row = $db->fetchOne(
+                $select . "WHERE LOWER(TRIM(CONCAT(TRIM(e.employee_fname), ' ', TRIM(e.employee_lname)))) = ?
+                            OR LOWER(TRIM(CONCAT(TRIM(e.employee_lname), ' ', TRIM(e.employee_fname)))) = ?
+                          LIMIT 1",
+                [$fullName, $fullName]
+            );
+            if ($row) return $row;
+        }
+
+        return null;
+    }
+
+    /**
      * POST /api/hr/payroll
      * Create or update (upsert) a payroll entry for a given employee + period.
      */

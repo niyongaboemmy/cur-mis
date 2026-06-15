@@ -26,6 +26,9 @@ import {
 } from "lucide-react";
 import userService, { User, UserStats, UserFilters, UserCampusAssignment } from "@/services/userService";
 import { rbacService, Role } from "@/services/rbacService";
+import { useQuery } from "@tanstack/react-query";
+import SearchableSelect from "@/components/ui/SearchableSelect";
+import { academicsMgmtService } from "@/services/academicsMgmtService";
 import { toast } from "react-hot-toast";
 import ModalPortal from "@/components/ui/ModalPortal";
 import BulkAccountCreationModal from "@/components/admin/BulkAccountCreationModal";
@@ -92,7 +95,20 @@ export default function UsersManagementPage() {
   const [editingUser, setEditingUser]   = useState<User | null>(null);
   const [formData, setFormData]         = useState({
     full_name: "", email: "", username: "", password: "", role_id: "",
+    // HR fields — used when the role is staff (not student/applicant) to create
+    // the linked employee record together with the account.
+    gender: "", phone: "", department: "", faculty: "",
+    salary: "", idcard: "", address: "", employment_status: "Permanent",
   });
+
+  // Departments — for the searchable (optional) department picker in the
+  // employee section of the create-user form.
+  const deptsQ = useQuery({
+    queryKey: ["acmgmt", "departments", "all"],
+    queryFn: () => academicsMgmtService.list<any>("departments", { per_page: 200 }),
+    staleTime: 5 * 60_000,
+  });
+  const departments: any[] = deptsQ.data?.data?.data ?? [];
 
   // ── Campus assignment state (registry scoping) ────────────────────────────
   const [allCampuses, setAllCampuses]               = useState<{ id: number; name: string; code: string | null; location: string | null }[]>([]);
@@ -179,6 +195,10 @@ export default function UsersManagementPage() {
       setFormData({
         full_name: user.full_name, email: user.email,
         username: user.username, password: "", role_id: user.role_id.toString(),
+        // HR fields are only used when creating the linked employee; keep them
+        // type-complete (defaulted) in edit mode where only the account changes.
+        gender: "", phone: "", department: "", faculty: "",
+        salary: "", idcard: "", address: "", employment_status: "Permanent",
       });
       // Load this user's campus assignments + the full active-campus catalog.
       try {
@@ -194,7 +214,9 @@ export default function UsersManagementPage() {
       }
     } else {
       setEditingUser(null);
-      setFormData({ full_name: "", email: "", username: "", password: "", role_id: "" });
+      setFormData({ full_name: "", email: "", username: "", password: "", role_id: "",
+        gender: "", phone: "", department: "", faculty: "",
+        salary: "", idcard: "", address: "", employment_status: "Permanent" });
       setUserCampuses([]);
     }
     setSelectedCampusToAdd("");
@@ -756,8 +778,8 @@ export default function UsersManagementPage() {
         <ModalPortal>
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 animate-in fade-in">
             <div className="absolute inset-0 bg-ink-900/60 backdrop-blur-sm" onClick={() => setShowModal(false)} />
-            <div className="relative w-full max-w-md card overflow-hidden animate-in">
-              <div className="px-5 py-3.5 border-b hairline flex justify-between items-center">
+            <div className="relative w-full max-w-5xl max-h-[92vh] flex flex-col card overflow-hidden animate-in">
+              <div className="px-6 py-4 border-b hairline flex justify-between items-center shrink-0">
                 <div className="min-w-0">
                   <h2 className="text-[14px] font-semibold text-ink-900 dark:text-white">
                     {editingUser ? "Edit user account" : "Register new user"}
@@ -771,8 +793,9 @@ export default function UsersManagementPage() {
                 </button>
               </div>
 
-              <form onSubmit={handleSubmit} className="p-5 space-y-3.5">
-                <div className="grid grid-cols-2 gap-3">
+              <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+                <div className="p-6 space-y-4 overflow-y-auto flex-1">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="label">Full name</label>
                     <input required type="text" className="input" placeholder="e.g. John Doe"
@@ -800,9 +823,11 @@ export default function UsersManagementPage() {
                     <select required className="input" value={formData.role_id}
                       onChange={(e) => setFormData({ ...formData, role_id: e.target.value })}>
                       <option value="">Select role…</option>
-                      {roles.map((role) => (
-                        <option key={role.id} value={role.id}>{role.name}</option>
-                      ))}
+                      {roles
+                        .filter((role) => !["guest", "applicant"].includes(role.name.toLowerCase()))
+                        .map((role) => (
+                          <option key={role.id} value={role.id}>{role.name}</option>
+                        ))}
                     </select>
                   </div>
                   <div>
@@ -813,6 +838,68 @@ export default function UsersManagementPage() {
                       onChange={(e) => setFormData({ ...formData, password: e.target.value })} />
                   </div>
                 </div>
+
+                {!editingUser && (() => {
+                  const selRole = roles.find((r) => String(r.id) === String(formData.role_id));
+                  const isStaff = !!selRole && !["student", "applicant"].includes(selRole.name.toLowerCase());
+                  if (!isStaff) return null;
+                  const deptOpts = departments.map((d) => ({ value: d.dep_name as string, label: d.dep_name as string }));
+                  return (
+                    <div className="pt-4 mt-1 border-t hairline grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3">
+                      <div>
+                        <label className="label">Department <span className="text-ink-400 font-normal">(optional)</span></label>
+                        <SearchableSelect
+                          options={deptOpts}
+                          value={formData.department}
+                          onChange={(v) => {
+                            const name = v === 0 || v === "" ? "" : String(v);
+                            const dep = departments.find((d) => d.dep_name === name);
+                            setFormData({ ...formData, department: name, faculty: dep?.fac_id != null ? String(dep.fac_id) : "" });
+                          }}
+                          placeholder="Search departments…"
+                          allLabel="No department"
+                        />
+                      </div>
+                      <div>
+                        <label className="label">Employment status</label>
+                        <select className="input" value={formData.employment_status}
+                          onChange={(e) => setFormData({ ...formData, employment_status: e.target.value })}>
+                          <option value="Permanent">Permanent</option>
+                          <option value="Temporal">Temporal</option>
+                          <option value="Part-time">Part-time</option>
+                          <option value="Contract">Contract</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="label">Gender <span className="text-ink-400 font-normal">(optional)</span></label>
+                        <select className="input" value={formData.gender}
+                          onChange={(e) => setFormData({ ...formData, gender: e.target.value })}>
+                          <option value="">—</option>
+                          <option value="M">Male</option>
+                          <option value="F">Female</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="label">Phone <span className="text-ink-400 font-normal">(optional)</span></label>
+                        <input type="text" className="input" placeholder="07…"
+                          value={formData.phone}
+                          onChange={(e) => setFormData({ ...formData, phone: e.target.value })} />
+                      </div>
+                      <div>
+                        <label className="label">Salary, RWF <span className="text-ink-400 font-normal">(optional)</span></label>
+                        <input type="number" min="0" className="input" placeholder="0"
+                          value={formData.salary}
+                          onChange={(e) => setFormData({ ...formData, salary: e.target.value })} />
+                      </div>
+                      <div>
+                        <label className="label">National ID / Passport <span className="text-ink-400 font-normal">(optional)</span></label>
+                        <input type="text" className="input"
+                          value={formData.idcard}
+                          onChange={(e) => setFormData({ ...formData, idcard: e.target.value })} />
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {editingUser && (
                   <div className="pt-2 mt-2 border-t hairline">
@@ -882,7 +969,9 @@ export default function UsersManagementPage() {
                   </div>
                 )}
 
-                <div className="pt-2 flex gap-2 justify-end">
+                </div>{/* /scrollable body */}
+
+                <div className="px-6 py-3.5 border-t hairline flex gap-2 justify-end shrink-0 bg-white dark:bg-ink-900">
                   <button type="button" onClick={() => setShowModal(false)} className="btn-secondary">Cancel</button>
                   <button type="submit" className="btn-primary">
                     {editingUser ? "Save changes" : "Create account"}

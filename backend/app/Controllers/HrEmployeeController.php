@@ -54,20 +54,80 @@ class HrEmployeeController extends BaseController
         $perPage = min(100, max(1, (int)($request->query('per_page') ?? 15)));
         $search  = trim((string)($request->query('search') ?? $request->query('q') ?? ''));
 
+        // The directory is the union of the HR `employees` table and every
+        // non-student USER account (so staff/admin/finance/etc. users show up
+        // here too, not only people in the legacy employees table). User-sourced
+        // rows are tagged `source='user'` and are read-only in the UI. Users
+        // already represented as an employee (matched by email) are not
+        // duplicated.
+        $union = "
+            SELECT
+              CAST(e.employee_id AS CHAR)                      AS id,
+              e.employee_idcard                                AS emp_code,
+              CONCAT(e.employee_fname, ' ', e.employee_lname)  AS full_name,
+              e.employee_fname                                 AS first_name,
+              e.employee_lname                                 AS last_name,
+              e.employee_gender                                AS gender,
+              e.employee_post                                  AS department,
+              e.employee_position                              AS position,
+              e.employee_status                                AS contract_type,
+              e.account_status                                 AS status,
+              e.employee_phone                                 AS phone,
+              e.employee_username                              AS email,
+              e.employee_reg_date                              AS start_date,
+              e.salary                                         AS salary,
+              e.employee_bank                                  AS bank,
+              e.employee_account                               AS bank_account,
+              e.employee_address                               AS address,
+              e.faculty                                        AS faculty,
+              'employee'                                       AS source
+            FROM employees e
+            UNION ALL
+            SELECT
+              CONCAT('user-', u.id)                            AS id,
+              u.username                                       AS emp_code,
+              u.full_name                                      AS full_name,
+              NULL                                             AS first_name,
+              NULL                                             AS last_name,
+              NULL                                             AS gender,
+              r.name                                           AS department,
+              r.name                                           AS position,
+              'User account'                                   AS contract_type,
+              CASE WHEN u.is_active = 1 THEN 'Active' ELSE 'Inactive' END AS status,
+              u.phone                                          AS phone,
+              u.email                                          AS email,
+              NULL                                             AS start_date,
+              NULL                                             AS salary,
+              NULL                                             AS bank,
+              NULL                                             AS bank_account,
+              NULL                                             AS address,
+              NULL                                             AS faculty,
+              'user'                                           AS source
+            FROM users u
+            JOIN roles r ON r.id = u.role_id
+            WHERE r.name NOT IN ('student','applicant')
+              -- Not already linked to an employee record (created-together), and
+              -- not matching an employee by email (legacy rows).
+              AND u.id NOT IN (SELECT user_id FROM employees WHERE user_id IS NOT NULL)
+              AND (u.email IS NULL OR u.email = '' OR u.email NOT IN (
+                    SELECT employee_username FROM employees WHERE employee_username IS NOT NULL AND employee_username <> ''
+                  ))
+        ";
+
         $clauses  = [];
         $bindings = [];
 
         if ($search !== '') {
-            $clauses[]  = "(CONCAT(e.employee_fname,' ',e.employee_lname) LIKE ? OR e.employee_idcard LIKE ? OR e.employee_position LIKE ? OR e.employee_post LIKE ? OR e.employee_phone LIKE ?)";
-            $bindings   = array_merge($bindings, array_fill(0, 5, "%$search%"));
+            $clauses[]  = "(t.full_name LIKE ? OR t.emp_code LIKE ? OR t.position LIKE ? OR t.department LIKE ? OR t.phone LIKE ? OR t.email LIKE ?)";
+            $bindings   = array_merge($bindings, array_fill(0, 6, "%$search%"));
         }
 
         // account_status filter — 'Terminated' catches Terminated + NULL + any unknown value
         $statusVal = $request->query('status') ?? $request->query('account_status');
         if ($statusVal === 'Terminated') {
-            $clauses[] = "(e.account_status IS NULL OR e.account_status NOT IN ('Active','Inactive'))";
+            $clauses[] = "(t.status IS NULL OR t.status NOT IN ('Active','Inactive'))";
         } elseif ($statusVal !== null && $statusVal !== '') {
-            $clauses[]  = "e.account_status = ?";
+            $clauses[]  = "t.status = ?";
             $bindings[] = $statusVal;
         }
 
@@ -75,11 +135,11 @@ class HrEmployeeController extends BaseController
         $genderVal = $request->query('gender');
         if ($genderVal !== null && $genderVal !== '') {
             if ($genderVal === 'unknown') {
-                $clauses[] = "(e.employee_gender IS NULL OR e.employee_gender = '' OR e.employee_gender NOT IN ('Male','M','Female','F'))";
+                $clauses[] = "(t.gender IS NULL OR t.gender = '' OR t.gender NOT IN ('Male','M','Female','F'))";
             } elseif (in_array($genderVal, ['M', 'Male'], true)) {
-                $clauses[] = "e.employee_gender IN ('M','Male')";
+                $clauses[] = "t.gender IN ('M','Male')";
             } elseif (in_array($genderVal, ['F', 'Female'], true)) {
-                $clauses[] = "e.employee_gender IN ('F','Female')";
+                $clauses[] = "t.gender IN ('F','Female')";
             }
         }
 
@@ -87,14 +147,13 @@ class HrEmployeeController extends BaseController
         $offset = ($page - 1) * $perPage;
         $db     = $this->employeeModel->db();
 
-        $countRow = $db->fetchOne("SELECT COUNT(*) AS n FROM employees e $where", $bindings);
+        $countRow = $db->fetchOne("SELECT COUNT(*) AS n FROM ({$union}) t $where", $bindings);
         $total    = (int)($countRow['n'] ?? 0);
 
         $rows = $db->fetchAll(
-            "SELECT {$this->selectClause()}
-             FROM employees e
+            "SELECT t.* FROM ({$union}) t
              $where
-             ORDER BY e.employee_fname ASC, e.employee_lname ASC
+             ORDER BY t.full_name ASC
              LIMIT ? OFFSET ?",
             array_merge($bindings, [$perPage, $offset])
         );

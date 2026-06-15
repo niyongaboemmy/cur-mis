@@ -52,6 +52,7 @@ class Permissions
     public const MANAGE_PAYROLL = 'MANAGE_PAYROLL';
     public const VIEW_LEAVE_REQUESTS = 'VIEW_LEAVE_REQUESTS';
     public const MANAGE_LEAVE_REQUESTS = 'MANAGE_LEAVE_REQUESTS';
+    public const REQUEST_LEAVE = 'REQUEST_LEAVE';
 
     // Finance
     public const VIEW_FINANCE         = 'VIEW_FINANCE';
@@ -200,6 +201,7 @@ class Permissions
             self::VIEW_FINANCE_REPORTS,
             self::VIEW_LEAVE_REQUESTS,
             self::MANAGE_LEAVE_REQUESTS,
+            self::REQUEST_LEAVE,
             self::MANAGE_FINANCE,
             self::VIEW_MOBILE_PAYMENTS,
             self::VIEW_ONLINE_PAYMENTS_HISTORY,
