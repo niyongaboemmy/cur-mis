@@ -48,12 +48,8 @@ export default function AuthLayout({
               Message from the Rector
             </h1>
             <p className="mt-4 text-white/90 text-[15px] xl:text-[16px] leading-relaxed max-w-lg">
-              Welcome to our university. We are committed to providing a
-              learning environment that nurtures the holistic development of
-              students. Our institution prides itself on academic excellence,
-              innovative research, and a vibrant campus life that fosters both
-              personal and professional growth. We invite you to join our
-              community where we strive to shape the future leaders of tomorrow.
+             Welcome to our university. We provide a supportive learning environment focused on academic excellence, innovation, and personal growth. Join our vibrant community as we help shape the leaders of tomorrow.
+
             </p>
           </motion.div>
         </div>

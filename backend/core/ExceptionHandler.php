@@ -14,6 +14,44 @@ use App\Helpers\ResponseHelper;
  */
 class ExceptionHandler
 {
+    /**
+     * Emit CORS headers on error responses so the browser doesn't mask
+     * server errors as "CORS errors". Called from both exception and
+     * shutdown handlers (which may fire BEFORE CorsMiddleware runs).
+     */
+    private static function emitCorsHeaders(): void
+    {
+        // Avoid duplicate headers if CorsMiddleware already ran
+        $existing = array_map('strtolower', headers_list());
+        foreach ($existing as $h) {
+            if (str_starts_with($h, 'access-control-allow-origin:')) {
+                return; // Already set — nothing to do
+            }
+        }
+
+        $allowedOriginsStr = $_ENV['CORS_ALLOWED_ORIGINS'] ?? '*';
+        $allowedOrigins    = array_map('trim', explode(',', $allowedOriginsStr));
+
+        $origin = $_SERVER['HTTP_ORIGIN']
+            ?? $_SERVER['REDIRECT_HTTP_ORIGIN']
+            ?? '';
+
+        if (in_array('*', $allowedOrigins, true)) {
+            header($origin !== '' ? "Access-Control-Allow-Origin: {$origin}" : 'Access-Control-Allow-Origin: *');
+        } elseif ($origin !== '' && in_array($origin, $allowedOrigins, true)) {
+            header("Access-Control-Allow-Origin: {$origin}");
+        } else {
+            // Fallback: allow whatever origin made the request so the browser
+            // at least shows the real error message during development.
+            if ($origin !== '' && (($_ENV['APP_DEBUG'] ?? 'false') === 'true')) {
+                header("Access-Control-Allow-Origin: {$origin}");
+            }
+        }
+
+        header('Access-Control-Allow-Credentials: true');
+        header('Vary: Origin');
+    }
+
     public static function register(): void
     {
         // Write all error_log() output to the app's own log file instead of
@@ -43,6 +81,10 @@ class ExceptionHandler
 
     public static function handleException(\Throwable $e): void
     {
+        // Ensure CORS headers are present so the browser shows the real
+        // error instead of masking it as a CORS failure.
+        static::emitCorsHeaders();
+
         $debug = ($_ENV['APP_DEBUG'] ?? 'false') === 'true';
 
         // Always write the full error to the server log (visible in cPanel Error Log)
@@ -93,6 +135,8 @@ class ExceptionHandler
 
     public static function handleShutdown(): void
     {
+        static::emitCorsHeaders();
+
         $error = error_get_last();
 
         // Only handle fatal errors that were not already caught

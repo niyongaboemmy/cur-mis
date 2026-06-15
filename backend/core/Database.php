@@ -136,7 +136,7 @@ class Database
 
     private function __clone() {}
 
-    public function __wakeup(): never
+    public function __wakeup(): void
     {
         throw new \RuntimeException('Cannot unserialize singleton.');
     }
