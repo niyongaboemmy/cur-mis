@@ -21,6 +21,7 @@ class AttendanceReportPdf
     public static function buildSessionHtml(array $session, array $roster, array $summary): string
     {
         $institution = htmlspecialchars(getenv('INSTITUTION_NAME') ?: 'Catholic University of Rwanda');
+        $header = PdfLayout::headerHtml();
         $code   = htmlspecialchars((string)($session['module_code'] ?? '—'));
         $name   = htmlspecialchars((string)($session['module_name'] ?? ''));
         $date   = htmlspecialchars((string)($session['session_date'] ?? '—'));
@@ -66,9 +67,9 @@ class AttendanceReportPdf
 <html lang="en"><head><meta charset="utf-8"><title>Attendance — {$code} {$date}</title>
 <style>{$css}</style></head><body>
 <div class="report">
+  {$header}
   <header class="hdr">
     <div class="brand">
-      <div class="brand-name">{$institution}</div>
       <div class="brand-sub">Attendance Sheet</div>
     </div>
     <div class="meta">
@@ -133,6 +134,7 @@ HTML;
     public static function buildModuleHtml(array $module, ?string $termLabel, array $sessions, array $studentSummary, array $totals): string
     {
         $institution = htmlspecialchars(getenv('INSTITUTION_NAME') ?: 'Catholic University of Rwanda');
+        $header = PdfLayout::headerHtml();
         $code = htmlspecialchars((string)($module['module_code'] ?? '—'));
         $name = htmlspecialchars((string)($module['module_name'] ?? ''));
         $term = htmlspecialchars((string)($termLabel ?? '—'));
@@ -211,9 +213,9 @@ HTML;
 <html lang="en"><head><meta charset="utf-8"><title>Attendance Report — {$code}</title>
 <style>{$css}</style></head><body>
 <div class="report">
+  {$header}
   <header class="hdr">
     <div class="brand">
-      <div class="brand-name">{$institution}</div>
       <div class="brand-sub">Module Attendance Report</div>
     </div>
     <div class="meta">
@@ -374,6 +376,7 @@ HTML;
                 $dompdf->loadHtml($html);
                 $dompdf->setPaper('A4', 'portrait');
                 $dompdf->render();
+                PdfLayout::stampHeader($dompdf);
                 $dompdf->stream($filename, ['Attachment' => true]);
             } finally {
                 error_reporting($prev);
@@ -424,10 +427,12 @@ HTML;
 
     private static function baseCss(): string
     {
+        $pageCss = PdfLayout::pageCss(32, 28);
         return <<<CSS
+{$pageCss}
 * { box-sizing: border-box; }
 body { font-family: Helvetica, Arial, sans-serif; color: #1f2937; font-size: 11px; margin: 0; }
-.report { padding: 28px 32px; }
+.report { padding: 0; }
 .hdr { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #1e3a8a; padding-bottom: 12px; margin-bottom: 16px; }
 .brand-name { font-size: 16px; font-weight: 700; color: #1e3a8a; letter-spacing: 0.3px; }
 .brand-sub  { font-size: 11px; color: #6b7280; margin-top: 2px; }

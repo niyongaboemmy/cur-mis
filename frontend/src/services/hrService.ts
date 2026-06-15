@@ -141,6 +141,13 @@ export interface PayrollSlipsResponse {
   slips: PayrollEntry[]
 }
 
+/** Self-service payslips for the logged-in user. `employee` is null when the
+ *  account is not linked to any employee record (empty-state). */
+export interface MyPayrollSlipsResponse {
+  employee: HrEmployee | null
+  slips: PayrollEntry[]
+}
+
 export interface PayrollListParams extends HrListParams {
   period_year?: number
   period_month?: number
@@ -332,6 +339,10 @@ export const hrService = {
   payrollSlips: (empId: number | string, params?: { from_year?: number; from_month?: number; to_year?: number; to_month?: number }, signal?: AbortSignal) =>
     api.get<PayrollSlipsResponse>(`/api/hr/payroll/${empId}/slips`, params as Record<string, unknown>, signal),
 
+  /** Self-service: the logged-in user's own payslip history (no permission needed). */
+  payrollMySlips: (params?: { from_year?: number; from_month?: number; to_year?: number; to_month?: number }, signal?: AbortSignal) =>
+    api.get<MyPayrollSlipsResponse>('/api/me/payroll', (params ?? {}) as Record<string, unknown>, signal),
+
   payrollUpsert: (data: PayrollEntry) =>
     api.post<PayrollEntry>('/api/hr/payroll', data),
 
@@ -515,6 +526,17 @@ export const hrService = {
 
   upsertLeaveBalance: (data: UpsertLeaveBalancePayload) =>
     api.post<void>('/api/hr/leave/balances', data),
+
+  /* ── Self-service leave (any staff) ─────────────────────────────────── */
+
+  myLeaveRequests: (signal?: AbortSignal) =>
+    api.get<MyLeaveRequest[]>('/api/hr/leave/my-requests', {}, signal),
+
+  submitMyLeaveRequest: (data: MyLeaveRequestPayload) =>
+    api.post<MyLeaveRequest>('/api/hr/leave/my-requests', data),
+
+  cancelMyLeaveRequest: (id: number) =>
+    api.delete<void>(`/api/hr/leave/my-requests/${id}`),
 }
 
 /* ── Leave types ────────────────────────────────────────────────────────── */
@@ -579,6 +601,31 @@ export interface LeaveRequestParams {
   employee_id?:    number
   leave_type_id?:  number
   year?:           number
+}
+
+/* ── Self-service leave (current user's own requests) ─────────────────────── */
+
+export interface MyLeaveRequest {
+  id:               number
+  leave_type_id:    number
+  leave_type_name:  string
+  leave_type_color: string
+  is_paid:          number | boolean
+  start_date:       string
+  end_date:         string
+  days_requested:   number
+  reason:           string | null
+  status:           LeaveStatus
+  review_comment:   string | null
+  reviewed_at:      string | null
+  created_at:       string
+}
+
+export interface MyLeaveRequestPayload {
+  leave_type_id: number
+  start_date:    string
+  end_date:      string
+  reason?:       string
 }
 
 /* ── Leave balances ──────────────────────────────────────────────────────── */

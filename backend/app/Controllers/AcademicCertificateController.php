@@ -46,7 +46,7 @@ class AcademicCertificateController extends BaseController
                        ac.created_at, ac.updated_at,
                        s.regnumber, s.fname, s.lname,
                        y.label AS year_label,
-                       CONCAT(u.first_name,' ',u.last_name) AS issued_by_name
+                       u.full_name AS issued_by_name
                 FROM academic_certificates ac
                 LEFT JOIN `student`      s ON s.id = ac.student_id
                 LEFT JOIN academic_years y ON y.id = ac.academic_year_id

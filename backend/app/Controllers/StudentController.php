@@ -1212,6 +1212,15 @@ class StudentController extends BaseController
             $this->error($response, 'Student has no profile photo.', 404);
         }
 
+        // Legacy filename (e.g. "photo_6a1af….jpg") → redirect to the old CUR
+        // photo store. UUID / file-server ids fall through to the normal flow.
+        $legacy = \App\Helpers\PhotoHelper::legacyUrl((string)$photoId);
+        if ($legacy !== null) {
+            header('Location: ' . $legacy, true, 302);
+            header('Cache-Control: private, max-age=300');
+            exit;
+        }
+
         try {
             $client   = new FileServerClient();
             $fileData = $client->download((string)$photoId);
@@ -2083,6 +2092,44 @@ class StudentController extends BaseController
      * @param array $clauses  Modified in place — new clauses appended.
      * @param array $bindings Modified in place — new bindings appended.
      */
+    /**
+     * Whether `$column` exists on `$table` in the current schema. Result is
+     * cached per request so the std_option filter doesn't re-hit
+     * INFORMATION_SCHEMA on every call. Used to keep the API resilient on
+     * legacy DB snapshots that predate migrations 048/051/… (e.g. a `student`
+     * table without `user_id`).
+     */
+    private function columnExists(string $table, string $column): bool
+    {
+        static $cache = [];
+        $key = $table . '.' . $column;
+        if (!array_key_exists($key, $cache)) {
+            $cache[$key] = !empty($this->studentModel->db()->fetchAll(
+                "SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ? LIMIT 1",
+                [$table, $column]
+            ));
+        }
+        return $cache[$key];
+    }
+
+    /**
+     * Whether `$table` exists in the current schema. Cached per request.
+     * Companion to columnExists() for the same legacy-schema guards.
+     */
+    private function tableExists(string $table): bool
+    {
+        static $cache = [];
+        if (!array_key_exists($table, $cache)) {
+            $cache[$table] = !empty($this->studentModel->db()->fetchAll(
+                "SELECT 1 FROM INFORMATION_SCHEMA.TABLES
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? LIMIT 1",
+                [$table]
+            ));
+        }
+        return $cache[$table];
+    }
+
     private function applyFilterableClauses(Request $request, array &$clauses, array &$bindings): void
     {
         $filterable = [
@@ -2137,7 +2184,7 @@ class StudentController extends BaseController
             } elseif ($col === 'std_option') {
                 $optionId = (int)$val;
                 $opt = null;
-                if ($optionId > 0) {
+                if ($optionId > 0 && $this->tableExists('options')) {
                     $opt = $this->studentModel->db()->fetchOne(
                         'SELECT id, name, code, acro, department_id
                          FROM `options` WHERE id = ? LIMIT 1',
@@ -2160,21 +2207,34 @@ class StudentController extends BaseController
                     $bindings[] = $a;
                 }
                 if ($optionId > 0) {
-                    $sub[] = 'id IN (
-                        SELECT ao.student_id
-                        FROM `admission_offers` ao
-                        JOIN `student_applications` sa ON sa.id = ao.application_id
-                        WHERE sa.program_id = ?
-                    )';
-                    $bindings[] = $optionId;
+                    // The two cross-table sub-clauses below only work on a fully
+                    // migrated schema. Legacy DB snapshots may still lack
+                    // `student.user_id` (migration 048) or the admission tables
+                    // entirely — referencing them throws "Unknown column" /
+                    // "Table doesn't exist", which surfaces as a generic 500
+                    // "Server error." Guard each one so the filter gracefully
+                    // degrades to the std_option/program name match instead.
+                    if ($this->tableExists('admission_offers') && $this->tableExists('student_applications')) {
+                        $sub[] = 'id IN (
+                            SELECT ao.student_id
+                            FROM `admission_offers` ao
+                            JOIN `student_applications` sa ON sa.id = ao.application_id
+                            WHERE sa.program_id = ?
+                        )';
+                        $bindings[] = $optionId;
+                    }
 
-                    $sub[] = 'user_id IN (
-                        SELECT ap.user_id
-                        FROM `applicant_profiles` ap
-                        JOIN `student_applications` sa2 ON sa2.id = ap.application_id
-                        WHERE sa2.program_id = ? AND ap.user_id IS NOT NULL
-                    )';
-                    $bindings[] = $optionId;
+                    if ($this->columnExists('student', 'user_id')
+                        && $this->tableExists('applicant_profiles')
+                        && $this->tableExists('student_applications')) {
+                        $sub[] = 'user_id IN (
+                            SELECT ap.user_id
+                            FROM `applicant_profiles` ap
+                            JOIN `student_applications` sa2 ON sa2.id = ap.application_id
+                            WHERE sa2.program_id = ? AND ap.user_id IS NOT NULL
+                        )';
+                        $bindings[] = $optionId;
+                    }
                 }
                 $clauses[] = '(' . implode(' OR ', $sub) . ')';
             } else {
@@ -2316,8 +2376,12 @@ class StudentController extends BaseController
               SUM(CASE WHEN LOWER(student_state) = 'active'
                         AND (nationality IS NULL OR nationality = '')
                         THEN 1 ELSE 0 END) AS active_unknown_nationality,
-              COUNT(DISTINCT CASE WHEN LOWER(student_state) = 'active' AND faculty  <> '' THEN faculty  END) AS active_faculties,
-              COUNT(DISTINCT CASE WHEN LOWER(student_state) = 'active' AND department <> '' THEN department END) AS active_departments,
+              -- Only count faculty/department references that resolve to a real
+              -- catalogue row — some legacy student rows hold stray TEXT in these
+              -- numeric-id columns (e.g. 'Faculty of Education', 'DMC') which would
+              -- otherwise inflate the distinct count.
+              COUNT(DISTINCT CASE WHEN LOWER(student_state) = 'active' AND faculty  <> '' AND faculty    IN (SELECT fac_id FROM faculty)      THEN faculty    END) AS active_faculties,
+              COUNT(DISTINCT CASE WHEN LOWER(student_state) = 'active' AND department <> '' AND department IN (SELECT dep_id FROM departements) THEN department END) AS active_departments,
               COUNT(DISTINCT CASE WHEN LOWER(student_state) = 'active' AND acc_year <> '' THEN acc_year END) AS active_academic_years
             FROM student
             WHERE 1=1{$combined}
@@ -2576,6 +2640,8 @@ class StudentController extends BaseController
             'nationality'      => ['label' => 'Nationality',          'group' => 'Identity', 'sql' => "s.nationality",                                  'alias' => 'nationality'],
             'national_id'      => ['label' => 'National ID / Passport','group' => 'Identity', 'sql' => "s.id_card",                                     'alias' => 'national_id'],
             'marital_status'   => ['label' => 'Marital Status',       'group' => 'Identity', 'sql' => "s.marital_status",                               'alias' => 'marital_status'],
+            'student_id'       => ['label' => 'Student ID',           'group' => 'Identity', 'sql' => "s.id",                                           'alias' => 'student_id'],
+            'index_number'     => ['label' => 'Index Number',         'group' => 'Identity', 'sql' => "s.index_number",                                 'alias' => 'index_number'],
 
             // ── Contact ──
             'email'            => ['label' => 'Email',                'group' => 'Contact',  'sql' => "s.email",                                        'alias' => 'email'],
@@ -2610,6 +2676,33 @@ class StudentController extends BaseController
             'acc_year'         => ['label' => 'Academic Year',        'group' => 'Academics', 'sql' => "s.acc_year",                                    'alias' => 'acc_year'],
             'student_state'    => ['label' => 'Status',               'group' => 'Academics', 'sql' => "s.student_state",                               'alias' => 'student_state'],
             'sponsor'          => ['label' => 'Sponsorship',          'group' => 'Academics', 'sql' => "s.sponsor",                                     'alias' => 'sponsor'],
+            'program_code'     => ['label' => 'Programme Code',       'group' => 'Academics', 'sql' => "o.code",                                        'alias' => 'program_code'],
+
+            // ── Academic Progress (computed live from module_marks / module_programs) ──
+            // Each is a correlated sub-query keyed on the student's regnumber
+            // (marks) and std_option (programme curriculum). They only run when
+            // the column is actually picked for the export. "Passed" = mark ≥ 50.
+            'modules_in_program' => ['label' => 'Modules in Programme', 'group' => 'Academic Progress',
+                'sql'   => "(SELECT COUNT(*) FROM `module_programs` mp WHERE mp.option_id = CAST(NULLIF(s.std_option,'') AS UNSIGNED))",
+                'alias' => 'modules_in_program'],
+            'modules_recorded'   => ['label' => 'Modules with Marks',   'group' => 'Academic Progress',
+                'sql'   => "(SELECT COUNT(DISTINCT mm.module_id) FROM `module_marks` mm WHERE mm.student_regnumber = s.regnumber)",
+                'alias' => 'modules_recorded'],
+            'modules_completed'  => ['label' => 'Modules Completed (Passed)', 'group' => 'Academic Progress',
+                'sql'   => "(SELECT COUNT(DISTINCT mm.module_id) FROM `module_marks` mm WHERE mm.student_regnumber = s.regnumber AND mm.percentage >= 50)",
+                'alias' => 'modules_completed'],
+            'modules_failed'     => ['label' => 'Modules Failed',       'group' => 'Academic Progress',
+                'sql'   => "(SELECT COUNT(DISTINCT mm.module_id) FROM `module_marks` mm WHERE mm.student_regnumber = s.regnumber AND mm.percentage IS NOT NULL AND mm.percentage < 50)",
+                'alias' => 'modules_failed'],
+            'modules_remaining'  => ['label' => 'Modules Remaining',    'group' => 'Academic Progress',
+                'sql'   => "(SELECT COUNT(*) FROM `module_programs` mp WHERE mp.option_id = CAST(NULLIF(s.std_option,'') AS UNSIGNED) AND mp.module_id NOT IN (SELECT mm.module_id FROM `module_marks` mm WHERE mm.student_regnumber = s.regnumber AND mm.percentage >= 50))",
+                'alias' => 'modules_remaining'],
+            'average_mark'       => ['label' => 'Average Mark (%)',     'group' => 'Academic Progress',
+                'sql'   => "(SELECT ROUND(AVG(mm.percentage),1) FROM `module_marks` mm WHERE mm.student_regnumber = s.regnumber AND mm.percentage IS NOT NULL)",
+                'alias' => 'average_mark'],
+            'credits_earned'     => ['label' => 'Credits Earned',       'group' => 'Academic Progress',
+                'sql'   => "(SELECT COALESCE(SUM(m.module_credits),0) FROM `module_marks` mm JOIN `modules` m ON m.module_id = mm.module_id WHERE mm.student_regnumber = s.regnumber AND mm.percentage >= 50)",
+                'alias' => 'credits_earned'],
 
             // ── Origin (secondary school) ──
             'last_school'      => ['label' => 'Previous School / HLI', 'group' => 'Origin',   'sql' => "s.last_school",                                  'alias' => 'last_school'],

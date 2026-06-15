@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { Search, ChevronDown } from "lucide-react";
 
 export interface SelectOption {
@@ -29,7 +30,27 @@ export default function SearchableSelect({
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const ref = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Panel is rendered in a portal with fixed positioning so it is never clipped
+  // by a parent with overflow:hidden/auto (e.g. inside a scrollable modal).
+  const [coords, setCoords] = useState<{ top?: number; bottom?: number; left: number; width: number } | null>(null);
+
+  const positionPanel = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const panelH = 300; // approx (search + max-h list)
+    const spaceBelow = window.innerHeight - r.bottom;
+    // Flip up only when there isn't room below; anchor to the field edge
+    // (top/bottom) directly so the panel always hugs the input — no estimate gap.
+    const openUp = spaceBelow < panelH && r.top > spaceBelow;
+    setCoords(
+      openUp
+        ? { bottom: Math.max(8, window.innerHeight - r.top + 6), left: r.left, width: r.width }
+        : { top: r.bottom + 6, left: r.left, width: r.width },
+    );
+  }, []);
 
   const filtered = useMemo(() => {
     if (!search.trim()) return options;
@@ -43,16 +64,30 @@ export default function SearchableSelect({
 
   const selected = options.find((o) => String(o.value) === String(value));
 
-  // Close on outside click
+  // Close on outside click (account for the portaled panel living outside `ref`)
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node))
-        setOpen(false);
+      const t = e.target as Node;
+      if (ref.current?.contains(t) || panelRef.current?.contains(t)) return;
+      setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
+
+  // Keep the portaled panel anchored to the field while open (scroll/resize).
+  useEffect(() => {
+    if (!open) return;
+    positionPanel();
+    const onMove = () => positionPanel();
+    window.addEventListener("scroll", onMove, true);
+    window.addEventListener("resize", onMove);
+    return () => {
+      window.removeEventListener("scroll", onMove, true);
+      window.removeEventListener("resize", onMove);
+    };
+  }, [open, positionPanel]);
 
   // Autofocus search on open
   useEffect(() => {
@@ -66,6 +101,7 @@ export default function SearchableSelect({
         className={`input input-sm w-full text-left flex items-center justify-between gap-1.5 ${disabled ? 'opacity-50 cursor-not-allowed bg-ink-50 dark:bg-ink-800' : ''}`}
         onClick={() => {
           if (disabled) return;
+          if (!open) positionPanel();
           setOpen(!open);
           setSearch("");
         }}
@@ -85,8 +121,17 @@ export default function SearchableSelect({
         />
       </button>
 
-      {open && (
-        <div className="absolute z-40 top-full left-0 right-0 mt-1 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-700 rounded-lg shadow-xl overflow-hidden min-w-[220px]">
+      {open && coords && createPortal(
+        <div
+          ref={panelRef}
+          style={{
+            position: "fixed",
+            left: coords.left,
+            width: Math.max(coords.width, 220),
+            ...(coords.top != null ? { top: coords.top } : { bottom: coords.bottom }),
+          }}
+          className="z-[80] bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-700 rounded-lg shadow-xl overflow-hidden"
+        >
           {/* Search */}
           <div className="p-1.5 border-b border-ink-100 dark:border-ink-700">
             <div className="relative">
@@ -149,7 +194,8 @@ export default function SearchableSelect({
               ))
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

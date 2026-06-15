@@ -17,11 +17,7 @@ class TranscriptPdf
 {
     public static function buildHtml(array $student, array $rows, array $totals): string
     {
-        $institution = htmlspecialchars(getenv('INSTITUTION_NAME') ?: 'Catholic University of Rwanda');
-        $email       = htmlspecialchars(getenv('INSTITUTION_EMAIL') ?: 'catholic.university.rwanda@gmail.com');
-        $website     = htmlspecialchars(getenv('INSTITUTION_WEBSITE') ?: 'www.cur.ac.rw');
-        $address     = htmlspecialchars(getenv('INSTITUTION_ADDRESS') ?: 'P.o Box 49 Butare/Huye - RWANDA');
-        $phones      = htmlspecialchars(getenv('INSTITUTION_PHONES') ?: 'Registry: 250 733 214 677  -  Administration: 250 733 214 678');
+        $header = PdfLayout::headerHtml();
 
         $surname = htmlspecialchars(strtoupper((string)($student['lname'] ?? '')));
         $names   = htmlspecialchars(strtoupper((string)($student['fname'] ?? '')));
@@ -76,14 +72,7 @@ class TranscriptPdf
 <html lang="en"><head><meta charset="utf-8"><title>Academic Transcript — {$reg}</title>
 <style>{$css}</style></head><body>
 <div class="page">
-  <header class="hdr">
-    <div class="brand">
-      <div class="brand-name">{$institution}</div>
-      <div class="brand-meta">{$address}</div>
-      <div class="brand-meta">{$phones}</div>
-      <div class="brand-meta">email: {$email} &nbsp;·&nbsp; website: {$website}</div>
-    </div>
-  </header>
+  {$header}
 
   <h1 class="doc-title">ACADEMIC TRANSCRIPT</h1>
 
@@ -168,6 +157,7 @@ HTML;
                 $dompdf->loadHtml($html);
                 $dompdf->setPaper('A4', 'portrait');
                 $dompdf->render();
+                PdfLayout::stampHeader($dompdf);
                 $dompdf->stream($filename, ['Attachment' => true]);
             } finally {
                 error_reporting($prev);
@@ -183,16 +173,14 @@ HTML;
 
     private static function css(): string
     {
+        $pageCss = PdfLayout::pageCss(32, 28);
         return <<<CSS
+{$pageCss}
 * { box-sizing: border-box; }
 body { font-family: Helvetica, Arial, sans-serif; color: #111827; font-size: 11px; margin: 0; }
-.page { padding: 24px 32px; }
+.page { padding: 0; }
 
-.hdr { border-bottom: 2px solid #1e3a8a; padding-bottom: 10px; margin-bottom: 12px; text-align: center; }
-.brand-name { font-size: 18px; font-weight: 800; color: #1e3a8a; letter-spacing: 0.6px; }
-.brand-meta { font-size: 10px; color: #4b5563; margin-top: 2px; }
-
-.doc-title { text-align: center; font-size: 16px; letter-spacing: 1px; margin: 14px 0 18px; font-weight: 800; }
+.doc-title { text-align: center; font-size: 16px; letter-spacing: 1px; margin: 4px 0 18px; font-weight: 800; }
 
 .bio { display: table; width: 100%; margin-bottom: 14px; }
 .bio .col { display: table-cell; width: 50%; padding: 0 6px; vertical-align: top; }

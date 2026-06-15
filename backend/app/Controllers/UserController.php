@@ -216,8 +216,80 @@ class UserController extends BaseController
         ]);
 
         $actor = (array) $request->param('_auth_user');
-        SystemLogService::log('CREATE', 'USERS', "Created user '{$data['email']}' (ID {$id}).", (int) $id, 'user', ['role_id' => (int) $data['role_id']], $actor ?: null);
-        $this->success($response, ['id' => $id], 'User created successfully.', 201);
+
+        // Staff users (anything other than student/applicant) also get a linked
+        // HR `employees` record created from the SAME form, so the person exists
+        // in both places without a second step. Login stays on `users`; the
+        // employees row carries the HR attributes (post, faculty, salary, …) and
+        // is linked back via employees.user_id.
+        $role     = $this->roleModel->find((int)$data['role_id']);
+        $roleName = strtolower((string)($role['name'] ?? ''));
+        $employeeId = null;
+        if (!in_array($roleName, ['student', 'applicant'], true)) {
+            try {
+                $employeeId = $this->createLinkedEmployee((int)$id, $data, $actor, $roleName);
+            } catch (\Throwable $e) {
+                // Never block account creation on the HR-record insert.
+                error_log('[users.create] linked employee insert failed: ' . $e->getMessage());
+            }
+        }
+
+        SystemLogService::log('CREATE', 'USERS', "Created user '{$data['email']}' (ID {$id}).", (int) $id, 'user', ['role_id' => (int) $data['role_id'], 'employee_id' => $employeeId], $actor ?: null);
+        $this->success($response, ['id' => $id, 'employee_id' => $employeeId], 'User created successfully.', 201);
+    }
+
+    /**
+     * Create an `employees` HR record linked 1:1 to a freshly-created user.
+     * Pulls HR fields from the create-user form body and fills the legacy
+     * NOT-NULL columns with sensible defaults. Returns the new employee_id.
+     */
+    private function createLinkedEmployee(int $userId, array $data, array $actor, string $roleName = ''): int
+    {
+        $db = $this->userModel->db();
+
+        // If a user_id link already exists (idempotency / re-runs), reuse it.
+        $existing = $db->fetchOne('SELECT employee_id FROM `employees` WHERE user_id = ? LIMIT 1', [$userId]);
+        if ($existing) {
+            return (int)$existing['employee_id'];
+        }
+
+        $full  = trim((string)($data['full_name'] ?? ''));
+        $space = strpos($full, ' ');
+        $fname = $data['first_name'] ?? ($space !== false ? substr($full, 0, $space) : $full);
+        $lname = $data['last_name']  ?? ($space !== false ? trim(substr($full, $space + 1)) : '');
+
+        $cols = [
+            'user_id'           => $userId,
+            'employee_fname'    => (string)$fname,
+            'employee_lname'    => (string)$lname,
+            'employee_gender'   => (string)($data['gender'] ?? ''),
+            'employee_age'      => (string)($data['age'] ?? ''),
+            'employee_phone'    => (string)($data['phone'] ?? ''),
+            'employee_post'     => (string)($data['department'] ?? $data['post'] ?? ''),
+            // The user's role IS the position/title — don't re-ask it on the form.
+            'employee_position' => (string)($data['position'] ?? '') ?: ($roleName !== '' ? ucwords(str_replace('_', ' ', $roleName)) : ''),
+            'additional_duty'   => (string)($data['additional_duty'] ?? ''),
+            'faculty'           => (int)($data['faculty'] ?? 0),
+            'employee_photo'    => '',
+            'employee_address'  => (string)($data['address'] ?? ''),
+            'employee_status'   => (string)($data['employment_status'] ?? 'Permanent'),
+            'employe_qr'        => '',
+            'employee_idcard'   => (string)($data['idcard'] ?? $data['national_id'] ?? ''),
+            'employee_bank'     => (string)($data['bank'] ?? ''),
+            'employee_account'  => (string)($data['bank_account'] ?? ''),
+            'employee_username' => (string)($data['email'] ?? ''),
+            'employee_password' => '', // login is via the linked users account
+            'employee_author'   => (string)($actor['id'] ?? ''),
+            'employee_reg_date' => date('Y-m-d'),
+            'school_id'         => (int)($data['school_id'] ?? 0),
+            'account_status'    => 'Active',
+            'salary'            => (float)($data['salary'] ?? 0),
+        ];
+
+        $names        = implode('`, `', array_keys($cols));
+        $placeholders = implode(', ', array_fill(0, count($cols), '?'));
+        $db->execute("INSERT INTO `employees` (`{$names}`) VALUES ({$placeholders})", array_values($cols));
+        return (int)$db->lastInsertId();
     }
 
     /**
@@ -306,6 +378,15 @@ class UserController extends BaseController
         $photoId = $user['photo'] ?? null;
         if (!$photoId) {
             $this->error($response, 'No profile photo.', 404);
+        }
+
+        // Legacy filename → redirect to the old CUR photo store; UUID/file-server
+        // ids use the normal flow below.
+        $legacy = \App\Helpers\PhotoHelper::legacyUrl((string)$photoId);
+        if ($legacy !== null) {
+            header('Location: ' . $legacy, true, 302);
+            header('Cache-Control: private, max-age=300');
+            exit;
         }
 
         try {

@@ -118,7 +118,7 @@ export default function StudentsPage() {
    Active Students tab — real metrics, no K shortening. Click a
    card to drill to "All students" with that filter applied.
    ───────────────────────────────────────────────────────────── */
-function ActiveTab({
+export function ActiveTab({
   stats,
   loading,
   fetching,
@@ -710,9 +710,8 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
     [allDepartments],
   );
 
-  // Programmes are shown flat — no department gate. When a department is
-  // chosen we narrow the visible programmes to that department, but the
-  // programme filter is always usable on its own.
+  // Programmes are gated behind a department: the picker only renders once a
+  // department is chosen, and its options are scoped to that department.
   const programFacets: FacetOption[] = useMemo(() => {
     let progs = allPrograms;
     if (department) {
@@ -722,10 +721,17 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
     return progs.map((o: any) => ({ value: String(o.id), label: String(o.name) }));
   }, [allPrograms, department]);
 
-  /** Picking a programme is an exclusive mode — clear every other filter so
-   *  the request goes out as "students in this programme, full stop". The
-   *  list-params builder also strips implicit filters like acc_year, but we
-   *  drop them from the URL too so the visible filter chips stay accurate. */
+  /** Department is the entry point: choosing one reveals the (dept-scoped)
+   *  programme picker. Switching department clears any programme that belonged
+   *  to the previous one so we never send a mismatched pair. */
+  const onDepartmentChange = (v: string | undefined) => {
+    update({ department: v || undefined, program: undefined });
+  };
+
+  /** Picking a programme is an exclusive query (the backend sends only
+   *  `std_option`). Keep the department selected — it scopes the programme
+   *  list and keeps this picker visible — but clear the filters the programme
+   *  query ignores so the visible chips stay accurate. */
   const onProgramChange = (v: string | undefined) => {
     if (!v) {
       update({ program: undefined });
@@ -733,7 +739,6 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
     }
     update({
       program: v,
-      department: undefined,
       current_level: undefined,
       gender: undefined,
       nationality: undefined,
@@ -826,26 +831,33 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
           </div>
         </div>
 
-        <div className="mt-3 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-2">
-          <FilterSelect
-            label="Program"
-            value={program}
-            onChange={onProgramChange}
-            options={programFacets}
-            placeholder="Select program…"
-          />
+        <div className="mt-3 flex flex-wrap items-end gap-2">
+          {/* Department first — it gates the programme picker below. */}
           <FilterSelect
             label="Department"
             value={department}
-            onChange={(v) => update({ department: v })}
+            onChange={onDepartmentChange}
             options={departmentFacets}
             placeholder="Select department…"
+            className="w-full sm:w-56"
           />
+          {/* Programme appears only once a department is chosen, scoped to it. */}
+          {department && (
+            <FilterSelect
+              label="Program"
+              value={program}
+              onChange={onProgramChange}
+              options={programFacets}
+              placeholder="All programs"
+              className="w-full sm:w-64"
+            />
+          )}
           <FilterSelect
             label="Level"
             value={level}
             onChange={(v) => update({ current_level: v })}
             options={facets?.current_level}
+            className="w-full sm:w-28"
           />
           <FilterSelect
             label="Gender"
@@ -856,6 +868,7 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
               { value: "F", label: "Female" },
               { value: "unknown", label: "Not specified" },
             ]}
+            className="w-full sm:w-40"
           />
           <FilterSelect
             label="Nationality"
@@ -866,6 +879,7 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
               { value: "foreign", label: "Foreign" },
               { value: "unknown", label: "Not specified" },
             ]}
+            className="w-full sm:w-40"
           />
           <FilterSelect
             label="Learning mode"
@@ -878,6 +892,7 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
               }),
             )}
             placeholder="Select mode…"
+            className="w-full sm:w-44"
           />
         </div>
       </section>
@@ -1236,6 +1251,7 @@ function FilterSelect({
   options,
   disabled,
   placeholder,
+  className,
 }: {
   label: string;
   value: string;
@@ -1243,9 +1259,10 @@ function FilterSelect({
   options?: FacetOption[];
   disabled?: boolean;
   placeholder?: string;
+  className?: string;
 }) {
   return (
-    <div className="block">
+    <div className={`block ${className ?? ""}`}>
       <span className={`text-[11px] uppercase tracking-wider block mb-1 ${disabled ? 'text-ink-300' : 'text-ink-400'}`}>
         {label}
       </span>

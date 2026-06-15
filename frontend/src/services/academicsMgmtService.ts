@@ -81,6 +81,7 @@ export const academicsMgmtService = {
           semesters:       string | null
           academic_year:   string | null
           day_of_week:     number | null
+          day_pattern:     string | null
           start_time:      string | null
           end_time:        string | null
           instructor_id:   number | null
@@ -102,6 +103,7 @@ export const academicsMgmtService = {
       end_date:         string | null
       semesters?:       string | null
       day_of_week?:     number | null
+      day_pattern?:     string | null
       start_time?:      string | null
       end_time?:        string | null
       instructor_id?:   number | null

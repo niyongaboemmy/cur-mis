@@ -158,7 +158,10 @@ export interface Student {
 }
 
 export interface HrEmployee {
-  id:             number
+  id:             number | string
+  /** 'employee' = row from the HR employees table; 'user' = a non-student
+   *  user account surfaced in the directory (read-only here). */
+  source?:        'employee' | 'user'
   emp_code:       string
   staff_id?:      string | null
   full_name:      string

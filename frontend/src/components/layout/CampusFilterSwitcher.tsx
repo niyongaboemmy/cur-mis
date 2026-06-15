@@ -77,6 +77,22 @@ export default function CampusFilterSwitcher() {
     ? assignments
     : ((canSeeCatalog ? catalogQ.data?.data?.campuses : null) ?? assignments)
 
+  // Self-heal a STALE persisted scope: if the saved campus id no longer
+  // exists in the authoritative list (e.g. campuses were re-created with new
+  // ids), the pill silently shows "All" while the store still injects the
+  // dead id into every request — zeroing every list. Reset it to null ("All")
+  // once we actually have the real list. Skip while a catalog-capable user's
+  // catalog is still loading so we don't clobber a valid pick mid-fetch.
+  useEffect(() => {
+    if (isScopeLocked || isLockedToOne) return            // store sync owns these
+    if (selectedCampusId == null) return                  // already "All"
+    if (canSeeCatalog && !catalogQ.data) return            // catalog still loading
+    const validIds = (my as Array<{ id: number | string }>).map((c) => Number(c.id))
+    if (!validIds.includes(Number(selectedCampusId))) {
+      setSelectedCampusId(null)
+    }
+  }, [selectedCampusId, my, canSeeCatalog, catalogQ.data, isScopeLocked, isLockedToOne, setSelectedCampusId])
+
   // Applicants don't get a campus scope at all.
   if (!user || role === 'applicant') return null
 
