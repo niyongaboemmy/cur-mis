@@ -64,14 +64,15 @@ jobs:
           CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
         run: |
           # Remove leftover zip from any previous failed run
-          curl -s -k -u "$CPANEL_USER:$CPANEL_PASS" -G \
+          echo "Pre-delete: $(curl -s -k -u "$CPANEL_USER:$CPANEL_PASS" -G \
             --data-urlencode "files-0-file=/public_html/umis/frontend-deploy.zip" \
             --data-urlencode "files-0-type=file" \
-            "$CPANEL_URL/execute/Fileman/delete_files" > /dev/null || true
+            "$CPANEL_URL/execute/Fileman/delete_files")" || true
 
           RESPONSE=$(curl -s -k \
             -u "$CPANEL_USER:$CPANEL_PASS" \
             -F "dir=/public_html/umis" \
+            -F "overwrite=1" \
             -F "file-1=@frontend-deploy.zip;type=application/zip" \
             "$CPANEL_URL/execute/Fileman/upload_files")
           echo "Upload response: $RESPONSE"
