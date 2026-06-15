@@ -16,7 +16,8 @@ echo $responseJson;
 $response = json_decode($responseJson, true);
 if (isset($response['status']) && $response['status'] === 200) {
     try {
-        $conn  = new mysqli('localhost', 'curac_save', 'curac_save', 'curac_save');
+        $creds = getDbCredentials();
+        $conn  = new mysqli($creds['host'], $creds['user'], $creds['pass'], $creds['db'], $creds['port']);
         $conn->set_charset('utf8mb4');
 
         // Find the original Debit trans_code by external_transaction_id

@@ -28,7 +28,8 @@ if (
     !empty($response['data']['internal_transaction_id'])
 ) {
     try {
-        $conn = new mysqli('localhost', 'curac_save', 'curac_save', 'curac_save');
+        $creds = getDbCredentials();
+        $conn  = new mysqli($creds['host'], $creds['user'], $creds['pass'], $creds['db'], $creds['port']);
         $conn->set_charset('utf8mb4');
 
         $reconciler = new PaymentReconciler($conn);
