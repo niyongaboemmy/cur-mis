@@ -154,18 +154,21 @@ class StudentIdController extends BaseController
      */
     private function verifyUrl(string $barcode, Request $request): string
     {
+        // APP_FRONTEND_URL must include the sub-path, e.g. https://cur.ac.rw/umis
         $base = trim((string) ($_ENV['APP_FRONTEND_URL'] ?? getenv('APP_FRONTEND_URL') ?: ''));
 
         if ($base === '') {
-            $origin = (string) ($request->header('Origin') ?? '');
-            if ($origin === '') {
-                $ref = (string) ($request->header('Referer') ?? '');
-                if ($ref !== '' && ($p = parse_url($ref))) {
-                    $origin = ($p['scheme'] ?? 'https') . '://' . ($p['host'] ?? '')
-                            . (isset($p['port']) ? ':' . $p['port'] : '');
-                }
+            // Derive base from Referer, preserving its path prefix up to the
+            // first segment so /umis/... referers yield https://host/umis.
+            $ref = (string) ($request->header('Referer') ?? '');
+            if ($ref !== '' && ($p = parse_url($ref))) {
+                $path     = $p['path'] ?? '/';
+                $segments = explode('/', trim($path, '/'));
+                $prefix   = isset($segments[0]) && $segments[0] !== '' ? '/' . $segments[0] : '';
+                $base     = ($p['scheme'] ?? 'https') . '://' . ($p['host'] ?? '')
+                          . (isset($p['port']) ? ':' . $p['port'] : '')
+                          . $prefix;
             }
-            $base = $origin;
         }
 
         if ($base === '') {
