@@ -7,11 +7,11 @@ name: Deploy — Backend (PHP API)
 #   Each zip is extracted to a temp dir, then files are rename()d into place.
 #   rename() is atomic on the same filesystem — near-zero window of mixed files.
 #
-# Deploy order (prevents schema/code mismatch):
+# Deploy order:
 #   1. Extract new source code to ~/backend/
-#   2. Run database migrations via POST /api/deploy/migrate
-#   3. Extract new public/ entry point to ~/public_html/umis/api/
-#   4. Clear OPcache via POST /api/deploy/cache-clear
+#   2. Extract new public/ entry point to ~/public_html/umis/api/
+#   3. Clear OPcache via POST /api/deploy/cache-clear
+#   NOTE: Migrations are run manually after deployment.
 #
 # Server layout after deploy:
 #   /home/curac/backend/              — PHP source + vendor/ (outside public_html)
@@ -132,22 +132,8 @@ jobs:
           echo "Extract result: $RESULT"
           [ "$RESULT" = "ok" ] || { echo "Extraction failed: $RESULT"; exit 1; }
 
-      # ── Step 2: Run pending database migrations ────────────────────────────────
-      # Runs AFTER new source (with new MigrationService) is deployed,
-      # BEFORE new public/index.php goes live — prevents schema/code mismatch.
-      - name: Run database migrations
-        env:
-          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
-        run: |
-          RESULT=$(curl -s -k -X POST \
-            -H "Authorization: Bearer $DEPLOY_KEY" \
-            "$API_BASE/api/deploy/migrate")
-          echo "Migration result: $RESULT"
-          SUCCESS=$(echo "$RESULT" | jq -r '.success // false')
-          [ "$SUCCESS" = "true" ] || { echo "Migrations failed: $RESULT"; exit 1; }
-          echo "$RESULT" | jq -r '.data.counts'
-
-      # ── Step 3: Deploy public/ to ~/public_html/umis/api/ ─────────────────────
+      # ── Step 2: Deploy public/ to ~/public_html/umis/api/ ─────────────────────
+      # NOTE: Migrations are run manually after each deployment.
       - name: Upload & extract backend/public/ → public_html/umis/api/
         env:
           CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
@@ -195,4 +181,4 @@ jobs:
           echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Source | \`~/backend/\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Web root | \`~/public_html/umis/api/\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Migration status | $API_BASE/api/deploy/status |" >> $GITHUB_STEP_SUMMARY
+          echo "| Run migrations manually | \`POST $API_BASE/api/deploy/migrate\` |" >> $GITHUB_STEP_SUMMARY
