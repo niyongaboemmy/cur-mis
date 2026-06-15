@@ -107,11 +107,15 @@ jobs:
           RESPONSE=$(curl -s -k \
             -u "$CPANEL_USER:$CPANEL_PASS" \
             -G \
-            --data-urlencode "dir=/backend" \
-            --data-urlencode "file=backend-src.zip" \
-            "$CPANEL_URL/execute/Fileman/extract_file")
+            --data-urlencode "cpanel_jsonapi_version=2" \
+            --data-urlencode "cpanel_jsonapi_module=Fileman" \
+            --data-urlencode "cpanel_jsonapi_func=extractfile" \
+            --data-urlencode "file=/backend/backend-src.zip" \
+            --data-urlencode "dir=/backend/" \
+            "https://cpanel.cur.ac.rw:2083/json-api/cpanel")
           echo "Extract: $RESPONSE"
-          [ "$(echo "$RESPONSE" | jq -r '.status // 0')" = "1" ] || { echo "Extract failed"; exit 1; }
+          ERROR=$(echo "$RESPONSE" | jq -r '.cpanelresult.error // ""')
+          [ -z "$ERROR" ] || { echo "Extract failed: $ERROR"; exit 1; }
 
       - name: Delete source archive from server
         env:
@@ -142,11 +146,15 @@ jobs:
           RESPONSE=$(curl -s -k \
             -u "$CPANEL_USER:$CPANEL_PASS" \
             -G \
-            --data-urlencode "dir=/public_html/umis/api" \
-            --data-urlencode "file=backend-public.zip" \
-            "$CPANEL_URL/execute/Fileman/extract_file")
+            --data-urlencode "cpanel_jsonapi_version=2" \
+            --data-urlencode "cpanel_jsonapi_module=Fileman" \
+            --data-urlencode "cpanel_jsonapi_func=extractfile" \
+            --data-urlencode "file=/public_html/umis/api/backend-public.zip" \
+            --data-urlencode "dir=/public_html/umis/api/" \
+            "https://cpanel.cur.ac.rw:2083/json-api/cpanel")
           echo "Extract: $RESPONSE"
-          [ "$(echo "$RESPONSE" | jq -r '.status // 0')" = "1" ] || { echo "Extract failed"; exit 1; }
+          ERROR=$(echo "$RESPONSE" | jq -r '.cpanelresult.error // ""')
+          [ -z "$ERROR" ] || { echo "Extract failed: $ERROR"; exit 1; }
 
       - name: Delete public archive from server
         env:

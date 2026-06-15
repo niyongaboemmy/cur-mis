@@ -65,11 +65,15 @@ jobs:
           RESPONSE=$(curl -s -k \
             -u "$CPANEL_USER:$CPANEL_PASS" \
             -G \
-            --data-urlencode "dir=/public_html/payment_api" \
-            --data-urlencode "file=payment-api.zip" \
-            "$CPANEL_URL/execute/Fileman/extract_file")
+            --data-urlencode "cpanel_jsonapi_version=2" \
+            --data-urlencode "cpanel_jsonapi_module=Fileman" \
+            --data-urlencode "cpanel_jsonapi_func=extractfile" \
+            --data-urlencode "file=/public_html/payment_api/payment-api.zip" \
+            --data-urlencode "dir=/public_html/payment_api/" \
+            "https://cpanel.cur.ac.rw:2083/json-api/cpanel")
           echo "Extract: $RESPONSE"
-          [ "$(echo "$RESPONSE" | jq -r '.status // 0')" = "1" ] || { echo "Extract failed"; exit 1; }
+          ERROR=$(echo "$RESPONSE" | jq -r '.cpanelresult.error // ""')
+          [ -z "$ERROR" ] || { echo "Extract failed: $ERROR"; exit 1; }
 
       - name: Delete archive from server
         env:
