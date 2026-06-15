@@ -96,7 +96,12 @@ if (!defined('SKIP_TOKEN_CHECK')) {
         }
         $__authDb->set_charset('utf8mb4');
 
-        $__stmtTok = $__authDb->prepare('SELECT id FROM api_authorization WHERE token = ? LIMIT 1');
+        $__stmtTok = $__authDb->prepare(
+            'SELECT id FROM api_authorization
+              WHERE token = ?
+                AND (token_expires_at IS NULL OR token_expires_at > NOW())
+              LIMIT 1'
+        );
         $__stmtTok->bind_param('s', $__token);
         $__stmtTok->execute();
         $__tokRows = $__stmtTok->get_result()->num_rows;
@@ -283,12 +288,22 @@ class Rest
             echo json_encode(['timestamp' => $date, 'message' => 'Invalid credentials', 'status' => 401]);
             return;
         }
+
+        $newToken  = bin2hex(random_bytes(32));
+        $expiresAt = date('Y-m-d H:i:s', time() + 7200); // 2 hours
+        $updStmt   = $this->db->prepare(
+            'UPDATE api_authorization SET token = ?, token_expires_at = ? WHERE username = ?'
+        );
+        $updStmt->bind_param('sss', $newToken, $expiresAt, $username);
+        $updStmt->execute();
+        $updStmt->close();
+
         http_response_code(200);
         echo json_encode([
             'timestamp' => $date,
             'status'    => 200,
             'data'      => [
-                'token' => 'Bearer ' . $rec['token'],
+                'token' => 'Bearer ' . $newToken,
             ],
         ]);
     }
@@ -326,24 +341,23 @@ class Rest
 
         if (!$student) {
             http_response_code(404);
-            echo json_encode(['timestamp' => $date, 'status' => 404, 'message' => 'Payer not found']);
+            echo json_encode(['timestamp' => $date, 'status' => 404, 'message' => 'no data found for the given payer code']);
             return;
         }
 
         http_response_code(200);
         echo json_encode([
             'timestamp' => $date,
+            'message'   => 'validated successfully',
             'status'    => 200,
             'data'      => [
-                'payer_names'     => trim($student['fname'] . ' ' . $student['lname']),
-                'merchant_code'   => $merchantCode,
-                'payer_code'      => $student['regnumber'],
-                'service_code'    => 'tuition-fees-1258',
-                'commission_rate' => 0,
-                'services'        => [
-                    ['service_code' => 'tuition-fees-1258', 'service_name' => 'TUITION FEES', 'amount' => 0, 'currency' => 'RWF'],
-                    ['service_code' => 'cursu-fees-8249',   'service_name' => 'CURSU FEES',   'amount' => 0, 'currency' => 'RWF'],
-                ],
+                'merchant_code'               => $merchantCode,
+                'payer_code'                  => $student['regnumber'],
+                'payer_names'                 => strtoupper(trim($student['fname'] . ' ' . $student['lname'])),
+                'currency'                    => 'RWF',
+                'payer_must_pay_total_amount' => 'NO',
+                'amount'                      => 0,
+                'comment'                     => 'school fees',
             ],
         ]);
     }
@@ -827,13 +841,13 @@ class Rest
     public function claimCallback(array $data): void
     {
         $date         = date('Y-m-d H:i:s');
-        $callbackType = trim($data['callback_type']   ?? '');
-        $txCode       = trim($data['transaction_code'] ?? '');
-        $payerCode    = trim($data['payer_code']       ?? '');
-        $amount       = (float)($data['amount']        ?? 0);
-        $paymentDate  = trim($data['payment_date']     ?? $date);
-        $serviceCode  = trim($data['service_code']     ?? 'tuition-fees-1258');
-        $cbStatus     = trim($data['status']           ?? '');
+        $callbackType = trim($data['callback_type']                                          ?? '');
+        $txCode       = trim($data['transaction_id']       ?? $data['transaction_code']      ?? '');
+        $payerCode    = trim($data['payer_code']                                             ?? '');
+        $amount       = (float)($data['amount']                                              ?? 0);
+        $paymentDate  = trim($data['payment_date_time']    ?? $data['payment_date']          ?? $date);
+        $serviceCode  = trim($data['payment_purpose_code'] ?? $data['service_code']          ?? 'tuition-fees-1258');
+        $cbStatus     = strtoupper(trim($data['transaction_status'] ?? $data['status']       ?? ''));
 
         // Only PAYMENT callbacks touch the ledger; acknowledge others silently
         if ($callbackType !== 'PAYMENT') {
@@ -848,7 +862,7 @@ class Rest
             return;
         }
 
-        if ($cbStatus !== 'SUCCESSFUL') {
+        if (!in_array($cbStatus, ['VALID', 'PENDING_SETTLEMENT'], true)) {
             http_response_code(200);
             echo json_encode(['timestamp' => $date, 'status' => 200, 'message' => 'Non-successful payment acknowledged']);
             return;
@@ -945,6 +959,15 @@ class Rest
         }
 
         http_response_code(200);
-        echo json_encode(['timestamp' => $date, 'status' => 200, 'message' => 'Payment recorded']);
+        echo json_encode([
+            'timestamp' => $date,
+            'status'    => 200,
+            'message'   => 'Payment recorded',
+            'data'      => [
+                'internal_transaction_id' => $transCode,
+                'external_transaction_id' => $txCode,
+                'payer_phone_number'      => (string)($student['phone'] ?? ''),
+            ],
+        ]);
     }
 }

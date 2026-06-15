@@ -694,7 +694,6 @@ function RecordTab({
   const [sessionDate, setSessionDate] = useState<string>(initialPickedDate)
   useEffect(() => {
     if (initialDate) setSessionDate(initialDate)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialDate])
 
   // Auto-lookup session for the (module, date, type) combo
@@ -729,7 +728,7 @@ function RecordTab({
         notes: null,
       })
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [moduleId, termId, sessionDate, sessionType, findQ.isLoading, foundSession])
 
   return (
@@ -796,7 +795,7 @@ function DateStrip({ moduleId, selected, onSelect, allowedDows, scopeStartDate, 
     if (d.getFullYear() !== monthRef.year || d.getMonth() !== monthRef.month) {
       setMonthRef({ year: d.getFullYear(), month: d.getMonth() })
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [selected])
 
   const monthStart = useMemo(() => stripDateISO(new Date(monthRef.year, monthRef.month, 1)), [monthRef])

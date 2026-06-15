@@ -690,7 +690,7 @@ function VisaSection({
   });
   const [form, setForm] = useState(initialForm);
   useEffect(() => {
-    setForm(initialForm()); /* eslint-disable-next-line */
+    setForm(initialForm());  
   }, [current?.id, lockedCountryName]);
 
   const saveMutation = useMutation({
@@ -1004,7 +1004,7 @@ function PersonalDetailsSection({
   });
   const [form, setForm] = useState(buildInitial);
   useEffect(() => {
-    setForm(buildInitial()); /* eslint-disable-next-line */
+    setForm(buildInitial());  
   }, [student, app]);
 
   const save = useSectionSave(student, selfMode, "Personal details");
@@ -1242,7 +1242,7 @@ function ContactSection({
   });
   const [form, setForm] = useState(buildInitial);
   useEffect(() => {
-    setForm(buildInitial()); /* eslint-disable-next-line */
+    setForm(buildInitial());  
   }, [student.phone, student.email, app?.phone, app?.email]);
 
   const save = useSectionSave(student, selfMode, "Contact");
@@ -1369,7 +1369,7 @@ function ResidencySection({
   });
   const [form, setForm] = useState(buildInitial);
   useEffect(() => {
-    setForm(buildInitial()); /* eslint-disable-next-line */
+    setForm(buildInitial());  
   }, [
     student.province,
     student.district,
@@ -1579,7 +1579,7 @@ function ProgrammeSection({
   });
   const [form, setForm] = useState(buildInitial);
   useEffect(() => {
-    setForm(buildInitial()); /* eslint-disable-next-line */
+    setForm(buildInitial());  
   }, [
     student.std_option,
     student.current_level,

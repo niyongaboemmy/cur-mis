@@ -47,6 +47,7 @@ import CategoryFilterSwitcher from "@/components/layout/CategoryFilterSwitcher";
 
 import Logo from "@/components/brand/Logo";
 import GlobalSearch from "@/components/layout/GlobalSearch";
+// import AiChatWidget from "@/components/layout/AiChatWidget"; // re-enable when ANTHROPIC_API_KEY is set
 import { useCurrentUser } from "@/hooks/useAuth";
 import { useSystemBasics } from "@/hooks/useSystemBasics";
 
@@ -932,7 +933,7 @@ export default function MainLayout() {
         set.add(node.id);
     }
     return set;
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);  
 
   const [openIds, setOpenIds] = useState<Set<string>>(initiallyOpen);
 
@@ -962,7 +963,7 @@ export default function MainLayout() {
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, collapsed ? "1" : "0");
-    } catch {}
+    } catch { /* ignore */ }
   }, [collapsed]);
 
   const toggleGroup = useCallback((id: string) => {
@@ -1276,6 +1277,9 @@ export default function MainLayout() {
           <Outlet />
         </motion.main>
       </div>
+
+      {/* AiChatWidget hidden until ANTHROPIC_API_KEY is active */}
+      {/* <AiChatWidget /> */}
     </div>
   );
 }

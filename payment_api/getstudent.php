@@ -1,10 +1,10 @@
 <?php
 /**
- * POST /api/getstudent.php
- * Verify a payer (student) before accepting a bank payment.
+ * POST /payment_api/getstudent.php  (legacy alias — kept for backward compat)
+ * Canonical endpoint is now: POST /payment_api/payer/verify  (doc §3.2)
  *
  * Headers: Authorization: Bearer <token>
- * Body   : { "payer_code": "1CUR18AK05399", "merchant_code": "TH97990720_1" }
+ * Body   : { "payer_code": "2CUR26AK001096", "merchant_code": "TH90989816" }
  */
 require_once __DIR__ . '/Rest.php';
 

@@ -21,7 +21,7 @@ import toast from 'react-hot-toast'
 import { messageService } from '@/services/messageService'
 import { useAuthStore } from '@/store/authStore'
 import { cn } from '@/utils/helpers'
-import type { Conversation, Message } from '@/types/messaging'
+import type { Conversation, Message, MessageAttachment, Participant } from '@/types/messaging'
 import ComposeMessageModal from './ComposeMessageModal'
 
 /* ------------------------------------------------------------------ */
@@ -122,6 +122,46 @@ function ConversationItem({
   )
 }
 
+const API_BASE = import.meta.env.VITE_API_URL ?? ''
+
+function AttachmentView({ att, mine }: { att: MessageAttachment; mine: boolean }) {
+  const url = `${API_BASE}/${att.file_path}`
+  const isImage = att.mime_type.startsWith('image/')
+
+  if (isImage) {
+    return (
+      <a href={url} target="_blank" rel="noopener noreferrer" className="block mt-1.5">
+        <img
+          src={url}
+          alt={att.file_name}
+          className="max-w-[220px] max-h-[200px] rounded-xl object-cover border border-white/20"
+        />
+      </a>
+    )
+  }
+
+  const kb = att.file_size < 1024 * 1024
+    ? `${(att.file_size / 1024).toFixed(1)} KB`
+    : `${(att.file_size / (1024 * 1024)).toFixed(1)} MB`
+
+  return (
+    <a
+      href={url}
+      download={att.file_name}
+      className={cn(
+        'mt-1.5 flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition-colors',
+        mine
+          ? 'bg-white/20 hover:bg-white/30 text-white'
+          : 'bg-ink-200 dark:bg-ink-600 hover:bg-ink-300 dark:hover:bg-ink-500 text-ink-700 dark:text-ink-200',
+      )}
+    >
+      <Paperclip className="w-3.5 h-3.5 flex-shrink-0" />
+      <span className="truncate max-w-[160px]">{att.file_name}</span>
+      <span className="flex-shrink-0 opacity-70">{kb}</span>
+    </a>
+  )
+}
+
 function MessageBubble({ msg, mine }: { msg: Message; mine: boolean }) {
   return (
     <div className={cn('flex items-end gap-2 group', mine ? 'flex-row-reverse' : 'flex-row')}>
@@ -143,11 +183,11 @@ function MessageBubble({ msg, mine }: { msg: Message; mine: boolean }) {
             : 'bg-gray-100 dark:bg-ink-700 text-gray-800 dark:text-ink-100 rounded-bl-sm',
         )}>
           {msg.body}
+          {msg.attachments.map(att => (
+            <AttachmentView key={att.id} att={att} mine={mine} />
+          ))}
         </div>
-        <span className={cn(
-          'text-[10px] mt-1',
-          mine ? 'text-ink-400 dark:text-ink-500' : 'text-ink-400 dark:text-ink-500',
-        )}>
+        <span className="text-[10px] mt-1 text-ink-400 dark:text-ink-500">
           {formatTime(msg.created_at)}
           {mine && msg.seen_at && (
             <span className="ml-1 text-primary-400">· Read</span>
@@ -176,9 +216,13 @@ export default function MessagesPage() {
   const [compose, setCompose]     = useState(false)
   const [menuOpen, setMenuOpen]   = useState(false)
 
-  const bottomRef  = useRef<HTMLDivElement>(null)
+  const bottomRef   = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const menuRef    = useRef<HTMLDivElement>(null)
+  const menuRef     = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const [pendingFile, setPendingFile]   = useState<File | null>(null)
+  const [uploading, setUploading]       = useState(false)
 
   /* Conversations list */
   const { data: convData, isLoading: loadingConvs } = useQuery({
@@ -204,6 +248,15 @@ export default function MessagesPage() {
     refetchInterval: 10_000,
   })
   const messages: Message[] = msgData?.data ?? []
+
+  /* Participants for the active conversation */
+  const { data: participantsData } = useQuery({
+    queryKey: ['messages', 'participants', activeId],
+    queryFn:  () => messageService.getParticipants(activeId!).then(r => r.data ?? []),
+    enabled:  !!activeId,
+    staleTime: 60_000,
+  })
+  const participants: Participant[] = participantsData ?? []
 
   /* Active conversation object */
   const activeConv = conversations.find(c => c.id === activeId) ?? null
@@ -275,16 +328,43 @@ export default function MessagesPage() {
     },
   })
 
-  function handleSend() {
-    if (!activeId || !body.trim()) return
-    sendMut.mutate({ id: activeId, body: body.trim(), send_email: sendEmail })
+  async function handleSend() {
+    if (!activeId) return
+    const text = body.trim()
+    const file = pendingFile
+    if (!text && !file) return
+
     setBody('')
+    setPendingFile(null)
+
+    if (file) {
+      setUploading(true)
+      try {
+        const msgRes = await messageService.sendMessage(activeId, {
+          body: text || '📎 Attachment',
+          send_email: sendEmail,
+        })
+        const msgId = msgRes.data?.id
+        if (msgId) {
+          await messageService.uploadAttachment(msgId, file)
+        }
+        qc.invalidateQueries({ queryKey: ['messages', 'chat', activeId] })
+        qc.invalidateQueries({ queryKey: ['messages', 'conversations'] })
+      } catch {
+        toast.error('Failed to send message')
+      } finally {
+        setUploading(false)
+      }
+      return
+    }
+
+    sendMut.mutate({ id: activeId, body: text, send_email: sendEmail })
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      handleSend()
+      void handleSend()
     }
   }
 
@@ -310,7 +390,11 @@ export default function MessagesPage() {
 
   return (
     <>
-      <ComposeMessageModal open={compose} onClose={() => setCompose(false)} />
+      <ComposeMessageModal
+        open={compose}
+        onClose={() => setCompose(false)}
+        onSent={(id) => { setCompose(false); setParams({ c: String(id) }) }}
+      />
 
       <div className="flex h-[calc(100vh-5rem)] -mx-5 sm:-mx-6 lg:-mx-8 -mt-6 overflow-hidden rounded-xl border border-ink-200 dark:border-ink-700 bg-white dark:bg-ink-800">
 
@@ -393,9 +477,14 @@ export default function MessagesPage() {
                       <p className="text-sm font-semibold text-ink-900 dark:text-white truncate">
                         {conversationTitle(activeConv)}
                       </p>
-                      {activeConv.participant_count > 1 && (
+                      {participants.length > 0 && (
                         <p className="text-xs text-ink-400 dark:text-ink-500 truncate">
-                          {activeConv.participant_count} participants
+                          {participants.map(p => p.full_name).join(', ')}
+                        </p>
+                      )}
+                      {participants.length > 0 && (
+                        <p className="text-[10px] text-ink-300 dark:text-ink-600 truncate">
+                          {participants.map(p => p.email).join(' · ')}
                         </p>
                       )}
                     </div>
@@ -447,6 +536,21 @@ export default function MessagesPage() {
 
               {/* Input area */}
               <div className="px-4 py-3 border-t border-ink-100 dark:border-ink-700 bg-white dark:bg-ink-800 flex-shrink-0">
+                {/* Pending file indicator */}
+                {pendingFile && (
+                  <div className="flex items-center gap-2 mb-2 px-1">
+                    <Paperclip className="w-3.5 h-3.5 text-primary-500 flex-shrink-0" />
+                    <span className="text-xs text-ink-700 dark:text-ink-300 truncate flex-1">{pendingFile.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => setPendingFile(null)}
+                      className="text-ink-400 hover:text-red-500 transition-colors text-xs"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
+
                 {/* Email toggle */}
                 <div className="flex items-center gap-2 mb-2">
                   <label className="flex items-center gap-1.5 cursor-pointer text-xs text-ink-500 dark:text-ink-400 select-none">
@@ -466,10 +570,29 @@ export default function MessagesPage() {
                   </label>
                 </div>
 
+                {/* Hidden file input */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0] ?? null
+                    setPendingFile(f)
+                    e.target.value = ''
+                  }}
+                />
+
                 <div className="flex items-end gap-2">
                   <button
-                    className="p-2 rounded-lg text-ink-400 hover:text-ink-700 dark:hover:text-white hover:bg-ink-100 dark:hover:bg-ink-700 transition-colors flex-shrink-0"
-                    title="Attach file (coming soon)"
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className={cn(
+                      'p-2 rounded-lg transition-colors flex-shrink-0',
+                      pendingFile
+                        ? 'text-primary-600 bg-primary-50 dark:bg-primary-900/20'
+                        : 'text-ink-400 hover:text-ink-700 dark:hover:text-white hover:bg-ink-100 dark:hover:bg-ink-700',
+                    )}
+                    title="Attach file"
                   >
                     <Paperclip className="w-4 h-4" />
                   </button>
@@ -486,11 +609,11 @@ export default function MessagesPage() {
                   />
 
                   <button
-                    onClick={handleSend}
-                    disabled={!body.trim() || sendMut.isPending}
+                    onClick={() => void handleSend()}
+                    disabled={(!body.trim() && !pendingFile) || sendMut.isPending || uploading}
                     className={cn(
                       'flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center transition-all',
-                      body.trim() && !sendMut.isPending
+                      (body.trim() || pendingFile) && !sendMut.isPending && !uploading
                         ? 'bg-primary-600 hover:bg-primary-700 text-white shadow-sm'
                         : 'bg-ink-100 dark:bg-ink-700 text-ink-400 cursor-not-allowed',
                     )}

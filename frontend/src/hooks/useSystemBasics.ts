@@ -15,11 +15,11 @@ export function useSystemBasics() {
   const setLoading = useSystemStore((s) => s.setLoading)
   const setError   = useSystemStore((s) => s.setError)
 
-  // Skip the call entirely for roles that don't have VIEW_SYSTEM_BASICS
-  // (e.g. applicants). The backend gates the endpoint with that permission
-  // and a 403 would otherwise spam the console + ErrorBoundary on every
-  // applicant page load.
-  const canView = !!user?.permissions?.includes('VIEW_SYSTEM_BASICS')
+  // superadmin/admin bypass permission checks on the backend, so always allow
+  // them to fetch basics. For other roles, require VIEW_SYSTEM_BASICS to be
+  // explicitly assigned (prevents 403 spam for applicants etc.).
+  const isAdminRole = ['superadmin', 'admin'].includes(user?.role ?? '')
+  const canView = isAdminRole || !!user?.permissions?.includes('VIEW_SYSTEM_BASICS')
 
   const query = useQuery({
     queryKey: ['system', 'basics'],

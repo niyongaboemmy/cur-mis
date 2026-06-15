@@ -61,7 +61,7 @@ class UrubutoPayService
     public function authenticateApiUser(string $username, string $password): ?array
     {
         $row = $this->db->fetchOne(
-            'SELECT token, merchant_code, password AS stored_pw FROM api_authorization WHERE username = ? LIMIT 1',
+            'SELECT id, token, merchant_code, password AS stored_pw FROM api_authorization WHERE username = ? LIMIT 1',
             [$username]
         );
         if (!$row) {
@@ -79,8 +79,16 @@ class UrubutoPayService
             return null;
         }
 
+        $newToken  = bin2hex(random_bytes(32));
+        $expiresAt = date('Y-m-d H:i:s', time() + 7200); // 2 hours
+
+        $this->db->execute(
+            'UPDATE api_authorization SET token = ?, token_expires_at = ? WHERE id = ?',
+            [$newToken, $expiresAt, (int)$row['id']]
+        );
+
         return [
-            'token'         => 'Bearer ' . $row['token'],
+            'token'         => 'Bearer ' . $newToken,
             'merchant_code' => $row['merchant_code'] ?? self::MERCHANT_CODE,
         ];
     }
@@ -94,19 +102,17 @@ class UrubutoPayService
             return null;
         }
 
-        $payer_names = trim(
-            strtoupper($student['fname'] ?? '') . ' ' . strtoupper($student['lname'] ?? '')
-        );
-
-        $services = $this->buildServices($student['regnumber']);
+        $payer_names     = trim(strtoupper($student['fname'] ?? '') . ' ' . strtoupper($student['lname'] ?? ''));
+        $totalOutstanding = (int) round($this->getOutstandingBalance($student['regnumber']));
 
         return [
-            'payer_names'     => $payer_names,
-            'merchant_code'   => $merchantCode,
-            'payer_code'      => $student['regnumber'],
-            'service_code'    => $services[0]['service_code'],
-            'commission_rate' => 0,
-            'services'        => $services,
+            'merchant_code'               => $merchantCode,
+            'payer_code'                  => $student['regnumber'],
+            'payer_names'                 => $payer_names,
+            'currency'                    => 'RWF',
+            'payer_must_pay_total_amount' => 'NO',
+            'amount'                      => $totalOutstanding,
+            'comment'                     => 'school fees',
         ];
     }
 
@@ -186,15 +192,16 @@ class UrubutoPayService
      */
     public function recordMobilePayment(array $cb): array
     {
-        if (($cb['callback_type'] ?? '') !== 'PAYMENT' || ($cb['status'] ?? '') !== 'SUCCESSFUL') {
+        $txStatus = strtoupper(trim((string)($cb['transaction_status'] ?? '')));
+        if (($cb['callback_type'] ?? '') !== 'PAYMENT' || !in_array($txStatus, ['VALID', 'PENDING_SETTLEMENT'], true)) {
             return ['status' => 'ignored', 'payment_id' => null, 'message' => 'Non-payment callback ignored'];
         }
 
-        $txCode      = trim((string)($cb['transaction_code'] ?? ''));
+        $txCode      = trim((string)($cb['transaction_id'] ?? $cb['transaction_code'] ?? ''));
         $payerCode   = trim((string)($cb['payer_code'] ?? ''));
         $amount      = (float)($cb['amount'] ?? 0);
-        $serviceCode = trim((string)($cb['service_code'] ?? ''));
-        $rawDate     = trim((string)($cb['payment_date'] ?? ''));
+        $serviceCode = trim((string)($cb['service_code'] ?? $cb['payment_purpose_code'] ?? ''));
+        $rawDate     = trim((string)($cb['payment_date_time'] ?? $cb['payment_date'] ?? ''));
         $paymentDate = $rawDate !== '' ? date('Y-m-d H:i:s', strtotime($rawDate)) : date('Y-m-d H:i:s');
 
         if ($txCode === '' || $payerCode === '' || $amount <= 0) {
@@ -318,10 +325,19 @@ class UrubutoPayService
             ['transaction_code' => $txCode, 'amount' => $amount, 'service_code' => $serviceCode]
         );
 
+        $receiptNo = '';
+        if ($firstPaymentId) {
+            $r = $this->db->fetchOne("SELECT receipt_number FROM fee_payments WHERE id = ? LIMIT 1", [$firstPaymentId]);
+            $receiptNo = (string)($r['receipt_number'] ?? '');
+        }
+
         return [
-            'status'     => 'recorded',
-            'payment_id' => $firstPaymentId,
-            'message'    => 'Payment recorded',
+            'status'               => 'recorded',
+            'payment_id'           => $firstPaymentId,
+            'message'              => 'Payment recorded',
+            'internal_tx_id'       => $receiptNo,
+            'external_tx_id'       => $txCode,
+            'payer_phone_number'   => (string)($student['phone'] ?? ''),
         ];
     }
 
@@ -681,7 +697,8 @@ class UrubutoPayService
         $clean = ltrim($payerCode, '0');
         if ($clean !== $payerCode) {
             $row = $this->db->fetchOne(
-                "SELECT regnumber, fname, lname, acc_year, current_level
+                "SELECT regnumber, fname, lname, acc_year, current_level,
+                        COALESCE(phone, telephone, '') AS phone
                  FROM student WHERE regnumber = ? LIMIT 1",
                 [$clean]
             );
@@ -689,7 +706,8 @@ class UrubutoPayService
         }
 
         $row = $this->db->fetchOne(
-            "SELECT regnumber, fname, lname, acc_year, current_level
+            "SELECT regnumber, fname, lname, acc_year, current_level,
+                    COALESCE(phone, telephone, '') AS phone
              FROM student WHERE regnumber = ? LIMIT 1",
             [$payerCode]
         );

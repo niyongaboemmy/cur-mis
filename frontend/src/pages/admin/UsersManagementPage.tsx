@@ -195,6 +195,10 @@ export default function UsersManagementPage() {
       setFormData({
         full_name: user.full_name, email: user.email,
         username: user.username, password: "", role_id: user.role_id.toString(),
+        // HR fields are only used when creating the linked employee; keep them
+        // type-complete (defaulted) in edit mode where only the account changes.
+        gender: "", phone: "", department: "", faculty: "",
+        salary: "", idcard: "", address: "", employment_status: "Permanent",
       });
       // Load this user's campus assignments + the full active-campus catalog.
       try {

@@ -157,7 +157,7 @@ function MarksEditor({
     if (moduleId && modules.length && !modules.find((m) => m.module_id === moduleId)) {
       onBackToSchedules()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [modules, moduleId])
 
   /* ── roster ───────────────────────────────────────────────────── */
@@ -457,7 +457,7 @@ function MarksEditor({
       if (rows.length < 2) { toast.error('File is empty.'); return }
 
       // Strip BOM from the first header cell (some CSVs have it even via SheetJS).
-      if (rows[0][0]) rows[0][0] = String(rows[0][0]).replace(/^﻿/, '')
+      if (rows[0][0]) rows[0][0] = String(rows[0][0]).replace(/^\uFEFF/, '')
 
       const head = rows[0].map((h) => String(h ?? '').trim().toLowerCase())
       const idx = (...names: string[]) => {

@@ -57,7 +57,7 @@ export default function UserAccountPanel() {
       username:  me.username  ?? "",
       phone:     me.phone     ?? "",
     });
-  }, [me?.id, me?.full_name, me?.email, me?.username, me?.phone]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [me?.id, me?.full_name, me?.email, me?.username, me?.phone]);  
 
   const updateProfileM = useMutation({
     mutationFn: (vals: ProfileForm) =>

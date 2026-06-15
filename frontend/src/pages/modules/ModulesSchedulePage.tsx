@@ -210,7 +210,7 @@ export default function ModulesSchedulePage() {
     const next = { ...colorOverrides }
     if (hue === null) delete next[String(id)]; else next[String(id)] = hue
     setColorOverrides(next)
-    try { localStorage.setItem(COLOR_KEY, JSON.stringify(next)) } catch {}
+    try { localStorage.setItem(COLOR_KEY, JSON.stringify(next)) } catch { /* ignore */ }
   }
 
   // Color picker popover (which schedule's chip is being recolored)
@@ -360,7 +360,7 @@ export default function ModulesSchedulePage() {
 
   useEffect(() => {
     if (!draft.module_id || !draft.room_id || !draft.academic_term_id) { setConflicts([]); return }
-    const h = setTimeout(async () => { try { const r = await moduleScheduleService.checkConflicts({ ...draft, ignore_id: editingId ?? undefined }); setConflicts(r.data?.conflicts ?? []) } catch {} }, 400)
+    const h = setTimeout(async () => { try { const r = await moduleScheduleService.checkConflicts({ ...draft, ignore_id: editingId ?? undefined }); setConflicts(r.data?.conflicts ?? []) } catch { /* ignore */ } }, 400)
     return () => clearTimeout(h)
   }, [draft, editingId])
 

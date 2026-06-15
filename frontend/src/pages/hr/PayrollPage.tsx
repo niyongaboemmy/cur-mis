@@ -2406,7 +2406,7 @@ function ProcessPaymentModal({
   // Update amount when the deductions query resolves with fresh data
   useEffect(() => {
     if (payDedRes != null) setAmount(netAmount);
-  }, [payDedRes]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [payDedRes]);  
 
   const pay = useMutation({
     mutationFn: () =>

@@ -120,20 +120,18 @@ class Rest {
         $student = $this->findStudent(ltrim($payer,'0')) ?? $this->findStudent($payer);
         if (!$student) {
             http_response_code(404);
-            echo json_encode(['timestamp'=>$d,'status'=>404,'message'=>'Payer not found']);
+            echo json_encode(['timestamp'=>$d,'status'=>404,'message'=>'no data found for the given payer code']);
             return;
         }
         http_response_code(200);
-        echo json_encode(['timestamp'=>$d,'status'=>200,'data'=>[
-            'payer_names'     => trim($student['fname'].' '.$student['lname']),
-            'merchant_code'   => $merchant,
-            'payer_code'      => $student['regnumber'],
-            'service_code'    => 'tuition-fees-1258',
-            'commission_rate' => 0,
-            'services'        => [
-                ['service_code'=>'tuition-fees-1258','service_name'=>'TUITION FEES','amount'=>0,'currency'=>'RWF'],
-                ['service_code'=>'cursu-fees-8249',  'service_name'=>'CURSU FEES',  'amount'=>0,'currency'=>'RWF'],
-            ],
+        echo json_encode(['timestamp'=>$d,'status'=>200,'message'=>'validated successfully','data'=>[
+            'merchant_code'               => $merchant,
+            'payer_code'                  => $student['regnumber'],
+            'payer_names'                 => strtoupper(trim($student['fname'].' '.$student['lname'])),
+            'currency'                    => 'RWF',
+            'payer_must_pay_total_amount' => 'NO',
+            'amount'                      => 0,
+            'comment'                     => 'school fees',
         ]]);
     }
 
