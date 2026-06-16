@@ -106,24 +106,30 @@ class StudentIdController extends BaseController
             $this->error($response, 'Student not found.', 404);
         }
 
-        $photo     = $student['photo'] ?? null;
         $isPreview = (bool) $request->query('preview');
-        // The legacy photo store is a public URL the browser can always load
-        // (this is what the students list ends up showing). For a UUID/file-server
-        // photo there is no public URL, so we embed it instead.
+
+        // student.photo from the DB; fall back to a client-supplied value so
+        // the card can still render the photo even when the DB column is null
+        // (common for students imported from the legacy system without migration).
+        $photo = $student['photo'] ?? null;
+        if (!$photo) {
+            $clientPhoto = trim((string) ($request->query('photo') ?? ''));
+            if ($clientPhoto !== '') $photo = $clientPhoto;
+        }
+
         $legacyUrl = \App\Helpers\PhotoHelper::legacyUrl($photo);
 
         $opts = ['verify_url' => $this->verifyUrl((string) $card['barcode'], $request)];
-        if ($isPreview && $legacyUrl !== null) {
-            // Browser-rendered preview of a legacy photo → load it directly so the
-            // card matches the list and doesn't depend on the server reaching the
-            // legacy store (which it often can't in production).
+
+        // Always try to embed as a data URI first — this is the only approach
+        // that works reliably in the iframe srcDoc preview AND in PDFs.
+        // If the server can't reach the legacy photo store, fall back to the
+        // URL so the browser can still load the image directly.
+        $dataUri = StudentIdCardHelper::resolvePhotoDataUri($photo);
+        if ($dataUri !== null) {
+            $opts['photo_data_uri'] = $dataUri;
+        } elseif ($legacyUrl !== null) {
             $opts['photo_url'] = $legacyUrl;
-        } else {
-            // PDF (or a file-server photo) → embed the bytes so the image travels
-            // with the document; keep the URL as a renderer fallback.
-            $opts['photo_data_uri'] = StudentIdCardHelper::resolvePhotoDataUri($photo);
-            if ($legacyUrl !== null) $opts['photo_url'] = $legacyUrl;
         }
 
         $html = StudentIdCardHelper::buildHtml($student, $card, $opts);

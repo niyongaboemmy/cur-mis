@@ -236,11 +236,69 @@ class FeeController extends BaseController
             ? $this->invoiceModel->getStudentLedgerTotals($studentId, $academicYearId)
             : [];
 
-        $payments = $this->paymentModel->listWithDetails(['student_id' => $studentId], 1, 500);
+        $misPayments = $this->paymentModel->listWithDetails(['student_id' => $studentId], 1, 500);
+
+        // Also fetch all transactions from the legacy UrubutoPay/bank `payment` table
+        $legacyRows = $this->db->fetchAll(
+            "SELECT trans_code, amount, `date`, fee_category, description,
+                    external_transaction_id, payment_chanel, payment_notifi,
+                    slip_no, acad_cycle_id, `status`, `action`
+             FROM `payment`
+             WHERE student = ?
+             ORDER BY `date` DESC
+             LIMIT 500",
+            [$studentId]
+        );
+
+        $legacyPayments = array_map(function (array $row): array {
+            $channel  = strtoupper(trim((string)($row['payment_chanel'] ?? '')));
+            $method   = (str_contains($channel, 'USSD') || str_contains($channel, 'MOMO') || str_contains($channel, 'MOBILE'))
+                ? 'MOBILE_MONEY'
+                : 'BANK_TRANSFER';
+
+            $cat      = strtolower(trim((string)($row['fee_category'] ?? '')));
+            $feeType  = 'TUITION';
+            if (str_contains($cat, 'registration') || str_contains($cat, 'reg-')) $feeType = 'REGISTRATION';
+            elseif (str_contains($cat, 'hostel'))                                 $feeType = 'HOSTEL';
+            elseif (str_contains($cat, 'module') || str_contains($cat, 'course') || str_contains($cat, 'cursu')) $feeType = 'MODULE_FEE';
+
+            $notif    = strtolower(trim((string)($row['payment_notifi'] ?? $row['action'] ?? 'debit')));
+            $isCredit = ($notif === 'credit');
+            $amount   = (float)($row['amount'] ?? 0);
+
+            return [
+                'id'               => 0,
+                'invoice_id'       => null,
+                '_source'          => 'urubutopay',
+                '_is_reversal'     => $isCredit,
+                'student_id'       => '',
+                'amount'           => $amount,
+                'payment_method'   => $method,
+                'payment_sub_method' => null,
+                'reference_number' => $row['external_transaction_id'] ?? $row['slip_no'] ?? null,
+                'receipt_number'   => (string)($row['trans_code'] ?? ''),
+                'bank_slip_file_id' => null,
+                'status'           => 'confirmed',
+                'paid_at'          => $row['date'] ?? null,
+                'fee_type'         => $feeType,
+                'fee_category'     => $row['fee_category'] ?? '',
+                'description'      => $row['description'] ?? '',
+                'notes'            => null,
+                'recorded_by'      => null,
+                'recorded_by_name' => 'UrubutoPay',
+                'confirmed_by'     => null,
+                'confirmed_at'     => $row['date'] ?? null,
+                'rejection_reason' => null,
+                'created_at'       => $row['date'] ?? null,
+            ];
+        }, $legacyRows);
+
+        // Merge: MIS fee_payments first, then legacy bank transactions
+        $allPayments = array_merge($misPayments['data'] ?? [], $legacyPayments);
 
         $this->success($response, [
             'invoices' => $invoices,
-            'payments' => $payments['data'] ?? [],
+            'payments' => $allPayments,
             'totals'   => $totals,
         ], 'Student ledger retrieved.');
     }
@@ -266,11 +324,63 @@ class FeeController extends BaseController
         $totals   = $academicYearId
             ? $this->invoiceModel->getStudentLedgerTotals($reg, $academicYearId)
             : [];
-        $payments = $this->paymentModel->listWithDetails(['student_id' => $reg], 1, 500);
+        $misPayments = $this->paymentModel->listWithDetails(['student_id' => $reg], 1, 500);
+
+        $legacyRows = $this->db->fetchAll(
+            "SELECT trans_code, amount, `date`, fee_category, description,
+                    external_transaction_id, payment_chanel, payment_notifi,
+                    slip_no, acad_cycle_id, `status`, `action`
+             FROM `payment`
+             WHERE student = ?
+             ORDER BY `date` DESC
+             LIMIT 500",
+            [$reg]
+        );
+
+        $legacyPayments = array_map(function (array $row): array {
+            $channel  = strtoupper(trim((string)($row['payment_chanel'] ?? '')));
+            $method   = (str_contains($channel, 'USSD') || str_contains($channel, 'MOMO') || str_contains($channel, 'MOBILE'))
+                ? 'MOBILE_MONEY'
+                : 'BANK_TRANSFER';
+            $cat      = strtolower(trim((string)($row['fee_category'] ?? '')));
+            $feeType  = 'TUITION';
+            if (str_contains($cat, 'registration') || str_contains($cat, 'reg-')) $feeType = 'REGISTRATION';
+            elseif (str_contains($cat, 'hostel'))                                  $feeType = 'HOSTEL';
+            elseif (str_contains($cat, 'module') || str_contains($cat, 'course') || str_contains($cat, 'cursu')) $feeType = 'MODULE_FEE';
+            $notif    = strtolower(trim((string)($row['payment_notifi'] ?? $row['action'] ?? 'debit')));
+            $isCredit = ($notif === 'credit');
+            return [
+                'id'               => 0,
+                'invoice_id'       => null,
+                '_source'          => 'urubutopay',
+                '_is_reversal'     => $isCredit,
+                'student_id'       => '',
+                'amount'           => (float)($row['amount'] ?? 0),
+                'payment_method'   => $method,
+                'payment_sub_method' => null,
+                'reference_number' => $row['external_transaction_id'] ?? $row['slip_no'] ?? null,
+                'receipt_number'   => (string)($row['trans_code'] ?? ''),
+                'bank_slip_file_id' => null,
+                'status'           => 'confirmed',
+                'paid_at'          => $row['date'] ?? null,
+                'fee_type'         => $feeType,
+                'fee_category'     => $row['fee_category'] ?? '',
+                'description'      => $row['description'] ?? '',
+                'notes'            => null,
+                'recorded_by'      => null,
+                'recorded_by_name' => 'UrubutoPay',
+                'confirmed_by'     => null,
+                'confirmed_at'     => $row['date'] ?? null,
+                'rejection_reason' => null,
+                'created_at'       => $row['date'] ?? null,
+            ];
+        }, $legacyRows);
+
+        $allPayments = array_merge($misPayments['data'] ?? [], $legacyPayments);
 
         $this->success($response, [
             'invoices' => $invoices,
-            'payments' => $payments['data'] ?? [],
+            'payments' => $allPayments,
             'totals'   => $totals,
         ], 'Your finance ledger retrieved.');
     }

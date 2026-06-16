@@ -52,9 +52,10 @@ class StudentIdCardHelper
         $photoSrc  = ($photoUri !== null && $photoUri !== '') ? $photoUri : $photoUrl;
         $verifyUrl = (string) ($opts['verify_url'] ?? ('https://cur.ac.rw/umis/verify/student?code=' . rawurlencode($barcode)));
 
+        // data-card-photo lets the browser preview JS find and swap in a data URI.
         $photoCell = ($photoSrc !== null && $photoSrc !== '')
-            ? '<img src="' . htmlspecialchars((string) $photoSrc, ENT_QUOTES) . '" style="width:24mm;height:30mm;object-fit:cover;border:1px solid #94a3b8;" />'
-            : '<div style="width:24mm;height:30mm;border:1px solid #94a3b8;background:#e2e8f0;color:#64748b;font-size:15pt;font-weight:bold;text-align:center;line-height:30mm;">'
+            ? '<img data-card-photo="1" src="' . htmlspecialchars((string) $photoSrc, ENT_QUOTES) . '" style="width:24mm;height:30mm;object-fit:cover;border:1px solid #94a3b8;" />'
+            : '<div data-card-photo="1" style="width:24mm;height:30mm;border:1px solid #94a3b8;background:#e2e8f0;color:#64748b;font-size:15pt;font-weight:bold;text-align:center;line-height:30mm;">'
                 . htmlspecialchars(self::initials($name)) . '</div>';
 
         $crest   = self::imageDataUri(dirname(__DIR__, 2) . '/public/logo.png');

@@ -25,9 +25,14 @@ export const studentIdService = {
   revoke: (cardId: number) =>
     api.delete<void>(`/api/student-ids/${cardId}`),
 
-  /** Fetch the printable card HTML for an in-app preview. */
-  preview: (studentId: number | string) =>
-    api.get<{ html: string }>(`/api/student-ids/by-student/${studentId}/card`, { preview: 1 }),
+  /** Fetch the printable card HTML for an in-app preview.
+   *  Pass `photoValue` (student.photo from the DB row) so the backend can embed
+   *  the photo even when the student.photo column is null in the DB. */
+  preview: (studentId: number | string, photoValue?: string | null) => {
+    const params: Record<string, unknown> = { preview: 1 }
+    if (photoValue) params.photo = photoValue
+    return api.get<{ html: string }>(`/api/student-ids/by-student/${studentId}/card`, params)
+  },
 
   /** Download the card as a PDF (carries the auth header). */
   download: async (studentId: number | string) => {
