@@ -106,12 +106,29 @@ class StudentIdController extends BaseController
             $this->error($response, 'Student not found.', 404);
         }
 
-        $html = StudentIdCardHelper::buildHtml($student, $card, [
-            'photo_data_uri' => StudentIdCardHelper::resolvePhotoDataUri($student['photo'] ?? null),
-            'verify_url'     => $this->verifyUrl((string) $card['barcode'], $request),
-        ]);
+        $photo     = $student['photo'] ?? null;
+        $isPreview = (bool) $request->query('preview');
+        // The legacy photo store is a public URL the browser can always load
+        // (this is what the students list ends up showing). For a UUID/file-server
+        // photo there is no public URL, so we embed it instead.
+        $legacyUrl = \App\Helpers\PhotoHelper::legacyUrl($photo);
 
-        if ($request->query('preview')) {
+        $opts = ['verify_url' => $this->verifyUrl((string) $card['barcode'], $request)];
+        if ($isPreview && $legacyUrl !== null) {
+            // Browser-rendered preview of a legacy photo → load it directly so the
+            // card matches the list and doesn't depend on the server reaching the
+            // legacy store (which it often can't in production).
+            $opts['photo_url'] = $legacyUrl;
+        } else {
+            // PDF (or a file-server photo) → embed the bytes so the image travels
+            // with the document; keep the URL as a renderer fallback.
+            $opts['photo_data_uri'] = StudentIdCardHelper::resolvePhotoDataUri($photo);
+            if ($legacyUrl !== null) $opts['photo_url'] = $legacyUrl;
+        }
+
+        $html = StudentIdCardHelper::buildHtml($student, $card, $opts);
+
+        if ($isPreview) {
             $this->success($response, ['html' => $html], 'Preview generated.');
         }
 

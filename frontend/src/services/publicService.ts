@@ -18,9 +18,13 @@ export interface StudentVerifyResult {
 
 const API = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '')
 
-/** Absolute URL for a public photo path returned by the verify endpoint. */
-export const publicPhotoUrl = (relPath: string) =>
-  `${API.replace(/\/api$/, '')}${relPath}`
+/**
+ * Absolute URL for a public photo path returned by the verify endpoint.
+ * Built exactly like the API client builds request URLs (baseURL + path),
+ * so the browser's <img> request hits the same backend route as the JSON
+ * verify call. The backend returns `relPath` already prefixed with `/api/...`.
+ */
+export const publicPhotoUrl = (relPath: string) => `${API}${relPath}`
 
 export const publicService = {
   verifyStudent: (code: string) =>

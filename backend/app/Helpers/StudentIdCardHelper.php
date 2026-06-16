@@ -43,11 +43,17 @@ class StudentIdCardHelper
 
         $institution = htmlspecialchars(getenv('INSTITUTION_NAME') ?: 'CATHOLIC UNIVERSITY OF RWANDA');
 
+        // Prefer an embedded data URI (travels with a downloaded PDF); fall back to
+        // a plain URL the browser can load directly — used for the HTML preview so
+        // the card shows the SAME photo as the students list even when the server
+        // itself can't reach the legacy photo store.
         $photoUri  = $opts['photo_data_uri'] ?? null;
+        $photoUrl  = $opts['photo_url'] ?? null;
+        $photoSrc  = ($photoUri !== null && $photoUri !== '') ? $photoUri : $photoUrl;
         $verifyUrl = (string) ($opts['verify_url'] ?? ('https://cur.ac.rw/umis/verify/student?code=' . rawurlencode($barcode)));
 
-        $photoCell = $photoUri
-            ? '<img src="' . htmlspecialchars($photoUri, ENT_QUOTES) . '" style="width:24mm;height:30mm;object-fit:cover;border:1px solid #94a3b8;" />'
+        $photoCell = ($photoSrc !== null && $photoSrc !== '')
+            ? '<img src="' . htmlspecialchars((string) $photoSrc, ENT_QUOTES) . '" style="width:24mm;height:30mm;object-fit:cover;border:1px solid #94a3b8;" />'
             : '<div style="width:24mm;height:30mm;border:1px solid #94a3b8;background:#e2e8f0;color:#64748b;font-size:15pt;font-weight:bold;text-align:center;line-height:30mm;">'
                 . htmlspecialchars(self::initials($name)) . '</div>';
 
@@ -192,7 +198,7 @@ class StudentIdCardHelper
         //    the old photo store and embed; skips the file server (never has these).
         $legacyUrl = \App\Helpers\PhotoHelper::legacyUrl($photoRef);
         if ($legacyUrl !== null) {
-            $bytes = @file_get_contents($legacyUrl, false, stream_context_create(['http' => ['timeout' => 5]]));
+            $bytes = self::httpGet($legacyUrl, 5);
             return ($bytes !== false && strlen($bytes) > 100)
                 ? 'data:image/jpeg;base64,' . base64_encode($bytes)
                 : null;
@@ -227,12 +233,38 @@ class StudentIdCardHelper
             $candidates[] = dirname(__DIR__, 2) . '/file-server/storage/uploads/' . $rel;
         }
         foreach ($candidates as $src) {
-            $bytes = @file_get_contents($src, false, stream_context_create(['http' => ['timeout' => 4]]));
+            $bytes = preg_match('#^https?://#i', $src)
+                ? self::httpGet($src, 4)
+                : @file_get_contents($src);
             if ($bytes !== false && strlen($bytes) > 100) {
                 return 'data:image/jpeg;base64,' . base64_encode($bytes);
             }
         }
         return null;
+    }
+
+    /**
+     * Best-effort HTTP(S) GET for embedding a remote image. Sends a User-Agent
+     * (some stores reject blank-UA requests), follows redirects, and relaxes TLS
+     * verification — the photo store is a trusted first-party host and a strict
+     * CA chain on the server shouldn't block a public image fetch. Returns the
+     * body or false.
+     */
+    private static function httpGet(string $url, int $timeout): string|false
+    {
+        $ctx = stream_context_create([
+            'http' => [
+                'timeout'         => $timeout,
+                'follow_location' => 1,
+                'max_redirects'   => 3,
+                'user_agent'      => 'CUR-MIS/1.0 (+id-card)',
+            ],
+            'ssl' => [
+                'verify_peer'      => false,
+                'verify_peer_name' => false,
+            ],
+        ]);
+        return @file_get_contents($url, false, $ctx);
     }
 
     private static function imageDataUri(string $path): ?string

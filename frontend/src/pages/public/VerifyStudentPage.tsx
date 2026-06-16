@@ -80,6 +80,7 @@ export default function VerifyStudentPage() {
 }
 
 function ResultCard({ r }: { r: StudentVerifyResult }) {
+  const [imgFailed, setImgFailed] = useState(false)
   const tone = r.valid
     ? { icon: <ShieldCheck className="w-5 h-5" />, cls: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300', label: 'VALID CARD' }
     : r.status === 'expired'
@@ -93,9 +94,9 @@ function ResultCard({ r }: { r: StudentVerifyResult }) {
       </div>
       <div className="p-5 flex gap-4">
         <div className="w-24 h-28 rounded-lg border border-slate-200 dark:border-ink-700 bg-slate-100 dark:bg-ink-800 overflow-hidden shrink-0 grid place-items-center">
-          {r.photo_url
-            ? <img src={publicPhotoUrl(r.photo_url)} alt="" className="w-full h-full object-cover"
-                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+          {r.photo_url && !imgFailed
+            ? <img src={publicPhotoUrl(r.photo_url)} alt={r.full_name ?? 'Student photo'}
+                className="w-full h-full object-cover" onError={() => setImgFailed(true)} />
             : <GraduationCap className="w-8 h-8 text-slate-300" />}
         </div>
         <div className="flex-1 min-w-0 text-[13px]">
