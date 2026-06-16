@@ -192,8 +192,11 @@ class UrubutoPayService
      */
     public function recordMobilePayment(array $cb): array
     {
-        $txStatus = strtoupper(trim((string)($cb['transaction_status'] ?? '')));
-        if (($cb['callback_type'] ?? '') !== 'PAYMENT' || !in_array($txStatus, ['VALID', 'PENDING_SETTLEMENT'], true)) {
+        // UrubutoPay sends "status" (not "transaction_status"); accept both field names.
+        // Accepted values: SUCCESSFUL (live callback), VALID / PENDING_SETTLEMENT (staging/sandbox).
+        $txStatus = strtoupper(trim((string)($cb['status'] ?? $cb['transaction_status'] ?? '')));
+        if (($cb['callback_type'] ?? '') !== 'PAYMENT'
+            || !in_array($txStatus, ['SUCCESSFUL', 'VALID', 'PENDING_SETTLEMENT'], true)) {
             return ['status' => 'ignored', 'payment_id' => null, 'message' => 'Non-payment callback ignored'];
         }
 

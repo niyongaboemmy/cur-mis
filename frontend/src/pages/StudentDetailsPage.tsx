@@ -23,6 +23,7 @@ import {
   studentIdService,
   type StudentIdCard,
 } from "@/services/studentIdService";
+import { isPhotoUuid, legacyPhotoUrl } from "@/services/photoHelper";
 import { transcriptService } from "@/services/transcriptService";
 import { academicService } from "@/services/academicService";
 import {
@@ -4963,8 +4964,37 @@ function IdCardTab({ student }: { student: any }) {
   });
 
   const previewMut = useMutation({
-    mutationFn: () => studentIdService.preview(studentId as number),
-    onSuccess: (res) => setPreview(res.data?.html ?? null),
+    mutationFn: async () => {
+      const res = await studentIdService.preview(studentId as number);
+      let html = res.data?.html ?? '';
+
+      // The backend embeds the legacy photo URL as <img src="https://cur.ac.rw/mis/...">
+      // inside the iframe srcDoc. CSP on the parent page can block that request.
+      // Fetch the image client-side (which always works) and swap the src for a
+      // data URI so the iframe has no cross-origin dependency.
+      const photo = student?.photo as string | null | undefined;
+      if (photo && !isPhotoUuid(photo)) {
+        try {
+          const imgRes = await fetch(legacyPhotoUrl(photo));
+          if (imgRes.ok) {
+            const blob = await imgRes.blob();
+            const dataUri = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload  = () => resolve(reader.result as string);
+              reader.onerror = reject;
+              reader.readAsDataURL(blob);
+            });
+            html = html.replace(
+              /(<img\s[^>]*src=")[^"]*mis\/main\/registraria[^"]*/,
+              `$1${dataUri}`
+            );
+          }
+        } catch { /* keep original html if fetch fails */ }
+      }
+
+      return html;
+    },
+    onSuccess: (html) => setPreview(html),
     onError: (e: any) => toast.error(e?.response?.data?.message ?? "Could not load preview."),
   });
 
