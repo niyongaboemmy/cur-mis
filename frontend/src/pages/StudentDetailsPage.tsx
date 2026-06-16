@@ -4429,12 +4429,13 @@ function StudentFinanceTab({
               <thead className="bg-ink-50 dark:bg-ink-700/50 text-ink-500 text-xs uppercase">
                 <tr>
                   <th className="px-4 py-2.5 text-left">Trans Code</th>
-                  <th className="px-4 py-2.5 text-left">Type</th>
-                  <th className="px-4 py-2.5 text-left">Reference</th>
+                  <th className="px-4 py-2.5 text-left">Payer</th>
+                  <th className="px-4 py-2.5 text-left">Channel</th>
+                  <th className="px-4 py-2.5 text-left">Reference / Ext. ID</th>
                   <th className="px-4 py-2.5 text-left">Description</th>
                   <th className="px-4 py-2.5 text-left">Date</th>
                   <th className="px-4 py-2.5 text-right">Amount</th>
-                  <th className="px-4 py-2.5 text-center">Type</th>
+                  <th className="px-4 py-2.5 text-center">Kind</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-ink-100 dark:divide-ink-700">
@@ -4444,6 +4445,9 @@ function StudentFinanceTab({
                     className={`hover:bg-ink-50/50 dark:hover:bg-ink-700/30 ${p._is_reversal ? "opacity-60" : ""}`}
                   >
                     <td className="px-4 py-2.5 font-mono text-xs">{p.receipt_number || "—"}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs text-ink-600 dark:text-ink-300">
+                      {p.student_id || "—"}
+                    </td>
                     <td className="px-4 py-2.5 text-xs text-ink-500">
                       {(PAYMENT_METHOD_LABELS as any)[p.payment_method] ?? p.payment_method}
                     </td>

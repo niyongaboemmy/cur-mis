@@ -238,16 +238,16 @@ class FeeController extends BaseController
 
         $misPayments = $this->paymentModel->listWithDetails(['student_id' => $studentId], 1, 500);
 
-        // Also fetch all transactions from the legacy UrubutoPay/bank `payment` table
+        // Fetch ALL transactions from the legacy UrubutoPay/bank `payment` table
+        // No student filter — return the full ledger so every bank/mobile payment is visible
         $legacyRows = $this->db->fetchAll(
-            "SELECT trans_code, amount, `date`, fee_category, description,
+            "SELECT trans_code, student, amount, `date`, fee_category, description,
                     external_transaction_id, payment_chanel, payment_notifi,
                     slip_no, acad_cycle_id, `status`, `action`
              FROM `payment`
-             WHERE student = ?
              ORDER BY `date` DESC
-             LIMIT 500",
-            [$studentId]
+             LIMIT 1000",
+            []
         );
 
         $legacyPayments = array_map(function (array $row): array {
@@ -271,7 +271,7 @@ class FeeController extends BaseController
                 'invoice_id'       => null,
                 '_source'          => 'urubutopay',
                 '_is_reversal'     => $isCredit,
-                'student_id'       => '',
+                'student_id'       => (string)($row['student'] ?? ''),
                 'amount'           => $amount,
                 'payment_method'   => $method,
                 'payment_sub_method' => null,
@@ -293,7 +293,7 @@ class FeeController extends BaseController
             ];
         }, $legacyRows);
 
-        // Merge: MIS fee_payments first, then legacy bank transactions
+        // Merge: MIS fee_payments first, then all legacy bank transactions
         $allPayments = array_merge($misPayments['data'] ?? [], $legacyPayments);
 
         $this->success($response, [
@@ -327,14 +327,13 @@ class FeeController extends BaseController
         $misPayments = $this->paymentModel->listWithDetails(['student_id' => $reg], 1, 500);
 
         $legacyRows = $this->db->fetchAll(
-            "SELECT trans_code, amount, `date`, fee_category, description,
+            "SELECT trans_code, student, amount, `date`, fee_category, description,
                     external_transaction_id, payment_chanel, payment_notifi,
                     slip_no, acad_cycle_id, `status`, `action`
              FROM `payment`
-             WHERE student = ?
              ORDER BY `date` DESC
-             LIMIT 500",
-            [$reg]
+             LIMIT 1000",
+            []
         );
 
         $legacyPayments = array_map(function (array $row): array {
@@ -354,7 +353,7 @@ class FeeController extends BaseController
                 'invoice_id'       => null,
                 '_source'          => 'urubutopay',
                 '_is_reversal'     => $isCredit,
-                'student_id'       => '',
+                'student_id'       => (string)($row['student'] ?? ''),
                 'amount'           => (float)($row['amount'] ?? 0),
                 'payment_method'   => $method,
                 'payment_sub_method' => null,
