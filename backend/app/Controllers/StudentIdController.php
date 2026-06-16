@@ -205,17 +205,21 @@ class StudentIdController extends BaseController
     private function generateBarcode(string $regnumber): string
     {
         $base = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $regnumber)) ?: 'CUR';
-        $base = substr($base, 0, 40);
-        $candidate = $base . date('ym');
+        $base = substr($base, 0, 50);
 
-        // Ensure uniqueness against existing barcodes.
-        $i = 0;
-        $try = $candidate;
-        while ($this->model->findByBarcode($try)) {
-            $i++;
-            $try = substr($candidate, 0, 56) . sprintf('%02d', $i);
-            if ($i > 99) { $try = $candidate . substr(uniqid(), -4); break; }
+        // Use the cleaned reg number directly as the barcode when possible.
+        // Never append a date suffix — that would change every month and break
+        // physical cards if the same student is re-issued a card later.
+        // For uniqueness (re-issues keep old inactive rows), append a sequence.
+        if (!$this->model->findByBarcode($base)) {
+            return $base;
         }
-        return substr($try, 0, 60);
+        for ($i = 1; $i <= 99; $i++) {
+            $try = substr($base, 0, 57) . sprintf('%02d', $i);
+            if (!$this->model->findByBarcode($try)) {
+                return $try;
+            }
+        }
+        return substr($base . bin2hex(random_bytes(3)), 0, 60);
     }
 }
