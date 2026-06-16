@@ -247,7 +247,7 @@ class FeeController extends BaseController
                         external_transaction_id, payment_chanel, payment_notifi,
                         slip_no, acad_cycle_id, `status`, `action`
                  FROM `payment`
-                 WHERE student = ?
+                 WHERE CONVERT(student USING utf8mb4) = ?
                  ORDER BY `date` DESC
                  LIMIT 1000"
             );
@@ -340,7 +340,7 @@ class FeeController extends BaseController
                         external_transaction_id, payment_chanel, payment_notifi,
                         slip_no, acad_cycle_id, `status`, `action`
                  FROM `payment`
-                 WHERE student = ?
+                 WHERE CONVERT(student USING utf8mb4) = ?
                  ORDER BY `date` DESC
                  LIMIT 1000"
             );
