@@ -2141,21 +2141,20 @@ function ProfileHeroPhoto({
   return (
     <div className="shrink-0 w-full sm:w-auto flex flex-col items-center sm:items-start gap-3">
       <div className="relative group">
-        <div className="w-48 h-48 sm:w-56 sm:h-56 rounded-2xl overflow-hidden bg-ink-100 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 shadow-sm flex items-center justify-center">
-          {photoSrc ? (
+        <div className="w-48 h-48 sm:w-56 sm:h-56 rounded-2xl overflow-hidden bg-ink-100 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 shadow-sm flex items-center justify-center relative">
+          <span className="text-6xl font-bold text-ink-400">{initials}</span>
+          {photoSrc && (
             <img
               src={photoSrc}
               alt={
                 `${student.fname ?? ""} ${student.lname ?? ""}`.trim() ||
                 "Student photo"
               }
-              className="w-full h-full object-cover"
+              className="w-full h-full object-cover absolute inset-0"
               onError={(e) => {
                 (e.currentTarget as HTMLImageElement).style.display = "none";
               }}
             />
-          ) : (
-            <span className="text-6xl font-bold text-ink-400">{initials}</span>
           )}
 
           {upload.isPending && (
@@ -2315,20 +2314,19 @@ function StudentAvatar({
       title="Change profile photo"
       disabled={upload.isPending}
     >
-      {photoSrc ? (
+      <span>{initials}</span>
+      {photoSrc && (
         <img
           src={photoSrc}
           alt={
             `${student.fname ?? ""} ${student.lname ?? ""}`.trim() ||
             "Student photo"
           }
-          className="w-full h-full object-cover"
+          className="w-full h-full object-cover absolute inset-0"
           onError={(e) => {
             (e.currentTarget as HTMLImageElement).style.display = "none";
           }}
         />
-      ) : (
-        <span>{initials}</span>
       )}
 
       <span className="absolute inset-0 bg-black/45 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">

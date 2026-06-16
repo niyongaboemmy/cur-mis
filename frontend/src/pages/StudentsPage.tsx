@@ -1121,16 +1121,15 @@ function StudentRow({
       </td>
       <td>
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-md bg-brand/10 text-brand dark:bg-brand/25 dark:text-gold-400 flex items-center justify-center font-semibold text-[12px] shrink-0 overflow-hidden">
-            {photoSrc ? (
+          <div className="w-9 h-9 rounded-md bg-brand/10 text-brand dark:bg-brand/25 dark:text-gold-400 flex items-center justify-center font-semibold text-[12px] shrink-0 overflow-hidden relative">
+            <span>{initials}</span>
+            {photoSrc && (
               <img
                 src={photoSrc}
                 alt={name}
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover absolute inset-0"
                 onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
               />
-            ) : (
-              <span>{initials}</span>
             )}
           </div>
           <div className="min-w-0">
