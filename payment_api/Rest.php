@@ -862,7 +862,7 @@ class Rest
             return;
         }
 
-        if (!in_array($cbStatus, ['VALID', 'PENDING_SETTLEMENT'], true)) {
+        if (!in_array($cbStatus, ['SUCCESSFUL', 'VALID', 'PENDING_SETTLEMENT'], true)) {
             http_response_code(200);
             echo json_encode(['timestamp' => $date, 'status' => 200, 'message' => 'Non-successful payment acknowledged']);
             return;
