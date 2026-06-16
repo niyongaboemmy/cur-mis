@@ -36,10 +36,11 @@ class Database
         $dsn = "mysql:host={$host};port={$port};dbname={$dbname};charset={$charset}";
 
         $options = [
-            PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION, // Always throw on error
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,       // Return associative arrays
-            PDO::ATTR_EMULATE_PREPARES   => false,                  // Use real prepared statements
-            PDO::MYSQL_ATTR_FOUND_ROWS   => true,                   // rowCount() returns matched rows, not changed rows
+            PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES   => false,
+            PDO::MYSQL_ATTR_FOUND_ROWS   => true,
+            PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci",
         ];
 
         try {
