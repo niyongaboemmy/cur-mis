@@ -4368,7 +4368,7 @@ function StudentFinanceTab({
             <p>No invoices found for this student.</p>
             {!selfMode && (
               <Link
-                to={`/finance/students/${studentId}`}
+                to={`/finance/billing/${studentId}`}
                 className="btn-secondary btn-sm mt-3 inline-flex items-center gap-1.5"
               >
                 <Banknote className="w-3.5 h-3.5" /> Manage in Ledger
@@ -4536,7 +4536,7 @@ function StudentFinanceTab({
       {!selfMode && (
         <div className="flex justify-end">
           <Link
-            to={`/finance/students/${studentId}`}
+            to={`/finance/billing/${studentId}`}
             className="btn-secondary btn-sm inline-flex items-center gap-1.5"
           >
             <FileText className="w-3.5 h-3.5" /> Full Ledger & Record Payment
