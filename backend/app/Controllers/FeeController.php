@@ -245,12 +245,13 @@ class FeeController extends BaseController
         try {
             $pdo  = $this->db->getPdo();
             $stmt = $pdo->prepare(
-                "SELECT trans_code, student, amount, `date`, fee_category, description,
-                        external_transaction_id, payment_chanel, payment_notifi,
-                        slip_no, acad_cycle_id, `status`, `action`
-                 FROM `payment`
-                 WHERE CONVERT(student USING utf8mb4) = ?
-                 ORDER BY `date` DESC
+                "SELECT p.trans_code, p.student, p.amount, p.`date`, p.fee_category, p.description,
+                        p.external_transaction_id, p.payment_chanel, p.payment_notifi,
+                        p.slip_no, p.acad_cycle_id, p.`status`, p.`action`
+                 FROM `payment` p
+                 INNER JOIN `student` s ON CONVERT(p.student USING utf8mb4) = s.regnumber
+                 WHERE s.regnumber = ?
+                 ORDER BY p.`date` DESC
                  LIMIT 1000"
             );
             $stmt->execute([$studentId]);
@@ -345,12 +346,13 @@ class FeeController extends BaseController
         $legacyRows = [];
         try {
             $stmt = $this->db->getPdo()->prepare(
-                "SELECT trans_code, student, amount, `date`, fee_category, description,
-                        external_transaction_id, payment_chanel, payment_notifi,
-                        slip_no, acad_cycle_id, `status`, `action`
-                 FROM `payment`
-                 WHERE CONVERT(student USING utf8mb4) = ?
-                 ORDER BY `date` DESC
+                "SELECT p.trans_code, p.student, p.amount, p.`date`, p.fee_category, p.description,
+                        p.external_transaction_id, p.payment_chanel, p.payment_notifi,
+                        p.slip_no, p.acad_cycle_id, p.`status`, p.`action`
+                 FROM `payment` p
+                 INNER JOIN `student` s ON CONVERT(p.student USING utf8mb4) = s.regnumber
+                 WHERE s.regnumber = ?
+                 ORDER BY p.`date` DESC
                  LIMIT 1000"
             );
             $stmt->execute([$reg]);
