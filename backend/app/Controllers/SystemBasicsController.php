@@ -44,20 +44,27 @@ class SystemBasicsController extends BaseController
             $indexedSettings[$s['key_name']] = $s['value'];
         }
 
-        // Get relevant timetable entries for the active year
-        $sql = "SELECT t.*, m.module_name as course_name, m.module_code as course_code, r.name as room_name 
-                FROM timetable t
-                LEFT JOIN modules m ON t.course_id = m.module_id
-                LEFT JOIN rooms r ON t.room_id = r.id";
-        
-        $bindings = [];
-        if ($activeYear) {
-            $sql .= " WHERE t.academic_year_id = ?";
-            $bindings[] = (int)$activeYear['id'];
-        }
+        // Get relevant timetable entries for the active year.
+        // Wrapped in try/catch: if the timetable or rooms table doesn't exist
+        // on this environment the rest of the response should still succeed.
+        $timetable = [];
+        try {
+            $sql = "SELECT t.*, m.module_name as course_name, m.module_code as course_code, r.name as room_name
+                    FROM timetable t
+                    LEFT JOIN modules m ON t.course_id = m.module_id
+                    LEFT JOIN rooms r ON t.room_id = r.id";
 
-        $sql .= " ORDER BY t.day_of_week, t.start_time LIMIT 100";
-        $timetable = $this->timetableModel->db()->fetchAll($sql, $bindings);
+            $bindings = [];
+            if ($activeYear) {
+                $sql .= " WHERE t.academic_year_id = ?";
+                $bindings[] = (int)$activeYear['id'];
+            }
+
+            $sql .= " ORDER BY t.day_of_week, t.start_time LIMIT 100";
+            $timetable = $this->timetableModel->db()->fetchAll($sql, $bindings);
+        } catch (\Throwable $e) {
+            // Non-fatal: timetable table may not exist in all environments
+        }
 
         $this->success($response, [
             'active_year' => $activeYear,
