@@ -1212,18 +1212,10 @@ class StudentController extends BaseController
             $this->error($response, 'Student has no profile photo.', 404);
         }
 
-        // Legacy filename (e.g. "photo_6a1af….jpg") → redirect to the old CUR
-        // photo store. UUID / file-server ids fall through to the normal flow.
-        $legacy = \App\Helpers\PhotoHelper::legacyUrl((string)$photoId);
-        if ($legacy !== null) {
-            header('Location: ' . $legacy, true, 302);
-            header('Cache-Control: private, max-age=300');
-            exit;
-        }
-
-        // If the stored value is not a UUID it's an unrecognised legacy reference
-        // (e.g. a PDF path) that legacyUrl() cannot resolve — return 404 so the
-        // browser can fall back to the initials placeholder instead of receiving 502.
+        // Legacy filename (e.g. "photo_6a1af….jpg") → the old CUR photo store
+        // (cur.ac.rw/mis/main/registraria) is no longer available; a 302 redirect
+        // to it returns 502 for every request.  Return 404 so the browser falls
+        // back to the initials placeholder instead of a broken-image / 502.
         if (!\App\Helpers\PhotoHelper::isUuid((string)$photoId)) {
             $this->error($response, 'Student photo is not available.', 404);
         }
