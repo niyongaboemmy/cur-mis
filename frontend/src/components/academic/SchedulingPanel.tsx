@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
@@ -1235,7 +1235,7 @@ function DaysPicker({ value, onChange }: { value: number[]; onChange: (next: num
   )
 }
 
-function Field2({ label, children }: { label: string; children: React.ReactNode }) {
+function Field2({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div>
       <label className="block text-[10.5px] uppercase tracking-wider text-ink-500 mb-0.5">{label}</label>

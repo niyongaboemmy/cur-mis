@@ -85,13 +85,20 @@ class AttendanceController extends BaseController
         if ($this->hasPerm($request, Permissions::MANAGE_ATTENDANCE))
             return null;
 
+        // Modules can be assigned against either the user's staff profile or the
+        // user account directly (namespaced id = USER_OFFSET + users.id).
+        $candidates = [];
         $staffId = $this->authStaffId($request);
-        if ($staffId === null)
+        if ($staffId !== null) $candidates[] = $staffId;
+        $uid = $this->authUserId($request);
+        if ($uid > 0) $candidates[] = \App\Helpers\InstructorDirectory::USER_OFFSET + $uid;
+        if ($candidates === [])
             return [];
 
+        $ph   = implode(',', array_fill(0, count($candidates), '?'));
         $rows = $this->db->fetchAll(
-            "SELECT DISTINCT module_id FROM module_assignments WHERE staff_id = ?",
-            [$staffId]
+            "SELECT DISTINCT module_id FROM module_assignments WHERE staff_id IN ($ph)",
+            $candidates
         );
         return array_map(fn($r) => (int) $r['module_id'], $rows);
     }

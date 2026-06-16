@@ -20,6 +20,7 @@ use App\Models\IntakeModel;
 use App\Models\DegreeModel;
 use App\Models\CampusModel;
 use App\Helpers\ValidationHelper;
+use App\Helpers\InstructorDirectory;
 
 /**
  * Handles CRUD for general academic entities.
@@ -1215,21 +1216,22 @@ class AcademicsManagementController extends BaseController
      */
     public function instructors(Request $request, Response $response): never
     {
-        $rows = $this->models['modules']->db()->fetchAll(
-            "SELECT id, full_name, position
-             FROM `hr_employees`
-             WHERE `full_name` IS NOT NULL AND `full_name` <> ''
-             ORDER BY `full_name` ASC",
-        );
-        $out = [];
-        foreach ($rows as $r) {
-            $out[] = [
-                'id'        => (int)$r['id'],
-                'full_name' => (string)$r['full_name'],
-                'position'  => $r['position'] ?? null,
-            ];
-        }
+        // Unified lecturer pool: HR employees + staff user accounts (so a lecturer
+        // with only a login — no HR record — is still assignable). User ids are
+        // namespaced by InstructorDirectory::USER_OFFSET. Shared with the Modules
+        // → Schedule page so the same person has the same id everywhere.
+        $out = InstructorDirectory::all($this->models['modules']->db());
         $this->success($response, ['rows' => $out, 'count' => count($out)], 'Instructors fetched.');
+    }
+
+    /**
+     * Resolve the display name for a namespaced instructor id (employee or user),
+     * for denormalising onto `module_offerings.instructor_name`. Returns null when
+     * the id resolves to nothing (caller falls back to any free-text name).
+     */
+    private function resolveInstructorName(?int $instructorId): ?string
+    {
+        return InstructorDirectory::resolveName($this->models['modules']->db(), $instructorId);
     }
 
     /**
@@ -1327,6 +1329,11 @@ class AcademicsManagementController extends BaseController
             $endTime      = $cleanTime($s['end_time']   ?? null);
             $instructorId = isset($s['instructor_id']) && $s['instructor_id'] !== '' && $s['instructor_id'] !== null
                 ? (int)$s['instructor_id'] : null;
+            // Denormalise the lecturer's name from the (namespaced) id so it
+            // displays even when the id points at a user account that isn't in
+            // `hr_employees` (the getSchedules join only covers employees).
+            $resolvedName = $this->resolveInstructorName($instructorId);
+            if ($resolvedName !== null) $instructorRaw = $resolvedName;
             $yearOfStudy  = isset($s['year_of_study']) && $s['year_of_study'] !== '' && $s['year_of_study'] !== null
                 ? (int)$s['year_of_study'] : null;
             $campusId     = isset($s['campus_id']) && $s['campus_id'] !== '' && $s['campus_id'] !== null
