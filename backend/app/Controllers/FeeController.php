@@ -240,9 +240,11 @@ class FeeController extends BaseController
 
         // Fetch all transactions from the legacy `payment` table for this student.
         // `payment.student` stores the regnumber — match it directly against $studentId.
-        $legacyRows = [];
+        $legacyRows  = [];
+        $legacyError = null;
         try {
-            $stmt = $this->db->getPdo()->prepare(
+            $pdo  = $this->db->getPdo();
+            $stmt = $pdo->prepare(
                 "SELECT trans_code, student, amount, `date`, fee_category, description,
                         external_transaction_id, payment_chanel, payment_notifi,
                         slip_no, acad_cycle_id, `status`, `action`
@@ -254,6 +256,7 @@ class FeeController extends BaseController
             $stmt->execute([$studentId]);
             $legacyRows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
         } catch (\Throwable $e) {
+            $legacyError = $e->getMessage();
             error_log('[Finance:payment] ' . $e->getMessage());
         }
 
@@ -304,9 +307,14 @@ class FeeController extends BaseController
         $allPayments = array_merge($misPayments['data'] ?? [], $legacyPayments);
 
         $this->success($response, [
-            'invoices' => $invoices,
-            'payments' => $allPayments,
-            'totals'   => $totals,
+            'invoices'      => $invoices,
+            'payments'      => $allPayments,
+            'totals'        => $totals,
+            '_debug'        => [
+                'queried_regnumber'  => $studentId,
+                'legacy_row_count'   => \count($legacyRows),
+                'legacy_error'       => $legacyError,
+            ],
         ], 'Student ledger retrieved.');
     }
 
