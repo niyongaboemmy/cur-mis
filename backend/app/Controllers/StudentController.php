@@ -1212,12 +1212,12 @@ class StudentController extends BaseController
             $this->error($response, 'Student has no profile photo.', 404);
         }
 
-        // Legacy filename (e.g. "photo_6a1af….jpg") → the old CUR photo store
-        // (cur.ac.rw/mis/main/registraria) is no longer available; a 302 redirect
-        // to it returns 502 for every request.  Return 404 so the browser falls
-        // back to the initials placeholder instead of a broken-image / 502.
+        // Legacy path (not a file-server UUID) — try to serve from the local
+        // filesystem first (LEGACY_PHOTO_DIR env var = absolute path to the old
+        // registraria directory, e.g. /home/user/public_html/mis/main/registraria).
+        // Falls back to 404 when the env var is absent or the file is missing.
         if (!\App\Helpers\PhotoHelper::isUuid((string)$photoId)) {
-            $this->error($response, 'Student photo is not available.', 404);
+            $this->serveLegacyPhoto((string)$photoId, $response);
         }
 
         try {
@@ -1238,6 +1238,46 @@ class StudentController extends BaseController
 
         echo $fileData['content'];
         exit;
+    }
+
+    /**
+     * Attempt to stream a legacy photo file from the local filesystem and exit,
+     * or terminate with 404 if the file cannot be located.
+     *
+     * Legacy photo values are relative paths such as:
+     *   "documents/std_photo/photo_6a1af….jpg"
+     *   "photo_6a1af….jpg"   (bare filename → prefixed with documents/std_photo/)
+     *
+     * Set LEGACY_PHOTO_DIR in .env to the absolute filesystem path of the old
+     * registraria root (e.g. /home/curac/public_html/mis/main/registraria).
+     */
+    private function serveLegacyPhoto(string $photoId, Response $response): never
+    {
+        $baseDir = rtrim((string)($_ENV['LEGACY_PHOTO_DIR'] ?? ''), '/');
+
+        if ($baseDir !== '') {
+            $rel = ltrim($photoId, '/');
+            // Bare filename → lives under documents/std_photo/
+            if (!str_contains($rel, '/')) {
+                $rel = 'documents/std_photo/' . $rel;
+            }
+            // Block path traversal
+            if (!str_contains($rel, '..')) {
+                $full = $baseDir . '/' . $rel;
+                $real = realpath($full);
+                if ($real !== false && str_starts_with($real, $baseDir) && is_file($real)) {
+                    $mime = mime_content_type($real) ?: 'image/jpeg';
+                    header('Content-Type: ' . $mime);
+                    header('Content-Length: ' . (string)filesize($real));
+                    header('Cache-Control: private, max-age=300');
+                    header('X-Content-Type-Options: nosniff');
+                    readfile($real);
+                    exit;
+                }
+            }
+        }
+
+        $this->error($response, 'Student photo is not available.', 404);
     }
 
     /**

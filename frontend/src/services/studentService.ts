@@ -6,6 +6,19 @@ import { useAuthStore } from '@/store/authStore'
 import { useCampusFilterStore } from '@/store/campusFilterStore'
 import { useCategoryFilterStore } from '@/store/categoryFilterStore'
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const isUuid = (v: string) => UUID_RE.test(v.trim())
+
+const LEGACY_PHOTO_BASE = 'https://cur.ac.rw/mis/main/registraria'
+/** Build a direct browser URL for a legacy photo value (non-UUID path). */
+const legacyPhotoUrl = (photoValue: string): string => {
+  const v = photoValue.trim()
+  if (/^https?:\/\//i.test(v)) return v           // already absolute
+  const path = v.startsWith('/') ? v.slice(1) : v
+  const rel  = path.includes('/') ? path : `documents/std_photo/${path}`
+  return `${LEGACY_PHOTO_BASE}/${rel}`
+}
+
 export interface FacetOption {
   value: string
   label: string
@@ -728,12 +741,19 @@ export const studentService = {
       { assigned_registry_user_id: userId },
     ),
 
-  /** Direct, token-bearing URL for the student's profile photo. The cache-buster
-   *  is what the page passes after a re-upload to force the <img> to refetch. */
+  /** Direct URL for the student's profile photo.
+   *  Legacy photo values (non-UUID paths like "documents/std_photo/photo_xxx.jpg")
+   *  are served straight from the old CUR photo store so the browser never routes
+   *  through the PHP backend (which cannot reach that server).
+   *  UUID values are fetched via the authenticated API endpoint as before. */
   photoUrl: (id: number | string, cacheKey?: string | number) => {
+    const photoValue = cacheKey != null ? String(cacheKey) : ''
+    if (photoValue && !isUuid(photoValue)) {
+      return legacyPhotoUrl(photoValue)
+    }
     const token = useAuthStore.getState().token
     const base  = import.meta.env.VITE_API_URL ?? ''
-    const v     = cacheKey != null ? `&v=${encodeURIComponent(String(cacheKey))}` : ''
+    const v     = cacheKey != null ? `&v=${encodeURIComponent(photoValue)}` : ''
     return `${base}/api/students/${id}/photo?token=${token}${v}`
   },
 
@@ -744,12 +764,15 @@ export const studentService = {
     return api.upload<{ photo: string }>(`/api/students/${id}/photo`, form)
   },
 
-  /** Self-service photo URL — fetches the authenticated student's own photo
-   *  without requiring VIEW_STUDENTS. */
+  /** Self-service photo URL — same legacy-detection logic as photoUrl(). */
   myPhotoUrl: (cacheKey?: string | number) => {
+    const photoValue = cacheKey != null ? String(cacheKey) : ''
+    if (photoValue && !isUuid(photoValue)) {
+      return legacyPhotoUrl(photoValue)
+    }
     const token = useAuthStore.getState().token
     const base  = import.meta.env.VITE_API_URL ?? ''
-    const v     = cacheKey != null ? `&v=${encodeURIComponent(String(cacheKey))}` : ''
+    const v     = cacheKey != null ? `&v=${encodeURIComponent(photoValue)}` : ''
     return `${base}/api/students/me/photo?token=${token}${v}`
   },
 
