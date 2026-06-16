@@ -4965,17 +4965,22 @@ function IdCardTab({ student }: { student: any }) {
 
   const previewMut = useMutation({
     mutationFn: async () => {
-      const res = await studentIdService.preview(studentId as number);
+      const photo = student?.photo as string | null | undefined;
+      // Pass the photo value so the backend can embed it even when student.photo
+      // is null in the DB (legacy students whose photo column wasn't migrated).
+      const res = await studentIdService.preview(studentId as number, photo ?? undefined);
       let html = res.data?.html ?? '';
 
-      // The backend embeds the legacy photo URL as <img src="https://cur.ac.rw/mis/...">
-      // inside the iframe srcDoc. CSP on the parent page can block that request.
-      // Fetch the image client-side (which always works) and swap the src for a
-      // data URI so the iframe has no cross-origin dependency.
-      const photo = student?.photo as string | null | undefined;
+      // If the server already embedded a data URI we're done — no client fetch needed.
+      if (html.includes('data:image/')) return html;
+
+      // Server set an external URL (couldn't fetch server-side) or showed initials.
+      // Try to fetch the photo client-side and swap it in as a data URI so the
+      // iframe has no cross-origin dependency.
       if (photo && !isPhotoUuid(photo)) {
+        const photoUrl = legacyPhotoUrl(photo);
         try {
-          const imgRes = await fetch(legacyPhotoUrl(photo));
+          const imgRes = await fetch(photoUrl);
           if (imgRes.ok) {
             const blob = await imgRes.blob();
             const dataUri = await new Promise<string>((resolve, reject) => {
@@ -4984,12 +4989,24 @@ function IdCardTab({ student }: { student: any }) {
               reader.onerror = reject;
               reader.readAsDataURL(blob);
             });
+            // Replace whichever element the backend used as the photo cell:
+            // – an <img data-card-photo> with a legacy URL
+            // – a <div data-card-photo> with initials (when server has no photo)
             html = html.replace(
-              /(<img\s[^>]*src=")[^"]*mis\/main\/registraria[^"]*/,
-              `$1${dataUri}`
+              /<(?:img|div)\s[^>]*data-card-photo="1"[^>]*>(?:[^<]*<\/div>)?/,
+              `<img data-card-photo="1" src="${dataUri}" style="width:24mm;height:30mm;object-fit:cover;border:1px solid #94a3b8;" />`
             );
           }
-        } catch { /* keep original html if fetch fails */ }
+        } catch {
+          // Fetch failed (CORS). If the backend left an external URL in the img,
+          // the browser will load it directly in the iframe (img tags bypass CORS).
+          // If the backend left initials, replace with an img pointing to the URL —
+          // it will load in the iframe even across origins.
+          html = html.replace(
+            /<div\s[^>]*data-card-photo="1"[^>]*>[^<]*<\/div>/,
+            `<img data-card-photo="1" src="${photoUrl}" style="width:24mm;height:30mm;object-fit:cover;border:1px solid #94a3b8;" />`
+          );
+        }
       }
 
       return html;
