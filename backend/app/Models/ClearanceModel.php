@@ -8,7 +8,7 @@ namespace App\Models;
 
 class ClearanceModel extends BaseModel
 {
-    protected string $table      = 'student_clearances';
+    protected string $table      = 'finance_clearances';
     protected string $primaryKey = 'id';
 
     /**
@@ -19,7 +19,7 @@ class ClearanceModel extends BaseModel
         $sql = "SELECT sc.*,
                        u.full_name                           AS cleared_by_name,
                        ay.label                              AS academic_year_label
-                FROM `student_clearances` sc
+                FROM `finance_clearances` sc
                 LEFT JOIN `users` u           ON u.id  = sc.cleared_by
                 LEFT JOIN `academic_years` ay ON ay.id = sc.academic_year_id
                 WHERE sc.student_id = ? AND sc.academic_year_id = ?";
@@ -44,7 +44,7 @@ class ClearanceModel extends BaseModel
         $offset = ($page - 1) * $perPage;
 
         $total = (int)($this->db->fetchOne(
-            "SELECT COUNT(*) AS cnt FROM `student_clearances`
+            "SELECT COUNT(*) AS cnt FROM `finance_clearances`
              WHERE academic_year_id = ? AND semester IS NULL",
             [$yearId]
         )['cnt'] ?? 0);
@@ -55,7 +55,7 @@ class ClearanceModel extends BaseModel
                     u.full_name                           AS cleared_by_name,
                     ay.label                              AS academic_year_label,
                     dep.dep_name                          AS department_name
-             FROM `student_clearances` sc
+             FROM `finance_clearances` sc
              JOIN  `student` s            ON s.regnumber = sc.student_id
              LEFT JOIN `users` u          ON u.id        = sc.cleared_by
              LEFT JOIN `academic_years` ay ON ay.id      = sc.academic_year_id

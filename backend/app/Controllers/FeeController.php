@@ -249,7 +249,7 @@ class FeeController extends BaseController
                         p.external_transaction_id, p.payment_chanel, p.payment_notifi,
                         p.slip_no, p.acad_cycle_id, p.`status`, p.`action`
                  FROM `payment` p
-                 INNER JOIN `student` s ON CONVERT(p.student USING utf8mb4) = s.regnumber
+                 INNER JOIN `student` s ON CONVERT(p.student USING utf8mb4) COLLATE utf8mb4_unicode_ci = s.regnumber
                  WHERE s.regnumber = ?
                  ORDER BY p.`date` DESC
                  LIMIT 1000"
@@ -350,7 +350,7 @@ class FeeController extends BaseController
                         p.external_transaction_id, p.payment_chanel, p.payment_notifi,
                         p.slip_no, p.acad_cycle_id, p.`status`, p.`action`
                  FROM `payment` p
-                 INNER JOIN `student` s ON CONVERT(p.student USING utf8mb4) = s.regnumber
+                 INNER JOIN `student` s ON CONVERT(p.student USING utf8mb4) COLLATE utf8mb4_unicode_ci = s.regnumber
                  WHERE s.regnumber = ?
                  ORDER BY p.`date` DESC
                  LIMIT 1000"
