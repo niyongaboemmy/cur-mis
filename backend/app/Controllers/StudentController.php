@@ -1221,6 +1221,13 @@ class StudentController extends BaseController
             exit;
         }
 
+        // If the stored value is not a UUID it's an unrecognised legacy reference
+        // (e.g. a PDF path) that legacyUrl() cannot resolve — return 404 so the
+        // browser can fall back to the initials placeholder instead of receiving 502.
+        if (!\App\Helpers\PhotoHelper::isUuid((string)$photoId)) {
+            $this->error($response, 'Student photo is not available.', 404);
+        }
+
         try {
             $client   = new FileServerClient();
             $fileData = $client->download((string)$photoId);
