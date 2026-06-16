@@ -1,6 +1,7 @@
 import { api } from './api'
 import type { AuthUser } from '@/store/authStore'
 import { useAuthStore } from '@/store/authStore'
+import { isPhotoUuid, legacyPhotoUrl } from '@/services/photoHelper'
 
 export interface LoginResponse {
   token: string
@@ -41,11 +42,16 @@ export const authService = {
   updateMe: (data: { full_name: string; email: string; username: string; phone?: string }) =>
     api.put<AuthUser>('/api/auth/me', data),
 
-  /** Direct, token-bearing URL for the authenticated user's profile photo. */
+  /** Direct URL for the authenticated user's profile photo.
+   *  Legacy photo values are served straight from the old CUR photo store. */
   myPhotoUrl: (cacheKey?: string | number) => {
+    const photoValue = cacheKey != null ? String(cacheKey) : ''
+    if (photoValue && !isPhotoUuid(photoValue)) {
+      return legacyPhotoUrl(photoValue)
+    }
     const token = useAuthStore.getState().token
     const base  = import.meta.env.VITE_API_URL ?? ''
-    const v     = cacheKey != null ? `&v=${encodeURIComponent(String(cacheKey))}` : ''
+    const v     = photoValue ? `&v=${encodeURIComponent(photoValue)}` : ''
     return `${base}/api/auth/me/photo?token=${token}${v}`
   },
 

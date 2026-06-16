@@ -6,18 +6,7 @@ import { useAuthStore } from '@/store/authStore'
 import { useCampusFilterStore } from '@/store/campusFilterStore'
 import { useCategoryFilterStore } from '@/store/categoryFilterStore'
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const isUuid = (v: string) => UUID_RE.test(v.trim())
-
-const LEGACY_PHOTO_BASE = 'https://cur.ac.rw/mis/main/registraria'
-/** Build a direct browser URL for a legacy photo value (non-UUID path). */
-const legacyPhotoUrl = (photoValue: string): string => {
-  const v = photoValue.trim()
-  if (/^https?:\/\//i.test(v)) return v           // already absolute
-  const path = v.startsWith('/') ? v.slice(1) : v
-  const rel  = path.includes('/') ? path : `documents/std_photo/${path}`
-  return `${LEGACY_PHOTO_BASE}/${rel}`
-}
+import { isPhotoUuid, legacyPhotoUrl } from '@/services/photoHelper'
 
 export interface FacetOption {
   value: string
@@ -748,7 +737,7 @@ export const studentService = {
    *  UUID values are fetched via the authenticated API endpoint as before. */
   photoUrl: (id: number | string, cacheKey?: string | number) => {
     const photoValue = cacheKey != null ? String(cacheKey) : ''
-    if (photoValue && !isUuid(photoValue)) {
+    if (photoValue && !isPhotoUuid(photoValue)) {
       return legacyPhotoUrl(photoValue)
     }
     const token = useAuthStore.getState().token
@@ -767,7 +756,7 @@ export const studentService = {
   /** Self-service photo URL — same legacy-detection logic as photoUrl(). */
   myPhotoUrl: (cacheKey?: string | number) => {
     const photoValue = cacheKey != null ? String(cacheKey) : ''
-    if (photoValue && !isUuid(photoValue)) {
+    if (photoValue && !isPhotoUuid(photoValue)) {
       return legacyPhotoUrl(photoValue)
     }
     const token = useAuthStore.getState().token
