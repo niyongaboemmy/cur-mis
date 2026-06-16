@@ -311,11 +311,12 @@ class FeeController extends BaseController
             'payments'      => $allPayments,
             'totals'        => $totals,
             '_debug'        => [
+                'v'                  => 'v2-legacy',
                 'queried_regnumber'  => $studentId,
                 'legacy_row_count'   => \count($legacyRows),
                 'legacy_error'       => $legacyError,
             ],
-        ], 'Student ledger retrieved.');
+        ], 'Student ledger v2.');
     }
 
     /**
