@@ -21,7 +21,7 @@ class FeePaymentModel extends BaseModel
         $bindings = [];
 
         if (!empty($filters['student_id'])) {
-            $where[]    = 'fp.student_id = ?';
+            $where[]    = 'fp.student_id COLLATE utf8mb4_unicode_ci = ?';
             $bindings[] = $filters['student_id'];
         }
         if (!empty($filters['invoice_id'])) {
@@ -61,7 +61,7 @@ class FeePaymentModel extends BaseModel
                     u.full_name  AS recorded_by_name
              FROM `fee_payments` fp
              LEFT JOIN `fee_invoices` fi ON fi.id = fp.invoice_id
-             LEFT JOIN `student` s       ON s.regnumber = fp.student_id
+             LEFT JOIN `student` s       ON s.regnumber COLLATE utf8mb4_unicode_ci = fp.student_id COLLATE utf8mb4_unicode_ci
              LEFT JOIN `users` u         ON u.id = fp.recorded_by
              {$whereSql}
              ORDER BY fp.paid_at DESC
@@ -95,7 +95,7 @@ class FeePaymentModel extends BaseModel
              FROM `fee_payments` fp
              JOIN  `fee_invoices`  fi ON fi.id = fp.invoice_id
              LEFT JOIN `academic_years` ay ON ay.id   = fi.academic_year_id
-             LEFT JOIN `student`    s  ON s.regnumber = fp.student_id
+             LEFT JOIN `student`    s  ON s.regnumber COLLATE utf8mb4_unicode_ci = fp.student_id COLLATE utf8mb4_unicode_ci
              LEFT JOIN `faculty`      f  ON f.fac_id   = s.faculty
              LEFT JOIN `departements` d  ON d.dep_id  = COALESCE(
                  NULLIF(CAST(s.department AS UNSIGNED), 0),
@@ -116,7 +116,7 @@ class FeePaymentModel extends BaseModel
             "SELECT SUM(fp.amount) AS total
              FROM `fee_payments` fp
              JOIN `fee_invoices` fi ON fi.id = fp.invoice_id
-             WHERE fp.student_id = ? AND fi.academic_year_id = ? AND fp.status = 'confirmed'",
+             WHERE fp.student_id COLLATE utf8mb4_unicode_ci = ? AND fi.academic_year_id = ? AND fp.status = 'confirmed'",
             [$studentId, $academicYearId]
         );
         return (float)($row['total'] ?? 0);

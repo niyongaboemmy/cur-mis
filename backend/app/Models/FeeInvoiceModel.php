@@ -130,7 +130,7 @@ class FeeInvoiceModel extends BaseModel
         return $this->db->fetchAll(
             "SELECT fi.*, s.fname, s.lname, ay.label AS academic_year_label
              FROM `fee_invoices` fi
-             LEFT JOIN `student` s       ON s.regnumber = fi.student_id
+             LEFT JOIN `student` s       ON s.regnumber COLLATE utf8mb4_unicode_ci = fi.student_id COLLATE utf8mb4_unicode_ci
              LEFT JOIN `academic_years` ay ON ay.id = fi.academic_year_id
              WHERE fi.due_date < CURDATE()
                AND fi.status IN ('unpaid', 'partial')

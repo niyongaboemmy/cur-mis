@@ -79,9 +79,16 @@ import {
   AlertCircle,
   UploadCloud,
   RefreshCw,
+  Banknote,
+  TrendingUp,
+  ArrowDownLeft,
 } from "lucide-react";
 import ModalPortal from "@/components/ui/ModalPortal";
 import UserAccountPanel from "@/components/account/UserAccountPanel";
+import { ledgerService } from "@/services/financeService";
+import { FEE_TYPE_LABELS, PAYMENT_METHOD_LABELS } from "@/types/finance";
+import InvoiceStatusBadge from "@/components/finance/InvoiceStatusBadge";
+import { formatRWF } from "@/utils/formatCurrency";
 import CountrySelect from "@/components/ui/CountrySelect";
 import {
   COUNTRY_BY_NAME,
@@ -327,11 +334,7 @@ export default function StudentDetailsPage({
           <ProgramCurriculumTab student={student} selfMode={selfMode} />
         )}
         {tab === "finance" && (
-          <PlaceholderTab
-            icon={BarChart}
-            title="Financial Overview"
-            desc="Tuition fees, payments, and balances."
-          />
+          <StudentFinanceTab student={student} selfMode={selfMode} />
         )}
         {tab === "transcript" && <TranscriptTab student={student} />}
         {tab === "idcard" && !selfMode && <IdCardTab student={student} />}
@@ -4260,6 +4263,284 @@ function DocumentRow({
               </div>
             )}
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Student Finance Tab ──────────────────────────────────────────────────────
+
+function StudentFinanceTab({
+  student,
+  selfMode = false,
+}: {
+  student: any;
+  selfMode?: boolean;
+}) {
+  const studentId = student?.regnumber ?? "";
+
+  const ledgerQ = useQuery({
+    queryKey: ["finance", "ledger", studentId],
+    queryFn: () => ledgerService.getStudentLedger(studentId),
+    enabled: !!studentId,
+  });
+
+  const ledger = ledgerQ.data?.data;
+  const invoices: any[] = ledger?.invoices ?? [];
+  const allPayments: any[] = ledger?.payments ?? [];
+
+  // Separate MIS payments vs UrubutoPay legacy transactions
+  const misPayments = allPayments.filter((p) => p._source !== "urubutopay");
+  const bankTxns    = allPayments.filter((p) => p._source === "urubutopay");
+
+  const totalInvoiced = invoices.reduce((s: number, i: any) => s + Number(i.amount_due ?? 0), 0);
+  const totalMisPaid  = misPayments
+    .filter((p) => p.status === "confirmed")
+    .reduce((s: number, p: any) => s + Number(p.amount ?? 0), 0);
+  const totalBankPaid = bankTxns
+    .filter((p) => !p._is_reversal)
+    .reduce((s: number, p: any) => s + Number(p.amount ?? 0), 0);
+  const totalBankReversed = bankTxns
+    .filter((p) => p._is_reversal)
+    .reduce((s: number, p: any) => s + Number(p.amount ?? 0), 0);
+  const totalPaid = totalMisPaid + totalBankPaid - totalBankReversed;
+
+  if (ledgerQ.isLoading) {
+    return (
+      <div className="card p-12 flex items-center justify-center">
+        <Loader2 className="w-5 h-5 animate-spin text-brand" />
+      </div>
+    );
+  }
+
+  if (ledgerQ.isError) {
+    return (
+      <div className="card p-8 text-center">
+        <AlertTriangle className="w-8 h-8 mx-auto mb-2 text-red-400" />
+        <p className="text-sm text-red-500">Failed to load finance data.</p>
+        <button
+          className="btn-secondary btn-sm mt-3"
+          onClick={() => ledgerQ.refetch()}
+        >
+          <RefreshCw className="w-3.5 h-3.5" /> Retry
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4 animate-fade-in">
+      {/* Summary cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="card p-4">
+          <p className="text-xs text-ink-500 mb-1">Total Invoiced</p>
+          <p className="text-xl font-bold text-ink-700 dark:text-ink-200">{formatRWF(totalInvoiced)}</p>
+        </div>
+        <div className="card p-4">
+          <p className="text-xs text-ink-500 mb-1">Total Paid</p>
+          <p className="text-xl font-bold text-green-600">{formatRWF(totalPaid)}</p>
+        </div>
+        <div className="card p-4">
+          <p className="text-xs text-ink-500 mb-1">Via UrubutoPay</p>
+          <p className="text-xl font-bold text-blue-600">{formatRWF(totalBankPaid)}</p>
+        </div>
+        <div className="card p-4">
+          <p className="text-xs text-ink-500 mb-1">Balance</p>
+          <p className={`text-xl font-bold ${(totalInvoiced - totalPaid) > 0 ? "text-red-600" : "text-green-600"}`}>
+            {formatRWF(Math.max(0, totalInvoiced - totalPaid))}
+          </p>
+        </div>
+      </div>
+
+      {/* Invoices */}
+      <div className="card overflow-hidden">
+        <div className="px-4 py-2.5 border-b border-ink-100 dark:border-ink-700 font-medium text-sm flex items-center gap-2 bg-ink-50/50 dark:bg-ink-700/20">
+          <FileText className="w-4 h-4 text-ink-400" />
+          <span>Invoices</span>
+          <span className="text-[10px] bg-ink-100 dark:bg-ink-700 px-1.5 py-0.5 rounded text-ink-500 font-mono">
+            {invoices.length}
+          </span>
+        </div>
+        {invoices.length === 0 ? (
+          <div className="text-center py-10 text-ink-400 text-sm">
+            <FileText className="w-8 h-8 mx-auto mb-2 opacity-30" />
+            <p>No invoices found for this student.</p>
+            {!selfMode && (
+              <Link
+                to={`/finance/students/${studentId}`}
+                className="btn-secondary btn-sm mt-3 inline-flex items-center gap-1.5"
+              >
+                <Banknote className="w-3.5 h-3.5" /> Manage in Ledger
+              </Link>
+            )}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-ink-50 dark:bg-ink-700/50 text-ink-500 text-xs uppercase">
+                <tr>
+                  <th className="px-4 py-2.5 text-left">Invoice #</th>
+                  <th className="px-4 py-2.5 text-left">Type</th>
+                  <th className="px-4 py-2.5 text-left">Description</th>
+                  <th className="px-4 py-2.5 text-right">Due</th>
+                  <th className="px-4 py-2.5 text-right">Paid</th>
+                  <th className="px-4 py-2.5 text-center">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-ink-100 dark:divide-ink-700">
+                {invoices.map((inv: any) => (
+                  <tr key={inv.id} className="hover:bg-ink-50/50 dark:hover:bg-ink-700/30">
+                    <td className="px-4 py-2.5 font-mono text-xs">{inv.invoice_number}</td>
+                    <td className="px-4 py-2.5 text-xs text-ink-500">
+                      {(FEE_TYPE_LABELS as any)[inv.fee_type] ?? inv.fee_type}
+                    </td>
+                    <td className="px-4 py-2.5 text-xs">{inv.description}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-xs">{formatRWF(inv.amount_due)}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-xs text-green-600">{formatRWF(inv.amount_paid)}</td>
+                    <td className="px-4 py-2.5 text-center">
+                      <InvoiceStatusBadge status={inv.status} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* UrubutoPay / Bank Transactions */}
+      <div className="card overflow-hidden">
+        <div className="px-4 py-2.5 border-b border-ink-100 dark:border-ink-700 font-medium text-sm flex items-center gap-2 bg-ink-50/50 dark:bg-ink-700/20">
+          <TrendingUp className="w-4 h-4 text-blue-500" />
+          <span>UrubutoPay / Bank Transactions</span>
+          <span className="text-[10px] bg-ink-100 dark:bg-ink-700 px-1.5 py-0.5 rounded text-ink-500 font-mono">
+            {bankTxns.length}
+          </span>
+        </div>
+        {bankTxns.length === 0 ? (
+          <div className="text-center py-8 text-ink-400 text-sm">
+            <TrendingUp className="w-7 h-7 mx-auto mb-2 opacity-30" />
+            <p>No UrubutoPay/bank transactions found.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-ink-50 dark:bg-ink-700/50 text-ink-500 text-xs uppercase">
+                <tr>
+                  <th className="px-4 py-2.5 text-left">Trans Code</th>
+                  <th className="px-4 py-2.5 text-left">Type</th>
+                  <th className="px-4 py-2.5 text-left">Reference</th>
+                  <th className="px-4 py-2.5 text-left">Description</th>
+                  <th className="px-4 py-2.5 text-left">Date</th>
+                  <th className="px-4 py-2.5 text-right">Amount</th>
+                  <th className="px-4 py-2.5 text-center">Type</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-ink-100 dark:divide-ink-700">
+                {bankTxns.map((p: any, idx: number) => (
+                  <tr
+                    key={p.receipt_number || idx}
+                    className={`hover:bg-ink-50/50 dark:hover:bg-ink-700/30 ${p._is_reversal ? "opacity-60" : ""}`}
+                  >
+                    <td className="px-4 py-2.5 font-mono text-xs">{p.receipt_number || "—"}</td>
+                    <td className="px-4 py-2.5 text-xs text-ink-500">
+                      {(PAYMENT_METHOD_LABELS as any)[p.payment_method] ?? p.payment_method}
+                    </td>
+                    <td className="px-4 py-2.5 text-xs text-ink-400 font-mono truncate max-w-[160px]">
+                      {p.reference_number || "—"}
+                    </td>
+                    <td className="px-4 py-2.5 text-xs text-ink-500 max-w-[200px] truncate">
+                      {p.description || "—"}
+                    </td>
+                    <td className="px-4 py-2.5 text-xs text-ink-400">
+                      {p.paid_at ? new Date(p.paid_at).toLocaleString() : "—"}
+                    </td>
+                    <td className={`px-4 py-2.5 text-right font-mono text-xs font-semibold ${p._is_reversal ? "text-red-500" : "text-green-600"}`}>
+                      {p._is_reversal ? "−" : "+"}{formatRWF(p.amount)}
+                    </td>
+                    <td className="px-4 py-2.5 text-center">
+                      {p._is_reversal ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 px-1.5 py-0.5 rounded-full">
+                          <ArrowDownLeft className="w-2.5 h-2.5" /> Reversal
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-1.5 py-0.5 rounded-full">
+                          <Banknote className="w-2.5 h-2.5" /> Payment
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* MIS recorded payments (fee_payments table) */}
+      {misPayments.length > 0 && (
+        <div className="card overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-ink-100 dark:border-ink-700 font-medium text-sm flex items-center gap-2 bg-ink-50/50 dark:bg-ink-700/20">
+            <Banknote className="w-4 h-4 text-ink-400" />
+            <span>Manually Recorded Payments</span>
+            <span className="text-[10px] bg-ink-100 dark:bg-ink-700 px-1.5 py-0.5 rounded text-ink-500 font-mono">
+              {misPayments.length}
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-ink-50 dark:bg-ink-700/50 text-ink-500 text-xs uppercase">
+                <tr>
+                  <th className="px-4 py-2.5 text-left">Receipt #</th>
+                  <th className="px-4 py-2.5 text-left">Method</th>
+                  <th className="px-4 py-2.5 text-left">Reference</th>
+                  <th className="px-4 py-2.5 text-left">Date</th>
+                  <th className="px-4 py-2.5 text-right">Amount</th>
+                  <th className="px-4 py-2.5 text-center">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-ink-100 dark:divide-ink-700">
+                {misPayments.map((p: any) => (
+                  <tr key={p.id} className="hover:bg-ink-50/50 dark:hover:bg-ink-700/30">
+                    <td className="px-4 py-2.5 font-mono text-xs">{p.receipt_number}</td>
+                    <td className="px-4 py-2.5 text-xs text-ink-500">
+                      {(PAYMENT_METHOD_LABELS as any)[p.payment_method] ?? p.payment_method}
+                    </td>
+                    <td className="px-4 py-2.5 text-xs text-ink-400">{p.reference_number ?? "—"}</td>
+                    <td className="px-4 py-2.5 text-xs text-ink-400">
+                      {p.paid_at ? new Date(p.paid_at).toLocaleDateString() : "—"}
+                    </td>
+                    <td className="px-4 py-2.5 text-right font-mono text-xs font-semibold text-green-600">
+                      {formatRWF(p.amount)}
+                    </td>
+                    <td className="px-4 py-2.5 text-center">
+                      <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
+                        p.status === "confirmed"
+                          ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                          : p.status === "pending"
+                          ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
+                          : "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400"
+                      }`}>
+                        {p.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {!selfMode && (
+        <div className="flex justify-end">
+          <Link
+            to={`/finance/students/${studentId}`}
+            className="btn-secondary btn-sm inline-flex items-center gap-1.5"
+          >
+            <FileText className="w-3.5 h-3.5" /> Full Ledger & Record Payment
+          </Link>
         </div>
       )}
     </div>
