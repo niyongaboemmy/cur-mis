@@ -238,17 +238,23 @@ class FeeController extends BaseController
 
         $misPayments = $this->paymentModel->listWithDetails(['student_id' => $studentId], 1, 500);
 
-        // Fetch ALL transactions from the legacy UrubutoPay/bank `payment` table
-        // No student filter — return the full ledger so every bank/mobile payment is visible
-        $legacyRows = $this->db->fetchAll(
-            "SELECT trans_code, student, amount, `date`, fee_category, description,
-                    external_transaction_id, payment_chanel, payment_notifi,
-                    slip_no, acad_cycle_id, `status`, `action`
-             FROM `payment`
-             ORDER BY `date` DESC
-             LIMIT 1000",
-            []
-        );
+        // Fetch ALL transactions from the legacy UrubutoPay/bank `payment` table.
+        // No student filter — every bank/mobile payment must be visible.
+        // Uses getPdo()->query() directly (no parameters) to avoid PDO prepare quirks.
+        $legacyRows = [];
+        try {
+            $stmt = $this->db->getPdo()->query(
+                "SELECT trans_code, student, amount, `date`, fee_category, description,
+                        external_transaction_id, payment_chanel, payment_notifi,
+                        slip_no, acad_cycle_id, `status`, `action`
+                 FROM `payment`
+                 ORDER BY `date` DESC
+                 LIMIT 1000"
+            );
+            $legacyRows = $stmt ? $stmt->fetchAll(\PDO::FETCH_ASSOC) : [];
+        } catch (\Throwable $e) {
+            error_log('[Finance:payment] ' . $e->getMessage());
+        }
 
         $legacyPayments = array_map(function (array $row): array {
             $channel  = strtoupper(trim((string)($row['payment_chanel'] ?? '')));
@@ -326,15 +332,20 @@ class FeeController extends BaseController
             : [];
         $misPayments = $this->paymentModel->listWithDetails(['student_id' => $reg], 1, 500);
 
-        $legacyRows = $this->db->fetchAll(
-            "SELECT trans_code, student, amount, `date`, fee_category, description,
-                    external_transaction_id, payment_chanel, payment_notifi,
-                    slip_no, acad_cycle_id, `status`, `action`
-             FROM `payment`
-             ORDER BY `date` DESC
-             LIMIT 1000",
-            []
-        );
+        $legacyRows = [];
+        try {
+            $stmt = $this->db->getPdo()->query(
+                "SELECT trans_code, student, amount, `date`, fee_category, description,
+                        external_transaction_id, payment_chanel, payment_notifi,
+                        slip_no, acad_cycle_id, `status`, `action`
+                 FROM `payment`
+                 ORDER BY `date` DESC
+                 LIMIT 1000"
+            );
+            $legacyRows = $stmt ? $stmt->fetchAll(\PDO::FETCH_ASSOC) : [];
+        } catch (\Throwable $e) {
+            error_log('[Finance:my/payment] ' . $e->getMessage());
+        }
 
         $legacyPayments = array_map(function (array $row): array {
             $channel  = strtoupper(trim((string)($row['payment_chanel'] ?? '')));
