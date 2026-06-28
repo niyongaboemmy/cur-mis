@@ -13,6 +13,7 @@ use App\Models\StudentApplicationModel;
 use App\Models\ApplicationDocumentModel;
 use App\Models\AdmissionRequirementModel;
 use App\Services\ApplicationService;
+use App\Services\UrubutoPayService;
 use App\Helpers\ValidationHelper;
 use App\Helpers\FileServerClient;
 
@@ -207,6 +208,75 @@ class ApplicantProfileController extends BaseController
             'payment_amount'       => $amount,
             'payment_currency'     => $currency,
         ], 'Payment recorded.');
+    }
+
+    /**
+     * GET /api/applicant/application/payment/checkout
+     *
+     * Returns the UrubutoPay hosted-checkout URL the "Pay Now" button opens.
+     * The payer_code is the application number; once the applicant pays,
+     * UrubutoPay calls our verify + callback webhooks, which mark this
+     * application as paid (transaction_id + paid_at). The frontend polls
+     * getPaymentStatus() until that happens.
+     */
+    public function getPaymentCheckout(Request $request, Response $response): never
+    {
+        $profile = $request->param('_applicant_profile');
+        $appId   = (int)($profile['application_id'] ?? 0);
+        if (!$appId) {
+            $this->error($response, 'No active application. Complete the earlier steps before paying.', 404);
+        }
+
+        $app = $this->appModel->find($appId);
+        if (!$app) {
+            $this->error($response, 'Application not found.', 404);
+        }
+
+        $appNumber = trim((string)($app['application_number'] ?? ''));
+        if ($appNumber === '') {
+            $this->error($response, 'Application number is missing — cannot start payment.', 422);
+        }
+
+        $data = (new UrubutoPayService())->generateApplicationCheckoutUrl($appNumber);
+
+        // Reflect any payment already recorded so the UI can short-circuit polling.
+        $data['paid']               = !empty($app['paid_at']) && !empty($app['transaction_id']);
+        $data['transaction_id']     = $app['transaction_id'] ?? null;
+        $data['application_number'] = $appNumber;
+
+        $this->success($response, $data, 'Checkout link generated.');
+    }
+
+    /**
+     * GET /api/applicant/application/payment/status
+     *
+     * Lightweight polling endpoint. Reports whether the application fee has
+     * been confirmed by UrubutoPay (transaction_id + paid_at both set).
+     */
+    public function getPaymentStatus(Request $request, Response $response): never
+    {
+        $profile = $request->param('_applicant_profile');
+        $appId   = (int)($profile['application_id'] ?? 0);
+        if (!$appId) {
+            $this->error($response, 'No active application.', 404);
+        }
+
+        $app = $this->appModel->find($appId);
+        if (!$app) {
+            $this->error($response, 'Application not found.', 404);
+        }
+
+        $paid = !empty($app['paid_at']) && !empty($app['transaction_id']);
+
+        $this->success($response, [
+            'paid'               => $paid,
+            'transaction_id'     => $app['transaction_id'] ?? null,
+            'paid_at'            => $app['paid_at'] ?? null,
+            'amount'             => isset($app['payment_amount']) && $app['payment_amount'] !== null ? (float)$app['payment_amount'] : null,
+            'currency'           => $app['payment_currency'] ?? 'RWF',
+            'application_number' => $app['application_number'] ?? null,
+            'status'             => $app['status'] ?? null,
+        ], 'Payment status fetched.');
     }
 
     public function uploadPhoto(Request $request, Response $response): never
@@ -407,6 +477,18 @@ class ApplicantProfileController extends BaseController
         $application = $this->appModel->find($appId);
         if ($application['status'] !== 'draft') {
             $this->error($response, 'Application is already submitted.', 422);
+        }
+
+        // Gate: the application processing fee must be paid via UrubutoPay before
+        // the application can be submitted. The fee is confirmed server-to-server
+        // by the UrubutoPay callback webhook, which sets transaction_id + paid_at.
+        $paid = !empty($application['paid_at']) && !empty($application['transaction_id']);
+        if (!$paid) {
+            $this->error(
+                $response,
+                'Payment required. Please complete the application fee with Urubuto Pay before submitting.',
+                402
+            );
         }
 
         $data = $request->body();

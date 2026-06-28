@@ -18,10 +18,9 @@ import {
   Camera,
   X as XIcon,
   Info,
-  UploadCloud,
-  Receipt,
   Hash,
   PlayCircle,
+  Copy,
 } from "lucide-react";
 import Logo from "@/components/brand/Logo";
 import { portalService, applicantService } from "@/services/admissionService";
@@ -167,8 +166,9 @@ export default function ApplyPage() {
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
 
   // Payment step (5) — held in component state because the slip is a File.
-  const [paymentSlip, setPaymentSlip] = useState<File | null>(null);
-  const [transactionId, setTransactionId] = useState<string>("");
+  // Urubuto Pay — the application fee must be confirmed by the gateway before
+  // the applicant can submit. `paid` is driven by the status poll in PaymentStep.
+  const [paid, setPaid] = useState(false);
   const [confirmAccurate, setConfirmAccurate] = useState(false);
   const APPLICATION_FEE = 5000; // RWF — TODO: surface from server config later
 
@@ -410,22 +410,12 @@ export default function ApplyPage() {
     },
   });
 
-  // Payment + final submit. Validates the payment fields, uploads the slip,
-  // then calls the existing submitApplication endpoint.
+  // Final submit. The application fee must already be confirmed by Urubuto Pay
+  // (the backend also enforces this); we only call submitApplication here.
   const submitWithPaymentM = useMutation({
     mutationFn: async () => {
-      if (!transactionId.trim()) throw new Error("Transaction ID is required.");
-      if (!paymentSlip)          throw new Error("Please upload your bank payment slip.");
-      if (!confirmAccurate)      throw new Error("Please confirm your information is accurate.");
-
-      // 1. Persist the slip + transaction id on the draft
-      await applicantService.uploadPaymentSlip({
-        transaction_id:   transactionId.trim(),
-        payment_slip:     paymentSlip,
-        payment_amount:   APPLICATION_FEE,
-        payment_currency: 'RWF',
-      });
-      // 2. Final submit
+      if (!paid)            throw new Error("Please complete the application fee with Urubuto Pay first.");
+      if (!confirmAccurate) throw new Error("Please confirm your information is accurate.");
       return applicantService.submitApplication(form.getValues() as any);
     },
     onSuccess: () => {
@@ -696,10 +686,8 @@ export default function ApplyPage() {
             programs={programs}
             campuses={selectedProgramCampuses}
             levels={levels}
-            paymentSlip={paymentSlip}
-            onPickSlip={setPaymentSlip}
-            transactionId={transactionId}
-            onTransactionIdChange={setTransactionId}
+            paid={paid}
+            onPaidChange={setPaid}
             confirmAccurate={confirmAccurate}
             onConfirmChange={setConfirmAccurate}
           />
@@ -720,7 +708,7 @@ export default function ApplyPage() {
               type="button"
               onClick={() => submitWithPaymentM.mutate()}
               className="btn-primary"
-              disabled={submitWithPaymentM.isPending || !confirmAccurate || !transactionId.trim() || !paymentSlip}
+              disabled={submitWithPaymentM.isPending || !confirmAccurate || !paid}
             >
               {submitWithPaymentM.isPending ? (
                 <><Loader2 className="w-4 h-4 animate-spin" /> Submitting…</>
@@ -1386,8 +1374,7 @@ function ProgramsStep({
 
 function PaymentStep({
   form, fee, programs, campuses, levels,
-  paymentSlip, onPickSlip,
-  transactionId, onTransactionIdChange,
+  paid, onPaidChange,
   confirmAccurate, onConfirmChange,
 }: {
   form: ReturnType<typeof useForm<FormValues>>
@@ -1395,15 +1382,63 @@ function PaymentStep({
   programs: Array<{ id: number; name: string }>
   campuses: Array<{ id: number; name: string }>
   levels:   Array<{ id: number; name: string }>
-  paymentSlip: File | null
-  onPickSlip: (f: File | null) => void
-  transactionId: string
-  onTransactionIdChange: (v: string) => void
+  paid: boolean
+  onPaidChange: (v: boolean) => void
   confirmAccurate: boolean
   onConfirmChange: (v: boolean) => void
 }) {
   const v = form.getValues();
   const formatFee = new Intl.NumberFormat('en-US').format(fee);
+
+  const [opened, setOpened] = useState(false);
+
+  // Load checkout details once when the step opens: merchant code, payer code
+  // (= application number), the fixed fee, and the hosted-checkout URL.
+  const checkoutQuery = useQuery({
+    queryKey: ['applicant-payment-checkout'],
+    queryFn: ({ signal }) => applicantService.getPaymentCheckout(signal),
+    retry: false,
+    staleTime: Infinity,
+  });
+  const checkout = checkoutQuery.data?.data;
+
+  // Poll the server for gateway confirmation. Runs once on mount (to catch a
+  // fee already paid on a resumed application) and every few seconds after the
+  // applicant opens the Urubuto checkout, until the payment is confirmed.
+  const statusQuery = useQuery({
+    queryKey: ['applicant-payment-status'],
+    queryFn: ({ signal }) => applicantService.getPaymentStatus(signal),
+    refetchInterval: !paid && opened ? 4000 : false,
+    refetchIntervalInBackground: true,
+    retry: false,
+  });
+
+  const status = statusQuery.data?.data;
+  const txId = status?.transaction_id ?? checkout?.transaction_id ?? null;
+
+  useEffect(() => {
+    if (status?.paid || checkout?.paid) onPaidChange(true);
+  }, [status?.paid, checkout?.paid, onPaidChange]);
+
+  const copy = (label: string, value?: string | null) => {
+    if (!value) return;
+    navigator.clipboard?.writeText(value).then(
+      () => toast.success(`${label} copied`),
+      () => toast.error('Could not copy'),
+    );
+  };
+
+  const payNow = () => {
+    if (!checkout?.checkout_url) {
+      toast.error('Preparing your payment link — please try again in a moment.');
+      checkoutQuery.refetch();
+      return;
+    }
+    window.open(checkout.checkout_url, '_blank', 'noopener,noreferrer');
+    setOpened(true);
+    toast.success('Complete your payment in the Urubuto Pay tab, then return here.');
+    statusQuery.refetch();
+  };
 
   return (
     <div className="space-y-6 animate-fade-up">
@@ -1418,84 +1453,71 @@ function PaymentStep({
         <div className="text-[13px] text-blue-900 dark:text-blue-100 leading-snug">
           <p className="font-semibold">Application fee: {formatFee} RWF</p>
           <p className="text-blue-700 dark:text-blue-200/80 mt-0.5">
-            Pay via your bank using the reference shown on your bank slip, then upload the slip below.
+            Pay securely with Urubuto Pay (MTN MoMo / Airtel Money). Click “Pay Now”, complete the
+            payment, and this page unlocks automatically once it’s confirmed.
           </p>
         </div>
       </div>
 
-      {/* Slip + transaction ID */}
-      <FieldGroup title="Payment details">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* Slip upload */}
-          <div>
-            <label className="label flex items-center gap-1">
-              Bank Payment Slip <span className="text-red-500">*</span>
-            </label>
-            <label
-              htmlFor="payment-slip-input"
-              className={`block rounded-lg border-2 border-dashed transition-colors cursor-pointer text-center px-4 py-6 ${
-                paymentSlip
-                  ? 'border-emerald-300 bg-emerald-50/40 dark:bg-emerald-900/10 text-emerald-700'
-                  : 'border-ink-200 dark:border-ink-700 hover:border-brand/40 hover:bg-ink-50/60 dark:hover:bg-ink-800/30 text-ink-500'
-              }`}
+      {/* Urubuto Pay */}
+      <FieldGroup title="Payment">
+        {paid ? (
+          <div className="rounded-lg border border-emerald-300 bg-emerald-50/60 dark:bg-emerald-900/10 px-4 py-4 flex items-start gap-3">
+            <CheckCircle2 className="w-6 h-6 text-emerald-600 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-[14px] font-semibold text-emerald-800 dark:text-emerald-200">Payment confirmed</p>
+              <p className="text-[12.5px] text-emerald-700 dark:text-emerald-300/90 mt-0.5">
+                Your {formatFee} RWF application fee was received{txId ? <> · Ref <span className="font-mono">{txId}</span></> : null}.
+                You can now submit your application.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {/* Payment details — already filled for you. On the Urubuto Pay page
+                these are pre-filled; if not, tap to copy. The amount is fixed. */}
+            <div className="rounded-lg border border-ink-100 dark:border-ink-800 bg-ink-50/60 dark:bg-ink-900/40 divide-y divide-ink-100 dark:divide-ink-800">
+              <PayDetailRow label="Amount" value={`${formatFee} RWF`} hint="Fixed — cannot be changed" />
+              <PayDetailRow label="Merchant code" value={checkout?.merchant_code ?? '…'} onCopy={() => copy('Merchant code', checkout?.merchant_code)} />
+              <PayDetailRow label="Payer code" value={checkout?.payer_code ?? '…'} hint="Your application number" onCopy={() => copy('Payer code', checkout?.payer_code)} />
+            </div>
+
+            <button
+              type="button"
+              onClick={payNow}
+              disabled={checkoutQuery.isLoading}
+              className="btn-primary w-full sm:w-auto"
             >
-              <UploadCloud className="w-8 h-8 mx-auto mb-2 opacity-80" />
-              {paymentSlip ? (
-                <>
-                  <p className="text-[13px] font-semibold truncate">{paymentSlip.name}</p>
-                  <p className="text-[11.5px] opacity-80">{(paymentSlip.size / 1024).toFixed(0)} KB · click to replace</p>
-                </>
+              {checkoutQuery.isLoading ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Preparing payment…</>
               ) : (
-                <p className="text-[13px] font-medium">Click to upload payment slip</p>
+                <><CreditCard className="w-4 h-4" /> Pay {formatFee} RWF with Urubuto Pay</>
               )}
-            </label>
-            <input
-              id="payment-slip-input"
-              type="file"
-              accept="application/pdf,image/jpeg,image/png"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0] ?? null;
-                if (!f) { onPickSlip(null); return; }
-                if (f.size > 5 * 1024 * 1024) { toast.error('File must be 5 MB or smaller'); return; }
-                if (!/^application\/pdf|^image\/(jpe?g|png)$/i.test(f.type)) {
-                  toast.error('Slip must be PDF, JPG or PNG');
-                  return;
-                }
-                onPickSlip(f);
-              }}
-            />
-            <div className="flex items-center justify-between mt-2">
-              <p className="text-[11.5px] text-ink-400">PDF / JPG / PNG, up to 5 MB</p>
-              {paymentSlip && (
+            </button>
+
+            {opened && (
+              <div className="rounded-lg border border-amber-200 dark:border-amber-900/40 bg-amber-50/60 dark:bg-amber-900/10 px-4 py-3 flex items-center gap-3">
+                <Loader2 className="w-4 h-4 animate-spin text-amber-600 shrink-0" />
+                <p className="text-[12.5px] text-amber-800 dark:text-amber-200">
+                  Waiting for Urubuto Pay to confirm your payment…
+                </p>
                 <button
                   type="button"
-                  onClick={() => onPickSlip(null)}
-                  className="text-[11.5px] text-rose-600 hover:underline inline-flex items-center gap-1"
+                  onClick={() => statusQuery.refetch()}
+                  className="ml-auto text-[12px] font-medium text-brand hover:underline shrink-0"
                 >
-                  <XIcon className="w-3 h-3" /> Remove
+                  Check now
                 </button>
-              )}
-            </div>
-          </div>
+              </div>
+            )}
 
-          {/* Transaction ID */}
-          <div>
-            <label className="label flex items-center gap-1">
-              Transaction ID <span className="text-red-500">*</span>
-            </label>
-            <div className="relative">
-              <Receipt className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-ink-400 pointer-events-none" />
-              <input
-                className="input pl-9"
-                placeholder="Enter Transaction ID from bank"
-                value={transactionId}
-                onChange={(e) => onTransactionIdChange(e.target.value)}
-              />
-            </div>
-            <p className="text-[11.5px] text-ink-400 mt-1.5">Reference number from your payment</p>
+            <p className="text-[11.5px] text-ink-400">
+              A secure Urubuto Pay window opens in a new tab — just enter your MoMo number or card and
+              confirm. The {formatFee} RWF amount is fixed. Keep this page open; it unlocks automatically
+              once your payment is confirmed.
+            </p>
           </div>
-        </div>
+        )}
       </FieldGroup>
 
       {/* Application review */}
@@ -1533,8 +1555,9 @@ function PaymentStep({
 
           <ReviewSection title="Payment">
             <ReviewRow k="Fee" v={`${formatFee} RWF`} />
-            <ReviewRow k="Slip" v={paymentSlip ? paymentSlip.name : '—'} />
-            <ReviewRow k="Transaction ID" v={transactionId || '—'} />
+            <ReviewRow k="Method" v="Urubuto Pay" />
+            <ReviewRow k="Status" v={paid ? 'Paid' : 'Not paid'} />
+            <ReviewRow k="Reference" v={txId || '—'} />
           </ReviewSection>
         </div>
       </FieldGroup>
@@ -1549,7 +1572,7 @@ function PaymentStep({
           <ChecklistItem ok={!!v.first_name && !!v.last_name && !!v.email && !!v.phone}>All personal information provided</ChecklistItem>
           <ChecklistItem ok={!!v.prev_school && !!v.combination && !!v.a2_grades}>Academic background filled</ChecklistItem>
           <ChecklistItem ok={!!v.program_id && !!v.campus_id && !!v.mode_of_study && !!v.level_id}>Program selection made</ChecklistItem>
-          <ChecklistItem ok={!!paymentSlip && !!transactionId.trim()}>Payment slip uploaded</ChecklistItem>
+          <ChecklistItem ok={paid}>Application fee paid (Urubuto Pay)</ChecklistItem>
         </ul>
 
         <label className="flex items-start gap-2 pt-2 border-t border-ink-100 dark:border-ink-800 cursor-pointer">
@@ -1564,6 +1587,34 @@ function PaymentStep({
           </span>
         </label>
       </div>
+    </div>
+  );
+}
+
+function PayDetailRow({
+  label, value, hint, onCopy,
+}: {
+  label: string
+  value: string
+  hint?: string
+  onCopy?: () => void
+}) {
+  return (
+    <div className="flex items-center gap-3 px-4 py-2.5">
+      <div className="min-w-0">
+        <p className="text-[11px] uppercase tracking-wide text-ink-400">{label}</p>
+        <p className="text-[13.5px] font-semibold text-ink-800 dark:text-ink-100 font-mono truncate">{value}</p>
+        {hint && <p className="text-[11px] text-ink-400">{hint}</p>}
+      </div>
+      {onCopy && (
+        <button
+          type="button"
+          onClick={onCopy}
+          className="ml-auto shrink-0 inline-flex items-center gap-1 text-[12px] font-medium text-brand hover:underline"
+        >
+          <Copy className="w-3.5 h-3.5" /> Copy
+        </button>
+      )}
     </div>
   );
 }

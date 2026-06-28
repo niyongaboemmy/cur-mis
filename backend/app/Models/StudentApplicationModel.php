@@ -187,16 +187,19 @@ class StudentApplicationModel extends BaseModel
 
         if (!empty($filters['payment_status'])) {
             $ps = (string)$filters['payment_status'];
+            // "Paid" now means the Urubuto Pay application fee was confirmed
+            // (transaction_id + paid_at set by the gateway callback), not that a
+            // bank slip was uploaded.
             if ($ps === 'paid') {
-                $conditions[] = "sa.payment_slip_file_id IS NOT NULL";
+                $conditions[] = "(sa.paid_at IS NOT NULL AND sa.transaction_id IS NOT NULL)";
             } elseif ($ps === 'unpaid') {
-                $conditions[] = "sa.payment_slip_file_id IS NULL";
+                $conditions[] = "(sa.paid_at IS NULL OR sa.transaction_id IS NULL)";
             }
         }
 
         if (!empty($filters['sort_paid_first'])) {
             // Pin paid applications to the top, then newest-first within each group.
-            $orderBy = '(sa.payment_slip_file_id IS NOT NULL) DESC, sa.id DESC';
+            $orderBy = '(sa.paid_at IS NOT NULL) DESC, sa.id DESC';
         }
 
         if (!empty($filters['hidden_filter'])) {

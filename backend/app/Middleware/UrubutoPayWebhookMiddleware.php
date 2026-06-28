@@ -19,9 +19,11 @@ class UrubutoPayWebhookMiddleware
 
     public function handle(Request $request, Response $response): void
     {
-        $header = $request->header('Authorization') ?? '';
-        $parts  = explode(' ', trim($header), 2);
-        $token  = $parts[1] ?? '';
+        // Use bearerToken() — it reads HTTP_AUTHORIZATION *and* the
+        // REDIRECT_HTTP_AUTHORIZATION fallback that Apache/mod_rewrite produces
+        // (header('Authorization') alone misses it on this server config) and
+        // strips the "Bearer " prefix for us.
+        $token = $request->bearerToken() ?? '';
 
         if ($token !== '') {
             $row = $this->db->fetchOne(
