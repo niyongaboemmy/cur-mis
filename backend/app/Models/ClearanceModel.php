@@ -22,7 +22,7 @@ class ClearanceModel extends BaseModel
                 FROM `finance_clearances` sc
                 LEFT JOIN `users` u           ON u.id  = sc.cleared_by
                 LEFT JOIN `academic_years` ay ON ay.id = sc.academic_year_id
-                WHERE sc.student_id = ? AND sc.academic_year_id = ?";
+                WHERE sc.student_id COLLATE utf8mb4_unicode_ci = ? AND sc.academic_year_id = ?";
         $params = [$studentId, $yearId];
 
         if ($semester !== null) {
@@ -56,7 +56,7 @@ class ClearanceModel extends BaseModel
                     ay.label                              AS academic_year_label,
                     dep.dep_name                          AS department_name
              FROM `finance_clearances` sc
-             JOIN  `student` s            ON s.regnumber = sc.student_id
+             JOIN  `student` s            ON s.regnumber = sc.student_id COLLATE utf8mb4_unicode_ci
              LEFT JOIN `users` u          ON u.id        = sc.cleared_by
              LEFT JOIN `academic_years` ay ON ay.id      = sc.academic_year_id
              LEFT JOIN `departements` dep ON dep.dep_id  = s.department

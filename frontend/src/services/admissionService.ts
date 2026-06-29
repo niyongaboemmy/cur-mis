@@ -434,6 +434,32 @@ export const applicantService = {
     }>('/api/applicant/application/payment', form)
   },
 
+  /** Urubuto Pay — get the hosted-checkout URL for the application fee. */
+  getPaymentCheckout: (signal?: AbortSignal) =>
+    api.get<{
+      checkout_url:       string
+      merchant_code:      string
+      payer_code:         string
+      amount:             number
+      currency:           string
+      service_code:       string
+      paid:               boolean
+      transaction_id:     string | null
+      application_number: string
+    }>('/api/applicant/application/payment/checkout', {}, signal),
+
+  /** Urubuto Pay — poll whether the application fee has been confirmed. */
+  getPaymentStatus: (signal?: AbortSignal) =>
+    api.get<{
+      paid:               boolean
+      transaction_id:     string | null
+      paid_at:            string | null
+      amount:             number | null
+      currency:           string
+      application_number: string | null
+      status:             string | null
+    }>('/api/applicant/application/payment/status', {}, signal),
+
   listApplications: (signal?: AbortSignal) =>
     api.get<StudentApplication[]>('/api/applicant/application', {}, signal),
 

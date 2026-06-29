@@ -20,7 +20,7 @@ class FeeBursaryModel extends BaseModel
         $bindings = [];
 
         if (!empty($filters['student_id'])) {
-            $where[]    = 'fb.student_id = ?';
+            $where[]    = 'fb.student_id COLLATE utf8mb4_unicode_ci = ?';
             $bindings[] = $filters['student_id'];
         }
         if (!empty($filters['academic_year_id'])) {
@@ -74,7 +74,7 @@ class FeeBursaryModel extends BaseModel
                     u2.full_name AS confirmed_by_name,
                     sp.name      AS sponsor_name
              FROM `fee_bursaries` fb
-             LEFT JOIN `student`        s  ON s.regnumber = fb.student_id
+             LEFT JOIN `student`        s  ON s.regnumber = fb.student_id COLLATE utf8mb4_unicode_ci
              LEFT JOIN `academic_years` ay ON ay.id       = fb.academic_year_id
              LEFT JOIN `users`          u  ON u.id        = fb.approved_by
              LEFT JOIN `users`          u2 ON u2.id       = fb.confirmed_by
@@ -110,7 +110,7 @@ class FeeBursaryModel extends BaseModel
     {
         $row = $this->db->fetchOne(
             "SELECT SUM(amount) AS total FROM `fee_bursaries`
-             WHERE student_id = ? AND academic_year_id = ? AND status = 'confirmed'",
+             WHERE student_id COLLATE utf8mb4_unicode_ci = ? AND academic_year_id = ? AND status = 'confirmed'",
             [$studentId, $academicYearId]
         );
         return (float)($row['total'] ?? 0);

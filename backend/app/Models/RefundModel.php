@@ -18,7 +18,7 @@ class RefundModel extends BaseModel
         $bindings = [];
 
         if (!empty($filters['student_id'])) {
-            $where[]    = 'fr.student_id = ?';
+            $where[]    = 'fr.student_id COLLATE utf8mb4_unicode_ci = ?';
             $bindings[] = $filters['student_id'];
         }
         if (!empty($filters['status'])) {
@@ -44,7 +44,7 @@ class RefundModel extends BaseModel
                     s.lname  AS student_lname,
                     u.full_name AS processed_by_name
              FROM `fee_refunds` fr
-             LEFT JOIN `student` s ON s.regnumber = fr.student_id
+             LEFT JOIN `student` s ON s.regnumber = fr.student_id COLLATE utf8mb4_unicode_ci
              LEFT JOIN `users`   u ON u.id = fr.processed_by
              {$whereSql}
              ORDER BY fr.created_at DESC

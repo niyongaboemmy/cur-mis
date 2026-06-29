@@ -67,7 +67,9 @@ if (!defined('SKIP_TOKEN_CHECK')) {
      */
     function getAuthorizationHeader(): ?string
     {
-        foreach (['Authorization', 'HTTP_AUTHORIZATION'] as $key) {
+        // REDIRECT_HTTP_AUTHORIZATION is where Apache/mod_rewrite delivers the
+        // header on this server config — check it alongside the direct keys.
+        foreach (['Authorization', 'HTTP_AUTHORIZATION', 'REDIRECT_HTTP_AUTHORIZATION'] as $key) {
             if (!empty($_SERVER[$key])) {
                 return trim($_SERVER[$key]);
             }
@@ -235,6 +237,51 @@ class Rest
             ?? $this->findStudent($payerCode);
     }
 
+    /**
+     * Look up an applicant by application number. Applicants pay a one-off
+     * application processing fee through the same UrubutoPay channel as
+     * students; their payer_code is the student_applications.application_number.
+     */
+    private function findApplication(string $appNumber): ?array
+    {
+        $sql = "SELECT id, application_number, first_name, last_name, email,
+                       COALESCE(phone, '') AS phone,
+                       payment_amount, payment_currency, transaction_id, paid_at, status
+                FROM student_applications
+                WHERE application_number = ?
+                LIMIT 1";
+        $stmt = $this->db->prepare($sql);
+        $stmt->bind_param('s', $appNumber);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        return $row ?: null;
+    }
+
+    /**
+     * Application-fee configuration, read from backend/.env with safe defaults.
+     * Returns ['fee' => int, 'service_code' => string, 'service_name' => string].
+     */
+    private function appFeeConfig(): array
+    {
+        $cfg  = ['fee' => 5000, 'service_code' => 'cursu-fees-8249', 'service_name' => 'APPLICATION FEE'];
+        $path = __DIR__ . '/../backend/.env';
+        if (is_file($path)) {
+            foreach (file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+                $line = trim($line);
+                if ($line === '' || $line[0] === '#') continue;
+                $parts = explode('=', $line, 2);
+                if (count($parts) !== 2) continue;
+                $k = trim($parts[0]);
+                $v = trim($parts[1], "\"' ");
+                if ($k === 'URUBUTOPAY_APPLICATION_FEE')          $cfg['fee']          = (int)$v;
+                if ($k === 'URUBUTOPAY_APPLICATION_SERVICE_CODE') $cfg['service_code'] = $v;
+                if ($k === 'URUBUTOPAY_APPLICATION_SERVICE_NAME') $cfg['service_name'] = $v;
+            }
+        }
+        return $cfg;
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // 0. CLAIM TOKEN  –  POST /api/token.php
     //    No bearer token required for this endpoint (define SKIP_TOKEN_CHECK).
@@ -289,12 +336,13 @@ class Rest
             return;
         }
 
+        // Compute expiry on the DB clock so the token stays valid regardless of
+        // any PHP/MySQL timezone difference (the guard checks token_expires_at > NOW()).
         $newToken  = bin2hex(random_bytes(32));
-        $expiresAt = date('Y-m-d H:i:s', time() + 7200); // 2 hours
         $updStmt   = $this->db->prepare(
-            'UPDATE api_authorization SET token = ?, token_expires_at = ? WHERE username = ?'
+            'UPDATE api_authorization SET token = ?, token_expires_at = DATE_ADD(NOW(), INTERVAL 2 HOUR) WHERE username = ?'
         );
-        $updStmt->bind_param('sss', $newToken, $expiresAt, $username);
+        $updStmt->bind_param('ss', $newToken, $username);
         $updStmt->execute();
         $updStmt->close();
 
@@ -340,6 +388,37 @@ class Rest
         $student = $this->lookupStudent($payerCode);
 
         if (!$student) {
+            // Fall back to an applicant paying the one-off application fee.
+            $application = $this->findApplication($payerCode);
+            if ($application) {
+                $cfg        = $this->appFeeConfig();
+                $payerNames = strtoupper(trim(($application['first_name'] ?? '') . ' ' . ($application['last_name'] ?? '')));
+                http_response_code(200);
+                echo json_encode([
+                    'timestamp' => $date,
+                    'message'   => 'validated successfully',
+                    'status'    => 200,
+                    'data'      => [
+                        'merchant_code'               => $merchantCode,
+                        'payer_code'                  => $application['application_number'],
+                        'payer_names'                 => $payerNames !== '' ? $payerNames : 'APPLICANT',
+                        'currency'                    => 'RWF',
+                        'payer_must_pay_total_amount' => 'YES',
+                        'amount'                      => $cfg['fee'],
+                        'comment'                     => 'application processing fee',
+                        'service_code'                => $cfg['service_code'],
+                        'commission_rate'             => 0,
+                        'services'                    => [[
+                            'service_code' => $cfg['service_code'],
+                            'service_name' => $cfg['service_name'],
+                            'amount'       => $cfg['fee'],
+                            'currency'     => 'RWF',
+                        ]],
+                    ],
+                ]);
+                return;
+            }
+
             http_response_code(404);
             echo json_encode(['timestamp' => $date, 'status' => 404, 'message' => 'no data found for the given payer code']);
             return;
@@ -870,6 +949,53 @@ class Rest
 
         $student = $this->lookupStudent($payerCode);
         if (!$student) {
+            // Applicant paying the one-off application fee — record onto the
+            // student_applications row and stop (no student ledger involved).
+            $application = $this->findApplication($payerCode);
+            if ($application) {
+                // Idempotency — same transaction already recorded for this application.
+                if (!empty($application['paid_at'])
+                    && (string)($application['transaction_id'] ?? '') === $txCode) {
+                    http_response_code(200);
+                    echo json_encode(['timestamp' => $date, 'status' => 200, 'message' => 'Payment already recorded']);
+                    return;
+                }
+
+                $appId    = (int)$application['id'];
+                $currency = strtoupper(trim($data['currency'] ?? 'RWF')) ?: 'RWF';
+                // Normalise ISO-8601 (e.g. 2026-06-28T11:00:00Z) to a MySQL DATETIME;
+                // the paid_at column rejects the raw gateway format under strict mode.
+                $paidAt   = date('Y-m-d H:i:s', strtotime($paymentDate) ?: time());
+                $stmtApp  = $this->db->prepare(
+                    'UPDATE student_applications
+                        SET transaction_id = ?, payment_amount = ?, payment_currency = ?, paid_at = ?
+                      WHERE id = ?'
+                );
+                $stmtApp->bind_param('sdssi', $txCode, $amount, $currency, $paidAt, $appId);
+                $ok = $stmtApp->execute();
+                $err = $stmtApp->error;
+                $stmtApp->close();
+
+                if (!$ok) {
+                    http_response_code(500);
+                    echo json_encode(['timestamp' => $date, 'status' => 500, 'message' => 'Application payment update failed: ' . $err]);
+                    return;
+                }
+
+                http_response_code(200);
+                echo json_encode([
+                    'timestamp' => $date,
+                    'status'    => 200,
+                    'message'   => 'Payment recorded',
+                    'data'      => [
+                        'internal_transaction_id' => $application['application_number'],
+                        'external_transaction_id' => $txCode,
+                        'payer_phone_number'      => $application['phone'] ?? '',
+                    ],
+                ]);
+                return;
+            }
+
             http_response_code(404);
             echo json_encode(['timestamp' => $date, 'status' => 404, 'message' => 'Payer not found']);
             return;
