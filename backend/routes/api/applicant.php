@@ -42,6 +42,11 @@ $router->group('/api/applicant', function ($router) {
     $router->post('/application/draft',  [ApplicantProfileController::class, 'draftApplication']);
     $router->post('/application/submit', [ApplicantProfileController::class, 'submitApplication']);
     $router->post('/application/payment', [ApplicantProfileController::class, 'uploadPaymentSlip']);
+
+    // ── Application fee (Urubuto Pay) ────────────────────────────────────────
+    // Defined before the /application/:id catch-all so "payment" isn't captured as an id.
+    $router->get('/application/payment/checkout', [ApplicantProfileController::class, 'getPaymentCheckout']);
+    $router->get('/application/payment/status',   [ApplicantProfileController::class, 'getPaymentStatus']);
     $router->post('/application/verify',       [ApplicantProfileController::class, 'verifyApplication']);
     $router->post('/application/resend-code',  [ApplicantProfileController::class, 'resendVerificationCode']);
 

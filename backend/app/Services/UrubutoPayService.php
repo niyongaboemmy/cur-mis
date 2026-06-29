@@ -79,12 +79,15 @@ class UrubutoPayService
             return null;
         }
 
-        $newToken  = bin2hex(random_bytes(32));
-        $expiresAt = date('Y-m-d H:i:s', time() + 7200); // 2 hours
+        $newToken = bin2hex(random_bytes(32));
 
+        // Compute the expiry on the DB clock (DATE_ADD(NOW(), …)) rather than in
+        // PHP. The webhook middleware validates with `token_expires_at > NOW()`,
+        // so writing a PHP timestamp would silently expire tokens whenever PHP and
+        // MySQL run in different timezones (e.g. PHP=UTC, MySQL=local).
         $this->db->execute(
-            'UPDATE api_authorization SET token = ?, token_expires_at = ? WHERE id = ?',
-            [$newToken, $expiresAt, (int)$row['id']]
+            'UPDATE api_authorization SET token = ?, token_expires_at = DATE_ADD(NOW(), INTERVAL 2 HOUR) WHERE id = ?',
+            [$newToken, (int)$row['id']]
         );
 
         return [
@@ -98,22 +101,49 @@ class UrubutoPayService
     public function validatePayer(string $payerCode, string $merchantCode): ?array
     {
         $student = $this->lookupStudent($payerCode);
-        if (!$student) {
-            return null;
+        if ($student) {
+            $payer_names     = trim(strtoupper($student['fname'] ?? '') . ' ' . strtoupper($student['lname'] ?? ''));
+            $totalOutstanding = (int) round($this->getOutstandingBalance($student['regnumber']));
+
+            return [
+                'merchant_code'               => $merchantCode,
+                'payer_code'                  => $student['regnumber'],
+                'payer_names'                 => $payer_names,
+                'currency'                    => 'RWF',
+                'payer_must_pay_total_amount' => 'NO',
+                'amount'                      => $totalOutstanding,
+                'comment'                     => 'school fees',
+            ];
         }
 
-        $payer_names     = trim(strtoupper($student['fname'] ?? '') . ' ' . strtoupper($student['lname'] ?? ''));
-        $totalOutstanding = (int) round($this->getOutstandingBalance($student['regnumber']));
+        // Not an enrolled student — fall back to an applicant paying the one-off
+        // application processing fee (payer_code = student_applications.application_number).
+        $application = $this->lookupApplication($payerCode);
+        if ($application) {
+            $fee        = $this->applicationFee();
+            $payerNames = trim(strtoupper(($application['first_name'] ?? '') . ' ' . ($application['last_name'] ?? '')));
 
-        return [
-            'merchant_code'               => $merchantCode,
-            'payer_code'                  => $student['regnumber'],
-            'payer_names'                 => $payer_names,
-            'currency'                    => 'RWF',
-            'payer_must_pay_total_amount' => 'NO',
-            'amount'                      => $totalOutstanding,
-            'comment'                     => 'school fees',
-        ];
+            return [
+                'merchant_code'               => $merchantCode,
+                'payer_code'                  => $application['application_number'],
+                'payer_names'                 => $payerNames !== '' ? $payerNames : 'APPLICANT',
+                'currency'                    => 'RWF',
+                // Fixed fee — the applicant must pay it in full, no partial payments.
+                'payer_must_pay_total_amount' => 'YES',
+                'amount'                      => $fee,
+                'comment'                     => 'application processing fee',
+                'service_code'                => $this->applicationServiceCode(),
+                'commission_rate'             => 0,
+                'services'                    => [[
+                    'service_code' => $this->applicationServiceCode(),
+                    'service_name' => $this->applicationServiceName(),
+                    'amount'       => $fee,
+                    'currency'     => 'RWF',
+                ]],
+            ];
+        }
+
+        return null;
     }
 
     /**
@@ -203,6 +233,7 @@ class UrubutoPayService
         $txCode      = trim((string)($cb['transaction_id'] ?? $cb['transaction_code'] ?? ''));
         $payerCode   = trim((string)($cb['payer_code'] ?? ''));
         $amount      = (float)($cb['amount'] ?? 0);
+        $currency    = strtoupper(trim((string)($cb['currency'] ?? 'RWF'))) ?: 'RWF';
         $serviceCode = trim((string)($cb['service_code'] ?? $cb['payment_purpose_code'] ?? ''));
         $rawDate     = trim((string)($cb['payment_date_time'] ?? $cb['payment_date'] ?? ''));
         $paymentDate = $rawDate !== '' ? date('Y-m-d H:i:s', strtotime($rawDate)) : date('Y-m-d H:i:s');
@@ -231,6 +262,12 @@ class UrubutoPayService
         // ── Student lookup ────────────────────────────────────────────────────
         $student = $this->lookupStudent($payerCode);
         if (!$student) {
+            // Not an enrolled student — this may be an applicant paying the
+            // one-off application processing fee. Record it onto the application.
+            $application = $this->lookupApplication($payerCode);
+            if ($application) {
+                return $this->recordApplicationPayment($application, $txCode, $amount, $currency, $paymentDate, $serviceCode);
+            }
             return ['status' => 'error', 'payment_id' => null, 'message' => 'Student not found: ' . $payerCode];
         }
 
@@ -497,6 +534,144 @@ class UrubutoPayService
         ];
     }
 
+    // ── Application Fee (Admissions) ──────────────────────────────────────────
+
+    /**
+     * Build the UrubutoPay hosted-checkout URL for an applicant paying the
+     * one-off application processing fee. The payer_code is the application
+     * number; when the applicant pays, UrubutoPay calls verifyPayer() and
+     * paymentCallback() with this same code, which resolve back to the
+     * student_applications row.
+     */
+    public function generateApplicationCheckoutUrl(string $appNumber): array
+    {
+        $merchantCode = $this->merchantCode();
+        $serviceCode  = $this->applicationServiceCode();
+        $checkoutBase = $_ENV['URUBUTOPAY_CHECKOUT_URL'] ?? self::CHECKOUT_BASE; // .../pay-now
+
+        // UrubutoPay's PRE-FILLED deep link is the `/pay-now/initiate` route — it
+        // reads origin/mhcd/pycd/sccd from the query, skips the merchant+payer
+        // entry form, and goes straight to choosing a payment method. The bare
+        // `/pay-now` page IGNORES these params (verified against their JS bundle),
+        // which is why the fields showed up empty before.
+        //   mhcd = merchant code, pycd = payer code (= application number),
+        //   sccd = service code, origin=internal marks an institutional deep link.
+        $checkoutUrl = rtrim($checkoutBase, '/') . '/initiate'
+            . '?origin=internal'
+            . '&mhcd=' . urlencode($merchantCode)
+            . '&pycd=' . urlencode($appNumber)
+            . '&sccd=' . urlencode($serviceCode);
+
+        return [
+            'checkout_url'  => $checkoutUrl,
+            'merchant_code' => $merchantCode,
+            'payer_code'    => $appNumber,
+            'amount'        => $this->applicationFee(),
+            'currency'      => 'RWF',
+            'service_code'  => $serviceCode,
+        ];
+    }
+
+    /**
+     * Record a successful UrubutoPay payment of the application processing fee
+     * onto the student_applications row. Idempotent on transaction_id.
+     */
+    private function recordApplicationPayment(
+        array  $application,
+        string $txCode,
+        float  $amount,
+        string $currency,
+        string $paymentDate,
+        string $serviceCode
+    ): array {
+        $appId      = (int)($application['id'] ?? 0);
+        $appNumber  = (string)($application['application_number'] ?? '');
+        $phone      = (string)($application['phone'] ?? '');
+
+        // Idempotency — same transaction already recorded for this application.
+        if (!empty($application['paid_at'])
+            && (string)($application['transaction_id'] ?? '') === $txCode) {
+            return [
+                'status'             => 'duplicate',
+                'payment_id'         => $appId,
+                'message'            => 'Payment already recorded',
+                'internal_tx_id'     => $appNumber,
+                'external_tx_id'     => $txCode,
+                'payer_phone_number' => $phone,
+            ];
+        }
+
+        $this->db->execute(
+            "UPDATE `student_applications`
+                SET transaction_id   = ?,
+                    payment_amount   = ?,
+                    payment_currency = ?,
+                    paid_at          = ?
+              WHERE id = ?",
+            [$txCode, $amount, ($currency ?: 'RWF'), $paymentDate, $appId]
+        );
+
+        SystemLogService::log(
+            'CREATE',
+            'ADMISSIONS',
+            "UrubutoPay application fee: tx={$txCode}, application={$appNumber}, amount={$amount} RWF.",
+            $appId,
+            'student_application',
+            ['transaction_code' => $txCode, 'amount' => $amount, 'service_code' => $serviceCode]
+        );
+
+        return [
+            'status'             => 'recorded',
+            'payment_id'         => $appId,
+            'message'            => 'Payment recorded',
+            'internal_tx_id'     => $appNumber,
+            'external_tx_id'     => $txCode,
+            'payer_phone_number' => $phone,
+        ];
+    }
+
+    /** Resolve config: merchant code (env first, DB fallback). */
+    private function merchantCode(): string
+    {
+        $code = (string)($_ENV['URUBUTOPAY_MERCHANT_CODE'] ?? '');
+        if ($code === '') {
+            $row  = $this->db->fetchOne('SELECT merchant_code FROM api_authorization LIMIT 1', []);
+            $code = (string)($row['merchant_code'] ?? '');
+        }
+        return $code;
+    }
+
+    /** Application processing fee (RWF), from .env with a 5,000 default. */
+    private function applicationFee(): int
+    {
+        return (int)($_ENV['URUBUTOPAY_APPLICATION_FEE'] ?? 5000);
+    }
+
+    private function applicationServiceCode(): string
+    {
+        return (string)($_ENV['URUBUTOPAY_APPLICATION_SERVICE_CODE'] ?? 'cursu-fees-8249');
+    }
+
+    private function applicationServiceName(): string
+    {
+        return (string)($_ENV['URUBUTOPAY_APPLICATION_SERVICE_NAME'] ?? 'APPLICATION FEE');
+    }
+
+    /** Look up an applicant by application number (used as the UrubutoPay payer code). */
+    private function lookupApplication(string $payerCode): ?array
+    {
+        $row = $this->db->fetchOne(
+            "SELECT id, application_number, first_name, last_name, email,
+                    COALESCE(phone, '') AS phone,
+                    payment_amount, payment_currency, transaction_id, paid_at, status
+               FROM `student_applications`
+              WHERE application_number = ?
+              LIMIT 1",
+            [$payerCode]
+        );
+        return $row ?: null;
+    }
+
     // ── Mobile Payment History ────────────────────────────────────────────────
 
     /**
@@ -701,7 +876,7 @@ class UrubutoPayService
         if ($clean !== $payerCode) {
             $row = $this->db->fetchOne(
                 "SELECT regnumber, fname, lname, acc_year, current_level,
-                        COALESCE(phone, telephone, '') AS phone
+                        COALESCE(phone, '') AS phone
                  FROM student WHERE regnumber = ? LIMIT 1",
                 [$clean]
             );
@@ -710,7 +885,7 @@ class UrubutoPayService
 
         $row = $this->db->fetchOne(
             "SELECT regnumber, fname, lname, acc_year, current_level,
-                    COALESCE(phone, telephone, '') AS phone
+                    COALESCE(phone, '') AS phone
              FROM student WHERE regnumber = ? LIMIT 1",
             [$payerCode]
         );
