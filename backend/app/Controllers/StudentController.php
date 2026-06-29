@@ -1277,6 +1277,17 @@ class StudentController extends BaseController
             }
         }
 
+        // Fallback (and the default in production): redirect to the public CUR
+        // photo store, which the browser can always reach. This is what makes
+        // legacy images load online, where the old registraria files are NOT on
+        // the API server's filesystem (so LEGACY_PHOTO_DIR is unset / empty).
+        $legacy = \App\Helpers\PhotoHelper::legacyUrl($photoId);
+        if ($legacy !== null) {
+            header('Location: ' . $legacy, true, 302);
+            header('Cache-Control: private, max-age=300');
+            exit;
+        }
+
         $this->error($response, 'Student photo is not available.', 404);
     }
 
