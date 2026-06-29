@@ -51,12 +51,15 @@ env:
   # Placeholders: DEPLOY_TOKEN, DEPLOY_OFFSET, DEPLOY_ZIP_NAME, DEPLOY_DEST_DIR
   EXTRACTOR_HOME_B64: PD9waHAKaWYgKCgkX0dFVFsndG9rZW4nXSA/PyAnJykgIT09ICdERVBMT1lfVE9LRU4nKSB7IGh0dHBfcmVzcG9uc2VfY29kZSg0MDMpOyBkaWUoJ2ZvcmJpZGRlbicpOyB9CiRob21lID0gcmVhbHBhdGgoX19ESVJfXyAuICcvREVQTE9ZX09GRlNFVCcpOwokemlwID0gJGhvbWUgLiAnL0RFUExPWV9aSVBfTkFNRSc7CiRkZXN0ID0gJGhvbWUgLiAnL0RFUExPWV9ERVNUX0RJUic7CiRzdGFnaW5nID0gJGhvbWUgLiAnL19kc18nIC4gdGltZSgpOwokeiA9IG5ldyBaaXBBcmNoaXZlOwppZiAoJHotPm9wZW4oJHppcCkgIT09IFRSVUUpIHsgaHR0cF9yZXNwb25zZV9jb2RlKDUwMCk7IGVjaG8gJ2ZhaWxlZDogJy4kei0+Z2V0U3RhdHVzU3RyaW5nKCk7IGV4aXQ7IH0KaWYgKCFpc19kaXIoJGRlc3QpKSBta2RpcigkZGVzdCwgMDc1NSwgdHJ1ZSk7CmlmICghbWtkaXIoJHN0YWdpbmcsIDA3NTUsIHRydWUpKSB7IGh0dHBfcmVzcG9uc2VfY29kZSg1MDApOyBlY2hvICdmYWlsZWQ6IHN0YWdpbmcnOyBleGl0OyB9CiR6LT5leHRyYWN0VG8oJHN0YWdpbmcpOyAkei0+Y2xvc2UoKTsgdW5saW5rKCR6aXApOwokaXQgPSBuZXcgUmVjdXJzaXZlSXRlcmF0b3JJdGVyYXRvcihuZXcgUmVjdXJzaXZlRGlyZWN0b3J5SXRlcmF0b3IoJHN0YWdpbmcsIFJlY3Vyc2l2ZURpcmVjdG9yeUl0ZXJhdG9yOjpTS0lQX0RPVFMpLCBSZWN1cnNpdmVJdGVyYXRvckl0ZXJhdG9yOjpTRUxGX0ZJUlNUKTsKZm9yZWFjaCAoJGl0IGFzICRmKSB7ICRyZWwgPSBzdWJzdHIoJGYtPmdldFBhdGhuYW1lKCksIHN0cmxlbigkc3RhZ2luZykrMSk7ICRkID0gJGRlc3QuJy8nLiRyZWw7IGlmICgkZi0+aXNEaXIoKSkgeyBpZiAoIWlzX2RpcigkZCkpIG1rZGlyKCRkLDA3NTUsdHJ1ZSk7IH0gZWxzZSB7ICRkZCA9IGRpcm5hbWUoJGQpOyBpZiAoIWlzX2RpcigkZGQpKSBta2RpcigkZGQsMDc1NSx0cnVlKTsgcmVuYW1lKCRmLT5nZXRQYXRobmFtZSgpLCRkKTsgfSB9CiRjbCA9IG5ldyBSZWN1cnNpdmVJdGVyYXRvckl0ZXJhdG9yKG5ldyBSZWN1cnNpdmVEaXJlY3RvcnlJdGVyYXRvcigkc3RhZ2luZywgUmVjdXJzaXZlRGlyZWN0b3J5SXRlcmF0b3I6OlNLSVBfRE9UUyksIFJlY3Vyc2l2ZUl0ZXJhdG9ySXRlcmF0b3I6OkNISUxEX0ZJUlNUKTsKZm9yZWFjaCAoJGNsIGFzICRmKSB7ICRmLT5pc0RpcigpID8gcm1kaXIoJGYtPmdldFBhdGhuYW1lKCkpIDogdW5saW5rKCRmLT5nZXRQYXRobmFtZSgpKTsgfQpAcm1kaXIoJHN0YWdpbmcpOwppZiAoZnVuY3Rpb25fZXhpc3RzKCdvcGNhY2hlX3Jlc2V0JykpIG9wY2FjaGVfcmVzZXQoKTsKdW5saW5rKF9fRklMRV9fKTsgZWNobyAnb2snOwo=
 
-  # OPcache flush helper — base64 of:
+  # OPcache flush helper — does NOT self-delete, since PHP-FPM has multiple
+  # worker processes each with their own OPcache. We call this endpoint many
+  # times in a loop (round-robin across workers) to clear all of them, then
+  # delete the file via a separate cPanel API call. Base64 of:
   #   <?php
   #   if (($_GET["token"] ?? "") !== "FLUSH_TOKEN") { http_response_code(403); die("forbidden"); }
-  #   if (function_exists("opcache_reset")) { opcache_reset(); unlink(__FILE__); echo "ok"; }
-  #   else { unlink(__FILE__); echo "no-opcache"; }
-  FLUSH_OPCACHE_B64: PD9waHAKaWYgKCgkX0dFVFsidG9rZW4iXSA/PyAiIikgIT09ICJGTFVTSF9UT0tFTiIpIHsgaHR0cF9yZXNwb25zZV9jb2RlKDQwMyk7IGRpZSgiZm9yYmlkZGVuIik7IH0KaWYgKGZ1bmN0aW9uX2V4aXN0cygib3BjYWNoZV9yZXNldCIpKSB7CiAgICBvcGNhY2hlX3Jlc2V0KCk7CiAgICB1bmxpbmsoX19GSUxFX18pOwogICAgZWNobyAib2siOwp9IGVsc2UgewogICAgdW5saW5rKF9fRklMRV9fKTsKICAgIGVjaG8gIm5vLW9wY2FjaGUiOwp9Cg==
+  #   if (function_exists("opcache_reset")) { opcache_reset(); echo "ok"; }
+  #   else { echo "no-opcache"; }
+  FLUSH_OPCACHE_B64: PD9waHAKaWYgKCgkX0dFVFsidG9rZW4iXSA/PyAiIikgIT09ICJGTFVTSF9UT0tFTiIpIHsgaHR0cF9yZXNwb25zZV9jb2RlKDQwMyk7IGRpZSgiZm9yYmlkZGVuIik7IH0KaWYgKGZ1bmN0aW9uX2V4aXN0cygib3BjYWNoZV9yZXNldCIpKSB7CiAgICBvcGNhY2hlX3Jlc2V0KCk7CiAgICBlY2hvICJvayI7Cn0gZWxzZSB7CiAgICBlY2hvICJuby1vcGNhY2hlIjsKfQo=
 
 jobs:
   deploy:
@@ -103,7 +106,9 @@ jobs:
           cd backend
           zip -r ../backend-src.zip . \
             --exclude './vendor/*' \
+            --exclude './vendor/**' \
             --exclude './public/*' \
+            --exclude './public/**' \
             --exclude './*.phar' \
             --exclude './test_*.php' \
             --exclude './logs/*.log' \
@@ -237,9 +242,12 @@ jobs:
           [ "$RESULT" = "ok" ] || { echo "Extraction failed: $RESULT"; exit 1; }
 
       # ── Step 4: Flush OPcache via fresh PHP helper ────────────────────────────
-      # Upload a brand-new PHP file (not cached by OPcache) that calls opcache_reset()
-      # to ensure all PHP-FPM workers reload fresh bytecode on next request.
-      - name: Flush OPcache
+      # Upload a brand-new PHP file (not yet cached by OPcache) that calls
+      # opcache_reset(). PHP-FPM runs several worker processes that each keep
+      # their own OPcache; one call only clears whichever worker handles that
+      # request. We call it repeatedly (round-robin across workers) so every
+      # worker recompiles fresh bytecode, then delete the helper file.
+      - name: Flush OPcache (all workers)
         timeout-minutes: 2
         env:
           CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
@@ -259,8 +267,16 @@ jobs:
           [ "$(echo "$R" | jq -r '.status // 0')" = "1" ] || { echo "Upload failed"; exit 1; }
 
           sleep 1
-          RESULT=$(curl -s -k --max-time 15 "https://cur.ac.rw/umis/api/_flush_opcache.php?token=$TOKEN")
-          echo "OPcache flush: $RESULT"
+          for i in $(seq 1 20); do
+            RESULT=$(curl -s -k --max-time 15 "https://cur.ac.rw/umis/api/_flush_opcache.php?token=$TOKEN")
+            echo "OPcache flush #$i: $RESULT"
+          done
+
+          DEL=$(curl -s -k --max-time 15 -u "$CPANEL_USER:$CPANEL_PASS" \
+            --data-urlencode "metadata.basedir=/public_html/umis/api" \
+            --data-urlencode "files=_flush_opcache.php" \
+            "$CPANEL_URL/execute/Fileman/delete_files")
+          echo "Delete flush helper: $DEL"
 
       # ── Step 5: Clear OPcache via API + run pending migrations ────────────────
       - name: Clear OPcache + run migrations
