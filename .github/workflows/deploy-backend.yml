@@ -164,15 +164,56 @@ jobs:
           echo "Extract result: $RESULT"
           [ "$RESULT" = "ok" ] || { echo "Extraction failed: $RESULT"; exit 1; }
 
-      # ── Step 4: Clear OPcache so new PHP files are served immediately ──────────
-      - name: Clear OPcache
+      # ── Step 3b: Flush OPcache via a fresh PHP helper ────────────────────────
+      # The extractors call opcache_reset() from within their own PHP-FPM worker.
+      # Other FPM workers may retain stale bytecode. We upload a brand-new PHP
+      # file (never seen by OPcache) so it compiles fresh, calls opcache_reset(),
+      # and self-deletes. This guarantees all workers reload from disk on next hit.
+      #
+      # FLUSH_OPCACHE_B64 — base64 of:
+      #   <?php
+      #   if (($_GET["token"] ?? "") !== "FLUSH_TOKEN") { http_response_code(403); die("forbidden"); }
+      #   if (function_exists("opcache_reset")) { opcache_reset(); unlink(__FILE__); echo "ok"; }
+      #   else { unlink(__FILE__); echo "no-opcache"; }
+      - name: Flush OPcache via fresh PHP helper
+        env:
+          CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
+          FLUSH_OPCACHE_B64: PD9waHAKaWYgKCgkX0dFVFsidG9rZW4iXSA/PyAiIikgIT09ICJGTFVTSF9UT0tFTiIpIHsgaHR0cF9yZXNwb25zZV9jb2RlKDQwMyk7IGRpZSgiZm9yYmlkZGVuIik7IH0KaWYgKGZ1bmN0aW9uX2V4aXN0cygib3BjYWNoZV9yZXNldCIpKSB7CiAgICBvcGNhY2hlX3Jlc2V0KCk7CiAgICB1bmxpbmsoX19GSUxFX18pOwogICAgZWNobyAib2siOwp9IGVsc2UgewogICAgdW5saW5rKF9fRklMRV9fKTsKICAgIGVjaG8gIm5vLW9wY2FjaGUiOwp9Cg==
+        run: |
+          TOKEN=$(openssl rand -hex 16)
+
+          echo "$FLUSH_OPCACHE_B64" | base64 -d \
+            | sed "s/FLUSH_TOKEN/$TOKEN/" \
+            > _flush_opcache.php
+
+          R=$(curl -s -k -u "$CPANEL_USER:$CPANEL_PASS" \
+            -F "dir=/public_html/umis/api" \
+            -F "overwrite=1" \
+            -F "file-1=@_flush_opcache.php;type=text/plain" \
+            "$CPANEL_URL/execute/Fileman/upload_files")
+          echo "Upload flush helper: $R"
+          [ "$(echo "$R" | jq -r '.status // 0')" = "1" ] || { echo "Upload failed"; exit 1; }
+
+          sleep 1
+          RESULT=$(curl -s -k "https://cur.ac.rw/umis/api/_flush_opcache.php?token=$TOKEN")
+          echo "OPcache flush: $RESULT"
+
+      # ── Step 4: Clear OPcache via API + run pending migrations ───────────────
+      - name: Clear OPcache + run migrations
         env:
           DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
         run: |
+          # OPcache should now be clear; reset once more via the API endpoint
           RESULT=$(curl -s -k -X POST \
             -H "Authorization: Bearer $DEPLOY_KEY" \
             "$API_BASE/api/deploy/cache-clear")
           echo "Cache clear: $RESULT"
+
+          # Run pending DB migrations automatically
+          MIG=$(curl -s -k -X POST \
+            -H "Authorization: Bearer $DEPLOY_KEY" \
+            "$API_BASE/api/deploy/migrate")
+          echo "Migrations: $MIG"
 
       - name: Write job summary
         if: always()
