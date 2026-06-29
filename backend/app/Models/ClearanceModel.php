@@ -56,10 +56,10 @@ class ClearanceModel extends BaseModel
                     ay.label                              AS academic_year_label,
                     dep.dep_name                          AS department_name
              FROM `finance_clearances` sc
-             JOIN  `student` s            ON s.regnumber = sc.student_id COLLATE utf8mb4_unicode_ci
+             JOIN  `student` s            ON s.regnumber COLLATE utf8mb4_unicode_ci = sc.student_id COLLATE utf8mb4_unicode_ci
              LEFT JOIN `users` u          ON u.id        = sc.cleared_by
              LEFT JOIN `academic_years` ay ON ay.id      = sc.academic_year_id
-             LEFT JOIN `departements` dep ON dep.dep_id  = s.department
+             LEFT JOIN `departements` dep ON CAST(dep.dep_id AS CHAR) COLLATE utf8mb4_unicode_ci = s.department COLLATE utf8mb4_unicode_ci
              WHERE sc.academic_year_id = ? AND sc.semester IS NULL
              ORDER BY sc.status ASC, s.lname ASC
              LIMIT ? OFFSET ?",

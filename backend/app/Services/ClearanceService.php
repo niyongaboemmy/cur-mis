@@ -332,8 +332,8 @@ class ClearanceService
                     SUM(fi.amount_paid)             AS amount_paid,
                     SUM(fi.bursary_applied)         AS bursary_applied
              FROM `fee_invoices` fi
-             JOIN  `student` s         ON s.regnumber = fi.student_id COLLATE utf8mb4_unicode_ci
-             LEFT JOIN `departements` dep ON dep.dep_id = s.department
+             JOIN  `student` s         ON s.regnumber COLLATE utf8mb4_unicode_ci = fi.student_id COLLATE utf8mb4_unicode_ci
+             LEFT JOIN `departements` dep ON CAST(dep.dep_id AS CHAR) COLLATE utf8mb4_unicode_ci = s.department COLLATE utf8mb4_unicode_ci
              WHERE fi.academic_year_id = ?
                AND fi.fee_structure_id = ?
                AND fi.fee_type NOT IN ('ARREARS','BURSARY_CREDIT')

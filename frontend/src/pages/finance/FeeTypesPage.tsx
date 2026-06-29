@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import { feeTypeService } from '@/services/financeService'
 import type { FeeTypeRecord, CreateFeeTypePayload, UpdateFeeTypePayload } from '@/types/finance'
 import ModalPortal from '@/components/ui/ModalPortal'
+import FeeMappingPanel from './FeeMappingPanel'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -129,6 +130,9 @@ export default function FeeTypesPage() {
 
   return (
     <div className="space-y-4 pb-12">
+
+      {/* Application Fee Mapping Settings */}
+      <FeeMappingPanel />
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-ink-900 p-5 rounded-xl border border-ink-200 dark:border-ink-800 shadow-sm">

@@ -746,8 +746,8 @@ class ModuleMarksController extends BaseController
                     f.fac_name, f.fac_code,
                     d.dep_name, d.dep_acronym
              FROM `student` s
-             LEFT JOIN `faculty`     f ON CAST(f.fac_id AS CHAR) = s.faculty
-             LEFT JOIN `departements` d ON CAST(d.dep_id AS CHAR) = s.department
+             LEFT JOIN `faculty`      f ON CAST(f.fac_id AS CHAR) COLLATE utf8mb4_unicode_ci = s.faculty COLLATE utf8mb4_unicode_ci
+             LEFT JOIN `departements` d ON CAST(d.dep_id AS CHAR) COLLATE utf8mb4_unicode_ci = s.department COLLATE utf8mb4_unicode_ci
              WHERE s.regnumber = ? LIMIT 1",
             [$reg]
         ) ?: ['regnumber' => $reg];

@@ -36,10 +36,10 @@ class DocumentHelper
                 d.dep_name,
                 COALESCE(o.name, dop.option_name, '') AS option_name
              FROM student s
-             LEFT JOIN faculty     f   ON CAST(f.fac_id  AS CHAR) = s.faculty
-             LEFT JOIN departements d  ON CAST(d.dep_id  AS CHAR) = s.department
-             LEFT JOIN options      o  ON CAST(o.id      AS CHAR) = s.std_option
-             LEFT JOIN dep_options  dop ON CAST(dop.op_id AS CHAR) = s.std_option
+             LEFT JOIN faculty     f   ON CAST(f.fac_id  AS CHAR) COLLATE utf8mb4_unicode_ci = s.faculty    COLLATE utf8mb4_unicode_ci
+             LEFT JOIN departements d  ON CAST(d.dep_id  AS CHAR) COLLATE utf8mb4_unicode_ci = s.department COLLATE utf8mb4_unicode_ci
+             LEFT JOIN options      o  ON CAST(o.id      AS CHAR) COLLATE utf8mb4_unicode_ci = s.std_option COLLATE utf8mb4_unicode_ci
+             LEFT JOIN dep_options  dop ON CAST(dop.op_id AS CHAR) COLLATE utf8mb4_unicode_ci = s.std_option COLLATE utf8mb4_unicode_ci
                                       AND o.id IS NULL
              WHERE s.id = ?
              LIMIT 1",

@@ -719,3 +719,65 @@ export const overdueAlertService = {
   sendAlerts: (data: SendAlertsPayload) =>
     api.post<SendAlertsResult>('/api/fines/alerts/send', data),
 };
+
+// ── Application Fee Reconciliation ────────────────────────────────────────────
+
+export interface AppFeeReconciliationRow {
+  application_id:        number
+  application_number:    string
+  applicant_name:        string
+  email:                 string
+  application_fee_amount: number
+  application_tx_ref:    string
+  application_paid_at:   string
+  application_status:    string
+  enrolled_student_id:   string | null
+  invoice_id:            number | null
+  invoice_fee_type:      string | null
+  invoice_amount_due:    number | null
+  invoice_amount_paid:   number | null
+  invoice_status:        string | null
+  transfer_payment_id:   number | null
+  transferred_amount:    number | null
+  transfer_receipt:      string | null
+  transferred_at:        string | null
+}
+
+export interface AppFeeReconciliationResponse {
+  summary: {
+    total_applications:     number
+    total_amount_collected: number
+    credited_count:         number
+    credited_amount:        number
+    pending_count:          number
+    not_enrolled_count:     number
+  }
+  rows: AppFeeReconciliationRow[]
+  pagination: { current_page: number; per_page: number; total: number; last_page: number }
+  note?: string
+}
+
+export interface RunPendingResult {
+  credited: number
+  skipped:  number
+  errors:   number
+  details:  { id: number; result: string; message?: string }[]
+}
+
+export const appFeeReconciliationService = {
+  list: (
+    params: { academic_year_id?: number; status?: string; page?: number; per_page?: number },
+    signal?: AbortSignal,
+  ) =>
+    api.get<AppFeeReconciliationResponse>(
+      '/api/finance/reports/application-fee-reconciliation',
+      params,
+      signal,
+    ),
+
+  runPending: (data: { academic_year_id: number }) =>
+    api.post<RunPendingResult>(
+      '/api/finance/reports/application-fee-reconciliation/run-pending',
+      data,
+    ),
+};

@@ -170,7 +170,15 @@ export default function ApplyPage() {
   // the applicant can submit. `paid` is driven by the status poll in PaymentStep.
   const [paid, setPaid] = useState(false);
   const [confirmAccurate, setConfirmAccurate] = useState(false);
-  const APPLICATION_FEE = 5000; // RWF — TODO: surface from server config later
+
+  // Application fee amount — resolved from server (admin-configurable, public endpoint).
+  // Falls back to 5000 RWF while loading or if the setting is not configured.
+  const appFeeQ = useQuery({
+    queryKey: ['portal', 'application-fee'],
+    queryFn:  ({ signal }) => systemService.getPublicApplicationFee(signal),
+    staleTime: 5 * 60_000,
+  });
+  const APPLICATION_FEE = appFeeQ.data?.data?.amount || 5000;
 
   // Persistent draft cache: holds every value the applicant types until a
   // server-side draft application has been created (which only happens at
@@ -1461,7 +1469,14 @@ function PaymentStep({
 
       {/* Urubuto Pay */}
       <FieldGroup title="Payment">
-        {paid ? (
+        {(checkoutQuery.isLoading || (!paid && statusQuery.isLoading)) ? (
+          /* While checking server-side payment status, show a neutral skeleton
+             so we never flash the "Pay Now" form to someone who already paid. */
+          <div className="flex items-center gap-3 py-4 text-ink-400 dark:text-ink-500 text-[13px]">
+            <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+            Checking payment status…
+          </div>
+        ) : paid ? (
           <div className="rounded-lg border border-emerald-300 bg-emerald-50/60 dark:bg-emerald-900/10 px-4 py-4 flex items-start gap-3">
             <CheckCircle2 className="w-6 h-6 text-emerald-600 mt-0.5 shrink-0" />
             <div>

@@ -641,9 +641,32 @@ class UrubutoPayService
         return $code;
     }
 
-    /** Application processing fee (RWF), from .env with a 5,000 default. */
+    /**
+     * Application processing fee (RWF).
+     *
+     * Priority:
+     *  1. fee_structures amount for the mapped fee type + active academic year
+     *  2. settings.application_fee_amount
+     *  3. URUBUTOPAY_APPLICATION_FEE env var
+     *  4. Hard default: 5,000 RWF
+     */
     private function applicationFee(): int
     {
+        try {
+            $feeService = new FeeService();
+            // Resolve the active academic year
+            $yearRow = $this->db->fetchOne(
+                "SELECT id FROM `academic_years` WHERE is_current = 1 ORDER BY id DESC LIMIT 1",
+                []
+            );
+            $yearId = $yearRow ? (int)$yearRow['id'] : 0;
+            $amount = $feeService->resolveApplicationFeeAmount($yearId);
+            if ($amount > 0) {
+                return (int)$amount;
+            }
+        } catch (\Throwable $e) {
+            // fall through
+        }
         return (int)($_ENV['URUBUTOPAY_APPLICATION_FEE'] ?? 5000);
     }
 

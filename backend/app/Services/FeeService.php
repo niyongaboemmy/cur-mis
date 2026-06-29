@@ -247,12 +247,12 @@ class FeeService
         $bindings = [];
 
         if ($faculty) {
-            $where[] = "(s.faculty = CAST(? AS CHAR) OR s.faculty = (SELECT fac_name FROM `faculty` WHERE fac_id = ?))";
+            $where[] = "(s.faculty COLLATE utf8mb4_unicode_ci = CAST(? AS CHAR) COLLATE utf8mb4_unicode_ci OR s.faculty = (SELECT fac_name FROM `faculty` WHERE fac_id = ?))";
             $bindings[] = $faculty;
             $bindings[] = $faculty;
         }
         if ($dept) {
-            $where[] = "(department = CAST(? AS CHAR) OR department = (SELECT dep_acronym FROM `departements` WHERE dep_id = ?))";
+            $where[] = "(s.department COLLATE utf8mb4_unicode_ci = CAST(? AS CHAR) COLLATE utf8mb4_unicode_ci OR s.department = (SELECT dep_acronym FROM `departements` WHERE dep_id = ?))";
             $bindings[] = $dept;
             $bindings[] = $dept;
         }
@@ -319,13 +319,13 @@ class FeeService
         }
 
         if ($faculty) {
-            $where[] = "(s.faculty = CAST(? AS CHAR) OR s.faculty = (SELECT fac_name FROM `faculty` WHERE fac_id = ?))";
+            $where[] = "(s.faculty COLLATE utf8mb4_unicode_ci = CAST(? AS CHAR) COLLATE utf8mb4_unicode_ci OR s.faculty = (SELECT fac_name FROM `faculty` WHERE fac_id = ?))";
             $bindings[] = $faculty;
             $bindings[] = $faculty;
         }
         if ($dept) {
             // Check both ID and Acronym for robustness
-            $where[] = "(s.department = CAST(? AS CHAR) OR s.department = (SELECT dep_acronym FROM `departements` WHERE dep_id = ?))";
+            $where[] = "(s.department COLLATE utf8mb4_unicode_ci = CAST(? AS CHAR) COLLATE utf8mb4_unicode_ci OR s.department = (SELECT dep_acronym FROM `departements` WHERE dep_id = ?))";
             $bindings[] = $dept;
             $bindings[] = $dept;
         }
@@ -758,10 +758,10 @@ class FeeService
 
         $recentPayments = $this->db->fetchAll(
             "SELECT fp.receipt_number, fp.amount, fp.payment_method, fp.paid_at,
-                    s.fname, s.lname, fi.fee_type
+                    fp.source, s.fname, s.lname, fi.fee_type
              FROM `fee_payments` fp
              JOIN  `fee_invoices` fi ON fi.id = fp.invoice_id
-             LEFT JOIN `student` s ON s.regnumber = fp.student_id COLLATE utf8mb4_unicode_ci
+             LEFT JOIN `student` s ON s.regnumber COLLATE utf8mb4_unicode_ci = fp.student_id COLLATE utf8mb4_unicode_ci
              WHERE fi.academic_year_id = ? AND fp.status = 'confirmed'
              ORDER BY fp.paid_at DESC
              LIMIT 10",
@@ -775,10 +775,24 @@ class FeeService
             [$academicYearId]
         )['cnt'] ?? 0);
 
+        // Application fee transfers credited to invoices this year
+        $appTransferStats = $this->db->fetchOne(
+            "SELECT COALESCE(SUM(fp.amount), 0) AS total_amount,
+                    COUNT(fp.id)                AS total_count
+             FROM `fee_payments` fp
+             JOIN `fee_invoices` fi ON fi.id = fp.invoice_id
+             WHERE fi.academic_year_id = ?
+               AND fp.source = 'APPLICATION_TRANSFER'
+               AND fp.status = 'confirmed'",
+            [$academicYearId]
+        );
+
         return [
-            'totals'          => $totals,
-            'recent_payments' => $recentPayments,
-            'overdue_count'   => $overdueCount,
+            'totals'               => $totals,
+            'recent_payments'      => $recentPayments,
+            'overdue_count'        => $overdueCount,
+            'app_transfer_total'   => (float)($appTransferStats['total_amount'] ?? 0),
+            'app_transfer_count'   => (int)($appTransferStats['total_count']    ?? 0),
         ];
     }
 
@@ -1126,6 +1140,179 @@ class FeeService
             [$studentId, $currentYearId]
         );
         return max(0, (float)($row['arrears'] ?? 0));
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Application Fee → Finance Credit
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Resolve the application fee amount for a given academic year.
+     *
+     * Priority:
+     *  1. fee_structures row for the mapped fee type + academic year (finance admin configures this)
+     *  2. settings.application_fee_amount
+     *  3. Hard default: 5000 RWF
+     *
+     * Used by UrubutoPayService to determine what amount to charge applicants.
+     */
+    public function resolveApplicationFeeAmount(int $academicYearId): float
+    {
+        // 1. Read the mapped fee structure ID from settings
+        $setting     = $this->db->fetchOne(
+            "SELECT value FROM `settings` WHERE key_name = 'application_fee_mapped_fee_structure_id' LIMIT 1",
+            []
+        );
+        $structureId = (int)($setting['value'] ?? 0);
+
+        // 2. Look up the fee structure directly by ID
+        if ($structureId > 0) {
+            try {
+                $structure = $this->db->fetchOne(
+                    "SELECT amount FROM `fee_structures` WHERE id = ? AND is_active = 1 LIMIT 1",
+                    [$structureId]
+                );
+                if ($structure && (float)$structure['amount'] > 0) {
+                    return (float)$structure['amount'];
+                }
+            } catch (\Throwable $e) {
+                // fee_structures unavailable — fall through
+            }
+        }
+
+        // 3. Fall back to settings amount
+        $amtSetting = $this->db->fetchOne(
+            "SELECT value FROM `settings` WHERE key_name = 'application_fee_amount' LIMIT 1",
+            []
+        );
+        if ($amtSetting && (float)$amtSetting['value'] > 0) {
+            return (float)$amtSetting['value'];
+        }
+
+        return 5000.0;
+    }
+
+    /**
+     * Credit an application fee already paid by an applicant into the finance billing system.
+     *
+     * Called once inside ApplicationService::initiateEnrollment() immediately after
+     * autoGenerateInvoices(). Reads `application_fee_mapped_fee_type` from settings
+     * to know which invoice category receives the credit.
+     *
+     * Idempotent: a second call with the same applicationId is a no-op.
+     * Safe when mapped fee type is blank: returns early without error.
+     */
+    public function creditApplicationFee(
+        string $studentId,
+        int    $academicYearId,
+        float  $amount,
+        string $transactionRef,
+        int    $applicationId,
+        int    $actorId
+    ): array {
+        if ($amount <= 0 || $transactionRef === '') {
+            return ['status' => 'skipped', 'reason' => 'no_payment'];
+        }
+
+        // Idempotency guard
+        $existing = $this->db->fetchOne(
+            "SELECT id FROM `fee_payments`
+             WHERE source = 'APPLICATION_TRANSFER' AND source_application_id = ?
+             LIMIT 1",
+            [$applicationId]
+        );
+        if ($existing) {
+            return ['status' => 'duplicate', 'payment_id' => (int)$existing['id']];
+        }
+
+        // Read mapped fee structure ID — if blank/zero, skip (admin disabled mapping)
+        $setting     = $this->db->fetchOne(
+            "SELECT value FROM `settings` WHERE key_name = 'application_fee_mapped_fee_structure_id' LIMIT 1",
+            []
+        );
+        $structureId = (int)($setting['value'] ?? 0);
+        if ($structureId <= 0) {
+            return ['status' => 'skipped', 'reason' => 'no_mapping_configured'];
+        }
+
+        // Resolve fee_type from the structure record
+        $feeStructure = $this->db->fetchOne(
+            "SELECT fee_type FROM `fee_structures` WHERE id = ? AND is_active = 1 LIMIT 1",
+            [$structureId]
+        );
+        if (!$feeStructure) {
+            return ['status' => 'skipped', 'reason' => 'mapped_structure_not_found'];
+        }
+        $mappedFeeType = $feeStructure['fee_type'];
+
+        // Find the invoice for the mapped fee type for this student + year
+        $invoice = $this->db->fetchOne(
+            "SELECT id, fee_type, amount_due FROM `fee_invoices`
+             WHERE student_id COLLATE utf8mb4_unicode_ci = ?
+               AND academic_year_id = ?
+               AND fee_type = ?
+             ORDER BY id ASC LIMIT 1",
+            [$studentId, $academicYearId, $mappedFeeType]
+        );
+
+        if (!$invoice) {
+            // Create a zero-due placeholder invoice to hold the credit
+            // (happens when no matching fee_structure exists for this student's dept/level)
+            $invoiceId = (int)$this->invoiceModel->create([
+                'invoice_number'      => $this->generateInvoiceNumber(),
+                'student_id'          => $studentId,
+                'academic_year_id'    => $academicYearId,
+                'fee_type'            => $mappedFeeType,
+                'description'         => "Application fee transfer — no matching fee structure found",
+                'amount_due'          => 0.00,
+                'amount_paid'         => 0.00,
+                'is_system_generated' => 1,
+                'created_by'          => $actorId,
+            ]);
+        } else {
+            $invoiceId = (int)$invoice['id'];
+        }
+
+        // Cap credit at invoice amount_due so we never over-credit
+        $invoiceDue    = $invoice ? (float)$invoice['amount_due'] : 0.0;
+        $creditAmount  = ($invoiceDue > 0 && $amount > $invoiceDue) ? $invoiceDue : $amount;
+
+        $receiptNumber = $this->generateReceiptNumber();
+
+        $paymentId = (int)$this->paymentModel->create([
+            'invoice_id'           => $invoiceId,
+            'student_id'           => $studentId,
+            'amount'               => $creditAmount,
+            'payment_method'       => 'MOBILE_MONEY',
+            'source'               => 'APPLICATION_TRANSFER',
+            'source_application_id'=> $applicationId,
+            'reference_number'     => $transactionRef,
+            'receipt_number'       => $receiptNumber,
+            'status'               => 'confirmed',
+            'paid_at'              => date('Y-m-d H:i:s'),
+            'recorded_by'          => $actorId,
+            'notes'                => "Transferred from application fee. Original tx: {$transactionRef}",
+        ]);
+
+        $this->invoiceModel->applyPayment($invoiceId, $creditAmount);
+
+        SystemLogService::log(
+            'CREATE',
+            'FINANCE',
+            "Application fee RWF {$creditAmount} credited to {$mappedFeeType} invoice #{$invoiceId} "
+            . "for student {$studentId} (app ID: {$applicationId}, tx: {$transactionRef}).",
+            $paymentId,
+            'fee_payment',
+            ['mapped_fee_type' => $mappedFeeType, 'invoice_id' => $invoiceId, 'amount' => $creditAmount]
+        );
+
+        return [
+            'status'          => 'credited',
+            'payment_id'      => $paymentId,
+            'invoice_id'      => $invoiceId,
+            'mapped_fee_type' => $mappedFeeType,
+            'amount'          => $creditAmount,
+        ];
     }
 
     // ──────────────────────────────────────────────────────────────────────────

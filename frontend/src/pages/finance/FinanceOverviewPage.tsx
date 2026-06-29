@@ -5,7 +5,7 @@ import {
   Loader2, AlertTriangle, TrendingUp, CheckCircle2, Users,
   BarChart3, TrendingDown, Wallet, Banknote, ArrowRight,
   Clock, XCircle, AlertCircle, Activity,
-  Settings2, BookOpenCheck, ShieldCheck,
+  Settings2, BookOpenCheck, ShieldCheck, GitMerge,
 } from "lucide-react";
 import {
   financeReportService, balanceService, billingService,
@@ -263,10 +263,11 @@ export default function FinanceOverviewPage() {
       )}
 
       {/* ── KPI Cards ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         {[
           { label: "Total Expected",  value: formatRWF(expected),               sub: "invoiced this year",      icon: TrendingUp,   color: "text-ink-700 dark:text-ink-200",  bg: "bg-ink-100 dark:bg-ink-700" },
           { label: "Collected",       value: formatRWF(collected),              sub: `${pct}% of target`,       icon: CheckCircle2, color: "text-green-600",                  bg: "bg-green-50 dark:bg-green-900/20" },
+          { label: "App Fee Transfers", value: formatRWF(summary?.app_transfer_total ?? 0), sub: `${summary?.app_transfer_count ?? 0} application credits`, icon: GitMerge, color: "text-violet-600", bg: "bg-violet-50 dark:bg-violet-900/20" },
           { label: "Expenses",        value: formatRWF(bal?.total_expenses ?? 0), sub: "recorded this year",    icon: TrendingDown, color: "text-red-600",                    bg: "bg-red-50 dark:bg-red-900/20" },
           { label: "Net Balance",     value: formatRWF(bal?.net_balance ?? 0),  sub: "surplus / deficit",       icon: Wallet,       color: (bal?.net_balance ?? 0) >= 0 ? "text-green-600" : "text-red-600", bg: (bal?.net_balance ?? 0) >= 0 ? "bg-green-50 dark:bg-green-900/20" : "bg-red-50 dark:bg-red-900/20" },
         ].map((k) => (
@@ -519,7 +520,7 @@ export default function FinanceOverviewPage() {
                   <th className="px-4 py-2.5 text-left">Receipt #</th>
                   <th className="px-4 py-2.5 text-left">Student</th>
                   <th className="px-4 py-2.5 text-left">Fee Type</th>
-                  <th className="px-4 py-2.5 text-left">Method</th>
+                  <th className="px-4 py-2.5 text-left">Method / Source</th>
                   <th className="px-4 py-2.5 text-right">Amount</th>
                   <th className="px-4 py-2.5 text-left">Date</th>
                 </tr>
@@ -530,7 +531,15 @@ export default function FinanceOverviewPage() {
                     <td className="px-4 py-2.5 font-mono text-xs">{p.receipt_number}</td>
                     <td className="px-4 py-2.5 font-medium">{p.fname} {p.lname}</td>
                     <td className="px-4 py-2.5 text-ink-500 text-xs">{FEE_TYPE_LABELS[p.fee_type]}</td>
-                    <td className="px-4 py-2.5 text-ink-500 text-xs">{PAYMENT_METHOD_LABELS[p.payment_method]}</td>
+                    <td className="px-4 py-2.5 text-xs">
+                      {p.source === 'APPLICATION_TRANSFER' ? (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400 font-medium">
+                          <GitMerge className="w-3 h-3" /> App Fee Transfer
+                        </span>
+                      ) : (
+                        <span className="text-ink-500">{PAYMENT_METHOD_LABELS[p.payment_method]}</span>
+                      )}
+                    </td>
                     <td className="px-4 py-2.5 text-right font-mono font-semibold text-green-600">{formatRWF(p.amount)}</td>
                     <td className="px-4 py-2.5 text-ink-500 text-xs">{new Date(p.paid_at).toLocaleDateString()}</td>
                   </tr>

@@ -105,7 +105,7 @@ class DeliberationController extends BaseController
                     o.name         AS program_name,
                     o.acro         AS program_acronym
              FROM `student` st
-             LEFT JOIN `options` o ON CAST(o.id AS CHAR) = st.std_option
+             LEFT JOIN `options` o ON CAST(o.id AS CHAR) COLLATE utf8mb4_unicode_ci = st.std_option COLLATE utf8mb4_unicode_ci
              WHERE $whereClause
              ORDER BY st.lname, st.fname
              LIMIT $perPage OFFSET $offset",
@@ -408,7 +408,7 @@ class DeliberationController extends BaseController
              JOIN modules m          ON m.module_id = mm.module_id
              LEFT JOIN departements d ON d.dep_id   = m.department
              LEFT JOIN `student` st   ON st.regnumber = mm.student_regnumber
-             LEFT JOIN options prog   ON CAST(prog.id AS CHAR) = st.std_option
+             LEFT JOIN options prog   ON CAST(prog.id AS CHAR) COLLATE utf8mb4_unicode_ci = st.std_option COLLATE utf8mb4_unicode_ci
              WHERE $whereSql
              GROUP BY mm.student_regnumber, st.id, st.fname, st.lname, st.gender,
                       st.current_level, st.intake, st.std_option, st.student_state,
@@ -449,7 +449,7 @@ class DeliberationController extends BaseController
                     st.current_level, st.intake, st.std_option, st.student_state,
                     prog.name AS declared_program, prog.acro AS declared_program_acro
              FROM `student` st
-             LEFT JOIN options prog ON CAST(prog.id AS CHAR) = st.std_option
+             LEFT JOIN options prog ON CAST(prog.id AS CHAR) COLLATE utf8mb4_unicode_ci = st.std_option COLLATE utf8mb4_unicode_ci
              WHERE st.regnumber = ? LIMIT 1",
             [$reg]
         );
@@ -529,7 +529,7 @@ class DeliberationController extends BaseController
                     u.full_name AS created_by_name
              FROM deliberations d
              LEFT JOIN academic_years y ON y.id = d.academic_year_id
-             LEFT JOIN options        o ON CAST(o.id AS CHAR) = CAST(d.program_id AS CHAR)
+             LEFT JOIN options        o ON CAST(o.id AS CHAR) COLLATE utf8mb4_unicode_ci = CAST(d.program_id AS CHAR) COLLATE utf8mb4_unicode_ci
              LEFT JOIN users          u ON u.id = d.created_by
              WHERE {$where}
              ORDER BY d.created_at DESC",

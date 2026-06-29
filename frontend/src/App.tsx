@@ -113,6 +113,7 @@ import OnlinePaymentsHistoryPage from "@/pages/finance/OnlinePaymentsHistoryPage
 import SponsorsPage from "@/pages/finance/SponsorsPage";
 import ExpenseCategoriesPage from "@/pages/finance/ExpenseCategoriesPage";
 import FeeTypesPage from "@/pages/finance/FeeTypesPage";
+import AppFeeReconciliationPage from "@/pages/finance/AppFeeReconciliationPage";
 import ReceiptPdfPage from "@/pages/finance/ReceiptPdfPage";
 import MyFinancePage from "@/pages/finance/MyFinancePage";
 import FinesManagementPage from "@/pages/finance/FinesManagementPage";
@@ -547,6 +548,7 @@ function App() {
                   <Route path="clearance" element={<ClearancePage />} />
                   <Route path="refunds" element={<RefundsPage />} />
                   <Route path="reports" element={<RevenueReportPage />} />
+                  <Route path="app-fee-reconciliation" element={<AppFeeReconciliationPage />} />
                   <Route
                     element={
                       <ProtectedRoute

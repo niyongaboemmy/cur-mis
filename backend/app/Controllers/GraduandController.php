@@ -98,8 +98,8 @@ class GraduandController extends BaseController
              INNER JOIN module_marks mm2 ON mm2.student_regnumber = st.regnumber
                                         AND mm2.percentage IS NOT NULL
              {$yearJoin}
-             LEFT JOIN faculty       f ON CAST(f.fac_id AS CHAR) = st.faculty
-             LEFT JOIN departements  d ON CAST(d.dep_id AS CHAR) = st.department
+             LEFT JOIN faculty       f ON CAST(f.fac_id AS CHAR) COLLATE utf8mb4_unicode_ci = st.faculty COLLATE utf8mb4_unicode_ci
+             LEFT JOIN departements  d ON CAST(d.dep_id AS CHAR) COLLATE utf8mb4_unicode_ci = st.department COLLATE utf8mb4_unicode_ci
              LEFT JOIN dep_options   do2 ON do2.op_id = st.std_option
              LEFT JOIN options       o  ON o.acro = do2.option_acronym
              WHERE {$whereStr} {$yearFilter}
