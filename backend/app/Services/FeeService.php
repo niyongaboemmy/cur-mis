@@ -761,7 +761,7 @@ class FeeService
                     s.fname, s.lname, fi.fee_type
              FROM `fee_payments` fp
              JOIN  `fee_invoices` fi ON fi.id = fp.invoice_id
-             LEFT JOIN `student` s ON s.regnumber = fp.student_id
+             LEFT JOIN `student` s ON s.regnumber = fp.student_id COLLATE utf8mb4_unicode_ci
              WHERE fi.academic_year_id = ? AND fp.status = 'confirmed'
              ORDER BY fp.paid_at DESC
              LIMIT 10",

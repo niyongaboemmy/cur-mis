@@ -19,7 +19,7 @@ class OverdueAlertModel extends BaseModel
         $bindings = [];
 
         if (!empty($filters['student_id'])) {
-            $where[]    = 'oa.student_id = ?';
+            $where[]    = 'oa.student_id COLLATE utf8mb4_unicode_ci = ?';
             $bindings[] = $filters['student_id'];
         }
         if (!empty($filters['alert_level'])) {
@@ -57,7 +57,7 @@ class OverdueAlertModel extends BaseModel
                     u.full_name                    AS sent_by_name
              FROM `fee_overdue_alerts` oa
              LEFT JOIN `fee_invoices` fi ON fi.id = oa.invoice_id
-             LEFT JOIN `student` s       ON s.regnumber = oa.student_id
+             LEFT JOIN `student` s       ON s.regnumber = oa.student_id COLLATE utf8mb4_unicode_ci
              LEFT JOIN `academic_years` ay ON ay.id = fi.academic_year_id
              LEFT JOIN `users` u         ON u.id = oa.sent_by
              {$whereSql}

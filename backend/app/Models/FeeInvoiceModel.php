@@ -21,7 +21,7 @@ class FeeInvoiceModel extends BaseModel
         $bindings = [];
 
         if (!empty($filters['student_id'])) {
-            $where[]    = 'fi.student_id = ?';
+            $where[]    = 'fi.student_id COLLATE utf8mb4_unicode_ci = ?';
             $bindings[] = $filters['student_id'];
         }
         if (!empty($filters['academic_year_id'])) {
@@ -65,7 +65,7 @@ class FeeInvoiceModel extends BaseModel
                SUM(amount_due - amount_paid - bursary_applied)           AS balance,
                SUM(CASE WHEN status IN ('unpaid','overdue') THEN 1 ELSE 0 END) AS unpaid_count
              FROM `fee_invoices`
-             WHERE student_id = ? AND academic_year_id = ? AND fee_type != 'BURSARY_CREDIT'",
+             WHERE student_id COLLATE utf8mb4_unicode_ci = ? AND academic_year_id = ? AND fee_type != 'BURSARY_CREDIT'",
             [$studentId, $academicYearId]
         ) ?: ['total_due' => 0, 'total_paid' => 0, 'total_bursary' => 0, 'balance' => 0, 'unpaid_count' => 0];
     }
@@ -78,7 +78,7 @@ class FeeInvoiceModel extends BaseModel
         ?int $moduleId = null
     ): bool {
         $sql      = "SELECT id FROM `fee_invoices`
-                     WHERE student_id = ? AND academic_year_id = ? AND fee_type = ?";
+                     WHERE student_id COLLATE utf8mb4_unicode_ci = ? AND academic_year_id = ? AND fee_type = ?";
         $bindings = [$studentId, $academicYearId, $feeType];
 
         if ($moduleId !== null) {

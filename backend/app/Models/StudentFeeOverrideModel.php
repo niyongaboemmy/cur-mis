@@ -16,7 +16,7 @@ class StudentFeeOverrideModel extends BaseModel
     {
         return $this->db->fetchOne(
             "SELECT * FROM `student_fee_overrides`
-             WHERE student_id = ? AND academic_year_id = ? AND fee_type = ?
+             WHERE student_id COLLATE utf8mb4_unicode_ci = ? AND academic_year_id = ? AND fee_type = ?
              LIMIT 1",
             [$studentId, $academicYearId, $feeType]
         );
@@ -29,7 +29,7 @@ class StudentFeeOverrideModel extends BaseModel
             "SELECT sfo.*, u.full_name AS created_by_name
              FROM `student_fee_overrides` sfo
              LEFT JOIN `users` u ON u.id = sfo.created_by
-             WHERE sfo.student_id = ? AND sfo.academic_year_id = ?
+             WHERE sfo.student_id COLLATE utf8mb4_unicode_ci = ? AND sfo.academic_year_id = ?
              ORDER BY sfo.fee_type",
             [$studentId, $academicYearId]
         );

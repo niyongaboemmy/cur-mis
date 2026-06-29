@@ -134,7 +134,7 @@ class RefundController extends BaseController
         // Create a BURSARY_CREDIT invoice to reduce the student's outstanding balance
         $existing = $this->invoiceModel->db()->fetchOne(
             "SELECT id FROM `fee_invoices`
-             WHERE student_id = ? AND academic_year_id = ? AND fee_type = 'BURSARY_CREDIT'
+             WHERE student_id COLLATE utf8mb4_unicode_ci = ? AND academic_year_id = ? AND fee_type = 'BURSARY_CREDIT'
                AND description LIKE 'Refund credit%'
              LIMIT 1",
             [$refund['student_id'], $academicYearId]

@@ -280,7 +280,7 @@ class FinesController extends BaseController
                     (SELECT COUNT(*) FROM `fee_overdue_alerts` oa WHERE oa.invoice_id = fi.id) AS alert_count,
                     (SELECT MAX(oa.sent_at) FROM `fee_overdue_alerts` oa WHERE oa.invoice_id = fi.id) AS last_alert_at
              FROM `fee_invoices` fi
-             LEFT JOIN `student` s       ON s.regnumber = fi.student_id
+             LEFT JOIN `student` s       ON s.regnumber = fi.student_id COLLATE utf8mb4_unicode_ci
              LEFT JOIN `academic_years` ay ON ay.id = fi.academic_year_id
              WHERE fi.due_date < CURDATE()
                AND fi.status IN ('unpaid', 'partial')

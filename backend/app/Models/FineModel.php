@@ -19,7 +19,7 @@ class FineModel extends BaseModel
         $bindings = [];
 
         if (!empty($filters['student_id'])) {
-            $where[]    = 'ff.student_id = ?';
+            $where[]    = 'ff.student_id COLLATE utf8mb4_unicode_ci = ?';
             $bindings[] = $filters['student_id'];
         }
         if (!empty($filters['status'])) {
@@ -42,7 +42,7 @@ class FineModel extends BaseModel
         $countRow = $this->db->fetchOne(
             "SELECT COUNT(*) AS cnt
              FROM `fee_fines` ff
-             LEFT JOIN `student` s ON s.regnumber = ff.student_id
+             LEFT JOIN `student` s ON s.regnumber = ff.student_id COLLATE utf8mb4_unicode_ci
              {$whereSql}",
             $bindings
         );
