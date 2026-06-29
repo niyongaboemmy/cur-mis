@@ -1,17 +1,21 @@
 name: Deploy — Backend (PHP API)
 
 # Method: cPanel UAPI (port 2083) upload + one-time PHP helpers for extraction.
-# composer install runs on the GitHub Actions runner; vendor/ is zipped and uploaded.
+#
+# Two-zip strategy (fast updates):
+#   backend-src.zip   — source code only (no vendor/), ~300 KB, deployed every push
+#   backend-vendor.zip — vendor/ directory, ~15 MB, deployed ONLY when composer.lock changes
 #
 # Extraction — stage-then-swap:
 #   Each zip is extracted to a temp dir, then files are rename()d into place.
 #   rename() is atomic on the same filesystem — near-zero window of mixed files.
 #
 # Deploy order:
-#   1. Extract new source code to ~/backend/
-#   2. Extract new public/ entry point to ~/public_html/umis/api/
-#   3. Clear OPcache via POST /api/deploy/cache-clear
-#   NOTE: Migrations are run manually after deployment.
+#   1. vendor/ (if composer.lock changed)
+#   2. Source code → ~/backend/
+#   3. public/ entry point → ~/public_html/umis/api/
+#   4. Flush OPcache via fresh PHP helper
+#   5. Clear OPcache via API + run pending migrations
 #
 # Server layout after deploy:
 #   /home/curac/backend/              — PHP source + vendor/ (outside public_html)
@@ -47,6 +51,13 @@ env:
   # Placeholders: DEPLOY_TOKEN, DEPLOY_OFFSET, DEPLOY_ZIP_NAME, DEPLOY_DEST_DIR
   EXTRACTOR_HOME_B64: PD9waHAKaWYgKCgkX0dFVFsndG9rZW4nXSA/PyAnJykgIT09ICdERVBMT1lfVE9LRU4nKSB7IGh0dHBfcmVzcG9uc2VfY29kZSg0MDMpOyBkaWUoJ2ZvcmJpZGRlbicpOyB9CiRob21lID0gcmVhbHBhdGgoX19ESVJfXyAuICcvREVQTE9ZX09GRlNFVCcpOwokemlwID0gJGhvbWUgLiAnL0RFUExPWV9aSVBfTkFNRSc7CiRkZXN0ID0gJGhvbWUgLiAnL0RFUExPWV9ERVNUX0RJUic7CiRzdGFnaW5nID0gJGhvbWUgLiAnL19kc18nIC4gdGltZSgpOwokeiA9IG5ldyBaaXBBcmNoaXZlOwppZiAoJHotPm9wZW4oJHppcCkgIT09IFRSVUUpIHsgaHR0cF9yZXNwb25zZV9jb2RlKDUwMCk7IGVjaG8gJ2ZhaWxlZDogJy4kei0+Z2V0U3RhdHVzU3RyaW5nKCk7IGV4aXQ7IH0KaWYgKCFpc19kaXIoJGRlc3QpKSBta2RpcigkZGVzdCwgMDc1NSwgdHJ1ZSk7CmlmICghbWtkaXIoJHN0YWdpbmcsIDA3NTUsIHRydWUpKSB7IGh0dHBfcmVzcG9uc2VfY29kZSg1MDApOyBlY2hvICdmYWlsZWQ6IHN0YWdpbmcnOyBleGl0OyB9CiR6LT5leHRyYWN0VG8oJHN0YWdpbmcpOyAkei0+Y2xvc2UoKTsgdW5saW5rKCR6aXApOwokaXQgPSBuZXcgUmVjdXJzaXZlSXRlcmF0b3JJdGVyYXRvcihuZXcgUmVjdXJzaXZlRGlyZWN0b3J5SXRlcmF0b3IoJHN0YWdpbmcsIFJlY3Vyc2l2ZURpcmVjdG9yeUl0ZXJhdG9yOjpTS0lQX0RPVFMpLCBSZWN1cnNpdmVJdGVyYXRvckl0ZXJhdG9yOjpTRUxGX0ZJUlNUKTsKZm9yZWFjaCAoJGl0IGFzICRmKSB7ICRyZWwgPSBzdWJzdHIoJGYtPmdldFBhdGhuYW1lKCksIHN0cmxlbigkc3RhZ2luZykrMSk7ICRkID0gJGRlc3QuJy8nLiRyZWw7IGlmICgkZi0+aXNEaXIoKSkgeyBpZiAoIWlzX2RpcigkZCkpIG1rZGlyKCRkLDA3NTUsdHJ1ZSk7IH0gZWxzZSB7ICRkZCA9IGRpcm5hbWUoJGQpOyBpZiAoIWlzX2RpcigkZGQpKSBta2RpcigkZGQsMDc1NSx0cnVlKTsgcmVuYW1lKCRmLT5nZXRQYXRobmFtZSgpLCRkKTsgfSB9CiRjbCA9IG5ldyBSZWN1cnNpdmVJdGVyYXRvckl0ZXJhdG9yKG5ldyBSZWN1cnNpdmVEaXJlY3RvcnlJdGVyYXRvcigkc3RhZ2luZywgUmVjdXJzaXZlRGlyZWN0b3J5SXRlcmF0b3I6OlNLSVBfRE9UUyksIFJlY3Vyc2l2ZUl0ZXJhdG9ySXRlcmF0b3I6OkNISUxEX0ZJUlNUKTsKZm9yZWFjaCAoJGNsIGFzICRmKSB7ICRmLT5pc0RpcigpID8gcm1kaXIoJGYtPmdldFBhdGhuYW1lKCkpIDogdW5saW5rKCRmLT5nZXRQYXRobmFtZSgpKTsgfQpAcm1kaXIoJHN0YWdpbmcpOwppZiAoZnVuY3Rpb25fZXhpc3RzKCdvcGNhY2hlX3Jlc2V0JykpIG9wY2FjaGVfcmVzZXQoKTsKdW5saW5rKF9fRklMRV9fKTsgZWNobyAnb2snOwo=
 
+  # OPcache flush helper — base64 of:
+  #   <?php
+  #   if (($_GET["token"] ?? "") !== "FLUSH_TOKEN") { http_response_code(403); die("forbidden"); }
+  #   if (function_exists("opcache_reset")) { opcache_reset(); unlink(__FILE__); echo "ok"; }
+  #   else { unlink(__FILE__); echo "no-opcache"; }
+  FLUSH_OPCACHE_B64: PD9waHAKaWYgKCgkX0dFVFsidG9rZW4iXSA/PyAiIikgIT09ICJGTFVTSF9UT0tFTiIpIHsgaHR0cF9yZXNwb25zZV9jb2RlKDQwMyk7IGRpZSgiZm9yYmlkZGVuIik7IH0KaWYgKGZ1bmN0aW9uX2V4aXN0cygib3BjYWNoZV9yZXNldCIpKSB7CiAgICBvcGNhY2hlX3Jlc2V0KCk7CiAgICB1bmxpbmsoX19GSUxFX18pOwogICAgZWNobyAib2siOwp9IGVsc2UgewogICAgdW5saW5rKF9fRklMRV9fKTsKICAgIGVjaG8gIm5vLW9wY2FjaGUiOwp9Cg==
+
 jobs:
   deploy:
     name: Deploy PHP Backend
@@ -54,6 +65,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2  # need parent commit to detect composer.lock changes
 
       - uses: shivammathur/setup-php@v2
         with:
@@ -61,7 +74,21 @@ jobs:
           tools: composer:v2
           coverage: none
 
-      - name: composer install (no dev, optimized)
+      # ── Detect if composer.lock changed ──────────────────────────────────────
+      - name: Check if composer.lock changed
+        id: composer_changed
+        run: |
+          if git diff --name-only HEAD~1 HEAD | grep -q 'backend/composer.lock'; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "composer.lock changed — vendor/ will be redeployed"
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "composer.lock unchanged — skipping vendor/ deploy"
+          fi
+
+      # Only install when composer.lock changed (saves ~30 s on every push)
+      - name: composer install (only when composer.lock changed)
+        if: steps.composer_changed.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
         run: composer install --no-dev --optimize-autoloader --no-interaction
         working-directory: backend
 
@@ -70,11 +97,12 @@ jobs:
           BACKEND_ENV: ${{ secrets.BACKEND_ENV }}
         run: printf '%s' "$BACKEND_ENV" > backend/.env
 
-      # ── Archive 1: source + vendor/ + .env ───────────────────────────────────
-      - name: Create backend source archive
+      # ── Archive A: source code only (no vendor/) — always, ~300 KB ──────────
+      - name: Create backend source archive (no vendor/)
         run: |
           cd backend
           zip -r ../backend-src.zip . \
+            --exclude './vendor/*' \
             --exclude './public/*' \
             --exclude './*.phar' \
             --exclude './test_*.php' \
@@ -84,7 +112,18 @@ jobs:
           cd ..
           echo "Source archive: $(du -sh backend-src.zip | cut -f1)"
 
-      # ── Archive 2: backend/public/ only ──────────────────────────────────────
+      # ── Archive B: vendor/ only — only when composer.lock changed, ~15 MB ───
+      - name: Create vendor archive (only when composer.lock changed)
+        if: steps.composer_changed.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
+        run: |
+          cd backend
+          zip -r ../backend-vendor.zip vendor/ \
+            --exclude './__MACOSX*' \
+            --exclude './.DS_Store'
+          cd ..
+          echo "Vendor archive: $(du -sh backend-vendor.zip | cut -f1)"
+
+      # ── Archive C: backend/public/ only ──────────────────────────────────────
       - name: Create backend public archive
         run: |
           cd backend/public
@@ -94,11 +133,45 @@ jobs:
           cd ../..
           echo "Public archive: $(du -sh backend-public.zip | cut -f1)"
 
-      # ── Step 1: Deploy source to ~/backend/ ───────────────────────────────────
-      # Zip goes to home root (outside public_html — keeps source off the web).
-      # Extractor placed in api/ (web-accessible) calculates home via __DIR__/../../..
+      # ── Step 1 (conditional): Deploy vendor/ → ~/backend/vendor/ ─────────────
+      - name: Upload & extract vendor/ → ~/backend/vendor/
+        if: steps.composer_changed.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
+        timeout-minutes: 8
+        env:
+          CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
+        run: |
+          TOKEN=$(openssl rand -hex 16)
+
+          echo "$EXTRACTOR_HOME_B64" | base64 -d \
+            | sed -e "s/DEPLOY_TOKEN/$TOKEN/" \
+                  -e "s|DEPLOY_OFFSET|/../../..|" \
+                  -e "s/DEPLOY_ZIP_NAME/backend-vendor.zip/" \
+                  -e "s/DEPLOY_DEST_DIR/backend/" \
+            > _extract_vendor.php
+
+          R=$(curl -s -k --max-time 180 -u "$CPANEL_USER:$CPANEL_PASS" \
+            -F "dir=/" \
+            -F "overwrite=1" \
+            -F "file-1=@backend-vendor.zip;type=application/zip" \
+            "$CPANEL_URL/execute/Fileman/upload_files")
+          echo "Upload vendor zip: $R"
+          [ "$(echo "$R" | jq -r '.status // 0')" = "1" ] || { echo "Vendor zip upload failed"; exit 1; }
+
+          R=$(curl -s -k --max-time 30 -u "$CPANEL_USER:$CPANEL_PASS" \
+            -F "dir=/public_html/umis/api" \
+            -F "overwrite=1" \
+            -F "file-1=@_extract_vendor.php;type=text/plain" \
+            "$CPANEL_URL/execute/Fileman/upload_files")
+          echo "Upload extractor: $R"
+          [ "$(echo "$R" | jq -r '.status // 0')" = "1" ] || { echo "Extractor upload failed"; exit 1; }
+
+          RESULT=$(curl -s -k --max-time 120 "https://cur.ac.rw/umis/api/_extract_vendor.php?token=$TOKEN")
+          echo "Extract result: $RESULT"
+          [ "$RESULT" = "ok" ] || { echo "Vendor extraction failed: $RESULT"; exit 1; }
+
+      # ── Step 2: Deploy source code → ~/backend/ ───────────────────────────────
       - name: Upload & extract backend source → ~/backend/
-        timeout-minutes: 5
+        timeout-minutes: 3
         env:
           CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
         run: |
@@ -111,8 +184,7 @@ jobs:
                   -e "s/DEPLOY_DEST_DIR/backend/" \
             > _extract_src.php
 
-          # Upload zip to home root (not in public_html)
-          R=$(curl -s -k --max-time 120 -u "$CPANEL_USER:$CPANEL_PASS" \
+          R=$(curl -s -k --max-time 30 -u "$CPANEL_USER:$CPANEL_PASS" \
             -F "dir=/" \
             -F "overwrite=1" \
             -F "file-1=@backend-src.zip;type=application/zip" \
@@ -120,7 +192,6 @@ jobs:
           echo "Upload zip: $R"
           [ "$(echo "$R" | jq -r '.status // 0')" = "1" ] || { echo "Zip upload failed"; exit 1; }
 
-          # Upload extractor to api/ (web-accessible)
           R=$(curl -s -k --max-time 30 -u "$CPANEL_USER:$CPANEL_PASS" \
             -F "dir=/public_html/umis/api" \
             -F "overwrite=1" \
@@ -129,13 +200,13 @@ jobs:
           echo "Upload extractor: $R"
           [ "$(echo "$R" | jq -r '.status // 0')" = "1" ] || { echo "Extractor upload failed"; exit 1; }
 
-          RESULT=$(curl -s -k --max-time 60 "https://cur.ac.rw/umis/api/_extract_src.php?token=$TOKEN")
+          RESULT=$(curl -s -k --max-time 30 "https://cur.ac.rw/umis/api/_extract_src.php?token=$TOKEN")
           echo "Extract result: $RESULT"
           [ "$RESULT" = "ok" ] || { echo "Extraction failed: $RESULT"; exit 1; }
 
-      # ── Step 2: Deploy public/ to ~/public_html/umis/api/ ─────────────────────
+      # ── Step 3: Deploy public/ entry point ────────────────────────────────────
       - name: Upload & extract backend/public/ → public_html/umis/api/
-        timeout-minutes: 3
+        timeout-minutes: 2
         env:
           CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
         run: |
@@ -145,7 +216,7 @@ jobs:
             | sed -e "s/DEPLOY_TOKEN/$TOKEN/" -e "s/DEPLOY_ZIP_NAME/backend-public.zip/" \
             > _extract_pub.php
 
-          R=$(curl -s -k --max-time 60 -u "$CPANEL_USER:$CPANEL_PASS" \
+          R=$(curl -s -k --max-time 30 -u "$CPANEL_USER:$CPANEL_PASS" \
             -F "dir=/public_html/umis/api" \
             -F "overwrite=1" \
             -F "file-1=@backend-public.zip;type=application/zip" \
@@ -165,22 +236,13 @@ jobs:
           echo "Extract result: $RESULT"
           [ "$RESULT" = "ok" ] || { echo "Extraction failed: $RESULT"; exit 1; }
 
-      # ── Step 3b: Flush OPcache via a fresh PHP helper ────────────────────────
-      # The extractors call opcache_reset() from within their own PHP-FPM worker.
-      # Other FPM workers may retain stale bytecode. We upload a brand-new PHP
-      # file (never seen by OPcache) so it compiles fresh, calls opcache_reset(),
-      # and self-deletes. This guarantees all workers reload from disk on next hit.
-      #
-      # FLUSH_OPCACHE_B64 — base64 of:
-      #   <?php
-      #   if (($_GET["token"] ?? "") !== "FLUSH_TOKEN") { http_response_code(403); die("forbidden"); }
-      #   if (function_exists("opcache_reset")) { opcache_reset(); unlink(__FILE__); echo "ok"; }
-      #   else { unlink(__FILE__); echo "no-opcache"; }
-      - name: Flush OPcache via fresh PHP helper
+      # ── Step 4: Flush OPcache via fresh PHP helper ────────────────────────────
+      # Upload a brand-new PHP file (not cached by OPcache) that calls opcache_reset()
+      # to ensure all PHP-FPM workers reload fresh bytecode on next request.
+      - name: Flush OPcache
         timeout-minutes: 2
         env:
           CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
-          FLUSH_OPCACHE_B64: PD9waHAKaWYgKCgkX0dFVFsidG9rZW4iXSA/PyAiIikgIT09ICJGTFVTSF9UT0tFTiIpIHsgaHR0cF9yZXNwb25zZV9jb2RlKDQwMyk7IGRpZSgiZm9yYmlkZGVuIik7IH0KaWYgKGZ1bmN0aW9uX2V4aXN0cygib3BjYWNoZV9yZXNldCIpKSB7CiAgICBvcGNhY2hlX3Jlc2V0KCk7CiAgICB1bmxpbmsoX19GSUxFX18pOwogICAgZWNobyAib2siOwp9IGVsc2UgewogICAgdW5saW5rKF9fRklMRV9fKTsKICAgIGVjaG8gIm5vLW9wY2FjaGUiOwp9Cg==
         run: |
           TOKEN=$(openssl rand -hex 16)
 
@@ -188,7 +250,7 @@ jobs:
             | sed "s/FLUSH_TOKEN/$TOKEN/" \
             > _flush_opcache.php
 
-          R=$(curl -s -k -u "$CPANEL_USER:$CPANEL_PASS" \
+          R=$(curl -s -k --max-time 30 -u "$CPANEL_USER:$CPANEL_PASS" \
             -F "dir=/public_html/umis/api" \
             -F "overwrite=1" \
             -F "file-1=@_flush_opcache.php;type=text/plain" \
@@ -200,7 +262,7 @@ jobs:
           RESULT=$(curl -s -k --max-time 15 "https://cur.ac.rw/umis/api/_flush_opcache.php?token=$TOKEN")
           echo "OPcache flush: $RESULT"
 
-      # ── Step 4: Clear OPcache via API + run pending migrations ───────────────
+      # ── Step 5: Clear OPcache via API + run pending migrations ────────────────
       - name: Clear OPcache + run migrations
         timeout-minutes: 3
         env:
@@ -221,6 +283,6 @@ jobs:
         run: |
           echo "## Backend Deploy — ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
           echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Source | \`~/backend/\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Source (no vendor) | \`~/backend/\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Vendor redeployed | \`${{ steps.composer_changed.outputs.changed }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Web root | \`~/public_html/umis/api/\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Run migrations manually | \`POST $API_BASE/api/deploy/migrate\` |" >> $GITHUB_STEP_SUMMARY
