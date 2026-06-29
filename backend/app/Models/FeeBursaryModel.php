@@ -74,7 +74,7 @@ class FeeBursaryModel extends BaseModel
                     u2.full_name AS confirmed_by_name,
                     sp.name      AS sponsor_name
              FROM `fee_bursaries` fb
-             LEFT JOIN `student`        s  ON s.regnumber = fb.student_id COLLATE utf8mb4_unicode_ci
+             LEFT JOIN `student`        s  ON s.regnumber COLLATE utf8mb4_unicode_ci = fb.student_id COLLATE utf8mb4_unicode_ci
              LEFT JOIN `academic_years` ay ON ay.id       = fb.academic_year_id
              LEFT JOIN `users`          u  ON u.id        = fb.approved_by
              LEFT JOIN `users`          u2 ON u2.id       = fb.confirmed_by

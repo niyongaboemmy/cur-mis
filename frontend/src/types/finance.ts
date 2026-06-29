@@ -237,12 +237,15 @@ export interface RecentPayment {
   fname:          string
   lname:          string
   fee_type:       FeeType
+  source?:        'MANUAL' | 'GATEWAY' | 'APPLICATION_TRANSFER'
 }
 
 export interface FinanceSummary {
-  totals:          FinanceSummaryTotals
-  recent_payments: RecentPayment[]
-  overdue_count:   number
+  totals:              FinanceSummaryTotals
+  recent_payments:     RecentPayment[]
+  overdue_count:       number
+  app_transfer_total:  number
+  app_transfer_count:  number
 }
 
 // ─── Billing Summary ──────────────────────────────────────────────────────────
@@ -264,11 +267,13 @@ export interface BillingSummary {
 // ─── Revenue Report ───────────────────────────────────────────────────────────
 
 export interface RevenueByType {
-  fee_type:        FeeType
-  invoice_count:   number
-  total_expected:  number
-  total_collected: number
-  total_bursary:   number
+  fee_type:             FeeType
+  invoice_count:        number
+  total_expected:       number
+  total_collected:      number
+  total_bursary:        number
+  app_transfer_amount:  number
+  app_transfer_count:   number
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

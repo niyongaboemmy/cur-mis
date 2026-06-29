@@ -19,6 +19,7 @@ $router->group('/api/finance', function ($router) {
 
     // ── Read-only ─────────────────────────────────────────────────────────────
     $router->group('', function ($r) {
+        $r->get('/reports/application-fee-reconciliation', [FeeController::class, 'applicationFeeReconciliation']);
         $r->get('/structures',               [FeeController::class, 'listStructures']);
         $r->get('/payments',                 [FeeController::class, 'listPayments']);
         $r->get('/online-payments',          [FeeController::class, 'listOnlinePaymentsHistory']);
@@ -111,6 +112,7 @@ $router->group('/api/finance', function ($router) {
         $r->post('/clearance',               [FeeController::class, 'grantClearance']);
         $r->post('/clearance/bulk',          [FeeController::class, 'runBulkClearance']);
         $r->post('/budgets',                 [FeeController::class, 'saveBudget']);
+        $r->post('/reports/application-fee-reconciliation/run-pending', [FeeController::class, 'runPendingApplicationFeeCredits']);
     }, [new PermissionMiddleware(Permissions::MANAGE_FINANCE)]);
 
 }, [AuthMiddleware::class]);

@@ -92,6 +92,60 @@ class SystemBasicsController extends BaseController
     }
 
     /**
+     * GET /api/portal/application-fee
+     * Public — returns the current application fee amount so the apply page
+     * can display the live admin-configured value without requiring auth.
+     * Reads directly from the mapped fee_structures record.
+     */
+    public function getPublicApplicationFee(Request $request, Response $response): never
+    {
+        $db = \Core\Database::getInstance();
+
+        // 1. Read mapped fee structure ID
+        $structureIdRow = $this->settingModel->findBy('key_name', 'application_fee_mapped_fee_structure_id');
+        $structureId    = (int)($structureIdRow['value'] ?? 0);
+
+        $amount    = 0.0;
+        $feeType   = null;
+        $yearLabel = null;
+
+        // 2. Look up the fee structure directly
+        if ($structureId > 0) {
+            try {
+                $structure = $db->fetchOne(
+                    "SELECT fs.amount, fs.fee_type, ay.label AS year_label
+                     FROM `fee_structures` fs
+                     JOIN `academic_years` ay ON ay.id = fs.academic_year_id
+                     WHERE fs.id = ? AND fs.is_active = 1
+                     LIMIT 1",
+                    [$structureId]
+                );
+                if ($structure && (float)$structure['amount'] > 0) {
+                    $amount    = (float)$structure['amount'];
+                    $feeType   = $structure['fee_type'];
+                    $yearLabel = $structure['year_label'];
+                }
+            } catch (\Throwable $e) { /* fee_structures unavailable */ }
+        }
+
+        // 3. Final fallback: settings → env → hard default
+        if ($amount <= 0) {
+            $settingRow = $this->settingModel->findBy('key_name', 'application_fee_amount');
+            $amount     = (float)($settingRow['value'] ?? 0);
+        }
+        if ($amount <= 0) {
+            $amount = (float)($_ENV['URUBUTOPAY_APPLICATION_FEE'] ?? 5000);
+        }
+
+        $this->success($response, [
+            'amount'       => (int)$amount,
+            'fee_type'     => $feeType,
+            'year_label'   => $yearLabel,
+            'structure_id' => $structureId ?: null,
+        ], 'Application fee fetched.');
+    }
+
+    /**
      * PUT /api/system/guidance-videos
      * Admin-only — persist the two guidance video URLs. Empty strings clear them.
      */
@@ -115,7 +169,91 @@ class SystemBasicsController extends BaseController
         ], 'Guidance videos saved.');
     }
 
-    private function upsertSetting(string $key, string $value, string $description): void
+    /**
+     * GET /api/system/fee-mapping
+     * Admin — fetch current mapping (fee structure ID + auto-credit toggle)
+     * and the list of all active fee structures for the dropdown.
+     */
+    public function getFeeMappingSettings(Request $request, Response $response): never
+    {
+        $db = \Core\Database::getInstance();
+
+        $structureIdRow = $this->settingModel->findBy('key_name', 'application_fee_mapped_fee_structure_id');
+        $autoRow        = $this->settingModel->findBy('key_name', 'application_fee_credit_on_enrollment');
+
+        $settings = [
+            'application_fee_mapped_fee_structure_id' => $structureIdRow ? $structureIdRow['value'] : '',
+            'application_fee_credit_on_enrollment'    => $autoRow        ? $autoRow['value']        : '1',
+        ];
+
+        // All active fee structures, grouped with year info for the dropdown
+        $feeStructures = [];
+        try {
+            $feeStructures = $db->fetchAll(
+                "SELECT fs.id, fs.fee_type, fs.label, fs.amount,
+                        fs.academic_year_id, ay.label AS year_label,
+                        ft.label AS fee_type_label
+                 FROM `fee_structures` fs
+                 JOIN `academic_years` ay ON ay.id = fs.academic_year_id
+                 LEFT JOIN `fee_types` ft ON ft.code = fs.fee_type AND ft.is_active = 1
+                 WHERE fs.is_active = 1
+                 ORDER BY ay.id DESC, fs.fee_type ASC, fs.id ASC",
+                []
+            );
+        } catch (\Throwable $e) {
+            // fee_structures / fee_types table unavailable
+        }
+
+        $this->success($response, [
+            'settings'      => $settings,
+            'fee_structures' => $feeStructures,
+        ], 'Fee mapping settings fetched.');
+    }
+
+    /**
+     * PUT /api/system/fee-mapping
+     * Admin — persist fee structure ID + auto-credit toggle.
+     */
+    public function saveFeeMappingSettings(Request $request, Response $response): never
+    {
+        $data        = $request->body();
+        $structureId = (int)($data['application_fee_mapped_fee_structure_id'] ?? 0);
+        $autoCredit  = (int)(bool)($data['application_fee_credit_on_enrollment'] ?? 1);
+
+        // Validate fee structure when a non-zero ID is provided
+        if ($structureId > 0) {
+            try {
+                $db = \Core\Database::getInstance();
+                $fs = $db->fetchOne(
+                    "SELECT id, amount, fee_type FROM `fee_structures` WHERE id = ? AND is_active = 1 LIMIT 1",
+                    [$structureId]
+                );
+                if (!$fs) {
+                    $this->error($response, "Fee structure #{$structureId} does not exist or is inactive.", 422);
+                }
+            } catch (\Throwable $e) {
+                $this->error($response, 'Fee structures table is unavailable.', 500);
+            }
+        }
+
+        $this->upsertSetting(
+            'application_fee_mapped_fee_structure_id',
+            $structureId > 0 ? (string)$structureId : '',
+            'ID of the fee_structures record that application fee payments map to. Leave blank to disable mapping.'
+        );
+        $this->upsertSetting(
+            'application_fee_credit_on_enrollment',
+            (string)$autoCredit,
+            '1 = auto-credit mapped invoice when student enrolls; 0 = track for reporting only.'
+        );
+
+        $this->success($response, [
+            'application_fee_mapped_fee_structure_id' => $structureId ?: null,
+            'application_fee_credit_on_enrollment'    => $autoCredit,
+        ], 'Fee mapping settings saved.');
+    }
+
+    protected function upsertSetting(string $key, string $value, string $description): void
     {
         $existing = $this->settingModel->findBy('key_name', $key);
         if ($existing) {

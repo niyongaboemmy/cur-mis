@@ -10,7 +10,7 @@ class FeeStructureModel extends BaseModel
     protected array $fillable = [
         'academic_year_id', 'department_id', 'level_id',
         'fee_type', 'label', 'amount', 'semester', 'payment_plan', 'installment_count',
-        'is_active', 'created_by',
+        'is_active',
     ];
 
     /** @param array{academic_year_id?:int,department_id?:int,level_id?:int,fee_type?:string,is_active?:bool} $filters */

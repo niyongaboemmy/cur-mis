@@ -42,7 +42,7 @@ class FineModel extends BaseModel
         $countRow = $this->db->fetchOne(
             "SELECT COUNT(*) AS cnt
              FROM `fee_fines` ff
-             LEFT JOIN `student` s ON s.regnumber = ff.student_id COLLATE utf8mb4_unicode_ci
+             LEFT JOIN `student` s ON s.regnumber COLLATE utf8mb4_unicode_ci = ff.student_id COLLATE utf8mb4_unicode_ci
              {$whereSql}",
             $bindings
         );
@@ -59,7 +59,7 @@ class FineModel extends BaseModel
                     u.full_name                    AS issued_by_name,
                     w.full_name                    AS waived_by_name
              FROM `fee_fines` ff
-             LEFT JOIN `student` s     ON s.regnumber = ff.student_id
+             LEFT JOIN `student` s     ON s.regnumber COLLATE utf8mb4_unicode_ci = ff.student_id COLLATE utf8mb4_unicode_ci
              LEFT JOIN `fee_invoices` fi ON fi.id = ff.invoice_id
              LEFT JOIN `users` u       ON u.id = ff.issued_by
              LEFT JOIN `users` w       ON w.id = ff.waived_by
@@ -87,7 +87,7 @@ class FineModel extends BaseModel
                     fi.invoice_number,
                     fi.status                      AS invoice_status
              FROM `fee_fines` ff
-             LEFT JOIN `student` s     ON s.regnumber = ff.student_id
+             LEFT JOIN `student` s     ON s.regnumber COLLATE utf8mb4_unicode_ci = ff.student_id COLLATE utf8mb4_unicode_ci
              LEFT JOIN `fee_invoices` fi ON fi.id = ff.invoice_id
              WHERE ff.id = ?",
             [$id]

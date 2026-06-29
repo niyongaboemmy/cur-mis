@@ -2453,7 +2453,7 @@ class StudentController extends BaseController
         $byFaculty = $db->fetchAll("
             SELECT s.faculty AS value, f.fac_name AS label, f.fac_code AS code, COUNT(*) AS total
             FROM student s
-            LEFT JOIN faculty f ON f.fac_id = s.faculty
+            LEFT JOIN faculty f ON CAST(f.fac_id AS CHAR) COLLATE utf8mb4_unicode_ci = s.faculty COLLATE utf8mb4_unicode_ci
             WHERE LOWER(s.student_state) = 'active'
               AND s.faculty IS NOT NULL AND s.faculty <> ''
               {$combinedS}
@@ -2465,7 +2465,7 @@ class StudentController extends BaseController
         $byDepartment = $db->fetchAll("
             SELECT s.department AS value, d.dep_name AS label, d.dep_acronym AS code, COUNT(*) AS total
             FROM student s
-            LEFT JOIN departements d ON d.dep_id = s.department
+            LEFT JOIN departements d ON CAST(d.dep_id AS CHAR) COLLATE utf8mb4_unicode_ci = s.department COLLATE utf8mb4_unicode_ci
             WHERE LOWER(s.student_state) = 'active'
               AND s.department IS NOT NULL AND s.department <> ''
               {$combinedS}
@@ -2481,7 +2481,7 @@ class StudentController extends BaseController
         $byProgram = $db->fetchAll("
             SELECT s.std_option AS value, o.name AS label, COUNT(*) AS total
             FROM student s
-            LEFT JOIN `options` o ON o.id = s.std_option
+            LEFT JOIN `options` o ON CAST(o.id AS CHAR) COLLATE utf8mb4_unicode_ci = s.std_option COLLATE utf8mb4_unicode_ci
             WHERE LOWER(s.student_state) = 'active'
               AND s.std_option IS NOT NULL AND s.std_option <> ''
               {$combinedS}
@@ -2535,7 +2535,7 @@ class StudentController extends BaseController
         $faculties = $db->fetchAll("
             SELECT DISTINCT s.faculty AS v, f.fac_name AS label
             FROM student s
-            LEFT JOIN faculty f ON f.fac_id = s.faculty
+            LEFT JOIN faculty f ON CAST(f.fac_id AS CHAR) COLLATE utf8mb4_unicode_ci = s.faculty COLLATE utf8mb4_unicode_ci
             WHERE s.faculty IS NOT NULL AND s.faculty <> ''
             ORDER BY label IS NULL, label ASC
             LIMIT 100
@@ -2543,7 +2543,7 @@ class StudentController extends BaseController
         $departments = $db->fetchAll("
             SELECT DISTINCT s.department AS v, d.dep_name AS label
             FROM student s
-            LEFT JOIN departements d ON d.dep_id = s.department
+            LEFT JOIN departements d ON CAST(d.dep_id AS CHAR) COLLATE utf8mb4_unicode_ci = s.department COLLATE utf8mb4_unicode_ci
             WHERE s.department IS NOT NULL AND s.department <> ''
             ORDER BY label IS NULL, label ASC
             LIMIT 100
@@ -3267,7 +3267,7 @@ class StudentController extends BaseController
                LEFT JOIN `users`   u ON u.id = s.assigned_registry_user_id
                LEFT JOIN `student_visa_records` v
                   ON v.student_id = s.id AND v.is_current = 1
-               LEFT JOIN `options` o ON CAST(o.id AS CHAR) = s.std_option
+               LEFT JOIN `options` o ON CAST(o.id AS CHAR) COLLATE utf8mb4_unicode_ci = s.std_option COLLATE utf8mb4_unicode_ci
               WHERE {$where}
               ORDER BY (v.visa_expiry_date IS NULL),
                        v.visa_expiry_date ASC,
@@ -3392,7 +3392,7 @@ class StudentController extends BaseController
                FROM `student` s
                LEFT JOIN `student_visa_records` v
                   ON v.student_id = s.id AND v.is_current = 1
-               LEFT JOIN `options` o ON CAST(o.id AS CHAR) = s.std_option
+               LEFT JOIN `options` o ON CAST(o.id AS CHAR) COLLATE utf8mb4_unicode_ci = s.std_option COLLATE utf8mb4_unicode_ci
               WHERE {$where}
               ORDER BY (v.visa_expiry_date IS NULL),
                        v.visa_expiry_date ASC,

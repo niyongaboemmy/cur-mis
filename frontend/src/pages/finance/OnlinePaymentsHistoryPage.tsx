@@ -1,6 +1,10 @@
 import { useState } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { paymentService } from "@/services/financeService";
+import { createPortal } from "react-dom";
+import StudentDetailsPage from "@/pages/StudentDetailsPage";
+import * as XLSX from "xlsx";
+import toast from "react-hot-toast";
 
 const dtFmt = new Intl.DateTimeFormat("en-GB", {
   day: "2-digit", month: "short", year: "numeric",
@@ -16,12 +20,59 @@ import {
   CheckCircle2,
   AlertCircle,
   RefreshCcw,
+  X,
+  User,
+  FileSpreadsheet,
 } from "lucide-react";
+
+function StudentProfileModal({
+  studentDbId,
+  studentRef,
+  onClose,
+}: {
+  studentDbId: number;
+  studentRef: string;
+  onClose: () => void;
+}) {
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[9999] flex flex-col bg-white dark:bg-ink-950 overflow-hidden"
+      role="dialog"
+      aria-modal="true"
+    >
+      {/* Top bar */}
+      <div className="flex items-center justify-between px-4 py-2 border-b border-ink-200 dark:border-ink-800 bg-ink-50 dark:bg-ink-900 shrink-0">
+        <div className="flex items-center gap-2 text-sm text-ink-500 dark:text-ink-400">
+          <User className="w-4 h-4" />
+          <span>Student Profile — {studentRef}</span>
+        </div>
+        <button
+          onClick={onClose}
+          className="p-1.5 rounded hover:bg-ink-200 dark:hover:bg-ink-700 transition-colors"
+          aria-label="Close profile"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+
+      {/* Scrollable content */}
+      <div className="flex-1 overflow-y-auto p-4">
+        <StudentDetailsPage idOverride={studentDbId} />
+      </div>
+    </div>,
+    document.body
+  );
+}
 
 export default function OnlinePaymentsHistoryPage() {
   const [page, setPage] = useState(1);
   const [keyword, setKeyword] = useState("");
   const [searchInput, setSearchInput] = useState("");
+  const [activeStudent, setActiveStudent] = useState<{
+    dbId: number;
+    ref: string;
+  } | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ["finance", "online-payments", page, keyword],
@@ -42,6 +93,80 @@ export default function OnlinePaymentsHistoryPage() {
     e.preventDefault();
     setKeyword(searchInput);
     setPage(1);
+  };
+
+  const handleExport = async () => {
+    const total = data?.data?.pagination?.total ?? 0;
+    if (total === 0) {
+      toast.error("Nothing to export.");
+      return;
+    }
+    setExporting(true);
+    try {
+      const pageSize = 200;
+      const pages = Math.ceil(total / pageSize);
+      const allRows: any[] = [];
+      for (let pg = 1; pg <= pages; pg++) {
+        const res = await paymentService.getOnlinePaymentsHistory({
+          page: pg,
+          per_page: pageSize,
+          keyword,
+        });
+        allRows.push(...(res?.data?.data ?? []));
+      }
+
+      const header = [
+        "Date",
+        "Student / Reference",
+        "Student Name",
+        "Slip No",
+        "Trans Code",
+        "Amount (RWF)",
+        "Channel",
+        "Status",
+      ];
+
+      const rows = allRows.map((p: any) => {
+        const fullName =
+          p.student_fname || p.student_lname
+            ? `${p.student_fname ?? ""} ${p.student_lname ?? ""}`.trim()
+            : "";
+        const s = String(p.status ?? "").toLowerCase();
+        const isCredit = String(p.payment_notifi ?? "").toLowerCase() === "credit";
+        const statusLabel = isCredit
+          ? "Reversed"
+          : s === "successful" || s === "success" || s === "1"
+          ? "Success"
+          : s === "failed" || s === "0"
+          ? "Failed"
+          : p.status || "Pending";
+
+        return [
+          fmtDate(p.date),
+          p.student || "",
+          fullName,
+          p.slip_no || "",
+          p.trans_code || "",
+          parseFloat(p.amount || "0"),
+          p.payment_chanel || p.mode || "",
+          statusLabel,
+        ];
+      });
+
+      const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+      ws["!cols"] = [20, 18, 22, 22, 22, 14, 10, 10].map((w) => ({ wch: w }));
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Online Payments");
+
+      const now = new Date();
+      const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      XLSX.writeFile(wb, `online-payments-${stamp}.xlsx`);
+    } catch {
+      toast.error("Export failed. Please try again.");
+    } finally {
+      setExporting(false);
+    }
   };
 
   const getStatusBadge = (p: any) => {
@@ -80,6 +205,14 @@ export default function OnlinePaymentsHistoryPage() {
 
   return (
     <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      {activeStudent && (
+        <StudentProfileModal
+          studentDbId={activeStudent.dbId}
+          studentRef={activeStudent.ref}
+          onClose={() => setActiveStudent(null)}
+        />
+      )}
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-ink-900 dark:text-ink-100 flex items-center gap-2">
@@ -90,16 +223,28 @@ export default function OnlinePaymentsHistoryPage() {
             Monitor all legacy online payments from gateways.
           </p>
         </div>
-        <button
-          onClick={() => refetch()}
-          disabled={isFetching}
-          className="btn-outline gap-2"
-        >
-          <RefreshCcw
-            className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`}
-          />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExport}
+            disabled={exporting || isLoading}
+            className="btn-secondary"
+          >
+            <FileSpreadsheet
+              className={`w-4 h-4 text-emerald-600 dark:text-emerald-400 ${exporting ? "animate-pulse" : ""}`}
+            />
+            {exporting ? "Exporting…" : "Export Excel"}
+          </button>
+          <button
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="btn-secondary"
+          >
+            <RefreshCcw
+              className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`}
+            />
+            Refresh
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -179,36 +324,65 @@ export default function OnlinePaymentsHistoryPage() {
                   </td>
                 </tr>
               ) : (
-                payments.map((p: any) => (
-                  <tr
-                    key={p.id}
-                    className="hover:bg-ink-50 dark:hover:bg-ink-800/50 transition-colors"
-                  >
-                    <td className="px-4 py-3">
-                      {fmtDate(p.date)}
-                    </td>
-                    <td className="px-4 py-3 font-medium text-ink-900 dark:text-ink-100">
-                      {p.student || "-"}
-                    </td>
-                    <td className="px-4 py-3 font-mono text-[13px] text-ink-500">
-                      {p.slip_no || "-"}
-                    </td>
-                    <td className="px-4 py-3 font-mono text-[13px] text-brand">
-                      {p.trans_code || "-"}
-                    </td>
-                    <td className="px-4 py-3 text-right font-semibold">
-                      {parseFloat(p.amount || "0").toLocaleString()}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-ink-100 text-ink-700 dark:bg-ink-800 dark:text-ink-300">
-                        {p.payment_chanel || p.mode || "Unknown"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {getStatusBadge(p)}
-                    </td>
-                  </tr>
-                ))
+                payments.map((p: any) => {
+                  const hasStudent = !!p.student_db_id;
+                  const fullName =
+                    p.student_fname || p.student_lname
+                      ? `${p.student_fname ?? ""} ${p.student_lname ?? ""}`.trim()
+                      : null;
+
+                  return (
+                    <tr
+                      key={p.id}
+                      onClick={
+                        hasStudent
+                          ? () =>
+                              setActiveStudent({
+                                dbId: p.student_db_id,
+                                ref: p.student || "-",
+                              })
+                          : undefined
+                      }
+                      className={`transition-colors ${
+                        hasStudent
+                          ? "cursor-pointer hover:bg-brand/5 dark:hover:bg-brand/10"
+                          : "hover:bg-ink-50 dark:hover:bg-ink-800/50"
+                      }`}
+                    >
+                      <td className="px-4 py-3 text-ink-500 dark:text-ink-400">
+                        {fmtDate(p.date)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="font-medium text-ink-900 dark:text-ink-100">
+                          {p.student || "-"}
+                        </div>
+                        {fullName && (
+                          <div className="text-[12px] text-ink-500 dark:text-ink-400 mt-0.5 flex items-center gap-1">
+                            <User className="w-3 h-3 shrink-0" />
+                            {fullName}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-[13px] text-ink-500">
+                        {p.slip_no || "-"}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-[13px] text-brand">
+                        {p.trans_code || "-"}
+                      </td>
+                      <td className="px-4 py-3 text-right font-semibold">
+                        {parseFloat(p.amount || "0").toLocaleString()}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-ink-100 text-ink-700 dark:bg-ink-800 dark:text-ink-300">
+                          {p.payment_chanel || p.mode || "Unknown"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {getStatusBadge(p)}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

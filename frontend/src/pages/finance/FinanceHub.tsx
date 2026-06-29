@@ -12,6 +12,7 @@ import {
   Tag,
   ChevronLeft,
   ChevronRight,
+  GitMerge,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useQuery } from "@tanstack/react-query";
@@ -109,6 +110,13 @@ const TABS = [
     icon: Receipt,
     end: false,
     permissions: [PERMISSIONS.VIEW_ONLINE_PAYMENTS_HISTORY],
+  },
+  {
+    to: "/finance/app-fee-reconciliation",
+    label: "App Fee Reconciliation",
+    icon: GitMerge,
+    end: false,
+    permissions: [PERMISSIONS.MANAGE_FINANCE],
   },
 ];
 

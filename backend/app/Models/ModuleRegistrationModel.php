@@ -53,7 +53,7 @@ class ModuleRegistrationModel extends BaseModel
                     t.label         AS term_label
              FROM `module_registrations` mr
              JOIN `modules` m            ON m.module_id = mr.module_id
-             LEFT JOIN `student` s       ON s.regnumber = mr.student_regnumber
+             LEFT JOIN `student` s       ON s.regnumber COLLATE utf8mb4_unicode_ci = mr.student_regnumber COLLATE utf8mb4_unicode_ci
              LEFT JOIN `options` o       ON o.id        = CAST(NULLIF(s.std_option, '') AS UNSIGNED)
              LEFT JOIN `academic_terms` t ON t.id       = mr.academic_term_id
              {$whereSql}

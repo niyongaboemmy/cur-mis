@@ -582,15 +582,53 @@ class ApplicationService
             $letterResult = ['error' => $e->getMessage()];
         }
 
-        // Auto-generate admission + registration fee invoices for the new student
+        // Store enrolled_student_id on the application for reconciliation queries
+        try {
+            $this->db->execute(
+                "UPDATE `student_applications` SET enrolled_student_id = ?, updated_at = NOW() WHERE id = ?",
+                [$regNumber, $applicationId]
+            );
+        } catch (\Throwable $e) {
+            // Non-blocking: student_applications table may not yet have this column
+        }
+
+        // Auto-generate fee invoices and credit the application fee against the mapped type
+        $feeTransferResult = null;
         try {
             $academicYearId = (int)($offer['academic_year_id'] ?? 0);
             if ($academicYearId > 0) {
                 $feeService = new FeeService();
+
+                // Generate all standard invoices (TUITION, REGISTRATION, etc.)
                 $feeService->autoGenerateInvoices($regNumber, $academicYearId, null, $actorId);
+
+                // Credit the application fee into the mapped invoice type when:
+                //  - admin has enabled auto-credit (setting = 1)
+                //  - applicant actually paid something (payment_amount > 0, transaction_id set)
+                $creditSetting = $this->db->fetchOne(
+                    "SELECT value FROM `settings`
+                     WHERE key_name = 'application_fee_credit_on_enrollment' LIMIT 1",
+                    []
+                );
+                $shouldCredit = (int)($creditSetting['value'] ?? 1) === 1;
+
+                $paidAmount = (float)($offer['payment_amount'] ?? 0);
+                $txRef      = trim((string)($offer['transaction_id'] ?? ''));
+
+                if ($shouldCredit && $paidAmount > 0 && $txRef !== '') {
+                    $feeTransferResult = $feeService->creditApplicationFee(
+                        studentId:      $regNumber,
+                        academicYearId: $academicYearId,
+                        amount:         $paidAmount,
+                        transactionRef: $txRef,
+                        applicationId:  $applicationId,
+                        actorId:        $actorId
+                    );
+                }
             }
         } catch (\Exception $e) {
-            // Non-blocking: enrollment succeeds even if fee generation fails
+            // Non-blocking: enrollment succeeds even if fee generation/transfer fails
+            $feeTransferResult = ['status' => 'error', 'reason' => $e->getMessage()];
         }
 
         return [
@@ -602,6 +640,7 @@ class ApplicationService
             'is_returning'       => $parentStudent !== null,
             'letter_sent'        => !isset($letterResult['error']),
             'letter_error'       => $letterResult['error'] ?? null,
+            'fee_transfer'       => $feeTransferResult,
         ];
     }
 

@@ -26,6 +26,7 @@ export interface SystemBasics {
   active_term:  AcademicTerm | false | null
   years:        AcademicYear[]
   terms?:       AcademicTerm[]
+  settings?:    Record<string, string>
 }
 
 /* ── Academics Management entities (heterogeneous shapes) ────────── */

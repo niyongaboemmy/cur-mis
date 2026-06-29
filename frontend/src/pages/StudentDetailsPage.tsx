@@ -122,12 +122,16 @@ interface StudentDetailsPageProps {
    * VIEW_STUDENTS endpoints are replaced with friendly placeholders.
    */
   selfMode?: boolean;
+  /** When set, overrides the :id URL param — used when embedding in a modal. */
+  idOverride?: string | number;
 }
 
 export default function StudentDetailsPage({
   selfMode = false,
+  idOverride,
 }: StudentDetailsPageProps = {}) {
-  const { id } = useParams<{ id: string }>();
+  const { id: paramId } = useParams<{ id: string }>();
+  const id = idOverride !== undefined ? String(idOverride) : paramId;
   const location = useLocation();
   const [sp, setSp] = useSearchParams();
   // Tab is URL-driven so deep-links like /me/profile?tab=attendance (used by

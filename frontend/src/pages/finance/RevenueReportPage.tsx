@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Loader2, Download, TrendingUp, Target, BadgeDollarSign, AlertCircle } from 'lucide-react'
+import { Loader2, Download, TrendingUp, Target, BadgeDollarSign, AlertCircle, GitMerge } from 'lucide-react'
 import { financeReportService, exportService } from '@/services/financeService'
 import { academicService } from '@/services/academicService'
 import { FEE_TYPE_LABELS } from '@/types/finance'
@@ -40,12 +40,14 @@ export default function RevenueReportPage() {
   const rows: RevenueByType[] = reportQ.data?.data ?? []
 
   // Aggregates
-  const totalExpected  = rows.reduce((s, r) => s + Number(r.total_expected),  0)
-  const totalCollected = rows.reduce((s, r) => s + Number(r.total_collected), 0)
-  const totalBursary   = rows.reduce((s, r) => s + Number(r.total_bursary),   0)
-  const totalInvoices  = rows.reduce((s, r) => s + Number(r.invoice_count),   0)
-  const gap            = totalExpected - totalCollected - totalBursary
-  const collectionRate = totalExpected > 0 ? Math.round((totalCollected / totalExpected) * 100) : 0
+  const totalExpected     = rows.reduce((s, r) => s + Number(r.total_expected),      0)
+  const totalCollected    = rows.reduce((s, r) => s + Number(r.total_collected),     0)
+  const totalBursary      = rows.reduce((s, r) => s + Number(r.total_bursary),       0)
+  const totalInvoices     = rows.reduce((s, r) => s + Number(r.invoice_count),       0)
+  const totalAppTransfer  = rows.reduce((s, r) => s + Number(r.app_transfer_amount), 0)
+  const totalAppTxCount   = rows.reduce((s, r) => s + Number(r.app_transfer_count),  0)
+  const gap               = totalExpected - totalCollected - totalBursary
+  const collectionRate    = totalExpected > 0 ? Math.round((totalCollected / totalExpected) * 100) : 0
 
   // Chart data
   const barData = rows.map(r => ({
@@ -86,6 +88,14 @@ export default function RevenueReportPage() {
       icon:  <TrendingUp className="w-4 h-4" />,
       color: 'text-green-600',
       bg:    'bg-green-100 dark:bg-green-900/30',
+    },
+    {
+      label: 'App Fee Transfers',
+      value: formatRWF(totalAppTransfer),
+      sub:   `${totalAppTxCount} application${totalAppTxCount !== 1 ? 's' : ''} credited`,
+      icon:  <GitMerge className="w-4 h-4" />,
+      color: 'text-violet-600',
+      bg:    'bg-violet-100 dark:bg-violet-900/30',
     },
     {
       label: 'Bursary Applied',
@@ -153,7 +163,7 @@ export default function RevenueReportPage() {
       {rows.length > 0 && (
         <>
           {/* KPI Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             {kpis.map(k => (
               <div key={k.label} className="card p-4">
                 <div className="flex items-start justify-between mb-2">
@@ -254,6 +264,7 @@ export default function RevenueReportPage() {
                     <th className="px-4 py-2.5 text-right">Invoices</th>
                     <th className="px-4 py-2.5 text-right">Expected (RWF)</th>
                     <th className="px-4 py-2.5 text-right">Collected (RWF)</th>
+                    <th className="px-4 py-2.5 text-right">App Fee Transfer</th>
                     <th className="px-4 py-2.5 text-right">Bursary (RWF)</th>
                     <th className="px-4 py-2.5 text-left min-w-[140px]">Progress</th>
                     <th className="px-4 py-2.5 text-right">Rate</th>
@@ -264,12 +275,26 @@ export default function RevenueReportPage() {
                     const pct = Number(r.total_expected) > 0
                       ? Math.round((Number(r.total_collected) / Number(r.total_expected)) * 100)
                       : 0
+                    const appAmt = Number(r.app_transfer_amount)
+                    const appCnt = Number(r.app_transfer_count)
                     return (
                       <tr key={r.fee_type} className="hover:bg-ink-50/50 dark:hover:bg-ink-700/30">
                         <td className="px-4 py-3 font-medium text-ink-800 dark:text-ink-100">{FEE_TYPE_LABELS[r.fee_type]}</td>
                         <td className="px-4 py-3 text-right text-ink-500">{r.invoice_count}</td>
                         <td className="px-4 py-3 text-right font-mono">{formatRWF(Number(r.total_expected))}</td>
                         <td className="px-4 py-3 text-right font-mono font-semibold text-green-600">{formatRWF(Number(r.total_collected))}</td>
+                        <td className="px-4 py-3 text-right">
+                          {appAmt > 0 ? (
+                            <span className="inline-flex flex-col items-end gap-0.5">
+                              <span className="font-mono text-violet-600 dark:text-violet-400 font-semibold text-xs">
+                                {formatRWF(appAmt)}
+                              </span>
+                              <span className="text-[10px] text-ink-400">{appCnt} transfer{appCnt !== 1 ? 's' : ''}</span>
+                            </span>
+                          ) : (
+                            <span className="text-ink-300 dark:text-ink-600 text-xs">—</span>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-right font-mono text-blue-600">{formatRWF(Number(r.total_bursary))}</td>
                         <td className="px-4 py-3">
                           <div className="h-1.5 bg-ink-200 dark:bg-ink-600 rounded-full overflow-hidden w-full">
@@ -298,6 +323,9 @@ export default function RevenueReportPage() {
                     <td className="px-4 py-2.5 text-right text-ink-500">{totalInvoices}</td>
                     <td className="px-4 py-2.5 text-right font-mono">{formatRWF(totalExpected)}</td>
                     <td className="px-4 py-2.5 text-right font-mono text-green-600">{formatRWF(totalCollected)}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-violet-600">
+                      {totalAppTransfer > 0 ? formatRWF(totalAppTransfer) : '—'}
+                    </td>
                     <td className="px-4 py-2.5 text-right font-mono text-blue-600">{formatRWF(totalBursary)}</td>
                     <td className="px-4 py-2.5" />
                     <td className="px-4 py-2.5 text-right">

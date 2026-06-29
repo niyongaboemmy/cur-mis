@@ -9,8 +9,9 @@ class FeePaymentModel extends BaseModel
     protected string $table = 'fee_payments';
     protected array $fillable = [
         'invoice_id', 'student_id', 'amount', 'fee_type', 'academic_year_id', 'semester',
-        'payment_method', 'reference_number', 'bank_reference', 'bank_slip_file_id',
-        'receipt_number', 'ebm_receipt', 'status', 'notes', 'recorded_by', 'paid_at',
+        'payment_method', 'payment_sub_method', 'source', 'source_application_id',
+        'reference_number', 'bank_slip_file_id',
+        'receipt_number', 'status', 'notes', 'recorded_by', 'paid_at',
         'confirmed_by', 'confirmed_at', 'rejection_reason',
     ];
 

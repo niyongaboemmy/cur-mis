@@ -219,7 +219,7 @@ class AdminDashboardController extends BaseController
                    MIN(s.lname)    AS lname,
                    MIN(s.acc_year) AS acc_year
             FROM module_marks mm
-            LEFT JOIN student s ON s.regnumber = mm.student_regnumber
+            LEFT JOIN student s ON s.regnumber COLLATE utf8mb4_unicode_ci = mm.student_regnumber COLLATE utf8mb4_unicode_ci
             WHERE mm.percentage IS NOT NULL
               {$studentScope}
             GROUP BY mm.student_regnumber

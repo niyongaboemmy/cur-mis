@@ -44,8 +44,8 @@ class PublicController extends BaseController
             "SELECT s.regnumber, s.fname, s.lname, s.current_level, s.program, s.photo,
                     f.fac_name, d.dep_name
              FROM `student` s
-             LEFT JOIN `faculty`      f ON CAST(f.fac_id AS CHAR) = s.faculty
-             LEFT JOIN `departements` d ON CAST(d.dep_id AS CHAR) = s.department
+             LEFT JOIN `faculty`      f ON CAST(f.fac_id AS CHAR) COLLATE utf8mb4_unicode_ci = s.faculty    COLLATE utf8mb4_unicode_ci
+             LEFT JOIN `departements` d ON CAST(d.dep_id AS CHAR) COLLATE utf8mb4_unicode_ci = s.department COLLATE utf8mb4_unicode_ci
              WHERE s.id = ? LIMIT 1",
             [(int) $card['student_id']]
         );

@@ -145,14 +145,21 @@ class FeeInvoiceModel extends BaseModel
     public function getRevenueSummary(int $academicYearId): array
     {
         return $this->db->fetchAll(
-            "SELECT fee_type,
-                    COUNT(*)            AS invoice_count,
-                    SUM(amount_due)     AS total_expected,
-                    SUM(amount_paid)    AS total_collected,
-                    SUM(bursary_applied) AS total_bursary
-             FROM `fee_invoices`
-             WHERE academic_year_id = ? AND fee_type != 'BURSARY_CREDIT'
-             GROUP BY fee_type
+            "SELECT fi.fee_type,
+                    COUNT(fi.id)                                              AS invoice_count,
+                    SUM(fi.amount_due)                                        AS total_expected,
+                    SUM(fi.amount_paid)                                       AS total_collected,
+                    SUM(fi.bursary_applied)                                   AS total_bursary,
+                    COALESCE(SUM(CASE WHEN fp.source = 'APPLICATION_TRANSFER'
+                                      THEN fp.amount END), 0)                 AS app_transfer_amount,
+                    COUNT(DISTINCT CASE WHEN fp.source = 'APPLICATION_TRANSFER'
+                                        THEN fp.id END)                       AS app_transfer_count
+             FROM `fee_invoices` fi
+             LEFT JOIN `fee_payments` fp
+                    ON fp.invoice_id = fi.id
+                   AND fp.status     = 'confirmed'
+             WHERE fi.academic_year_id = ? AND fi.fee_type != 'BURSARY_CREDIT'
+             GROUP BY fi.fee_type
              ORDER BY total_collected DESC",
             [$academicYearId]
         );

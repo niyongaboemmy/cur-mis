@@ -21,4 +21,11 @@ $router->group('/api/system', function ($router) {
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_SETTINGS)]);
 
 // Public read for the apply / login pages (no auth required).
-$router->get('/api/portal/guidance-videos', [SystemBasicsController::class, 'getGuidanceVideos']);
+$router->get('/api/portal/guidance-videos',    [SystemBasicsController::class, 'getGuidanceVideos']);
+$router->get('/api/portal/application-fee',    [SystemBasicsController::class, 'getPublicApplicationFee']);
+
+// Application fee → finance fee type mapping settings.
+$router->group('/api/system', function ($router) {
+    $router->get('/fee-mapping', [SystemBasicsController::class, 'getFeeMappingSettings']);
+    $router->put('/fee-mapping', [SystemBasicsController::class, 'saveFeeMappingSettings']);
+}, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_SETTINGS)]);

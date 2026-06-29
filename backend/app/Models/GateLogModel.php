@@ -58,7 +58,7 @@ class GateLogModel extends BaseModel
         $countRow = $this->db->fetchOne(
             "SELECT COUNT(*) AS cnt
              FROM `gate_logs` gl
-             LEFT JOIN `student` s ON s.regnumber = gl.student_id COLLATE utf8mb4_unicode_ci
+             LEFT JOIN `student` s ON s.regnumber COLLATE utf8mb4_unicode_ci = gl.student_id COLLATE utf8mb4_unicode_ci
              {$whereSql}",
             $bindings
         );
@@ -70,7 +70,7 @@ class GateLogModel extends BaseModel
                     s.email                        AS student_email,
                     u.full_name                    AS verified_by_name
              FROM `gate_logs` gl
-             LEFT JOIN `student` s ON s.regnumber = gl.student_id COLLATE utf8mb4_unicode_ci
+             LEFT JOIN `student` s ON s.regnumber COLLATE utf8mb4_unicode_ci = gl.student_id COLLATE utf8mb4_unicode_ci
              LEFT JOIN `users`   u ON u.id = gl.verified_by
              {$whereSql}
              ORDER BY gl.created_at DESC
@@ -132,7 +132,7 @@ class GateLogModel extends BaseModel
                     CONCAT(s.fname, ' ', s.lname) AS student_name,
                     u.full_name AS verified_by_name
              FROM `gate_logs` gl
-             LEFT JOIN `student` s ON s.regnumber = gl.student_id COLLATE utf8mb4_unicode_ci
+             LEFT JOIN `student` s ON s.regnumber COLLATE utf8mb4_unicode_ci = gl.student_id COLLATE utf8mb4_unicode_ci
              LEFT JOIN `users`   u ON u.id = gl.verified_by
              WHERE 1=1 {$gateWhere}
              ORDER BY gl.created_at DESC
