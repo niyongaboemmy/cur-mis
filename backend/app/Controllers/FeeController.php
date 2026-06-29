@@ -1850,7 +1850,7 @@ class FeeController extends BaseController
                fp.id                          AS transfer_payment_id,
                fp.amount                      AS transferred_amount,
                fp.receipt_number              AS transfer_receipt,
-               fp.created_at                  AS transferred_at
+               fp.paid_at                     AS transferred_at
 
              FROM `student_applications` sa
              LEFT JOIN `fee_payments` fp
