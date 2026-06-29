@@ -184,7 +184,7 @@ jobs:
                   -e "s/DEPLOY_DEST_DIR/backend/" \
             > _extract_src.php
 
-          R=$(curl -s -k --max-time 30 -u "$CPANEL_USER:$CPANEL_PASS" \
+          R=$(curl -s -k --max-time 90 -u "$CPANEL_USER:$CPANEL_PASS" \
             -F "dir=/" \
             -F "overwrite=1" \
             -F "file-1=@backend-src.zip;type=application/zip" \
