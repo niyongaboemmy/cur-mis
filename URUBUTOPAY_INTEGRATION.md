@@ -1,7 +1,7 @@
 # UrubutoPay Integration — Analysis Report & Implementation Guide
 
 **Institution:** Catholic University of Rwanda (CUR)  
-**Merchant Code:** `TH17342831`  
+**Merchant Code:** `TH90989816`  
 **Date:** 2026-05-16  
 **Author:** Senior Analyst
 
@@ -14,7 +14,7 @@ CUR is integrated with **UrubutoPay** (BKTechouse) as its mobile payment gateway
 | Channel | How |
 |---------|-----|
 | **USSD *775#** | Student dials `*775#` → selects CUR merchant → enters reg number → pays via MOMO/AIRTEL_MONEY |
-| **Hosted Checkout** | Student clicks "Pay via MoMo" in the student portal → redirected to `https://urubutopay.rw/pay-now?mhcd=TH17342831&pycd={regNumber}` |
+| **Hosted Checkout** | Student clicks "Pay via MoMo" in the student portal → redirected to `https://urubutopay.rw/pay-now?mhcd=TH90989816&pycd={regNumber}` |
 
 Both channels require CUR to expose three webhook endpoints that UrubutoPay calls to validate payers, receive callbacks, and authenticate.
 
@@ -73,7 +73,7 @@ Required response:
 
 Request:
 ```json
-{ "payer_code": "CUR/BBA/001/2022", "merchant_code": "TH17342831" }
+{ "payer_code": "CUR/BBA/001/2022", "merchant_code": "TH90989816" }
 ```
 
 Success response (HTTP 200):
@@ -83,7 +83,7 @@ Success response (HTTP 200):
   "status": 200,
   "data": {
     "payer_names": "MUGISHA John",
-    "merchant_code": "TH17342831",
+    "merchant_code": "TH90989816",
     "payer_code": "CUR/BBA/001/2022",
     "service_code": "tuition-fees-1258",
     "commission_rate": 0,
@@ -198,7 +198,7 @@ Writes to payment_reconciliation_log
 | Callback auto-reconciliation | N/A | Implemented (synchronous) |
 | Student portal "Pay via MoMo" button | Did not exist | Added to MyFinancePage |
 | Backend payment link API | Did not exist | `GET /api/finance/my/payment-link` |
-| Hosted checkout URL | Not wired | `https://urubutopay.rw/pay-now?mhcd=TH17342831&pycd={reg}` |
+| Hosted checkout URL | Not wired | `https://urubutopay.rw/pay-now?mhcd=TH90989816&pycd={reg}` |
 | UrubutoPay env constants | Hardcoded | Moved to `backend/.env` |
 
 ---
@@ -231,7 +231,7 @@ Register these webhook URLs in the UrubutoPay merchant portal:
 ### 5.3 UrubutoPay Hosted Checkout URL Format
 
 ```
-https://urubutopay.rw/pay-now?mhcd=TH17342831&pycd={studentRegNumber}
+https://urubutopay.rw/pay-now?mhcd=TH90989816&pycd={studentRegNumber}
 ```
 
 The student portal builds this URL via `GET /api/finance/my/payment-link` and opens it in a new tab.
@@ -275,12 +275,12 @@ Expected: { "status": 200, "data": { "token": "Bearer eyJ..." } }
 # 2. Validate student (replace TOKEN and REGNUMBER)
 POST http://localhost:8888/cur-mis/payment_api/getstudent.php
 Authorization: Bearer TOKEN
-Body: { "payer_code": "REGNUMBER", "merchant_code": "TH17342831" }
+Body: { "payer_code": "REGNUMBER", "merchant_code": "TH90989816" }
 Expected: { "status": 200, "data": { "payer_names": "...", "services": [...] } }
 
 # 3. Validate unknown student
 POST /getstudent.php  Authorization: Bearer TOKEN
-Body: { "payer_code": "INVALID", "merchant_code": "TH17342831" }
+Body: { "payer_code": "INVALID", "merchant_code": "TH90989816" }
 Expected: { "status": 404, "message": "Payer not found" }
 
 # 4. Payment callback (simulate UrubutoPay)
@@ -306,7 +306,7 @@ Expected: HTTP 401  { "status": 401, "message": "Wrong Authentication" }
 
 1. Student logs in → navigates to **My Finance** page
 2. "Pay via MoMo" button is visible in the top-right area
-3. Click button → new tab opens at `https://urubutopay.rw/pay-now?mhcd=TH17342831&pycd={reg}`
+3. Click button → new tab opens at `https://urubutopay.rw/pay-now?mhcd=TH90989816&pycd={reg}`
 4. If API fails → red error banner appears under header
 
 ### End-to-End USSD Test (requires live UrubutoPay configuration)

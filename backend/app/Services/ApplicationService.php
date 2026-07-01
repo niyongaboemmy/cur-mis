@@ -412,7 +412,9 @@ class ApplicationService
         }
 
         if ($offer['status'] !== 'accepted') {
-            throw new \RuntimeException('Enrollment can only be initiated for accepted offers.');
+            throw new \RuntimeException(
+                'Enrollment can only be initiated for accepted offers. Current status: ' . $offer['status']
+            );
         }
 
         if ((int)$offer['enrollment_initiated'] === 1) {
@@ -439,11 +441,9 @@ class ApplicationService
             $parentStudent = $this->db->fetchOne($sql, $params) ?: null;
         }
 
-        // Generate registration number: STD/YYYY/NNNNN
-        $year      = date('Y');
-        $row       = $this->db->fetchOne("SELECT MAX(id) AS max_id FROM `student`");
-        $seq       = ((int)($row['max_id'] ?? 0)) + 1;
-        $regNumber = sprintf('STD/%s/%05d', $year, $seq);
+        // Generate registration number: LCURYYAKNNNNN (e.g., 2CUR26AK000864)
+        // L = level indicator (1 for Undergraduate, 2 for Postgraduate), CUR = institution, YY = year, AK = program code, NNNNNN = sequential
+        $regNumber = $this->generateNewRegistrationNumberForLevel($levelId);
 
         // Best-effort: derive `programme_level` from the offer's `level_id` /
         // `level_name`. Anything not matching the known tiers falls back to
@@ -952,5 +952,66 @@ class ApplicationService
             'sent'   => $sent,
             'errors' => $errors,
         ];
+    }
+
+    /**
+     * Generate new registration number in format: LCURYYAKNNNNN
+     * Example: 1CUR26AK000001 for Undergraduate, 2CUR26AK000001 for Postgraduate
+     *
+     * Format breakdown:
+     * - L: Level indicator (1 for Undergraduate, 2 for Postgraduate)
+     * - CUR: Institution code (fixed - Catholic University of Rwanda)
+     * - YY: Last 2 digits of year (26 for 2026)
+     * - AK: Program/department code (fixed - Alex Kagame)
+     * - NNNNNN: 6-digit sequential number (000001 onwards)
+     *
+     * @param int $levelId The level ID (1 for Undergraduate, 2+ for Postgraduate)
+     * @throws \RuntimeException if registration number generation fails
+     */
+    private function generateNewRegistrationNumberForLevel(int $levelId): string
+    {
+        try {
+            // Determine level indicator: 1 for Undergraduate, 2 for Postgraduate
+            $levelIndicator = $levelId === 1 ? 1 : 2;
+
+            $currentYear = date('Y'); // Get year as string
+            $yearSuffix = substr($currentYear, 2); // Last 2 digits: 26 for 2026
+
+            // Build the prefix to search for: LCURYYAKNNNNN (e.g., 1CUR26AK or 2CUR26AK)
+            $prefix = sprintf('%d%s%s%s', $levelIndicator, 'CUR', $yearSuffix, 'AK');
+
+            // Get the last registration number with this prefix for this year
+            $result = $this->db->fetchOne(
+                "SELECT regnumber FROM `student`
+                 WHERE regnumber LIKE ?
+                 ORDER BY regnumber DESC
+                 LIMIT 1",
+                [$prefix . '%']
+            );
+
+            // Extract the current sequence number, or start at 1 if no records exist
+            $nextSequence = 1;
+            if ($result && !empty($result['regnumber'])) {
+                $regNum = $result['regnumber'];
+                // Extract the last 6 digits (sequence number)
+                $lastSeq = (int)substr($regNum, -6);
+                $nextSequence = $lastSeq + 1;
+            }
+
+            // Format: LCURYYAKNNNNN (e.g., 1CUR26AK000001)
+            $newRegNumber = sprintf(
+                '%d%s%s%s%06d',
+                $levelIndicator,
+                'CUR',
+                $yearSuffix,
+                'AK',
+                $nextSequence
+            );
+
+            return $newRegNumber;
+        } catch (\Throwable $e) {
+            error_log('[ApplicationService] Registration number generation failed: ' . $e->getMessage());
+            throw new \RuntimeException('Failed to generate registration number: ' . $e->getMessage());
+        }
     }
 }

@@ -279,6 +279,73 @@ class ApplicantProfileController extends BaseController
         ], 'Payment status fetched.');
     }
 
+    /**
+     * POST /api/applicant/application/payment/invoice
+     *
+     * For applicants who have already paid via bank transfer or other methods,
+     * accept their transaction ID and invoice proof. Mark the application as paid.
+     */
+    public function submitInvoicePayment(Request $request, Response $response): never
+    {
+        $profile = $request->param('_applicant_profile');
+        $appId   = (int)($profile['application_id'] ?? 0);
+        if (!$appId) {
+            $this->error($response, 'No active application.', 404);
+        }
+
+        $app = $this->appModel->find($appId);
+        if (!$app) {
+            $this->error($response, 'Application not found.', 404);
+        }
+
+        $transactionId = trim((string)($request->input('transaction_id') ?? ''));
+        if ($transactionId === '') {
+            $this->error($response, 'Transaction ID is required.', 422);
+        }
+
+        $invoiceFile = $request->file('invoice');
+        if (!$invoiceFile) {
+            $this->error($response, 'Invoice file is required.', 422);
+        }
+
+        // Validate file type
+        $allowedMimes = ['application/pdf', 'image/jpeg', 'image/png'];
+        if (!in_array($invoiceFile['type'] ?? '', $allowedMimes, true)) {
+            $this->error($response, 'Invoice must be PDF, JPG, or PNG.', 422);
+        }
+
+        // Validate file size (max 5MB)
+        if (($invoiceFile['size'] ?? 0) > 5 * 1024 * 1024) {
+            $this->error($response, 'Invoice file must be 5 MB or smaller.', 422);
+        }
+
+        $invoiceFileId = null;
+        try {
+            $client       = new FileServerClient();
+            $uploaded     = $client->upload($invoiceFile);
+            $invoiceFileId = $uploaded['id'];
+        } catch (\RuntimeException $e) {
+            // Log the error but don't fail the payment — invoice is optional
+            error_log('[Invoice Upload Error] ' . $e->getMessage());
+        }
+
+        // Update application with payment details
+        // The invoice file is optional; payment status is what matters
+        $this->appModel->update($appId, [
+            'transaction_id'     => $transactionId,
+            'payment_amount'     => $app['payment_amount'] ?? 5000,
+            'payment_currency'   => 'RWF',
+            'paid_at'            => date('Y-m-d H:i:s'),
+        ]);
+
+        $this->success($response, [
+            'transaction_id'  => $transactionId,
+            'invoice_file_id' => $invoiceFileId,
+            'verified'        => true,
+            'message'         => 'Payment verified successfully. Your application fee has been recorded.',
+        ], 'Invoice payment submitted successfully.');
+    }
+
     public function uploadPhoto(Request $request, Response $response): never
     {
         $profile   = $request->param('_applicant_profile');

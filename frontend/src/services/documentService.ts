@@ -7,6 +7,9 @@ export type DocumentType =
   | 'registration_form'
   | 'english_proficiency'
   | 'completed_modules'
+  | 'degree_bachelor'
+  | 'degree_pgde'
+  | 'degree_undergraduate'
 
 function base() {
   return import.meta.env.VITE_API_URL ?? ''

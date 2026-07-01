@@ -1,7 +1,7 @@
 # UrubutoPay Integration — Endpoint Reference
 
 **Institution:** Catholic University of Rwanda (CUR)  
-**Merchant Code:** `TH17342831`  
+**Merchant Code:** `TH90989816`  
 **Service Codes:** `tuition-fees-1258` (Tuition Fees) · `cursu-fees-8249` (CURSU Fees)  
 **Last Updated:** 2026-05-16
 
@@ -82,7 +82,7 @@ UrubutoPay calls this to confirm that a student registration number is valid bef
 ```json
 {
   "payer_code": "CUR/BBA/001/2022",
-  "merchant_code": "TH17342831"
+  "merchant_code": "TH90989816"
 }
 ```
 
@@ -94,7 +94,7 @@ UrubutoPay calls this to confirm that a student registration number is valid bef
   "status": 200,
   "data": {
     "payer_names": "JEAN BAPTISTE NKURUNZIZA",
-    "merchant_code": "TH17342831",
+    "merchant_code": "TH90989816",
     "payer_code": "CUR/BBA/001/2022",
     "service_code": "tuition-fees-1258",
     "commission_rate": 0,
@@ -337,7 +337,7 @@ TOKEN="Bearer eyJ..."   # from step 1
 curl -s -X POST https://cur.ac.rw/payment_api/getstudent.php \
   -H "Content-Type: application/json" \
   -H "Authorization: $TOKEN" \
-  -d '{"payer_code":"CUR/BBA/001/2022","merchant_code":"TH17342831"}'
+  -d '{"payer_code":"CUR/BBA/001/2022","merchant_code":"TH90989816"}'
 ```
 
 ### 3 — Send a payment notification

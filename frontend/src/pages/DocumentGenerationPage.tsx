@@ -56,6 +56,24 @@ const DOCUMENT_TYPES: DocType[] = [
     description:
       "Official report of all modules with recorded marks, total credits, and level breakdown.",
   },
+  {
+    key: "degree_bachelor",
+    label: "Bachelor's Degree Certificate",
+    description:
+      "Official Bachelor's Degree certificate with modern blue design, issued by Catholic University of Rwanda.",
+  },
+  {
+    key: "degree_pgde",
+    label: "Postgraduate Diploma Certificate",
+    description:
+      "Official Postgraduate Diploma in Education certificate with cream background and rotated layout.",
+  },
+  {
+    key: "degree_undergraduate",
+    label: "Undergraduate Degree Certificate",
+    description:
+      "Official Undergraduate Degree certificate with cream background and rotated layout.",
+  },
 ];
 
 // ─── Student search widget ────────────────────────────────────────────────────
