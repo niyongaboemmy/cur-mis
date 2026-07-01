@@ -71,11 +71,23 @@ class DegreePdf
             text-align: center;
             background: white;
           }
+          .logo {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
+          .logo img {
+            max-width: 100%;
+            max-height: 100%;
+          }
           .page {
             max-width: 850px;
             margin: 0 auto;
             border: 4px solid #000;
-            padding: 50px 40px;
+            padding: 40px 40px;
             background: white;
             position: relative;
             box-shadow: inset 0 0 0 2px #000, inset 4px 4px 0 -2px #000;
@@ -201,6 +213,17 @@ class DegreePdf
         </style>
         </head>
         <body>
+          <div class="logo">
+            <svg width="80" height="80" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="50" cy="50" r="48" fill="#FFF" stroke="#000" stroke-width="2"/>
+              <circle cx="50" cy="50" r="45" fill="none" stroke="#FFD700" stroke-width="2"/>
+              <path d="M 50 20 L 60 35 L 75 35 L 65 45 L 70 60 L 50 50 L 30 60 L 35 45 L 25 35 L 40 35 Z" fill="#FFD700" stroke="#000" stroke-width="1"/>
+              <circle cx="50" cy="55" r="25" fill="#1a5d2f" stroke="#000" stroke-width="1"/>
+              <text x="50" y="60" text-anchor="middle" font-size="12" font-weight="bold" fill="#FFD700">CUR</text>
+              <path d="M 30 45 Q 50 30 70 45" fill="none" stroke="#228B22" stroke-width="2"/>
+              <path d="M 30 55 Q 50 70 70 55" fill="none" stroke="#228B22" stroke-width="2"/>
+            </svg>
+          </div>
           <div class="page">
             <div class="header-border-top"></div>
 
@@ -267,11 +290,23 @@ class DegreePdf
             background-color: #f5ede2;
             line-height: 1.5;
           }
+          .logo {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
+          .logo img {
+            max-width: 100%;
+            max-height: 100%;
+          }
           .page {
             max-width: 850px;
             margin: 0 auto;
             border: 4px solid #000;
-            padding: 50px 40px;
+            padding: 40px 40px;
             background: #f5ede2;
             position: relative;
             box-shadow: inset 0 0 0 2px #000, inset 4px 4px 0 -2px #000;
@@ -390,10 +425,19 @@ class DegreePdf
         </style>
         </head>
         <body>
+          <div class="logo">
+            <svg width="80" height="80" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="50" cy="50" r="48" fill="#FFF" stroke="#000" stroke-width="2"/>
+              <circle cx="50" cy="50" r="45" fill="none" stroke="#FFD700" stroke-width="2"/>
+              <path d="M 50 20 L 60 35 L 75 35 L 65 45 L 70 60 L 50 50 L 30 60 L 35 45 L 25 35 L 40 35 Z" fill="#FFD700" stroke="#000" stroke-width="1"/>
+              <circle cx="50" cy="55" r="25" fill="#1a5d2f" stroke="#000" stroke-width="1"/>
+              <text x="50" y="60" text-anchor="middle" font-size="12" font-weight="bold" fill="#FFD700">CUR</text>
+              <path d="M 30 45 Q 50 30 70 45" fill="none" stroke="#228B22" stroke-width="2"/>
+              <path d="M 30 55 Q 50 70 70 55" fill="none" stroke="#228B22" stroke-width="2"/>
+            </svg>
+          </div>
           <div class="page">
             <div class="header-border-top"></div>
-
-            <p style="font-size: 14pt; font-weight: bold; letter-spacing: 4px; margin-bottom: 20px;">CATHOLIC UNIVERSITY OF RWANDA</p>
 
             <div class="title">Diploma</div>
 
@@ -466,11 +510,23 @@ class DegreePdf
             background-color: #f5ede2;
             line-height: 1.5;
           }
+          .logo {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
+          .logo img {
+            max-width: 100%;
+            max-height: 100%;
+          }
           .page {
             max-width: 850px;
             margin: 0 auto;
             border: 4px solid #000;
-            padding: 50px 40px;
+            padding: 40px 40px;
             background: #f5ede2;
             position: relative;
             box-shadow: inset 0 0 0 2px #000, inset 4px 4px 0 -2px #000;
@@ -589,10 +645,19 @@ class DegreePdf
         </style>
         </head>
         <body>
+          <div class="logo">
+            <svg width="80" height="80" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="50" cy="50" r="48" fill="#FFF" stroke="#000" stroke-width="2"/>
+              <circle cx="50" cy="50" r="45" fill="none" stroke="#FFD700" stroke-width="2"/>
+              <path d="M 50 20 L 60 35 L 75 35 L 65 45 L 70 60 L 50 50 L 30 60 L 35 45 L 25 35 L 40 35 Z" fill="#FFD700" stroke="#000" stroke-width="1"/>
+              <circle cx="50" cy="55" r="25" fill="#1a5d2f" stroke="#000" stroke-width="1"/>
+              <text x="50" y="60" text-anchor="middle" font-size="12" font-weight="bold" fill="#FFD700">CUR</text>
+              <path d="M 30 45 Q 50 30 70 45" fill="none" stroke="#228B22" stroke-width="2"/>
+              <path d="M 30 55 Q 50 70 70 55" fill="none" stroke="#228B22" stroke-width="2"/>
+            </svg>
+          </div>
           <div class="page">
             <div class="header-border-top"></div>
-
-            <p style="font-size: 14pt; font-weight: bold; letter-spacing: 4px; margin-bottom: 20px;">CATHOLIC UNIVERSITY OF RWANDA</p>
 
             <div class="title">Degree</div>
 
