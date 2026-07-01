@@ -93,19 +93,21 @@ class DocumentController extends BaseController
                 DocumentHelper::buildCompletedModulesReport($student, $modules),
                 "Completed_Modules_{$reg}.pdf",
             ],
-            'degree_bachelor'     => [
-                DegreePdf::buildHtml($student, DegreePdf::TYPE_BACHELOR),
-                "degree-bachelor-{$reg}.pdf",
-            ],
-            'degree_pgde'         => [
-                DegreePdf::buildHtml($student, DegreePdf::TYPE_PGDE),
-                "degree-pgde-{$reg}.pdf",
-            ],
-            'degree_undergraduate' => [
-                DegreePdf::buildHtml($student, DegreePdf::TYPE_MASTERS),
-                "degree-undergraduate-{$reg}.pdf",
-            ],
+            'degree_bachelor'     => null,
+            'degree_pgde'         => null,
+            'degree_undergraduate' => null,
         };
+
+        // Handle degree certificates separately (no DocumentHelper header stamp)
+        if (in_array($documentType, ['degree_bachelor', 'degree_pgde', 'degree_undergraduate'], true)) {
+            $type = match($documentType) {
+                'degree_bachelor' => DegreePdf::TYPE_BACHELOR,
+                'degree_pgde' => DegreePdf::TYPE_PGDE,
+                'degree_undergraduate' => DegreePdf::TYPE_MASTERS,
+            };
+            DegreePdf::streamPdf($student, $type, '', '', '', "degree-{$reg}.pdf");
+            return;
+        }
 
         DocumentHelper::stream($html, $filename);
     }
