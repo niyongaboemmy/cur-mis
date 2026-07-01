@@ -75,7 +75,7 @@ abstract class BaseModel
     public function find(int|string $id): array|false
     {
         $row = $this->db->fetchOne(
-            "SELECT * FROM `{$this->table}` WHERE `{$this->primaryKey}` = ? LIMIT 1",
+            "SELECT * FROM `{$this->table}` WHERE CONVERT(`{$this->primaryKey}` USING utf8mb4) COLLATE utf8mb4_unicode_ci = CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci LIMIT 1",
             [$id]
         );
         return $row ? $this->hideFields($row) : false;
@@ -89,7 +89,7 @@ abstract class BaseModel
     public function findBy(string $column, mixed $value): array|false
     {
         $row = $this->db->fetchOne(
-            "SELECT * FROM `{$this->table}` WHERE `{$column}` = ? LIMIT 1",
+            "SELECT * FROM `{$this->table}` WHERE CONVERT(`{$column}` USING utf8mb4) COLLATE utf8mb4_unicode_ci = CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci LIMIT 1",
             [$value]
         );
         return $row !== false ? $row : false;
@@ -181,7 +181,7 @@ abstract class BaseModel
         $sets = implode(', ', array_map(fn($c) => "`{$c}` = ?", array_keys($filtered)));
 
         return $this->db->execute(
-            "UPDATE `{$this->table}` SET {$sets} WHERE `{$this->primaryKey}` = ?",
+            "UPDATE `{$this->table}` SET {$sets} WHERE CONVERT(`{$this->primaryKey}` USING utf8mb4) COLLATE utf8mb4_unicode_ci = CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci",
             [...array_values($filtered), $id]
         );
     }
@@ -190,7 +190,7 @@ abstract class BaseModel
     public function delete(int|string $id): int
     {
         return $this->db->execute(
-            "DELETE FROM `{$this->table}` WHERE `{$this->primaryKey}` = ?",
+            "DELETE FROM `{$this->table}` WHERE CONVERT(`{$this->primaryKey}` USING utf8mb4) COLLATE utf8mb4_unicode_ci = CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci",
             [$id]
         );
     }
