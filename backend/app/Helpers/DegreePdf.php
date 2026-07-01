@@ -6,7 +6,7 @@ namespace App\Helpers;
 
 /**
  * Generates official CUR Degree/Diploma certificates as PDF.
- * Matches exact official CUR certificate designs.
+ * Same rendering for preview and download.
  */
 class DegreePdf
 {
@@ -39,12 +39,12 @@ class DegreePdf
         string $grade = '',
         string $graduationDate = ''
     ): string {
-        $name = strtoupper(trim(($student['fname'] ?? '') . ' ' . ($student['lname'] ?? '')));
-        $regNo = $student['regnumber'] ?? '';
-        $faculty = $student['fac_name'] ?? $student['faculty'] ?? '';
-        $programme = strtoupper($programme ?: ($student['dep_name'] ?? ''));
+        $name = htmlspecialchars(strtoupper(trim(($student['fname'] ?? '') . ' ' . ($student['lname'] ?? ''))), ENT_QUOTES);
+        $regNo = htmlspecialchars($student['regnumber'] ?? '', ENT_QUOTES);
+        $faculty = htmlspecialchars($student['fac_name'] ?? $student['faculty'] ?? '', ENT_QUOTES);
+        $programme = htmlspecialchars(strtoupper($programme ?: ($student['dep_name'] ?? '')), ENT_QUOTES);
         $gradeText = $grade ? ", Grade: {$grade}" : '';
-        $date = $graduationDate ?: 'to be determined';
+        $date = htmlspecialchars($graduationDate ?: 'to be determined', ENT_QUOTES);
 
         return <<<HTML
 <!DOCTYPE html>
@@ -52,52 +52,36 @@ class DegreePdf
 <head>
 <meta charset="UTF-8">
 <style>
-body { font-family: 'Times New Roman', serif; margin: 0; padding: 40px; text-align: center; }
-.certificate { border: 3px solid #000; padding: 50px 40px; max-width: 900px; margin: 0 auto; background: white; }
-.logo-container { margin-bottom: 20px; }
-.logo-container svg { width: 80px; height: 80px; }
-.title { font-size: 48px; color: #2b7fb5; font-weight: bold; margin: 20px 0; }
-.subtitle { font-size: 13px; font-style: italic; margin: 15px 0; }
-.name { font-size: 18px; font-weight: bold; text-decoration: underline; margin: 30px 0; }
-.reg-no { font-size: 12px; margin: 15px 0 25px 0; }
-.body-text { font-size: 12px; line-height: 1.8; margin: 20px 0; }
-.signatures { display: flex; justify-content: space-between; margin-top: 60px; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; }
+body { font-family: 'Times New Roman', 'Times', serif; background: white; padding: 40px; text-align: center; }
+.cert { border: 3px solid #000; padding: 40px; max-width: 850px; margin: 0 auto; background: white; }
+.logo { font-size: 14px; font-weight: bold; letter-spacing: 1px; margin-bottom: 20px; color: #1a5d2f; }
+.title { font-size: 44px; color: #2b7fb5; font-weight: bold; margin: 15px 0 10px; }
+.subtitle { font-size: 13px; font-style: italic; margin: 10px 0; }
+.name { font-size: 16px; font-weight: bold; text-decoration: underline; margin: 25px 0; }
+.reg-no { font-size: 11px; margin: 10px 0 20px; }
+.body { font-size: 11px; line-height: 1.8; margin: 15px 0; }
+.signatures { display: flex; justify-content: space-between; margin: 50px 0 0; }
 .sig { flex: 1; text-align: center; }
-.sig-line { border-top: 1px solid #000; height: 50px; margin-bottom: 5px; }
-.sig-name { font-size: 11px; }
-.ref { font-size: 11px; font-weight: bold; margin-top: 20px; }
+.sig-line { border-top: 1px solid #000; height: 50px; margin-bottom: 3px; }
+.sig-name { font-size: 10px; line-height: 1.4; }
+.ref { font-size: 10px; font-weight: bold; margin: 15px 0 0; }
 </style>
 </head>
 <body>
-<div class="certificate">
-  <div class="logo-container">
-    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="50" cy="50" r="48" fill="white" stroke="black" stroke-width="2"/>
-      <circle cx="50" cy="50" r="45" fill="none" stroke="#FFD700" stroke-width="1.5"/>
-      <path d="M 50 18 L 61 38 L 83 38 L 65 52 L 76 72 L 50 58 L 24 72 L 35 52 L 17 38 L 39 38 Z" fill="#FFD700" stroke="black" stroke-width="0.5"/>
-      <circle cx="50" cy="58" r="22" fill="#1a5d2f" stroke="black" stroke-width="1"/>
-      <text x="50" y="65" text-anchor="middle" font-size="11" font-weight="bold" fill="#FFD700" font-family="Arial">CUR</text>
-      <path d="M 32 50 Q 50 35 68 50" fill="none" stroke="#228B22" stroke-width="1.5"/>
-      <path d="M 32 60 Q 50 75 68 60" fill="none" stroke="#228B22" stroke-width="1.5"/>
-    </svg>
-  </div>
-
+<div class="cert">
+  <div class="logo">✦ CATHOLIC UNIVERSITY OF RWANDA ✦</div>
   <div class="title">Degree</div>
-
   <p class="subtitle">This is to certify that</p>
-
   <div class="name">{$name}</div>
-
   <div class="reg-no">Reg. No: {$regNo}</div>
-
-  <div class="body-text">
+  <div class="body">
     Having satisfied the requirements for the award of <strong>BACHELOR'S DEGREE<br>IN {$programme}</strong>{$gradeText}
   </div>
-
-  <div class="body-text">
+  <div class="body">
     Was conferred on the Degree in the <strong>Faculty of {$faculty}</strong> at the Congregation held at Gisagara Gymnasium<br>this {$date}.
   </div>
-
   <div class="signatures">
     <div class="sig">
       <div class="sig-line"></div>
@@ -108,7 +92,6 @@ body { font-family: 'Times New Roman', serif; margin: 0; padding: 40px; text-ali
       <p class="sig-name">Deputy Vice Chancellor for<br>Academic and Research</p>
     </div>
   </div>
-
   <div class="ref">BD 04232</div>
 </div>
 </body>
@@ -120,8 +103,8 @@ HTML;
      * PGDE Diploma Certificate - Cream background
      */
     private static function buildPgdeDiploma(array $student): string {
-        $name = strtoupper(trim(($student['fname'] ?? '') . ' ' . ($student['lname'] ?? '')));
-        $regNo = $student['regnumber'] ?? '';
+        $name = htmlspecialchars(strtoupper(trim(($student['fname'] ?? '') . ' ' . ($student['lname'] ?? ''))), ENT_QUOTES);
+        $regNo = htmlspecialchars($student['regnumber'] ?? '', ENT_QUOTES);
 
         return <<<HTML
 <!DOCTYPE html>
@@ -129,56 +112,35 @@ HTML;
 <head>
 <meta charset="UTF-8">
 <style>
-body { font-family: 'Times New Roman', serif; margin: 0; padding: 40px; text-align: center; background-color: #f5ede2; }
-.certificate { border: 3px solid #000; padding: 50px 40px; max-width: 900px; margin: 0 auto; background: #f5ede2; }
-.logo-container { margin-bottom: 20px; }
-.logo-container svg { width: 80px; height: 80px; }
-.title { font-size: 48px; color: #000; font-weight: bold; margin: 20px 0; }
-.subtitle { font-size: 13px; font-style: italic; margin: 15px 0; }
-.name { font-size: 18px; font-weight: bold; text-decoration: underline; margin: 30px 0; }
-.reg-no { font-size: 12px; margin: 15px 0 25px 0; }
-.body-text { font-size: 12px; line-height: 1.8; margin: 20px 0; }
-.signatures { display: flex; justify-content: space-between; margin-top: 60px; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; }
+body { font-family: 'Times New Roman', 'Times', serif; background: #f5ede2; padding: 40px; text-align: center; }
+.cert { border: 3px solid #000; padding: 40px; max-width: 850px; margin: 0 auto; background: #f5ede2; }
+.logo { font-size: 14px; font-weight: bold; letter-spacing: 1px; margin-bottom: 20px; color: #1a5d2f; }
+.title { font-size: 44px; color: #000; font-weight: bold; margin: 15px 0 10px; }
+.subtitle { font-size: 13px; font-style: italic; margin: 10px 0; }
+.name { font-size: 16px; font-weight: bold; text-decoration: underline; margin: 25px 0; }
+.reg-no { font-size: 11px; margin: 10px 0 20px; }
+.body { font-size: 11px; line-height: 1.8; margin: 15px 0; }
+.signatures { display: flex; justify-content: space-between; margin: 50px 0 0; }
 .sig { flex: 1; text-align: center; }
-.sig-line { border-top: 1px solid #000; height: 50px; margin-bottom: 5px; }
-.sig-name { font-size: 11px; }
-.ref { font-size: 11px; font-weight: bold; margin-top: 20px; }
+.sig-line { border-top: 1px solid #000; height: 50px; margin-bottom: 3px; }
+.sig-name { font-size: 10px; line-height: 1.4; }
+.ref { font-size: 10px; font-weight: bold; margin: 15px 0 0; }
 </style>
 </head>
 <body>
-<div class="certificate">
-  <div class="logo-container">
-    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="50" cy="50" r="48" fill="white" stroke="black" stroke-width="2"/>
-      <circle cx="50" cy="50" r="45" fill="none" stroke="#FFD700" stroke-width="1.5"/>
-      <path d="M 50 18 L 61 38 L 83 38 L 65 52 L 76 72 L 50 58 L 24 72 L 35 52 L 17 38 L 39 38 Z" fill="#FFD700" stroke="black" stroke-width="0.5"/>
-      <circle cx="50" cy="58" r="22" fill="#1a5d2f" stroke="black" stroke-width="1"/>
-      <text x="50" y="65" text-anchor="middle" font-size="11" font-weight="bold" fill="#FFD700" font-family="Arial">CUR</text>
-      <path d="M 32 50 Q 50 35 68 50" fill="none" stroke="#228B22" stroke-width="1.5"/>
-      <path d="M 32 60 Q 50 75 68 60" fill="none" stroke="#228B22" stroke-width="1.5"/>
-    </svg>
-  </div>
-
+<div class="cert">
+  <div class="logo">✦ CATHOLIC UNIVERSITY OF RWANDA ✦</div>
   <div class="title">Diploma</div>
-
   <p class="subtitle">This is to certify that</p>
-
   <div class="name">{$name}</div>
-
   <div class="reg-no">Reg. No: {$regNo}</div>
-
-  <div class="body-text">
-    Having satisfied the requirements for the award of
-  </div>
-
-  <div class="body-text">
-    <strong>POSTGRADUATE DIPLOMA IN EDUCATION</strong>
-  </div>
-
-  <div class="body-text">
+  <div class="body">Having satisfied the requirements for the award of</div>
+  <div class="body"><strong>POSTGRADUATE DIPLOMA IN EDUCATION</strong></div>
+  <div class="body">
     Was conferred on the Diploma at the Congregation held at Huye this second day of July two thousand twenty-five.
   </div>
-
   <div class="signatures">
     <div class="sig">
       <div class="sig-line"></div>
@@ -189,7 +151,6 @@ body { font-family: 'Times New Roman', serif; margin: 0; padding: 40px; text-ali
       <p class="sig-name">Deputy Vice Chancellor for<br>Academic and Research</p>
     </div>
   </div>
-
   <div class="ref">PGDE 00558</div>
 </div>
 </body>
@@ -206,11 +167,11 @@ HTML;
         string $grade = '',
         string $graduationDate = ''
     ): string {
-        $name = strtoupper(trim(($student['fname'] ?? '') . ' ' . ($student['lname'] ?? '')));
-        $regNo = $student['regnumber'] ?? '';
-        $programme = strtoupper($programme ?: ($student['dep_name'] ?? ''));
+        $name = htmlspecialchars(strtoupper(trim(($student['fname'] ?? '') . ' ' . ($student['lname'] ?? ''))), ENT_QUOTES);
+        $regNo = htmlspecialchars($student['regnumber'] ?? '', ENT_QUOTES);
+        $programme = htmlspecialchars(strtoupper($programme ?: ($student['dep_name'] ?? '')), ENT_QUOTES);
         $gradeText = $grade ? "<br>Grade: {$grade}" : '';
-        $date = $graduationDate ?: 'to be determined';
+        $date = htmlspecialchars($graduationDate ?: 'to be determined', ENT_QUOTES);
 
         return <<<HTML
 <!DOCTYPE html>
@@ -218,52 +179,36 @@ HTML;
 <head>
 <meta charset="UTF-8">
 <style>
-body { font-family: 'Times New Roman', serif; margin: 0; padding: 40px; text-align: center; background-color: #f5ede2; }
-.certificate { border: 3px solid #000; padding: 50px 40px; max-width: 900px; margin: 0 auto; background: #f5ede2; }
-.logo-container { margin-bottom: 20px; }
-.logo-container svg { width: 80px; height: 80px; }
-.title { font-size: 48px; color: #2d6b3f; font-weight: bold; margin: 20px 0; }
-.subtitle { font-size: 13px; font-style: italic; margin: 15px 0; }
-.name { font-size: 18px; font-weight: bold; text-decoration: underline; margin: 30px 0; }
-.reg-no { font-size: 12px; margin: 15px 0 25px 0; }
-.body-text { font-size: 12px; line-height: 1.8; margin: 20px 0; }
-.signatures { display: flex; justify-content: space-between; margin-top: 60px; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; }
+body { font-family: 'Times New Roman', 'Times', serif; background: #f5ede2; padding: 40px; text-align: center; }
+.cert { border: 3px solid #000; padding: 40px; max-width: 850px; margin: 0 auto; background: #f5ede2; }
+.logo { font-size: 14px; font-weight: bold; letter-spacing: 1px; margin-bottom: 20px; color: #1a5d2f; }
+.title { font-size: 44px; color: #2d6b3f; font-weight: bold; margin: 15px 0 10px; }
+.subtitle { font-size: 13px; font-style: italic; margin: 10px 0; }
+.name { font-size: 16px; font-weight: bold; text-decoration: underline; margin: 25px 0; }
+.reg-no { font-size: 11px; margin: 10px 0 20px; }
+.body { font-size: 11px; line-height: 1.8; margin: 15px 0; }
+.signatures { display: flex; justify-content: space-between; margin: 50px 0 0; }
 .sig { flex: 1; text-align: center; }
-.sig-line { border-top: 1px solid #000; height: 50px; margin-bottom: 5px; }
-.sig-name { font-size: 11px; }
-.ref { font-size: 11px; font-weight: bold; margin-top: 20px; }
+.sig-line { border-top: 1px solid #000; height: 50px; margin-bottom: 3px; }
+.sig-name { font-size: 10px; line-height: 1.4; }
+.ref { font-size: 10px; font-weight: bold; margin: 15px 0 0; }
 </style>
 </head>
 <body>
-<div class="certificate">
-  <div class="logo-container">
-    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="50" cy="50" r="48" fill="white" stroke="black" stroke-width="2"/>
-      <circle cx="50" cy="50" r="45" fill="none" stroke="#FFD700" stroke-width="1.5"/>
-      <path d="M 50 18 L 61 38 L 83 38 L 65 52 L 76 72 L 50 58 L 24 72 L 35 52 L 17 38 L 39 38 Z" fill="#FFD700" stroke="black" stroke-width="0.5"/>
-      <circle cx="50" cy="58" r="22" fill="#1a5d2f" stroke="black" stroke-width="1"/>
-      <text x="50" y="65" text-anchor="middle" font-size="11" font-weight="bold" fill="#FFD700" font-family="Arial">CUR</text>
-      <path d="M 32 50 Q 50 35 68 50" fill="none" stroke="#228B22" stroke-width="1.5"/>
-      <path d="M 32 60 Q 50 75 68 60" fill="none" stroke="#228B22" stroke-width="1.5"/>
-    </svg>
-  </div>
-
+<div class="cert">
+  <div class="logo">✦ CATHOLIC UNIVERSITY OF RWANDA ✦</div>
   <div class="title">Degree</div>
-
   <p class="subtitle">This is to certify that</p>
-
   <div class="name">{$name}</div>
-
   <div class="reg-no">Reg. No: {$regNo}</div>
-
-  <div class="body-text">
+  <div class="body">
     Having satisfied the requirements for the award of <strong>BACHELOR WITH HONOURS IN {$programme}</strong>{$gradeText}
   </div>
-
-  <div class="body-text">
+  <div class="body">
     Was conferred on the Degree at the Congregation held at Huye this second day of July two thousand twenty-five.
   </div>
-
   <div class="signatures">
     <div class="sig">
       <div class="sig-line"></div>
@@ -274,7 +219,6 @@ body { font-family: 'Times New Roman', serif; margin: 0; padding: 40px; text-ali
       <p class="sig-name">Deputy Vice Chancellor for<br>Academic and Research</p>
     </div>
   </div>
-
   <div class="ref">BD 04248</div>
 </div>
 </body>
@@ -302,7 +246,7 @@ HTML;
             $dompdf->loadHtml($html);
             $dompdf->setPaper('A4', 'portrait');
             $dompdf->render();
-            $dompdf->stream($filename, ['Attachment' => true]);
+            $dompdf->stream($filename, ['Attachment' => false]);
             exit;
         }
 
