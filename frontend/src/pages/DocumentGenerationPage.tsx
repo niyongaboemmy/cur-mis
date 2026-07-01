@@ -56,6 +56,12 @@ const DOCUMENT_TYPES: DocType[] = [
     description:
       "Official report of all modules with recorded marks, total credits, and level breakdown.",
   },
+  {
+    key: "degree_certificate",
+    label: "Degree Certificate",
+    description:
+      "Official degree certificate confirming the award of Bachelor's, Master's, or Postgraduate Diploma based on student's level.",
+  },
 ];
 
 // ─── Student search widget ────────────────────────────────────────────────────

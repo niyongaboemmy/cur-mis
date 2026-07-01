@@ -7,6 +7,7 @@ export type DocumentType =
   | 'registration_form'
   | 'english_proficiency'
   | 'completed_modules'
+  | 'degree_certificate'
 
 function base() {
   return import.meta.env.VITE_API_URL ?? ''
