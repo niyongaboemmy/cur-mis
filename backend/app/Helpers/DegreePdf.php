@@ -71,7 +71,7 @@ body { font-family: 'Times New Roman', 'Times', serif; background: white; paddin
 </head>
 <body>
 <div class="cert">
-  <div class="logo">✦ CATHOLIC UNIVERSITY OF RWANDA ✦</div>
+  <div class="logo">CATHOLIC UNIVERSITY OF RWANDA</div>
   <div class="title">Degree</div>
   <p class="subtitle">This is to certify that</p>
   <div class="name">{$name}</div>
@@ -131,7 +131,7 @@ body { font-family: 'Times New Roman', 'Times', serif; background: #f5ede2; padd
 </head>
 <body>
 <div class="cert">
-  <div class="logo">✦ CATHOLIC UNIVERSITY OF RWANDA ✦</div>
+  <div class="logo">CATHOLIC UNIVERSITY OF RWANDA</div>
   <div class="title">Diploma</div>
   <p class="subtitle">This is to certify that</p>
   <div class="name">{$name}</div>
@@ -183,8 +183,8 @@ HTML;
 html, body { width: 100%; height: 100%; }
 body { font-family: 'Times New Roman', 'Times', serif; background: #f5ede2; padding: 40px; text-align: center; }
 .cert { border: 3px solid #000; padding: 40px; max-width: 850px; margin: 0 auto; background: #f5ede2; }
-.logo { font-size: 14px; font-weight: bold; letter-spacing: 1px; margin-bottom: 20px; color: #1a5d2f; }
-.title { font-size: 44px; color: #2d6b3f; font-weight: bold; margin: 15px 0 10px; }
+.logo { font-size: 13px; font-weight: bold; letter-spacing: 2px; margin-bottom: 25px; color: #1a5d2f; }
+.title { font-size: 48px; color: #2d6b3f; font-weight: bold; margin: 20px 0 15px; }
 .subtitle { font-size: 13px; font-style: italic; margin: 10px 0; }
 .name { font-size: 16px; font-weight: bold; text-decoration: underline; margin: 25px 0; }
 .reg-no { font-size: 11px; margin: 10px 0 20px; }
@@ -198,7 +198,7 @@ body { font-family: 'Times New Roman', 'Times', serif; background: #f5ede2; padd
 </head>
 <body>
 <div class="cert">
-  <div class="logo">✦ CATHOLIC UNIVERSITY OF RWANDA ✦</div>
+  <div class="logo">CATHOLIC UNIVERSITY OF RWANDA</div>
   <div class="title">Degree</div>
   <p class="subtitle">This is to certify that</p>
   <div class="name">{$name}</div>
