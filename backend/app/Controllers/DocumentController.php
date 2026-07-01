@@ -17,7 +17,9 @@ class DocumentController extends BaseController
         'registration_form',
         'english_proficiency',
         'completed_modules',
-        'degree_certificate',
+        'degree_bachelor',
+        'degree_pgde',
+        'degree_undergraduate',
     ];
 
     /**
@@ -43,7 +45,9 @@ class DocumentController extends BaseController
             'registration_form'    => DocumentHelper::buildRegistrationForm($student, preview: true),
             'english_proficiency'  => DocumentHelper::buildEnglishProficiencyCertificate($student, preview: true),
             'completed_modules'    => DocumentHelper::buildCompletedModulesReport($student, $modules, preview: true),
-            'degree_certificate'   => DegreePdf::buildHtml($student, $this->determineCertificateType($student)),
+            'degree_bachelor'      => DegreePdf::buildHtml($student, DegreePdf::TYPE_BACHELOR),
+            'degree_pgde'          => DegreePdf::buildHtml($student, DegreePdf::TYPE_PGDE),
+            'degree_undergraduate' => DegreePdf::buildHtml($student, DegreePdf::TYPE_MASTERS),
         };
 
         $this->success($response, ['html' => $html], 'Preview generated.');
@@ -89,9 +93,17 @@ class DocumentController extends BaseController
                 DocumentHelper::buildCompletedModulesReport($student, $modules),
                 "Completed_Modules_{$reg}.pdf",
             ],
-            'degree_certificate'  => [
-                DegreePdf::buildHtml($student, $this->determineCertificateType($student)),
-                "degree-certificate-{$reg}.pdf",
+            'degree_bachelor'     => [
+                DegreePdf::buildHtml($student, DegreePdf::TYPE_BACHELOR),
+                "degree-bachelor-{$reg}.pdf",
+            ],
+            'degree_pgde'         => [
+                DegreePdf::buildHtml($student, DegreePdf::TYPE_PGDE),
+                "degree-pgde-{$reg}.pdf",
+            ],
+            'degree_undergraduate' => [
+                DegreePdf::buildHtml($student, DegreePdf::TYPE_MASTERS),
+                "degree-undergraduate-{$reg}.pdf",
             ],
         };
 
