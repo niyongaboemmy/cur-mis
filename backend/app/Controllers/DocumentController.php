@@ -7,6 +7,7 @@ namespace App\Controllers;
 use Core\Request;
 use Core\Response;
 use App\Helpers\DocumentHelper;
+use App\Helpers\DegreePdf;
 
 class DocumentController extends BaseController
 {
@@ -16,6 +17,7 @@ class DocumentController extends BaseController
         'registration_form',
         'english_proficiency',
         'completed_modules',
+        'degree_certificate',
     ];
 
     /**
@@ -41,6 +43,7 @@ class DocumentController extends BaseController
             'registration_form'    => DocumentHelper::buildRegistrationForm($student, preview: true),
             'english_proficiency'  => DocumentHelper::buildEnglishProficiencyCertificate($student, preview: true),
             'completed_modules'    => DocumentHelper::buildCompletedModulesReport($student, $modules, preview: true),
+            'degree_certificate'   => DegreePdf::buildHtml($student, $this->determineCertificateType($student)),
         };
 
         $this->success($response, ['html' => $html], 'Preview generated.');
@@ -86,12 +89,30 @@ class DocumentController extends BaseController
                 DocumentHelper::buildCompletedModulesReport($student, $modules),
                 "Completed_Modules_{$reg}.pdf",
             ],
+            'degree_certificate'  => [
+                DegreePdf::buildHtml($student, $this->determineCertificateType($student)),
+                "degree-certificate-{$reg}.pdf",
+            ],
         };
 
         DocumentHelper::stream($html, $filename);
     }
 
     // ─── Internal helpers ─────────────────────────────────────────────────────
+
+    /** Determine certificate type based on programme_level. */
+    private function determineCertificateType(array $student): string
+    {
+        $programmeLevel = strtolower((string)($student['programme_level'] ?? 'undergraduate'));
+
+        return match ($programmeLevel) {
+            'masters', 'master'                  => DegreePdf::TYPE_MASTERS,
+            'pgde', 'postgraduate diploma'      => DegreePdf::TYPE_PGDE,
+            'phd', 'doctorate', 'doctor'        => DegreePdf::TYPE_PHD,
+            'undergraduate', 'bachelor'         => DegreePdf::TYPE_BACHELOR,
+            default                             => DegreePdf::TYPE_BACHELOR,
+        };
+    }
 
     /** Validate common query params; exits with 422 on failure. */
     private function validated(Request $request, Response $response): array
