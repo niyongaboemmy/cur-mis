@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { paymentService } from "@/services/financeService";
-import { createPortal } from "react-dom";
-import StudentDetailsPage from "@/pages/StudentDetailsPage";
+import { useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
 
@@ -23,55 +22,16 @@ import {
   X,
   User,
   FileSpreadsheet,
+  Eye,
+  ExternalLink,
 } from "lucide-react";
 
-function StudentProfileModal({
-  studentDbId,
-  studentRef,
-  onClose,
-}: {
-  studentDbId: number;
-  studentRef: string;
-  onClose: () => void;
-}) {
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[9999] flex flex-col bg-white dark:bg-ink-950 overflow-hidden"
-      role="dialog"
-      aria-modal="true"
-    >
-      {/* Top bar */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-ink-200 dark:border-ink-800 bg-ink-50 dark:bg-ink-900 shrink-0">
-        <div className="flex items-center gap-2 text-sm text-ink-500 dark:text-ink-400">
-          <User className="w-4 h-4" />
-          <span>Student Profile — {studentRef}</span>
-        </div>
-        <button
-          onClick={onClose}
-          className="p-1.5 rounded hover:bg-ink-200 dark:hover:bg-ink-700 transition-colors"
-          aria-label="Close profile"
-        >
-          <X className="w-5 h-5" />
-        </button>
-      </div>
-
-      {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto p-4">
-        <StudentDetailsPage idOverride={studentDbId} />
-      </div>
-    </div>,
-    document.body
-  );
-}
 
 export default function OnlinePaymentsHistoryPage() {
+  const navigate = useNavigate();
   const [page, setPage] = useState(1);
   const [keyword, setKeyword] = useState("");
   const [searchInput, setSearchInput] = useState("");
-  const [activeStudent, setActiveStudent] = useState<{
-    dbId: number;
-    ref: string;
-  } | null>(null);
   const [exporting, setExporting] = useState(false);
 
   const { data, isLoading, isFetching, refetch } = useQuery({
@@ -117,7 +77,7 @@ export default function OnlinePaymentsHistoryPage() {
 
       const header = [
         "Date",
-        "Student / Reference",
+        "Reg Number",
         "Student Name",
         "Slip No",
         "Trans Code",
@@ -131,6 +91,7 @@ export default function OnlinePaymentsHistoryPage() {
           p.student_fname || p.student_lname
             ? `${p.student_fname ?? ""} ${p.student_lname ?? ""}`.trim()
             : "";
+        const regNumber = p.student_regnumber || p.student || "";
         const s = String(p.status ?? "").toLowerCase();
         const isCredit = String(p.payment_notifi ?? "").toLowerCase() === "credit";
         const statusLabel = isCredit
@@ -143,7 +104,7 @@ export default function OnlinePaymentsHistoryPage() {
 
         return [
           fmtDate(p.date),
-          p.student || "",
+          regNumber,
           fullName,
           p.slip_no || "",
           p.trans_code || "",
@@ -205,13 +166,6 @@ export default function OnlinePaymentsHistoryPage() {
 
   return (
     <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      {activeStudent && (
-        <StudentProfileModal
-          studentDbId={activeStudent.dbId}
-          studentRef={activeStudent.ref}
-          onClose={() => setActiveStudent(null)}
-        />
-      )}
 
       <div className="flex items-center justify-between">
         <div>
@@ -301,25 +255,27 @@ export default function OnlinePaymentsHistoryPage() {
             <thead className="bg-ink-50 dark:bg-ink-900/50 text-ink-500 dark:text-ink-400 uppercase text-[11px] font-semibold tracking-wider">
               <tr>
                 <th className="px-4 py-3">Date</th>
-                <th className="px-4 py-3">Student / Reference</th>
+                <th className="px-4 py-3">Reg Number</th>
+                <th className="px-4 py-3">Student Name</th>
                 <th className="px-4 py-3">Slip No</th>
                 <th className="px-4 py-3">Trans Code</th>
                 <th className="px-4 py-3 text-right">Amount (RWF)</th>
                 <th className="px-4 py-3">Channel</th>
                 <th className="px-4 py-3 text-center">Status</th>
+                <th className="px-4 py-3 text-center">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-ink-200 dark:divide-ink-800">
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-ink-500">
+                  <td colSpan={9} className="px-4 py-12 text-center text-ink-500">
                     <RefreshCcw className="w-6 h-6 animate-spin mx-auto mb-2 text-brand" />
                     <p>Loading payments...</p>
                   </td>
                 </tr>
               ) : payments.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-ink-500">
+                  <td colSpan={9} className="px-4 py-12 text-center text-ink-500">
                     No online payments found.
                   </td>
                 </tr>
@@ -330,37 +286,29 @@ export default function OnlinePaymentsHistoryPage() {
                     p.student_fname || p.student_lname
                       ? `${p.student_fname ?? ""} ${p.student_lname ?? ""}`.trim()
                       : null;
+                  const regNumber = p.student_regnumber || p.student || "-";
 
                   return (
                     <tr
                       key={p.id}
-                      onClick={
-                        hasStudent
-                          ? () =>
-                              setActiveStudent({
-                                dbId: p.student_db_id,
-                                ref: p.student || "-",
-                              })
-                          : undefined
-                      }
-                      className={`transition-colors ${
-                        hasStudent
-                          ? "cursor-pointer hover:bg-brand/5 dark:hover:bg-brand/10"
-                          : "hover:bg-ink-50 dark:hover:bg-ink-800/50"
-                      }`}
+                      className={`transition-colors hover:bg-ink-50 dark:hover:bg-ink-800/50`}
                     >
                       <td className="px-4 py-3 text-ink-500 dark:text-ink-400">
                         {fmtDate(p.date)}
                       </td>
+                      <td className="px-4 py-3 font-mono text-[13px]">
+                        <span className="font-semibold text-ink-900 dark:text-ink-100">
+                          {regNumber}
+                        </span>
+                      </td>
                       <td className="px-4 py-3">
-                        <div className="font-medium text-ink-900 dark:text-ink-100">
-                          {p.student || "-"}
-                        </div>
-                        {fullName && (
-                          <div className="text-[12px] text-ink-500 dark:text-ink-400 mt-0.5 flex items-center gap-1">
+                        {fullName ? (
+                          <div className="font-medium text-ink-900 dark:text-ink-100 flex items-center gap-1">
                             <User className="w-3 h-3 shrink-0" />
                             {fullName}
                           </div>
+                        ) : (
+                          <span className="text-ink-500 dark:text-ink-400">-</span>
                         )}
                       </td>
                       <td className="px-4 py-3 font-mono text-[13px] text-ink-500">
@@ -379,6 +327,37 @@ export default function OnlinePaymentsHistoryPage() {
                       </td>
                       <td className="px-4 py-3 text-center">
                         {getStatusBadge(p)}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          {hasStudent && (
+                            <button
+                              onClick={() => navigate(`/students/${p.student_db_id}`)}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium bg-brand/10 text-brand hover:bg-brand/20 dark:bg-brand/20 dark:hover:bg-brand/30 transition-colors"
+                              title="View student details"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>View</span>
+                            </button>
+                          )}
+                          {p.slip_no && (
+                            <a
+                              href={`https://urubutopay.rw/receipt?transaction_id=${encodeURIComponent(
+                                p.slip_no || ""
+                              )}&amount=${encodeURIComponent(String(p.amount || ""))}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:hover:bg-emerald-900/50 transition-colors"
+                              title="Download receipt from Urubuto Pay"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                              <span>Receipt</span>
+                            </a>
+                          )}
+                          {!hasStudent && !p.slip_no && (
+                            <span className="text-xs text-ink-400 dark:text-ink-500">-</span>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );

@@ -17,6 +17,7 @@ use App\Models\ExpenseCategoryModel;
 use App\Models\FeeTypeModel;
 use App\Models\ExpenseBudgetModel;
 use App\Models\ClearanceModel;
+use App\Models\StudentApplicationModel;
 use App\Services\FeeService;
 use App\Services\ClearanceService;
 use App\Services\SystemLogService;
@@ -36,6 +37,7 @@ class FeeController extends BaseController
     private FeeTypeModel            $feeTypeModel;
     private ExpenseBudgetModel      $budgetModel;
     private ClearanceModel          $clearanceModel;
+    private StudentApplicationModel $applicationModel;
     private FeeService              $service;
     private ClearanceService        $clearanceService;
     private Database                $db;
@@ -53,6 +55,7 @@ class FeeController extends BaseController
         $this->feeTypeModel         = new FeeTypeModel();
         $this->budgetModel          = new ExpenseBudgetModel();
         $this->clearanceModel       = new ClearanceModel();
+        $this->applicationModel     = new StudentApplicationModel();
         $this->service              = new FeeService();
         $this->clearanceService     = new ClearanceService();
         $this->db                   = Database::getInstance();
@@ -148,6 +151,7 @@ class FeeController extends BaseController
             'payment_plan'      => $paymentPlan,
             'installment_count' => !empty($data['installment_count']) ? (int)$data['installment_count'] : null,
             'is_active'         => 1,
+            'created_by'        => (int)$actor['id'],
         ]);
 
         if (!empty($deptIds)) {
@@ -652,20 +656,16 @@ class FeeController extends BaseController
         $params = [];
 
         if ($keyword) {
-            $whereClause .= " AND (student LIKE ? OR slip_no LIKE ? OR trans_code LIKE ?)";
+            $whereClause .= " AND (p.student LIKE ? OR p.slip_no LIKE ? OR p.trans_code LIKE ? OR s.regnumber LIKE ? OR CONCAT(s.fname, ' ', s.lname) LIKE ?)";
             $search = "%{$keyword}%";
-            $params = [$search, $search, $search];
+            $params = [$search, $search, $search, $search, $search];
         }
 
-        $countQuery = "SELECT COUNT(*) as total FROM `payment` WHERE $whereClause";
+        $countQuery = "SELECT COUNT(*) as total FROM `payment` p LEFT JOIN `student` s ON CONVERT(p.student USING utf8mb4) COLLATE utf8mb4_unicode_ci = CONVERT(s.regnumber USING utf8mb4) COLLATE utf8mb4_unicode_ci WHERE $whereClause";
         $totalRow = $this->db->fetchOne($countQuery, $params);
         $total = (int)($totalRow['total'] ?? 0);
 
-        $query = "SELECT p.*,
-                         s.fname AS student_fname, s.lname AS student_lname, s.id AS student_db_id
-                  FROM `payment` p
-                  LEFT JOIN `student` s ON s.regnumber = CONVERT(p.student USING utf8mb4)
-                  WHERE $whereClause ORDER BY p.`date` DESC LIMIT $perPage OFFSET $offset";
+        $query = "SELECT p.*, s.regnumber as student_regnumber, s.fname as student_fname, s.lname as student_lname, s.id as student_db_id FROM `payment` p LEFT JOIN `student` s ON CONVERT(p.student USING utf8mb4) COLLATE utf8mb4_unicode_ci = CONVERT(s.regnumber USING utf8mb4) COLLATE utf8mb4_unicode_ci WHERE $whereClause ORDER BY p.`date` DESC LIMIT $perPage OFFSET $offset";
         $data = $this->db->fetchAll($query, $params);
 
         // Fetch basic dashboard metrics for online payments
@@ -1317,22 +1317,12 @@ class FeeController extends BaseController
             case 'payments':
                 $filters = array_filter(['academic_year_id' => $yearId ?: null]);
                 $data    = $this->paymentModel->listWithDetails($filters, 1, 5000);
-                $headers = ['Receipt #', 'Student ID', 'Student Name', 'Fee Type', 'Amount (RWF)', 'Method', 'Source', 'Reference', 'Date'];
+                $headers = ['Receipt #', 'Student ID', 'Student Name', 'Amount (RWF)', 'Method', 'Reference', 'Date'];
                 foreach ($data['data'] as $p) {
-                    $source = match ($p['source'] ?? 'MANUAL') {
-                        'APPLICATION_TRANSFER' => 'Application Fee Transfer',
-                        'GATEWAY'              => 'Online Payment',
-                        default                => 'Manual',
-                    };
                     $rows[] = [
-                        $p['receipt_number'],
-                        $p['student_id'],
+                        $p['receipt_number'], $p['student_id'],
                         trim(($p['student_fname'] ?? '') . ' ' . ($p['student_lname'] ?? '')),
-                        $p['fee_type'] ?? '',
-                        $p['amount'],
-                        $p['payment_method'],
-                        $source,
-                        $p['reference_number'] ?? '',
+                        $p['amount'], $p['payment_method'], $p['reference_number'] ?? '',
                         $p['paid_at'],
                     ];
                 }
@@ -1755,228 +1745,137 @@ class FeeController extends BaseController
         $this->success($response, $data, 'Clearance report generated.');
     }
 
-    // ──────────────────────────────────────────────────────────────────────────
-    // Application Fee Reconciliation
-    // ──────────────────────────────────────────────────────────────────────────
-
     /**
-     * GET /api/finance/reports/application-fee-reconciliation
-     *
-     * Returns every paid application alongside its enrollment status and
-     * whether the fee has been credited into the student billing system.
-     * Gracefully returns an empty result when student_applications does not
-     * yet exist (admissions module not migrated).
-     *
-     * Query params:
-     *   academic_year_id  (int)    — filter by year linked on the offer
-     *   status            (string) — all | credited | pending | not_enrolled
-     *   page              (int)
-     *   per_page          (int, max 100)
+     * GET /api/finance/application-payments
+     * List applicant invoice payment claims by status (pending/approved/rejected).
      */
-    public function applicationFeeReconciliation(Request $request, Response $response): never
+    public function listApplicationPayments(Request $request, Response $response): never
     {
-        $yearId  = (int)($request->query('academic_year_id') ?? 0);
-        $status  = trim((string)($request->query('status')  ?? 'all'));
-        $page    = max(1, (int)($request->query('page')     ?? 1));
-        $perPage = max(1, min(100, (int)($request->query('per_page') ?? 50)));
-
-        // Check the table exists before querying
-        $tableExists = (bool)$this->db->fetchOne(
-            "SELECT COUNT(*) AS cnt
-             FROM information_schema.TABLES
-             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'student_applications'",
-            []
-        )['cnt'];
-
-        if (!$tableExists) {
-            $this->success($response, [
-                'summary' => [
-                    'total_applications'     => 0,
-                    'total_amount_collected' => 0,
-                    'credited_count'         => 0,
-                    'credited_amount'        => 0,
-                    'pending_count'          => 0,
-                    'not_enrolled_count'     => 0,
-                ],
-                'rows'       => [],
-                'pagination' => ['current_page' => 1, 'per_page' => $perPage, 'total' => 0, 'last_page' => 1],
-                'note'       => 'Admissions module not yet migrated — student_applications table missing.',
-            ], 'Application fee reconciliation (no data yet).');
+        $status = trim((string)($request->query('status') ?? 'pending'));
+        if (!in_array($status, ['pending', 'approved', 'rejected', 'none'], true)) {
+            $this->error($response, 'Invalid status. Use pending, approved, or rejected.', 422);
         }
 
-        $yearJoin = $yearId > 0
-            ? "AND sa.academic_year_id = {$yearId}"
-            : '';
+        $page    = max(1, (int)($request->query('page') ?? 1));
+        $perPage = min(100, (int)($request->query('per_page') ?? 20));
+        $offset  = ($page - 1) * $perPage;
 
-        $statusFilter = match ($status) {
-            'credited'     => "AND fp.id IS NOT NULL",
-            'pending'      => "AND sa.enrolled_student_id IS NOT NULL AND fp.id IS NULL",
-            'not_enrolled' => "AND sa.enrolled_student_id IS NULL",
-            default        => '',
-        };
+        $whereStatus = $status === 'none' ? 'sa.payment_verification_status IS NULL OR sa.payment_verification_status = ""' : "sa.payment_verification_status = '{$status}'";
 
-        $countSql = "
-            SELECT COUNT(*) AS cnt
-            FROM `student_applications` sa
-            LEFT JOIN `fee_payments` fp
-              ON fp.source = 'APPLICATION_TRANSFER'
-             AND fp.source_application_id = sa.id
-            WHERE sa.paid_at IS NOT NULL
-              AND COALESCE(sa.payment_amount, 0) > 0
-              {$yearJoin}
-              {$statusFilter}";
-
-        $total  = (int)($this->db->fetchOne($countSql, [])['cnt'] ?? 0);
-        $offset = ($page - 1) * $perPage;
+        $total = $this->db->fetchOne(
+            "SELECT COUNT(*) as cnt FROM student_applications sa WHERE {$whereStatus} AND sa.claimed_transaction_id IS NOT NULL",
+        );
+        $totalCount = (int)($total['cnt'] ?? 0);
 
         $rows = $this->db->fetchAll(
             "SELECT
-               sa.id                          AS application_id,
-               sa.application_number,
-               CONCAT(sa.first_name,' ',sa.last_name) AS applicant_name,
-               sa.email,
-               sa.payment_amount              AS application_fee_amount,
-               sa.transaction_id              AS application_tx_ref,
-               sa.paid_at                     AS application_paid_at,
-               sa.status                      AS application_status,
-               sa.enrolled_student_id,
-
-               fi.id                          AS invoice_id,
-               fi.fee_type                    AS invoice_fee_type,
-               fi.amount_due                  AS invoice_amount_due,
-               fi.amount_paid                 AS invoice_amount_paid,
-               fi.status                      AS invoice_status,
-
-               fp.id                          AS transfer_payment_id,
-               fp.amount                      AS transferred_amount,
-               fp.receipt_number              AS transfer_receipt,
-               fp.created_at                  AS transferred_at
-
-             FROM `student_applications` sa
-             LEFT JOIN `fee_payments` fp
-               ON fp.source = 'APPLICATION_TRANSFER'
-              AND fp.source_application_id = sa.id
-             LEFT JOIN `fee_invoices` fi ON fi.id = fp.invoice_id
-             WHERE sa.paid_at IS NOT NULL
-               AND COALESCE(sa.payment_amount, 0) > 0
-               {$yearJoin}
-               {$statusFilter}
-             ORDER BY sa.paid_at DESC
-             LIMIT {$perPage} OFFSET {$offset}",
-            []
-        );
-
-        // Aggregate summary always across the whole dataset (ignore page)
-        $summaryRow = $this->db->fetchOne(
-            "SELECT
-               COUNT(*)                              AS total_applications,
-               COALESCE(SUM(sa.payment_amount), 0)  AS total_amount_collected,
-               SUM(fp.id IS NOT NULL)                AS credited_count,
-               COALESCE(SUM(fp.amount), 0)           AS credited_amount,
-               SUM(sa.enrolled_student_id IS NOT NULL AND fp.id IS NULL) AS pending_count,
-               SUM(sa.enrolled_student_id IS NULL)   AS not_enrolled_count
-             FROM `student_applications` sa
-             LEFT JOIN `fee_payments` fp
-               ON fp.source = 'APPLICATION_TRANSFER'
-              AND fp.source_application_id = sa.id
-             WHERE sa.paid_at IS NOT NULL
-               AND COALESCE(sa.payment_amount, 0) > 0
-               {$yearJoin}",
-            []
+                sa.id, sa.application_number, sa.first_name, sa.last_name, sa.email,
+                sa.claimed_transaction_id, sa.payment_amount, sa.payment_currency,
+                sa.invoice_submitted_at, sa.payment_slip_file_id, sa.payment_slip_mime,
+                sa.payment_verification_status
+            FROM student_applications sa
+            WHERE {$whereStatus} AND sa.claimed_transaction_id IS NOT NULL
+            ORDER BY sa.invoice_submitted_at DESC
+            LIMIT ? OFFSET ?",
+            [$perPage, $offset]
         );
 
         $this->success($response, [
-            'summary' => [
-                'total_applications'     => (int)($summaryRow['total_applications']   ?? 0),
-                'total_amount_collected' => (float)($summaryRow['total_amount_collected'] ?? 0),
-                'credited_count'         => (int)($summaryRow['credited_count']        ?? 0),
-                'credited_amount'        => (float)($summaryRow['credited_amount']     ?? 0),
-                'pending_count'          => (int)($summaryRow['pending_count']         ?? 0),
-                'not_enrolled_count'     => (int)($summaryRow['not_enrolled_count']    ?? 0),
-            ],
-            'rows'       => array_values($rows),
+            'data'       => $rows ?: [],
             'pagination' => [
-                'current_page' => $page,
+                'total'        => $totalCount,
                 'per_page'     => $perPage,
-                'total'        => $total,
-                'last_page'    => max(1, (int)ceil($total / $perPage)),
+                'current_page' => $page,
+                'last_page'    => ceil($totalCount / $perPage),
             ],
-        ], 'Application fee reconciliation report.');
+        ], 'Application payments fetched.');
     }
 
     /**
-     * POST /api/finance/reports/application-fee-reconciliation/run-pending
-     *
-     * Batch-credit all enrolled students whose application fee has not yet
-     * been transferred. Useful for backfilling after the feature is deployed.
-     *
-     * Body: { academic_year_id: int }
+     * PATCH /api/finance/application-payments/:id/approve
+     * Approve a pending applicant invoice payment claim.
      */
-    public function runPendingApplicationFeeCredits(Request $request, Response $response): never
+    public function approveApplicationPayment(Request $request, Response $response): never
     {
-        $data   = $request->body();
-        $actor  = $request->param('_auth_user');
-        $yearId = (int)($data['academic_year_id'] ?? 0);
+        $id    = (int)$request->param('id');
+        $actor = $request->param('_auth_user');
+        $app   = $this->applicationModel->find($id);
 
-        if (!$yearId) {
-            $this->error($response, 'academic_year_id is required.', 422);
+        if (!$app) {
+            $this->error($response, 'Application not found.', 404);
         }
 
-        $tableExists = (bool)$this->db->fetchOne(
-            "SELECT COUNT(*) AS cnt FROM information_schema.TABLES
-             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'student_applications'",
-            []
-        )['cnt'];
-
-        if (!$tableExists) {
-            $this->error($response, 'student_applications table not found — admissions module not yet migrated.', 422);
+        if ($app['payment_verification_status'] !== 'pending') {
+            $this->error($response, 'Only pending payment claims can be approved.', 422);
         }
 
-        // Fetch pending: enrolled but not yet transferred, scoped to the given year
-        $pending = $this->db->fetchAll(
-            "SELECT sa.id AS application_id,
-                    sa.enrolled_student_id,
-                    sa.payment_amount,
-                    sa.transaction_id
-             FROM `student_applications` sa
-             WHERE sa.enrolled_student_id IS NOT NULL
-               AND sa.paid_at IS NOT NULL
-               AND COALESCE(sa.payment_amount, 0) > 0
-               AND sa.transaction_id IS NOT NULL
-               AND sa.academic_year_id = ?
-               AND NOT EXISTS (
-                 SELECT 1 FROM `fee_payments` fp
-                 WHERE fp.source = 'APPLICATION_TRANSFER'
-                   AND fp.source_application_id = sa.id
-               )",
-            [$yearId]
+        if (empty($app['claimed_transaction_id'])) {
+            $this->error($response, 'No transaction ID on file for this claim.', 422);
+        }
+
+        $this->applicationModel->update($id, [
+            'transaction_id'            => $app['claimed_transaction_id'],
+            'paid_at'                   => date('Y-m-d H:i:s'),
+            'payment_verification_status' => 'approved',
+            'verified_by'               => $actor['id'] ?? null,
+            'verified_at'               => date('Y-m-d H:i:s'),
+        ]);
+
+        SystemLogService::log(
+            'APPROVE',
+            'FINANCE',
+            "Approved applicant payment for application {$app['application_number']} (ID {$id}), transaction {$app['claimed_transaction_id']}.",
+            $id,
+            'student_application',
+            ['transaction_id' => $app['claimed_transaction_id'], 'amount' => $app['payment_amount'] ?? 5000],
+            (array)$actor ?: null
         );
 
-        $results  = ['credited' => 0, 'skipped' => 0, 'errors' => 0, 'details' => []];
-        $actorId  = (int)($actor['id'] ?? 0);
+        $this->success($response, null, 'Application payment approved.');
+    }
 
-        foreach ($pending as $row) {
-            try {
-                $result = $this->service->creditApplicationFee(
-                    studentId:      (string)$row['enrolled_student_id'],
-                    academicYearId: $yearId,
-                    amount:         (float)$row['payment_amount'],
-                    transactionRef: (string)$row['transaction_id'],
-                    applicationId:  (int)$row['application_id'],
-                    actorId:        $actorId
-                );
-                if ($result['status'] === 'credited') {
-                    $results['credited']++;
-                } else {
-                    $results['skipped']++;
-                }
-                $results['details'][] = ['id' => $row['application_id'], 'result' => $result['status']];
-            } catch (\Throwable $e) {
-                $results['errors']++;
-                $results['details'][] = ['id' => $row['application_id'], 'result' => 'error', 'message' => $e->getMessage()];
-            }
+    /**
+     * PATCH /api/finance/application-payments/:id/reject
+     * Reject a pending applicant invoice payment claim.
+     */
+    public function rejectApplicationPayment(Request $request, Response $response): never
+    {
+        $id    = (int)$request->param('id');
+        $actor = $request->param('_auth_user');
+        $data  = $request->body();
+        $app   = $this->applicationModel->find($id);
+
+        if (!$app) {
+            $this->error($response, 'Application not found.', 404);
         }
 
-        $this->success($response, $results, "Batch complete: {$results['credited']} credited, {$results['skipped']} skipped, {$results['errors']} errors.");
+        if ($app['payment_verification_status'] !== 'pending') {
+            $this->error($response, 'Only pending payment claims can be rejected.', 422);
+        }
+
+        $reason = trim((string)($data['reason'] ?? ''));
+
+        $this->applicationModel->update($id, [
+            'payment_verification_status' => 'rejected',
+            'verified_by'                 => $actor['id'] ?? null,
+            'verified_at'                 => date('Y-m-d H:i:s'),
+            'claimed_transaction_id'      => null,
+            'payment_slip_file_id'        => null,
+            'payment_slip_mime'           => null,
+            'invoice_submitted_at'        => null,
+            'internal_notes'              => ($reason ? "Rejected: $reason" : "Rejected") . "\n" . ($app['internal_notes'] ?? ''),
+        ]);
+
+        SystemLogService::log(
+            'REJECT',
+            'FINANCE',
+            "Rejected applicant payment for application {$app['application_number']} (ID {$id}). Reason: $reason",
+            $id,
+            'student_application',
+            ['reason' => $reason],
+            (array)$actor ?: null
+        );
+
+        $this->success($response, null, 'Application payment rejected.');
     }
 }

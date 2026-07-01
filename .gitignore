@@ -107,3 +107,5 @@ curac_cur_mis(Iyabo).sql
 # Handover deliverables and one-off reports (not application code).
 deliverables/
 IDENTITY_CONSOLIDATION_REPORT.md
+curac_save.sql
+curac_save.sql

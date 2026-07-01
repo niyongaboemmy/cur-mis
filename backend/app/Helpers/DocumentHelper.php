@@ -36,7 +36,7 @@ class DocumentHelper
                 d.dep_name,
                 COALESCE(o.name, dop.option_name, '') AS option_name
              FROM student s
-             LEFT JOIN faculty     f   ON CAST(f.fac_id  AS CHAR) COLLATE utf8mb4_unicode_ci = s.faculty    COLLATE utf8mb4_unicode_ci
+             LEFT JOIN faculty     f   ON CAST(f.fac_id  AS CHAR) COLLATE utf8mb4_unicode_ci = s.faculty COLLATE utf8mb4_unicode_ci
              LEFT JOIN departements d  ON CAST(d.dep_id  AS CHAR) COLLATE utf8mb4_unicode_ci = s.department COLLATE utf8mb4_unicode_ci
              LEFT JOIN options      o  ON CAST(o.id      AS CHAR) COLLATE utf8mb4_unicode_ci = s.std_option COLLATE utf8mb4_unicode_ci
              LEFT JOIN dep_options  dop ON CAST(dop.op_id AS CHAR) COLLATE utf8mb4_unicode_ci = s.std_option COLLATE utf8mb4_unicode_ci
@@ -593,11 +593,11 @@ class DocumentHelper
 
         return $db->fetchAll(
             "SELECT m.module_code, m.module_name, m.level, m.module_credits,
-                    mm.percentage, mm.grade, mm.is_exempted
+                    mm.percentage, mm.grade
              FROM module_marks mm
              LEFT JOIN modules m ON m.module_id = mm.module_id
              WHERE mm.student_id = ?
-               AND (mm.percentage IS NOT NULL OR mm.is_exempted = 1)
+               AND mm.percentage IS NOT NULL
              ORDER BY m.level ASC, m.module_code ASC",
             [$studentId]
         );
@@ -641,14 +641,10 @@ class DocumentHelper
                 $name     = htmlspecialchars($r['module_name'] ?? '', ENT_QUOTES);
                 $level    = htmlspecialchars($r['level'] ?? '', ENT_QUOTES);
                 $credits  = (int) ($r['module_credits'] ?? 0);
-                $exempt   = (bool) ($r['is_exempted'] ?? false);
                 $pct      = $r['percentage'] !== null ? (float) $r['percentage'] : null;
                 $grade    = htmlspecialchars($r['grade'] ?? '—', ENT_QUOTES);
 
-                if ($exempt) {
-                    $marksDisplay  = 'Exempted';
-                    $statusDisplay = '<span style="color:#555;">Exempted</span>';
-                } elseif ($pct !== null) {
+                if ($pct !== null) {
                     $marksDisplay  = (string) round($pct) . '%';
                     $statusDisplay = $pct >= 50
                         ? '<span style="color:#1a7a1a;font-weight:bold;">Pass</span>'

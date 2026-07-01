@@ -24,7 +24,7 @@ namespace App\Helpers;
 final class PdfLayout
 {
     /** Vertical band (px) reserved at the top of every page for the letterhead. */
-    public const HEADER_SPACE = 150;
+    public const HEADER_SPACE = 180;
 
     /** Aspect ratio (width / height) of header_bar.jpeg — 1600 / 259. */
     private const IMG_RATIO = 6.1776;
@@ -58,16 +58,15 @@ final class PdfLayout
     }
 
     /**
-     * `@page` margins for a document. The top margin reserves the band the
-     * letterhead is painted into; $side / $bottom mirror the document's previous
-     * horizontal / footer spacing so the body layout is preserved. Drop the
-     * returned CSS into the document's <style> block and set the body's own top
-     * padding to 0 (this `@page` top margin replaces it).
+     * `@page` margins for a document. The top margin reserves space for the letterhead
+     * header to display without overlapping content. All documents now use a standardized
+     * width of 6.5 inches to match the degree certificate format.
      */
     public static function pageCss(int $side = 40, int $bottom = 40): string
     {
         $top = self::HEADER_SPACE;
-        return "@page { margin: {$top}px {$side}px {$bottom}px {$side}px; }";
+        return "@page { margin: {$top}px {$side}px {$bottom}px {$side}px; size: 8.5in 11in; }
+                body { width: 6.5in; margin: 0 auto; }";
     }
 
     /**
