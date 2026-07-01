@@ -315,6 +315,9 @@ class AdmissionController extends BaseController
             $result = $this->service->initiateEnrollment((int)$offer['id'], $actorId, $levelId);
         } catch (\RuntimeException $e) {
             $this->error($response, $e->getMessage(), 422);
+        } catch (\Throwable $e) {
+            error_log('[AdmissionController] initiateEnrollment error: ' . $e->getMessage() . ' at ' . $e->getFile() . ':' . $e->getLine());
+            $this->error($response, 'An error occurred while generating the registration number: ' . $e->getMessage(), 500);
         }
 
         $this->success($response, $result, 'Enrollment initiated successfully.', 201);

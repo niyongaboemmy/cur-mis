@@ -47,6 +47,7 @@ $router->group('/api/applicant', function ($router) {
     // Defined before the /application/:id catch-all so "payment" isn't captured as an id.
     $router->get('/application/payment/checkout', [ApplicantProfileController::class, 'getPaymentCheckout']);
     $router->get('/application/payment/status',   [ApplicantProfileController::class, 'getPaymentStatus']);
+    $router->post('/application/payment/invoice', [ApplicantProfileController::class, 'submitInvoicePayment']);
     $router->post('/application/verify',       [ApplicantProfileController::class, 'verifyApplication']);
     $router->post('/application/resend-code',  [ApplicantProfileController::class, 'resendVerificationCode']);
 

@@ -460,6 +460,19 @@ export const applicantService = {
       status:             string | null
     }>('/api/applicant/application/payment/status', {}, signal),
 
+  /** Submit invoice/proof of payment for already-paid applications. */
+  submitInvoicePayment: (transactionId: string, invoiceFile: File) => {
+    const form = new FormData()
+    form.append('transaction_id', transactionId)
+    form.append('invoice', invoiceFile)
+    return api.upload<{
+      transaction_id: string
+      invoice_file_id: string | null
+      verified: boolean
+      message: string
+    }>('/api/applicant/application/payment/invoice', form)
+  },
+
   listApplications: (signal?: AbortSignal) =>
     api.get<StudentApplication[]>('/api/applicant/application', {}, signal),
 

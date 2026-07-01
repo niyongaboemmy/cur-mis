@@ -1399,6 +1399,9 @@ function PaymentStep({
   const formatFee = new Intl.NumberFormat('en-US').format(fee);
 
   const [opened, setOpened] = useState(false);
+  const [showAlreadyPaid, setShowAlreadyPaid] = useState(false);
+  const [transactionId, setTransactionId] = useState('');
+  const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
 
   // Load checkout details once when the step opens: merchant code, payer code
   // (= application number), the fixed fee, and the hosted-checkout URL.
@@ -1448,6 +1451,29 @@ function PaymentStep({
     statusQuery.refetch();
   };
 
+  const submitAlreadyPaid = async () => {
+    if (!transactionId.trim()) {
+      toast.error('Please enter your transaction ID');
+      return;
+    }
+    if (!invoiceFile) {
+      toast.error('Please upload an invoice or proof of payment');
+      return;
+    }
+
+    try {
+      await applicantService.submitInvoicePayment(transactionId, invoiceFile);
+      onPaidChange(true);
+      setShowAlreadyPaid(false);
+      setTransactionId('');
+      setInvoiceFile(null);
+      toast.success('Payment verified successfully!');
+      statusQuery.refetch();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || 'Failed to verify payment. Please check your details.');
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fade-up">
       <SectionTitle
@@ -1469,14 +1495,99 @@ function PaymentStep({
 
       {/* Urubuto Pay */}
       <FieldGroup title="Payment">
-        {(checkoutQuery.isLoading || (!paid && statusQuery.isLoading)) ? (
-          /* While checking server-side payment status, show a neutral skeleton
-             so we never flash the "Pay Now" form to someone who already paid. */
-          <div className="flex items-center gap-3 py-4 text-ink-400 dark:text-ink-500 text-[13px]">
-            <Loader2 className="w-4 h-4 animate-spin shrink-0" />
-            Checking payment status…
+        {/* Tab selector for new vs already-paid */}
+        {!paid && (
+          <div className="flex gap-2 mb-4 pb-4 border-b border-ink-100">
+            <button
+              type="button"
+              onClick={() => setShowAlreadyPaid(false)}
+              className={`px-3 py-1.5 text-[13px] font-medium rounded transition-colors ${
+                !showAlreadyPaid
+                  ? 'bg-brand text-white'
+                  : 'bg-ink-100 dark:bg-ink-800 text-ink-700 dark:text-ink-300'
+              }`}
+            >
+              Pay Now
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowAlreadyPaid(true)}
+              className={`px-3 py-1.5 text-[13px] font-medium rounded transition-colors ${
+                showAlreadyPaid
+                  ? 'bg-brand text-white'
+                  : 'bg-ink-100 dark:bg-ink-800 text-ink-700 dark:text-ink-300'
+              }`}
+            >
+              Already Paid
+            </button>
           </div>
-        ) : paid ? (
+        )}
+
+        {showAlreadyPaid ? (
+          /* Already paid — invoice upload form */
+          <div className="space-y-4">
+            <div className="rounded-lg border border-amber-200 dark:border-amber-900/40 bg-amber-50/60 dark:bg-amber-900/10 px-4 py-3">
+              <p className="text-[13px] text-amber-800 dark:text-amber-200">
+                If you've already paid via bank transfer or another method, please provide your transaction ID and upload proof of payment.
+              </p>
+            </div>
+
+            <Field label="Transaction ID / Reference Number *" error={undefined}>
+              <input
+                type="text"
+                className="input"
+                placeholder="e.g., TXN-12345, Receipt #001"
+                value={transactionId}
+                onChange={(e) => setTransactionId(e.target.value)}
+              />
+            </Field>
+
+            <Field label="Invoice / Proof of Payment *" error={undefined}>
+              <label className="flex items-center justify-center w-full px-4 py-6 border-2 border-dashed border-ink-300 rounded-lg cursor-pointer hover:bg-ink-50 dark:hover:bg-ink-900/20 transition">
+                <div className="text-center">
+                  <FileUp className="w-6 h-6 mx-auto text-ink-400 mb-2" />
+                  <p className="text-[13px] font-medium text-ink-700 dark:text-ink-200">
+                    {invoiceFile ? invoiceFile.name : 'Click to upload or drag and drop'}
+                  </p>
+                  <p className="text-[12px] text-ink-500">PDF, JPG, or PNG (max 5 MB)</p>
+                </div>
+                <input
+                  type="file"
+                  className="hidden"
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      if (file.size > 5 * 1024 * 1024) {
+                        toast.error('File must be 5 MB or smaller');
+                        return;
+                      }
+                      setInvoiceFile(file);
+                    }
+                  }}
+                />
+              </label>
+            </Field>
+
+            <button
+              type="button"
+              onClick={submitAlreadyPaid}
+              className="btn-primary w-full"
+            >
+              <FileUp className="w-4 h-4" /> Verify Payment
+            </button>
+          </div>
+        ) : (
+          /* Pay Now flow */
+          <>
+            {(checkoutQuery.isLoading || (!paid && statusQuery.isLoading)) ? (
+              /* While checking server-side payment status, show a neutral skeleton
+                 so we never flash the "Pay Now" form to someone who already paid. */
+              <div className="flex items-center gap-3 py-4 text-ink-400 dark:text-ink-500 text-[13px]">
+                <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                Checking payment status…
+              </div>
+            ) : paid ? (
           <div className="rounded-lg border border-emerald-300 bg-emerald-50/60 dark:bg-emerald-900/10 px-4 py-4 flex items-start gap-3">
             <CheckCircle2 className="w-6 h-6 text-emerald-600 mt-0.5 shrink-0" />
             <div>
@@ -1532,6 +1643,8 @@ function PaymentStep({
               once your payment is confirmed.
             </p>
           </div>
+        )}
+          </>
         )}
       </FieldGroup>
 

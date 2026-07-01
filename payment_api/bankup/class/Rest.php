@@ -2,7 +2,7 @@
 /**
  * CUR Payment API - Main REST Class
  * Organisation: Catholic University of Rwanda (CUR)
- * Merchant Code: TH17342831
+ * Merchant Code: TH90989816
  * Services:
  *   - TUITION FEES  (service code: tuition-fees-1258)
  *   - CURSU FEES    (service code: cursu-fees-8249)
@@ -52,7 +52,7 @@ if ($_tokResult->num_rows === 0) {
 }
 
 // ── CUR Constants ──────────────────────────────────────────────────────────
-define('CUR_MERCHANT_CODE', 'TH17342831');
+define('CUR_MERCHANT_CODE', 'TH90989816');
 define('CUR_SERVICES', [
     'tuition-fees-1258' => 'TUITION FEES',
     'cursu-fees-8249'   => 'CURSU FEES',

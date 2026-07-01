@@ -15,7 +15,7 @@ const USSD_STEPS = [
     n: 3,
     text: (
       <>
-        Enter merchant code: <strong className="font-mono">TH17342831</strong>
+        Enter merchant code: <strong className="font-mono">TH90989816</strong>
       </>
     ),
   },
