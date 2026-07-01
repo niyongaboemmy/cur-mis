@@ -28,10 +28,12 @@ class Response
         }
 
         http_response_code($this->statusCode);
-        header('Content-Type: application/json; charset=utf-8');
+        if (!headers_sent()) {
+            header('Content-Type: application/json; charset=utf-8');
 
-        foreach ($this->headers as $name => $value) {
-            header("{$name}: {$value}");
+            foreach ($this->headers as $name => $value) {
+                header("{$name}: {$value}");
+            }
         }
 
         echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -68,8 +70,10 @@ class Response
     public function noContent(): never
     {
         http_response_code(204);
-        foreach ($this->headers as $name => $value) {
-            header("{$name}: {$value}");
+        if (!headers_sent()) {
+            foreach ($this->headers as $name => $value) {
+                header("{$name}: {$value}");
+            }
         }
         exit;
     }
