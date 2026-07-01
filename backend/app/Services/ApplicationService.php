@@ -974,7 +974,7 @@ class ApplicationService
             // Determine level indicator: 1 for Undergraduate, 2 for Postgraduate
             $levelIndicator = $levelId === 1 ? 1 : 2;
 
-            $currentYear = (int)date('Y');
+            $currentYear = date('Y'); // Get year as string
             $yearSuffix = substr($currentYear, 2); // Last 2 digits: 26 for 2026
 
             // Build the prefix to search for: LCURYYAKNNNNN (e.g., 1CUR26AK or 2CUR26AK)
