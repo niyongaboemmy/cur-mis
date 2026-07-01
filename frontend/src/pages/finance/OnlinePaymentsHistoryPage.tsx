@@ -23,6 +23,8 @@ import {
   X,
   User,
   FileSpreadsheet,
+  Eye,
+  ExternalLink,
 } from "lucide-react";
 
 function StudentProfileModal({
@@ -307,19 +309,20 @@ export default function OnlinePaymentsHistoryPage() {
                 <th className="px-4 py-3 text-right">Amount (RWF)</th>
                 <th className="px-4 py-3">Channel</th>
                 <th className="px-4 py-3 text-center">Status</th>
+                <th className="px-4 py-3 text-center">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-ink-200 dark:divide-ink-800">
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-ink-500">
+                  <td colSpan={8} className="px-4 py-12 text-center text-ink-500">
                     <RefreshCcw className="w-6 h-6 animate-spin mx-auto mb-2 text-brand" />
                     <p>Loading payments...</p>
                   </td>
                 </tr>
               ) : payments.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-ink-500">
+                  <td colSpan={8} className="px-4 py-12 text-center text-ink-500">
                     No online payments found.
                   </td>
                 </tr>
@@ -334,32 +337,25 @@ export default function OnlinePaymentsHistoryPage() {
                   return (
                     <tr
                       key={p.id}
-                      onClick={
-                        hasStudent
-                          ? () =>
-                              setActiveStudent({
-                                dbId: p.student_db_id,
-                                ref: p.student || "-",
-                              })
-                          : undefined
-                      }
-                      className={`transition-colors ${
-                        hasStudent
-                          ? "cursor-pointer hover:bg-brand/5 dark:hover:bg-brand/10"
-                          : "hover:bg-ink-50 dark:hover:bg-ink-800/50"
-                      }`}
+                      className={`transition-colors hover:bg-ink-50 dark:hover:bg-ink-800/50`}
                     >
                       <td className="px-4 py-3 text-ink-500 dark:text-ink-400">
                         {fmtDate(p.date)}
                       </td>
                       <td className="px-4 py-3">
-                        <div className="font-medium text-ink-900 dark:text-ink-100">
-                          {p.student || "-"}
-                        </div>
-                        {fullName && (
-                          <div className="text-[12px] text-ink-500 dark:text-ink-400 mt-0.5 flex items-center gap-1">
-                            <User className="w-3 h-3 shrink-0" />
-                            {fullName}
+                        {fullName ? (
+                          <>
+                            <div className="font-medium text-ink-900 dark:text-ink-100 flex items-center gap-1">
+                              <User className="w-3 h-3 shrink-0" />
+                              {fullName}
+                            </div>
+                            <div className="text-[12px] text-ink-500 dark:text-ink-400 mt-0.5">
+                              {p.student || "-"}
+                            </div>
+                          </>
+                        ) : (
+                          <div className="font-medium text-ink-900 dark:text-ink-100">
+                            {p.student || "-"}
                           </div>
                         )}
                       </td>
@@ -379,6 +375,42 @@ export default function OnlinePaymentsHistoryPage() {
                       </td>
                       <td className="px-4 py-3 text-center">
                         {getStatusBadge(p)}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          {hasStudent && (
+                            <button
+                              onClick={() =>
+                                setActiveStudent({
+                                  dbId: p.student_db_id,
+                                  ref: p.student || "-",
+                                })
+                              }
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium bg-brand/10 text-brand hover:bg-brand/20 dark:bg-brand/20 dark:hover:bg-brand/30 transition-colors"
+                              title="View student details"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>View</span>
+                            </button>
+                          )}
+                          {p.slip_no && (
+                            <a
+                              href={`https://urubutopay.rw/receipt?transaction_id=${encodeURIComponent(
+                                p.slip_no || ""
+                              )}&amount=${encodeURIComponent(String(p.amount || ""))}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:hover:bg-emerald-900/50 transition-colors"
+                              title="Download receipt from Urubuto Pay"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                              <span>Receipt</span>
+                            </a>
+                          )}
+                          {!hasStudent && !p.slip_no && (
+                            <span className="text-xs text-ink-400 dark:text-ink-500">-</span>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
