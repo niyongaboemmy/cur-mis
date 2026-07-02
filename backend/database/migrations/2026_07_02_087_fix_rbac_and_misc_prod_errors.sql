@@ -433,15 +433,76 @@ PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
 
 
 -- ╔════════════════════════════════════════════════════════════════════════════╗
--- ║ §9  student.regnumber — enforce utf8mb4_unicode_ci                          ║
+-- ║ §9  Collation alignment — finance student_id columns → general_ci           ║
 -- ║                                                                              ║
 -- ║  Error 1267: Illegal mix of collations.                                     ║
--- ║  The finance/clearance tables (§10 of cumulated migration) were altered to  ║
--- ║  utf8mb4_unicode_ci. student.regnumber must match so JOINs succeed.         ║
+-- ║                                                                              ║
+-- ║  SAFE DIRECTION: student.regnumber is left unchanged (attempting to alter   ║
+-- ║  it to unicode_ci risks a unique-key violation / data-truncation error      ║
+-- ║  because two regnumbers that differ only in Unicode normalisation would      ║
+-- ║  collide under the new collation).                                          ║
+-- ║                                                                              ║
+-- ║  Instead, align every finance/clearance student_id column back to the       ║
+-- ║  same collation as student.regnumber (utf8mb4_general_ci).                  ║
+-- ║  This is idempotent — re-running when already general_ci is a no-op.        ║
 -- ╚════════════════════════════════════════════════════════════════════════════╝
 
-ALTER TABLE `student`
-  MODIFY COLUMN `regnumber` VARCHAR(250) NOT NULL COLLATE utf8mb4_unicode_ci;
+ALTER TABLE `fee_payments`
+  MODIFY `student_id` VARCHAR(20) NOT NULL COLLATE utf8mb4_general_ci;
+
+ALTER TABLE `fee_invoices`
+  MODIFY `student_id` VARCHAR(20) NOT NULL COLLATE utf8mb4_general_ci;
+
+ALTER TABLE `fee_bursaries`
+  MODIFY `student_id` VARCHAR(20) NOT NULL COLLATE utf8mb4_general_ci;
+
+ALTER TABLE `student_clearances`
+  MODIFY `student_id` VARCHAR(20) NOT NULL COLLATE utf8mb4_general_ci;
+
+-- finance_clearances (created in cumulated migration §11, may not exist yet)
+SET @col := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'finance_clearances'
+               AND COLUMN_NAME = 'student_id');
+SET @stmt := IF(@col > 0,
+  "ALTER TABLE `finance_clearances` MODIFY `student_id` VARCHAR(20) NOT NULL COLLATE utf8mb4_general_ci",
+  'SELECT 1');
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
+
+-- student_fee_overrides (guard — table may not exist)
+SET @col := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'student_fee_overrides'
+               AND COLUMN_NAME = 'student_id');
+SET @stmt := IF(@col > 0,
+  "ALTER TABLE `student_fee_overrides` MODIFY `student_id` VARCHAR(20) NOT NULL COLLATE utf8mb4_general_ci",
+  'SELECT 1');
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
+
+-- fee_refunds (guard)
+SET @col := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'fee_refunds'
+               AND COLUMN_NAME = 'student_id');
+SET @stmt := IF(@col > 0,
+  "ALTER TABLE `fee_refunds` MODIFY `student_id` VARCHAR(20) NOT NULL COLLATE utf8mb4_general_ci",
+  'SELECT 1');
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
+
+-- fee_fines (guard)
+SET @col := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'fee_fines'
+               AND COLUMN_NAME = 'student_id');
+SET @stmt := IF(@col > 0,
+  "ALTER TABLE `fee_fines` MODIFY `student_id` VARCHAR(20) NOT NULL COLLATE utf8mb4_general_ci",
+  'SELECT 1');
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
+
+-- overdue_alerts (guard)
+SET @col := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'overdue_alerts'
+               AND COLUMN_NAME = 'student_id');
+SET @stmt := IF(@col > 0,
+  "ALTER TABLE `overdue_alerts` MODIFY `student_id` VARCHAR(20) NOT NULL COLLATE utf8mb4_general_ci",
+  'SELECT 1');
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
 
 
 SET FOREIGN_KEY_CHECKS = 1;
