@@ -478,6 +478,7 @@ VALUES (
 
 -- ╔════════════════════════════════════════════════════════════════════════════╗
 -- ║ §3  ASSIGN GENERATE_DOCUMENTS TO REGISTRAR, ADMIN, SUPERADMIN              ║
+-- ║     Registrar can now view, generate, and download official documents      ║
 -- ╚════════════════════════════════════════════════════════════════════════════╝
 
 INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
