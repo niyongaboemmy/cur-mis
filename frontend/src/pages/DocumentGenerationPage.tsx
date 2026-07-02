@@ -57,6 +57,12 @@ const DOCUMENT_TYPES: DocType[] = [
       "Official report of all modules with recorded marks, total credits, and level breakdown.",
   },
   {
+    key: "exemption_letter",
+    label: "Exemption Letter",
+    description:
+      "Official letter detailing transferred credits from prior institution with exemption status and grading information.",
+  },
+  {
     key: "degree_bachelor",
     label: "Bachelor's Degree Certificate",
     description:

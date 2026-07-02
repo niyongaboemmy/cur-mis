@@ -7,6 +7,7 @@ export type DocumentType =
   | 'registration_form'
   | 'english_proficiency'
   | 'completed_modules'
+  | 'exemption_letter'
   | 'degree_bachelor'
   | 'degree_pgde'
   | 'degree_undergraduate'
