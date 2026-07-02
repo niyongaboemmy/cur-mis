@@ -149,7 +149,7 @@ const NAV_TREE: NavNode[] = [
     id: "students-group",
     label: "Students",
     icon: GraduationCap,
-    permissions: [PERMISSIONS.VIEW_STUDENTS],
+    permissions: [PERMISSIONS.VIEW_STUDENTS, PERMISSIONS.GENERATE_DOCUMENTS],
     children: [
       {
         to: "/students",
