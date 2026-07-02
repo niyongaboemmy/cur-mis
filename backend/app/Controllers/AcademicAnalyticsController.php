@@ -151,11 +151,11 @@ class AcademicAnalyticsController extends BaseController
             $bind[]  = $yearId;
         }
         if ($optionId !== null) {
-            $where[] = 'm.option_id = ?';
+            $where[] = 'EXISTS (SELECT 1 FROM module_programs mp WHERE mp.module_id = mm.module_id AND mp.option_id = ?)';
             $bind[]  = $optionId;
         }
         if ($deptId !== null) {
-            $where[] = 'm.departement_id = ?';
+            $where[] = 'm.department = ?';
             $bind[]  = $deptId;
         }
 
@@ -166,7 +166,7 @@ class AcademicAnalyticsController extends BaseController
               mm.grade,
               COUNT(*) AS count
             FROM module_marks mm
-            JOIN modules m ON m.id = mm.module_id
+            JOIN modules m ON m.module_id = mm.module_id
             WHERE $whereClause
             GROUP BY mm.grade
             ORDER BY mm.grade
@@ -221,7 +221,7 @@ class AcademicAnalyticsController extends BaseController
         if ($groupBy === 'module') {
             $rows = $this->db->fetchAll("
                 SELECT
-                  m.id                         AS id,
+                  m.module_id                  AS id,
                   m.module_code                AS label,
                   m.module_name                AS name,
                   COUNT(*)                     AS total,
@@ -229,9 +229,9 @@ class AcademicAnalyticsController extends BaseController
                   SUM(CASE WHEN mm.percentage <  50 THEN 1 ELSE 0 END) AS failed,
                   ROUND(AVG(mm.percentage), 2) AS avg_pct
                 FROM module_marks mm
-                JOIN modules m ON m.id = mm.module_id
+                JOIN modules m ON m.module_id = mm.module_id
                 WHERE $whereClause
-                GROUP BY m.id, m.module_code, m.module_name
+                GROUP BY m.module_id, m.module_code, m.module_name
                 ORDER BY total DESC
                 LIMIT $limit
             ", $bind);
@@ -246,8 +246,8 @@ class AcademicAnalyticsController extends BaseController
                   SUM(CASE WHEN mm.percentage <  50 THEN 1 ELSE 0 END) AS failed,
                   ROUND(AVG(mm.percentage), 2) AS avg_pct
                 FROM module_marks mm
-                JOIN modules m ON m.id = mm.module_id
-                LEFT JOIN departements d ON d.dep_id = m.departement_id
+                JOIN modules m ON m.module_id = mm.module_id
+                LEFT JOIN departements d ON d.dep_id = m.department
                 WHERE $whereClause
                 GROUP BY d.dep_id, d.dep_name
                 ORDER BY total DESC
@@ -311,12 +311,12 @@ class AcademicAnalyticsController extends BaseController
         if ($latestYear !== null) {
             $programRows = $this->db->fetchAll("
                 SELECT
-                  COALESCE(o.option_name, 'Unknown') AS program_name,
+                  COALESCE(o.name, 'Unknown') AS program_name,
                   COUNT(*) AS count
                 FROM student s
-                LEFT JOIN options o ON o.option_id = CAST(NULLIF(s.std_option,'') AS UNSIGNED)
+                LEFT JOIN options o ON o.id = CAST(NULLIF(s.std_option,'') AS UNSIGNED)
                 WHERE s.acc_year = ?
-                GROUP BY o.option_name
+                GROUP BY o.id, o.name
                 ORDER BY count DESC
                 LIMIT 10
             ", [$latestYear]);
@@ -358,8 +358,8 @@ class AcademicAnalyticsController extends BaseController
               ROUND(MIN(mm.percentage), 2)              AS min_percentage,
               ROUND(MAX(mm.percentage), 2)              AS max_percentage
             FROM module_marks mm
-            JOIN modules m ON m.id = mm.module_id
-            LEFT JOIN departements d ON d.dep_id = m.departement_id
+            JOIN modules m ON m.module_id = mm.module_id
+            LEFT JOIN departements d ON d.dep_id = m.department
             WHERE $whereClause
             GROUP BY d.dep_id, d.dep_name
             ORDER BY avg_percentage DESC
@@ -408,7 +408,7 @@ class AcademicAnalyticsController extends BaseController
 
         $rows = $this->db->fetchAll("
             SELECT
-              COALESCE(o.option_name, 'Unassigned') AS program_name,
+              COALESCE(o.name, 'Unassigned') AS program_name,
               COUNT(ar.id)                           AS total_records,
               SUM(CASE WHEN ar.status = 'present' THEN 1 ELSE 0 END) AS present,
               SUM(CASE WHEN ar.status = 'absent'  THEN 1 ELSE 0 END) AS absent,
@@ -418,11 +418,12 @@ class AcademicAnalyticsController extends BaseController
             FROM attendance_records ar
             JOIN attendance_sessions asess ON asess.id = ar.session_id
             $yearJoin
-            JOIN modules m ON m.id = asess.module_id
-            LEFT JOIN options o ON o.option_id = m.option_id
+            JOIN modules m ON m.module_id = asess.module_id
+            LEFT JOIN module_programs mp ON mp.module_id = m.module_id
+            LEFT JOIN options o ON o.id = mp.option_id
             WHERE 1=1
               $yearWhere
-            GROUP BY o.option_id, o.option_name
+            GROUP BY o.id, o.name
             ORDER BY total_records DESC
         ", $yearBind);
 
