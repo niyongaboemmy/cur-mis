@@ -10,11 +10,13 @@ import {
   Download,
   User,
   ChevronDown,
+  ExternalLink,
 } from "lucide-react";
 import { studentService } from "@/services/studentService";
 import { documentService, type DocumentType } from "@/services/documentService";
 import { api } from "@/services/api";
 import ModalPortal from "@/components/ui/ModalPortal";
+import Modal from "@/components/ui/Modal";
 
 // ─── Document type definitions ───────────────────────────────────────────────
 
@@ -256,6 +258,7 @@ export default function DocumentGenerationPage() {
     downloadUrl: string;
   } | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [portalOpen, setPortalOpen] = useState(false);
 
   // Pre-select student from URL param (when navigating from StudentDetailsPage)
   const urlStudentId =
@@ -310,13 +313,23 @@ export default function DocumentGenerationPage() {
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       {/* Page header */}
-      <div>
-        <h1 className="text-xl font-bold text-ink-900 dark:text-white">
-          Document Generation
-        </h1>
-        <p className="text-sm text-ink-400 mt-0.5">
-          Select a student, then preview or generate an official document.
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-ink-900 dark:text-white">
+            Document Generation
+          </h1>
+          <p className="text-sm text-ink-400 mt-0.5">
+            Select a student, then preview or generate an official document.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setPortalOpen(true)}
+          className="btn-secondary btn-sm"
+        >
+          <ExternalLink className="w-3.5 h-3.5" />
+          Open Documents Portal
+        </button>
       </div>
 
       {/* Student selector */}
@@ -421,6 +434,21 @@ export default function DocumentGenerationPage() {
           </div>
         </ModalPortal>
       )}
+
+      {/* CUR Documents Portal iframe modal */}
+      <Modal
+        open={portalOpen}
+        onClose={() => setPortalOpen(false)}
+        title="CUR Documents Portal"
+        size="full"
+        className="w-[80vw] max-w-[80vw] h-[85vh]"
+      >
+        <iframe
+          src="https://cur.ac.rw/umis/documents/"
+          title="CUR Documents Portal"
+          className="w-full h-full min-h-[70vh] border-0"
+        />
+      </Modal>
     </div>
   );
 }
