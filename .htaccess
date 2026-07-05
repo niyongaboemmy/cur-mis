@@ -1,0 +1,11 @@
+# Route /umis/api/* to /umis/backend/public/api/*
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Don't rewrite actual files or directories
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+
+    # Route /umis/api/* to /umis/backend/public/api/*
+    RewriteRule ^api/(.*)$ backend/public/api/$1 [L,QSA]
+</IfModule>
