@@ -59,15 +59,19 @@ class FeeInvoiceModel extends BaseModel
     {
         return $this->db->fetchOne(
             "SELECT
-               SUM(amount_due)                                           AS total_due,
-               SUM(amount_paid)                                          AS total_paid,
-               SUM(bursary_applied)                                      AS total_bursary,
-               SUM(amount_due - amount_paid - bursary_applied)           AS balance,
-               SUM(CASE WHEN status IN ('unpaid','overdue') THEN 1 ELSE 0 END) AS unpaid_count
-             FROM `fee_invoices`
-             WHERE student_id COLLATE utf8mb4_unicode_ci = ? AND academic_year_id = ? AND fee_type != 'BURSARY_CREDIT'",
-            [$studentId, $academicYearId]
-        ) ?: ['total_due' => 0, 'total_paid' => 0, 'total_bursary' => 0, 'balance' => 0, 'unpaid_count' => 0];
+               SUM(fi.amount_due)                                           AS total_due,
+               SUM(fi.amount_paid)                                          AS total_paid,
+               SUM(fi.bursary_applied)                                      AS total_bursary,
+               SUM(fi.amount_due - fi.amount_paid - fi.bursary_applied)     AS balance,
+               SUM(CASE WHEN fi.status IN ('unpaid','overdue') THEN 1 ELSE 0 END) AS unpaid_count,
+               (SELECT COALESCE(SUM(fp.amount),0) FROM fee_payments fp
+                  WHERE fp.student_id COLLATE utf8mb4_unicode_ci = ? AND fp.status = 'confirmed' AND fp.source = 'GATEWAY') AS total_paid_gateway,
+               (SELECT COALESCE(SUM(fp.amount),0) FROM fee_payments fp
+                  WHERE fp.student_id COLLATE utf8mb4_unicode_ci = ? AND fp.status = 'confirmed' AND COALESCE(fp.source,'MANUAL') != 'GATEWAY') AS total_paid_manual
+             FROM `fee_invoices` fi
+             WHERE fi.student_id COLLATE utf8mb4_unicode_ci = ? AND fi.academic_year_id = ? AND fi.fee_type != 'BURSARY_CREDIT'",
+            [$studentId, $studentId, $studentId, $academicYearId]
+        ) ?: ['total_due' => 0, 'total_paid' => 0, 'total_bursary' => 0, 'balance' => 0, 'unpaid_count' => 0, 'total_paid_gateway' => 0, 'total_paid_manual' => 0];
     }
 
     /** Check if a student already has a system-generated invoice of this type for the year. */
