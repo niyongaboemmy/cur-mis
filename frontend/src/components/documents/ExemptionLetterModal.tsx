@@ -72,21 +72,35 @@ export default function ExemptionLetterModal({
   const [downloadLoading, setDownloadLoading] = useState(false);
 
   const modulesQ = useQuery({
-    queryKey: ["modules-list-exemption", studentDepartmentId],
+    queryKey: ["exemption-letter-modules", studentDepartmentId],
     queryFn: async () => {
       try {
-        const params: Record<string, unknown> = { per_page: 1000 };
+        const params = new URLSearchParams();
+        params.append('per_page', '1000');
 
         // Filter by department if available
         if (studentDepartmentId && !isNaN(Number(studentDepartmentId))) {
           const deptId = Number(studentDepartmentId);
-          params.department = deptId;
+          params.append('department', String(deptId));
           console.log('📚 Fetching modules for department ID:', deptId);
         } else {
           console.log('📚 Fetching all modules (no department filter)');
         }
 
-        const result = await moduleCatalogService.list(params);
+        // Use the documents API endpoint for modules (has correct permissions)
+        const response = await fetch(`/api/documents/exemption-letter/modules?${params}`, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`API error: ${response.status} ${response.statusText}`);
+        }
+
+        const result = await response.json();
         const modules = result?.data?.data ?? [];
 
         console.log(`✅ Loaded ${modules.length} modules`);
@@ -105,7 +119,7 @@ export default function ExemptionLetterModal({
       } catch (error) {
         console.error('❌ Failed to load modules:', {
           message: error instanceof Error ? error.message : String(error),
-          params: { department: studentDepartmentId, per_page: 1000 }
+          department: studentDepartmentId
         });
         throw error;
       }

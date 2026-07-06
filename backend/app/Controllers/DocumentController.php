@@ -26,10 +26,16 @@ class DocumentController extends BaseController
     /**
      * Return the document HTML as JSON so the frontend can render it via srcdoc.
      * GET /api/documents/preview?student_id=&document_type=&token=
+     * Exemption Letter is excluded — use POST /api/documents/exemption-letter/preview instead.
      */
     public function preview(Request $request, Response $response): never
     {
         [$studentId, $documentType] = $this->validated($request, $response);
+
+        // exemption_letter requires POST with custom data — reject GET attempts
+        if ($documentType === 'exemption_letter') {
+            $this->error($response, 'Use POST /api/documents/exemption-letter/preview for exemption letters.', 405);
+        }
 
         $student = DocumentHelper::fetchStudentData($studentId);
         if (!$student) {
@@ -46,7 +52,6 @@ class DocumentController extends BaseController
             'registration_form'    => DocumentHelper::buildRegistrationForm($student, preview: true),
             'english_proficiency'  => DocumentHelper::buildEnglishProficiencyCertificate($student, preview: true),
             'completed_modules'    => DocumentHelper::buildCompletedModulesReport($student, $modules, preview: true),
-            'exemption_letter'     => DocumentHelper::buildExemptionLetter($student, preview: true),
             'degree_bachelor'      => DegreePdf::buildHtml($student, DegreePdf::TYPE_BACHELOR),
             'degree_pgde'          => DegreePdf::buildHtml($student, DegreePdf::TYPE_PGDE),
             'degree_undergraduate' => DegreePdf::buildHtml($student, DegreePdf::TYPE_MASTERS),
@@ -58,10 +63,16 @@ class DocumentController extends BaseController
     /**
      * Stream the document as a PDF (inline in the browser tab).
      * GET /api/documents/download?student_id=&document_type=&token=
+     * Exemption Letter is excluded — use POST /api/documents/exemption-letter/download instead.
      */
     public function download(Request $request, Response $response): never
     {
         [$studentId, $documentType] = $this->validated($request, $response);
+
+        // exemption_letter requires POST with custom data — reject GET attempts
+        if ($documentType === 'exemption_letter') {
+            $this->error($response, 'Use POST /api/documents/exemption-letter/download for exemption letters.', 405);
+        }
 
         $student = DocumentHelper::fetchStudentData($studentId);
         if (!$student) {
@@ -106,13 +117,67 @@ class DocumentController extends BaseController
                 DocumentHelper::buildCompletedModulesReport($student, $modules),
                 "Completed_Modules_{$reg}.pdf",
             ],
-            'exemption_letter'    => [
-                DocumentHelper::buildExemptionLetter($student),
-                "Exemption_Letter_{$reg}.pdf",
-            ],
         };
 
         DocumentHelper::stream($html, $filename);
+    }
+
+    /** POST /api/documents/exemption-letter/preview — return HTML for the exemption letter. */
+    public function previewExemptionLetter(Request $request, Response $response): never
+    {
+        $body = $request->body();
+        $studentId = (int)($body['student_id'] ?? 0);
+
+        if ($studentId <= 0) {
+            $this->error($response, 'student_id is required.', 422);
+        }
+
+        $student = DocumentHelper::fetchStudentData($studentId);
+        if (!$student) {
+            $this->error($response, 'Student not found.', 404);
+        }
+
+        $html = DocumentHelper::buildExemptionLetter($student, $body, preview: true);
+        $this->success($response, ['html' => $html], 'Preview generated.');
+    }
+
+    /** POST /api/documents/exemption-letter/download — stream the exemption letter as PDF. */
+    public function downloadExemptionLetter(Request $request, Response $response): never
+    {
+        $body = $request->body();
+        $studentId = (int)($body['student_id'] ?? 0);
+
+        if ($studentId <= 0) {
+            $this->error($response, 'student_id is required.', 422);
+        }
+
+        $student = DocumentHelper::fetchStudentData($studentId);
+        if (!$student) {
+            $this->error($response, 'Student not found.', 404);
+        }
+
+        $reg = preg_replace('/[^A-Za-z0-9_-]/', '', $student['regnumber'] ?? "s{$studentId}");
+        $html = DocumentHelper::buildExemptionLetter($student, $body, preview: false);
+
+        DocumentHelper::stream($html, "Exemption_Letter_{$reg}.pdf");
+    }
+
+    /** GET /api/documents/exemption-letter/modules — list modules for exemption letter builder. */
+    public function exemptionLetterModules(Request $request, Response $response): never
+    {
+        $department = $request->query('department');
+        $perPage = (int)($request->query('per_page') ?? 1000);
+
+        $filters = [
+            'department' => $department,
+            'per_page' => $perPage,
+        ];
+
+        // Use ModuleModel to fetch modules
+        $moduleModel = new \App\Models\ModuleModel();
+        $paginated = $moduleModel->listWithPrereqs(1, $perPage, $filters);
+
+        $this->success($response, $paginated, 'Modules for exemption letter fetched.');
     }
 
     // ─── Internal helpers ─────────────────────────────────────────────────────
