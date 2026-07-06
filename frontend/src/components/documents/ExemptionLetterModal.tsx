@@ -75,20 +75,22 @@ export default function ExemptionLetterModal({
     queryKey: ["exemption-letter-modules", studentDepartmentId],
     queryFn: async () => {
       try {
-        const params = new URLSearchParams();
-        params.append('per_page', '1000');
+        const deptId = studentDepartmentId ? Number(studentDepartmentId) : null;
 
-        // Filter by department if available
-        if (studentDepartmentId && !isNaN(Number(studentDepartmentId))) {
-          const deptId = Number(studentDepartmentId);
-          params.append('department', String(deptId));
-          console.log('📚 Fetching modules for department ID:', deptId);
-        } else {
-          console.log('📚 Fetching all modules (no department filter)');
+        if (!deptId) {
+          console.warn('⚠️ No department ID provided, loading all modules');
         }
 
-        // Use the documents API endpoint for modules (has correct permissions)
-        const response = await fetch(`/api/documents/exemption-letter/modules?${params}`, {
+        const url = new URL('/api/documents/exemption-letter/modules', window.location.origin);
+        url.searchParams.append('per_page', '1000');
+        if (deptId) {
+          url.searchParams.append('department', String(deptId));
+          console.log('📚 Fetching modules for department ID:', deptId);
+        }
+
+        console.log('📡 API URL:', url.toString());
+
+        const response = await fetch(url.toString(), {
           method: 'GET',
           headers: {
             'Accept': 'application/json',
@@ -97,13 +99,16 @@ export default function ExemptionLetterModal({
         });
 
         if (!response.ok) {
+          const errText = await response.text();
+          console.error('API Response:', errText);
           throw new Error(`API error: ${response.status} ${response.statusText}`);
         }
 
         const result = await response.json();
-        const modules = result?.data?.data ?? [];
+        console.log('Raw API response:', result);
 
-        console.log(`✅ Loaded ${modules.length} modules`);
+        const modules = result?.data?.data ?? [];
+        console.log(`✅ Loaded ${modules.length} modules from department ${deptId}`);
 
         // Log first few module names for verification
         if (modules.length > 0) {
@@ -112,14 +117,15 @@ export default function ExemptionLetterModal({
         }
 
         if (modules.length === 0) {
-          console.warn('⚠️ No modules found for department:', studentDepartmentId);
+          console.warn('⚠️ No modules found for department:', deptId);
         }
 
         return result;
       } catch (error) {
         console.error('❌ Failed to load modules:', {
           message: error instanceof Error ? error.message : String(error),
-          department: studentDepartmentId
+          department: studentDepartmentId,
+          stack: error instanceof Error ? error.stack : ''
         });
         throw error;
       }

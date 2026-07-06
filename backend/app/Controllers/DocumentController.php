@@ -168,14 +168,17 @@ class DocumentController extends BaseController
         $department = $request->query('department');
         $perPage = (int)($request->query('per_page') ?? 1000);
 
-        $filters = [
-            'department' => $department,
-            'per_page' => $perPage,
-        ];
+        // Build filters
+        $filters = [];
+        if (!empty($department)) {
+            $filters['department'] = (int)$department;
+        }
 
         // Use ModuleModel to fetch modules
         $moduleModel = new \App\Models\ModuleModel();
         $paginated = $moduleModel->listWithPrereqs(1, $perPage, $filters);
+
+        error_log('exemptionLetterModules: department=' . $department . ', found=' . count($paginated['data'] ?? []));
 
         $this->success($response, $paginated, 'Modules for exemption letter fetched.');
     }
