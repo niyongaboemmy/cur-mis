@@ -266,7 +266,7 @@ class StudentController extends BaseController
 
         if (!empty($student['faculty'])) {
             $facultyModel = new FacultyModel();
-            $faculty = $facultyModel->where('fac_id', '=', $student['faculty'])->first();
+            $faculty = $facultyModel->findBy('fac_id', $student['faculty']);
             if ($faculty) {
                 $student['faculty_name'] = $faculty['fac_name'] ?? null;
             }
@@ -274,7 +274,7 @@ class StudentController extends BaseController
 
         if (!empty($student['department'])) {
             $deptModel = new DepartmentModel();
-            $dept = $deptModel->where('dep_id', '=', $student['department'])->first();
+            $dept = $deptModel->findBy('dep_id', $student['department']);
             if ($dept) {
                 $student['department_name'] = $dept['dep_name'] ?? null;
             }
