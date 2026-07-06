@@ -29,12 +29,16 @@ export interface ExemptionLetterPayload {
 
 interface ExemptionLetterModalProps {
   studentId: number;
+  studentDepartment?: number;
+  studentLevel?: number;
   onClose: () => void;
   onPreview?: (html: string) => void;
 }
 
 export default function ExemptionLetterModal({
   studentId,
+  studentDepartment,
+  studentLevel,
   onClose,
   onPreview,
 }: ExemptionLetterModalProps) {
@@ -58,12 +62,20 @@ export default function ExemptionLetterModal({
   const [downloadLoading, setDownloadLoading] = useState(false);
 
   const modulesQ = useQuery({
-    queryKey: ["modules-list-exemption"],
-    queryFn: () => moduleCatalogService.list({ per_page: 1000 }),
+    queryKey: ["modules-list-exemption", studentDepartment, studentLevel],
+    queryFn: () => moduleCatalogService.list({
+      per_page: 1000,
+      ...(studentDepartment && { department: studentDepartment }),
+      ...(studentLevel && { level: studentLevel }),
+    }),
     staleTime: 60_000,
   });
 
   const modules = modulesQ.data?.data?.data ?? [];
+
+  if (modulesQ.error) {
+    console.error('Failed to load modules:', modulesQ.error);
+  }
 
   const totalCredits = rows.reduce((sum, r) => sum + (r.credits || 0), 0);
 
@@ -321,7 +333,7 @@ export default function ExemptionLetterModal({
                         className="input input-sm w-full text-xs bg-white dark:bg-ink-900 disabled:opacity-60 disabled:cursor-not-allowed"
                       >
                         <option value="" disabled>
-                          {modulesQ.isLoading ? "Loading modules…" : modules.length === 0 ? "No modules available" : "Select a module"}
+                          {modulesQ.isLoading ? "Loading modules…" : modulesQ.error ? "Error loading modules" : modules.length === 0 ? "No active modules found" : "Select a module"}
                         </option>
                         {modules.map((m: any) => (
                           <option
