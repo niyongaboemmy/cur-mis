@@ -587,7 +587,7 @@ class DocumentHelper
      * Fetch all module marks for a student.
      * Returns rows with module_code, module_name, level, module_credits, percentage, grade, is_exempted.
      */
-    public static function fetchStudentModules(int $studentId): array
+    public static function fetchStudentModules(string $regnumber): array
     {
         $db = Database::getInstance();
 
@@ -596,10 +596,10 @@ class DocumentHelper
                     mm.percentage, mm.grade
              FROM module_marks mm
              LEFT JOIN modules m ON m.module_id = mm.module_id
-             WHERE mm.student_id = ?
+             WHERE mm.student_regnumber = ?
                AND mm.percentage IS NOT NULL
              ORDER BY m.level ASC, m.module_code ASC",
-            [$studentId]
+            [$regnumber]
         );
     }
 
