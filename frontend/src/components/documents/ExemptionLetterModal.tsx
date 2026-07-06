@@ -52,6 +52,13 @@ export default function ExemptionLetterModal({
   onClose,
   onPreview,
 }: ExemptionLetterModalProps) {
+  // Log what we received
+  console.log('🎓 ExemptionLetterModal props:', {
+    studentName,
+    studentDepartment,
+    studentDepartmentId,
+    studentProgram,
+  });
   const [sourceInstitution, setSourceInstitution] = useState("");
   const [sourceFaculty, setSourceFaculty] = useState("");
   const [targetLevel, setTargetLevel] = useState("");
@@ -77,15 +84,19 @@ export default function ExemptionLetterModal({
       try {
         const deptId = studentDepartmentId ? Number(studentDepartmentId) : null;
 
-        if (!deptId) {
-          console.warn('⚠️ No department ID provided, loading all modules');
+        console.log('🔍 Query function - studentDepartmentId:', studentDepartmentId, 'deptId:', deptId);
+
+        if (!deptId || deptId === 0 || isNaN(deptId)) {
+          console.warn('⚠️ Invalid department ID:', studentDepartmentId, '→', deptId);
         }
 
         const url = new URL('/api/documents/exemption-letter/modules', window.location.origin);
         url.searchParams.append('per_page', '1000');
-        if (deptId) {
+        if (deptId && !isNaN(deptId)) {
           url.searchParams.append('department', String(deptId));
           console.log('📚 Fetching modules for department ID:', deptId);
+        } else {
+          console.log('📚 No valid department ID, loading all modules');
         }
 
         console.log('📡 API URL:', url.toString());
