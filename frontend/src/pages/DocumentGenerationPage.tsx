@@ -459,11 +459,13 @@ export default function DocumentGenerationPage() {
 
       {/* Exemption Letter builder modal */}
       {exemptionLetterModalOpen && selectedStudent && (
-        <ExemptionLetterModal
-          studentId={selectedStudent.id}
-          studentDepartment={selectedStudent.department}
-          studentLevel={selectedStudent.current_level}
-          onClose={() => setExemptionLetterModalOpen(false)}
+        <>
+          {console.log('Opening exemption modal with:', { dept: selectedStudent.department, level: selectedStudent.current_level })}
+          <ExemptionLetterModal
+            studentId={selectedStudent.id}
+            studentDepartment={selectedStudent.department}
+            studentLevel={selectedStudent.current_level}
+            onClose={() => setExemptionLetterModalOpen(false)}
           onPreview={(html) => {
             setPreviewModal({
               html,
@@ -471,7 +473,8 @@ export default function DocumentGenerationPage() {
               downloadUrl: "#", // Not used for exemption letter
             });
           }}
-        />
+          />
+        </>
       )}
 
       {/* CUR Documents Portal iframe modal */}
