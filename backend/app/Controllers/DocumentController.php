@@ -168,19 +168,24 @@ class DocumentController extends BaseController
         $department = $request->query('department');
         $perPage = (int)($request->query('per_page') ?? 1000);
 
-        // Build filters
-        $filters = [];
-        if (!empty($department)) {
-            $filters['department'] = (int)$department;
+        try {
+            // Build filters
+            $filters = [];
+            if (!empty($department)) {
+                $filters['department'] = (int)$department;
+            }
+
+            // Use ModuleModel to fetch modules
+            $moduleModel = new \App\Models\ModuleModel();
+            $paginated = $moduleModel->listWithPrereqs(1, $perPage, $filters);
+
+            error_log('exemptionLetterModules: department=' . $department . ', found=' . count($paginated['data'] ?? []) . ', paginated=' . json_encode($paginated));
+
+            $this->success($response, $paginated, 'Modules for exemption letter fetched.');
+        } catch (\Throwable $e) {
+            error_log('exemptionLetterModules ERROR: ' . $e->getMessage() . ' | ' . $e->getTraceAsString());
+            $this->error($response, 'Failed to fetch modules: ' . $e->getMessage(), 500);
         }
-
-        // Use ModuleModel to fetch modules
-        $moduleModel = new \App\Models\ModuleModel();
-        $paginated = $moduleModel->listWithPrereqs(1, $perPage, $filters);
-
-        error_log('exemptionLetterModules: department=' . $department . ', found=' . count($paginated['data'] ?? []));
-
-        $this->success($response, $paginated, 'Modules for exemption letter fetched.');
     }
 
     // ─── Internal helpers ─────────────────────────────────────────────────────
