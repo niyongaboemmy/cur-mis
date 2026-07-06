@@ -19,6 +19,11 @@ class Request
 
     public function uri(): string
     {
+        // If mod_rewrite has passed the original path via query parameter, use that
+        if (!empty($_GET['_original_path'])) {
+            return $_GET['_original_path'];
+        }
+
         $uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
 
         $scriptDir = dirname($_SERVER['SCRIPT_NAME']);

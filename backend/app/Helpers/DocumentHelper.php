@@ -801,24 +801,18 @@ class DocumentHelper
     }
 
     /**
-     * Fetch transferred/exempted modules from a prior institution.
-     * This queries an exemption_modules table if it exists, otherwise returns empty.
+     * Build the exemption letter from user-submitted data (module rows, dean details, etc.).
+     * Signature: array $s (student data from fetchStudentData),
+     *           array $letter (user form data with rows, dean name/title, etc.)
+     *           bool $preview (adds watermark)
+     *
+     * Letter data shape: {
+     *   source_institution, source_faculty?, target_level, academic_year,
+     *   issue_location, dean_name, dean_title,
+     *   rows: [{ cur_module_label, other_module_title, level, credits, marks }]
+     * }
      */
-    public static function fetchTransferredModules(int $studentId): array
-    {
-        $db = Database::getInstance();
-
-        // Try to fetch from exemption_modules table if it exists
-        return $db->fetchAll(
-            "SELECT module_title, module_code, level, credits, marks
-             FROM exemption_modules
-             WHERE student_id = ?
-             ORDER BY level ASC, module_code ASC",
-            [$studentId]
-        ) ?? [];
-    }
-
-    public static function buildExemptionLetter(array $s, bool $preview = false): string
+    public static function buildExemptionLetter(array $s, array $letter, bool $preview = false): string
     {
         $header     = self::headerHtml();
         $pageCss    = PdfLayout::pageCss(44, 28);
@@ -826,19 +820,49 @@ class DocumentHelper
         $regnumber  = htmlspecialchars($s['regnumber'] ?? '—', ENT_QUOTES);
         $faculty    = htmlspecialchars($s['fac_name']   ?? $s['faculty']    ?? '', ENT_QUOTES);
         $department = htmlspecialchars($s['dep_name']   ?? $s['department'] ?? '', ENT_QUOTES);
-        $level      = htmlspecialchars($s['current_level'] ?? 'Level 8', ENT_QUOTES);
-        $today      = date('d/m/Y');
-        $issueLoc   = 'TABA';
 
-        // Build table rows and compute totals
+        // Extract from letter data, with sensible defaults
+        $sourceInstitution = htmlspecialchars(trim((string)($letter['source_institution'] ?? '')), ENT_QUOTES);
+        $sourceFaculty     = htmlspecialchars(trim((string)($letter['source_faculty'] ?? '')), ENT_QUOTES);
+        $targetLevel       = htmlspecialchars(trim((string)($letter['target_level'] ?? '')), ENT_QUOTES);
+        $academicYear      = htmlspecialchars(trim((string)($letter['academic_year'] ?? '')), ENT_QUOTES);
+        $issueLoc          = htmlspecialchars(trim((string)($letter['issue_location'] ?? 'TABA')), ENT_QUOTES);
+        $deanName          = htmlspecialchars(trim((string)($letter['dean_name'] ?? '')), ENT_QUOTES);
+        $deanTitle         = htmlspecialchars(trim((string)($letter['dean_title'] ?? '')), ENT_QUOTES);
+        $today             = date('d/m/Y');
+
+        // Build table rows and compute total credits
         $tableRows    = '';
         $totalCredits = 0;
-        $moduleCount  = 0;
+        $rowNum       = 1;
 
-        // For now, placeholder rows. In production, this would fetch actual transferred modules.
-        $tableRows = '<tr><td colspan="5" style="text-align:center;padding:12px;color:#777;">
-                        No transferred modules recorded.
-                      </td></tr>';
+        $rows = (array)($letter['rows'] ?? []);
+        if (empty($rows)) {
+            $tableRows = '<tr><td colspan="6" style="text-align:center;padding:12px;color:#777;">
+                            No transferred modules recorded.
+                          </td></tr>';
+        } else {
+            foreach ($rows as $row) {
+                $rowNo              = (int)$rowNum;
+                $curModuleLabel     = htmlspecialchars(trim((string)($row['cur_module_label'] ?? '')), ENT_QUOTES);
+                $otherModuleTitle   = htmlspecialchars(trim((string)($row['other_module_title'] ?? '')), ENT_QUOTES);
+                $level              = htmlspecialchars(trim((string)($row['level'] ?? '')), ENT_QUOTES);
+                $credits            = (int)($row['credits'] ?? 0);
+                $marks              = htmlspecialchars(trim((string)($row['marks'] ?? '')), ENT_QUOTES);
+
+                $tableRows .= "<tr>
+                    <td style=\"text-align:center;width:30px;\">{$rowNo}</td>
+                    <td>{$curModuleLabel}</td>
+                    <td>{$otherModuleTitle}</td>
+                    <td style=\"text-align:center;\">{$level}</td>
+                    <td style=\"text-align:center;\">{$credits}</td>
+                    <td style=\"text-align:center;\">{$marks}</td>
+                </tr>";
+
+                $totalCredits += $credits;
+                $rowNum++;
+            }
+        }
 
         $qr = self::qrHtml(
             "https://mis.cur.ac.rw/verify?doc=exemption&reg={$s['regnumber']}&d=" . date('Ymd'),
@@ -849,6 +873,10 @@ class DocumentHelper
             ? '<div style="position:fixed;top:38%;left:10%;color:rgba(200,0,0,0.08);
                            font-size:90pt;font-weight:bold;transform:rotate(-30deg);
                            pointer-events:none;z-index:0;white-space:nowrap;">PREVIEW</div>'
+            : '';
+
+        $optionalSourceFaculty = $sourceFaculty !== ''
+            ? "<div class=\"info-row\">\n            <span class=\"info-label\">Source Faculty:</span>\n            <span>{$sourceFaculty}</span>\n          </div>"
             : '';
 
         return <<<HTML
@@ -917,12 +945,23 @@ class DocumentHelper
           </div>
 
           <div class="info-row">
-            <span class="info-label">Registered Level:</span>
-            <span>{$level}</span>
+            <span class="info-label">Prior Institution:</span>
+            <span>{$sourceInstitution}</span>
+          </div>
+          {$optionalSourceFaculty}
+
+          <div class="info-row">
+            <span class="info-label">Target Level:</span>
+            <span>{$targetLevel}</span>
+          </div>
+
+          <div class="info-row">
+            <span class="info-label">Academic Year:</span>
+            <span>{$academicYear}</span>
           </div>
 
           <p class="note">
-            After a thorough examination of the Transcript, the Faculty recommends the student
+            After a thorough examination of the Transcript from {$sourceInstitution}, the Faculty recommends the student
             to be registered as a full-time/part-time student. The student is exempted for the
             credits as detailed in the table below:
           </p>
@@ -930,8 +969,9 @@ class DocumentHelper
           <table class="exemption-tbl">
             <thead>
               <tr>
-                <th>No.</th>
+                <th style="width:30px;">No.</th>
                 <th>Module Title and Code (CUR)</th>
+                <th>Module Title (Prior Institution)</th>
                 <th>Level</th>
                 <th>Transferred Credits</th>
                 <th>Marks</th>
@@ -952,8 +992,8 @@ class DocumentHelper
 
           <div class="sign-block">
             <p>Done at {$issueLoc} on {$today}</p>
-            <p class="sign-name">Dr. Protais Muhayimana</p>
-            <p>Dean, Faculty of Science and Technology</p>
+            <p class="sign-name">{$deanName}</p>
+            <p>{$deanTitle}</p>
           </div>
 
           <div class="qr-section">

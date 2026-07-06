@@ -1,12 +1,12 @@
-# Route /api/* to /backend/public/api/* for production
 <IfModule mod_rewrite.c>
     RewriteEngine On
-    RewriteBase /umis/
+    RewriteBase /cur-mis/
 
-    # Don't rewrite actual files or directories
+    # Pass through existing files and directories
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteCond %{REQUEST_FILENAME} !-d
 
-    # Route api requests to backend
-    RewriteRule ^api/(.*)$ backend/public/api/$1 [L,QSA]
+    # Pass API requests to the backend/public directory which will handle routing
+    # Pass the original path as a query parameter that the router can use
+    RewriteRule ^api/(.*)$ backend/public/index.php?_original_path=/api/$1 [QSA,L]
 </IfModule>

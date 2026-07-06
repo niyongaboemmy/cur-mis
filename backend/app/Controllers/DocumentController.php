@@ -162,6 +162,24 @@ class DocumentController extends BaseController
         DocumentHelper::stream($html, "Exemption_Letter_{$reg}.pdf");
     }
 
+    /** GET /api/documents/exemption-letter/test — test module query. */
+    public function testModuleQuery(Request $request, Response $response): never
+    {
+        try {
+            $moduleModel = new \App\Models\ModuleModel();
+            $result = $moduleModel->listWithPrereqs(1, 10, ['department' => 3]);
+
+            $this->success($response, [
+                'total' => $result['total'] ?? 0,
+                'count' => count($result['data'] ?? []),
+                'first_module' => $result['data'][0] ?? null,
+                'all_data' => $result
+            ], 'Test query successful');
+        } catch (\Throwable $e) {
+            $this->error($response, $e->getMessage() . ' | ' . $e->getTraceAsString(), 500);
+        }
+    }
+
     /** GET /api/documents/exemption-letter/modules — list modules for exemption letter builder. */
     public function exemptionLetterModules(Request $request, Response $response): never
     {
@@ -179,7 +197,7 @@ class DocumentController extends BaseController
             $moduleModel = new \App\Models\ModuleModel();
             $paginated = $moduleModel->listWithPrereqs(1, $perPage, $filters);
 
-            error_log('exemptionLetterModules: department=' . $department . ', found=' . count($paginated['data'] ?? []) . ', paginated=' . json_encode($paginated));
+            error_log('exemptionLetterModules: department=' . $department . ', found=' . count($paginated['data'] ?? []));
 
             $this->success($response, $paginated, 'Modules for exemption letter fetched.');
         } catch (\Throwable $e) {
