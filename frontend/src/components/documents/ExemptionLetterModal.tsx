@@ -73,24 +73,27 @@ export default function ExemptionLetterModal({
     queryKey: ["modules-list-exemption"],
     queryFn: async () => {
       try {
-        console.log('Fetching all modules for exemption letter...', {
-          studentName,
-          studentDepartment,
-          studentCurrentLevel,
+        console.log('Fetching modules for exemption letter...');
+
+        // Load all modules - simple request without complex filtering
+        const result = await moduleCatalogService.list({
+          per_page: 1000,
+          status: 'active'  // Only active modules
         });
 
-        // Load all modules without filtering
-        // The user can select any module they want to grant exemption for
-        const result = await moduleCatalogService.list({ per_page: 1000 });
-        const moduleCount = result?.data?.data?.length ?? 0;
-        console.log('Successfully loaded', moduleCount, 'modules');
+        const modules = result?.data?.data ?? [];
+        console.log('✓ Successfully loaded', modules.length, 'modules');
         return result;
       } catch (error) {
-        console.error('Failed to load modules:', error);
+        console.error('✗ Failed to load modules:', {
+          message: error instanceof Error ? error.message : String(error),
+          error
+        });
         throw error;
       }
     },
     staleTime: 60_000,
+    retry: 2, // Retry on failure
   });
 
   const modules = modulesQ.data?.data?.data ?? [];
@@ -387,26 +390,41 @@ export default function ExemptionLetterModal({
                       <label className="text-[10px] font-semibold uppercase text-ink-500 mb-1 block">
                         CUR Module <span className="text-red-500">*</span>
                       </label>
-                      <select
-                        value={row.cur_module_label}
-                        onChange={(e) =>
-                          handleRowChange(idx, "cur_module_label", e.target.value)
-                        }
-                        disabled={modules.length === 0}
-                        className="input input-sm w-full text-xs bg-white dark:bg-ink-900 disabled:opacity-60 disabled:cursor-not-allowed"
-                      >
-                        <option value="" disabled>
-                          {modulesQ.isLoading ? "Loading modules…" : modulesQ.error ? "Error loading modules" : modules.length === 0 ? "No active modules found" : "Select a module"}
-                        </option>
-                        {modules.map((m: any) => (
-                          <option
-                            key={m.module_id}
-                            value={`${m.module_code} — ${m.module_name}`}
-                          >
-                            {m.module_code} — {m.module_name}
+                      {modulesQ.isLoading ? (
+                        <div className="flex items-center gap-2 p-2 bg-blue-50 dark:bg-blue-500/10 rounded text-xs text-blue-700 dark:text-blue-400">
+                          <span className="inline-block w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
+                          Loading modules...
+                        </div>
+                      ) : modulesQ.error ? (
+                        <div className="flex items-center gap-2 p-2 bg-red-50 dark:bg-red-500/10 rounded text-xs text-red-700 dark:text-red-400">
+                          <span>⚠ Failed to load modules</span>
+                        </div>
+                      ) : modules.length === 0 ? (
+                        <div className="flex items-center gap-2 p-2 bg-yellow-50 dark:bg-yellow-500/10 rounded text-xs text-yellow-700 dark:text-yellow-400">
+                          <span>No modules found</span>
+                        </div>
+                      ) : (
+                        <select
+                          value={row.cur_module_label}
+                          onChange={(e) =>
+                            handleRowChange(idx, "cur_module_label", e.target.value)
+                          }
+                          disabled={false}
+                          className="input input-sm w-full text-xs bg-white dark:bg-ink-900"
+                        >
+                          <option value="" disabled>
+                            Select a module ({modules.length} available)
                           </option>
-                        ))}
-                      </select>
+                          {modules.map((m: any) => (
+                            <option
+                              key={m.module_id}
+                              value={`${m.module_code} — ${m.module_name}`}
+                            >
+                              {m.module_code} — {m.module_name}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                     </div>
 
                     <div className="col-span-3">
