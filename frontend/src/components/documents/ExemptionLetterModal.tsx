@@ -81,25 +81,31 @@ export default function ExemptionLetterModal({
         if (studentDepartmentId && !isNaN(Number(studentDepartmentId))) {
           const deptId = Number(studentDepartmentId);
           params.department = deptId;
-          console.log('Fetching modules for department:', deptId);
+          console.log('📚 Fetching modules for department ID:', deptId);
         } else {
-          console.log('Fetching all modules (no department filter)');
+          console.log('📚 Fetching all modules (no department filter)');
         }
 
         const result = await moduleCatalogService.list(params);
-
         const modules = result?.data?.data ?? [];
-        console.log('✓ Successfully loaded', modules.length, 'modules');
+
+        console.log(`✅ Loaded ${modules.length} modules`);
+
+        // Log first few module names for verification
+        if (modules.length > 0) {
+          const sampleModules = modules.slice(0, 3).map((m: any) => `${m.module_code} - ${m.module_name}`);
+          console.log('📖 Sample modules:', sampleModules.join(', '));
+        }
 
         if (modules.length === 0) {
-          console.warn('⚠ No modules returned from API for params:', params);
+          console.warn('⚠️ No modules found for department:', studentDepartmentId);
         }
 
         return result;
       } catch (error) {
-        console.error('✗ Failed to load modules:', {
+        console.error('❌ Failed to load modules:', {
           message: error instanceof Error ? error.message : String(error),
-          error
+          params: { department: studentDepartmentId, per_page: 1000 }
         });
         throw error;
       }
@@ -421,17 +427,34 @@ export default function ExemptionLetterModal({
                         CUR Module <span className="text-red-500">*</span>
                       </label>
                       {modulesQ.isLoading ? (
-                        <div className="flex items-center gap-2 p-2 bg-blue-50 dark:bg-blue-500/10 rounded text-xs text-blue-700 dark:text-blue-400">
-                          <span className="inline-block w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
-                          Loading modules...
+                        <div className="p-3 bg-blue-50 dark:bg-blue-500/10 rounded text-xs space-y-2">
+                          <div className="flex items-center gap-2 text-blue-700 dark:text-blue-400">
+                            <span className="inline-block w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
+                            <span>📚 Loading modules for {studentDepartment}...</span>
+                          </div>
+                          {modules.length > 0 && (
+                            <div className="text-blue-600 dark:text-blue-300 text-[11px]">
+                              Found {modules.length} modules so far
+                            </div>
+                          )}
                         </div>
                       ) : modulesQ.error ? (
-                        <div className="flex items-center gap-2 p-2 bg-red-50 dark:bg-red-500/10 rounded text-xs text-red-700 dark:text-red-400">
-                          <span>⚠ Failed to load modules</span>
+                        <div className="p-3 bg-red-50 dark:bg-red-500/10 rounded text-xs">
+                          <div className="flex items-center gap-2 text-red-700 dark:text-red-400 mb-1">
+                            <span>❌ Failed to load modules</span>
+                          </div>
+                          <div className="text-red-600 dark:text-red-300 text-[11px]">
+                            Check console for details (F12 → Console)
+                          </div>
                         </div>
                       ) : modules.length === 0 ? (
-                        <div className="flex items-center gap-2 p-2 bg-yellow-50 dark:bg-yellow-500/10 rounded text-xs text-yellow-700 dark:text-yellow-400">
-                          <span>No modules found</span>
+                        <div className="p-3 bg-yellow-50 dark:bg-yellow-500/10 rounded text-xs">
+                          <div className="flex items-center gap-2 text-yellow-700 dark:text-yellow-400 mb-1">
+                            <span>⚠️ No modules found</span>
+                          </div>
+                          <div className="text-yellow-600 dark:text-yellow-300 text-[11px]">
+                            Department: {studentDepartment} has no modules
+                          </div>
                         </div>
                       ) : (
                         <select
@@ -443,7 +466,7 @@ export default function ExemptionLetterModal({
                           className="input input-sm w-full text-xs bg-white dark:bg-ink-900"
                         >
                           <option value="" disabled>
-                            Select a module ({modules.length} available)
+                            ✓ Select a module ({modules.length} available)
                           </option>
                           {modules.map((m: any) => (
                             <option
