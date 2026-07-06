@@ -97,7 +97,8 @@ interface StudentResult {
   faculty?: string;
   faculty_name?: string;
   department_name?: string;
-  std_option?: string;
+  std_option?: string | number;
+  program_name?: string;
 }
 
 interface StudentSearchProps {
@@ -299,6 +300,7 @@ export default function DocumentGenerationPage() {
         faculty_name: s.faculty_name,
         department_name: s.department_name,
         std_option: s.std_option,
+        program_name: s.program_name,
       };
       console.log('Setting selected student:', studentData);
       setSelectedStudent(studentData);
@@ -475,7 +477,7 @@ export default function DocumentGenerationPage() {
             studentRegNumber={selectedStudent.regnumber}
             studentFaculty={selectedStudent.faculty_name || selectedStudent.faculty}
             studentDepartment={selectedStudent.department_name || selectedStudent.department}
-            studentProgram={selectedStudent.std_option as string}
+            studentProgram={selectedStudent.program_name || selectedStudent.std_option}
             studentCurrentLevel={selectedStudent.current_level}
             onClose={() => setExemptionLetterModalOpen(false)}
             onPreview={(html) => {

@@ -12,6 +12,7 @@ use App\Models\StudentApplicationModel;
 use App\Models\StudentVisaRecordModel;
 use App\Models\FacultyModel;
 use App\Models\DepartmentModel;
+use App\Models\OptionModel;
 use App\Helpers\ValidationHelper;
 use App\Helpers\FileServerClient;
 use App\Services\SystemLogService;
@@ -260,9 +261,10 @@ class StudentController extends BaseController
             $this->error($response, 'Student not found', 404);
         }
 
-        // Enrich student with joined faculty and department names
+        // Enrich student with joined faculty, department, and program names
         $student['faculty_name'] = null;
         $student['department_name'] = null;
+        $student['program_name'] = null;
 
         if (!empty($student['faculty'])) {
             $facultyModel = new FacultyModel();
@@ -277,6 +279,14 @@ class StudentController extends BaseController
             $dept = $deptModel->findBy('dep_id', $student['department']);
             if ($dept) {
                 $student['department_name'] = $dept['dep_name'] ?? null;
+            }
+        }
+
+        if (!empty($student['std_option'])) {
+            $optionModel = new OptionModel();
+            $option = $optionModel->find($student['std_option']);
+            if ($option) {
+                $student['program_name'] = $option['name'] ?? null;
             }
         }
 
