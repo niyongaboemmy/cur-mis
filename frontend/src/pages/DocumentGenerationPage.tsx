@@ -477,6 +477,7 @@ export default function DocumentGenerationPage() {
             studentRegNumber={selectedStudent.regnumber}
             studentFaculty={selectedStudent.faculty_name || selectedStudent.faculty}
             studentDepartment={selectedStudent.department_name || selectedStudent.department}
+            studentDepartmentId={selectedStudent.department}
             studentProgram={selectedStudent.program_name || selectedStudent.std_option}
             studentCurrentLevel={selectedStudent.current_level}
             onClose={() => setExemptionLetterModalOpen(false)}

@@ -33,6 +33,7 @@ interface ExemptionLetterModalProps {
   studentRegNumber?: string;
   studentFaculty?: string;
   studentDepartment?: string;
+  studentDepartmentId?: number | string;
   studentProgram?: string;
   studentCurrentLevel?: number | string;
   onClose: () => void;
@@ -45,6 +46,7 @@ export default function ExemptionLetterModal({
   studentRegNumber,
   studentFaculty,
   studentDepartment,
+  studentDepartmentId,
   studentProgram,
   studentCurrentLevel,
   onClose,
@@ -70,21 +72,27 @@ export default function ExemptionLetterModal({
   const [downloadLoading, setDownloadLoading] = useState(false);
 
   const modulesQ = useQuery({
-    queryKey: ["modules-list-exemption"],
+    queryKey: ["modules-list-exemption", studentDepartmentId],
     queryFn: async () => {
       try {
-        console.log('Fetching modules for exemption letter...');
+        const params: Record<string, unknown> = { per_page: 1000 };
 
-        // Load all modules - no filters, just get everything
-        const result = await moduleCatalogService.list({
-          per_page: 1000
-        });
+        // Filter by department if available
+        if (studentDepartmentId && !isNaN(Number(studentDepartmentId))) {
+          const deptId = Number(studentDepartmentId);
+          params.department = deptId;
+          console.log('Fetching modules for department:', deptId);
+        } else {
+          console.log('Fetching all modules (no department filter)');
+        }
+
+        const result = await moduleCatalogService.list(params);
 
         const modules = result?.data?.data ?? [];
         console.log('✓ Successfully loaded', modules.length, 'modules');
 
         if (modules.length === 0) {
-          console.warn('⚠ No modules returned from API');
+          console.warn('⚠ No modules returned from API for params:', params);
         }
 
         return result;
@@ -97,7 +105,7 @@ export default function ExemptionLetterModal({
       }
     },
     staleTime: 60_000,
-    retry: 3, // Retry up to 3 times on failure
+    retry: 3,
   });
 
   // Extract modules from the nested response structure
