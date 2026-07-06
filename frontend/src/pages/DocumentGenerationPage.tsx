@@ -95,6 +95,8 @@ interface StudentResult {
   department?: number | string;
   current_level?: number | string;
   faculty?: string;
+  faculty_name?: string;
+  department_name?: string;
   std_option?: string;
 }
 
@@ -294,6 +296,8 @@ export default function DocumentGenerationPage() {
         department: s.department,
         current_level: s.current_level,
         faculty: s.faculty,
+        faculty_name: s.faculty_name,
+        department_name: s.department_name,
         std_option: s.std_option,
       };
       console.log('Setting selected student:', studentData);
@@ -469,8 +473,8 @@ export default function DocumentGenerationPage() {
             studentId={selectedStudent.id}
             studentName={`${selectedStudent.fname} ${selectedStudent.lname}`}
             studentRegNumber={selectedStudent.regnumber}
-            studentFaculty={selectedStudent.faculty as string}
-            studentDepartment={selectedStudent.department as string}
+            studentFaculty={selectedStudent.faculty_name || selectedStudent.faculty}
+            studentDepartment={selectedStudent.department_name || selectedStudent.department}
             studentProgram={selectedStudent.std_option as string}
             studentCurrentLevel={selectedStudent.current_level}
             onClose={() => setExemptionLetterModalOpen(false)}

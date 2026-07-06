@@ -10,6 +10,8 @@ use App\Models\StudentModel;
 use App\Models\ApplicationDocumentModel;
 use App\Models\StudentApplicationModel;
 use App\Models\StudentVisaRecordModel;
+use App\Models\FacultyModel;
+use App\Models\DepartmentModel;
 use App\Helpers\ValidationHelper;
 use App\Helpers\FileServerClient;
 use App\Services\SystemLogService;
@@ -256,6 +258,26 @@ class StudentController extends BaseController
 
         if (!$student) {
             $this->error($response, 'Student not found', 404);
+        }
+
+        // Enrich student with joined faculty and department names
+        $student['faculty_name'] = null;
+        $student['department_name'] = null;
+
+        if (!empty($student['faculty'])) {
+            $facultyModel = new FacultyModel();
+            $faculty = $facultyModel->where('fac_id', '=', $student['faculty'])->first();
+            if ($faculty) {
+                $student['faculty_name'] = $faculty['fac_name'] ?? null;
+            }
+        }
+
+        if (!empty($student['department'])) {
+            $deptModel = new DepartmentModel();
+            $dept = $deptModel->where('dep_id', '=', $student['department'])->first();
+            if ($dept) {
+                $student['department_name'] = $dept['dep_name'] ?? null;
+            }
         }
 
         // Surface the linked admission application so the overview tab can render
