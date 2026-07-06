@@ -70,33 +70,18 @@ export default function ExemptionLetterModal({
   const [downloadLoading, setDownloadLoading] = useState(false);
 
   const modulesQ = useQuery({
-    queryKey: ["modules-list-exemption", studentDepartment, studentCurrentLevel],
+    queryKey: ["modules-list-exemption"],
     queryFn: async () => {
       try {
-        const params: Record<string, unknown> = { per_page: 1000 };
-
-        console.log('Fetching modules for exemption letter...', {
+        console.log('Fetching all modules for exemption letter...', {
           studentName,
           studentDepartment,
           studentCurrentLevel,
         });
 
-        // Add filters if student context is available
-        if (studentDepartment && typeof studentDepartment === 'string') {
-          // studentDepartment might be a numeric string ID
-          const deptNum = parseInt(studentDepartment, 10);
-          if (!isNaN(deptNum)) {
-            params.department = deptNum;
-          }
-        }
-        if (studentCurrentLevel && typeof studentCurrentLevel === 'string') {
-          const levelNum = parseInt(studentCurrentLevel, 10);
-          if (!isNaN(levelNum)) {
-            params.level = levelNum;
-          }
-        }
-
-        const result = await moduleCatalogService.list(params);
+        // Load all modules without filtering
+        // The user can select any module they want to grant exemption for
+        const result = await moduleCatalogService.list({ per_page: 1000 });
         const moduleCount = result?.data?.data?.length ?? 0;
         console.log('Successfully loaded', moduleCount, 'modules');
         return result;
