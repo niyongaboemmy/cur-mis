@@ -1,0 +1,145 @@
+╔════════════════════════════════════════════════════════════════════════════════╗
+║                         🚨 PRODUCTION CRITICAL ALERT 🚨                        ║
+║                                                                                 ║
+║  ISSUE: Database tables missing - Production is broken                         ║
+║  ERROR: 40+ errors in logs (role_permissions table doesn't exist)               ║
+║  IMPACT: Authentication broken, Finance broken, Academic broken                ║
+║  TIME TO FIX: 5 minutes                                                        ║
+║                                                                                 ║
+║  STATUS: REQUIRES IMMEDIATE ACTION                                             ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+
+
+WHAT TO DO RIGHT NOW
+═══════════════════════════════════════════════════════════════════════════════
+
+1. Go to your production server
+2. Open: http://your-production-server/migrate.php
+3. Select: 2026_07_02_087_fix_rbac_and_misc_prod_errors.sql
+4. Click: "Run"
+5. Wait for: "Success" message
+6. Then run: 2026_07_02_088_enable_registrar_document_generation.sql
+7. Clear browser cache: Ctrl+Shift+Del
+8. Test login
+
+
+WHAT WILL BE FIXED
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ Create role_permissions table (CRITICAL - needed for auth)
+✅ Create permissions table (CRITICAL - needed for auth)
+✅ Create permission_categories table
+✅ Add missing options.title column
+✅ Add missing options.code column
+✅ Add missing options.acro column
+✅ Add missing options.start_date column
+✅ Fix collation mismatch errors
+✅ Make bank_slip_file_id nullable (allow CASH payments)
+✅ Seed 50+ permissions
+✅ Seed 8 roles
+✅ Assign permissions to roles
+✅ Enable Registrar document generation
+
+
+CURRENT ERRORS IN PRODUCTION
+═══════════════════════════════════════════════════════════════════════════════
+
+❌ Table 'curac_save.role_permissions' doesn't exist
+   ← Migration 087 fixes this
+
+❌ Illegal mix of collations (utf8mb4_unicode_ci vs utf8mb4_general_ci)
+   ← Migration 087 fixes this
+
+❌ Column 'bank_slip_file_id' cannot be null
+   ← Migration 087 fixes this
+
+❌ Unknown column 'o.title' in SELECT
+   ← Migration 087 fixes this
+
+❌ Unknown column 'mm.student_id' in WHERE
+   ← Migration 087 fixes this
+
+... 35+ more errors ...
+
+
+COMMAND LINE ALTERNATIVE (If web UI doesn't work)
+═══════════════════════════════════════════════════════════════════════════════
+
+SSH into your production server and run:
+
+  mysql -u curac_save -p'curac_save' cur-mis < \
+  backend/database/migrations/2026_07_02_087_fix_rbac_and_misc_prod_errors.sql
+
+Then:
+
+  mysql -u curac_save -p'curac_save' cur-mis < \
+  backend/database/migrations/2026_07_02_088_enable_registrar_document_generation.sql
+
+
+VERIFY IT WORKED
+═══════════════════════════════════════════════════════════════════════════════
+
+Run these SQL commands to verify:
+
+  SHOW TABLES LIKE 'role_permissions';
+  → Should return 1 row
+
+  SELECT COUNT(*) FROM permissions;
+  → Should return 50+
+
+  SELECT COUNT(*) FROM roles;
+  → Should return 8
+
+  SELECT COUNT(*) FROM role_permissions;
+  → Should return 25+
+
+
+EXPECTED RESULTS
+═══════════════════════════════════════════════════════════════════════════════
+
+After the migration:
+✅ Login works (superadmin, admin, registrar, etc.)
+✅ Sidebar loads without errors
+✅ Students page works for registrar
+✅ Finance page works for finance officer
+✅ Academic registrar can generate documents
+✅ No more database errors in logs
+
+
+DO NOT
+═══════════════════════════════════════════════════════════════════════════════
+
+❌ Don't skip running the migration
+❌ Don't wait "until the weekend"
+❌ Don't assume it will fix itself
+❌ Don't manually edit the database
+
+
+DOCUMENTATION
+═══════════════════════════════════════════════════════════════════════════════
+
+For full details, see:
+→ URGENT_PRODUCTION_FIX.md (comprehensive guide)
+→ QUICK_FIX_REGISTRAR.txt (registrar feature guide)
+→ GitHub: https://github.com/niyongaboemmy/cur-mis
+
+
+CONTACT
+═══════════════════════════════════════════════════════════════════════════════
+
+If you encounter any issues:
+1. Check the migration file exists:
+   /backend/database/migrations/2026_07_02_087_fix_rbac_and_misc_prod_errors.sql
+
+2. Verify database credentials (user: curac_save, pass: curac_save)
+
+3. Check database is accessible
+
+4. Review migration output for any errors
+
+
+═══════════════════════════════════════════════════════════════════════════════
+PRIORITY: 🔴 CRITICAL
+DEADLINE: NOW
+TIME ESTIMATE: 5 minutes
+═══════════════════════════════════════════════════════════════════════════════

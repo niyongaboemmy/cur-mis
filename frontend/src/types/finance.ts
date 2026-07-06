@@ -204,11 +204,13 @@ export interface CreateBursaryPayload {
 // ─── Student Ledger ───────────────────────────────────────────────────────────
 
 export interface LedgerTotals {
-  total_due:     number | null
-  total_paid:    number | null
-  total_bursary: number | null
-  balance:       number | null
-  unpaid_count:  number
+  total_due:          number | null
+  total_paid:         number | null
+  total_bursary:      number | null
+  balance:            number | null
+  unpaid_count:       number
+  total_paid_gateway?: number | null
+  total_paid_manual?:  number | null
 }
 
 export interface StudentLedger {

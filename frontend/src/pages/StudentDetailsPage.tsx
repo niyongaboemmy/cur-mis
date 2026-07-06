@@ -5080,16 +5080,13 @@ function TranscriptTab({ student }: { student: any }) {
                   Credits
                 </th>
                 <th className="px-3 py-2 font-bold text-ink-400 text-[10px] uppercase text-center">
-                  CAT
+                  CAT/60
                 </th>
                 <th className="px-3 py-2 font-bold text-ink-400 text-[10px] uppercase text-center">
-                  Assg
+                  EXAM/40
                 </th>
                 <th className="px-3 py-2 font-bold text-ink-400 text-[10px] uppercase text-center">
-                  Exam
-                </th>
-                <th className="px-3 py-2 font-bold text-ink-400 text-[10px] uppercase text-center">
-                  Marks/100
+                  Total/100
                 </th>
                 <th className="px-3 py-2 font-bold text-ink-400 text-[10px] uppercase text-center">
                   Grade
@@ -5110,25 +5107,21 @@ function TranscriptTab({ student }: { student: any }) {
                   <td className="px-3 py-2 text-center">
                     {tFmt(r.cat_marks)}
                     <span className="text-ink-400 text-[11px]">
-                      /{Number(r.cat_max) || "—"}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 text-center">
-                    {tFmt(r.assignment_marks)}
-                    <span className="text-ink-400 text-[11px]">
-                      /{Number(r.assignment_max) || "—"}
+                      /60
                     </span>
                   </td>
                   <td className="px-3 py-2 text-center">
                     {tFmt(r.exam_marks)}
                     <span className="text-ink-400 text-[11px]">
-                      /{Number(r.exam_max) || "—"}
+                      /40
                     </span>
                   </td>
                   <td className="px-3 py-2 text-center font-semibold">
-                    {r.percentage != null
-                      ? Math.round(Number(r.percentage))
-                      : "—"}
+                    {r.cat_marks != null && r.exam_marks != null
+                      ? Math.round(Number(r.cat_marks) + Number(r.exam_marks))
+                      : r.percentage != null
+                        ? Math.round(Number(r.percentage))
+                        : "—"}
                   </td>
                   <td className="px-3 py-2 text-center">
                     {r.grade ? (

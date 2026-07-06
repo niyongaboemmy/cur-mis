@@ -17,6 +17,7 @@ class DocumentController extends BaseController
         'registration_form',
         'english_proficiency',
         'completed_modules',
+        'exemption_letter',
         'degree_bachelor',
         'degree_pgde',
         'degree_undergraduate',
@@ -45,6 +46,7 @@ class DocumentController extends BaseController
             'registration_form'    => DocumentHelper::buildRegistrationForm($student, preview: true),
             'english_proficiency'  => DocumentHelper::buildEnglishProficiencyCertificate($student, preview: true),
             'completed_modules'    => DocumentHelper::buildCompletedModulesReport($student, $modules, preview: true),
+            'exemption_letter'     => DocumentHelper::buildExemptionLetter($student, preview: true),
             'degree_bachelor'      => DegreePdf::buildHtml($student, DegreePdf::TYPE_BACHELOR),
             'degree_pgde'          => DegreePdf::buildHtml($student, DegreePdf::TYPE_PGDE),
             'degree_undergraduate' => DegreePdf::buildHtml($student, DegreePdf::TYPE_MASTERS),
@@ -103,6 +105,10 @@ class DocumentController extends BaseController
             'completed_modules'   => [
                 DocumentHelper::buildCompletedModulesReport($student, $modules),
                 "Completed_Modules_{$reg}.pdf",
+            ],
+            'exemption_letter'    => [
+                DocumentHelper::buildExemptionLetter($student),
+                "Exemption_Letter_{$reg}.pdf",
             ],
         };
 

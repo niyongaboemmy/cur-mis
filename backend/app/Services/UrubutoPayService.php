@@ -329,6 +329,7 @@ class UrubutoPayService
                 'reference_number' => $refNumber,
                 'receipt_number'   => $receiptNumber,
                 'status'           => 'confirmed',
+                'source'           => 'GATEWAY',
                 'notes'            => 'UrubutoPay — service: ' . $serviceCode . ', tx: ' . $txCode,
                 'paid_at'          => $paymentDate,
             ]);

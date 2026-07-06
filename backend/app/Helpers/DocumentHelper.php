@@ -800,6 +800,172 @@ class DocumentHelper
         HTML;
     }
 
+    /**
+     * Fetch transferred/exempted modules from a prior institution.
+     * This queries an exemption_modules table if it exists, otherwise returns empty.
+     */
+    public static function fetchTransferredModules(int $studentId): array
+    {
+        $db = Database::getInstance();
+
+        // Try to fetch from exemption_modules table if it exists
+        return $db->fetchAll(
+            "SELECT module_title, module_code, level, credits, marks
+             FROM exemption_modules
+             WHERE student_id = ?
+             ORDER BY level ASC, module_code ASC",
+            [$studentId]
+        ) ?? [];
+    }
+
+    public static function buildExemptionLetter(array $s, bool $preview = false): string
+    {
+        $header     = self::headerHtml();
+        $pageCss    = PdfLayout::pageCss(44, 28);
+        $fullName   = strtoupper(trim(($s['fname'] ?? '') . ' ' . ($s['lname'] ?? '')));
+        $regnumber  = htmlspecialchars($s['regnumber'] ?? '—', ENT_QUOTES);
+        $faculty    = htmlspecialchars($s['fac_name']   ?? $s['faculty']    ?? '', ENT_QUOTES);
+        $department = htmlspecialchars($s['dep_name']   ?? $s['department'] ?? '', ENT_QUOTES);
+        $level      = htmlspecialchars($s['current_level'] ?? 'Level 8', ENT_QUOTES);
+        $today      = date('d/m/Y');
+        $issueLoc   = 'TABA';
+
+        // Build table rows and compute totals
+        $tableRows    = '';
+        $totalCredits = 0;
+        $moduleCount  = 0;
+
+        // For now, placeholder rows. In production, this would fetch actual transferred modules.
+        $tableRows = '<tr><td colspan="5" style="text-align:center;padding:12px;color:#777;">
+                        No transferred modules recorded.
+                      </td></tr>';
+
+        $qr = self::qrHtml(
+            "https://mis.cur.ac.rw/verify?doc=exemption&reg={$s['regnumber']}&d=" . date('Ymd'),
+            72
+        );
+
+        $previewWatermark = $preview
+            ? '<div style="position:fixed;top:38%;left:10%;color:rgba(200,0,0,0.08);
+                           font-size:90pt;font-weight:bold;transform:rotate(-30deg);
+                           pointer-events:none;z-index:0;white-space:nowrap;">PREVIEW</div>'
+            : '';
+
+        return <<<HTML
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+        <meta charset="UTF-8">
+        <style>
+          {$pageCss}
+          * { box-sizing:border-box; margin:0; padding:0; }
+          body {
+            font-family: 'Times New Roman', Times, serif;
+            font-size: 11pt;
+            color: #000;
+            padding: 0;
+            line-height: 1.6;
+            position: relative;
+          }
+          .doc-title   { text-align:center; font-weight:bold; font-size:13pt;
+                         margin:12px 0 16px; text-decoration:underline; }
+          .info-row    { margin-bottom:10px; }
+          .info-label  { font-weight:bold; display:inline-block; width:140px; }
+          .exemption-tbl { width:100%; border-collapse:collapse; margin:16px 0; font-size:10pt; }
+          .exemption-tbl th {
+            background:#2c3e50; color:#fff; padding:6px 8px;
+            border:1px solid #2c3e50; font-size:10pt; text-align:left;
+            font-weight:bold;
+          }
+          .exemption-tbl td {
+            border:1px solid #bbb; padding:5px 8px; vertical-align:middle;
+          }
+          .exemption-tbl tr:nth-child(even) td { background:#f9fafb; }
+          .totals      { margin:14px 0; font-size:11pt; }
+          .total-line  { font-weight:bold; margin-bottom:6px; }
+          .note        { margin:16px 0; font-size:10.5pt; text-align:justify; }
+          .sign-block  { margin-top:28px; }
+          .sign-name   { font-weight:bold; font-size:11pt; margin-top:12px; }
+          .tagline     { text-align:center; font-style:italic; margin-top:16px; font-size:10.5pt; }
+          .qr-section  { text-align:right; margin-top:20px; }
+        </style>
+        </head>
+        <body>
+          {$previewWatermark}
+          {$header}
+
+          <div class="doc-title">EXEMPTION LETTER</div>
+
+          <div class="info-row">
+            <span class="info-label">Student Name:</span>
+            <span>{$fullName}</span>
+          </div>
+
+          <div class="info-row">
+            <span class="info-label">Registration Number:</span>
+            <span>{$regnumber}</span>
+          </div>
+
+          <div class="info-row">
+            <span class="info-label">Faculty:</span>
+            <span>{$faculty}</span>
+          </div>
+
+          <div class="info-row">
+            <span class="info-label">Department:</span>
+            <span>{$department}</span>
+          </div>
+
+          <div class="info-row">
+            <span class="info-label">Registered Level:</span>
+            <span>{$level}</span>
+          </div>
+
+          <p class="note">
+            After a thorough examination of the Transcript, the Faculty recommends the student
+            to be registered as a full-time/part-time student. The student is exempted for the
+            credits as detailed in the table below:
+          </p>
+
+          <table class="exemption-tbl">
+            <thead>
+              <tr>
+                <th>No.</th>
+                <th>Module Title and Code (CUR)</th>
+                <th>Level</th>
+                <th>Transferred Credits</th>
+                <th>Marks</th>
+              </tr>
+            </thead>
+            <tbody>
+              {$tableRows}
+            </tbody>
+          </table>
+
+          <div class="totals">
+            <p class="total-line">Total number of transferred credits: {$totalCredits}</p>
+          </div>
+
+          <p style="font-size:10pt;color:#555;">
+            NB: Number of credits for the entire program: 480/510
+          </p>
+
+          <div class="sign-block">
+            <p>Done at {$issueLoc} on {$today}</p>
+            <p class="sign-name">Dr. Protais Muhayimana</p>
+            <p>Dean, Faculty of Science and Technology</p>
+          </div>
+
+          <div class="qr-section">
+            {$qr}
+          </div>
+
+          <p class="tagline"><em>Audi et Aude</em></p>
+        </body>
+        </html>
+        HTML;
+    }
+
     // ─── PDF / HTML streaming ─────────────────────────────────────────────────
 
     /**
