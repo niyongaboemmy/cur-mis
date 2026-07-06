@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { Plus, Trash2, Loader2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -75,14 +75,18 @@ export default function ExemptionLetterModal({
       try {
         console.log('Fetching modules for exemption letter...');
 
-        // Load all modules - simple request without complex filtering
+        // Load all modules - no filters, just get everything
         const result = await moduleCatalogService.list({
-          per_page: 1000,
-          status: 'active'  // Only active modules
+          per_page: 1000
         });
 
         const modules = result?.data?.data ?? [];
         console.log('✓ Successfully loaded', modules.length, 'modules');
+
+        if (modules.length === 0) {
+          console.warn('⚠ No modules returned from API');
+        }
+
         return result;
       } catch (error) {
         console.error('✗ Failed to load modules:', {
@@ -93,10 +97,28 @@ export default function ExemptionLetterModal({
       }
     },
     staleTime: 60_000,
-    retry: 2, // Retry on failure
+    retry: 3, // Retry up to 3 times on failure
   });
 
-  const modules = modulesQ.data?.data?.data ?? [];
+  // Extract modules from the nested response structure
+  // API response: ApiResponse<PaginatedResponse<Module[]>>
+  // So: result.data = PaginatedResponse, result.data.data = Module[]
+  const modules = useMemo(() => {
+    if (!modulesQ.data) return [];
+
+    // Handle different possible response structures
+    const paginatedResponse = modulesQ.data.data;
+    if (!paginatedResponse) return [];
+
+    if (Array.isArray(paginatedResponse.data)) {
+      return paginatedResponse.data;
+    }
+    if (Array.isArray(paginatedResponse)) {
+      return paginatedResponse;
+    }
+
+    return [];
+  }, [modulesQ.data]);
 
   if (modulesQ.error) {
     console.error('Failed to load modules:', modulesQ.error);
