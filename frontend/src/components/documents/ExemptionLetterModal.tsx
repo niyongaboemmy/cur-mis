@@ -29,16 +29,24 @@ export interface ExemptionLetterPayload {
 
 interface ExemptionLetterModalProps {
   studentId: number;
-  studentDepartment?: number | string;
-  studentLevel?: number | string;
+  studentName?: string;
+  studentRegNumber?: string;
+  studentFaculty?: string;
+  studentDepartment?: string;
+  studentProgram?: string;
+  studentCurrentLevel?: number | string;
   onClose: () => void;
   onPreview?: (html: string) => void;
 }
 
 export default function ExemptionLetterModal({
   studentId,
+  studentName,
+  studentRegNumber,
+  studentFaculty,
   studentDepartment,
-  studentLevel,
+  studentProgram,
+  studentCurrentLevel,
   onClose,
   onPreview,
 }: ExemptionLetterModalProps) {
@@ -62,13 +70,33 @@ export default function ExemptionLetterModal({
   const [downloadLoading, setDownloadLoading] = useState(false);
 
   const modulesQ = useQuery({
-    queryKey: ["modules-list-exemption"],
+    queryKey: ["modules-list-exemption", studentDepartment, studentCurrentLevel],
     queryFn: async () => {
       try {
-        console.log('Fetching all modules for exemption letter...');
-        // Load all modules - don't filter by student context for now
-        // The user can select any module they want to grant exemption for
-        const result = await moduleCatalogService.list({ per_page: 1000 });
+        const params: Record<string, unknown> = { per_page: 1000 };
+
+        console.log('Fetching modules for exemption letter...', {
+          studentName,
+          studentDepartment,
+          studentCurrentLevel,
+        });
+
+        // Add filters if student context is available
+        if (studentDepartment && typeof studentDepartment === 'string') {
+          // studentDepartment might be a numeric string ID
+          const deptNum = parseInt(studentDepartment, 10);
+          if (!isNaN(deptNum)) {
+            params.department = deptNum;
+          }
+        }
+        if (studentCurrentLevel && typeof studentCurrentLevel === 'string') {
+          const levelNum = parseInt(studentCurrentLevel, 10);
+          if (!isNaN(levelNum)) {
+            params.level = levelNum;
+          }
+        }
+
+        const result = await moduleCatalogService.list(params);
         const moduleCount = result?.data?.data?.length ?? 0;
         console.log('Successfully loaded', moduleCount, 'modules');
         return result;
@@ -202,6 +230,47 @@ export default function ExemptionLetterModal({
         </div>
 
         <div className="p-6 space-y-6 max-h-[calc(100vh-300px)] overflow-y-auto">
+          {/* Student Information Display */}
+          {(studentName || studentRegNumber || studentFaculty || studentDepartment || studentProgram) && (
+            <div className="p-4 bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 rounded-lg">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-2.5 block">
+                Student Information
+              </p>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                {studentName && (
+                  <div>
+                    <p className="text-ink-500 text-[11px]">Name</p>
+                    <p className="font-medium text-ink-900 dark:text-white">{studentName}</p>
+                  </div>
+                )}
+                {studentRegNumber && (
+                  <div>
+                    <p className="text-ink-500 text-[11px]">Registration Number</p>
+                    <p className="font-medium text-ink-900 dark:text-white">{studentRegNumber}</p>
+                  </div>
+                )}
+                {studentFaculty && (
+                  <div>
+                    <p className="text-ink-500 text-[11px]">Faculty</p>
+                    <p className="font-medium text-ink-900 dark:text-white text-sm">{studentFaculty}</p>
+                  </div>
+                )}
+                {studentDepartment && (
+                  <div>
+                    <p className="text-ink-500 text-[11px]">Department</p>
+                    <p className="font-medium text-ink-900 dark:text-white text-sm">{studentDepartment}</p>
+                  </div>
+                )}
+                {studentProgram && (
+                  <div className="col-span-2">
+                    <p className="text-ink-500 text-[11px]">Program</p>
+                    <p className="font-medium text-ink-900 dark:text-white text-sm">{studentProgram}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Letter Metadata */}
           <div className="grid grid-cols-2 gap-4">
             <label className="block">

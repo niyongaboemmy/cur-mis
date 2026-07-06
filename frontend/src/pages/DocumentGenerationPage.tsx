@@ -94,6 +94,8 @@ interface StudentResult {
   regnumber: string;
   department?: number | string;
   current_level?: number | string;
+  faculty?: string;
+  std_option?: string;
 }
 
 interface StudentSearchProps {
@@ -291,6 +293,8 @@ export default function DocumentGenerationPage() {
         regnumber: s.regnumber,
         department: s.department,
         current_level: s.current_level,
+        faculty: s.faculty,
+        std_option: s.std_option,
       };
       console.log('Setting selected student:', studentData);
       setSelectedStudent(studentData);
@@ -463,16 +467,20 @@ export default function DocumentGenerationPage() {
           {console.log('Opening exemption modal with:', { dept: selectedStudent.department, level: selectedStudent.current_level })}
           <ExemptionLetterModal
             studentId={selectedStudent.id}
-            studentDepartment={selectedStudent.department}
-            studentLevel={selectedStudent.current_level}
+            studentName={`${selectedStudent.fname} ${selectedStudent.lname}`}
+            studentRegNumber={selectedStudent.regnumber}
+            studentFaculty={selectedStudent.faculty as string}
+            studentDepartment={selectedStudent.department as string}
+            studentProgram={selectedStudent.std_option as string}
+            studentCurrentLevel={selectedStudent.current_level}
             onClose={() => setExemptionLetterModalOpen(false)}
-          onPreview={(html) => {
-            setPreviewModal({
-              html,
-              label: "Exemption Letter",
-              downloadUrl: "#", // Not used for exemption letter
-            });
-          }}
+            onPreview={(html) => {
+              setPreviewModal({
+                html,
+                label: "Exemption Letter",
+                downloadUrl: "#", // Not used for exemption letter
+              });
+            }}
           />
         </>
       )}
