@@ -92,8 +92,8 @@ interface StudentResult {
   fname: string;
   lname: string;
   regnumber: string;
-  department?: number;
-  level?: number;
+  department?: number | string;
+  current_level?: number | string;
 }
 
 interface StudentSearchProps {
@@ -284,14 +284,16 @@ export default function DocumentGenerationPage() {
   useEffect(() => {
     if (prefetchQ.data?.data && selectedStudent === null) {
       const s = prefetchQ.data.data as any;
-      setSelectedStudent({
+      const studentData = {
         id: s.id,
         fname: s.fname,
         lname: s.lname,
         regnumber: s.regnumber,
         department: s.department,
-        level: s.level,
-      });
+        current_level: s.current_level,
+      };
+      console.log('Setting selected student:', studentData);
+      setSelectedStudent(studentData);
     }
   }, [prefetchQ.data, selectedStudent]);
 
@@ -460,7 +462,7 @@ export default function DocumentGenerationPage() {
         <ExemptionLetterModal
           studentId={selectedStudent.id}
           studentDepartment={selectedStudent.department}
-          studentLevel={selectedStudent.level}
+          studentLevel={selectedStudent.current_level}
           onClose={() => setExemptionLetterModalOpen(false)}
           onPreview={(html) => {
             setPreviewModal({

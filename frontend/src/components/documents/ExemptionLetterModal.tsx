@@ -29,8 +29,8 @@ export interface ExemptionLetterPayload {
 
 interface ExemptionLetterModalProps {
   studentId: number;
-  studentDepartment?: number;
-  studentLevel?: number;
+  studentDepartment?: number | string;
+  studentLevel?: number | string;
   onClose: () => void;
   onPreview?: (html: string) => void;
 }
@@ -63,11 +63,24 @@ export default function ExemptionLetterModal({
 
   const modulesQ = useQuery({
     queryKey: ["modules-list-exemption", studentDepartment, studentLevel],
-    queryFn: () => moduleCatalogService.list({
-      per_page: 1000,
-      ...(studentDepartment && { department: studentDepartment }),
-      ...(studentLevel && { level: studentLevel }),
-    }),
+    queryFn: async () => {
+      const params: Record<string, unknown> = { per_page: 1000 };
+
+      // Only add filters if they have valid values
+      if (studentDepartment && !isNaN(Number(studentDepartment))) {
+        params.department = studentDepartment;
+      }
+      if (studentLevel && !isNaN(Number(studentLevel))) {
+        params.level = studentLevel;
+      }
+
+      try {
+        return await moduleCatalogService.list(params);
+      } catch (error) {
+        console.error('Module fetch failed:', error, 'with params:', params);
+        throw error;
+      }
+    },
     staleTime: 60_000,
   });
 
