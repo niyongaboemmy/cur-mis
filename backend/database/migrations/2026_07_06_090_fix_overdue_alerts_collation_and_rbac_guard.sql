@@ -1,6 +1,6 @@
 -- ══════════════════════════════════════════════════════════════════════════════
 -- PRODUCTION MIGRATION — 2026-07-06
--- 2026_07_06_088_fix_overdue_alerts_collation_and_rbac_guard.sql
+-- 2026_07_06_090_fix_overdue_alerts_collation_and_rbac_guard.sql
 --
 -- CONTEXT:
 --   Migration 2026_07_02_087 fixed the 1146 (role_permissions), 1048
@@ -152,7 +152,7 @@ CREATE TABLE IF NOT EXISTS `role_permissions` (
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- ══════════════════════════════════════════════════════════════════════════════
--- END OF MIGRATION 2026_07_06_088
+-- END OF MIGRATION 2026_07_06_090
 --
 -- IMPORTANT: if `role_permissions` was actually empty/missing on this database
 -- (not just a stale error from before 087 was deployed), run the FULL
