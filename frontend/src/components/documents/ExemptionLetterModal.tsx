@@ -34,7 +34,6 @@ interface ExemptionLetterModalProps {
   studentDepartment?: string;
   studentDepartmentId?: number | string;
   studentProgram?: string;
-  studentCurrentLevel?: number | string;
   onClose: () => void;
   onPreview?: (html: string) => void;
 }
@@ -47,7 +46,6 @@ export default function ExemptionLetterModal({
   studentDepartment,
   studentDepartmentId,
   studentProgram,
-  studentCurrentLevel,
   onClose,
   onPreview,
 }: ExemptionLetterModalProps) {
