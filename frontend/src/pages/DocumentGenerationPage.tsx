@@ -17,7 +17,6 @@ import { documentService, type DocumentType } from "@/services/documentService";
 import { api } from "@/services/api";
 import ModalPortal from "@/components/ui/ModalPortal";
 import Modal from "@/components/ui/Modal";
-import ExemptionLetterModal from "@/components/documents/ExemptionLetterModal";
 
 // ─── Document type definitions ───────────────────────────────────────────────
 
@@ -266,7 +265,6 @@ export default function DocumentGenerationPage() {
     downloadUrl: string;
   } | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
-  const [exemptionLetterModalOpen, setExemptionLetterModalOpen] = useState(false);
   const [portalOpen, setPortalOpen] = useState(false);
 
   // Pre-select student from URL param (when navigating from StudentDetailsPage)
@@ -316,13 +314,6 @@ export default function DocumentGenerationPage() {
   const handlePreview = async (key: DocumentType, label: string) => {
     if (!studentId) return;
 
-    // Exemption letter has its own modal builder — open that instead
-    if (key === 'exemption_letter') {
-      setExemptionLetterModalOpen(true);
-      return;
-    }
-
-    // All other document types use the standard GET-based preview
     setPreviewLoading(true);
     try {
       const res = await documentService.fetchPreview(studentId, key);
@@ -459,31 +450,6 @@ export default function DocumentGenerationPage() {
             </div>
           </div>
         </ModalPortal>
-      )}
-
-      {/* Exemption Letter builder modal */}
-      {exemptionLetterModalOpen && selectedStudent && (
-        <>
-          {console.log('Opening exemption modal with:', { dept: selectedStudent.department, level: selectedStudent.current_level })}
-          <ExemptionLetterModal
-            studentId={selectedStudent.id}
-            studentName={`${selectedStudent.fname} ${selectedStudent.lname}`}
-            studentRegNumber={selectedStudent.regnumber}
-            studentFaculty={selectedStudent.faculty_name || selectedStudent.faculty}
-            studentDepartment={selectedStudent.department_name || selectedStudent.department}
-            studentDepartmentId={selectedStudent.department}
-            studentProgram={selectedStudent.program_name || selectedStudent.std_option}
-            studentCurrentLevel={selectedStudent.current_level}
-            onClose={() => setExemptionLetterModalOpen(false)}
-            onPreview={(html) => {
-              setPreviewModal({
-                html,
-                label: "Exemption Letter",
-                downloadUrl: "#", // Not used for exemption letter
-              });
-            }}
-          />
-        </>
       )}
 
       {/* CUR Documents Portal iframe modal */}
