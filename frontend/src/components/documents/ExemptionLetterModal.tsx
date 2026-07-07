@@ -2,7 +2,6 @@ import { useState, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { Plus, Trash2, Loader2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { moduleCatalogService } from "@/services/modulesService";
 import { documentService } from "@/services/documentService";
 import { toast } from "react-hot-toast";
 

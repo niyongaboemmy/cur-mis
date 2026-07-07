@@ -92,13 +92,13 @@ interface StudentResult {
   fname: string;
   lname: string;
   regnumber: string;
-  department?: number | string;
-  current_level?: number | string;
-  faculty?: string;
-  faculty_name?: string;
-  department_name?: string;
-  std_option?: string | number;
-  program_name?: string;
+  department?: number | string | undefined;
+  current_level?: number | string | undefined;
+  faculty?: string | undefined;
+  faculty_name?: string | undefined;
+  department_name?: string | undefined;
+  std_option?: string | number | undefined;
+  program_name?: string | undefined;
 }
 
 interface StudentSearchProps {
