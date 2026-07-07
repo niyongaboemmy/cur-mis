@@ -43,7 +43,7 @@ class DocumentController extends BaseController
         }
 
         $modules = in_array($documentType, ['completed_modules'], true)
-            ? DocumentHelper::fetchStudentModules($studentId)
+            ? DocumentHelper::fetchStudentModules($student['regnumber'] ?? '')
             : [];
 
         $html = match ($documentType) {
@@ -93,7 +93,7 @@ class DocumentController extends BaseController
         }
 
         $modules = in_array($documentType, ['completed_modules'], true)
-            ? DocumentHelper::fetchStudentModules($studentId)
+            ? DocumentHelper::fetchStudentModules($student['regnumber'] ?? '')
             : [];
 
         [$html, $filename] = match ($documentType) {
