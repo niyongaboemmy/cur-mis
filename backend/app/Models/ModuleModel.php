@@ -21,7 +21,7 @@ class ModuleModel extends BaseModel
      * `module_programs`).
      *
      * @param array{
-     *   department?:int,program?:int,level?:int,status?:string,q?:string,
+     *   department?:int,departments?:int[],program?:int,level?:int,status?:string,q?:string,
      *   sort_by?:string,sort_dir?:string
      * } $filters
      */
@@ -40,7 +40,15 @@ class ModuleModel extends BaseModel
             $bindings[] = (int)$filters['program'];
         }
 
-        if (!empty($filters['department'])) {
+        // Support both single department and multiple departments
+        if (!empty($filters['departments']) && is_array($filters['departments'])) {
+            $departmentIds = array_filter($filters['departments'], fn($v) => !empty($v));
+            if (!empty($departmentIds)) {
+                $placeholders = implode(',', array_fill(0, count($departmentIds), '?'));
+                $where[] = "m.department IN ({$placeholders})";
+                $bindings = array_merge($bindings, $departmentIds);
+            }
+        } elseif (!empty($filters['department'])) {
             $where[]    = 'm.department = ?';
             $bindings[] = (int)$filters['department'];
         }
@@ -180,6 +188,59 @@ class ModuleModel extends BaseModel
         $row['programs']      = $this->programsFor($id);
         $row['levels']        = $this->levelsFor($id);
         return $row;
+    }
+
+    /**
+     * Fetch modules for exemption letter builder filtered by department(s).
+     * Optimized query that returns essential fields only.
+     *
+     * @param int|int[] $departmentIds Single department ID or array of department IDs
+     * @return array<int, array{
+     *   module_id: int,
+     *   module_code: string,
+     *   module_name: string,
+     *   module_credits: int,
+     *   department: int,
+     *   level: int|null,
+     *   status: string
+     * }>
+     */
+    public function getModulesForExemptionLetter($departmentIds): array
+    {
+        // Normalize input to array
+        if (!is_array($departmentIds)) {
+            $departmentIds = [$departmentIds];
+        }
+
+        // Filter and validate department IDs
+        $departmentIds = array_filter(
+            array_map('intval', $departmentIds),
+            fn($id) => $id > 0
+        );
+
+        if (empty($departmentIds)) {
+            return [];
+        }
+
+        // Build IN clause for multiple departments
+        $placeholders = implode(',', array_fill(0, count($departmentIds), '?'));
+
+        $sql = "
+            SELECT
+                m.module_id,
+                m.module_code,
+                m.module_name,
+                m.module_credits,
+                m.department,
+                m.level,
+                m.status
+            FROM `modules` m
+            WHERE m.department IN ({$placeholders})
+            AND m.status = 'active'
+            ORDER BY m.module_code ASC
+        ";
+
+        return $this->db->fetchAll($sql, $departmentIds);
     }
 
     /**

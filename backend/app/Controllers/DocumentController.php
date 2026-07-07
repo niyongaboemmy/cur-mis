@@ -184,22 +184,41 @@ class DocumentController extends BaseController
     public function exemptionLetterModules(Request $request, Response $response): never
     {
         $department = $request->query('department');
-        $perPage = (int)($request->query('per_page') ?? 1000);
 
         try {
-            // Build filters
-            $filters = [];
+            // Parse department parameter (can be single ID or comma-separated IDs)
+            $departmentIds = [];
             if (!empty($department)) {
-                $filters['department'] = (int)$department;
+                $departmentIds = array_map('intval', array_filter(
+                    explode(',', trim($department)),
+                    fn($v) => !empty(trim($v))
+                ));
             }
 
-            // Use ModuleModel to fetch modules
+            if (empty($departmentIds)) {
+                $this->error($response, 'At least one valid department ID is required.', 422);
+            }
+
+            // Use optimized ModuleModel method for exemption letters
             $moduleModel = new \App\Models\ModuleModel();
-            $paginated = $moduleModel->listWithPrereqs(1, $perPage, $filters);
+            $modules = $moduleModel->getModulesForExemptionLetter($departmentIds);
 
-            error_log('exemptionLetterModules: department=' . $department . ', found=' . count($paginated['data'] ?? []));
+            error_log(sprintf(
+                'exemptionLetterModules: departments=%s, found=%d modules',
+                json_encode($departmentIds),
+                count($modules)
+            ));
 
-            $this->success($response, $paginated, 'Modules for exemption letter fetched.');
+            // Return in paginated format for frontend consistency
+            $this->success($response, [
+                'data' => [
+                    'data' => $modules,
+                    'total' => count($modules),
+                    'per_page' => count($modules),
+                    'current_page' => 1,
+                    'last_page' => 1,
+                ]
+            ], 'Modules for exemption letter fetched.');
         } catch (\Throwable $e) {
             error_log('exemptionLetterModules ERROR: ' . $e->getMessage() . ' | ' . $e->getTraceAsString());
             $this->error($response, 'Failed to fetch modules: ' . $e->getMessage(), 500);
