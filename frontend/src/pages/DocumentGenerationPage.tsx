@@ -360,7 +360,7 @@ export default function DocumentGenerationPage() {
           className="btn-secondary btn-sm"
         >
           <ExternalLink className="w-3.5 h-3.5" />
-          Graduation Link
+          Other Document
         </button>
       </div>
 
