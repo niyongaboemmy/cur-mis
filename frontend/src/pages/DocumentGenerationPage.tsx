@@ -347,7 +347,7 @@ export default function DocumentGenerationPage() {
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-ink-900 dark:text-white">
+          <h1 className="text-2xl font-bold text-ink-900 dark:text-white">
             Document Generation
           </h1>
           <p className="text-sm text-ink-400 mt-0.5">
