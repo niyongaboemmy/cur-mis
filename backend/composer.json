@@ -17,6 +17,13 @@
             "Config\\": "config/"
         }
     },
+    "scripts": {
+        "migrate": "php scripts/migrate.php",
+        "migrate:live": "gh workflow run migrate-backend.yml",
+        "seed": "php scripts/seed.php",
+        "seed:live": "gh workflow run seed-backend.yml",
+        "deploy:live": "gh workflow run deploy-backend.yml"
+    },
     "config": {
         "optimize-autoloader": true,
         "preferred-install": "dist",
