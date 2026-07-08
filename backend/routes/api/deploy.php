@@ -13,6 +13,8 @@ use App\Middleware\DeployKeyMiddleware;
 
 $router->group('/api/deploy', function (\Core\Router $r) {
     $r->post('/migrate',     [DeployController::class, 'migrate']);
-    $r->post('/cache-clear', [DeployController::class, 'clearCache']);
     $r->get('/status',       [DeployController::class, 'status']);
+    $r->post('/seed',        [DeployController::class, 'seed']);
+    $r->get('/seeders',      [DeployController::class, 'seeders']);
+    $r->post('/cache-clear', [DeployController::class, 'clearCache']);
 }, [DeployKeyMiddleware::class]);
