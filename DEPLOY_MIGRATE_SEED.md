@@ -4,19 +4,28 @@ Three independent, manually-triggerable operations. They are deliberately **not*
 bundled together — deploying code never touches the database, and migrating
 never seeds data.
 
-| Command | Workflow file | Trigger | What it does |
+| Command | Live (production, GitHub Actions) | Local (your dev DB) | What it does |
 |---|---|---|---|
-| **deploy** | `.github/workflows/deploy-backend.yml` | automatic on push to `main` (paths: `backend/**`), or manual via `workflow_dispatch` | Ships PHP source code + `vendor/` (if `composer.lock` changed) + `public/` entry point to cPanel, then flushes OPcache. **No migrations, no seeding.** |
-| **migrate** | `.github/workflows/migrate-backend.yml` | manual only (`workflow_dispatch`) | Applies pending database migrations (schema/structure) via `POST /api/deploy/migrate` → `MigrationService::runPending()`. Safe to re-run — already-applied migrations are skipped. |
-| **seed** | `.github/workflows/seed-backend.yml` | manual only (`workflow_dispatch`, requires picking one seeder from a dropdown) | Runs exactly **one named** data seeder via `POST /api/deploy/seed?name=<seeder>`. There is no "run all seeds" option — you must name the seeder. |
+| **deploy** | `composer run deploy:live` (or push to `main`, or Actions tab → "Deploy — Backend (PHP API)" → Run workflow) | — (no local equivalent; you already run the code locally) | Ships PHP source + `vendor/` (if `composer.lock` changed) + `public/` entry point to cPanel, then flushes OPcache. **No migrations, no seeding.** |
+| **migrate** | `composer run migrate:live` (or Actions tab → "Migrate — Backend (DB structure)" → Run workflow) | `composer run migrate` (runs `scripts/migrate.php` against `backend/.env`) | Applies pending database migrations (schema/structure) via `MigrationService::runPending()`. Safe to re-run — already-applied migrations are skipped. |
+| **seed** | `composer run seed:live -- -f seeder=<name>` (or Actions tab → "Seed — Backend (named data seed)" → Run workflow → pick `<name>` from the dropdown) | `composer run seed -- <name>` (runs `scripts/seed.php <name>` against `backend/.env`) | Runs exactly **one named** data seeder via `SeederService::run($name)`. There is no "run all seeds" option — you must name the seeder. Run `composer run seed` with no name to list available seeders. |
 
-## How to run each one
+`:live` commands require the [GitHub CLI](https://cli.github.com/) (`gh`) installed and authenticated (`gh auth login`) — they call `gh workflow run` under the hood, which needs push access to this repo. Without `gh`, use the Actions tab in the GitHub web UI instead.
 
-All three are run from GitHub: **Actions tab → select the workflow → Run workflow**.
+## Examples
 
-- **Deploy**: happens automatically on every push to `main` that touches `backend/**`. Can also be triggered manually with no inputs.
-- **Migrate**: Actions → "Migrate — Backend (DB structure)" → Run workflow. No inputs needed.
-- **Seed**: Actions → "Seed — Backend (named data seed)" → Run workflow → choose a seeder from the `seeder` dropdown (currently: `permissions`).
+```bash
+cd backend
+
+# Local dev DB
+composer run migrate
+composer run seed -- permissions
+
+# Production (cPanel), via GitHub Actions
+composer run migrate:live
+composer run seed:live -- -f seeder=permissions
+composer run deploy:live
+```
 
 ## Adding a new seeder
 
