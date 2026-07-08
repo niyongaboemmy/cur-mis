@@ -1,0 +1,52 @@
+name: Migrate — Backend (DB structure)
+
+# Applies pending database migrations only (schema/structure changes tracked
+# in backend/database/migrations/*.sql via the schema_migrations ledger).
+# Deliberately separate from deploy-backend.yml: deploying source code must
+# never implicitly alter the database, and running this must never seed data.
+#
+# Safe to run repeatedly — already-applied migrations are skipped.
+#
+# Required GitHub Secrets:
+#   DEPLOY_KEY — same value as DEPLOY_KEY in backend/.env
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: migrate-backend
+  cancel-in-progress: false
+
+env:
+  API_BASE: https://cur.ac.rw/umis/api
+
+jobs:
+  migrate:
+    name: Run pending migrations
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Show migration status (before)
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+        run: |
+          curl -s -k --max-time 30 \
+            -H "Authorization: Bearer $DEPLOY_KEY" \
+            "$API_BASE/api/deploy/status" | jq .
+
+      - name: Run pending migrations
+        timeout-minutes: 3
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+        run: |
+          RESULT=$(curl -s -k --max-time 90 -X POST \
+            -H "Authorization: Bearer $DEPLOY_KEY" \
+            "$API_BASE/api/deploy/migrate")
+          echo "$RESULT" | jq .
+          echo "$RESULT" | jq -e '.success == true' >/dev/null || { echo "Migration run reported failure"; exit 1; }
+
+      - name: Write job summary
+        if: always()
+        run: |
+          echo "## Backend Migrate — ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "Structure-only. No seeding, no source deploy." >> $GITHUB_STEP_SUMMARY
