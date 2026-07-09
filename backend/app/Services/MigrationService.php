@@ -198,36 +198,59 @@ class MigrationService
     }
 
     /**
-     * Splits a SQL string into individual statements on `;`, respecting
-     * single-quoted strings and -- line comments. Sufficient for the DDL/DML
-     * our migrations use (no DELIMITER-aware parsing needed).
+     * Splits a SQL string into individual statements, respecting single/double
+     * quoted strings, -- line comments, /* block comments *\/, and the
+     * client-only `DELIMITER` directive (as used by mysqldump / the mysql CLI
+     * to define CREATE PROCEDURE/TRIGGER bodies containing their own `;`).
+     * `DELIMITER` lines are recognised and consumed, not passed to the DB —
+     * PDO has no built-in notion of them, unlike the mysql CLI.
      */
     private function splitStatements(string $sql): array
     {
         $out = [];
         $buf = '';
+        $delimiter = ';';
         $len = strlen($sql);
         $inSingle = $inDouble = $inLine = $inBlock = false;
+        $i = 0;
 
-        for ($i = 0; $i < $len; $i++) {
+        while ($i < $len) {
+            // Only recognised at a statement boundary (empty buffer so far),
+            // outside any quote/comment — matches how the mysql CLI treats it.
+            if (!$inSingle && !$inDouble && !$inLine && !$inBlock && trim($buf) === '') {
+                if (preg_match('/^[ \t]*DELIMITER[ \t]+(\S+)[ \t]*\r?\n?/i', substr($sql, $i), $m)) {
+                    $delimiter = $m[1];
+                    $i += strlen($m[0]);
+                    $buf = '';
+                    continue;
+                }
+            }
+
             $ch   = $sql[$i];
             $next = $i + 1 < $len ? $sql[$i + 1] : '';
 
-            if ($inLine)  { $buf .= $ch; if ($ch === "\n") $inLine  = false; continue; }
-            if ($inBlock) { $buf .= $ch; if ($ch === '*' && $next === '/') { $buf .= $next; $i++; $inBlock = false; } continue; }
+            if ($inLine)  { $buf .= $ch; if ($ch === "\n") $inLine  = false; $i++; continue; }
+            if ($inBlock) { $buf .= $ch; if ($ch === '*' && $next === '/') { $buf .= $next; $i += 2; $inBlock = false; continue; } $i++; continue; }
 
             if (!$inSingle && !$inDouble) {
-                if ($ch === '-' && $next === '-') { $inLine  = true;  $buf .= $ch; continue; }
-                if ($ch === '/' && $next === '*') { $inBlock = true;  $buf .= $ch; continue; }
+                if ($ch === '-' && $next === '-') { $inLine  = true;  $buf .= $ch; $i++; continue; }
+                if ($ch === '/' && $next === '*') { $inBlock = true;  $buf .= $ch; $i++; continue; }
             }
             if ($ch === "'" && !$inDouble) {
-                if ($inSingle && $next === "'") { $buf .= $ch . $next; $i++; continue; }
-                $inSingle = !$inSingle; $buf .= $ch; continue;
+                if ($inSingle && $next === "'") { $buf .= $ch . $next; $i += 2; continue; }
+                $inSingle = !$inSingle; $buf .= $ch; $i++; continue;
             }
-            if ($ch === '"' && !$inSingle) { $inDouble = !$inDouble; $buf .= $ch; continue; }
+            if ($ch === '"' && !$inSingle) { $inDouble = !$inDouble; $buf .= $ch; $i++; continue; }
 
-            if ($ch === ';' && !$inSingle && !$inDouble) { $out[] = $buf; $buf = ''; continue; }
+            if (!$inSingle && !$inDouble && substr($sql, $i, strlen($delimiter)) === $delimiter) {
+                $out[] = $buf;
+                $buf = '';
+                $i += strlen($delimiter);
+                continue;
+            }
+
             $buf .= $ch;
+            $i++;
         }
         if (trim($buf) !== '') $out[] = $buf;
         return $out;
