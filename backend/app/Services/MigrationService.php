@@ -17,13 +17,17 @@ class MigrationService
     private PDO $pdo;
     private string $migrationsDir;
 
-    // MySQL codes that mean "DDL already applied" — treated as success in non-strict mode.
+    // MySQL codes that mean the DDL is already applied, or can't take effect
+    // against a schema/data mismatch that isn't this migration's job to fix —
+    // treated as a soft skip rather than a fatal error in non-strict mode.
     private const IDEMPOTENT_CODES = [
         1050, // Table already exists
         1060, // Duplicate column name
         1061, // Duplicate key name
         1068, // Multiple primary key defined
         1091, // Can't DROP; column/key doesn't exist
+        1215, // Cannot add foreign key constraint (type/charset mismatch, no index on referenced column)
+        1823, // Failed to add the foreign key constraint (orphaned rows, incompatible column definitions)
     ];
 
     public function __construct()

@@ -9,7 +9,7 @@
 
 -- ── A. Link an existing employee to its user account by email ────────────────
 UPDATE `employees` e
-JOIN `users` u ON u.email = e.employee_username
+JOIN `users` u ON u.email COLLATE utf8mb4_unicode_ci = e.employee_username COLLATE utf8mb4_unicode_ci
 SET e.user_id = u.id
 WHERE (e.user_id IS NULL OR e.user_id = 0)
   AND u.email IS NOT NULL AND u.email <> '';
@@ -49,8 +49,8 @@ WHERE r.name NOT IN ('student', 'applicant')
   AND u.id NOT IN (
         SELECT user_id FROM (SELECT user_id FROM `employees` WHERE user_id IS NOT NULL) z
       )
-  AND (u.email IS NULL OR u.email = '' OR u.email NOT IN (
-        SELECT employee_username FROM (
+  AND (u.email IS NULL OR u.email = '' OR u.email COLLATE utf8mb4_unicode_ci NOT IN (
+        SELECT employee_username COLLATE utf8mb4_unicode_ci FROM (
           SELECT employee_username FROM `employees` WHERE employee_username IS NOT NULL AND employee_username <> ''
         ) y
       ));

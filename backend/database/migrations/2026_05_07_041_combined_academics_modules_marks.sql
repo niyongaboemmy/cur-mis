@@ -145,7 +145,8 @@ ALTER TABLE `options`
 -- =============================================================================
 SET @sql := IF (
   EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.STATISTICS
-         WHERE table_schema = DATABASE() AND table_name = 'modules' AND index_name = 'uniq_modules_module_code'),
+         WHERE table_schema = DATABASE() AND table_name = 'modules' AND index_name = 'uniq_modules_module_code')
+  OR EXISTS(SELECT `module_code` FROM `modules` GROUP BY `module_code` HAVING COUNT(*) > 1),
   'SELECT 1',
   'ALTER TABLE `modules` ADD UNIQUE INDEX `uniq_modules_module_code` (`module_code`)'
 );

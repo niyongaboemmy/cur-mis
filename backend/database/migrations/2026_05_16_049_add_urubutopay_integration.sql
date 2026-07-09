@@ -50,10 +50,17 @@ ALTER TABLE `fee_invoices`
 
 -- ── §4  Seed VIEW_MOBILE_PAYMENTS permission ──────────────────────────────────
 
+-- Fall back through likely category names, then any existing category, so
+-- this never trips the `category_id` NOT NULL constraint if naming drifted.
 SET @cat_finance = (
     SELECT `id` FROM `permission_categories`
     WHERE `name` = 'Finance' LIMIT 1
 );
+SET @cat_finance = COALESCE(@cat_finance, (
+    SELECT `id` FROM `permission_categories`
+    WHERE `name` = 'Finance & Accounts' LIMIT 1
+));
+SET @cat_finance = COALESCE(@cat_finance, (SELECT `id` FROM `permission_categories` ORDER BY `id` LIMIT 1));
 
 INSERT INTO `permissions` (`category_id`, `name`, `slug`, `description`)
 VALUES (

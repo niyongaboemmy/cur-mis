@@ -15,6 +15,11 @@ FROM `roles` r
 JOIN `permissions` p ON p.`slug` = 'MANAGE_GRADING_SCALES'
 WHERE r.`name` IN ('superadmin', 'admin', 'registrar');
 
+-- Some environments have `grading_scales.id` created without AUTO_INCREMENT
+-- (fails INSERTs that don't specify it with "Field 'id' doesn't have a
+-- default value"). Re-asserting this is a harmless no-op when already set.
+ALTER TABLE `grading_scales` MODIFY `id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT;
+
 -- Seed a default 4.0-style grade-point scale only if the table is empty.
 INSERT INTO `grading_scales` (`grade`, `min_marks`, `max_marks`, `grade_point`, `description`)
 SELECT * FROM (
