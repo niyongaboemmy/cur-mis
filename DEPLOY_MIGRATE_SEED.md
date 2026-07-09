@@ -12,6 +12,16 @@ never seeds data.
 
 `:live` commands (and plain `deploy`) require the [GitHub CLI](https://cli.github.com/) (`gh`) installed and authenticated (`gh auth login`) — they call `gh workflow run` under the hood, which needs push access to this repo. Without `gh`, use the Actions tab in the GitHub web UI instead.
 
+## Baseline (one-time reconciliation, not part of the 3 regular commands)
+
+If production's real DB schema is already ahead of the `schema_migrations` ledger (e.g. changes were applied manually, or by an older ad-hoc script, before this ledger existed), running `migrate`/`migrate:live` will error on those old files instead of skipping them. `baseline` marks currently-pending files as applied **without running their SQL** — a one-time reconciliation, not something to run routinely:
+
+```bash
+npm run baseline:live   # or: gh workflow run baseline-backend.yml
+```
+
+Local equivalent: `php backend/scripts/migrate.php --baseline`.
+
 ## Examples
 
 ```bash

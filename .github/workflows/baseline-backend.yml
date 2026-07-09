@@ -1,0 +1,54 @@
+name: Baseline — Backend (mark migrations applied)
+
+# Marks every currently-pending migration as "baselined" (applied) WITHOUT
+# running its SQL. Use this when production's real schema is already ahead of
+# the schema_migrations ledger — e.g. changes were applied manually or by an
+# older ad-hoc script before the ledger-based migrate system existed, so
+# re-running the SQL now would error out even though nothing needs to change.
+#
+# Deliberately separate from migrate-backend.yml: baselining is a one-time,
+# deliberate reconciliation action, not something to run routinely.
+#
+# Required GitHub Secrets:
+#   DEPLOY_KEY — same value as DEPLOY_KEY in backend/.env
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: baseline-backend
+  cancel-in-progress: false
+
+env:
+  API_BASE: https://cur.ac.rw/umis/api
+
+jobs:
+  baseline:
+    name: Baseline pending migrations
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Show migration status (before)
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+        run: |
+          curl -s -k --max-time 30 \
+            -H "Authorization: Bearer $DEPLOY_KEY" \
+            "$API_BASE/api/deploy/status" | jq .
+
+      - name: Baseline pending migrations
+        timeout-minutes: 2
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+        run: |
+          RESULT=$(curl -s -k --max-time 60 -X POST \
+            -H "Authorization: Bearer $DEPLOY_KEY" \
+            "$API_BASE/api/deploy/baseline")
+          echo "$RESULT" | jq .
+          echo "$RESULT" | jq -e '.success == true' >/dev/null || { echo "Baseline reported failure"; exit 1; }
+
+      - name: Write job summary
+        if: always()
+        run: |
+          echo "## Backend Baseline — ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "Marks pending migrations applied without running them." >> $GITHUB_STEP_SUMMARY

@@ -17,6 +17,7 @@ use Core\Response;
  *
  * POST /api/deploy/migrate     — apply pending database migrations (structure only)
  * GET  /api/deploy/status      — show migration status (pending vs applied)
+ * POST /api/deploy/baseline    — mark pending migrations as already-applied, without running them
  * POST /api/deploy/seed        — run one named data seeder (never "all")
  * GET  /api/deploy/seeders     — list available seeder names
  * POST /api/deploy/cache-clear — reset PHP OPcache so new code is served immediately
@@ -69,6 +70,29 @@ class DeployController
             'data'    => [
                 'migrations'    => $migrations,
                 'pending_count' => count($pending),
+            ],
+        ]);
+    }
+
+    /**
+     * Marks every currently-pending migration as "baselined" (applied) WITHOUT
+     * running its SQL. For when the DB's real schema is already ahead of the
+     * ledger (e.g. applied manually before this ledger existed) — running the
+     * SQL would error out even though nothing actually needs to change.
+     */
+    public function baseline(Request $request, Response $response): void
+    {
+        $service   = new MigrationService();
+        $baselined = $service->baseline();
+
+        $response->json([
+            'success' => true,
+            'message' => count($baselined) > 0
+                ? 'Pending migrations baselined (marked applied without running).'
+                : 'No pending migrations to baseline.',
+            'data'    => [
+                'baselined' => $baselined,
+                'count'     => count($baselined),
             ],
         ]);
     }
