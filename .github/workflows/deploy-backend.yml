@@ -122,7 +122,6 @@ jobs:
             --exclude './docs/**' \
             --exclude './.env' \
             --exclude './*.phar' \
-            --exclude './*.sql' \
             --exclude './.htaccess' \
             --exclude './test_*.php' \
             --exclude './logs/*.log' \
