@@ -146,6 +146,35 @@ class MigrationService
         return ['ran' => $ran, 'skipped' => $skipped, 'errors' => $errors];
     }
 
+    /**
+     * Marks every currently-pending migration file as "baselined" (applied)
+     * WITHOUT running its SQL. For a DB whose schema is already ahead of the
+     * ledger — e.g. changes applied manually before this ledger existed.
+     * Returns the list of filenames that were newly baselined.
+     */
+    public function baseline(): array
+    {
+        $this->ensureLedger();
+        $applied = $this->appliedMap();
+
+        $stmt = $this->pdo->prepare(
+            "INSERT INTO `schema_migrations` (filename, status, applied_at) VALUES (?, 'baselined', NOW())
+             ON DUPLICATE KEY UPDATE applied_at = applied_at"
+        );
+
+        $baselined = [];
+        foreach ($this->allFiles() as $f) {
+            $name = basename($f);
+            if (isset($applied[$name])) {
+                continue;
+            }
+            $stmt->execute([$name]);
+            $baselined[] = $name;
+        }
+
+        return $baselined;
+    }
+
     /** Executes a multi-statement SQL string, draining cursors between statements. */
     private function runSql(string $sql): void
     {

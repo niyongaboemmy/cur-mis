@@ -13,6 +13,7 @@ use App\Middleware\DeployKeyMiddleware;
 
 $router->group('/api/deploy', function (\Core\Router $r) {
     $r->post('/migrate',     [DeployController::class, 'migrate']);
+    $r->post('/baseline',    [DeployController::class, 'baseline']);
     $r->get('/status',       [DeployController::class, 'status']);
     $r->post('/seed',        [DeployController::class, 'seed']);
     $r->get('/seeders',      [DeployController::class, 'seeders']);

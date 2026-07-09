@@ -9,7 +9,7 @@ use Core\Request;
 use Core\Response;
 
 /**
- * Protects deploy endpoints (migrate, seed, cache-clear).
+ * Protects deploy endpoints (migrate, baseline, seed, cache-clear).
  * Expects:  Authorization: Bearer <DEPLOY_KEY>
  * DEPLOY_KEY must be set in .env and in the DEPLOY_KEY GitHub secret.
  */

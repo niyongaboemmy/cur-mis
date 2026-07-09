@@ -9,6 +9,7 @@
     "deploy": "gh workflow run deploy-backend.yml",
     "migrate": "php backend/scripts/migrate.php",
     "migrate:live": "gh workflow run migrate-backend.yml",
+    "baseline:live": "gh workflow run baseline-backend.yml",
     "seed": "php backend/scripts/seed.php",
     "seed:live": "gh workflow run seed-backend.yml"
   }

@@ -46,18 +46,9 @@ $service->ensureLedger();
 
 // ── Baseline (mark all as applied without running) ───────────────────────────
 if ($baseline) {
-    $applied = $service->appliedMap();
-    $pdo     = (new ReflectionProperty(App\Services\MigrationService::class, 'pdo'))->getValue($service);
-    $stmt    = $pdo->prepare(
-        "INSERT INTO `schema_migrations` (filename, status, applied_at) VALUES (?, 'baselined', NOW())
-         ON DUPLICATE KEY UPDATE applied_at = applied_at"
-    );
-    $added = 0;
-    foreach ($service->allFiles() as $f) {
-        $name = basename($f);
-        if (!isset($applied[$name])) { $stmt->execute([$name]); $added++; }
-    }
-    echo "Baselined $added migration(s) as already-applied.\n";
+    $added = $service->baseline();
+    foreach ($added as $name) echo "→ $name … baselined\n";
+    echo "Baselined " . count($added) . " migration(s) as already-applied.\n";
     exit(0);
 }
 
