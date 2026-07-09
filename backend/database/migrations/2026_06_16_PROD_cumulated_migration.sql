@@ -677,6 +677,11 @@ WHERE (e.user_id IS NULL OR e.user_id = 0)
   AND u.email IS NOT NULL AND u.email <> '';
 
 -- B. Create a linked employees row for every staff user still missing one.
+-- `employee_position` is narrow on some environments; truncate to whatever
+-- it actually is rather than assuming a fixed width.
+SET @pos_len := (SELECT CHARACTER_MAXIMUM_LENGTH FROM information_schema.COLUMNS
+                  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees' AND COLUMN_NAME = 'employee_position');
+
 INSERT INTO `employees`
   (`user_id`, `employee_fname`, `employee_lname`, `employee_gender`, `employee_age`,
    `employee_phone`, `employee_post`, `employee_position`, `additional_duty`, `faculty`,
@@ -689,7 +694,7 @@ SELECT
   TRIM(SUBSTRING(u.full_name, LENGTH(SUBSTRING_INDEX(u.full_name, ' ', 1)) + 1)),
   '', '',
   COALESCE(u.phone, ''),
-  '', r.name, '', 0, '', '', 'Permanent', '', '', '', '',
+  '', LEFT(r.name, @pos_len), '', 0, '', '', 'Permanent', '', '', '', '',
   u.email, '', 'system-backfill', CURDATE(), 0,
   CASE WHEN u.is_active = 1 THEN 'Active' ELSE 'Inactive' END,
   0.00

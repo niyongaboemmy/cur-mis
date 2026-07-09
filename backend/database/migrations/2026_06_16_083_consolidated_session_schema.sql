@@ -390,6 +390,11 @@ WHERE (e.user_id IS NULL OR e.user_id = 0)
   AND u.email IS NOT NULL AND u.email <> '';
 
 -- B. Create a linked employee for every staff user still missing one.
+-- `employee_position` is narrow on some environments; truncate to whatever
+-- it actually is rather than assuming a fixed width.
+SET @pos_len := (SELECT CHARACTER_MAXIMUM_LENGTH FROM information_schema.COLUMNS
+                  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees' AND COLUMN_NAME = 'employee_position');
+
 INSERT INTO `employees`
   (`user_id`, `employee_fname`, `employee_lname`, `employee_gender`, `employee_age`,
    `employee_phone`, `employee_post`, `employee_position`, `additional_duty`, `faculty`,
@@ -403,7 +408,7 @@ SELECT
   '', '',
   COALESCE(u.phone, ''),
   '',                       -- employee_post (department) — fill in later
-  r.name,                   -- employee_position = role label (sensible default)
+  LEFT(r.name, @pos_len),   -- employee_position = role label (sensible default)
   '', 0,
   '', '', 'Permanent', '', '',
   '', '',
