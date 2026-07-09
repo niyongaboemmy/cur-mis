@@ -145,7 +145,15 @@ function App() {
               {/* Free to all authenticated users */}
               <Route path="/" element={<WelcomePage />} />
               <Route path="/welcome" element={<WelcomePage />} />
-              <Route path="/dashboard" element={<AdminDashboardPage />} />
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={PERMISSIONS.VIEW_DASHBOARD}
+                  />
+                }
+              >
+                <Route path="/dashboard" element={<AdminDashboardPage />} />
+              </Route>
               <Route path="/home" element={<HomePage />} />
               <Route path="/profile" element={<UserProfilePage />} />
               {/* Self-service payroll — every authenticated user sees their own

@@ -10,6 +10,7 @@ class Permissions
     public const MANAGE_PERMISSIONS = 'MANAGE_PERMISSIONS';
     public const MANAGE_USERS = 'MANAGE_USERS';
     public const VIEW_SYSTEM_LOGS = 'VIEW_SYSTEM_LOGS';
+    public const VIEW_DASHBOARD = 'VIEW_DASHBOARD';
 
     // System Settings
     public const MANAGE_ACADEMIC_YEARS = 'MANAGE_ACADEMIC_YEARS';
@@ -155,6 +156,7 @@ class Permissions
             self::MANAGE_PERMISSIONS,
             self::MANAGE_USERS,
             self::VIEW_SYSTEM_LOGS,
+            self::VIEW_DASHBOARD,
             self::MANAGE_ACADEMIC_YEARS,
             self::MANAGE_ACADEMIC_TERMS,
             self::VIEW_SYSTEM_BASICS,

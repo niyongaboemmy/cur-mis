@@ -103,6 +103,7 @@ const NAV_TREE: NavNode[] = [
     label: "Dashboard",
     icon: LayoutDashboard,
     to: "/dashboard",
+    permissions: [PERMISSIONS.VIEW_DASHBOARD],
     // Admin metrics only — hide from external portal roles.
     hideForRoles: ["student", "applicant"],
   },
