@@ -47,6 +47,7 @@ import TranscriptRequestsPage from "@/pages/academic/TranscriptRequestsPage";
 import GraduandManagementPage from "@/pages/academic/GraduandManagementPage";
 import AcademicCertificatesPage from "@/pages/academic/AcademicCertificatesPage";
 import AcademicAnalyticsPage from "@/pages/academic/AcademicAnalyticsPage";
+import SystemDocumentsPage from "@/pages/academic/SystemDocumentsPage";
 
 // Gate Management Module
 import GateManagementPage from "@/pages/gate/GateManagementPage";
@@ -348,6 +349,13 @@ function App() {
                 element={<ProtectedRoute requiredPermissions={[PERMISSIONS.VIEW_SYSTEM_BASICS]} />}
               >
                 <Route path="/academic/grading-scale" element={<AcademicGradingScalePage />} />
+              </Route>
+
+              {/* ── System Documents (Fee Structures, Policies, etc.) ── */}
+              <Route
+                element={<ProtectedRoute requiredPermissions={[PERMISSIONS.VIEW_SYSTEM_BASICS]} />}
+              >
+                <Route path="/academic/system-documents" element={<SystemDocumentsPage />} />
               </Route>
 
               {/* ── Transcript Requests ── */}
