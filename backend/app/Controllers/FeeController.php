@@ -563,6 +563,34 @@ class FeeController extends BaseController
     }
 
     /**
+     * GET /api/finance/billing/all-students
+     * Like billing/summary but includes students with NO invoices (shows 0 balance)
+     */
+    public function listAllStudentsWithStatus(Request $request, Response $response): never
+    {
+        $filters = [
+            'academic_year_id' => (int)($request->query('academic_year_id') ?? 0),
+            'semester'         => $request->query('semester') !== null ? (int)$request->query('semester') : null,
+            'faculty_id'       => $request->query('faculty_id') !== null ? (int)$request->query('faculty_id') : null,
+            'department_id'    => $request->query('department_id') !== null ? (int)$request->query('department_id') : null,
+            'keyword'          => $request->query('keyword') ?? null,
+            'page'             => (int)($request->query('page') ?? 1),
+            'per_page'         => (int)($request->query('per_page') ?? 50),
+        ];
+
+        if (!$filters['academic_year_id']) {
+            $this->error($response, 'Academic Year is required.', 400);
+        }
+
+        try {
+            $result = $this->service->getAllStudentsWithStatus($filters);
+            $this->success($response, $result, 'All students retrieved.');
+        } catch (\InvalidArgumentException $e) {
+            $this->error($response, $e->getMessage(), 400);
+        }
+    }
+
+    /**
      * GET /api/finance/billing/export
      */
     public function exportBillingSummary(Request $request, Response $response): never

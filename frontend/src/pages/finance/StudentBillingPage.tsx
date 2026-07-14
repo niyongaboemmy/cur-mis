@@ -133,34 +133,28 @@ export default function StudentBillingPage() {
   });
   const departments = departmentsQ.data?.data?.data ?? [];
 
-  const balanceFilterParam =
-    activeKpi === 'collected' ? 'collected'
-    : activeKpi === 'bursary'  ? 'bursary'
-    : activeKpi === 'pending'  ? 'pending'
-    : activeKpi === 'partial'  ? 'partial'
-    : activeKpi === 'overdue'  ? 'overdue'
-    : undefined;
+  // State for selecting students for bulk generation
+  const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set());
+  const [selectAll, setSelectAll] = useState(false);
 
   const summaryQ = useQuery({
     queryKey: [
       "finance",
-      "billing-summary",
+      "billing-all-students",
       yearId,
       semester,
       facultyId,
       deptId,
       debouncedKeyword,
-      activeKpi,
       page,
     ],
     queryFn: () =>
-      billingService.getSummary({
+      api.get<any>('/api/finance/billing/all-students', {
         academic_year_id: Number(yearId),
         semester: semester ? Number(semester) : undefined,
         faculty_id: facultyId ? Number(facultyId) : undefined,
         department_id: deptId ? Number(deptId) : undefined,
         keyword: debouncedKeyword,
-        balance_filter: balanceFilterParam,
         page,
         per_page: 50,
       }),
@@ -171,22 +165,27 @@ export default function StudentBillingPage() {
   const students: BillingSummary[] = paginated?.data ?? [];
   const totalItems = paginated?.total ?? 0;
 
-  const aggregates = paginated?.aggregates ?? {
-    expected: 0,
-    collected: 0,
-    bursary: 0,
-    balance: 0,
-  };
-
-  const totalExpected    = aggregates.expected;
-  const totalCollected   = aggregates.collected;
-  const totalBursary     = aggregates.bursary;
-  const totalRemaining   = aggregates.balance;
-  const partialCount     = aggregates.partial_count   ?? 0;
-  const partialBalance   = aggregates.partial_balance ?? 0;
+  // Calculate aggregates from displayed students
+  const totalExpected = students.reduce((sum, s: any) => sum + (s.total_expected || 0), 0);
+  const totalCollected = students.reduce((sum, s: any) => sum + (s.total_collected || 0), 0);
+  const totalBursary = students.reduce((sum, s: any) => sum + (s.total_bursary || 0), 0);
+  const totalRemaining = totalExpected - totalCollected - totalBursary;
+  const partialCount = students.filter((s: any) => (s.total_collected || 0) > 0 && (s.balance || 0) > 0).length;
+  const partialBalance = students
+    .filter((s: any) => (s.total_collected || 0) > 0 && (s.balance || 0) > 0)
+    .reduce((sum, s: any) => sum + (s.balance || 0), 0);
 
   // Server handles filtering — use students directly
   const filteredStudents = students;
+
+  // Update selectAll when students change
+  useEffect(() => {
+    if (filteredStudents.length > 0 && selectedStudents.size === filteredStudents.length) {
+      setSelectAll(true);
+    } else {
+      setSelectAll(false);
+    }
+  }, [filteredStudents, selectedStudents]);
 
   const kpiLabels: Record<KpiFilter, string> = {
     all:      "",
@@ -201,12 +200,10 @@ export default function StudentBillingPage() {
   // ─── Bulk Actions ──────────────────────────────────────────────────────────
 
   const bulkMutation = useMutation({
-    mutationFn: () =>
+    mutationFn: (studentIds: string[]) =>
       billingService.bulkGenerate({
         academic_year_id: Number(yearId),
-        semester: semester ? Number(semester) : undefined,
-        faculty_id: facultyId ? Number(facultyId) : undefined,
-        department_id: deptId ? Number(deptId) : undefined,
+        student_ids: studentIds,
       }),
     onSuccess: (res: any) => {
       const data = res.data;
@@ -217,6 +214,8 @@ export default function StudentBillingPage() {
         `Unchanged: ${data.total_skipped}`,
       ].filter(Boolean).join(' · ');
       toast.success(`Bulk generation complete! ${parts}`, { duration: 6000 });
+      setSelectedStudents(new Set());
+      setSelectAll(false);
       summaryQ.refetch();
     },
     onError: (e: any) =>
@@ -426,24 +425,25 @@ export default function StudentBillingPage() {
         </div>
 
         {/* Bulk Generation Control */}
-        {yearId && (
+        {yearId && selectedStudents.size > 0 && (
           <div className="card p-4 bg-gradient-to-r from-brand/5 to-blue-500/5 border border-brand/20 flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-lg bg-brand/10 flex items-center justify-center">
                 <TrendingUp className="w-5 h-5 text-brand" />
               </div>
               <div>
-                <p className="font-semibold text-sm text-ink-900 dark:text-white">Generate Student Invoices</p>
+                <p className="font-semibold text-sm text-ink-900 dark:text-white">Generate Invoices</p>
                 <p className="text-[12px] text-ink-500">
-                  Create TUITION and other fee invoices for {deptId ? "selected department" : facultyId ? "selected faculty" : "all active"} students
+                  Create TUITION and other fee invoices for {selectedStudents.size} selected student{selectedStudents.size !== 1 ? 's' : ''}
                 </p>
               </div>
             </div>
             <button
               className="btn-primary btn-sm flex items-center gap-1.5 px-4 shrink-0"
               onClick={() => {
-                const scope = deptId ? "selected department" : facultyId ? "selected faculty" : "ALL active students"
-                if (confirm(`Run invoice generation for ${scope}? This may take a moment.`)) bulkMutation.mutate()
+                if (confirm(`Generate invoices for ${selectedStudents.size} student${selectedStudents.size !== 1 ? 's' : ''}? This may take a moment.`)) {
+                  bulkMutation.mutate(Array.from(selectedStudents))
+                }
               }}
               disabled={bulkMutation.isPending}
             >
@@ -515,6 +515,22 @@ export default function StudentBillingPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-ink-50/60 dark:bg-ink-800/40 border-b border-ink-100 dark:border-ink-700">
+                  <th className="px-4 py-3 text-center w-12">
+                    <input
+                      type="checkbox"
+                      checked={selectAll && filteredStudents.length > 0}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedStudents(new Set(filteredStudents.map((s: any) => s.regnumber)))
+                          setSelectAll(true)
+                        } else {
+                          setSelectedStudents(new Set())
+                          setSelectAll(false)
+                        }
+                      }}
+                      className="checkbox checkbox-sm"
+                    />
+                  </th>
                   {[
                     { label: "Student",      align: "text-left",  cls: "" },
                     { label: "Department",   align: "text-left",  cls: "hidden lg:table-cell" },
@@ -542,6 +558,23 @@ export default function StudentBillingPage() {
 
                   return (
                     <tr key={s.regnumber} className="group hover:bg-brand/[0.025] dark:hover:bg-brand/[0.04] transition-colors">
+                      {/* Checkbox */}
+                      <td className="px-4 py-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedStudents.has(s.regnumber)}
+                          onChange={(e) => {
+                            const newSelected = new Set(selectedStudents)
+                            if (e.target.checked) {
+                              newSelected.add(s.regnumber)
+                            } else {
+                              newSelected.delete(s.regnumber)
+                            }
+                            setSelectedStudents(newSelected)
+                          }}
+                          className="checkbox checkbox-sm"
+                        />
+                      </td>
                       {/* Student */}
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">

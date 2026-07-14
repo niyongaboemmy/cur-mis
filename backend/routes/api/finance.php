@@ -49,6 +49,7 @@ $router->group('/api/finance', function ($router) {
         $r->get('/clearance/report',             [FeeController::class, 'getClearanceReport']);
         $r->get('/budgets',                  [FeeController::class, 'listBudgets']);
         $r->get('/billing/summary',          [FeeController::class, 'listBillingSummary']);
+        $r->get('/billing/all-students',     [FeeController::class, 'listAllStudentsWithStatus']);
         $r->get('/billing/export',           [FeeController::class, 'exportBillingSummary']);
 
     }, [new MaybePermissionMiddleware([

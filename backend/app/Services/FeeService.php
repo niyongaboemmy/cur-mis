@@ -507,13 +507,117 @@ class FeeService
     }
 
     /**
+     * Get all active students with their billing status (invoiced or not).
+     * Unlike getGroupBillingSummary, this includes students with zero invoices.
+     */
+    public function getAllStudentsWithStatus(array $filters): array
+    {
+        $yearId        = (int)($filters['academic_year_id'] ?? 0);
+        $semester      = !empty($filters['semester']) ? (int)$filters['semester'] : null;
+        $faculty       = !empty($filters['faculty_id']) ? (int)$filters['faculty_id'] : null;
+        $dept          = !empty($filters['department_id']) ? (int)$filters['department_id'] : null;
+        $keyword       = !empty($filters['keyword']) ? trim($filters['keyword']) : null;
+        $page          = (int)($filters['page'] ?? 1);
+        $perPage       = (int)($filters['per_page'] ?? 50);
+
+        if (!$yearId) {
+            throw new \InvalidArgumentException("Academic Year is required.");
+        }
+
+        $where = ["s.student_state = 'active'"];
+        $bindings = [$yearId]; // For the left join subquery
+
+        if ($semester) {
+            $semSql = "AND (semester = ? OR semester IS NULL)";
+            $bindings[] = $semester;
+        } else {
+            $semSql = "";
+        }
+
+        if ($faculty) {
+            $where[] = "(s.faculty COLLATE utf8mb4_unicode_ci = CAST(? AS CHAR) COLLATE utf8mb4_unicode_ci OR s.faculty = (SELECT fac_name FROM `faculty` WHERE fac_id = ?))";
+            $bindings[] = $faculty;
+            $bindings[] = $faculty;
+        }
+        if ($dept) {
+            $where[] = "(s.department COLLATE utf8mb4_unicode_ci = CAST(? AS CHAR) COLLATE utf8mb4_unicode_ci OR s.department = (SELECT dep_acronym FROM `departements` WHERE dep_id = ?))";
+            $bindings[] = $dept;
+            $bindings[] = $dept;
+        }
+        if ($keyword) {
+            $where[] = "(s.regnumber LIKE ? OR s.fname LIKE ? OR s.lname LIKE ?)";
+            $k = "%{$keyword}%";
+            $bindings[] = $k;
+            $bindings[] = $k;
+            $bindings[] = $k;
+        }
+
+        $whereSql = implode(" AND ", $where);
+        $offset = ($page - 1) * $perPage;
+
+        // Query ALL students with LEFT JOIN to invoices (includes students with no invoices)
+        $sumsJoin = "LEFT JOIN (
+                    SELECT student_id,
+                        SUM(amount_due) AS total_due,
+                        SUM(amount_paid) AS total_paid,
+                        SUM(bursary_applied) AS total_bursary
+                    FROM `fee_invoices`
+                    WHERE academic_year_id = ? AND fee_type != 'BURSARY_CREDIT' {$semSql}
+                    GROUP BY student_id
+                ) AS sums ON sums.student_id = s.regnumber";
+
+        $sumsBindings = array_merge([$yearId], ($semester ? [$semester] : []));
+
+        // Total count
+        $totalSql = "SELECT COUNT(*) AS cnt FROM `student` s WHERE {$whereSql}";
+        $whereBindings = [];
+        if ($faculty) { $whereBindings[] = $faculty; $whereBindings[] = $faculty; }
+        if ($dept)    { $whereBindings[] = $dept;    $whereBindings[] = $dept; }
+        if ($keyword) { $k = "%{$keyword}%"; $whereBindings[] = $k; $whereBindings[] = $k; $whereBindings[] = $k; }
+
+        $totalRow = $this->db->fetchOne($totalSql, $whereBindings);
+        $total = (int)($totalRow['cnt'] ?? 0);
+
+        // Paginated data with billing info
+        $dataSql = "SELECT
+                    s.regnumber,
+                    s.fname,
+                    s.lname,
+                    s.email,
+                    s.student_state,
+                    COALESCE(s.faculty, (SELECT fac_name FROM `faculty` WHERE fac_id = CAST(s.faculty AS UNSIGNED) LIMIT 1)) AS faculty,
+                    COALESCE(s.department, (SELECT dep_name FROM `departements` WHERE dep_id = CAST(s.department AS UNSIGNED) LIMIT 1)) AS department,
+                    COALESCE(sums.total_due, 0) AS total_expected,
+                    COALESCE(sums.total_paid, 0) AS total_collected,
+                    COALESCE(sums.total_bursary, 0) AS total_bursary,
+                    COALESCE(sums.total_due, 0) - COALESCE(sums.total_paid, 0) - COALESCE(sums.total_bursary, 0) AS balance,
+                    IF(COALESCE(sums.total_due, 0) > 0, 1, 0) AS has_invoices
+                 FROM `student` s
+                 {$sumsJoin}
+                 WHERE {$whereSql}
+                 ORDER BY s.fname ASC
+                 LIMIT ? OFFSET ?";
+
+        $dataBindings = array_merge($sumsBindings, $whereBindings, [$perPage, $offset]);
+        $results = $this->db->fetchAll($dataSql, $dataBindings);
+
+        return [
+            'data'         => $results,
+            'total'        => $total,
+            'per_page'     => $perPage,
+            'current_page' => $page,
+            'last_page'    => (int)ceil($total / $perPage),
+        ];
+    }
+
+    /**
      * Export billing summary as CSV.
      */
     public function exportBillingSummary(array $filters): string
     {
         // Fetch ALL matching students (no pagination)
         $filters['page'] = 1;
-        $filters['per_page'] = 5000; 
+        $filters['per_page'] = 5000;
         $result = $this->getGroupBillingSummary($filters);
         $data = $result['data'] ?? [];
 
