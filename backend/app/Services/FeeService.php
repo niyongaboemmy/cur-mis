@@ -247,13 +247,11 @@ class FeeService
         $bindings = [];
 
         if ($faculty) {
-            $where[] = "(s.faculty COLLATE utf8mb4_unicode_ci = CAST(? AS CHAR) COLLATE utf8mb4_unicode_ci OR s.faculty = (SELECT fac_name FROM `faculty` WHERE fac_id = ?))";
-            $bindings[] = $faculty;
+            $where[] = "s.faculty = ?";
             $bindings[] = $faculty;
         }
         if ($dept) {
-            $where[] = "(s.department COLLATE utf8mb4_unicode_ci = CAST(? AS CHAR) COLLATE utf8mb4_unicode_ci OR s.department = (SELECT dep_acronym FROM `departements` WHERE dep_id = ?))";
-            $bindings[] = $dept;
+            $where[] = "s.department = ?";
             $bindings[] = $dept;
         }
 
@@ -535,13 +533,11 @@ class FeeService
         }
 
         if ($faculty) {
-            $where[] = "(s.faculty COLLATE utf8mb4_unicode_ci = CAST(? AS CHAR) COLLATE utf8mb4_unicode_ci OR s.faculty = (SELECT fac_name FROM `faculty` WHERE fac_id = ?))";
-            $bindings[] = $faculty;
+            $where[] = "s.faculty = ?";
             $bindings[] = $faculty;
         }
         if ($dept) {
-            $where[] = "(s.department COLLATE utf8mb4_unicode_ci = CAST(? AS CHAR) COLLATE utf8mb4_unicode_ci OR s.department = (SELECT dep_acronym FROM `departements` WHERE dep_id = ?))";
-            $bindings[] = $dept;
+            $where[] = "s.department = ?";
             $bindings[] = $dept;
         }
         if ($keyword) {
@@ -557,22 +553,22 @@ class FeeService
 
         // Query ALL students with LEFT JOIN to invoices (includes students with no invoices)
         $sumsJoin = "LEFT JOIN (
-                    SELECT student_id,
+                    SELECT student_id COLLATE utf8mb4_unicode_ci AS student_id,
                         SUM(amount_due) AS total_due,
                         SUM(amount_paid) AS total_paid,
                         SUM(bursary_applied) AS total_bursary
                     FROM `fee_invoices`
                     WHERE academic_year_id = ? AND fee_type != 'BURSARY_CREDIT' {$semSql}
                     GROUP BY student_id
-                ) AS sums ON sums.student_id = s.regnumber";
+                ) AS sums ON sums.student_id = s.regnumber COLLATE utf8mb4_unicode_ci";
 
         $sumsBindings = array_merge([$yearId], ($semester ? [$semester] : []));
 
         // Total count
         $totalSql = "SELECT COUNT(*) AS cnt FROM `student` s WHERE {$whereSql}";
         $whereBindings = [];
-        if ($faculty) { $whereBindings[] = $faculty; $whereBindings[] = $faculty; }
-        if ($dept)    { $whereBindings[] = $dept;    $whereBindings[] = $dept; }
+        if ($faculty) { $whereBindings[] = $faculty; }
+        if ($dept)    { $whereBindings[] = $dept; }
         if ($keyword) { $k = "%{$keyword}%"; $whereBindings[] = $k; $whereBindings[] = $k; $whereBindings[] = $k; }
 
         $totalRow = $this->db->fetchOne($totalSql, $whereBindings);
@@ -580,13 +576,13 @@ class FeeService
 
         // Paginated data with billing info
         $dataSql = "SELECT
-                    s.regnumber COLLATE utf8mb4_unicode_ci,
-                    s.fname COLLATE utf8mb4_unicode_ci,
-                    s.lname COLLATE utf8mb4_unicode_ci,
-                    s.email COLLATE utf8mb4_unicode_ci,
+                    s.regnumber,
+                    s.fname,
+                    s.lname,
+                    s.email,
                     s.student_state,
-                    COALESCE(s.faculty COLLATE utf8mb4_unicode_ci, (SELECT fac_name FROM `faculty` WHERE fac_id = CAST(s.faculty AS UNSIGNED) LIMIT 1)) AS faculty,
-                    COALESCE(s.department COLLATE utf8mb4_unicode_ci, (SELECT dep_name FROM `departements` WHERE dep_id = CAST(s.department AS UNSIGNED) LIMIT 1)) AS department,
+                    COALESCE(s.faculty, (SELECT fac_name FROM `faculty` WHERE fac_id = CAST(s.faculty AS UNSIGNED) LIMIT 1)) AS faculty,
+                    COALESCE(s.department, (SELECT dep_name FROM `departements` WHERE dep_id = CAST(s.department AS UNSIGNED) LIMIT 1)) AS department,
                     COALESCE(sums.total_due, 0) AS total_expected,
                     COALESCE(sums.total_paid, 0) AS total_collected,
                     COALESCE(sums.total_bursary, 0) AS total_bursary,
@@ -595,7 +591,7 @@ class FeeService
                  FROM `student` s
                  {$sumsJoin}
                  WHERE {$whereSql}
-                 ORDER BY s.fname COLLATE utf8mb4_unicode_ci ASC
+                 ORDER BY s.fname ASC
                  LIMIT ? OFFSET ?";
 
         $dataBindings = array_merge($sumsBindings, $whereBindings, [$perPage, $offset]);
