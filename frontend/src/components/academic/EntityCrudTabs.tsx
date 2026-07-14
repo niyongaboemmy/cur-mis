@@ -407,13 +407,30 @@ export const ENTITIES: EntityCfg[] = [
     // The five columns the user requested; everything else in the source
     // file is silently ignored.
     ioColumns: [
-      { header: 'Module Order',             key: 'module_order'   },
-      { header: 'Module Code',              key: 'module_code'    },
-      { header: 'Module Title & Component', key: 'module_name'    },
-      { header: 'Credits',                  key: 'module_credits' },
-      // LEVEL accepts either the level number ("8") or the level name
-      // ("Level 1 (Year 1)") — backend tries both.
-      { header: 'LEVEL',                    key: 'level'          },
+      { header: 'Order',           key: 'module_order' },
+      { header: 'Code',            key: 'module_code' },
+      { header: 'Name',            key: 'module_name' },
+      { header: 'Credits',         key: 'module_credits' },
+      { header: 'Hours',           key: 'hours' },
+      { header: 'Price',           key: 'price', compute: (r: any) => {
+        const price = r.price ?? r.per_credit_price
+        if (!price) return ''
+        const isPerCredit = !r.price && r.per_credit_price
+        return isPerCredit ? `${price}*` : price
+      }},
+      { header: 'Level',           key: 'level', compute: (r: any) => {
+        // Try to display level name if available, otherwise just the ID
+        if (r.levels && Array.isArray(r.levels) && r.levels.length > 0) {
+          return r.levels[0].name
+        }
+        return r.level ? `Level ${r.level}` : ''
+      }},
+      { header: 'Programs',        key: 'programs', compute: (r: any) => {
+        if (r.programs && Array.isArray(r.programs)) {
+          return r.programs.map((p: any) => p.name).join('; ')
+        }
+        return ''
+      }},
     ],
   },
   {
