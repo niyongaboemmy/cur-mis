@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Loader2, X, CalendarDays, Layers, SplitSquareHorizontal } from 'lucide-react'
+import { Plus, Pencil, Trash2, Loader2, X, CalendarDays, Layers, SplitSquareHorizontal, Upload } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { feeStructureService, feeTypeService } from '@/services/financeService'
 import { academicsMgmtService } from '@/services/academicsMgmtService'
@@ -19,10 +19,11 @@ export default function FeeStructuresPage() {
   const basics = useSystemStore((s) => s.basics)
   const selectedYearLabel = useSystemStore((s) => s.selectedYearLabel)
 
-  const [yearId, setYearId]     = useState<number | string>('')
-  const [page, setPage]         = useState(1)
-  const [showForm, setShowForm] = useState(false)
-  const [editing, setEditing]   = useState<FeeStructure | null>(null)
+  const [yearId, setYearId]         = useState<number | string>('')
+  const [page, setPage]             = useState(1)
+  const [showForm, setShowForm]     = useState(false)
+  const [showImportModal, setShowImportModal] = useState(false)
+  const [editing, setEditing]       = useState<FeeStructure | null>(null)
 
   useEffect(() => {
     if (selectedYearLabel) {
@@ -83,6 +84,16 @@ export default function FeeStructuresPage() {
     onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Delete failed'),
   })
 
+  const bulkImportMutation = useMutation({
+    mutationFn: (rows: any[]) => feeStructureService.bulkImport({ rows }),
+    onSuccess: (result: any) => {
+      toast.success(`Bulk import complete: ${result.data.created} created, ${result.data.failed?.length ?? 0} failed`)
+      qc.invalidateQueries({ queryKey: ['finance', 'structures'] })
+      setShowImportModal(false)
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Import failed'),
+  })
+
   const planLabel = (row: FeeStructure) => {
     const plan = row.payment_plan ?? 'full_year'
     if (plan === 'per_semester') return '2× semester'
@@ -97,9 +108,14 @@ export default function FeeStructuresPage() {
           <h2 className="text-lg font-bold text-ink-900 dark:text-white">Fee Structures</h2>
           <p className="text-[13px] text-ink-500">Configure fee amounts per type, department, level and academic year.</p>
         </div>
-        <button className="btn-primary btn-sm" onClick={() => { setEditing(null); setShowForm(true) }}>
-          <Plus className="w-3.5 h-3.5" /> New structure
-        </button>
+        <div className="flex gap-2">
+          <button className="btn-secondary btn-sm" onClick={() => setShowImportModal(true)}>
+            <Upload className="w-3.5 h-3.5" /> Import CSV
+          </button>
+          <button className="btn-primary btn-sm" onClick={() => { setEditing(null); setShowForm(true) }}>
+            <Plus className="w-3.5 h-3.5" /> New structure
+          </button>
+        </div>
       </div>
 
       {/* Year filter */}
@@ -218,6 +234,14 @@ export default function FeeStructuresPage() {
             setShowForm(false)
             qc.invalidateQueries({ queryKey: ['finance', 'structures'] })
           }}
+        />
+      )}
+
+      {showImportModal && (
+        <BulkImportModal
+          onClose={() => setShowImportModal(false)}
+          onImport={(rows) => bulkImportMutation.mutate(rows)}
+          isLoading={bulkImportMutation.isPending}
         />
       )}
     </div>
@@ -616,5 +640,144 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <label className="block text-xs text-ink-500 mb-1">{label}</label>
       {children}
     </div>
+  )
+}
+
+function BulkImportModal({ onClose, onImport, isLoading }: { onClose: () => void; onImport: (rows: any[]) => void; isLoading: boolean }) {
+  const [importFile, setImportFile] = useState<File | null>(null)
+  const [parsedRows, setParsedRows] = useState<any[]>([])
+  const [errors, setErrors] = useState<any[]>([])
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setImportFile(file)
+    const reader = new FileReader()
+    reader.onload = (evt) => {
+      try {
+        const text = evt.target?.result as string
+        const lines = text.split('\n').map(l => l.trim()).filter(l => l)
+        if (lines.length < 2) {
+          setErrors(['CSV must have at least a header and one data row'])
+          setParsedRows([])
+          return
+        }
+
+        const headers = lines[0].split(',').map(h => h.trim())
+        const rows = lines.slice(1).map((line) => {
+          const values = line.split(',').map(v => v.trim())
+          const row: any = {}
+          headers.forEach((h, i) => {
+            row[h] = values[i] ?? ''
+          })
+          return row
+        })
+
+        setParsedRows(rows)
+        setErrors([])
+      } catch (e: any) {
+        setErrors([e.message || 'Failed to parse CSV'])
+        setParsedRows([])
+      }
+    }
+    reader.readAsText(file)
+  }
+
+  return (
+    <ModalPortal>
+      <div className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 z-50" onClick={onClose}>
+        <div className="bg-white dark:bg-ink-800 rounded-lg shadow-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="p-6 border-b border-ink-100 dark:border-ink-700 flex items-center justify-between">
+            <h3 className="font-bold text-ink-900 dark:text-white">Bulk Import Fee Structures</h3>
+            <button onClick={onClose} className="text-ink-400 hover:text-ink-600 dark:hover:text-ink-200">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div className="p-6 space-y-4">
+            <div>
+              <p className="text-sm text-ink-600 dark:text-ink-300 mb-3">
+                Upload a CSV file with the following columns:
+              </p>
+              <div className="text-xs font-mono bg-ink-50 dark:bg-ink-900 p-3 rounded overflow-x-auto">
+                academic_year_label, department_name, level_name, fee_type_code, label, amount, semester, payment_plan, installment_count
+              </div>
+            </div>
+
+            <div className="border-2 border-dashed border-ink-200 dark:border-ink-600 rounded-lg p-6 text-center">
+              <input
+                type="file"
+                accept=".csv"
+                onChange={handleFileSelect}
+                className="hidden"
+                id="csv-upload"
+                disabled={isLoading}
+              />
+              <label htmlFor="csv-upload" className="cursor-pointer">
+                <Upload className="w-8 h-8 mx-auto mb-2 text-ink-400" />
+                <p className="text-sm font-medium text-ink-900 dark:text-white">
+                  {importFile ? importFile.name : 'Click to select CSV or drag and drop'}
+                </p>
+              </label>
+            </div>
+
+            {errors.length > 0 && (
+              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded p-3">
+                {errors.map((err, i) => (
+                  <p key={i} className="text-xs text-red-700 dark:text-red-400">{err}</p>
+                ))}
+              </div>
+            )}
+
+            {parsedRows.length > 0 && (
+              <div>
+                <p className="text-sm text-ink-600 dark:text-ink-300 mb-2">
+                  {parsedRows.length} row{parsedRows.length !== 1 ? 's' : ''} ready to import
+                </p>
+                <div className="overflow-x-auto max-h-[200px] border border-ink-100 dark:border-ink-700 rounded">
+                  <table className="w-full text-xs">
+                    <thead className="bg-ink-50 dark:bg-ink-900 sticky top-0">
+                      <tr>
+                        <th className="px-2 py-1 text-left text-ink-500">Department</th>
+                        <th className="px-2 py-1 text-left text-ink-500">Fee Type</th>
+                        <th className="px-2 py-1 text-right text-ink-500">Amount</th>
+                        <th className="px-2 py-1 text-left text-ink-500">Semester</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-ink-100 dark:divide-ink-700">
+                      {parsedRows.slice(0, 10).map((row) => (
+                        <tr key={`${row.department_name}-${row.fee_type_code}`}>
+                          <td className="px-2 py-1 truncate">{row.department_name}</td>
+                          <td className="px-2 py-1 truncate">{row.fee_type_code}</td>
+                          <td className="px-2 py-1 text-right font-mono">{row.amount}</td>
+                          <td className="px-2 py-1">{row.semester || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="p-6 border-t border-ink-100 dark:border-ink-700 flex gap-2 justify-end">
+            <button className="btn-ghost btn-sm" onClick={onClose} disabled={isLoading}>
+              Cancel
+            </button>
+            <button
+              className="btn-primary btn-sm min-w-[110px]"
+              onClick={() => onImport(parsedRows)}
+              disabled={isLoading || parsedRows.length === 0 || errors.length > 0}
+            >
+              {isLoading
+                ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Importing…</>
+                : `Import ${parsedRows.length} rows`
+              }
+            </button>
+          </div>
+        </div>
+      </div>
+    </ModalPortal>
   )
 }

@@ -66,6 +66,9 @@ export const feeStructureService = {
   ) => api.put<null>(`/api/finance/structures/${id}`, data),
 
   delete: (id: number) => api.delete<null>(`/api/finance/structures/${id}`),
+
+  bulkImport: (data: { rows: any[] }) =>
+    api.post<{ created: number; updated: number; skipped: number; failed: any[] }>("/api/finance/structures/bulk-import", data),
 };
 
 // ─── Student Ledger & Invoice Generation ─────────────────────────────────────
@@ -780,4 +783,19 @@ export const appFeeReconciliationService = {
       '/api/finance/reports/application-fee-reconciliation/run-pending',
       data,
     ),
+};
+
+export const feeInvoicePdfService = {
+  downloadInvoicePdf: (invoiceId: number) =>
+    `${apiClient.defaults.baseURL}/api/finance/invoices/${invoiceId}/pdf`,
+
+  downloadStudentBillPdf: (studentId: string, params?: { academic_year_id: number; semester?: number }) =>
+    `${apiClient.defaults.baseURL}/api/finance/students/${studentId}/bill/pdf${
+      params ? `?academic_year_id=${params.academic_year_id}${params.semester ? `&semester=${params.semester}` : ''}` : ''
+    }`,
+
+  downloadMyBillPdf: (params?: { academic_year_id: number; semester?: number }) =>
+    `${apiClient.defaults.baseURL}/api/finance/my/bill/pdf${
+      params ? `?academic_year_id=${params.academic_year_id}${params.semester ? `&semester=${params.semester}` : ''}` : ''
+    }`,
 };

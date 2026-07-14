@@ -56,6 +56,13 @@ const TABS = [
     permissions: [PERMISSIONS.MANAGE_FINANCE],
   },
   {
+    to: "/finance/per-credit-rates",
+    label: "Per-Credit Rates",
+    icon: Settings2,
+    end: false,
+    permissions: [PERMISSIONS.MANAGE_FINANCE],
+  },
+  {
     to: "/finance/bursaries",
     label: "Bursaries",
     icon: Award,

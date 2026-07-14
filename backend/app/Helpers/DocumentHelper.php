@@ -1071,4 +1071,140 @@ class DocumentHelper
         };
         return date('F') . " {$d}{$sfx} " . date('Y');
     }
+
+    /**
+     * Build an HTML fee invoice/bill statement for a student.
+     *
+     * @param array $student Student info (regnumber, fname, lname, fac_name, dep_name, current_level, acc_year)
+     * @param array $invoiceLines Array of invoice line items (fee_type, label, amount_due, amount_paid, balance)
+     * @param array $meta Metadata: 'title' (e.g. "Statement of Account"), 'academic_year', 'semester', 'generated_date'
+     */
+    public static function buildFeeInvoice(array $student, array $invoiceLines, array $meta = []): string
+    {
+        $title = $meta['title'] ?? 'Statement of Account';
+        $acYear = $meta['academic_year'] ?? $student['acc_year'] ?? date('Y');
+        $semester = $meta['semester'] ?? null;
+        $generatedDate = $meta['generated_date'] ?? date('Y-m-d');
+
+        // Calculate totals
+        $totalDue = 0;
+        $totalPaid = 0;
+        foreach ($invoiceLines as $line) {
+            $totalDue += (float)($line['amount_due'] ?? 0);
+            $totalPaid += (float)($line['amount_paid'] ?? 0);
+        }
+        $totalBalance = $totalDue - $totalPaid;
+
+        // Format numbers
+        $fmtNum = fn ($n) => number_format((float)$n, 0, '', ',');
+
+        $tbody = '';
+        foreach ($invoiceLines as $line) {
+            $due = (float)($line['amount_due'] ?? 0);
+            $paid = (float)($line['amount_paid'] ?? 0);
+            $balance = $due - $paid;
+            $tbody .= <<<HTML
+            <tr>
+              <td style="border: 1px solid #ddd; padding: 8px; font-size: 12px;">{$line['label']}</td>
+              <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-size: 12px;">{$fmtNum($due)} RWF</td>
+              <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-size: 12px;">{$fmtNum($paid)} RWF</td>
+              <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-size: 12px; font-weight: bold;">{$fmtNum($balance)} RWF</td>
+            </tr>
+            HTML;
+        }
+
+        $statusClass = $totalBalance <= 0 ? 'green' : 'red';
+        $statusText = $totalBalance <= 0 ? 'CLEARED' : 'OUTSTANDING';
+
+        return <<<HTML
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>{$title}</title>
+            <style>
+                * { margin: 0; padding: 0; box-sizing: border-box; }
+                body { font-family: 'Times New Roman', Times, serif; font-size: 13px; color: #333; line-height: 1.4; }
+                .page { max-width: 21cm; margin: 0 auto; padding: 20mm; background: white; }
+                .header { text-align: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid #333; }
+                .header h1 { font-size: 20px; font-weight: bold; margin-bottom: 5px; }
+                .header p { font-size: 11px; color: #666; margin: 2px 0; }
+                .info { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; font-size: 12px; }
+                .info-block { }
+                .info-block label { font-weight: bold; display: block; margin-bottom: 3px; }
+                .info-block value { display: block; margin-bottom: 8px; }
+                .title { font-size: 16px; font-weight: bold; margin: 20px 0 10px 0; }
+                table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+                table th { background: #f5f5f5; border: 1px solid #ddd; padding: 10px; text-align: left; font-weight: bold; font-size: 12px; }
+                table td { border: 1px solid #ddd; padding: 8px; font-size: 12px; }
+                .total-row { background: #f9f9f9; font-weight: bold; }
+                .status { margin-top: 20px; padding: 15px; border-radius: 5px; text-align: center; font-weight: bold; }
+                .status.cleared { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+                .status.outstanding { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+                .footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; font-size: 10px; color: #999; text-align: center; }
+            </style>
+        </head>
+        <body>
+            <div class="page">
+                <div class="header">
+                    <h1>CATHOLIC UNIVERSITY OF RWANDA</h1>
+                    <p>Management Information System</p>
+                </div>
+
+                <div class="info">
+                    <div class="info-block">
+                        <label>Student Name:</label>
+                        <value>{$student['fname']} {$student['lname']}</value>
+                        <label>Registration Number:</label>
+                        <value>{$student['regnumber']}</value>
+                        <label>Program:</label>
+                        <value>{$student['dep_name']}</value>
+                    </div>
+                    <div class="info-block">
+                        <label>Level:</label>
+                        <value>{$student['current_level']}</value>
+                        <label>Academic Year:</label>
+                        <value>{$acYear}</value>
+                        {$semester ? "<label>Semester:</label><value>Semester {$semester}</value>" : ''}
+                        <label>Generated:</label>
+                        <value>{$generatedDate}</value>
+                    </div>
+                </div>
+
+                <div class="title">{$title}</div>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Fee Description</th>
+                            <th style="text-align: right;">Amount Due</th>
+                            <th style="text-align: right;">Amount Paid</th>
+                            <th style="text-align: right;">Balance</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {$tbody}
+                        <tr class="total-row">
+                            <td>TOTAL</td>
+                            <td style="text-align: right;">{$fmtNum($totalDue)} RWF</td>
+                            <td style="text-align: right;">{$fmtNum($totalPaid)} RWF</td>
+                            <td style="text-align: right;">{$fmtNum($totalBalance)} RWF</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div class="status {$statusClass}">
+                    Status: {$statusText}
+                </div>
+
+                <div class="footer">
+                    <p>This is an official document. Generated on {$generatedDate}</p>
+                    <p>For inquiries, contact the Finance Office</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        HTML;
+    }
 }

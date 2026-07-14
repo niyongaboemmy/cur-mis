@@ -1878,4 +1878,456 @@ class FeeController extends BaseController
 
         $this->success($response, null, 'Application payment rejected.');
     }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Per-Credit Rates (retake/part-time modules by faculty)
+    // ────────────────────────────────────────────────────────────────────────
+
+    /** GET /api/finance/per-credit-rates */
+    public function listPerCreditRates(Request $request, Response $response): never
+    {
+        $perCreditRateModel = new \App\Models\FeePerCreditRateModel();
+        $filters = [
+            'academic_year_id' => $request->query()['academic_year_id'] ?? null,
+            'faculty_id'       => $request->query()['faculty_id'] ?? null,
+            'is_active'        => isset($request->query()['is_active']) ? (int)$request->query()['is_active'] : null,
+        ];
+        $data = $perCreditRateModel->listWithJoins(array_filter($filters, fn ($v) => $v !== null && $v !== ''));
+
+        $this->success($response, $data, 'Per-credit rates retrieved.');
+    }
+
+    /** POST /api/finance/per-credit-rates */
+    public function createPerCreditRate(Request $request, Response $response): never
+    {
+        $data  = $request->body();
+        $actor = $request->param('_auth_user');
+
+        $errors = ValidationHelper::validate($data, [
+            'academic_year_id' => 'required|integer',
+            'faculty_id'       => 'required|integer',
+            'amount_per_credit' => 'required|numeric|min:0',
+        ]);
+        if (!empty($errors)) $this->error($response, 'Validation failed.', 422, $errors);
+
+        $perCreditRateModel = new \App\Models\FeePerCreditRateModel();
+        $existing = $perCreditRateModel->findForFaculty((int)$data['academic_year_id'], (int)$data['faculty_id']);
+        if ($existing) {
+            $this->error($response, 'Per-credit rate already exists for this faculty and academic year.', 422);
+        }
+
+        $id = $perCreditRateModel->create([
+            'academic_year_id'  => (int)$data['academic_year_id'],
+            'faculty_id'        => (int)$data['faculty_id'],
+            'amount_per_credit' => (float)$data['amount_per_credit'],
+            'is_active'         => isset($data['is_active']) ? (int)(bool)$data['is_active'] : 1,
+            'created_by'        => (int)($actor->id ?? 0),
+        ]);
+
+        SystemLogService::log('CREATE', 'FINANCE', "Created per-credit rate for faculty ID {$data['faculty_id']}, year ID {$data['academic_year_id']}: {$data['amount_per_credit']} RWF/credit.", (int)$id, 'fee_per_credit_rate', null, (array)$actor ?: null);
+        $this->success($response, ['id' => (int)$id], 'Per-credit rate created.', 201);
+    }
+
+    /** PUT /api/finance/per-credit-rates/:id */
+    public function updatePerCreditRate(Request $request, Response $response): never
+    {
+        $id    = (int)$request->param('id');
+        $data  = $request->body();
+        $actor = $request->param('_auth_user');
+
+        $perCreditRateModel = new \App\Models\FeePerCreditRateModel();
+        $existing = $perCreditRateModel->find($id);
+        if (!$existing) $this->error($response, 'Per-credit rate not found.', 404);
+
+        $errors = ValidationHelper::validate($data, [
+            'amount_per_credit' => 'required|numeric|min:0',
+        ]);
+        if (!empty($errors)) $this->error($response, 'Validation failed.', 422, $errors);
+
+        $perCreditRateModel->update($id, array_filter([
+            'amount_per_credit' => (float)$data['amount_per_credit'],
+            'is_active'         => isset($data['is_active']) ? (int)(bool)$data['is_active'] : null,
+        ], fn ($v) => $v !== null && $v !== ''));
+
+        SystemLogService::log('UPDATE', 'FINANCE', "Updated per-credit rate ID {$id}: {$data['amount_per_credit']} RWF/credit.", $id, 'fee_per_credit_rate', null, (array)$actor ?: null);
+        $this->success($response, null, 'Per-credit rate updated.');
+    }
+
+    /** DELETE /api/finance/per-credit-rates/:id */
+    public function deletePerCreditRate(Request $request, Response $response): never
+    {
+        $id    = (int)$request->param('id');
+        $actor = $request->param('_auth_user');
+
+        $perCreditRateModel = new \App\Models\FeePerCreditRateModel();
+        $existing = $perCreditRateModel->find($id);
+        if (!$existing) $this->error($response, 'Per-credit rate not found.', 404);
+
+        $perCreditRateModel->delete($id);
+
+        SystemLogService::log('DELETE', 'FINANCE', "Deleted per-credit rate ID {$id}.", $id, 'fee_per_credit_rate', null, (array)$actor ?: null);
+        $this->success($response, null, 'Per-credit rate deleted.');
+    }
+
+    /**
+     * POST /api/finance/structures/bulk-import
+     * Bulk import fee structures from CSV.
+     * Body: { rows: [{ academic_year_id, department_name, level_name, fee_type_code, label, amount, semester, payment_plan, installment_count }, ...] }
+     * Returns: { created, updated, skipped, failed: [{ index, error, errors? }] }
+     */
+    public function bulkImportStructures(Request $request, Response $response): never
+    {
+        $body = $request->body();
+        $rows = $body['rows'] ?? [];
+        $actor = $request->param('_auth_user');
+
+        if (!is_array($rows)) {
+            $this->error($response, 'rows must be an array.', 422);
+        }
+
+        $db = \Core\Database::getInstance();
+        $created = 0;
+        $updated = 0;
+        $skipped = 0;
+        $failed = [];
+
+        // Pre-load lookups
+        $feeCodes = $this->getActiveFeeCodes();
+        $academicYears = $db->fetchAll("SELECT id, label FROM academic_years");
+        $yearsByLabel = [];
+        foreach ($academicYears as $y) {
+            $yearsByLabel[strtolower(trim((string)$y['label']))] = $y['id'];
+        }
+
+        $departments = $db->fetchAll("SELECT dep_id, dep_name FROM departements");
+        $deptsByName = [];
+        foreach ($departments as $d) {
+            $deptsByName[strtolower(trim((string)$d['dep_name']))] = $d['dep_id'];
+        }
+
+        $levels = $db->fetchAll("SELECT id, level_name FROM level");
+        $levelsByName = [];
+        foreach ($levels as $l) {
+            $levelsByName[strtolower(trim((string)$l['level_name']))] = $l['id'];
+        }
+
+        foreach ($rows as $idx => $row) {
+            if (!is_array($row)) {
+                $failed[] = ['index' => $idx, 'error' => 'Row must be an object.'];
+                continue;
+            }
+
+            $errs = [];
+
+            // Resolve academic_year_id
+            $yearId = null;
+            if (!empty($row['academic_year_id'])) {
+                $yearId = (int)$row['academic_year_id'];
+            } elseif (!empty($row['academic_year_label'])) {
+                $yearKey = strtolower(trim((string)$row['academic_year_label']));
+                $yearId = $yearsByLabel[$yearKey] ?? null;
+                if (!$yearId) $errs['academic_year_label'] = 'Academic year not found: ' . $row['academic_year_label'];
+            } else {
+                $errs['academic_year_id'] = 'academic_year_id or academic_year_label is required.';
+            }
+
+            // Resolve department_id
+            $deptId = null;
+            if (!empty($row['department_name'])) {
+                $deptKey = strtolower(trim((string)$row['department_name']));
+                $deptId = $deptsByName[$deptKey] ?? null;
+                if (!$deptId) $errs['department_name'] = 'Department not found: ' . $row['department_name'];
+            } else {
+                $errs['department_name'] = 'department_name is required.';
+            }
+
+            // Resolve level_id
+            $levelId = null;
+            if (!empty($row['level_name'])) {
+                $levelKey = strtolower(trim((string)$row['level_name']));
+                $levelId = $levelsByName[$levelKey] ?? null;
+                if (!$levelId) $errs['level_name'] = 'Level not found: ' . $row['level_name'];
+            }
+
+            // Validate fee_type_code
+            $feeType = $row['fee_type_code'] ?? $row['fee_type'] ?? null;
+            if (!$feeType || !in_array($feeType, $feeCodes, true)) {
+                $errs['fee_type_code'] = 'Invalid or inactive fee type: ' . ($feeType ?? 'missing');
+            }
+
+            // Validate required fields
+            if (empty($row['label'])) $errs['label'] = 'label is required.';
+            if (empty($row['amount'])) {
+                $errs['amount'] = 'amount is required.';
+            } elseif (!is_numeric($row['amount'])) {
+                $errs['amount'] = 'amount must be numeric.';
+            }
+
+            if (!empty($errs)) {
+                $failed[] = ['index' => $idx, 'error' => 'Validation failed', 'errors' => $errs];
+                continue;
+            }
+
+            try {
+                $validPlans = ['full_year', 'per_semester', 'per_installment'];
+                $paymentPlan = in_array($row['payment_plan'] ?? '', $validPlans, true)
+                    ? $row['payment_plan'] : 'full_year';
+
+                $id = $this->structureModel->create([
+                    'academic_year_id'  => (int)$yearId,
+                    'department_id'     => (int)$deptId,
+                    'level_id'          => $levelId ? (int)$levelId : null,
+                    'fee_type'          => $feeType,
+                    'label'             => (string)$row['label'],
+                    'amount'            => (float)$row['amount'],
+                    'semester'          => !empty($row['semester']) ? (int)$row['semester'] : null,
+                    'payment_plan'      => $paymentPlan,
+                    'installment_count' => !empty($row['installment_count']) ? (int)$row['installment_count'] : null,
+                    'is_active'         => 1,
+                    'created_by'        => (int)$actor['id'],
+                ]);
+
+                $created++;
+            } catch (\Throwable $e) {
+                $failed[] = ['index' => $idx, 'error' => $e->getMessage()];
+            }
+        }
+
+        SystemLogService::log('CREATE', 'FINANCE', "Bulk import fee structures: {$created} created, {$updated} updated, {$skipped} skipped.", null, 'fee_structure', ['created' => $created, 'updated' => $updated, 'skipped' => $skipped], (array)$actor ?: null);
+        $this->success($response, [
+            'created' => $created,
+            'updated' => $updated,
+            'skipped' => $skipped,
+            'failed'  => $failed,
+        ], 'Bulk import complete.');
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Fee Invoice / Bill PDF Downloads
+    // ────────────────────────────────────────────────────────────────────────
+
+    /**
+     * GET /api/finance/invoices/:id/pdf
+     * Download a single fee invoice as PDF.
+     */
+    public function downloadInvoicePdf(Request $request, Response $response): never
+    {
+        $invoiceId = (int)$request->param('id');
+        $invoice = $this->invoiceModel->find($invoiceId);
+
+        if (!$invoice) {
+            $this->error($response, 'Invoice not found.', 404);
+        }
+
+        // Fetch student and fee type info
+        $db = \Core\Database::getInstance();
+        $studentRaw = $db->fetchOne(
+            "SELECT s.*, d.dep_name, f.fac_name
+             FROM student s
+             LEFT JOIN departements d ON d.dep_id = s.department
+             LEFT JOIN faculty f ON f.fac_id = d.fac_id
+             WHERE s.regnumber = ?
+             LIMIT 1",
+            [(string)$invoice['student_id']]
+        );
+
+        if (!$studentRaw) {
+            $this->error($response, 'Student not found.', 404);
+        }
+
+        $feeType = $db->fetchOne(
+            "SELECT label FROM fee_types WHERE code = ? LIMIT 1",
+            [(string)$invoice['fee_type']]
+        );
+
+        // Build invoice line item
+        $invoiceLines = [[
+            'label'        => $feeType['label'] ?? $invoice['fee_type'] ?? 'Fee',
+            'amount_due'   => (float)$invoice['amount_due'],
+            'amount_paid'  => (float)$invoice['amount_paid'],
+            'balance'      => (float)$invoice['amount_due'] - (float)$invoice['amount_paid'],
+        ]];
+
+        $meta = [
+            'title'           => 'Fee Invoice',
+            'academic_year'   => $invoice['academic_year_id'],
+            'semester'        => $invoice['semester'],
+            'generated_date'  => date('Y-m-d'),
+        ];
+
+        \App\Helpers\FeeInvoicePdf::streamPdf(
+            $studentRaw,
+            $invoiceLines,
+            $meta,
+            "invoice-{$invoiceId}.pdf"
+        );
+    }
+
+    /**
+     * GET /api/finance/students/:studentId/bill/pdf
+     * Download a consolidated bill/statement for a student for a given academic year/semester.
+     * Query params: academic_year_id, semester (optional)
+     */
+    public function downloadStudentBillPdf(Request $request, Response $response): never
+    {
+        $studentId = (string)$request->param('studentId');
+        $yearId = (int)($request->query()['academic_year_id'] ?? 0);
+        $semester = !empty($request->query()['semester']) ? (int)$request->query()['semester'] : null;
+
+        if (!$yearId) {
+            $this->error($response, 'academic_year_id is required.', 422);
+        }
+
+        // Fetch student
+        $db = \Core\Database::getInstance();
+        $studentRaw = $db->fetchOne(
+            "SELECT s.*, d.dep_name, f.fac_name
+             FROM student s
+             LEFT JOIN departements d ON d.dep_id = s.department
+             LEFT JOIN faculty f ON f.fac_id = d.fac_id
+             WHERE s.regnumber = ?
+             LIMIT 1",
+            [$studentId]
+        );
+
+        if (!$studentRaw) {
+            $this->error($response, 'Student not found.', 404);
+        }
+
+        // Fetch all invoices for this student in the year (and optional semester)
+        $semesterSql = $semester !== null ? 'AND fi.semester = ?' : 'AND (fi.semester IS NULL OR fi.semester = 1)';
+        $bindings = [$studentId, $yearId];
+        if ($semester !== null) {
+            $bindings[] = $semester;
+        }
+
+        $invoices = $db->fetchAll(
+            "SELECT fi.*, ft.label as fee_type_label
+             FROM fee_invoices fi
+             LEFT JOIN fee_types ft ON ft.code = fi.fee_type
+             WHERE fi.student_id = ? AND fi.academic_year_id = ? {$semesterSql}
+             ORDER BY fi.fee_type, fi.id",
+            $bindings
+        );
+
+        if (empty($invoices)) {
+            $this->error($response, 'No invoices found for this student in the specified period.', 404);
+        }
+
+        // Build consolidated invoice lines
+        $invoiceLines = [];
+        $totalDue = 0;
+        $totalPaid = 0;
+        foreach ($invoices as $inv) {
+            $invoiceLines[] = [
+                'label'        => $inv['fee_type_label'] ?? $inv['fee_type'] ?? 'Fee',
+                'amount_due'   => (float)$inv['amount_due'],
+                'amount_paid'  => (float)$inv['amount_paid'],
+                'balance'      => (float)$inv['amount_due'] - (float)$inv['amount_paid'],
+            ];
+            $totalDue += (float)$inv['amount_due'];
+            $totalPaid += (float)$inv['amount_paid'];
+        }
+
+        // Fetch academic year label
+        $year = $db->fetchOne("SELECT label FROM academic_years WHERE id = ? LIMIT 1", [$yearId]);
+        $yearLabel = $year['label'] ?? $yearId;
+
+        $meta = [
+            'title'           => 'Statement of Account',
+            'academic_year'   => $yearLabel,
+            'semester'        => $semester,
+            'generated_date'  => date('Y-m-d'),
+        ];
+
+        \App\Helpers\FeeInvoicePdf::streamPdf(
+            $studentRaw,
+            $invoiceLines,
+            $meta,
+            "bill-{$studentId}-{$yearLabel}.pdf"
+        );
+    }
+
+    /**
+     * GET /api/finance/my/bill/pdf
+     * Student self-service: download own bill (requires authentication).
+     * Query params: academic_year_id, semester (optional)
+     */
+    public function downloadMyBillPdf(Request $request, Response $response): never
+    {
+        $actor = $request->param('_auth_user');
+        if (!isset($actor->student_id) || !$actor->student_id) {
+            $this->error($response, 'Only students can access this endpoint.', 403);
+        }
+
+        // Reuse the same logic as downloadStudentBillPdf but for the authenticated student
+        $yearId = (int)($request->query()['academic_year_id'] ?? 0);
+        if (!$yearId) {
+            $this->error($response, 'academic_year_id is required.', 422);
+        }
+
+        $studentId = (string)$actor->student_id;
+        $semester = !empty($request->query()['semester']) ? (int)$request->query()['semester'] : null;
+
+        $db = \Core\Database::getInstance();
+        $studentRaw = $db->fetchOne(
+            "SELECT s.*, d.dep_name, f.fac_name
+             FROM student s
+             LEFT JOIN departements d ON d.dep_id = s.department
+             LEFT JOIN faculty f ON f.fac_id = d.fac_id
+             WHERE s.regnumber = ?
+             LIMIT 1",
+            [$studentId]
+        );
+
+        if (!$studentRaw) {
+            $this->error($response, 'Student record not found.', 404);
+        }
+
+        $semesterSql = $semester !== null ? 'AND fi.semester = ?' : 'AND (fi.semester IS NULL OR fi.semester = 1)';
+        $bindings = [$studentId, $yearId];
+        if ($semester !== null) {
+            $bindings[] = $semester;
+        }
+
+        $invoices = $db->fetchAll(
+            "SELECT fi.*, ft.label as fee_type_label
+             FROM fee_invoices fi
+             LEFT JOIN fee_types ft ON ft.code = fi.fee_type
+             WHERE fi.student_id = ? AND fi.academic_year_id = ? {$semesterSql}
+             ORDER BY fi.fee_type, fi.id",
+            $bindings
+        );
+
+        if (empty($invoices)) {
+            $this->error($response, 'No invoices found for your account in the specified period.', 404);
+        }
+
+        $invoiceLines = [];
+        foreach ($invoices as $inv) {
+            $invoiceLines[] = [
+                'label'        => $inv['fee_type_label'] ?? $inv['fee_type'] ?? 'Fee',
+                'amount_due'   => (float)$inv['amount_due'],
+                'amount_paid'  => (float)$inv['amount_paid'],
+                'balance'      => (float)$inv['amount_due'] - (float)$inv['amount_paid'],
+            ];
+        }
+
+        $year = $db->fetchOne("SELECT label FROM academic_years WHERE id = ? LIMIT 1", [$yearId]);
+        $yearLabel = $year['label'] ?? $yearId;
+
+        $meta = [
+            'title'           => 'Statement of Account',
+            'academic_year'   => $yearLabel,
+            'semester'        => $semester,
+            'generated_date'  => date('Y-m-d'),
+        ];
+
+        \App\Helpers\FeeInvoicePdf::streamPdf(
+            $studentRaw,
+            $invoiceLines,
+            $meta,
+            "bill-{$yearLabel}.pdf"
+        );
+    }
 }

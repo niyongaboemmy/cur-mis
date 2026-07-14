@@ -113,6 +113,7 @@ import OnlinePaymentsHistoryPage from "@/pages/finance/OnlinePaymentsHistoryPage
 import SponsorsPage from "@/pages/finance/SponsorsPage";
 import ExpenseCategoriesPage from "@/pages/finance/ExpenseCategoriesPage";
 import FeeTypesPage from "@/pages/finance/FeeTypesPage";
+import PerCreditRatesPage from "@/pages/finance/PerCreditRatesPage";
 import AppFeeReconciliationPage from "@/pages/finance/AppFeeReconciliationPage";
 import ReceiptPdfPage from "@/pages/finance/ReceiptPdfPage";
 import MyFinancePage from "@/pages/finance/MyFinancePage";
@@ -537,6 +538,7 @@ function App() {
                   </Route>
                   <Route path="structures" element={<FeeStructuresPage />} />
                   <Route path="fee-types" element={<FeeTypesPage />} />
+                  <Route path="per-credit-rates" element={<PerCreditRatesPage />} />
                   <Route path="bursaries" element={<BursariesPage />} />
                   <Route path="sponsors" element={<SponsorsPage />} />
                   <Route path="expenses" element={<ExpensesPage />} />

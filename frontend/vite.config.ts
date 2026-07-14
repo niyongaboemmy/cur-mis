@@ -23,18 +23,19 @@ export default defineConfig(({ mode }) => {
     },
 
     server: {
-      port: 5173,
+      port: 5180,
       // Bind to 0.0.0.0 so other devices on the same LAN can reach the dev
-      // server (e.g. http://<your-LAN-IP>:5173). The /api proxy below still
-      // runs on this machine and forwards to the local MAMP backend.
+      // server (e.g. http://<your-LAN-IP>:5180). The /api proxy below still
+      // runs on this machine and forwards to the PHP dev backend server.
       host: true,
       proxy: {
         "/api": {
-          // In dev, Vite proxies /api/* to the local PHP backend.
-          // MAMP default port is 8888. If your MAMP runs on port 80, set MAMP_PORT=80 in .env
-          target: `http://localhost:${mampPort}/cur-mis/backend/public`,
+          // Proxy to PHP dev server running on port 9000
+          // Start with: php backend-dev-server.php
+          target: `http://localhost:9000`,
           changeOrigin: true,
           secure: false,
+          rewrite: (path) => path,
         },
       },
     },

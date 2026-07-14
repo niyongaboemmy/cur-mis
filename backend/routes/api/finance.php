@@ -25,6 +25,8 @@ $router->group('/api/finance', function ($router) {
         $r->get('/online-payments',          [FeeController::class, 'listOnlinePaymentsHistory']);
         $r->get('/payments/pending-count',   [FeeController::class, 'getPendingPaymentCount']);
         $r->get('/payments/:id/receipt',     [FeeController::class, 'getReceipt']);
+        $r->get('/invoices/:id/pdf',         [FeeController::class, 'downloadInvoicePdf']);
+        $r->get('/students/:studentId/bill/pdf', [FeeController::class, 'downloadStudentBillPdf']);
         $r->get('/bursaries',                [FeeController::class, 'listBursaries']);
         $r->get('/sponsors',                 [FeeController::class, 'listSponsors']);
         $r->get('/overrides',                [FeeController::class, 'listOverrides']);
@@ -40,6 +42,7 @@ $router->group('/api/finance', function ($router) {
         $r->get('/expenses',                 [FeeController::class, 'listExpenses']);
         $r->get('/expenses/categories',      [FeeController::class, 'listExpenseCategories']);
         $r->get('/fee-types',                [FeeController::class, 'listFeeTypes']);
+        $r->get('/per-credit-rates',         [FeeController::class, 'listPerCreditRates']);
         $r->get('/clearance',                    [FeeController::class, 'getClearanceStatus']);
         $r->get('/clearance/exam-eligibility',   [FeeController::class, 'getExamEligibility']);
         $r->get('/clearance/bulk',               [FeeController::class, 'getBulkClearance']);
@@ -59,6 +62,7 @@ $router->group('/api/finance', function ($router) {
     $router->group('/my', function ($r) {
         $r->get('/invoices',  [FeeController::class, 'getMyInvoices']);
         $r->get('/clearance', [FeeController::class, 'getMyClearance']);
+        $r->get('/bill/pdf',  [FeeController::class, 'downloadMyBillPdf']);
     }, [new MaybePermissionMiddleware([
         Permissions::ACCESS_STUDENT_PORTAL,
         Permissions::MY_INVOICE,
@@ -67,6 +71,7 @@ $router->group('/api/finance', function ($router) {
     // ── Writes ────────────────────────────────────────────────────────────────
     $router->group('', function ($r) {
         $r->post('/structures',              [FeeController::class, 'createStructure']);
+        $r->post('/structures/bulk-import',  [FeeController::class, 'bulkImportStructures']);
         $r->put('/structures/:id',           [FeeController::class, 'updateStructure']);
         $r->delete('/structures/:id',        [FeeController::class, 'deleteStructure']);
 
@@ -108,6 +113,10 @@ $router->group('/api/finance', function ($router) {
         $r->post('/fee-types',               [FeeController::class, 'createFeeType']);
         $r->put('/fee-types/:id',            [FeeController::class, 'updateFeeType']);
         $r->delete('/fee-types/:id',         [FeeController::class, 'deleteFeeType']);
+
+        $r->post('/per-credit-rates',        [FeeController::class, 'createPerCreditRate']);
+        $r->put('/per-credit-rates/:id',     [FeeController::class, 'updatePerCreditRate']);
+        $r->delete('/per-credit-rates/:id',  [FeeController::class, 'deletePerCreditRate']);
 
         $r->post('/clearance',               [FeeController::class, 'grantClearance']);
         $r->post('/clearance/bulk',          [FeeController::class, 'runBulkClearance']);

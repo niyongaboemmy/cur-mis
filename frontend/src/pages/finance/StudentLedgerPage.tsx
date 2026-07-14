@@ -11,9 +11,10 @@ import {
   ArrowLeft,
   CheckCircle2,
   Info,
+  Download,
 } from "lucide-react";
 import toast from "react-hot-toast";
-import { ledgerService, feeStructureService } from "@/services/financeService";
+import { ledgerService, feeStructureService, feeInvoicePdfService } from "@/services/financeService";
 import { academicService } from "@/services/academicService";
 import type { FeeInvoice, FeeType, FeeStructure } from "@/types/finance";
 import {
@@ -191,19 +192,40 @@ export default function StudentLedgerPage() {
                 </div>
               </div>
 
-              {yearId && totals && (
-                <div
-                  className={`px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 ${
-                    Number(totals.balance) <= 0
-                      ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                      : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
-                  }`}
-                >
-                  {Number(totals.balance) <= 0
-                    ? "Cleared for Year"
-                    : "Balance Pending"}
-                </div>
-              )}
+              <div className="flex items-center gap-2">
+                {yearId && studentId && (
+                  <button
+                    onClick={() => {
+                      const url = feeInvoicePdfService.downloadStudentBillPdf(
+                        studentId,
+                        {
+                          academic_year_id: Number(yearId),
+                        }
+                      );
+                      window.open(url, "_blank");
+                    }}
+                    className="btn-secondary btn-sm flex items-center gap-1.5"
+                    title="Download Statement of Account PDF"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Download Bill</span>
+                  </button>
+                )}
+
+                {yearId && totals && (
+                  <div
+                    className={`px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 ${
+                      Number(totals.balance) <= 0
+                        ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                        : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                    }`}
+                  >
+                    {Number(totals.balance) <= 0
+                      ? "Cleared for Year"
+                      : "Balance Pending"}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -312,9 +334,19 @@ export default function StudentLedgerPage() {
                           <InvoiceStatusBadge status={inv.status} />
                         </td>
                         <td
-                          className="px-4 py-2.5"
+                          className="px-4 py-2.5 flex items-center gap-1"
                           onClick={(e) => e.stopPropagation()}
                         >
+                          <button
+                            className="btn-ghost btn-xs text-ink-500 hover:text-ink-900 dark:hover:text-white"
+                            onClick={() => {
+                              const url = feeInvoicePdfService.downloadInvoicePdf(inv.id);
+                              window.open(url, "_blank");
+                            }}
+                            title="Download invoice PDF"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                          </button>
                           {inv.status !== "paid" &&
                             inv.status !== "waived" &&
                             inv.fee_type !== "BURSARY_CREDIT" && (

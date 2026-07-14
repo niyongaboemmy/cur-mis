@@ -18,7 +18,7 @@ import {
 
 type KpiFilter = "all" | "expected" | "collected" | "bursary" | "pending" | "partial" | "overdue";
 import toast from "react-hot-toast";
-import { billingService } from "@/services/financeService";
+import { billingService, feeInvoicePdfService } from "@/services/financeService";
 import { academicService } from "@/services/academicService";
 import { api, apiClient } from "@/services/api";
 import { useSystemStore } from "@/store/systemStore";
@@ -593,10 +593,27 @@ export default function StudentBillingPage() {
                       </td>
 
                       {/* Action */}
-                      <td className="px-4 py-3 text-center">
+                      <td className="px-4 py-3 text-center flex items-center justify-center gap-1">
+                        {yearId && (
+                          <button
+                            onClick={() => {
+                              const url = feeInvoicePdfService.downloadStudentBillPdf(
+                                s.regnumber,
+                                {
+                                  academic_year_id: Number(yearId),
+                                }
+                              );
+                              window.open(url, "_blank");
+                            }}
+                            className="w-8 h-8 rounded-lg bg-ink-50 dark:bg-ink-800 text-ink-400 hover:bg-green-500 hover:text-white flex items-center justify-center transition-all"
+                            title="Download bill PDF"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         <Link
                           to={`/finance/billing/${s.regnumber}`}
-                          className="w-8 h-8 rounded-lg bg-ink-50 dark:bg-ink-800 text-ink-400 hover:bg-brand hover:text-white flex items-center justify-center mx-auto transition-all"
+                          className="w-8 h-8 rounded-lg bg-ink-50 dark:bg-ink-800 text-ink-400 hover:bg-brand hover:text-white flex items-center justify-center transition-all"
                           title="View ledger"
                         >
                           <ArrowRight className="w-3.5 h-3.5" />
