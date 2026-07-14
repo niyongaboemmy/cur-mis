@@ -59,6 +59,12 @@ $router->group('/api/academics-management/options', function (Core\Router $r) {
 // the Modules tab uses. The wide curriculum endpoints stay registered so
 // they can back the future Schedules feature without UI churn.
 $router->group('/api/academics-management/modules', function (Core\Router $r) {
+    $r->get('',                    [AcademicsManagementController::class, 'index']);
+    $r->get('/:id',                [AcademicsManagementController::class, 'show']);
+    $r->post('',                   [AcademicsManagementController::class, 'create']);
+    $r->post('/bulk-import',       [AcademicsManagementController::class, 'bulkImport']);
+    $r->put('/:id',                [AcademicsManagementController::class, 'update']);
+    $r->delete('/:id',             [AcademicsManagementController::class, 'delete']);
     $r->post('/program-import',    [AcademicsManagementController::class, 'programImport']);
     $r->post('/curriculum-import', [AcademicsManagementController::class, 'curriculumImport']);
     $r->get ('/curriculum-export', [AcademicsManagementController::class, 'curriculumExport']);
