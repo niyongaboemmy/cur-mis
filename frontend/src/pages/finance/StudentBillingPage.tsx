@@ -647,14 +647,17 @@ export default function StudentBillingPage() {
                       <td className="px-4 py-3 text-center flex items-center justify-center gap-1">
                         {yearId && (
                           <button
-                            onClick={() => {
-                              const url = feeInvoicePdfService.downloadStudentBillPdf(
-                                s.regnumber,
-                                {
-                                  academic_year_id: Number(yearId),
-                                }
-                              );
-                              window.open(url, "_blank");
+                            onClick={async () => {
+                              try {
+                                await feeInvoicePdfService.downloadStudentBillPdf(
+                                  s.regnumber,
+                                  {
+                                    academic_year_id: Number(yearId),
+                                  }
+                                );
+                              } catch (error) {
+                                toast.error("Failed to download bill");
+                              }
                             }}
                             className="w-8 h-8 rounded-lg bg-ink-50 dark:bg-ink-800 text-ink-400 hover:bg-green-500 hover:text-white flex items-center justify-center transition-all"
                             title="Download bill PDF"

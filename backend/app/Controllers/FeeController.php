@@ -2238,11 +2238,7 @@ class FeeController extends BaseController
             $bindings
         );
 
-        if (empty($invoices)) {
-            $this->error($response, 'No invoices found for this student in the specified period.', 404);
-        }
-
-        // Build consolidated invoice lines
+        // Build consolidated invoice lines (empty if no invoices)
         $invoiceLines = [];
         $totalDue = 0;
         $totalPaid = 0;
@@ -2255,6 +2251,18 @@ class FeeController extends BaseController
             ];
             $totalDue += (float)$inv['amount_due'];
             $totalPaid += (float)$inv['amount_paid'];
+        }
+
+        // If no invoices, still generate bill showing zero balance
+        if (empty($invoiceLines)) {
+            $invoiceLines = [
+                [
+                    'label'        => 'No invoices generated',
+                    'amount_due'   => 0,
+                    'amount_paid'  => 0,
+                    'balance'      => 0,
+                ]
+            ];
         }
 
         // Fetch academic year label

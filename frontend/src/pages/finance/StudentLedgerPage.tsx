@@ -195,14 +195,17 @@ export default function StudentLedgerPage() {
               <div className="flex items-center gap-2">
                 {yearId && studentId && (
                   <button
-                    onClick={() => {
-                      const url = feeInvoicePdfService.downloadStudentBillPdf(
-                        studentId,
-                        {
-                          academic_year_id: Number(yearId),
-                        }
-                      );
-                      window.open(url, "_blank");
+                    onClick={async () => {
+                      try {
+                        await feeInvoicePdfService.downloadStudentBillPdf(
+                          studentId,
+                          {
+                            academic_year_id: Number(yearId),
+                          }
+                        );
+                      } catch (error) {
+                        toast.error("Failed to download bill");
+                      }
                     }}
                     className="btn-secondary btn-sm flex items-center gap-1.5"
                     title="Download Statement of Account PDF"
@@ -339,9 +342,12 @@ export default function StudentLedgerPage() {
                         >
                           <button
                             className="btn-ghost btn-xs text-ink-500 hover:text-ink-900 dark:hover:text-white"
-                            onClick={() => {
-                              const url = feeInvoicePdfService.downloadInvoicePdf(inv.id);
-                              window.open(url, "_blank");
+                            onClick={async () => {
+                              try {
+                                await feeInvoicePdfService.downloadInvoicePdf(inv.id);
+                              } catch (error) {
+                                toast.error("Failed to download invoice");
+                              }
                             }}
                             title="Download invoice PDF"
                           >

@@ -786,16 +786,56 @@ export const appFeeReconciliationService = {
 };
 
 export const feeInvoicePdfService = {
-  downloadInvoicePdf: (invoiceId: number) =>
-    `${apiClient.defaults.baseURL}/api/finance/invoices/${invoiceId}/pdf`,
+  downloadInvoicePdf: async (invoiceId: number) => {
+    const response = await apiClient.get(
+      `/api/finance/invoices/${invoiceId}/pdf`,
+      { responseType: 'blob' }
+    );
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `invoice-${invoiceId}.pdf`);
+    document.body.appendChild(link);
+    link.click();
+    link.parentNode?.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  },
 
-  downloadStudentBillPdf: (studentId: string, params?: { academic_year_id: number; semester?: number }) =>
-    `${apiClient.defaults.baseURL}/api/finance/students/${studentId}/bill/pdf${
-      params ? `?academic_year_id=${params.academic_year_id}${params.semester ? `&semester=${params.semester}` : ''}` : ''
-    }`,
+  downloadStudentBillPdf: async (studentId: string, params?: { academic_year_id: number; semester?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.academic_year_id) query.append('academic_year_id', String(params.academic_year_id));
+    if (params?.semester) query.append('semester', String(params.semester));
 
-  downloadMyBillPdf: (params?: { academic_year_id: number; semester?: number }) =>
-    `${apiClient.defaults.baseURL}/api/finance/my/bill/pdf${
-      params ? `?academic_year_id=${params.academic_year_id}${params.semester ? `&semester=${params.semester}` : ''}` : ''
-    }`,
+    const response = await apiClient.get(
+      `/api/finance/students/${studentId}/bill/pdf?${query.toString()}`,
+      { responseType: 'blob' }
+    );
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `bill-${studentId}.pdf`);
+    document.body.appendChild(link);
+    link.click();
+    link.parentNode?.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  },
+
+  downloadMyBillPdf: async (params?: { academic_year_id: number; semester?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.academic_year_id) query.append('academic_year_id', String(params.academic_year_id));
+    if (params?.semester) query.append('semester', String(params.semester));
+
+    const response = await apiClient.get(
+      `/api/finance/my/bill/pdf?${query.toString()}`,
+      { responseType: 'blob' }
+    );
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `my-bill.pdf`);
+    document.body.appendChild(link);
+    link.click();
+    link.parentNode?.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  },
 };
