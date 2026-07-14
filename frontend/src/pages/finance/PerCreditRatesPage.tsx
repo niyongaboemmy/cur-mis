@@ -23,11 +23,12 @@ interface PerCreditRate {
 interface FormState {
   academic_year_id: number | string
   faculty_id: number | string
+  department_ids?: (number | string)[] // Optional: specific departments, or empty for all
   amount_per_credit: number | string
   is_active: boolean
 }
 
-const EMPTY: FormState = { academic_year_id: '', faculty_id: '', amount_per_credit: '', is_active: true }
+const EMPTY: FormState = { academic_year_id: '', faculty_id: '', department_ids: [], amount_per_credit: '', is_active: true }
 
 // Service for per-credit rates
 const perCreditRateService = {
@@ -48,6 +49,7 @@ export default function PerCreditRatesPage() {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [selectedYearId, setSelectedYearId] = useState<number | string>('')
   const [form, setForm] = useState<FormState>(EMPTY)
+  const [showAllDepts, setShowAllDepts] = useState(true) // true = apply to all, false = select specific
 
   // Sync with global academic year
   useEffect(() => {
@@ -77,6 +79,18 @@ export default function PerCreditRatesPage() {
   const facultyOptions = faculties
     .filter((f: any) => f.fac_id && f.fac_name)
     .map((f: any) => ({ value: f.fac_id, label: f.fac_name }))
+
+  // Fetch departments for the selected faculty
+  const deptQ = useQuery({
+    queryKey: ['academics', 'departments', form.faculty_id],
+    queryFn: () => academicsMgmtService.list<any>('departments', { per_page: 1000 }),
+    enabled: !!form.faculty_id,
+  })
+  const allDepts = deptQ.data?.data?.data ?? []
+  const selectedFacultyId = Number(form.faculty_id) || null
+  const deptsByFaculty = allDepts.filter((d: any) => d.fac_id === selectedFacultyId)
+  const deptOptions = deptsByFaculty
+    .map((d: any) => ({ value: d.dep_id, label: d.dep_name }))
 
   // Fetch per-credit rates
   const ratesQ = useQuery({
@@ -241,10 +255,76 @@ export default function PerCreditRatesPage() {
                     <SearchableSelect
                       options={facultyOptions}
                       value={form.faculty_id}
-                      onChange={(v) => set('faculty_id', v)}
+                      onChange={(v) => {
+                        set('faculty_id', v)
+                        setShowAllDepts(true)
+                        set('department_ids', [])
+                      }}
                       placeholder="Select faculty…"
                     />
                   </div>
+
+                  {/* Department Selection (Optional) */}
+                  {form.faculty_id && (
+                    <div className="space-y-2 p-3 bg-ink-50 dark:bg-ink-900/30 rounded-lg border border-ink-200 dark:border-ink-700">
+                      <label className="text-xs font-semibold text-ink-600 dark:text-ink-300">
+                        Apply to (Optional)
+                      </label>
+                      <div className="flex gap-3">
+                        <label className="flex items-center gap-2 cursor-pointer text-sm">
+                          <input
+                            type="radio"
+                            name="deptScope"
+                            checked={showAllDepts}
+                            onChange={() => {
+                              setShowAllDepts(true)
+                              set('department_ids', [])
+                            }}
+                            className="w-4 h-4"
+                          />
+                          <span className="text-ink-700 dark:text-ink-200">All departments</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer text-sm">
+                          <input
+                            type="radio"
+                            name="deptScope"
+                            checked={!showAllDepts}
+                            onChange={() => setShowAllDepts(false)}
+                            className="w-4 h-4"
+                          />
+                          <span className="text-ink-700 dark:text-ink-200">Select specific</span>
+                        </label>
+                      </div>
+
+                      {!showAllDepts && deptOptions.length > 0 && (
+                        <div className="space-y-2 mt-3">
+                          <p className="text-[11px] text-ink-500">
+                            {deptOptions.length} department{deptOptions.length !== 1 ? 's' : ''} available
+                          </p>
+                          <div className="max-h-48 overflow-y-auto space-y-1.5">
+                            {deptOptions.map((opt: any) => (
+                              <label key={opt.value} className="flex items-center gap-2 cursor-pointer text-sm">
+                                <input
+                                  type="checkbox"
+                                  checked={(form.department_ids ?? []).includes(opt.value)}
+                                  onChange={(e) => {
+                                    const ids = form.department_ids ?? []
+                                    if (e.target.checked) {
+                                      set('department_ids', [...ids, opt.value])
+                                    } else {
+                                      set('department_ids', ids.filter((id) => id !== opt.value))
+                                    }
+                                  }}
+                                  className="w-4 h-4"
+                                />
+                                <span className="text-ink-700 dark:text-ink-200">{opt.label}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Amount per credit */}
                   <div className="space-y-1">

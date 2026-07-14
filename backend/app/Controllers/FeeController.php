@@ -1952,6 +1952,11 @@ class FeeController extends BaseController
             'created_by'        => (int)($actor->id ?? 0),
         ]);
 
+        // Link departments if specified
+        if (!empty($data['department_ids']) && is_array($data['department_ids'])) {
+            $perCreditRateModel->setDepartmentLinks((int)$id, $data['department_ids']);
+        }
+
         SystemLogService::log('CREATE', 'FINANCE', "Created per-credit rate for faculty ID {$data['faculty_id']}, year ID {$data['academic_year_id']}: {$data['amount_per_credit']} RWF/credit.", (int)$id, 'fee_per_credit_rate', null, (array)$actor ?: null);
         $this->success($response, ['id' => (int)$id], 'Per-credit rate created.', 201);
     }
@@ -1976,6 +1981,11 @@ class FeeController extends BaseController
             'amount_per_credit' => (float)$data['amount_per_credit'],
             'is_active'         => isset($data['is_active']) ? (int)(bool)$data['is_active'] : null,
         ], fn ($v) => $v !== null && $v !== ''));
+
+        // Update department links if specified
+        if (isset($data['department_ids'])) {
+            $perCreditRateModel->setDepartmentLinks($id, is_array($data['department_ids']) ? $data['department_ids'] : []);
+        }
 
         SystemLogService::log('UPDATE', 'FINANCE', "Updated per-credit rate ID {$id}: {$data['amount_per_credit']} RWF/credit.", $id, 'fee_per_credit_rate', null, (array)$actor ?: null);
         $this->success($response, null, 'Per-credit rate updated.');

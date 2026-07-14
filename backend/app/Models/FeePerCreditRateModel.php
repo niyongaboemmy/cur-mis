@@ -57,4 +57,40 @@ class FeePerCreditRateModel extends BaseModel
             [$academicYearId, $facultyId]
         );
     }
+
+    /**
+     * Link specific departments to a per-credit rate.
+     * If departmentIds is empty, the rate applies to all departments in the faculty.
+     */
+    public function setDepartmentLinks(int $rateId, array $departmentIds = []): void
+    {
+        // Delete existing links
+        $this->db->execute(
+            'DELETE FROM `fee_per_credit_rate_departments` WHERE fee_per_credit_rate_id = ?',
+            [$rateId]
+        );
+
+        // Insert new links if provided
+        if (!empty($departmentIds)) {
+            $stmt = $this->db->getPdo()->prepare(
+                'INSERT INTO `fee_per_credit_rate_departments` (fee_per_credit_rate_id, department_id) VALUES (?, ?)'
+            );
+            foreach ($departmentIds as $deptId) {
+                $stmt->execute([$rateId, (int)$deptId]);
+            }
+        }
+    }
+
+    /**
+     * Get departments linked to a per-credit rate.
+     * Returns empty array if rate applies to all departments.
+     */
+    public function getDepartmentLinks(int $rateId): array
+    {
+        $rows = $this->db->fetchAll(
+            'SELECT department_id FROM `fee_per_credit_rate_departments` WHERE fee_per_credit_rate_id = ? ORDER BY department_id ASC',
+            [$rateId]
+        );
+        return array_map(fn ($r) => (int)$r['department_id'], $rows);
+    }
 }

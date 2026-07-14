@@ -355,9 +355,7 @@ export const ENTITIES: EntityCfg[] = [
           const formatted = typeof displayPrice === 'number'
             ? displayPrice.toLocaleString('rw-RW', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
             : displayPrice;
-          // Show per-credit notation if it came from per_credit_price
-          const isPerCredit = !r.price && r.per_credit_price;
-          return isPerCredit ? <span className="text-amber-600">{formatted} RWF*</span> : formatted;
+          return formatted;
         }
       },
       { key: 'level',          label: 'Level',
@@ -415,8 +413,7 @@ export const ENTITIES: EntityCfg[] = [
       { header: 'Price',           key: 'price', compute: (r: any) => {
         const price = r.price ?? r.per_credit_price
         if (!price) return ''
-        const isPerCredit = !r.price && r.per_credit_price
-        return isPerCredit ? `${price}*` : price
+        return price
       }},
       { header: 'Level',           key: 'level', compute: (r: any) => {
         // Try to display level name if available, otherwise just the ID
