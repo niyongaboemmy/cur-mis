@@ -261,14 +261,13 @@ class ModuleModel extends BaseModel
         $ids = array_values(array_unique(array_map('intval', $moduleIds)));
         $ph  = implode(',', array_fill(0, count($ids), '?'));
 
-        // Order now lives on `module_programs` (per-program). Aggregate from
-        // there so the catalog listing shows the curricular order without
-        // depending on the future Schedules / module_offerings feature.
+        // Aggregate program associations. module_order is optional (nullable)
+        // so we only include it in the GROUP_CONCAT when present.
         $rows = $this->db->fetchAll(
             "SELECT
                 mp.module_id,
                 COUNT(*)                                                                          AS programs_count,
-                GROUP_CONCAT(DISTINCT mp.module_order ORDER BY mp.module_order SEPARATOR ', ')    AS orders_used,
+                GROUP_CONCAT(DISTINCT IFNULL(mp.module_order, '') SEPARATOR ', ')                 AS orders_used,
                 MIN(mp.module_order)                                                              AS min_order
              FROM `module_programs` mp
              WHERE mp.module_id IN ($ph)
