@@ -35,19 +35,19 @@ export default function StudentBillingPage() {
   const [yearId, setYearId] = useState<string | number>("");
   const [semester, setSemester] = useState<string | number>("");
 
-  // Sync with global academic year
+  // Sync with global academic year — always default to active year if nothing is selected
   useEffect(() => {
     if (selectedYearLabel) {
       const year = basics?.years?.find((y) => y.label === selectedYearLabel);
       if (year) {
         setYearId(year.id);
       }
-    } else {
-      // Fallback to active year if "All years" is selected but we need a default
+    } else if (!yearId) {
+      // Fallback to active year if yearId is not set
       const active = basics?.active_year as any;
       if (active?.id) setYearId(active.id);
     }
-  }, [selectedYearLabel, basics?.years]);
+  }, [selectedYearLabel, basics?.years, basics?.active_year]);
 
   // Sync with global academic term
   useEffect(() => {
@@ -266,21 +266,6 @@ export default function StudentBillingPage() {
             <Download className="w-3.5 h-3.5" />
             Export CSV
           </button>
-          {yearId && (
-            <button
-              className="btn-primary btn-sm flex items-center gap-1.5 px-4"
-              onClick={() => {
-                const scope = deptId ? "selected department" : facultyId ? "selected faculty" : "ALL active students"
-                if (confirm(`Run invoice generation for ${scope}? This may take a moment.`)) bulkMutation.mutate()
-              }}
-              disabled={bulkMutation.isPending}
-            >
-              {bulkMutation.isPending
-                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                : <TrendingUp className="w-3.5 h-3.5" />}
-              Run Bulk Generation
-            </button>
-          )}
         </div>
       </div>
 
@@ -378,64 +363,97 @@ export default function StudentBillingPage() {
         })}
       </div>
 
-      {/* ── Filters ────────────────────────────────────────────────────────── */}
-      <div className="card p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
-        <div>
-          <label className="block text-[10px] font-bold uppercase tracking-wider text-ink-400 mb-1.5">Academic Year</label>
-          <SearchableSelect
-            options={years.map((y: any) => ({ value: y.id, label: y.label }))}
-            value={yearId}
-            onChange={(v) => { setYearId(v); setPage(1) }}
-            placeholder="Select year…"
-          />
-        </div>
-        <div>
-          <label className="block text-[10px] font-bold uppercase tracking-wider text-ink-400 mb-1.5">Semester / Term</label>
-          <SearchableSelect
-            options={[{ value: "", label: "Full Year" }, ...terms.map((t: any) => ({ value: t.semester ?? 0, label: t.label }))]}
-            value={semester}
-            onChange={(v) => { setSemester(v); setPage(1) }}
-            placeholder="All terms"
-          />
-        </div>
-        <div>
-          <label className="block text-[10px] font-bold uppercase tracking-wider text-ink-400 mb-1.5">Faculty</label>
-          <SearchableSelect
-            options={faculties.map((f: any) => ({ value: f.fac_id, label: f.fac_name }))}
-            value={facultyId}
-            onChange={(v) => { setFacultyId(v); setDeptId(""); setPage(1) }}
-            placeholder="All faculties"
-            allLabel="All faculties"
-          />
-        </div>
-        <div>
-          <label className="block text-[10px] font-bold uppercase tracking-wider text-ink-400 mb-1.5">Department</label>
-          <SearchableSelect
-            options={departments.map((d: any) => ({ value: d.dep_id, label: d.dep_name }))}
-            value={deptId}
-            onChange={(v) => { setDeptId(v); setPage(1) }}
-            placeholder="All departments"
-            allLabel="All departments"
-            disabled={!facultyId && departments.length === 0}
-          />
-        </div>
-        <div>
-          <label className="block text-[10px] font-bold uppercase tracking-wider text-ink-400 mb-1.5">Search Students</label>
-          <div className="relative group">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-300 group-focus-within:text-brand transition-colors" />
-            <input
-              className="input input-sm pl-9 w-full"
-              placeholder="Name or Reg #…"
-              value={keyword}
-              onChange={(e) => setKeyword(e.target.value)}
+      {/* ── Filters & Bulk Generation ─────────────────────────────────────── */}
+      <div className="space-y-3">
+        {/* Filters */}
+        <div className="card p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-ink-400 mb-1.5">Academic Year</label>
+            <SearchableSelect
+              options={years.map((y: any) => ({ value: y.id, label: y.label }))}
+              value={yearId}
+              onChange={(v) => { setYearId(v); setPage(1) }}
+              placeholder="Select year…"
             />
-            {keyword && (
-              <button onClick={() => setKeyword("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-300 hover:text-red-500">
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-ink-400 mb-1.5">Semester / Term</label>
+            <SearchableSelect
+              options={[{ value: "", label: "Full Year" }, ...terms.map((t: any) => ({ value: t.semester ?? 0, label: t.label }))]}
+              value={semester}
+              onChange={(v) => { setSemester(v); setPage(1) }}
+              placeholder="All terms"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-ink-400 mb-1.5">Faculty</label>
+            <SearchableSelect
+              options={faculties.map((f: any) => ({ value: f.fac_id, label: f.fac_name }))}
+              value={facultyId}
+              onChange={(v) => { setFacultyId(v); setDeptId(""); setPage(1) }}
+              placeholder="All faculties"
+              allLabel="All faculties"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-ink-400 mb-1.5">Department</label>
+            <SearchableSelect
+              options={departments.map((d: any) => ({ value: d.dep_id, label: d.dep_name }))}
+              value={deptId}
+              onChange={(v) => { setDeptId(v); setPage(1) }}
+              placeholder="All departments"
+              allLabel="All departments"
+              disabled={!facultyId && departments.length === 0}
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-ink-400 mb-1.5">Search Students</label>
+            <div className="relative group">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-300 group-focus-within:text-brand transition-colors" />
+              <input
+                className="input input-sm pl-9 w-full"
+                placeholder="Name or Reg #…"
+                value={keyword}
+                onChange={(e) => setKeyword(e.target.value)}
+              />
+              {keyword && (
+                <button onClick={() => setKeyword("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-300 hover:text-red-500">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
+
+        {/* Bulk Generation Control */}
+        {yearId && (
+          <div className="card p-4 bg-gradient-to-r from-brand/5 to-blue-500/5 border border-brand/20 flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-brand/10 flex items-center justify-center">
+                <TrendingUp className="w-5 h-5 text-brand" />
+              </div>
+              <div>
+                <p className="font-semibold text-sm text-ink-900 dark:text-white">Generate Student Invoices</p>
+                <p className="text-[12px] text-ink-500">
+                  Create TUITION and other fee invoices for {deptId ? "selected department" : facultyId ? "selected faculty" : "all active"} students
+                </p>
+              </div>
+            </div>
+            <button
+              className="btn-primary btn-sm flex items-center gap-1.5 px-4 shrink-0"
+              onClick={() => {
+                const scope = deptId ? "selected department" : facultyId ? "selected faculty" : "ALL active students"
+                if (confirm(`Run invoice generation for ${scope}? This may take a moment.`)) bulkMutation.mutate()
+              }}
+              disabled={bulkMutation.isPending}
+            >
+              {bulkMutation.isPending
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                : <TrendingUp className="w-3.5 h-3.5" />}
+              {bulkMutation.isPending ? "Generating..." : "Generate Now"}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ── Table ──────────────────────────────────────────────────────────── */}
