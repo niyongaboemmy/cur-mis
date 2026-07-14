@@ -580,13 +580,13 @@ class FeeService
 
         // Paginated data with billing info
         $dataSql = "SELECT
-                    s.regnumber,
-                    s.fname,
-                    s.lname,
-                    s.email,
+                    s.regnumber COLLATE utf8mb4_unicode_ci,
+                    s.fname COLLATE utf8mb4_unicode_ci,
+                    s.lname COLLATE utf8mb4_unicode_ci,
+                    s.email COLLATE utf8mb4_unicode_ci,
                     s.student_state,
-                    COALESCE(s.faculty, (SELECT fac_name FROM `faculty` WHERE fac_id = CAST(s.faculty AS UNSIGNED) LIMIT 1)) AS faculty,
-                    COALESCE(s.department, (SELECT dep_name FROM `departements` WHERE dep_id = CAST(s.department AS UNSIGNED) LIMIT 1)) AS department,
+                    COALESCE(s.faculty COLLATE utf8mb4_unicode_ci, (SELECT fac_name FROM `faculty` WHERE fac_id = CAST(s.faculty AS UNSIGNED) LIMIT 1)) AS faculty,
+                    COALESCE(s.department COLLATE utf8mb4_unicode_ci, (SELECT dep_name FROM `departements` WHERE dep_id = CAST(s.department AS UNSIGNED) LIMIT 1)) AS department,
                     COALESCE(sums.total_due, 0) AS total_expected,
                     COALESCE(sums.total_paid, 0) AS total_collected,
                     COALESCE(sums.total_bursary, 0) AS total_bursary,
@@ -595,7 +595,7 @@ class FeeService
                  FROM `student` s
                  {$sumsJoin}
                  WHERE {$whereSql}
-                 ORDER BY s.fname ASC
+                 ORDER BY s.fname COLLATE utf8mb4_unicode_ci ASC
                  LIMIT ? OFFSET ?";
 
         $dataBindings = array_merge($sumsBindings, $whereBindings, [$perPage, $offset]);
