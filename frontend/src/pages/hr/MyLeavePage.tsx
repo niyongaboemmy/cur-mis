@@ -190,7 +190,7 @@ export default function MyLeavePage() {
                           }}
                         >
                           {r.leave_type_name}
-                          {r.is_paid ? "" : <span className="opacity-70">(Unpaid)</span>}
+                          {!r.is_paid && <span className="opacity-70">(Unpaid)</span>}
                         </span>
                       </td>
                       <td className="px-3 py-2.5 text-ink-700 dark:text-ink-300 whitespace-nowrap">
