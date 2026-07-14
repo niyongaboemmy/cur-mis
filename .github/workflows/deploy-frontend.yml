@@ -52,8 +52,10 @@ jobs:
 
       # frontend/.env.production is committed to git and loaded by Vite automatically.
       - name: Build production bundle
-        run: npm run build
+        run: NODE_ENV=production npm run build
         working-directory: frontend
+        env:
+          NODE_ENV: production
 
       - name: Create deployment archive
         run: |
