@@ -145,7 +145,8 @@ ALTER TABLE `options`
 -- =============================================================================
 SET @sql := IF (
   EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.STATISTICS
-         WHERE table_schema = DATABASE() AND table_name = 'modules' AND index_name = 'uniq_modules_module_code'),
+         WHERE table_schema = DATABASE() AND table_name = 'modules' AND index_name = 'uniq_modules_module_code')
+  OR EXISTS(SELECT `module_code` FROM `modules` GROUP BY `module_code` HAVING COUNT(*) > 1),
   'SELECT 1',
   'ALTER TABLE `modules` ADD UNIQUE INDEX `uniq_modules_module_code` (`module_code`)'
 );
@@ -547,7 +548,7 @@ WHERE sa.program_id IS NOT NULL
 --      anymore.
 -- =============================================================================
 UPDATE `student` s
-JOIN `academic_years` ay ON CAST(ay.id AS CHAR) = s.acc_year
+JOIN `academic_years` ay ON CAST(ay.id AS CHAR) COLLATE utf8mb4_unicode_ci = s.acc_year COLLATE utf8mb4_unicode_ci
 SET   s.acc_year = REPLACE(ay.label, '/', '-')
 WHERE s.acc_year REGEXP '^[0-9]+$';
 
@@ -595,7 +596,7 @@ WHERE s.user_id IS NULL
   AND ap.user_id IS NOT NULL;
 
 UPDATE `student` s
-JOIN `users` u ON LOWER(u.email) = LOWER(s.email)
+JOIN `users` u ON LOWER(u.email) COLLATE utf8mb4_unicode_ci = LOWER(s.email) COLLATE utf8mb4_unicode_ci
 SET   s.user_id = u.id
 WHERE s.user_id IS NULL
   AND s.email IS NOT NULL

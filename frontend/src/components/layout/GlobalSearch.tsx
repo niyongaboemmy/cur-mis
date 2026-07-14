@@ -14,12 +14,42 @@ import {
   Settings,
   Layers,
   Activity,
+  Megaphone,
+  MessagesSquare,
+  Loader2,
   type LucideIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
 import { PERMISSIONS } from "@/constants";
+import { api } from "@/services/api";
+import { useDebounce } from "@/hooks/useDebounce";
+
+/* ------------------------------------------------------------------ */
+/*  Deep (record-level) search — GET /api/search?q=                     */
+/* ------------------------------------------------------------------ */
+
+type RecordHit = { id: number; title: string; subtitle: string; to: string };
+type DeepSearchResponse = {
+  students: RecordHit[];
+  staff: RecordHit[];
+  applications: RecordHit[];
+  announcements: RecordHit[];
+  forums: RecordHit[];
+};
+
+const RECORD_GROUP_META: Record<
+  keyof DeepSearchResponse,
+  { label: string; icon: LucideIcon }
+> = {
+  students: { label: "Students", icon: GraduationCap },
+  staff: { label: "Staff", icon: Briefcase },
+  applications: { label: "Applications", icon: Files },
+  announcements: { label: "Announcements", icon: Megaphone },
+  forums: { label: "Forum threads", icon: MessagesSquare },
+};
 
 /* ------------------------------------------------------------------ */
 /*  Search index                                                         */
@@ -58,6 +88,8 @@ const SEARCH_INDEX: SearchEntry[] = [
     keywords: ["dashboard", "analytics", "overview", "statistics", "reports", "charts", "kpi"],
     icon: LayoutDashboard,
     group: "General",
+    permissions: [PERMISSIONS.VIEW_DASHBOARD],
+    hideForRoles: ["student", "applicant"],
   },
   {
     to: "/profile",
@@ -510,17 +542,50 @@ export default function GlobalSearch() {
     [hasAccess, matchesRoles, user],
   );
 
+  // Debounced deep (record-level) search — backend filters per-entity by the
+  // caller's own permissions, so results here never need client-side gating.
+  const debouncedQuery = useDebounce(query, 300);
+  const deepSearchQuery = useQuery({
+    queryKey: ["global-search", debouncedQuery],
+    queryFn: ({ signal }) =>
+      api.get<DeepSearchResponse>("/api/search", { q: debouncedQuery }, signal),
+    enabled: debouncedQuery.trim().length >= 2,
+    staleTime: 15_000,
+  });
+
+  const liveEntries = useMemo<SearchEntry[]>(() => {
+    const data = deepSearchQuery.data?.data;
+    if (!data) return [];
+    const entries: SearchEntry[] = [];
+    (Object.keys(RECORD_GROUP_META) as (keyof DeepSearchResponse)[]).forEach((key) => {
+      const meta = RECORD_GROUP_META[key];
+      for (const hit of data[key] ?? []) {
+        entries.push({
+          to: hit.to,
+          label: hit.title,
+          sub: hit.subtitle,
+          keywords: [],
+          icon: meta.icon,
+          group: meta.label,
+        });
+      }
+    });
+    return entries;
+  }, [deepSearchQuery.data]);
+
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return [];
 
-    return SEARCH_INDEX.filter((e) => {
+    const pageResults = SEARCH_INDEX.filter((e) => {
       if (!isVisible(e)) return false;
       if (e.label.toLowerCase().includes(q)) return true;
       if (e.sub?.toLowerCase().includes(q)) return true;
       return e.keywords.some((kw) => kw.toLowerCase().includes(q));
     });
-  }, [query, isVisible]);
+
+    return [...pageResults, ...liveEntries];
+  }, [query, isVisible, liveEntries]);
 
   // Group results by their group label
   const grouped = useMemo(() => {
@@ -601,7 +666,11 @@ export default function GlobalSearch() {
   return (
     <div className="relative w-[280px] lg:w-[400px]">
       {/* Input */}
-      <Search className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400 pointer-events-none" />
+      {deepSearchQuery.isFetching ? (
+        <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400 pointer-events-none animate-spin" />
+      ) : (
+        <Search className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400 pointer-events-none" />
+      )}
       <input
         ref={inputRef}
         type="text"
@@ -640,13 +709,13 @@ export default function GlobalSearch() {
                   <div className="px-4 py-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-ink-400 dark:text-ink-500">
                     {group}
                   </div>
-                  {items.map((item) => {
+                  {items.map((item, itemIdx) => {
                     const thisIdx = flatIdx++;
                     const Icon = item.icon;
                     const isActive = activeIdx === thisIdx;
                     return (
                       <button
-                        key={item.to}
+                        key={`${group}-${item.to}-${itemIdx}`}
                         onMouseEnter={() => setActiveIdx(thisIdx)}
                         onMouseDown={(e) => {
                           e.preventDefault();

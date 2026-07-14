@@ -15,7 +15,12 @@ name: Deploy — Backend (PHP API)
 #   2. Source code → public_html/umis/backend/
 #   3. public/ entry point → public_html/umis/api/
 #   4. Flush OPcache via fresh PHP helper
-#   5. Clear OPcache via API + run pending migrations
+#   5. Clear OPcache via API
+#
+# This workflow deploys SOURCE CODE ONLY. It never touches the database —
+# no migrations, no seeding. Run those separately and deliberately via:
+#   .github/workflows/migrate-backend.yml (workflow_dispatch)
+#   .github/workflows/seed-backend.yml     (workflow_dispatch, pick one seeder)
 #
 # Server layout after deploy (sibling layout — confirmed via cPanel File Manager):
 #   /home/curac/public_html/umis/backend/ — PHP source + vendor/
@@ -117,7 +122,6 @@ jobs:
             --exclude './docs/**' \
             --exclude './.env' \
             --exclude './*.phar' \
-            --exclude './*.sql' \
             --exclude './.htaccess' \
             --exclude './test_*.php' \
             --exclude './logs/*.log' \
@@ -288,9 +292,11 @@ jobs:
           RESULT=$(curl -s -k --max-time 15 "https://cur.ac.rw/umis/api/_flush_opcache.php?token=$TOKEN&last=1")
           echo "OPcache flush #20 (self-delete): $RESULT"
 
-      # ── Step 5: Clear OPcache via API + run pending migrations ────────────────
-      - name: Clear OPcache + run migrations
-        timeout-minutes: 3
+      # ── Step 5: Clear OPcache via API ─────────────────────────────────────────
+      # Deliberately does NOT run migrations or seeds — this workflow ships code
+      # only. Run migrate-backend.yml / seed-backend.yml separately when needed.
+      - name: Clear OPcache
+        timeout-minutes: 1
         env:
           DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
         run: |
@@ -298,11 +304,6 @@ jobs:
             -H "Authorization: Bearer $DEPLOY_KEY" \
             "$API_BASE/api/deploy/cache-clear")
           echo "Cache clear: $RESULT"
-
-          MIG=$(curl -s -k --max-time 60 -X POST \
-            -H "Authorization: Bearer $DEPLOY_KEY" \
-            "$API_BASE/api/deploy/migrate")
-          echo "Migrations: $MIG"
 
       - name: Write job summary
         if: always()

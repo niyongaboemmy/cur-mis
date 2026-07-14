@@ -15,6 +15,19 @@ FROM `roles` r
 JOIN `permissions` p ON p.`slug` = 'MANAGE_GRADING_SCALES'
 WHERE r.`name` IN ('superadmin', 'admin', 'registrar');
 
+-- Some environments have `grading_scales.id` created without AUTO_INCREMENT
+-- (fails INSERTs that don't specify it with "Field 'id' doesn't have a
+-- default value"). MySQL requires an AUTO_INCREMENT column to also be a key,
+-- so check whether `id` already has one (any index) before deciding whether
+-- PRIMARY KEY needs to be added alongside it.
+SET @has_key := (SELECT COUNT(*) FROM information_schema.STATISTICS
+                  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'grading_scales' AND COLUMN_NAME = 'id');
+SET @stmt := IF(@has_key > 0,
+  'ALTER TABLE `grading_scales` MODIFY `id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT',
+  'ALTER TABLE `grading_scales` MODIFY `id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT, ADD PRIMARY KEY (`id`)'
+);
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
+
 -- Seed a default 4.0-style grade-point scale only if the table is empty.
 INSERT INTO `grading_scales` (`grade`, `min_marks`, `max_marks`, `grade_point`, `description`)
 SELECT * FROM (

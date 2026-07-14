@@ -5,15 +5,21 @@ declare(strict_types=1);
 namespace App\Controllers;
 
 use App\Services\MigrationService;
+use App\Services\SeederService;
 use Core\Request;
 use Core\Response;
 
 /**
- * Internal endpoints called by GitHub Actions after each deployment.
- * All routes require DeployKeyMiddleware.
+ * Internal endpoints called by GitHub Actions workflows. All routes require
+ * DeployKeyMiddleware. These are three independent operations — deploying
+ * source code, applying migrations, and seeding data are never bundled
+ * together, so that a code deploy never touches schema or data.
  *
- * POST /api/deploy/migrate     — apply pending database migrations
+ * POST /api/deploy/migrate     — apply pending database migrations (structure only)
  * GET  /api/deploy/status      — show migration status (pending vs applied)
+ * POST /api/deploy/baseline    — mark pending migrations as already-applied, without running them
+ * POST /api/deploy/seed        — run one named data seeder (never "all")
+ * GET  /api/deploy/seeders     — list available seeder names
  * POST /api/deploy/cache-clear — reset PHP OPcache so new code is served immediately
  */
 class DeployController
@@ -65,6 +71,82 @@ class DeployController
                 'migrations'    => $migrations,
                 'pending_count' => count($pending),
             ],
+        ]);
+    }
+
+    /**
+     * Marks every currently-pending migration as "baselined" (applied) WITHOUT
+     * running its SQL. For when the DB's real schema is already ahead of the
+     * ledger (e.g. applied manually before this ledger existed) — running the
+     * SQL would error out even though nothing actually needs to change.
+     */
+    public function baseline(Request $request, Response $response): void
+    {
+        $service   = new MigrationService();
+        $baselined = $service->baseline();
+
+        $response->json([
+            'success' => true,
+            'message' => count($baselined) > 0
+                ? 'Pending migrations baselined (marked applied without running).'
+                : 'No pending migrations to baseline.',
+            'data'    => [
+                'baselined' => $baselined,
+                'count'     => count($baselined),
+            ],
+        ]);
+    }
+
+    /**
+     * Runs exactly one named data seeder. Requires a "name" query/body param —
+     * there is no "run everything" option, by design.
+     */
+    public function seed(Request $request, Response $response): void
+    {
+        $service = new SeederService();
+        $name    = trim((string)($request->input('name') ?? $request->query('name') ?? ''));
+
+        if ($name === '') {
+            $response->status(400)->json([
+                'success' => false,
+                'message' => 'Missing required "name" parameter.',
+                'data'    => ['available' => $service->available()],
+            ]);
+            return;
+        }
+
+        if (!$service->has($name)) {
+            $response->status(404)->json([
+                'success' => false,
+                'message' => "Unknown seeder \"$name\".",
+                'data'    => ['available' => $service->available()],
+            ]);
+            return;
+        }
+
+        try {
+            $log = $service->run($name);
+            $response->json([
+                'success' => true,
+                'message' => "Seeder \"$name\" completed.",
+                'data'    => ['log' => $log],
+            ]);
+        } catch (\Throwable $e) {
+            $response->status(500)->json([
+                'success' => false,
+                'message' => "Seeder \"$name\" failed: " . $e->getMessage(),
+            ]);
+        }
+    }
+
+    /** Lists all registered seeder names, for building the workflow_dispatch choice list. */
+    public function seeders(Request $request, Response $response): void
+    {
+        $service = new SeederService();
+        $response->json([
+            'success' => true,
+            'message' => 'Available seeders retrieved.',
+            'data'    => ['available' => $service->available()],
         ]);
     }
 

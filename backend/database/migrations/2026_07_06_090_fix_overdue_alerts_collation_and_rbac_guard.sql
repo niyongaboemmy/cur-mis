@@ -54,50 +54,56 @@ PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
 
 
 -- ╔════════════════════════════════════════════════════════════════════════════╗
--- ║ §2  Safety net — normalise every `student_id` column, database-wide         ║
+-- ║ §2  Safety net — normalise every known `student_id` column                  ║
 -- ║                                                                              ║
--- ║  Hardcoded per-table ALTER lists have now missed a table twice (once in     ║
--- ║  084/PROD_cumulated, once in 087). Instead, walk INFORMATION_SCHEMA and     ║
--- ║  fix every VARCHAR/CHAR `student_id` column that isn't already              ║
--- ║  utf8mb4_general_ci, regardless of table name.                             ║
+-- ║  Originally written as a stored-procedure cursor walking INFORMATION_SCHEMA ║
+-- ║  dynamically, but this migration runner splits multi-statement files on    ║
+-- ║  bare `;`, which corrupts CREATE PROCEDURE bodies (and doesn't understand  ║
+-- ║  the client-only `DELIMITER` directive at all) — so a cursor can't survive ║
+-- ║  here. Enumerate every table known to carry `student_id` instead, each     ║
+-- ║  guarded by an INFORMATION_SCHEMA existence check + PREPARE/EXECUTE so a   ║
+-- ║  table missing on a given environment is skipped, not fatal.               ║
 -- ╚════════════════════════════════════════════════════════════════════════════╝
 
-DROP PROCEDURE IF EXISTS `_normalise_student_id_collations`;
+SET @tbl := 'fee_payments';
+SET @col_type := (SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = @tbl AND COLUMN_NAME = 'student_id' AND DATA_TYPE IN ('varchar','char') LIMIT 1);
+SET @stmt := IF(@col_type IS NOT NULL, CONCAT('ALTER TABLE `', @tbl, '` MODIFY `student_id` ', @col_type, ' NOT NULL COLLATE utf8mb4_general_ci'), 'SELECT 1');
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
 
-DELIMITER $$
-CREATE PROCEDURE `_normalise_student_id_collations`()
-BEGIN
-  DECLARE done INT DEFAULT 0;
-  DECLARE tbl_name VARCHAR(64);
-  DECLARE col_type VARCHAR(64);
-  DECLARE cur CURSOR FOR
-    SELECT TABLE_NAME, COLUMN_TYPE
-    FROM INFORMATION_SCHEMA.COLUMNS
-    WHERE TABLE_SCHEMA = DATABASE()
-      AND COLUMN_NAME = 'student_id'
-      AND DATA_TYPE IN ('varchar', 'char')
-      AND (COLLATION_NAME IS NULL OR COLLATION_NAME <> 'utf8mb4_general_ci');
-  DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = 1;
+SET @tbl := 'fee_invoices';
+SET @col_type := (SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = @tbl AND COLUMN_NAME = 'student_id' AND DATA_TYPE IN ('varchar','char') LIMIT 1);
+SET @stmt := IF(@col_type IS NOT NULL, CONCAT('ALTER TABLE `', @tbl, '` MODIFY `student_id` ', @col_type, ' NOT NULL COLLATE utf8mb4_general_ci'), 'SELECT 1');
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
 
-  OPEN cur;
-  read_loop: LOOP
-    FETCH cur INTO tbl_name, col_type;
-    IF done THEN
-      LEAVE read_loop;
-    END IF;
+SET @tbl := 'fee_bursaries';
+SET @col_type := (SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = @tbl AND COLUMN_NAME = 'student_id' AND DATA_TYPE IN ('varchar','char') LIMIT 1);
+SET @stmt := IF(@col_type IS NOT NULL, CONCAT('ALTER TABLE `', @tbl, '` MODIFY `student_id` ', @col_type, ' NOT NULL COLLATE utf8mb4_general_ci'), 'SELECT 1');
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
 
-    SET @ddl := CONCAT(
-      'ALTER TABLE `', tbl_name, '` MODIFY `student_id` ', col_type,
-      ' NOT NULL COLLATE utf8mb4_general_ci'
-    );
-    PREPARE s FROM @ddl; EXECUTE s; DEALLOCATE PREPARE s;
-  END LOOP;
-  CLOSE cur;
-END$$
-DELIMITER ;
+SET @tbl := 'student_clearances';
+SET @col_type := (SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = @tbl AND COLUMN_NAME = 'student_id' AND DATA_TYPE IN ('varchar','char') LIMIT 1);
+SET @stmt := IF(@col_type IS NOT NULL, CONCAT('ALTER TABLE `', @tbl, '` MODIFY `student_id` ', @col_type, ' NOT NULL COLLATE utf8mb4_general_ci'), 'SELECT 1');
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
 
-CALL `_normalise_student_id_collations`();
-DROP PROCEDURE `_normalise_student_id_collations`;
+SET @tbl := 'student_fee_overrides';
+SET @col_type := (SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = @tbl AND COLUMN_NAME = 'student_id' AND DATA_TYPE IN ('varchar','char') LIMIT 1);
+SET @stmt := IF(@col_type IS NOT NULL, CONCAT('ALTER TABLE `', @tbl, '` MODIFY `student_id` ', @col_type, ' NOT NULL COLLATE utf8mb4_general_ci'), 'SELECT 1');
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
+
+SET @tbl := 'fee_refunds';
+SET @col_type := (SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = @tbl AND COLUMN_NAME = 'student_id' AND DATA_TYPE IN ('varchar','char') LIMIT 1);
+SET @stmt := IF(@col_type IS NOT NULL, CONCAT('ALTER TABLE `', @tbl, '` MODIFY `student_id` ', @col_type, ' NOT NULL COLLATE utf8mb4_general_ci'), 'SELECT 1');
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
+
+SET @tbl := 'fee_fines';
+SET @col_type := (SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = @tbl AND COLUMN_NAME = 'student_id' AND DATA_TYPE IN ('varchar','char') LIMIT 1);
+SET @stmt := IF(@col_type IS NOT NULL, CONCAT('ALTER TABLE `', @tbl, '` MODIFY `student_id` ', @col_type, ' NOT NULL COLLATE utf8mb4_general_ci'), 'SELECT 1');
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
+
+SET @tbl := 'fee_overdue_alerts';
+SET @col_type := (SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = @tbl AND COLUMN_NAME = 'student_id' AND DATA_TYPE IN ('varchar','char') LIMIT 1);
+SET @stmt := IF(@col_type IS NOT NULL, CONCAT('ALTER TABLE `', @tbl, '` MODIFY `student_id` ', @col_type, ' NOT NULL COLLATE utf8mb4_general_ci'), 'SELECT 1');
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
 
 
 -- ╔════════════════════════════════════════════════════════════════════════════╗

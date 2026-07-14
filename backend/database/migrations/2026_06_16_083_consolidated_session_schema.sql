@@ -384,12 +384,17 @@ WHERE r.`name` NOT IN ('applicant', 'student');
 
 -- A. Link an existing employee to its user account by matching email.
 UPDATE `employees` e
-JOIN `users` u ON u.email = e.employee_username
+JOIN `users` u ON u.email COLLATE utf8mb4_unicode_ci = e.employee_username COLLATE utf8mb4_unicode_ci
 SET e.user_id = u.id
 WHERE (e.user_id IS NULL OR e.user_id = 0)
   AND u.email IS NOT NULL AND u.email <> '';
 
 -- B. Create a linked employee for every staff user still missing one.
+-- `employee_position` is narrow on some environments; truncate to whatever
+-- it actually is rather than assuming a fixed width.
+SET @pos_len := (SELECT CHARACTER_MAXIMUM_LENGTH FROM information_schema.COLUMNS
+                  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees' AND COLUMN_NAME = 'employee_position');
+
 INSERT INTO `employees`
   (`user_id`, `employee_fname`, `employee_lname`, `employee_gender`, `employee_age`,
    `employee_phone`, `employee_post`, `employee_position`, `additional_duty`, `faculty`,
@@ -403,7 +408,7 @@ SELECT
   '', '',
   COALESCE(u.phone, ''),
   '',                       -- employee_post (department) — fill in later
-  r.name,                   -- employee_position = role label (sensible default)
+  LEFT(r.name, @pos_len),   -- employee_position = role label (sensible default)
   '', 0,
   '', '', 'Permanent', '', '',
   '', '',
@@ -423,8 +428,8 @@ WHERE r.name NOT IN ('student', 'applicant')
   AND u.id NOT IN (
         SELECT user_id FROM (SELECT user_id FROM `employees` WHERE user_id IS NOT NULL) z
       )
-  AND (u.email IS NULL OR u.email = '' OR u.email NOT IN (
-        SELECT employee_username FROM (
+  AND (u.email IS NULL OR u.email = '' OR u.email COLLATE utf8mb4_unicode_ci NOT IN (
+        SELECT employee_username COLLATE utf8mb4_unicode_ci FROM (
           SELECT employee_username FROM `employees` WHERE employee_username IS NOT NULL AND employee_username <> ''
         ) y
       ));

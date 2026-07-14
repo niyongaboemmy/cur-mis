@@ -46,13 +46,21 @@
       ADD COLUMN IF NOT EXISTS `bursary_applied` DECIMAL(12,2) NOT NULL DEFAULT 0.00
       AFTER `amount_paid`;
 
-    UPDATE `fee_invoices` fi
-    INNER JOIN `information_schema`.`COLUMNS` c
-      ON c.`TABLE_SCHEMA` = DATABASE()
-    AND c.`TABLE_NAME`   = 'fee_invoices'
-    AND c.`COLUMN_NAME`  = 'bursary_amount'
-    SET fi.`bursary_applied` = fi.`bursary_amount`
-    WHERE fi.`bursary_applied` = 0.00;
+    -- A static UPDATE referencing `bursary_amount` fails to even parse once the
+    -- column no longer exists (unlike a JOIN guard, which only skips rows).
+    -- Build and PREPARE the statement dynamically so it's skipped entirely
+    -- when the column is already gone.
+    SET @has_bursary_amount := (
+      SELECT COUNT(*) FROM `information_schema`.`COLUMNS`
+      WHERE `TABLE_SCHEMA` = DATABASE() AND `TABLE_NAME` = 'fee_invoices' AND `COLUMN_NAME` = 'bursary_amount'
+    );
+    SET @copy_sql := IF(@has_bursary_amount > 0,
+      'UPDATE `fee_invoices` SET `bursary_applied` = `bursary_amount` WHERE `bursary_applied` = 0.00',
+      'SELECT 1'
+    );
+    PREPARE _mig033_copy FROM @copy_sql;
+    EXECUTE _mig033_copy;
+    DEALLOCATE PREPARE _mig033_copy;
 
     ALTER TABLE `fee_invoices`
       DROP COLUMN IF EXISTS `bursary_amount`;
