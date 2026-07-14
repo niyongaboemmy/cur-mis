@@ -192,6 +192,12 @@ class FeeService
             $invoiceIds[] = (int)$invoiceId;
         }
 
+        // STEP 7 — Per-credit charges for extra/retake modules
+        $perCreditInvoices = $this->generatePerCreditInvoices($studentId, $academicYearId, $semester, $actorId);
+        $created += $perCreditInvoices['created'];
+        $skipped += $perCreditInvoices['skipped'];
+        $invoiceIds = array_merge($invoiceIds, $perCreditInvoices['invoices']);
+
         return ['created' => $created, 'updated' => $updated, 'skipped' => $skipped, 'invoices' => $invoiceIds];
     }
 
@@ -1175,6 +1181,92 @@ class FeeService
             'ADMISSION'    => 'Admission fee',
             default        => $structure['label'] ?? $feeType,
         };
+    }
+
+    /**
+     * Generate invoices for per-credit charges (retakes, extra modules).
+     * Fetches per-credit rate for student's faculty and multiplies by total credits.
+     */
+    private function generatePerCreditInvoices(
+        string $studentId,
+        int $academicYearId,
+        ?int $semester,
+        int $actorId
+    ): array {
+        $created = 0;
+        $skipped = 0;
+        $invoices = [];
+
+        // Fetch student's faculty
+        $student = $this->db->fetchOne(
+            "SELECT faculty, current_level FROM student WHERE regnumber = ? LIMIT 1",
+            [$studentId]
+        );
+
+        if (!$student || !$student['faculty']) {
+            return ['created' => 0, 'skipped' => 0, 'invoices' => []];
+        }
+
+        $facultyId = (int)$student['faculty'];
+
+        // Get per-credit rate for this faculty and year
+        $perCreditRate = $this->db->fetchOne(
+            "SELECT amount_per_credit FROM fee_per_credit_rates
+             WHERE faculty_id = ? AND academic_year_id = ? AND is_active = 1
+             LIMIT 1",
+            [$facultyId, $academicYearId]
+        );
+
+        if (!$perCreditRate || (float)$perCreditRate['amount_per_credit'] <= 0) {
+            return ['created' => 0, 'skipped' => 0, 'invoices' => []];
+        }
+
+        $ratePerCredit = (float)$perCreditRate['amount_per_credit'];
+
+        // Count total credits for retake and extra modules
+        $creditsResult = $this->db->fetchOne(
+            "SELECT COALESCE(SUM(m.module_credits), 0) AS total_credits
+             FROM module_registrations mr
+             JOIN modules m ON m.module_id = mr.module_id
+             WHERE mr.student_id = ? AND mr.academic_year_id = ?
+               AND (mr.is_retake = 1 OR mr.is_extra = 1)",
+            [$studentId, $academicYearId]
+        );
+
+        $totalCredits = (int)($creditsResult['total_credits'] ?? 0);
+
+        if ($totalCredits <= 0) {
+            return ['created' => 0, 'skipped' => 0, 'invoices' => []];
+        }
+
+        $totalAmount = $totalCredits * $ratePerCredit;
+
+        // Check if already invoiced
+        if ($this->invoiceModel->studentHasInvoice(
+            $studentId, $academicYearId, 'RETAKE_MODULE_FEE'
+        )) {
+            return ['created' => 0, 'skipped' => 1, 'invoices' => []];
+        }
+
+        // Create single invoice for all per-credit charges
+        $invoiceId = $this->invoiceModel->create([
+            'invoice_number'      => $this->generateInvoiceNumber(),
+            'student_id'          => $studentId,
+            'academic_year_id'    => $academicYearId,
+            'semester'            => $semester,
+            'fee_type'            => 'RETAKE_MODULE_FEE',
+            'description'         => "Per-credit charges: {$totalCredits} credits × {$ratePerCredit} RWF/credit",
+            'amount_due'          => $totalAmount,
+            'is_system_generated' => 1,
+            'created_by'          => $actorId,
+        ]);
+
+        if ($invoiceId) {
+            $created++;
+            $invoices[] = (int)$invoiceId;
+        }
+
+        return ['created' => $created, 'skipped' => $skipped, 'invoices' => $invoices];
     }
 
     private function isFirstYearStudent(array $student, int $academicYearId): bool
