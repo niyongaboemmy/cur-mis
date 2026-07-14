@@ -100,6 +100,9 @@ class ModuleModel extends BaseModel
         $moduleIds = array_map(static fn ($r) => (int)$r['module_id'], $rows);
         $offerings = $this->aggregateOfferings($moduleIds);
 
+        // Fetch per-credit rates for each module's department/faculty
+        $perCreditPrices = $this->getPerCreditPrices($rows);
+
         // When the caller is browsing modules for a specific programme, flag
         // which of those modules actually have a teaching block for that
         // programme. We accept either a `module_offerings` row for the
@@ -146,7 +149,7 @@ class ModuleModel extends BaseModel
             foreach ($schRows as $r) $scheduledIds[(int)$r['module_id']] = true;
         }
 
-        $withRels = array_map(function (array $row) use ($offerings, $scheduledIds, $modesByModule, $hasProgramFilter) {
+        $withRels = array_map(function (array $row) use ($offerings, $scheduledIds, $modesByModule, $hasProgramFilter, $perCreditPrices) {
             $row['prerequisites'] = $this->prereqsFor((int)$row['module_id']);
             $row['programs']      = $this->programsFor((int)$row['module_id']);
             $row['levels']        = $this->levelsFor((int)$row['module_id']);
@@ -163,6 +166,8 @@ class ModuleModel extends BaseModel
             $row['offering_modes']  = $hasProgramFilter
                 ? array_values($modesByModule[(int)$row['module_id']] ?? [])
                 : null;
+            // Set per-credit calculated price if available
+            $row['per_credit_price'] = $perCreditPrices[(int)$row['module_id']] ?? null;
             return $row;
         }, $rows);
 
@@ -425,5 +430,66 @@ class ModuleModel extends BaseModel
             }
             return true;
         }));
+    }
+
+    /**
+     * Fetch per-credit prices for modules based on their department and active per-credit rates.
+     * Calculates: module_credits × rate_per_credit for each module's department.
+     *
+     * @return array<int, int|float|null> module_id => calculated_price
+     */
+    private function getPerCreditPrices(array $modules): array
+    {
+        if (empty($modules)) return [];
+
+        // Group modules by department
+        $modulesByDept = [];
+        foreach ($modules as $m) {
+            $dept = (int)($m['department'] ?? 0);
+            if ($dept <= 0) continue;
+            $modulesByDept[$dept][] = $m;
+        }
+
+        if (empty($modulesByDept)) return [];
+
+        // Get the active academic year (or current year)
+        $activeYear = $this->db->fetchOne(
+            "SELECT id FROM academic_years WHERE is_current = 1 LIMIT 1"
+        );
+        $yearId = $activeYear ? (int)$activeYear['id'] : null;
+
+        if (!$yearId) return [];
+
+        // Fetch per-credit rates for each faculty (departments are grouped by faculty)
+        $deptIds = array_keys($modulesByDept);
+        $deptPlaceholders = implode(',', array_fill(0, count($deptIds), '?'));
+
+        $facultyRates = $this->db->fetchAll(
+            "SELECT DISTINCT d.dep_id, fpcr.amount_per_credit
+             FROM departements d
+             LEFT JOIN faculty f ON d.fac_id = f.fac_id
+             LEFT JOIN fee_per_credit_rates fpcr ON f.fac_id = fpcr.faculty_id AND fpcr.academic_year_id = ? AND fpcr.is_active = 1
+             WHERE d.dep_id IN ($deptPlaceholders)",
+            array_merge([$yearId], $deptIds)
+        );
+
+        // Build price map: module_id => calculated_price
+        $prices = [];
+        foreach ($facultyRates as $fr) {
+            $dept = (int)$fr['dep_id'];
+            $rate = (float)($fr['amount_per_credit'] ?? 0);
+
+            if ($rate <= 0 || !isset($modulesByDept[$dept])) continue;
+
+            foreach ($modulesByDept[$dept] as $module) {
+                $moduleId = (int)$module['module_id'];
+                $credits = (int)($module['module_credits'] ?? 0);
+                if ($credits > 0) {
+                    $prices[$moduleId] = $credits * $rate;
+                }
+            }
+        }
+
+        return $prices;
     }
 }

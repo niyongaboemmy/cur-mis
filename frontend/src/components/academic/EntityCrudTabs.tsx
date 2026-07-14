@@ -347,7 +347,19 @@ export const ENTITIES: EntityCfg[] = [
       { key: 'module_credits', label: 'Credits' },
       { key: 'hours',          label: 'Hours' },
       { key: 'price',          label: 'Price',
-        render: (r) => r.price == null || r.price === '' ? <span className="text-ink-400 text-[12px]">—</span> : r.price },
+        render: (r) => {
+          const displayPrice = r.price ?? r.per_credit_price;
+          if (displayPrice == null || displayPrice === '') {
+            return <span className="text-ink-400 text-[12px]">—</span>;
+          }
+          const formatted = typeof displayPrice === 'number'
+            ? displayPrice.toLocaleString('rw-RW', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+            : displayPrice;
+          // Show per-credit notation if it came from per_credit_price
+          const isPerCredit = !r.price && r.per_credit_price;
+          return isPerCredit ? <span className="text-amber-600">{formatted} RWF*</span> : formatted;
+        }
+      },
       { key: 'level',          label: 'Level',
         render: (r, ctx) => ctx?.lookups.levels?.get(Number(r.level)) ?? (r.level ? `#${r.level}` : '—') },
       { key: 'programs',       label: 'Programs',
