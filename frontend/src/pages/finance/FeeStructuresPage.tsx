@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Loader2, X, CalendarDays, Layers, SplitSquareHorizontal, Upload } from 'lucide-react'
+import { Plus, Pencil, Trash2, Loader2, X, CalendarDays, Layers, SplitSquareHorizontal, Upload, Download } from 'lucide-react'
 import toast from 'react-hot-toast'
+import * as XLSX from 'xlsx'
 import { feeStructureService, feeTypeService } from '@/services/financeService'
 import { academicsMgmtService } from '@/services/academicsMgmtService'
 import { academicService as academicSvc } from '@/services/academicService'
@@ -11,6 +12,7 @@ import Pagination from '@/components/ui/Pagination'
 import { useSystemStore } from '@/store/systemStore'
 import { formatRWF } from '@/utils/formatCurrency'
 import ModalPortal from '@/components/ui/ModalPortal'
+import { api } from '@/services/api'
 
 const PER_PAGE = 15
 
@@ -119,6 +121,102 @@ export default function FeeStructuresPage() {
     return 'Full year'
   }
 
+  const [exportLoading, setExportLoading] = useState(false)
+
+  const handleExportExcel = async () => {
+    if (!yearId) {
+      toast.error('Select an academic year first')
+      return
+    }
+    try {
+      setExportLoading(true)
+      const res = await api.get(`/api/finance/structures/schedule-export?academic_year_id=${yearId}`)
+      const rows = res.data?.data ?? []
+
+      if (rows.length === 0) {
+        toast.error('No fee structures found for this academic year')
+        return
+      }
+
+      // Build header row
+      const headerRow = ['S/N', 'Faculty', 'Program', 'Duration', 'Application Fee', 'Registration Fee', 'CURSU Fee', 'Total Tuition', 'Internship Fee', 'Final Project Fee', 'Graduation Fee', 'Semesters', 'Internships', 'Tuition/Semester', 'Tuition/Year']
+
+      // Build data rows, grouped by faculty
+      const grouped: Record<string, any[]> = {}
+      rows.forEach((row: any) => {
+        const fac = row.fac_name || 'Ungrouped'
+        if (!grouped[fac]) grouped[fac] = []
+        grouped[fac].push(row)
+      })
+
+      const dataRows: any[] = []
+      let sn = 1
+      Object.entries(grouped).forEach(([facName, facRows]) => {
+        // Faculty header row
+        dataRows.push([facName, '', '', '', '', '', '', '', '', '', '', '', '', '', ''])
+        // Program rows
+        facRows.forEach((row: any) => {
+          dataRows.push([
+            sn,
+            row.fac_name,
+            row.option_name || 'Unknown',
+            row.semester ? `Semester ${row.semester}` : 'Full year',
+            row.application_fee || '',
+            row.registration_fee || '',
+            row.cursu_fee || '',
+            row.tuition_fee || '',
+            row.internship_fee || '',
+            row.final_project_fee || '',
+            row.graduation_fee || '',
+            row.level_name || '',
+            '',
+            '',
+            '',
+          ])
+          sn++
+        })
+      })
+
+      const ws = XLSX.utils.aoa_to_sheet([headerRow, ...dataRows])
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Fee Schedule')
+
+      const year = years.find(y => y.id == yearId)
+      const yearLabel = year?.label || 'FeeSchedule'
+      XLSX.writeFile(wb, `Fee-Schedule-${yearLabel}.xlsx`)
+      toast.success('Fee schedule exported to Excel')
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message ?? 'Export failed')
+    } finally {
+      setExportLoading(false)
+    }
+  }
+
+  const handleExportPdf = async () => {
+    if (!yearId) {
+      toast.error('Select an academic year first')
+      return
+    }
+    try {
+      setExportLoading(true)
+      const year = years.find(y => y.id == yearId)
+      const yearLabel = year?.label || 'FeeSchedule'
+      // Download PDF directly
+      const url = `/api/finance/structures/schedule-export.pdf?academic_year_id=${yearId}`
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `Fee-Schedule-${yearLabel}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      toast.success('Fee schedule exported to PDF')
+    } catch (e: any) {
+      toast.error('PDF export failed')
+    } finally {
+      setExportLoading(false)
+    }
+  }
+
   return (
     <div className="space-y-4 animate-fade-in">
       <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -126,9 +224,15 @@ export default function FeeStructuresPage() {
           <h2 className="text-lg font-bold text-ink-900 dark:text-white">Fee Structures</h2>
           <p className="text-[13px] text-ink-500">Configure fee amounts per type, department, level and academic year.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <button className="btn-secondary btn-sm" onClick={() => setShowImportModal(true)}>
             <Upload className="w-3.5 h-3.5" /> Import CSV
+          </button>
+          <button className="btn-secondary btn-sm" onClick={handleExportExcel} disabled={exportLoading || !yearId}>
+            <Download className="w-3.5 h-3.5" /> {exportLoading ? 'Exporting...' : 'Export Excel'}
+          </button>
+          <button className="btn-secondary btn-sm" onClick={handleExportPdf} disabled={exportLoading || !yearId}>
+            <Download className="w-3.5 h-3.5" /> {exportLoading ? 'Exporting...' : 'Export PDF'}
           </button>
           <button className="btn-primary btn-sm" onClick={() => { setEditing(null); setShowForm(true) }}>
             <Plus className="w-3.5 h-3.5" /> New structure
