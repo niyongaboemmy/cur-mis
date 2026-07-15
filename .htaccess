@@ -1,13 +1,19 @@
 <IfModule mod_rewrite.c>
     RewriteEngine On
-    RewriteBase /cur-mis/
+    # IMPORTANT: Update this to match your deployment path:
+    # - Local development: RewriteBase /cur-mis/
+    # - Production: RewriteBase /umis/
+    RewriteBase /umis/
 
     # Pass through for existing files and directories
     RewriteCond %{REQUEST_FILENAME} -f [OR]
     RewriteCond %{REQUEST_FILENAME} -d
     RewriteRule ^ - [L]
 
-    # Route all other requests to index.php
-    RewriteRule ^ index.php [QSA,L]
+    # Route /api/* requests to api.php (which delegates to backend)
+    RewriteRule ^api/(.*)$ api.php [QSA,L]
+
+    # Route everything else to frontend (React Router)
+    RewriteRule ^ frontend/dist/index.html [QSA,L]
 </IfModule>
 
