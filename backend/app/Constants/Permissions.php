@@ -15,6 +15,7 @@ class Permissions
     // System Settings
     public const MANAGE_ACADEMIC_YEARS = 'MANAGE_ACADEMIC_YEARS';
     public const MANAGE_ACADEMIC_TERMS = 'MANAGE_ACADEMIC_TERMS';
+    public const MANAGE_ACADEMIC_SETTINGS = 'MANAGE_ACADEMIC_SETTINGS';
     public const VIEW_SYSTEM_BASICS = 'VIEW_SYSTEM_BASICS';
     public const VIEW_SETTINGS = 'VIEW_SETTINGS';
     public const MANAGE_SETTINGS = 'MANAGE_SETTINGS';
@@ -159,6 +160,7 @@ class Permissions
             self::VIEW_DASHBOARD,
             self::MANAGE_ACADEMIC_YEARS,
             self::MANAGE_ACADEMIC_TERMS,
+            self::MANAGE_ACADEMIC_SETTINGS,
             self::VIEW_SYSTEM_BASICS,
             self::VIEW_SETTINGS,
             self::MANAGE_SETTINGS,
