@@ -1207,4 +1207,126 @@ class DocumentHelper
         </html>
         HTML;
     }
+
+    /**
+     * Build the official fee schedule table (14 columns, grouped by faculty).
+     * Output is a styled HTML table matching the PDF template layout.
+     */
+    public static function buildFeeSchedule(array $rows, array $meta = []): string
+    {
+        $acYear = $meta['academic_year'] ?? date('Y');
+        $generatedDate = $meta['generated_date'] ?? date('Y-m-d');
+
+        $fmtNum = fn ($n) => $n !== null ? number_format((float)$n, 0, '', ',') . ' RWF' : '—';
+
+        // Group rows by faculty
+        $grouped = [];
+        foreach ($rows as $row) {
+            $fac = $row['fac_name'] ?? 'Ungrouped';
+            if (!isset($grouped[$fac])) {
+                $grouped[$fac] = [];
+            }
+            $grouped[$fac][] = $row;
+        }
+
+        $tbody = '';
+        $sn = 1;
+        foreach ($grouped as $facName => $facRows) {
+            // Faculty header row
+            $tbody .= <<<HTML
+            <tr style="background: #e8e8e8; font-weight: bold; border: 1px solid #ddd;">
+                <td colspan="14" style="padding: 10px; border: 1px solid #ddd;">{$facName}</td>
+            </tr>
+            HTML;
+
+            // Program rows under this faculty
+            foreach ($facRows as $row) {
+                $progName = $row['option_name'] ?? 'Unknown Program';
+                $semesterLabel = $row['semester'] ? 'Semester ' . $row['semester'] : 'Full year';
+                $duration = $row['level_name'] ? ' (' . $row['level_name'] . ')' : '';
+
+                $tbody .= <<<HTML
+                <tr style="border: 1px solid #ddd;">
+                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 11px;">{$sn}</td>
+                    <td style="border: 1px solid #ddd; padding: 8px; font-size: 11px;">{$progName}{$duration}</td>
+                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 11px;">{$semesterLabel}</td>
+                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-size: 11px;">{$fmtNum($row['application_fee'])}</td>
+                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-size: 11px;">{$fmtNum($row['registration_fee'])}</td>
+                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-size: 11px;">{$fmtNum($row['cursu_fee'])}</td>
+                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-size: 11px; font-weight: bold;">{$fmtNum($row['tuition_fee'])}</td>
+                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-size: 11px;">{$fmtNum($row['internship_fee'])}</td>
+                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-size: 11px;">{$fmtNum($row['final_project_fee'])}</td>
+                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-size: 11px;">{$fmtNum($row['graduation_fee'])}</td>
+                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 11px;">—</td>
+                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 11px;">—</td>
+                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-size: 11px;">—</td>
+                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-size: 11px;">—</td>
+                </tr>
+                HTML;
+                $sn++;
+            }
+        }
+
+        return <<<HTML
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Academic Fees Structure {$acYear}</title>
+            <style>
+                * { margin: 0; padding: 0; box-sizing: border-box; }
+                body { font-family: 'Times New Roman', Times, serif; font-size: 12px; color: #333; line-height: 1.3; }
+                .page { max-width: 29.7cm; margin: 0 auto; padding: 15mm; background: white; }
+                .header { text-align: center; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid #333; }
+                .header h1 { font-size: 18px; font-weight: bold; margin-bottom: 3px; }
+                .header p { font-size: 10px; color: #666; margin: 2px 0; }
+                .title { font-size: 14px; font-weight: bold; margin: 15px 0 10px 0; }
+                table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+                table th { background: #f5f5f5; border: 1px solid #ddd; padding: 8px; text-align: left; font-weight: bold; font-size: 10px; }
+                table td { border: 1px solid #ddd; padding: 8px; font-size: 10px; }
+                .footer { margin-top: 20px; padding-top: 10px; border-top: 1px solid #ddd; font-size: 9px; color: #999; text-align: center; }
+            </style>
+        </head>
+        <body>
+            <div class="page">
+                <div class="header">
+                    <h1>CATHOLIC UNIVERSITY OF RWANDA</h1>
+                    <p>Academic Fees Structure {$acYear}</p>
+                </div>
+
+                <div class="title">Fee Schedule by Faculty and Program</div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 3%;">S/N</th>
+                            <th style="width: 18%;">Program</th>
+                            <th style="width: 8%;">Duration</th>
+                            <th style="width: 8%;">Application Fee</th>
+                            <th style="width: 8%;">Registration Fee</th>
+                            <th style="width: 8%;">CURSU Fee</th>
+                            <th style="width: 8%;">Total Tuition</th>
+                            <th style="width: 8%;">Internship Fee</th>
+                            <th style="width: 8%;">Final Project Fee</th>
+                            <th style="width: 8%;">Graduation Fee</th>
+                            <th style="width: 3%;">Semesters</th>
+                            <th style="width: 3%;">Internships</th>
+                            <th style="width: 5%;">Tuition/Sem</th>
+                            <th style="width: 5%;">Tuition/Year</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {$tbody}
+                    </tbody>
+                </table>
+
+                <div class="footer">
+                    <p>Academic Year: {$acYear} | Generated: {$generatedDate}</p>
+                    <p>For inquiries, contact the Finance Office</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        HTML;
+    }
 }

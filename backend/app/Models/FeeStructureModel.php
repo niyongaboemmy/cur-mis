@@ -167,4 +167,43 @@ class FeeStructureModel extends BaseModel
             );
         }
     }
+
+    /**
+     * Pivot fee structures into a schedule export format: one row per program,
+     * with columns for each fee type (APPLICATION, REGISTRATION, CURSU, etc).
+     * Grouped by faculty and ordered by faculty → option name.
+     * Returns: [{fac_name, option_name, semester, application_fee, registration_fee, ..., tuition_per_year}, ...]
+     */
+    public function scheduleExport(int $academicYearId): array
+    {
+        $rows = $this->db->fetchAll(
+            "SELECT
+                    f.fac_name,
+                    f.fac_id,
+                    o.id as option_id,
+                    o.name as option_name,
+                    fs.semester,
+                    fs.level_id,
+                    l.name as level_name,
+                    MAX(CASE WHEN fs.fee_type = 'APPLICATION' THEN fs.amount ELSE NULL END) as application_fee,
+                    MAX(CASE WHEN fs.fee_type = 'REGISTRATION' THEN fs.amount ELSE NULL END) as registration_fee,
+                    MAX(CASE WHEN fs.fee_type = 'CURSU' THEN fs.amount ELSE NULL END) as cursu_fee,
+                    MAX(CASE WHEN fs.fee_type = 'TUITION' THEN fs.amount ELSE NULL END) as tuition_fee,
+                    MAX(CASE WHEN fs.fee_type = 'INTERNSHIP' THEN fs.amount ELSE NULL END) as internship_fee,
+                    MAX(CASE WHEN fs.fee_type = 'FINAL_PROJECT' THEN fs.amount ELSE NULL END) as final_project_fee,
+                    MAX(CASE WHEN fs.fee_type = 'GRADUATION' THEN fs.amount ELSE NULL END) as graduation_fee
+             FROM `fee_structures` fs
+             LEFT JOIN `fee_structure_options` fso ON fso.fee_structure_id = fs.id
+             LEFT JOIN `options` o ON o.id = fso.option_id
+             LEFT JOIN `departements` d ON d.dep_id = o.department_id
+             LEFT JOIN `faculty` f ON f.fac_id = d.fac_id
+             LEFT JOIN `levels` l ON l.id = fs.level_id
+             WHERE fs.academic_year_id = ? AND fs.is_active = 1
+             GROUP BY f.fac_id, o.id, fs.semester, fs.level_id
+             ORDER BY f.fac_name ASC, o.name ASC",
+            [$academicYearId]
+        );
+
+        return $rows ?? [];
+    }
 }

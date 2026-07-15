@@ -2104,6 +2104,32 @@ class FeeController extends BaseController
                 if (!$levelId) $errs['level_name'] = 'Level not found: ' . $row['level_name'];
             }
 
+            // Resolve campus_id (optional)
+            $campusId = null;
+            if (!empty($row['campus_name'])) {
+                $campusKey = strtolower(trim((string)$row['campus_name']));
+                $campuses = $db->fetchAll("SELECT id, name FROM campuses");
+                $campusByName = [];
+                foreach ($campuses as $campus) {
+                    $campusByName[strtolower(trim((string)$campus['name']))] = $campus['id'];
+                }
+                $campusId = $campusByName[$campusKey] ?? null;
+                if (!$campusId && !empty($row['campus_name'])) $errs['campus_name'] = 'Campus not found: ' . $row['campus_name'];
+            }
+
+            // Resolve option_id via option_name + department_id (optional)
+            $optionId = null;
+            if (!empty($row['option_name']) && !empty($deptId)) {
+                $optionKey = strtolower(trim((string)$row['option_name']));
+                $options = $db->fetchAll("SELECT id, name, department_id FROM options WHERE department_id = ?", [$deptId]);
+                $optionByName = [];
+                foreach ($options as $opt) {
+                    $optionByName[strtolower(trim((string)$opt['name']))] = $opt['id'];
+                }
+                $optionId = $optionByName[$optionKey] ?? null;
+                if (!$optionId && !empty($row['option_name'])) $errs['option_name'] = 'Program/Option not found in department: ' . $row['option_name'];
+            }
+
             // Validate fee_type_code
             $feeType = $row['fee_type_code'] ?? $row['fee_type'] ?? null;
             if (!$feeType || !in_array($feeType, $feeCodes, true)) {
@@ -2132,6 +2158,7 @@ class FeeController extends BaseController
                     'academic_year_id'  => (int)$yearId,
                     'department_id'     => (int)$deptId,
                     'level_id'          => $levelId ? (int)$levelId : null,
+                    'campus_id'         => $campusId ? (int)$campusId : null,
                     'fee_type'          => $feeType,
                     'label'             => (string)$row['label'],
                     'amount'            => (float)$row['amount'],
@@ -2141,6 +2168,11 @@ class FeeController extends BaseController
                     'is_active'         => 1,
                     'created_by'        => (int)$actor['id'],
                 ]);
+
+                // Link options if resolved
+                if ($optionId) {
+                    $this->structureModel->insertOptionLinks((int)$id, [$optionId]);
+                }
 
                 $created++;
             } catch (\Throwable $e) {
@@ -2155,6 +2187,43 @@ class FeeController extends BaseController
             'skipped' => $skipped,
             'failed'  => $failed,
         ], 'Bulk import complete.');
+    }
+
+    /**
+     * GET /api/finance/structures/schedule-export
+     * Export fee structures pivoted into schedule format (one row per program).
+     * Query param: academic_year_id (required)
+     * Returns: pivoted rows grouped by faculty, ready for Excel/PDF rendering.
+     */
+    public function scheduleExportJson(Request $request, Response $response): never
+    {
+        $yearId = (int)($request->query('academic_year_id') ?? 0);
+        if (!$yearId) {
+            $this->error($response, 'academic_year_id is required.', 422);
+        }
+
+        $rows = $this->structureModel->scheduleExport($yearId);
+        $this->success($response, $rows, 'Fee schedule export data retrieved.');
+    }
+
+    /**
+     * GET /api/finance/structures/schedule-export.pdf
+     * Stream a PDF of the fee schedule matching the official layout.
+     * Query param: academic_year_id (required)
+     */
+    public function scheduleExportPdf(Request $request, Response $response): never
+    {
+        $yearId = (int)($request->query('academic_year_id') ?? 0);
+        if (!$yearId) {
+            $this->error($response, 'academic_year_id is required.', 422);
+        }
+
+        $rows = $this->structureModel->scheduleExport($yearId);
+        $year = $this->db->fetchOne("SELECT label FROM academic_years WHERE id = ?", [$yearId]);
+        $yearLabel = $year['label'] ?? 'Academic Year';
+
+        // Stream PDF using the helper
+        \App\Helpers\FeeSchedulePdf::streamPdf($rows, ['academic_year' => $yearLabel], "Fee-Schedule-{$yearLabel}.pdf");
     }
 
     // ────────────────────────────────────────────────────────────────────────

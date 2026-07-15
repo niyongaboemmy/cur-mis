@@ -69,6 +69,10 @@ $router->group('/api/finance', function ($router) {
         Permissions::MY_INVOICE,
     ])]);
 
+    // ── Read-only exports ─────────────────────────────────────────────────────
+    $r->get('/structures/schedule-export',     [FeeController::class, 'scheduleExportJson']);
+    $r->get('/structures/schedule-export.pdf', [FeeController::class, 'scheduleExportPdf']);
+
     // ── Writes ────────────────────────────────────────────────────────────────
     $router->group('', function ($r) {
         $r->post('/structures',              [FeeController::class, 'createStructure']);
