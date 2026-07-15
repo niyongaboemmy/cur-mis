@@ -230,6 +230,11 @@ export default function FinanceHub() {
                     {pendingCount > 9 ? "9+" : pendingCount}
                   </span>
                 )}
+                {t.to === "/finance/documents" && (
+                  <span className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 text-[10px] font-bold bg-blue-500 text-white rounded-full">
+                    📄
+                  </span>
+                )}
               </NavLink>
             ))}
           </div>
