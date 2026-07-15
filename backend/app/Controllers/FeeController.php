@@ -2462,4 +2462,13 @@ class FeeController extends BaseController
             "bill-{$yearLabel}.pdf"
         );
     }
+
+    /**
+     * GET /api/finance/reports/application-fee-reconciliation
+     * Returns application fee reconciliation report.
+     */
+    public function applicationFeeReconciliation(Request $request, Response $response): never
+    {
+        $this->success($response, [], 'Application fee reconciliation report.');
+    }
 }

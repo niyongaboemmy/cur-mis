@@ -1116,6 +1116,8 @@ class DocumentHelper
         $statusClass = $totalBalance <= 0 ? 'green' : 'red';
         $statusText = $totalBalance <= 0 ? 'CLEARED' : 'OUTSTANDING';
 
+        $semesterBlock = $semester ? "<label>Semester:</label><value>Semester {$semester}</value>" : '';
+
         return <<<HTML
         <!DOCTYPE html>
         <html lang="en">
@@ -1166,7 +1168,7 @@ class DocumentHelper
                         <value>{$student['current_level']}</value>
                         <label>Academic Year:</label>
                         <value>{$acYear}</value>
-                        {$semester ? "<label>Semester:</label><value>Semester {$semester}</value>" : ''}
+                        {$semesterBlock}
                         <label>Generated:</label>
                         <value>{$generatedDate}</value>
                     </div>
