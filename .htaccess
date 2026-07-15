@@ -2,15 +2,12 @@
     RewriteEngine On
     RewriteBase /cur-mis/
 
-    # Pass through existing files and directories
-    RewriteCond %{REQUEST_FILENAME} !-f
-    RewriteCond %{REQUEST_FILENAME} !-d
+    # Pass through for existing files and directories
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
 
-    # API requests: rewrite to backend/public/index.php
-    RewriteRule ^api/(.*)$ backend/public/index.php [QSA,L]
-
-    # Frontend routes: serve from frontend/dist if it exists, otherwise to index.html
-    RewriteCond %{REQUEST_FILENAME} !-f
-    RewriteCond %{REQUEST_FILENAME} !-d
-    RewriteRule ^ frontend/dist/index.html [QSA,L]
+    # Route all other requests to index.php
+    RewriteRule ^ index.php [QSA,L]
 </IfModule>
+
