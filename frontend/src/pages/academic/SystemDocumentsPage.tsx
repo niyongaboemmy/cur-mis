@@ -9,7 +9,6 @@ import {
   FileText,
   FolderOpen,
   AlertCircle,
-  X,
 } from 'lucide-react'
 import { systemDocumentService, type SystemDocument } from '@/services/systemDocumentService'
 import { useAuthStore } from '@/store/authStore'
@@ -41,16 +40,6 @@ export default function SystemDocumentsPage() {
   const filteredDocs = selectedCategory
     ? docs.filter((d) => d.category === selectedCategory)
     : docs
-
-  // Group by category
-  const groupedDocs = docs.reduce(
-    (acc, doc) => {
-      if (!acc[doc.category]) acc[doc.category] = []
-      acc[doc.category].push(doc)
-      return acc
-    },
-    {} as Record<string, SystemDocument[]>,
-  )
 
   const handleDownload = async (doc: SystemDocument) => {
     try {
@@ -99,7 +88,7 @@ export default function SystemDocumentsPage() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
   }
 
-  const getFileIcon = (fileType: string) => {
+  const getFileIcon = () => {
     return <FileText className="w-4 h-4" />
   }
 
@@ -173,7 +162,7 @@ export default function SystemDocumentsPage() {
               className="flex items-center justify-between p-4 bg-white border border-gray-200 rounded-lg hover:shadow-md transition"
             >
               <div className="flex items-center gap-3 flex-1">
-                {getFileIcon(doc.file_type)}
+                {getFileIcon()}
                 <div className="flex-1">
                   <h3 className="font-semibold text-gray-900">{doc.name}</h3>
                   {doc.description && (
@@ -220,7 +209,7 @@ export default function SystemDocumentsPage() {
 
       {/* Upload Modal */}
       <Modal
-        isOpen={showUploadModal}
+        open={showUploadModal}
         onClose={() => setShowUploadModal(false)}
         title="Upload Document"
       >
@@ -306,7 +295,7 @@ export default function SystemDocumentsPage() {
 
       {/* Delete Confirmation Modal */}
       <Modal
-        isOpen={deleteId !== null}
+        open={deleteId !== null}
         onClose={() => setDeleteId(null)}
         title="Delete Document"
       >

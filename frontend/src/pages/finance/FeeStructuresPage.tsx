@@ -130,8 +130,8 @@ export default function FeeStructuresPage() {
     }
     try {
       setExportLoading(true)
-      const res = await api.get(`/api/finance/structures/schedule-export?academic_year_id=${yearId}`)
-      const rows = res.data?.data ?? []
+      const res = await api.get<any>(`/api/finance/structures/schedule-export?academic_year_id=${yearId}`)
+      const rows = (Array.isArray(res.data) ? res.data : res.data?.data) ?? []
 
       if (rows.length === 0) {
         toast.error('No fee structures found for this academic year')

@@ -1,5 +1,4 @@
 import { api } from './api'
-import type { ApiResponse } from '@/types'
 
 export interface SystemDocument {
   id: number
@@ -23,14 +22,18 @@ export const systemDocumentService = {
   /**
    * Get all active system documents
    */
-  list: () =>
-    api.get<SystemDocument[]>('/system-documents'),
+  list: async () => {
+    const response = await api.get<SystemDocument[]>('/system-documents')
+    return response.data || []
+  },
 
   /**
    * Get all document categories
    */
-  getCategories: () =>
-    api.get<DocumentCategory[]>('/system-documents/categories'),
+  getCategories: async () => {
+    const response = await api.get<DocumentCategory[]>('/system-documents/categories')
+    return response.data || []
+  },
 
   /**
    * Download a document by ID
