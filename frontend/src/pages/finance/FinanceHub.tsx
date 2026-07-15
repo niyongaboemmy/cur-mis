@@ -13,6 +13,7 @@ import {
   ChevronLeft,
   ChevronRight,
   GitMerge,
+  FileText,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useQuery } from "@tanstack/react-query";
@@ -124,6 +125,13 @@ const TABS = [
     icon: GitMerge,
     end: false,
     permissions: [PERMISSIONS.MANAGE_FINANCE],
+  },
+  {
+    to: "/finance/documents",
+    label: "Documents",
+    icon: FileText,
+    end: false,
+    permissions: [PERMISSIONS.VIEW_FINANCE],
   },
 ];
 

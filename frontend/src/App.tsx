@@ -590,6 +590,7 @@ function App() {
                     }
                   >
                     <Route path="overdue-alerts" element={<OverdueAlertsPage />} />
+                  <Route path="documents" element={<SystemDocumentsPage />} />
                   </Route>
                 </Route>
               </Route>
