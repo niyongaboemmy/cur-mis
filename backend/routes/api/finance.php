@@ -70,8 +70,13 @@ $router->group('/api/finance', function ($router) {
     ])]);
 
     // ── Read-only exports ─────────────────────────────────────────────────────
-    $r->get('/structures/schedule-export',     [FeeController::class, 'scheduleExportJson']);
-    $r->get('/structures/schedule-export.pdf', [FeeController::class, 'scheduleExportPdf']);
+    $router->group('', function ($r) {
+        $r->get('/structures/schedule-export',     [FeeController::class, 'scheduleExportJson']);
+        $r->get('/structures/schedule-export.pdf', [FeeController::class, 'scheduleExportPdf']);
+    }, [new MaybePermissionMiddleware([
+        Permissions::VIEW_FINANCE,
+        Permissions::MANAGE_FINANCE,
+    ])]);
 
     // ── Writes ────────────────────────────────────────────────────────────────
     $router->group('', function ($r) {
