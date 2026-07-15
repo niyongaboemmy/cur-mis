@@ -143,6 +143,17 @@ class Permissions
     public const VIEW_APPRAISALS   = 'VIEW_APPRAISALS';
     public const MANAGE_APPRAISALS = 'MANAGE_APPRAISALS';
 
+    // RBAC Hardening — Phase 0 (migration 095): slugs required by not-yet-built
+    // Finance modules from the client's §6 matrix (Budget Execution, Payment
+    // Calendar, Student Directory finance view). Kept module/action-level so
+    // Registrar/HR stay excluded by omission from role_permissions, same as
+    // every other Finance-only permission in this catalog.
+    public const VIEW_BUDGET_EXECUTION    = 'VIEW_BUDGET_EXECUTION';
+    public const MANAGE_BUDGET_EXECUTION  = 'MANAGE_BUDGET_EXECUTION';
+    public const VIEW_PAYMENT_CALENDAR    = 'VIEW_PAYMENT_CALENDAR';
+    public const MANAGE_PAYMENT_CALENDAR  = 'MANAGE_PAYMENT_CALENDAR';
+    public const VIEW_STUDENT_DIRECTORY_FINANCE = 'VIEW_STUDENT_DIRECTORY_FINANCE';
+
     /**
      * Get all predefined system permissions.
      *
@@ -247,6 +258,11 @@ class Permissions
             self::ACCESS_GATE,
             self::VIEW_APPRAISALS,
             self::MANAGE_APPRAISALS,
+            self::VIEW_BUDGET_EXECUTION,
+            self::MANAGE_BUDGET_EXECUTION,
+            self::VIEW_PAYMENT_CALENDAR,
+            self::MANAGE_PAYMENT_CALENDAR,
+            self::VIEW_STUDENT_DIRECTORY_FINANCE,
         ];
     }
 }
