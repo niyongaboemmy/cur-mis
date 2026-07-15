@@ -105,6 +105,8 @@ class FeeController extends BaseController
                                     ? ((int)$request->query('department_id') ?: null) : null,
             'level_id'         => $request->query('level_id') !== null
                                     ? ((int)$request->query('level_id') ?: null) : null,
+            'campus_id'        => $request->query('campus_id') !== null
+                                    ? ((int)$request->query('campus_id') ?: null) : null,
             'fee_type'         => $request->query('fee_type')    ?? '',
             'is_active'        => $request->query('is_active') !== null
                                     ? (int)$request->query('is_active') : null,
@@ -136,6 +138,11 @@ class FeeController extends BaseController
             ? array_map('intval', $data['department_ids'])
             : (!empty($data['department_id']) ? [(int)$data['department_id']] : []);
 
+        // Parse option_ids array
+        $optionIds = !empty($data['option_ids']) && is_array($data['option_ids'])
+            ? array_map('intval', $data['option_ids'])
+            : [];
+
         $validPlans = ['full_year', 'per_semester', 'per_installment'];
         $paymentPlan = in_array($data['payment_plan'] ?? '', $validPlans, true)
             ? $data['payment_plan'] : 'full_year';
@@ -144,6 +151,7 @@ class FeeController extends BaseController
             'academic_year_id'  => (int)$data['academic_year_id'],
             'department_id'     => !empty($deptIds) ? $deptIds[0] : null,
             'level_id'          => !empty($data['level_id'])  ? (int)$data['level_id']  : null,
+            'campus_id'         => !empty($data['campus_id']) ? (int)$data['campus_id'] : null,
             'fee_type'          => $data['fee_type'],
             'label'             => $data['label'],
             'amount'            => (float)$data['amount'],
@@ -156,6 +164,9 @@ class FeeController extends BaseController
 
         if (!empty($deptIds)) {
             $this->structureModel->insertDepartmentLinks((int)$id, $deptIds);
+        }
+        if (!empty($optionIds)) {
+            $this->structureModel->insertOptionLinks((int)$id, $optionIds);
         }
 
         SystemLogService::log('CREATE', 'FINANCE', "Created fee structure '{$data['label']}' ({$data['fee_type']}) — amount {$data['amount']}.", (int) $id, 'fee_structure', ['fee_type' => $data['fee_type'], 'amount' => (float) $data['amount']], (array) $actor ?: null);
@@ -179,6 +190,7 @@ class FeeController extends BaseController
             'label'             => $data['label']     ?? null,
             'amount'            => isset($data['amount'])    ? (float)$data['amount']    : null,
             'semester'          => isset($data['semester'])  ? (int)$data['semester']    : null,
+            'campus_id'         => isset($data['campus_id']) ? ((int)$data['campus_id'] ?: null) : null,
             'payment_plan'      => isset($data['payment_plan']) && in_array($data['payment_plan'], $validPlans, true)
                                      ? $data['payment_plan'] : null,
             'installment_count' => isset($data['installment_count']) ? ((int)$data['installment_count'] ?: null) : null,
@@ -192,6 +204,11 @@ class FeeController extends BaseController
             if (!empty($deptIds)) {
                 $this->structureModel->update($id, ['department_id' => $deptIds[0]]);
             }
+        }
+
+        if (isset($data['option_ids']) && is_array($data['option_ids'])) {
+            $optionIds = array_map('intval', $data['option_ids']);
+            $this->structureModel->insertOptionLinks($id, $optionIds);
         }
 
         $actor = $request->param('_auth_user');

@@ -8,12 +8,12 @@ class FeeStructureModel extends BaseModel
 {
     protected string $table = 'fee_structures';
     protected array $fillable = [
-        'academic_year_id', 'department_id', 'level_id',
+        'academic_year_id', 'department_id', 'level_id', 'campus_id',
         'fee_type', 'label', 'amount', 'semester', 'payment_plan', 'installment_count',
         'is_active',
     ];
 
-    /** @param array{academic_year_id?:int,department_id?:int,level_id?:int,fee_type?:string,is_active?:bool} $filters */
+    /** @param array{academic_year_id?:int,department_id?:int,level_id?:int,campus_id?:int,fee_type?:string,is_active?:bool} $filters */
     public function listWithJoins(array $filters = []): array
     {
         $where    = [];
@@ -31,6 +31,10 @@ class FeeStructureModel extends BaseModel
             $where[]    = 'fs.level_id = ?';
             $bindings[] = $filters['level_id'] ? (int)$filters['level_id'] : null;
         }
+        if (isset($filters['campus_id'])) {
+            $where[]    = 'fs.campus_id = ?';
+            $bindings[] = $filters['campus_id'] ? (int)$filters['campus_id'] : null;
+        }
         if (!empty($filters['fee_type'])) {
             $where[]    = 'fs.fee_type = ?';
             $bindings[] = $filters['fee_type'];
@@ -47,12 +51,16 @@ class FeeStructureModel extends BaseModel
                     ay.label  AS academic_year_label,
                     d.dep_name AS department_name,
                     l.name    AS level_name,
-                    GROUP_CONCAT(DISTINCT fsd.department_id ORDER BY fsd.department_id) AS dept_ids
+                    c.name    AS campus_name,
+                    GROUP_CONCAT(DISTINCT fsd.department_id ORDER BY fsd.department_id) AS dept_ids,
+                    GROUP_CONCAT(DISTINCT fso.option_id ORDER BY fso.option_id) AS option_ids
              FROM `fee_structures` fs
              LEFT JOIN `academic_years`          ay  ON ay.id    = fs.academic_year_id
              LEFT JOIN `departements`            d   ON d.dep_id = fs.department_id
              LEFT JOIN `levels`                  l   ON l.id     = fs.level_id
+             LEFT JOIN `campuses`                c   ON c.id     = fs.campus_id
              LEFT JOIN `fee_structure_departments` fsd ON fsd.fee_structure_id = fs.id
+             LEFT JOIN `fee_structure_options`     fso ON fso.fee_structure_id = fs.id
              {$whereSql}
              GROUP BY fs.id
              ORDER BY fs.fee_type, fs.label",
@@ -132,6 +140,30 @@ class FeeStructureModel extends BaseModel
                 "INSERT IGNORE INTO `fee_structure_departments` (fee_structure_id, department_id)
                  VALUES (?, ?)",
                 [$structureId, $deptId]
+            );
+        }
+    }
+
+    /**
+     * Replace all option links for a fee structure.
+     * Called after create or update when option_ids array is provided.
+     */
+    public function insertOptionLinks(int $structureId, array $optionIds): void
+    {
+        $this->db->execute(
+            "DELETE FROM `fee_structure_options` WHERE fee_structure_id = ?",
+            [$structureId]
+        );
+
+        foreach ($optionIds as $optionId) {
+            $optionId = (int)$optionId;
+            if ($optionId <= 0) {
+                continue;
+            }
+            $this->db->execute(
+                "INSERT IGNORE INTO `fee_structure_options` (fee_structure_id, option_id)
+                 VALUES (?, ?)",
+                [$structureId, $optionId]
             );
         }
     }

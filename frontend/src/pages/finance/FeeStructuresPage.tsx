@@ -54,6 +54,24 @@ export default function FeeStructuresPage() {
   })
   const levels = levelsQ.data?.data?.data ?? []
 
+  const campusesQ = useQuery({
+    queryKey: ['academics', 'campuses'],
+    queryFn: () => academicsMgmtService.list<any>('campuses', { per_page: 100 }),
+  })
+  const campuses = campusesQ.data?.data?.data ?? []
+
+  const facultiesQ = useQuery({
+    queryKey: ['academics', 'faculties'],
+    queryFn: () => academicsMgmtService.list<any>('faculties', { per_page: 100 }),
+  })
+  const faculties = facultiesQ.data?.data?.data ?? []
+
+  const optionsQ = useQuery({
+    queryKey: ['academics', 'options'],
+    queryFn: () => academicsMgmtService.list<any>('options', { per_page: 500 }),
+  })
+  const options = optionsQ.data?.data?.data ?? []
+
   const feeTypesQ = useQuery({
     queryKey: ['finance', 'fee-types'],
     queryFn: ({ signal }) => feeTypeService.list(signal),
@@ -226,6 +244,9 @@ export default function FeeStructuresPage() {
           years={years}
           departments={departments}
           levels={levels}
+          campuses={campuses}
+          faculties={faculties}
+          options={options}
           feeTypeOptions={feeTypeOptions}
           initial={editing}
           defaultYearId={yearId ? Number(yearId) : undefined}
@@ -254,6 +275,9 @@ interface ModalProps {
   years:           any[]
   departments:     any[]
   levels:          any[]
+  campuses:        any[]
+  faculties:       any[]
+  options:         any[]
   feeTypeOptions:  { value: string; label: string }[]
   initial:         FeeStructure | null
   defaultYearId?: number
@@ -304,19 +328,28 @@ function planBreakdown(plan: PaymentPlan, amount: number, count: number) {
   return [{ label: 'Full year payment', amount }]
 }
 
-function FeeStructureModal({ years, departments, levels, feeTypeOptions, initial, defaultYearId, onClose, onSaved }: ModalProps) {
+function FeeStructureModal({ years, departments, levels, campuses, faculties, options, feeTypeOptions, initial, defaultYearId, onClose, onSaved }: ModalProps) {
   const parseInitialDepts = (): number[] => {
     if (initial?.dept_ids) return initial.dept_ids.split(',').map(Number).filter(Boolean)
     if (initial?.department_id) return [initial.department_id]
     return []
   }
 
+  const parseInitialOptions = (): number[] => {
+    if (initial?.option_ids) return initial.option_ids.split(',').map(Number).filter(Boolean)
+    return []
+  }
+
   const [selectedDepts, setSelectedDepts] = useState<number[]>(parseInitialDepts)
+  const [selectedOptions, setSelectedOptions] = useState<number[]>(parseInitialOptions)
+  const [selectedFacultyId, setSelectedFacultyId] = useState<number | null>(null)
   const [form, setForm] = useState<CreateFeeStructurePayload & { is_active: 0 | 1 }>({
     academic_year_id:  initial?.academic_year_id ?? defaultYearId ?? 0,
     department_id:     initial?.department_id ?? null,
     department_ids:    parseInitialDepts(),
     level_id:          initial?.level_id ?? null,
+    campus_id:         initial?.campus_id ?? null,
+    option_ids:        parseInitialOptions(),
     fee_type:          (initial?.fee_type ?? 'TUITION') as string,
     label:             initial?.label ?? '',
     amount:            initial?.amount ?? 0,
@@ -335,13 +368,34 @@ function FeeStructureModal({ years, departments, levels, feeTypeOptions, initial
   }
 
   const toggleAllDepts = () => {
-    if (selectedDepts.length === departments.length) {
+    const visibleDepts = filteredDepts
+    if (selectedDepts.length === visibleDepts.length) {
       setSelectedDepts([])
       setForm(f => ({ ...f, department_ids: [], department_id: null }))
     } else {
-      const allIds = departments.map((d: any) => d.dep_id)
+      const allIds = visibleDepts.map((d: any) => d.dep_id)
       setSelectedDepts(allIds)
       setForm(f => ({ ...f, department_ids: allIds, department_id: allIds[0] ?? null }))
+    }
+  }
+
+  const toggleOption = (optionId: number) => {
+    const next = selectedOptions.includes(optionId)
+      ? selectedOptions.filter(o => o !== optionId)
+      : [...selectedOptions, optionId]
+    setSelectedOptions(next)
+    setForm(f => ({ ...f, option_ids: next }))
+  }
+
+  const toggleAllOptions = () => {
+    const visibleOptions = filteredOptions
+    if (selectedOptions.length === visibleOptions.length) {
+      setSelectedOptions([])
+      setForm(f => ({ ...f, option_ids: [] }))
+    } else {
+      const allIds = visibleOptions.map((o: any) => o.id)
+      setSelectedOptions(allIds)
+      setForm(f => ({ ...f, option_ids: allIds }))
     }
   }
 
@@ -349,6 +403,16 @@ function FeeStructureModal({ years, departments, levels, feeTypeOptions, initial
 
   const yearOptions  = years.map((y: any) => ({ value: y.id, label: y.label }))
   const levelOptions = levels.map((l: any) => ({ value: l.id, label: l.name }))
+  const campusOptions = campuses.map((c: any) => ({ value: c.id, label: c.name }))
+  const facultyOptions = faculties.map((f: any) => ({ value: f.fac_id, label: f.fac_name }))
+
+  const filteredDepts = selectedFacultyId
+    ? departments.filter((d: any) => d.fac_id === selectedFacultyId)
+    : departments
+
+  const filteredOptions = selectedDepts.length > 0
+    ? options.filter((o: any) => selectedDepts.includes(o.department_id))
+    : options
 
   const activePlan    = form.payment_plan ?? 'full_year'
   const installCount  = Math.max(2, Math.min(12, form.installment_count ?? 4))
@@ -419,8 +483,14 @@ function FeeStructureModal({ years, departments, levels, feeTypeOptions, initial
                 <Field label="Semester">
                   <SearchableSelect
                     options={[
-                      { value: 1, label: 'Semester 1' },
-                      { value: 2, label: 'Semester 2' },
+                      { value: 1, label: 'Semester 1 (Year 1)' },
+                      { value: 2, label: 'Semester 2 (Year 1)' },
+                      { value: 3, label: 'Semester 3 (Year 2)' },
+                      { value: 4, label: 'Semester 4 (Year 2)' },
+                      { value: 5, label: 'Semester 5 (Year 3)' },
+                      { value: 6, label: 'Semester 6 (Year 3)' },
+                      { value: 7, label: 'Semester 7 (Year 4)' },
+                      { value: 8, label: 'Semester 8 (Year 4)' },
                     ]}
                     value={form.semester ?? ''}
                     onChange={v => set('semester', v ? Number(v) : null)}
@@ -491,6 +561,28 @@ function FeeStructureModal({ years, departments, levels, feeTypeOptions, initial
 
             {/* ── Right: Scope + Payment Plan ── */}
             <div className="space-y-4">
+              {/* Campus */}
+              <Field label="Campus">
+                <SearchableSelect
+                  options={campusOptions}
+                  value={form.campus_id ?? ''}
+                  onChange={v => set('campus_id', v ? Number(v) : null)}
+                  placeholder="All campuses"
+                  allLabel="All campuses"
+                />
+              </Field>
+
+              {/* Faculty */}
+              <Field label="Faculty">
+                <SearchableSelect
+                  options={facultyOptions}
+                  value={selectedFacultyId ?? ''}
+                  onChange={v => setSelectedFacultyId(v ? Number(v) : null)}
+                  placeholder="All faculties"
+                  allLabel="All faculties"
+                />
+              </Field>
+
               {/* Departments */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
@@ -498,21 +590,21 @@ function FeeStructureModal({ years, departments, levels, feeTypeOptions, initial
                     Departments
                     <span className="normal-case font-normal ml-1 text-ink-300">(leave empty = all)</span>
                   </label>
-                  {departments.length > 0 && (
+                  {filteredDepts.length > 0 && (
                     <button
                       type="button"
                       className="text-[11px] text-brand hover:underline"
                       onClick={toggleAllDepts}
                     >
-                      {selectedDepts.length === departments.length ? 'Deselect all' : 'Select all'}
+                      {selectedDepts.length === filteredDepts.length ? 'Deselect all' : 'Select all'}
                     </button>
                   )}
                 </div>
                 <div className="border border-ink-200 dark:border-ink-600 rounded-xl p-2 max-h-44 overflow-y-auto space-y-0.5 bg-ink-50/50 dark:bg-ink-900/30">
-                  {departments.length === 0 && (
-                    <p className="text-xs text-ink-400 py-1 px-1">No departments loaded</p>
+                  {filteredDepts.length === 0 && (
+                    <p className="text-xs text-ink-400 py-1 px-1">{selectedFacultyId ? 'No departments in this faculty' : 'No departments loaded'}</p>
                   )}
-                  {departments.map((d: any) => (
+                  {filteredDepts.map((d: any) => (
                     <label
                       key={d.dep_id}
                       className={`flex items-center gap-2.5 cursor-pointer rounded-lg px-2 py-1.5 transition-colors ${
@@ -534,6 +626,53 @@ function FeeStructureModal({ years, departments, levels, feeTypeOptions, initial
                 {selectedDepts.length > 0 && (
                   <p className="text-[11px] text-brand mt-1.5 font-medium">
                     {selectedDepts.length} department{selectedDepts.length !== 1 ? 's' : ''} selected
+                  </p>
+                )}
+              </div>
+
+              {/* Options (Programs) */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400">
+                    Programs (Options)
+                    <span className="normal-case font-normal ml-1 text-ink-300">(leave empty = all)</span>
+                  </label>
+                  {filteredOptions.length > 0 && (
+                    <button
+                      type="button"
+                      className="text-[11px] text-brand hover:underline"
+                      onClick={toggleAllOptions}
+                    >
+                      {selectedOptions.length === filteredOptions.length ? 'Deselect all' : 'Select all'}
+                    </button>
+                  )}
+                </div>
+                <div className="border border-ink-200 dark:border-ink-600 rounded-xl p-2 max-h-44 overflow-y-auto space-y-0.5 bg-ink-50/50 dark:bg-ink-900/30">
+                  {filteredOptions.length === 0 && (
+                    <p className="text-xs text-ink-400 py-1 px-1">{selectedDepts.length > 0 ? 'No programs in selected departments' : 'Select departments to see programs'}</p>
+                  )}
+                  {filteredOptions.map((o: any) => (
+                    <label
+                      key={o.id}
+                      className={`flex items-center gap-2.5 cursor-pointer rounded-lg px-2 py-1.5 transition-colors ${
+                        selectedOptions.includes(o.id)
+                          ? 'bg-brand/10 dark:bg-brand/20'
+                          : 'hover:bg-ink-100 dark:hover:bg-ink-700/40'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        className="rounded accent-brand"
+                        checked={selectedOptions.includes(o.id)}
+                        onChange={() => toggleOption(o.id)}
+                      />
+                      <span className="text-xs leading-none">{o.name}</span>
+                    </label>
+                  ))}
+                </div>
+                {selectedOptions.length > 0 && (
+                  <p className="text-[11px] text-brand mt-1.5 font-medium">
+                    {selectedOptions.length} program{selectedOptions.length !== 1 ? 's' : ''} selected
                   </p>
                 )}
               </div>

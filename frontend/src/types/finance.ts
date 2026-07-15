@@ -32,10 +32,14 @@ export interface FeeStructure {
   dept_ids?:            string | null
   level_id:             number | null
   level_name?:          string | null
+  campus_id:            number | null
+  campus_name?:         string | null
+  /** comma-separated option IDs from fee_structure_options join */
+  option_ids?:          string | null
   fee_type:             Exclude<FeeType, 'ARREARS' | 'BURSARY_CREDIT'>
   label:                string
   amount:               number
-  semester:             1 | 2 | null
+  semester:             1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | null
   payment_plan?:        PaymentPlan
   installment_count?:   number | null
   is_active:            0 | 1
@@ -49,10 +53,12 @@ export interface CreateFeeStructurePayload {
   department_id?:     number | null
   department_ids?:    number[]
   level_id?:          number | null
+  campus_id?:         number | null
+  option_ids?:        number[]
   fee_type:           string
   label:              string
   amount:             number
-  semester?:          1 | 2 | null
+  semester?:          1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | null
   payment_plan?:      PaymentPlan
   installment_count?: number | null
 }
