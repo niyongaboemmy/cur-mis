@@ -215,10 +215,11 @@ WHERE r.`name` = 'finance_officer' AND p.`slug` = 'VIEW_STUDENTS';
 -- no unique key on `name`, so that guard was a no-op — reproduced here as a
 -- genuine WHERE NOT EXISTS guard so this section is actually idempotent.
 INSERT INTO `system_documents`
-  (`name`, `description`, `file_name`, `file_size`, `file_type`, `category`, `uploaded_by`, `is_active`)
+  (`name`, `description`, `file_path`, `file_name`, `file_size`, `file_type`, `category`, `uploaded_by`, `is_active`)
 SELECT
   'CUR Academic Fees Structure 2025-2026 (Official)',
   'Official signed fee schedule for Academic Year 2025-2026. Contains complete fee structure by faculty and program including: Application Fee, Registration Fee, CURSU Fee, Total Tuition, Internship Fee, Final Project Fee, and Graduation Fee.',
+  'storage/system-documents/Fee-Structure-2025-2026-Official.pdf',
   'Fee-Structure-2025-2026-Official.pdf',
   0,
   'application/pdf',
