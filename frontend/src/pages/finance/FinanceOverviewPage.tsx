@@ -350,7 +350,7 @@ export default function FinanceOverviewPage() {
             </div>
           )}
 
-          {/* Online Payment Portal Button */}
+          {/* Opening Balance & Payments Button */}
           <button
             onClick={() => setShowFinanceModal(true)}
             className="card p-4 flex flex-col items-center justify-center gap-3 hover:shadow-md transition-all hover:scale-105 cursor-pointer bg-gradient-to-br from-brand/5 to-brand/10 dark:from-brand/10 dark:to-brand/15 border-brand/30 dark:border-brand/40"
@@ -358,8 +358,8 @@ export default function FinanceOverviewPage() {
             <div className="w-12 h-12 rounded-xl bg-brand text-white flex items-center justify-center">
               <ExternalLink className="w-5 h-5" />
             </div>
-            <h3 className="text-sm font-semibold text-ink-800 dark:text-white">Online Portal</h3>
-            <p className="text-[11px] text-ink-500 text-center">Access finance portal</p>
+            <h3 className="text-sm font-semibold text-ink-800 dark:text-white">Opening Balance</h3>
+            <p className="text-[11px] text-ink-500 text-center">Various payments and sponsors</p>
           </button>
         </div>
       )}
@@ -577,7 +577,7 @@ export default function FinanceOverviewPage() {
         />
       )}
 
-      {/* Online Finance Portal Modal */}
+      {/* Opening Balance & Payments Modal */}
       {showFinanceModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 dark:bg-black/70 backdrop-blur-sm">
           <div className="w-[90vw] h-[90vh] max-w-[90%] max-h-[90%] bg-white dark:bg-ink-800 rounded-xl shadow-2xl flex flex-col">
@@ -585,7 +585,7 @@ export default function FinanceOverviewPage() {
             <div className="flex items-center justify-between px-6 py-4 border-b border-ink-100 dark:border-ink-700">
               <div className="flex items-center gap-2">
                 <ExternalLink className="w-4 h-4 text-brand" />
-                <h2 className="text-sm font-semibold text-ink-800 dark:text-white">Finance Portal</h2>
+                <h2 className="text-sm font-semibold text-ink-800 dark:text-white">Opening Balance - Various Payments & Sponsors</h2>
               </div>
               <button
                 onClick={() => setShowFinanceModal(false)}
