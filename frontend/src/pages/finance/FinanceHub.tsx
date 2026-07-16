@@ -13,6 +13,10 @@ import {
   ChevronLeft,
   ChevronRight,
   GitMerge,
+  FileText,
+  CalendarClock,
+  PiggyBank,
+  GraduationCap,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useQuery } from "@tanstack/react-query";
@@ -45,6 +49,13 @@ const TABS = [
     to: "/finance/structures",
     label: "Fee Rates",
     icon: Settings2,
+    end: false,
+    permissions: [PERMISSIONS.VIEW_FINANCE_STRUCTURES],
+  },
+  {
+    to: "/finance/pg-intl-structures",
+    label: "PG/Intl Fees",
+    icon: GraduationCap,
     end: false,
     permissions: [PERMISSIONS.VIEW_FINANCE_STRUCTURES],
   },
@@ -124,6 +135,27 @@ const TABS = [
     icon: GitMerge,
     end: false,
     permissions: [PERMISSIONS.MANAGE_FINANCE],
+  },
+  {
+    to: "/finance/documents",
+    label: "Documents",
+    icon: FileText,
+    end: false,
+    permissions: [PERMISSIONS.VIEW_FINANCE],
+  },
+  {
+    to: "/finance/payment-calendar",
+    label: "Payment Calendar",
+    icon: CalendarClock,
+    end: false,
+    permissions: [PERMISSIONS.VIEW_PAYMENT_CALENDAR, PERMISSIONS.MANAGE_PAYMENT_CALENDAR],
+  },
+  {
+    to: "/finance/budget-execution",
+    label: "Budget Execution",
+    icon: PiggyBank,
+    end: false,
+    permissions: [PERMISSIONS.VIEW_BUDGET_EXECUTION, PERMISSIONS.MANAGE_BUDGET_EXECUTION],
   },
 ];
 
@@ -220,6 +252,11 @@ export default function FinanceHub() {
                 {t.to === "/finance/approvals" && pendingCount > 0 && (
                   <span className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 text-[10px] font-bold bg-red-500 text-white rounded-full animate-pulse">
                     {pendingCount > 9 ? "9+" : pendingCount}
+                  </span>
+                )}
+                {t.to === "/finance/documents" && (
+                  <span className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 text-[10px] font-bold bg-blue-500 text-white rounded-full">
+                    📄
                   </span>
                 )}
               </NavLink>

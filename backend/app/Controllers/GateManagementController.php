@@ -74,7 +74,7 @@ class GateManagementController extends BaseController
              FROM `student` s
              LEFT JOIN `options`        o  ON o.id = s.option_id
              LEFT JOIN `levels`         l  ON l.id = s.level_id
-             LEFT JOIN `academic_years` ay ON ay.is_active = 1
+             LEFT JOIN `academic_years` ay ON ay.id = (SELECT id FROM academic_years ORDER BY id DESC LIMIT 1)
              LEFT JOIN `academic_terms` t  ON t.academic_year_id = ay.id AND t.is_current = 1
              WHERE s.regnumber = ?
                 OR s.regnumber LIKE ?
@@ -297,7 +297,7 @@ class GateManagementController extends BaseController
              FROM `student` s
              LEFT JOIN `options`        o  ON o.id = s.option_id
              LEFT JOIN `levels`         l  ON l.id = s.level_id
-             LEFT JOIN `academic_years` ay ON ay.is_active = 1
+             LEFT JOIN `academic_years` ay ON ay.id = (SELECT id FROM academic_years ORDER BY id DESC LIMIT 1)
              LEFT JOIN `academic_terms` t  ON t.academic_year_id = ay.id AND t.is_current = 1
              WHERE s.regnumber = ?
              LIMIT 1",

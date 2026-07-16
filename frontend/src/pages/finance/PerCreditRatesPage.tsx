@@ -68,7 +68,10 @@ export default function PerCreditRatesPage() {
     queryFn: () => academicService.listYears(),
   })
   const years = yearsQ.data?.data ?? []
-  const yearOptions = years.map((y: any) => ({ value: y.id, label: y.label }))
+  const yearOptions = years.map((y: any) => ({
+    value: y.id,
+    label: y.is_current ? `${y.label} (Current)` : y.label
+  }))
 
   // Fetch faculties
   const facultiesQ = useQuery({
@@ -245,6 +248,9 @@ export default function PerCreditRatesPage() {
                       onChange={(v) => set('academic_year_id', v)}
                       placeholder="Select year…"
                     />
+                    <p className="text-[11px] text-ink-500 mt-1">
+                      💡 Tip: Only rates in the current year will apply to module pricing
+                    </p>
                   </div>
 
                   {/* Faculty */}

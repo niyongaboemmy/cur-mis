@@ -15,6 +15,7 @@ class Permissions
     // System Settings
     public const MANAGE_ACADEMIC_YEARS = 'MANAGE_ACADEMIC_YEARS';
     public const MANAGE_ACADEMIC_TERMS = 'MANAGE_ACADEMIC_TERMS';
+    public const MANAGE_ACADEMIC_SETTINGS = 'MANAGE_ACADEMIC_SETTINGS';
     public const VIEW_SYSTEM_BASICS = 'VIEW_SYSTEM_BASICS';
     public const VIEW_SETTINGS = 'VIEW_SETTINGS';
     public const MANAGE_SETTINGS = 'MANAGE_SETTINGS';
@@ -143,6 +144,17 @@ class Permissions
     public const VIEW_APPRAISALS   = 'VIEW_APPRAISALS';
     public const MANAGE_APPRAISALS = 'MANAGE_APPRAISALS';
 
+    // RBAC Hardening — Phase 0 (migration 095): slugs required by not-yet-built
+    // Finance modules from the client's §6 matrix (Budget Execution, Payment
+    // Calendar, Student Directory finance view). Kept module/action-level so
+    // Registrar/HR stay excluded by omission from role_permissions, same as
+    // every other Finance-only permission in this catalog.
+    public const VIEW_BUDGET_EXECUTION    = 'VIEW_BUDGET_EXECUTION';
+    public const MANAGE_BUDGET_EXECUTION  = 'MANAGE_BUDGET_EXECUTION';
+    public const VIEW_PAYMENT_CALENDAR    = 'VIEW_PAYMENT_CALENDAR';
+    public const MANAGE_PAYMENT_CALENDAR  = 'MANAGE_PAYMENT_CALENDAR';
+    public const VIEW_STUDENT_DIRECTORY_FINANCE = 'VIEW_STUDENT_DIRECTORY_FINANCE';
+
     /**
      * Get all predefined system permissions.
      *
@@ -159,6 +171,7 @@ class Permissions
             self::VIEW_DASHBOARD,
             self::MANAGE_ACADEMIC_YEARS,
             self::MANAGE_ACADEMIC_TERMS,
+            self::MANAGE_ACADEMIC_SETTINGS,
             self::VIEW_SYSTEM_BASICS,
             self::VIEW_SETTINGS,
             self::MANAGE_SETTINGS,
@@ -247,6 +260,11 @@ class Permissions
             self::ACCESS_GATE,
             self::VIEW_APPRAISALS,
             self::MANAGE_APPRAISALS,
+            self::VIEW_BUDGET_EXECUTION,
+            self::MANAGE_BUDGET_EXECUTION,
+            self::VIEW_PAYMENT_CALENDAR,
+            self::MANAGE_PAYMENT_CALENDAR,
+            self::VIEW_STUDENT_DIRECTORY_FINANCE,
         ];
     }
 }

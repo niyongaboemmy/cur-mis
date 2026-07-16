@@ -460,32 +460,58 @@ class ModuleModel extends BaseModel
 
         if (!$yearId) return [];
 
-        // Fetch per-credit rates for each faculty (departments are grouped by faculty)
+        // Fetch per-credit rates for each department
+        // Priority: Department-specific rate > Faculty-wide rate
         $deptIds = array_keys($modulesByDept);
         $deptPlaceholders = implode(',', array_fill(0, count($deptIds), '?'));
 
-        $facultyRates = $this->db->fetchAll(
-            "SELECT DISTINCT d.dep_id, fpcr.amount_per_credit
+        // Get all rates for these departments' faculties
+        $rates = $this->db->fetchAll(
+            "SELECT d.dep_id, fpcr.id AS rate_id, fpcr.amount_per_credit
              FROM departements d
-             LEFT JOIN faculty f ON d.fac_id = f.fac_id
-             LEFT JOIN fee_per_credit_rates fpcr ON f.fac_id = fpcr.faculty_id AND fpcr.academic_year_id = ? AND fpcr.is_active = 1
+             INNER JOIN faculty f ON d.fac_id = f.fac_id
+             INNER JOIN fee_per_credit_rates fpcr ON f.fac_id = fpcr.faculty_id
+                                                   AND fpcr.academic_year_id = ?
+                                                   AND fpcr.is_active = 1
              WHERE d.dep_id IN ($deptPlaceholders)",
             array_merge([$yearId], $deptIds)
         );
 
-        // Build price map: module_id => calculated_price
+        // For each rate, check if it has department links or applies to all
         $prices = [];
-        foreach ($facultyRates as $fr) {
-            $dept = (int)$fr['dep_id'];
-            $rate = (float)($fr['amount_per_credit'] ?? 0);
+        foreach ($rates as $row) {
+            $dept = (int)$row['dep_id'];
+            $rateId = (int)$row['rate_id'];
+            $rate = (float)($row['amount_per_credit'] ?? 0);
 
             if ($rate <= 0 || !isset($modulesByDept[$dept])) continue;
 
-            foreach ($modulesByDept[$dept] as $module) {
-                $moduleId = (int)$module['module_id'];
-                $credits = (int)($module['module_credits'] ?? 0);
-                if ($credits > 0) {
-                    $prices[$moduleId] = $credits * $rate;
+            // Check if this rate has department-specific links
+            $hasDeptScope = $this->db->fetchOne(
+                "SELECT COUNT(*) AS cnt FROM fee_per_credit_rate_departments
+                 WHERE fee_per_credit_rate_id = ? AND department_id = ?",
+                [$rateId, $dept]
+            );
+
+            $isDeptLinked = (int)($hasDeptScope['cnt'] ?? 0) > 0;
+            $hasNoScope = !$this->db->fetchOne(
+                "SELECT COUNT(*) AS cnt FROM fee_per_credit_rate_departments
+                 WHERE fee_per_credit_rate_id = ?",
+                [$rateId]
+            ) || (int)($this->db->fetchOne(
+                "SELECT COUNT(*) AS cnt FROM fee_per_credit_rate_departments
+                 WHERE fee_per_credit_rate_id = ?",
+                [$rateId]
+            )['cnt'] ?? 0) === 0;
+
+            // Apply if: no dept scope (all departments) OR dept is linked
+            if ($hasNoScope || $isDeptLinked) {
+                foreach ($modulesByDept[$dept] as $module) {
+                    $moduleId = (int)$module['module_id'];
+                    $credits = (int)($module['module_credits'] ?? 0);
+                    if ($credits > 0) {
+                        $prices[$moduleId] = $credits * $rate;
+                    }
                 }
             }
         }

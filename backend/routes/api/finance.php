@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 use App\Controllers\FeeController;
 use App\Controllers\RefundController;
+use App\Controllers\StudentController;
+use App\Controllers\PaymentCalendarController;
+use App\Controllers\BudgetController;
+use App\Controllers\PgIntlFeeStructureController;
 use App\Middleware\AuthMiddleware;
 use App\Middleware\PermissionMiddleware;
 use App\Middleware\MaybePermissionMiddleware;
@@ -21,6 +25,7 @@ $router->group('/api/finance', function ($router) {
     $router->group('', function ($r) {
         $r->get('/reports/application-fee-reconciliation', [FeeController::class, 'applicationFeeReconciliation']);
         $r->get('/structures',               [FeeController::class, 'listStructures']);
+        $r->get('/pg-intl-structures',        [PgIntlFeeStructureController::class, 'listPgIntlStructures']);
         $r->get('/payments',                 [FeeController::class, 'listPayments']);
         $r->get('/online-payments',          [FeeController::class, 'listOnlinePaymentsHistory']);
         $r->get('/payments/pending-count',   [FeeController::class, 'getPendingPaymentCount']);
@@ -47,7 +52,6 @@ $router->group('/api/finance', function ($router) {
         $r->get('/clearance/exam-eligibility',   [FeeController::class, 'getExamEligibility']);
         $r->get('/clearance/bulk',               [FeeController::class, 'getBulkClearance']);
         $r->get('/clearance/report',             [FeeController::class, 'getClearanceReport']);
-        $r->get('/budgets',                  [FeeController::class, 'listBudgets']);
         $r->get('/billing/summary',          [FeeController::class, 'listBillingSummary']);
         $r->get('/billing/all-students',     [FeeController::class, 'listAllStudentsWithStatus']);
         $r->get('/billing/export',           [FeeController::class, 'exportBillingSummary']);
@@ -59,15 +63,49 @@ $router->group('/api/finance', function ($router) {
         Permissions::VIEW_ONLINE_PAYMENTS_HISTORY,
     ])]);
 
+    // ── Payment Calendar — read-only ─────────────────────────────────────────
+    $router->group('', function ($r) {
+        $r->get('/payment-calendar', [PaymentCalendarController::class, 'listEvents']);
+    }, [new MaybePermissionMiddleware([
+        Permissions::VIEW_PAYMENT_CALENDAR,
+        Permissions::MANAGE_PAYMENT_CALENDAR,
+    ])]);
+
+    // ── Budget Execution — read-only, Phase 4 ────────────────────────────────
+    $router->group('', function ($r) {
+        $r->get('/budgets',                   [BudgetController::class, 'listBudgets']);
+        $r->get('/budget-execution',          [BudgetController::class, 'listByYear']);
+        $r->get('/budget-execution/compare',  [BudgetController::class, 'compare']);
+        $r->get('/budget-execution/export',   [BudgetController::class, 'export']);
+    }, [new MaybePermissionMiddleware([
+        Permissions::VIEW_BUDGET_EXECUTION,
+        Permissions::MANAGE_BUDGET_EXECUTION,
+    ])]);
+
     // ── Student self-service ──────────────────────────────────────────────────
     $router->group('/my', function ($r) {
         $r->get('/invoices',  [FeeController::class, 'getMyInvoices']);
         $r->get('/clearance', [FeeController::class, 'getMyClearance']);
         $r->get('/bill/pdf',  [FeeController::class, 'downloadMyBillPdf']);
+        $r->get('/payment-calendar', [PaymentCalendarController::class, 'listMyEvents']);
     }, [new MaybePermissionMiddleware([
         Permissions::ACCESS_STUDENT_PORTAL,
         Permissions::MY_INVOICE,
     ])]);
+
+    // ── Read-only exports ─────────────────────────────────────────────────────
+    $router->group('', function ($r) {
+        $r->get('/structures/schedule-export',     [FeeController::class, 'scheduleExportJson']);
+        $r->get('/structures/schedule-export.pdf', [FeeController::class, 'scheduleExportPdf']);
+    }, [new MaybePermissionMiddleware([
+        Permissions::VIEW_FINANCE,
+        Permissions::MANAGE_FINANCE,
+    ])]);
+
+    // ── Student Directory (Finance view) — read-only, Phase 2 ───────────────────
+    $router->group('', function ($r) {
+        $r->get('/students', [StudentController::class, 'financeDirectory']);
+    }, [new PermissionMiddleware(Permissions::VIEW_STUDENT_DIRECTORY_FINANCE)]);
 
     // ── Writes ────────────────────────────────────────────────────────────────
     $router->group('', function ($r) {
@@ -75,6 +113,10 @@ $router->group('/api/finance', function ($router) {
         $r->post('/structures/bulk-import',  [FeeController::class, 'bulkImportStructures']);
         $r->put('/structures/:id',           [FeeController::class, 'updateStructure']);
         $r->delete('/structures/:id',        [FeeController::class, 'deleteStructure']);
+
+        $r->post('/pg-intl-structures',       [PgIntlFeeStructureController::class, 'createPgIntlStructure']);
+        $r->put('/pg-intl-structures/:id',    [PgIntlFeeStructureController::class, 'updatePgIntlStructure']);
+        $r->delete('/pg-intl-structures/:id', [PgIntlFeeStructureController::class, 'deletePgIntlStructure']);
 
         $r->post('/students/generate',       [FeeController::class, 'generateInvoices']);
         $r->post('/billing/bulk-generate',   [FeeController::class, 'bulkGenerateInvoices']);
@@ -121,8 +163,19 @@ $router->group('/api/finance', function ($router) {
 
         $r->post('/clearance',               [FeeController::class, 'grantClearance']);
         $r->post('/clearance/bulk',          [FeeController::class, 'runBulkClearance']);
-        $r->post('/budgets',                 [FeeController::class, 'saveBudget']);
         $r->post('/reports/application-fee-reconciliation/run-pending', [FeeController::class, 'runPendingApplicationFeeCredits']);
     }, [new PermissionMiddleware(Permissions::MANAGE_FINANCE)]);
+
+    // ── Payment Calendar — writes ────────────────────────────────────────────
+    $router->group('', function ($r) {
+        $r->post('/payment-calendar',       [PaymentCalendarController::class, 'createEvent']);
+        $r->put('/payment-calendar/:id',    [PaymentCalendarController::class, 'updateEvent']);
+        $r->delete('/payment-calendar/:id', [PaymentCalendarController::class, 'deleteEvent']);
+    }, [new PermissionMiddleware(Permissions::MANAGE_PAYMENT_CALENDAR)]);
+
+    // ── Budget Execution — writes ─────────────────────────────────────────────
+    $router->group('', function ($r) {
+        $r->post('/budgets', [BudgetController::class, 'saveBudget']);
+    }, [new PermissionMiddleware(Permissions::MANAGE_BUDGET_EXECUTION)]);
 
 }, [AuthMiddleware::class]);

@@ -15,7 +15,6 @@ use App\Models\SponsorModel;
 use App\Models\ExpenseModel;
 use App\Models\ExpenseCategoryModel;
 use App\Models\FeeTypeModel;
-use App\Models\ExpenseBudgetModel;
 use App\Models\ClearanceModel;
 use App\Models\StudentApplicationModel;
 use App\Services\FeeService;
@@ -35,7 +34,6 @@ class FeeController extends BaseController
     private ExpenseModel            $expenseModel;
     private ExpenseCategoryModel    $expenseCategoryModel;
     private FeeTypeModel            $feeTypeModel;
-    private ExpenseBudgetModel      $budgetModel;
     private ClearanceModel          $clearanceModel;
     private StudentApplicationModel $applicationModel;
     private FeeService              $service;
@@ -53,7 +51,6 @@ class FeeController extends BaseController
         $this->expenseModel         = new ExpenseModel();
         $this->expenseCategoryModel = new ExpenseCategoryModel();
         $this->feeTypeModel         = new FeeTypeModel();
-        $this->budgetModel          = new ExpenseBudgetModel();
         $this->clearanceModel       = new ClearanceModel();
         $this->applicationModel     = new StudentApplicationModel();
         $this->service              = new FeeService();
@@ -105,6 +102,9 @@ class FeeController extends BaseController
                                     ? ((int)$request->query('department_id') ?: null) : null,
             'level_id'         => $request->query('level_id') !== null
                                     ? ((int)$request->query('level_id') ?: null) : null,
+            'campus_id'        => $request->query('campus_id') !== null
+                                    ? ((int)$request->query('campus_id') ?: null) : null,
+            'student_category' => $request->query('student_category') ?? '',
             'fee_type'         => $request->query('fee_type')    ?? '',
             'is_active'        => $request->query('is_active') !== null
                                     ? (int)$request->query('is_active') : null,
@@ -121,11 +121,14 @@ class FeeController extends BaseController
     {
         $data   = $request->body();
         $actor  = $request->param('_auth_user');
+        $validCategories = ['local', 'international', 'sponsored', 'self_sponsored'];
         $errors = ValidationHelper::validate($data, [
             'academic_year_id' => 'required|numeric',
             'fee_type'         => 'required|in:' . implode(',', $this->getActiveFeeCodes()),
             'label'            => 'required|string|max:120',
             'amount'           => 'required|numeric',
+            'student_category' => 'nullable|in:' . implode(',', $validCategories),
+            'currency'         => 'nullable|string|max:10',
         ]);
         if (!empty($errors)) {
             $this->error($response, 'Validation failed.', 422, $errors);
@@ -136,6 +139,11 @@ class FeeController extends BaseController
             ? array_map('intval', $data['department_ids'])
             : (!empty($data['department_id']) ? [(int)$data['department_id']] : []);
 
+        // Parse option_ids array
+        $optionIds = !empty($data['option_ids']) && is_array($data['option_ids'])
+            ? array_map('intval', $data['option_ids'])
+            : [];
+
         $validPlans = ['full_year', 'per_semester', 'per_installment'];
         $paymentPlan = in_array($data['payment_plan'] ?? '', $validPlans, true)
             ? $data['payment_plan'] : 'full_year';
@@ -144,9 +152,13 @@ class FeeController extends BaseController
             'academic_year_id'  => (int)$data['academic_year_id'],
             'department_id'     => !empty($deptIds) ? $deptIds[0] : null,
             'level_id'          => !empty($data['level_id'])  ? (int)$data['level_id']  : null,
+            'campus_id'         => !empty($data['campus_id']) ? (int)$data['campus_id'] : null,
+            'student_category'  => in_array($data['student_category'] ?? '', $validCategories, true)
+                                     ? $data['student_category'] : null,
             'fee_type'          => $data['fee_type'],
             'label'             => $data['label'],
             'amount'            => (float)$data['amount'],
+            'currency'          => !empty($data['currency']) ? strtoupper((string)$data['currency']) : 'RWF',
             'semester'          => !empty($data['semester'])  ? (int)$data['semester']  : null,
             'payment_plan'      => $paymentPlan,
             'installment_count' => !empty($data['installment_count']) ? (int)$data['installment_count'] : null,
@@ -156,6 +168,9 @@ class FeeController extends BaseController
 
         if (!empty($deptIds)) {
             $this->structureModel->insertDepartmentLinks((int)$id, $deptIds);
+        }
+        if (!empty($optionIds)) {
+            $this->structureModel->insertOptionLinks((int)$id, $optionIds);
         }
 
         SystemLogService::log('CREATE', 'FINANCE', "Created fee structure '{$data['label']}' ({$data['fee_type']}) — amount {$data['amount']}.", (int) $id, 'fee_structure', ['fee_type' => $data['fee_type'], 'amount' => (float) $data['amount']], (array) $actor ?: null);
@@ -174,11 +189,20 @@ class FeeController extends BaseController
             $this->error($response, 'Fee structure not found.', 404);
         }
 
-        $validPlans = ['full_year', 'per_semester', 'per_installment'];
+        $validPlans      = ['full_year', 'per_semester', 'per_installment'];
+        $validCategories = ['local', 'international', 'sponsored', 'self_sponsored'];
+
+        if (isset($data['student_category']) && $data['student_category'] !== '' && !in_array($data['student_category'], $validCategories, true)) {
+            $this->error($response, 'Validation failed.', 422, ['student_category' => ['The student_category field must be one of: ' . implode(', ', $validCategories) . '.']]);
+        }
+
         $this->structureModel->update($id, array_filter([
             'label'             => $data['label']     ?? null,
             'amount'            => isset($data['amount'])    ? (float)$data['amount']    : null,
+            'currency'          => isset($data['currency']) ? strtoupper((string)$data['currency']) : null,
             'semester'          => isset($data['semester'])  ? (int)$data['semester']    : null,
+            'campus_id'         => isset($data['campus_id']) ? ((int)$data['campus_id'] ?: null) : null,
+            'student_category'  => isset($data['student_category']) ? ($data['student_category'] ?: null) : null,
             'payment_plan'      => isset($data['payment_plan']) && in_array($data['payment_plan'], $validPlans, true)
                                      ? $data['payment_plan'] : null,
             'installment_count' => isset($data['installment_count']) ? ((int)$data['installment_count'] ?: null) : null,
@@ -192,6 +216,11 @@ class FeeController extends BaseController
             if (!empty($deptIds)) {
                 $this->structureModel->update($id, ['department_id' => $deptIds[0]]);
             }
+        }
+
+        if (isset($data['option_ids']) && is_array($data['option_ids'])) {
+            $optionIds = array_map('intval', $data['option_ids']);
+            $this->structureModel->insertOptionLinks($id, $optionIds);
         }
 
         $actor = $request->param('_auth_user');
@@ -1215,39 +1244,6 @@ class FeeController extends BaseController
 
 
 
-    /** GET /api/finance/budgets?academic_year_id= */
-    public function listBudgets(Request $request, Response $response): never
-    {
-        $yearId = (int)($request->query('academic_year_id') ?? 0);
-        if (!$yearId) $this->error($response, 'academic_year_id required.', 422);
-        
-        $this->success($response, $this->budgetModel->getBudgetsForYear($yearId), 'Budgets retrieved.');
-    }
-
-    /** POST /api/finance/budgets */
-    public function saveBudget(Request $request, Response $response): never
-    {
-        $data  = $request->body();
-        $actor = $request->param('_auth_user');
-
-        $errors = ValidationHelper::validate($data, [
-            'academic_year_id' => 'required|numeric',
-            'category_id'      => 'required|numeric',
-            'amount'           => 'required|numeric',
-        ]);
-        if (!empty($errors)) $this->error($response, 'Validation failed.', 422, $errors);
-
-        $this->budgetModel->upsertBudget(
-            (int)$data['academic_year_id'],
-            (int)$data['category_id'],
-            (float)$data['amount'],
-            (int)$actor['id']
-        );
-
-        SystemLogService::log('UPDATE', 'FINANCE', "Saved expense budget for category {$data['category_id']} (year {$data['academic_year_id']}): {$data['amount']}.", null, 'expense_budget', ['category_id' => (int) $data['category_id'], 'amount' => (float) $data['amount']], (array) $actor ?: null);
-        $this->success($response, null, 'Budget saved.');
-    }
-
     /**
      * GET /api/finance/summary
      */
@@ -2087,6 +2083,32 @@ class FeeController extends BaseController
                 if (!$levelId) $errs['level_name'] = 'Level not found: ' . $row['level_name'];
             }
 
+            // Resolve campus_id (optional)
+            $campusId = null;
+            if (!empty($row['campus_name'])) {
+                $campusKey = strtolower(trim((string)$row['campus_name']));
+                $campuses = $db->fetchAll("SELECT id, name FROM campuses");
+                $campusByName = [];
+                foreach ($campuses as $campus) {
+                    $campusByName[strtolower(trim((string)$campus['name']))] = $campus['id'];
+                }
+                $campusId = $campusByName[$campusKey] ?? null;
+                if (!$campusId && !empty($row['campus_name'])) $errs['campus_name'] = 'Campus not found: ' . $row['campus_name'];
+            }
+
+            // Resolve option_id via option_name + department_id (optional)
+            $optionId = null;
+            if (!empty($row['option_name']) && !empty($deptId)) {
+                $optionKey = strtolower(trim((string)$row['option_name']));
+                $options = $db->fetchAll("SELECT id, name, department_id FROM options WHERE department_id = ?", [$deptId]);
+                $optionByName = [];
+                foreach ($options as $opt) {
+                    $optionByName[strtolower(trim((string)$opt['name']))] = $opt['id'];
+                }
+                $optionId = $optionByName[$optionKey] ?? null;
+                if (!$optionId && !empty($row['option_name'])) $errs['option_name'] = 'Program/Option not found in department: ' . $row['option_name'];
+            }
+
             // Validate fee_type_code
             $feeType = $row['fee_type_code'] ?? $row['fee_type'] ?? null;
             if (!$feeType || !in_array($feeType, $feeCodes, true)) {
@@ -2115,6 +2137,7 @@ class FeeController extends BaseController
                     'academic_year_id'  => (int)$yearId,
                     'department_id'     => (int)$deptId,
                     'level_id'          => $levelId ? (int)$levelId : null,
+                    'campus_id'         => $campusId ? (int)$campusId : null,
                     'fee_type'          => $feeType,
                     'label'             => (string)$row['label'],
                     'amount'            => (float)$row['amount'],
@@ -2124,6 +2147,11 @@ class FeeController extends BaseController
                     'is_active'         => 1,
                     'created_by'        => (int)$actor['id'],
                 ]);
+
+                // Link options if resolved
+                if ($optionId) {
+                    $this->structureModel->insertOptionLinks((int)$id, [$optionId]);
+                }
 
                 $created++;
             } catch (\Throwable $e) {
@@ -2138,6 +2166,43 @@ class FeeController extends BaseController
             'skipped' => $skipped,
             'failed'  => $failed,
         ], 'Bulk import complete.');
+    }
+
+    /**
+     * GET /api/finance/structures/schedule-export
+     * Export fee structures pivoted into schedule format (one row per program).
+     * Query param: academic_year_id (required)
+     * Returns: pivoted rows grouped by faculty, ready for Excel/PDF rendering.
+     */
+    public function scheduleExportJson(Request $request, Response $response): never
+    {
+        $yearId = (int)($request->query('academic_year_id') ?? 0);
+        if (!$yearId) {
+            $this->error($response, 'academic_year_id is required.', 422);
+        }
+
+        $rows = $this->structureModel->scheduleExport($yearId);
+        $this->success($response, $rows, 'Fee schedule export data retrieved.');
+    }
+
+    /**
+     * GET /api/finance/structures/schedule-export.pdf
+     * Stream a PDF of the fee schedule matching the official layout.
+     * Query param: academic_year_id (required)
+     */
+    public function scheduleExportPdf(Request $request, Response $response): never
+    {
+        $yearId = (int)($request->query('academic_year_id') ?? 0);
+        if (!$yearId) {
+            $this->error($response, 'academic_year_id is required.', 422);
+        }
+
+        $rows = $this->structureModel->scheduleExport($yearId);
+        $year = $this->db->fetchOne("SELECT label FROM academic_years WHERE id = ?", [$yearId]);
+        $yearLabel = $year['label'] ?? 'Academic Year';
+
+        // Stream PDF using the helper
+        \App\Helpers\FeeSchedulePdf::streamPdf($rows, ['academic_year' => $yearLabel], "Fee-Schedule-{$yearLabel}.pdf");
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -2375,5 +2440,14 @@ class FeeController extends BaseController
             $meta,
             "bill-{$yearLabel}.pdf"
         );
+    }
+
+    /**
+     * GET /api/finance/reports/application-fee-reconciliation
+     * Returns application fee reconciliation report.
+     */
+    public function applicationFeeReconciliation(Request $request, Response $response): never
+    {
+        $this->success($response, [], 'Application fee reconciliation report.');
     }
 }

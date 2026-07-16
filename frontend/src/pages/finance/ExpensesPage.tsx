@@ -11,8 +11,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   TrendingDown,
-  BarChart3,
-  Calendar,
+  PiggyBank,
   Tag,
 } from "lucide-react";
 import toast from "react-hot-toast";
@@ -58,7 +57,6 @@ export default function ExpensesPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
 
-  const [tab, setTab] = useState<"list" | "budgets">("list");
   const [yearId, setYearId] = useState<number | string>(() =>
     resolveYearId(selectedYearLabel, basics),
   );
@@ -123,21 +121,6 @@ export default function ExpensesPage() {
     0,
   );
 
-  // Budget input amounts (controlled, editable)
-  const [budgetAmounts, setBudgetAmounts] = useState<Record<number, string>>(
-    {},
-  );
-  const [budgetErrors, setBudgetErrors] = useState<Record<number, string>>({});
-  useEffect(() => {
-    if (budgets.length) {
-      const map: Record<number, string> = {};
-      budgets.forEach((b: any) => {
-        map[b.category_id] = String(Number(b.amount));
-      });
-      setBudgetAmounts(map);
-    }
-  }, [JSON.stringify(budgets)]);
-
   const deleteMut = useMutation({
     mutationFn: expenseService.delete,
     onSuccess: () => {
@@ -150,42 +133,6 @@ export default function ExpensesPage() {
       toast.error(e?.response?.data?.message ?? "Delete failed"),
   });
 
-  const saveBudgetMut = useMutation({
-    mutationFn: budgetService.save,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["finance", "budgets"] });
-      toast.success("Budget saved");
-    },
-    onError: (e: any) =>
-      toast.error(e?.response?.data?.message ?? "Save failed"),
-  });
-
-  const handleBudgetBlur = (categoryId: number, savedAmount: number) => {
-    const raw = budgetAmounts[categoryId] ?? "";
-    const val = parseFloat(raw);
-    if (isNaN(val) || val < 0) {
-      setBudgetErrors((p) => ({ ...p, [categoryId]: "Must be ≥ 0" }));
-      setBudgetAmounts((p) => ({ ...p, [categoryId]: String(savedAmount) }));
-      return;
-    }
-    setBudgetErrors((p) => {
-      const n = { ...p };
-      delete n[categoryId];
-      return n;
-    });
-    if (val !== savedAmount) {
-      if (!yearId) {
-        toast.error("Select an academic year first");
-        return;
-      }
-      saveBudgetMut.mutate({
-        academic_year_id: Number(yearId),
-        category_id: categoryId,
-        amount: val,
-      });
-    }
-  };
-
   const openEdit = (e: Expense) => {
     setEditing(e);
     setShowForm(true);
@@ -194,17 +141,6 @@ export default function ExpensesPage() {
     setShowForm(false);
     setEditing(null);
   };
-
-  const budgetTotalBudget = budgets.reduce(
-    (s: number, b: any) =>
-      s + (parseFloat(budgetAmounts[b.category_id] ?? b.amount) || 0),
-    0,
-  );
-  const budgetTotalSpent = budgets.reduce(
-    (s: number, b: any) => s + Number(b.spent),
-    0,
-  );
-  const budgetTotalRem = budgetTotalBudget - budgetTotalSpent;
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -219,23 +155,12 @@ export default function ExpensesPage() {
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <div className="flex rounded-lg border border-ink-200 dark:border-ink-700 overflow-hidden">
-            <button
-              className={`px-3 py-1.5 text-xs font-semibold transition-colors ${tab === "list" ? "bg-ink-900 dark:bg-white text-white dark:text-ink-900" : "text-ink-500 hover:bg-ink-50 dark:hover:bg-ink-700"}`}
-              onClick={() => setTab("list")}
-            >
-              <Receipt className="w-3.5 h-3.5 inline mr-1" />
-              Transactions
-            </button>
-            <button
-              className={`px-3 py-1.5 text-xs font-semibold transition-colors border-l border-ink-200 dark:border-ink-700 ${tab === "budgets" ? "bg-ink-900 dark:bg-white text-white dark:text-ink-900" : "text-ink-500 hover:bg-ink-50 dark:hover:bg-ink-700"}`}
-              onClick={() => setTab("budgets")}
-            >
-              <BarChart3 className="w-3.5 h-3.5 inline mr-1" />
-              Budget Plan
-            </button>
-          </div>
-          <div className="w-px bg-ink-100 dark:bg-ink-700" />
+          <button
+            className="btn-ghost btn-sm"
+            onClick={() => navigate("/finance/budget-execution")}
+          >
+            <PiggyBank className="w-3.5 h-3.5" /> Budget Execution
+          </button>
           <button
             className="btn-ghost btn-sm"
             onClick={() => navigate("/finance/expenses/categories")}
@@ -424,7 +349,7 @@ export default function ExpensesPage() {
       )}
 
       {/* Category breakdown — top 3 budgets */}
-      {tab === "list" && budgets.length > 0 && (
+      {budgets.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {budgets.slice(0, 3).map((b: any) => {
             const spent = Number(b.spent);
@@ -484,186 +409,8 @@ export default function ExpensesPage() {
         </div>
       )}
 
-      {/* Budget Plan tab */}
-      {tab === "budgets" && (
-        <div className="card overflow-hidden">
-          {!yearId ? (
-            <div className="text-center py-10 text-ink-400 text-sm">
-              <Calendar className="w-8 h-8 mx-auto mb-2 opacity-30" />
-              Select an academic year to manage budgets.
-            </div>
-          ) : budgetQ.isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="w-5 h-5 animate-spin text-brand" />
-            </div>
-          ) : (
-            <table className="w-full text-sm">
-              <thead className="bg-ink-50 dark:bg-ink-700/50 text-ink-500 text-xs uppercase font-bold">
-                <tr>
-                  <th className="px-4 py-3 text-left">Category</th>
-                  <th className="px-4 py-3 text-right">Budget (RWF)</th>
-                  <th className="px-4 py-3 text-right">Actual Spent</th>
-                  <th className="px-4 py-3 text-right">Remaining</th>
-                  <th className="px-4 py-3 text-center">Usage</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-ink-100 dark:divide-ink-700">
-                {budgets.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={5}
-                      className="text-center py-10 text-ink-400 text-sm"
-                    >
-                      No budget categories found. Enter amounts to set budget
-                      targets.
-                    </td>
-                  </tr>
-                ) : (
-                  budgets.map((b: any) => {
-                    const spent = Number(b.spent);
-                    const saved = Number(b.amount);
-                    const rawAmt =
-                      budgetAmounts[b.category_id] ?? String(saved);
-                    const amt = parseFloat(rawAmt) || 0;
-                    const rem = amt - spent;
-                    const rawPct = amt > 0 ? (spent / amt) * 100 : 0;
-                    const usage = Math.round(rawPct);
-                    const barPct =
-                      amt > 0 && spent > 0
-                        ? Math.max(0.5, Math.min(100, rawPct))
-                        : Math.min(100, rawPct);
-                    const usageLbl =
-                      rawPct > 0 && rawPct < 0.5 ? "<1%" : `${usage}%`;
-                    const hasErr = !!budgetErrors[b.category_id];
-                    const changed = amt !== saved;
-
-                    return (
-                      <tr
-                        key={b.category_id}
-                        className={`hover:bg-ink-50/30 ${usage > 90 ? "bg-red-50/30 dark:bg-red-900/10" : ""}`}
-                      >
-                        <td className="px-4 py-3 font-medium text-ink-900 dark:text-white">
-                          {b.category_name}
-                          {usage > 100 && (
-                            <span className="ml-2 text-[9px] font-bold text-red-600 bg-red-100 px-1.5 py-0.5 rounded-full">
-                              OVER
-                            </span>
-                          )}
-                          {usage > 80 && usage <= 100 && (
-                            <span className="ml-2 text-[9px] font-bold text-yellow-600 bg-yellow-100 px-1.5 py-0.5 rounded-full">
-                              HIGH
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <div className="flex flex-col items-end gap-0.5">
-                            <input
-                              type="number"
-                              min={0}
-                              step={1000}
-                              className={`input input-xs w-36 text-right font-mono ${hasErr ? "border-red-400 focus:ring-red-300" : changed ? "border-brand/50 focus:ring-brand/30" : ""}`}
-                              value={rawAmt}
-                              onChange={(ev) => {
-                                setBudgetAmounts((p) => ({
-                                  ...p,
-                                  [b.category_id]: ev.target.value,
-                                }));
-                                setBudgetErrors((p) => {
-                                  const n = { ...p };
-                                  delete n[b.category_id];
-                                  return n;
-                                });
-                              }}
-                              onBlur={() =>
-                                handleBudgetBlur(b.category_id, saved)
-                              }
-                            />
-                            {hasErr && (
-                              <span className="text-[9px] text-red-500">
-                                {budgetErrors[b.category_id]}
-                              </span>
-                            )}
-                            {changed && !hasErr && (
-                              <span className="text-[9px] text-brand">
-                                Unsaved — click away to save
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-right font-mono text-ink-600 dark:text-ink-300">
-                          {formatRWF(spent)}
-                        </td>
-                        <td
-                          className={`px-4 py-3 text-right font-mono font-semibold ${rem < 0 ? "text-red-600" : "text-green-600"}`}
-                        >
-                          {formatRWF(rem)}
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <div className="flex items-center gap-2 justify-center">
-                            <div className="w-20 h-1.5 bg-ink-100 rounded-full overflow-hidden">
-                              <div
-                                className={`h-full ${rawPct > 100 ? "bg-red-500" : rawPct > 80 ? "bg-yellow-500" : "bg-brand"}`}
-                                style={{ width: `${barPct}%` }}
-                              />
-                            </div>
-                            <span
-                              className={`text-[11px] font-bold w-9 text-right ${rawPct > 100 ? "text-red-600" : rawPct > 80 ? "text-yellow-600" : "text-ink-500"}`}
-                            >
-                              {usageLbl}
-                            </span>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-              {budgets.length > 0 && (
-                <tfoot className="border-t-2 border-ink-200 dark:border-ink-600">
-                  <tr className="bg-ink-50 dark:bg-ink-800 font-bold text-sm">
-                    <td className="px-4 py-3 text-ink-700 dark:text-ink-200">
-                      Total
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono text-ink-700 dark:text-ink-200">
-                      {formatRWF(budgetTotalBudget)}
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono text-ink-600">
-                      {formatRWF(budgetTotalSpent)}
-                    </td>
-                    <td
-                      className={`px-4 py-3 text-right font-mono ${budgetTotalRem < 0 ? "text-red-600" : "text-green-600"}`}
-                    >
-                      {formatRWF(budgetTotalRem)}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {budgetTotalBudget > 0 &&
-                        (() => {
-                          const totRaw =
-                            (budgetTotalSpent / budgetTotalBudget) * 100;
-                          const totLbl =
-                            totRaw > 0 && totRaw < 0.5
-                              ? "<1%"
-                              : `${Math.round(totRaw)}%`;
-                          return (
-                            <span
-                              className={`text-xs font-bold ${budgetTotalRem < 0 ? "text-red-600" : "text-ink-500"}`}
-                            >
-                              {totLbl}
-                            </span>
-                          );
-                        })()}
-                    </td>
-                  </tr>
-                </tfoot>
-              )}
-            </table>
-          )}
-        </div>
-      )}
-
       {/* Transactions list */}
-      {tab === "list" && (
-        <div className="card overflow-hidden">
+      <div className="card overflow-hidden">
           {expQ.isFetching && expenses.length === 0 ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="w-5 h-5 animate-spin text-brand" />
@@ -778,7 +525,6 @@ export default function ExpensesPage() {
             </>
           )}
         </div>
-      )}
 
       {/* Delete confirmation */}
       {deleteId !== null && (

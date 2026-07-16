@@ -1,18 +1,30 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Loader2, X, CalendarDays, Layers, SplitSquareHorizontal, Upload } from 'lucide-react'
+import { Plus, Pencil, Trash2, Loader2, X, CalendarDays, Layers, SplitSquareHorizontal, Upload, Download, Archive, ArchiveRestore } from 'lucide-react'
 import toast from 'react-hot-toast'
+import * as XLSX from 'xlsx'
 import { feeStructureService, feeTypeService } from '@/services/financeService'
 import { academicsMgmtService } from '@/services/academicsMgmtService'
 import { academicService as academicSvc } from '@/services/academicService'
-import type { FeeStructure, CreateFeeStructurePayload, PaymentPlan, FeeTypeRecord } from '@/types/finance'
+import type { FeeStructure, CreateFeeStructurePayload, PaymentPlan, FeeTypeRecord, StudentCategory } from '@/types/finance'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import Pagination from '@/components/ui/Pagination'
 import { useSystemStore } from '@/store/systemStore'
 import { formatRWF } from '@/utils/formatCurrency'
 import ModalPortal from '@/components/ui/ModalPortal'
+import { api } from '@/services/api'
 
 const PER_PAGE = 15
+
+const STUDENT_CATEGORY_OPTIONS: { value: StudentCategory; label: string }[] = [
+  { value: 'local',          label: 'Local' },
+  { value: 'international',  label: 'International' },
+  { value: 'sponsored',      label: 'Sponsored' },
+  { value: 'self_sponsored', label: 'Self-sponsored' },
+]
+
+const studentCategoryLabel = (v?: string | null) =>
+  STUDENT_CATEGORY_OPTIONS.find((o) => o.value === v)?.label ?? null
 
 export default function FeeStructuresPage() {
   const qc = useQueryClient()
@@ -20,6 +32,7 @@ export default function FeeStructuresPage() {
   const selectedYearLabel = useSystemStore((s) => s.selectedYearLabel)
 
   const [yearId, setYearId]         = useState<number | string>('')
+  const [categoryFilter, setCategoryFilter] = useState<StudentCategory | ''>('')
   const [page, setPage]             = useState(1)
   const [showForm, setShowForm]     = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
@@ -54,6 +67,24 @@ export default function FeeStructuresPage() {
   })
   const levels = levelsQ.data?.data?.data ?? []
 
+  const campusesQ = useQuery({
+    queryKey: ['academics', 'campuses'],
+    queryFn: () => academicsMgmtService.list<any>('campuses', { per_page: 100 }),
+  })
+  const campuses = campusesQ.data?.data?.data ?? []
+
+  const facultiesQ = useQuery({
+    queryKey: ['academics', 'faculties'],
+    queryFn: () => academicsMgmtService.list<any>('faculties', { per_page: 100 }),
+  })
+  const faculties = facultiesQ.data?.data?.data ?? []
+
+  const optionsQ = useQuery({
+    queryKey: ['academics', 'options'],
+    queryFn: () => academicsMgmtService.list<any>('options', { per_page: 500 }),
+  })
+  const options = optionsQ.data?.data?.data ?? []
+
   const feeTypesQ = useQuery({
     queryKey: ['finance', 'fee-types'],
     queryFn: ({ signal }) => feeTypeService.list(signal),
@@ -65,8 +96,11 @@ export default function FeeStructuresPage() {
     .map((t) => ({ value: t.code, label: t.label }))
 
   const structuresQ = useQuery({
-    queryKey: ['finance', 'structures', yearId],
-    queryFn: () => feeStructureService.list(yearId ? { academic_year_id: Number(yearId) } : {}),
+    queryKey: ['finance', 'structures', yearId, categoryFilter],
+    queryFn: () => feeStructureService.list({
+      ...(yearId ? { academic_year_id: Number(yearId) } : {}),
+      ...(categoryFilter ? { student_category: categoryFilter } : {}),
+    }),
     enabled: !!yearId,
   })
   const allRows: FeeStructure[] = structuresQ.data?.data ?? []
@@ -82,6 +116,16 @@ export default function FeeStructuresPage() {
       qc.invalidateQueries({ queryKey: ['finance', 'structures'] })
     },
     onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Delete failed'),
+  })
+
+  const archiveMutation = useMutation({
+    mutationFn: ({ id, is_active }: { id: number; is_active: 0 | 1 }) =>
+      feeStructureService.update(id, { is_active }),
+    onSuccess: (_data, vars) => {
+      toast.success(vars.is_active ? 'Fee structure restored' : 'Fee structure archived')
+      qc.invalidateQueries({ queryKey: ['finance', 'structures'] })
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Update failed'),
   })
 
   const bulkImportMutation = useMutation({
@@ -101,6 +145,102 @@ export default function FeeStructuresPage() {
     return 'Full year'
   }
 
+  const [exportLoading, setExportLoading] = useState(false)
+
+  const handleExportExcel = async () => {
+    if (!yearId) {
+      toast.error('Select an academic year first')
+      return
+    }
+    try {
+      setExportLoading(true)
+      const res = await api.get<any>(`/api/finance/structures/schedule-export?academic_year_id=${yearId}`)
+      const rows = (Array.isArray(res.data) ? res.data : res.data?.data) ?? []
+
+      if (rows.length === 0) {
+        toast.error('No fee structures found for this academic year')
+        return
+      }
+
+      // Build header row
+      const headerRow = ['S/N', 'Faculty', 'Program', 'Duration', 'Application Fee', 'Registration Fee', 'CURSU Fee', 'Total Tuition', 'Internship Fee', 'Final Project Fee', 'Graduation Fee', 'Semesters', 'Internships', 'Tuition/Semester', 'Tuition/Year']
+
+      // Build data rows, grouped by faculty
+      const grouped: Record<string, any[]> = {}
+      rows.forEach((row: any) => {
+        const fac = row.fac_name || 'Ungrouped'
+        if (!grouped[fac]) grouped[fac] = []
+        grouped[fac].push(row)
+      })
+
+      const dataRows: any[] = []
+      let sn = 1
+      Object.entries(grouped).forEach(([facName, facRows]) => {
+        // Faculty header row
+        dataRows.push([facName, '', '', '', '', '', '', '', '', '', '', '', '', '', ''])
+        // Program rows
+        facRows.forEach((row: any) => {
+          dataRows.push([
+            sn,
+            row.fac_name,
+            row.option_name || 'Unknown',
+            row.semester ? `Semester ${row.semester}` : 'Full year',
+            row.application_fee || '',
+            row.registration_fee || '',
+            row.cursu_fee || '',
+            row.tuition_fee || '',
+            row.internship_fee || '',
+            row.final_project_fee || '',
+            row.graduation_fee || '',
+            row.level_name || '',
+            '',
+            '',
+            '',
+          ])
+          sn++
+        })
+      })
+
+      const ws = XLSX.utils.aoa_to_sheet([headerRow, ...dataRows])
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Fee Schedule')
+
+      const year = years.find(y => y.id == yearId)
+      const yearLabel = year?.label || 'FeeSchedule'
+      XLSX.writeFile(wb, `Fee-Schedule-${yearLabel}.xlsx`)
+      toast.success('Fee schedule exported to Excel')
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message ?? 'Export failed')
+    } finally {
+      setExportLoading(false)
+    }
+  }
+
+  const handleExportPdf = async () => {
+    if (!yearId) {
+      toast.error('Select an academic year first')
+      return
+    }
+    try {
+      setExportLoading(true)
+      const year = years.find(y => y.id == yearId)
+      const yearLabel = year?.label || 'FeeSchedule'
+      // Download PDF directly
+      const url = `/api/finance/structures/schedule-export.pdf?academic_year_id=${yearId}`
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `Fee-Schedule-${yearLabel}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      toast.success('Fee schedule exported to PDF')
+    } catch (e: any) {
+      toast.error('PDF export failed')
+    } finally {
+      setExportLoading(false)
+    }
+  }
+
   return (
     <div className="space-y-4 animate-fade-in">
       <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -108,9 +248,15 @@ export default function FeeStructuresPage() {
           <h2 className="text-lg font-bold text-ink-900 dark:text-white">Fee Structures</h2>
           <p className="text-[13px] text-ink-500">Configure fee amounts per type, department, level and academic year.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <button className="btn-secondary btn-sm" onClick={() => setShowImportModal(true)}>
             <Upload className="w-3.5 h-3.5" /> Import CSV
+          </button>
+          <button className="btn-secondary btn-sm" onClick={handleExportExcel} disabled={exportLoading || !yearId}>
+            <Download className="w-3.5 h-3.5" /> {exportLoading ? 'Exporting...' : 'Export Excel'}
+          </button>
+          <button className="btn-secondary btn-sm" onClick={handleExportPdf} disabled={exportLoading || !yearId}>
+            <Download className="w-3.5 h-3.5" /> {exportLoading ? 'Exporting...' : 'Export PDF'}
           </button>
           <button className="btn-primary btn-sm" onClick={() => { setEditing(null); setShowForm(true) }}>
             <Plus className="w-3.5 h-3.5" /> New structure
@@ -127,6 +273,16 @@ export default function FeeStructuresPage() {
             value={yearId}
             onChange={v => { setYearId(v); setPage(1) }}
             placeholder="Select year…"
+          />
+        </div>
+        <div className="min-w-[200px]">
+          <label className="block text-xs text-ink-500 mb-1">Student Category</label>
+          <SearchableSelect
+            options={STUDENT_CATEGORY_OPTIONS}
+            value={categoryFilter}
+            onChange={v => { setCategoryFilter((v ? v : '') as StudentCategory | ''); setPage(1) }}
+            placeholder="All categories"
+            allLabel="All categories"
           />
         </div>
       </div>
@@ -154,8 +310,9 @@ export default function FeeStructuresPage() {
                     <th className="px-4 py-2.5 text-left">Type</th>
                     <th className="px-4 py-2.5 text-left">Department</th>
                     <th className="px-4 py-2.5 text-left">Level</th>
+                    <th className="px-4 py-2.5 text-left">Category</th>
                     <th className="px-4 py-2.5 text-left">Semester</th>
-                    <th className="px-4 py-2.5 text-right">Amount (RWF)</th>
+                    <th className="px-4 py-2.5 text-right">Amount</th>
                     <th className="px-4 py-2.5 text-left">Payment Plan</th>
                     <th className="px-4 py-2.5 text-center">Active</th>
                     <th className="px-4 py-2.5" />
@@ -180,8 +337,13 @@ export default function FeeStructuresPage() {
                           : row.department_name ?? <span className="italic text-ink-300">All</span>}
                       </td>
                       <td className="px-4 py-2.5 text-ink-500">{row.level_name ?? <span className="italic text-ink-300">All</span>}</td>
+                      <td className="px-4 py-2.5 text-ink-500">{studentCategoryLabel(row.student_category) ?? <span className="italic text-ink-300">All</span>}</td>
                       <td className="px-4 py-2.5 text-ink-500">{row.semester ? `S${row.semester}` : '—'}</td>
-                      <td className="px-4 py-2.5 text-right font-mono font-semibold">{formatRWF(row.amount)}</td>
+                      <td className="px-4 py-2.5 text-right font-mono font-semibold">
+                        {row.currency && row.currency !== 'RWF'
+                          ? `${Number(row.amount).toLocaleString('en-US')} ${row.currency}`
+                          : formatRWF(row.amount)}
+                      </td>
                       <td className="px-4 py-2.5">
                         <span className="text-xs text-ink-500">{planLabel(row)}</span>
                       </td>
@@ -192,6 +354,15 @@ export default function FeeStructuresPage() {
                         <div className="flex gap-1 justify-end">
                           <button className="btn-ghost btn-xs" onClick={() => { setEditing(row); setShowForm(true) }}>
                             <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            className="btn-ghost btn-xs"
+                            title={row.is_active ? 'Archive' : 'Restore'}
+                            onClick={() => archiveMutation.mutate({ id: row.id, is_active: row.is_active ? 0 : 1 })}
+                          >
+                            {row.is_active
+                              ? <Archive className="w-3.5 h-3.5" />
+                              : <ArchiveRestore className="w-3.5 h-3.5 text-green-600" />}
                           </button>
                           <button
                             className="btn-ghost btn-xs text-red-500"
@@ -226,6 +397,9 @@ export default function FeeStructuresPage() {
           years={years}
           departments={departments}
           levels={levels}
+          campuses={campuses}
+          faculties={faculties}
+          options={options}
           feeTypeOptions={feeTypeOptions}
           initial={editing}
           defaultYearId={yearId ? Number(yearId) : undefined}
@@ -254,6 +428,9 @@ interface ModalProps {
   years:           any[]
   departments:     any[]
   levels:          any[]
+  campuses:        any[]
+  faculties:       any[]
+  options:         any[]
   feeTypeOptions:  { value: string; label: string }[]
   initial:         FeeStructure | null
   defaultYearId?: number
@@ -304,22 +481,33 @@ function planBreakdown(plan: PaymentPlan, amount: number, count: number) {
   return [{ label: 'Full year payment', amount }]
 }
 
-function FeeStructureModal({ years, departments, levels, feeTypeOptions, initial, defaultYearId, onClose, onSaved }: ModalProps) {
+function FeeStructureModal({ years, departments, levels, campuses, faculties, options, feeTypeOptions, initial, defaultYearId, onClose, onSaved }: ModalProps) {
   const parseInitialDepts = (): number[] => {
     if (initial?.dept_ids) return initial.dept_ids.split(',').map(Number).filter(Boolean)
     if (initial?.department_id) return [initial.department_id]
     return []
   }
 
+  const parseInitialOptions = (): number[] => {
+    if (initial?.option_ids) return initial.option_ids.split(',').map(Number).filter(Boolean)
+    return []
+  }
+
   const [selectedDepts, setSelectedDepts] = useState<number[]>(parseInitialDepts)
+  const [selectedOptions, setSelectedOptions] = useState<number[]>(parseInitialOptions)
+  const [selectedFacultyId, setSelectedFacultyId] = useState<number | null>(null)
   const [form, setForm] = useState<CreateFeeStructurePayload & { is_active: 0 | 1 }>({
     academic_year_id:  initial?.academic_year_id ?? defaultYearId ?? 0,
     department_id:     initial?.department_id ?? null,
     department_ids:    parseInitialDepts(),
     level_id:          initial?.level_id ?? null,
+    campus_id:         initial?.campus_id ?? null,
+    option_ids:        parseInitialOptions(),
+    student_category:  initial?.student_category ?? null,
     fee_type:          (initial?.fee_type ?? 'TUITION') as string,
     label:             initial?.label ?? '',
     amount:            initial?.amount ?? 0,
+    currency:          initial?.currency ?? 'RWF',
     semester:          initial?.semester ?? null,
     payment_plan:      initial?.payment_plan ?? 'full_year',
     installment_count: initial?.installment_count ?? 4,
@@ -335,13 +523,34 @@ function FeeStructureModal({ years, departments, levels, feeTypeOptions, initial
   }
 
   const toggleAllDepts = () => {
-    if (selectedDepts.length === departments.length) {
+    const visibleDepts = filteredDepts
+    if (selectedDepts.length === visibleDepts.length) {
       setSelectedDepts([])
       setForm(f => ({ ...f, department_ids: [], department_id: null }))
     } else {
-      const allIds = departments.map((d: any) => d.dep_id)
+      const allIds = visibleDepts.map((d: any) => d.dep_id)
       setSelectedDepts(allIds)
       setForm(f => ({ ...f, department_ids: allIds, department_id: allIds[0] ?? null }))
+    }
+  }
+
+  const toggleOption = (optionId: number) => {
+    const next = selectedOptions.includes(optionId)
+      ? selectedOptions.filter(o => o !== optionId)
+      : [...selectedOptions, optionId]
+    setSelectedOptions(next)
+    setForm(f => ({ ...f, option_ids: next }))
+  }
+
+  const toggleAllOptions = () => {
+    const visibleOptions = filteredOptions
+    if (selectedOptions.length === visibleOptions.length) {
+      setSelectedOptions([])
+      setForm(f => ({ ...f, option_ids: [] }))
+    } else {
+      const allIds = visibleOptions.map((o: any) => o.id)
+      setSelectedOptions(allIds)
+      setForm(f => ({ ...f, option_ids: allIds }))
     }
   }
 
@@ -349,10 +558,24 @@ function FeeStructureModal({ years, departments, levels, feeTypeOptions, initial
 
   const yearOptions  = years.map((y: any) => ({ value: y.id, label: y.label }))
   const levelOptions = levels.map((l: any) => ({ value: l.id, label: l.name }))
+  const campusOptions = campuses.map((c: any) => ({ value: c.id, label: c.name }))
+  const facultyOptions = faculties.map((f: any) => ({ value: f.fac_id, label: f.fac_name }))
+
+  const filteredDepts = selectedFacultyId
+    ? departments.filter((d: any) => d.fac_id === selectedFacultyId)
+    : departments
+
+  const filteredOptions = selectedDepts.length > 0
+    ? options.filter((o: any) => selectedDepts.includes(o.department_id))
+    : options
 
   const activePlan    = form.payment_plan ?? 'full_year'
   const installCount  = Math.max(2, Math.min(12, form.installment_count ?? 4))
   const breakdown     = planBreakdown(activePlan, form.amount, installCount)
+  const formatAmount  = (n: number) =>
+    (form.currency && form.currency !== 'RWF')
+      ? `${Number(n).toLocaleString('en-US')} ${form.currency}`
+      : formatRWF(n)
 
   const mutation = useMutation({
     mutationFn: (): Promise<any> =>
@@ -419,8 +642,14 @@ function FeeStructureModal({ years, departments, levels, feeTypeOptions, initial
                 <Field label="Semester">
                   <SearchableSelect
                     options={[
-                      { value: 1, label: 'Semester 1' },
-                      { value: 2, label: 'Semester 2' },
+                      { value: 1, label: 'Semester 1 (Year 1)' },
+                      { value: 2, label: 'Semester 2 (Year 1)' },
+                      { value: 3, label: 'Semester 3 (Year 2)' },
+                      { value: 4, label: 'Semester 4 (Year 2)' },
+                      { value: 5, label: 'Semester 5 (Year 3)' },
+                      { value: 6, label: 'Semester 6 (Year 3)' },
+                      { value: 7, label: 'Semester 7 (Year 4)' },
+                      { value: 8, label: 'Semester 8 (Year 4)' },
                     ]}
                     value={form.semester ?? ''}
                     onChange={v => set('semester', v ? Number(v) : null)}
@@ -439,30 +668,54 @@ function FeeStructureModal({ years, departments, levels, feeTypeOptions, initial
                 />
               </Field>
 
-              <Field label="Annual Amount (RWF) *">
-                <input
-                  type="number"
-                  className="input input-sm w-full font-mono"
-                  value={form.amount}
-                  onChange={e => set('amount', Number(e.target.value))}
-                  min={0}
-                />
-                {form.amount > 0 && (
-                  <p className="text-[11px] text-ink-400 mt-1">
-                    = {formatRWF(form.amount)} total per student
-                  </p>
-                )}
-              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Annual Amount *">
+                  <input
+                    type="number"
+                    className="input input-sm w-full font-mono"
+                    value={form.amount}
+                    onChange={e => set('amount', Number(e.target.value))}
+                    min={0}
+                  />
+                </Field>
+                <Field label="Currency">
+                  <input
+                    className="input input-sm w-full uppercase"
+                    value={form.currency ?? 'RWF'}
+                    onChange={e => set('currency', e.target.value.toUpperCase())}
+                    placeholder="RWF"
+                    maxLength={10}
+                  />
+                </Field>
+              </div>
+              {form.amount > 0 && (
+                <p className="text-[11px] text-ink-400 -mt-2">
+                  = {(form.currency && form.currency !== 'RWF')
+                      ? `${Number(form.amount).toLocaleString('en-US')} ${form.currency}`
+                      : formatRWF(form.amount)} total per student
+                </p>
+              )}
 
-              <Field label="Level">
-                <SearchableSelect
-                  options={levelOptions}
-                  value={form.level_id ?? ''}
-                  onChange={v => set('level_id', v ? Number(v) : null)}
-                  placeholder="All levels"
-                  allLabel="All levels"
-                />
-              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Level">
+                  <SearchableSelect
+                    options={levelOptions}
+                    value={form.level_id ?? ''}
+                    onChange={v => set('level_id', v ? Number(v) : null)}
+                    placeholder="All levels"
+                    allLabel="All levels"
+                  />
+                </Field>
+                <Field label="Student Category">
+                  <SearchableSelect
+                    options={STUDENT_CATEGORY_OPTIONS}
+                    value={form.student_category ?? ''}
+                    onChange={v => set('student_category', v ? (v as StudentCategory) : null)}
+                    placeholder="All categories"
+                    allLabel="All categories"
+                  />
+                </Field>
+              </div>
 
               {initial && (
                 <Field label="Status">
@@ -491,6 +744,28 @@ function FeeStructureModal({ years, departments, levels, feeTypeOptions, initial
 
             {/* ── Right: Scope + Payment Plan ── */}
             <div className="space-y-4">
+              {/* Campus */}
+              <Field label="Campus">
+                <SearchableSelect
+                  options={campusOptions}
+                  value={form.campus_id ?? ''}
+                  onChange={v => set('campus_id', v ? Number(v) : null)}
+                  placeholder="All campuses"
+                  allLabel="All campuses"
+                />
+              </Field>
+
+              {/* Faculty */}
+              <Field label="Faculty">
+                <SearchableSelect
+                  options={facultyOptions}
+                  value={selectedFacultyId ?? ''}
+                  onChange={v => setSelectedFacultyId(v ? Number(v) : null)}
+                  placeholder="All faculties"
+                  allLabel="All faculties"
+                />
+              </Field>
+
               {/* Departments */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
@@ -498,21 +773,21 @@ function FeeStructureModal({ years, departments, levels, feeTypeOptions, initial
                     Departments
                     <span className="normal-case font-normal ml-1 text-ink-300">(leave empty = all)</span>
                   </label>
-                  {departments.length > 0 && (
+                  {filteredDepts.length > 0 && (
                     <button
                       type="button"
                       className="text-[11px] text-brand hover:underline"
                       onClick={toggleAllDepts}
                     >
-                      {selectedDepts.length === departments.length ? 'Deselect all' : 'Select all'}
+                      {selectedDepts.length === filteredDepts.length ? 'Deselect all' : 'Select all'}
                     </button>
                   )}
                 </div>
                 <div className="border border-ink-200 dark:border-ink-600 rounded-xl p-2 max-h-44 overflow-y-auto space-y-0.5 bg-ink-50/50 dark:bg-ink-900/30">
-                  {departments.length === 0 && (
-                    <p className="text-xs text-ink-400 py-1 px-1">No departments loaded</p>
+                  {filteredDepts.length === 0 && (
+                    <p className="text-xs text-ink-400 py-1 px-1">{selectedFacultyId ? 'No departments in this faculty' : 'No departments loaded'}</p>
                   )}
-                  {departments.map((d: any) => (
+                  {filteredDepts.map((d: any) => (
                     <label
                       key={d.dep_id}
                       className={`flex items-center gap-2.5 cursor-pointer rounded-lg px-2 py-1.5 transition-colors ${
@@ -534,6 +809,53 @@ function FeeStructureModal({ years, departments, levels, feeTypeOptions, initial
                 {selectedDepts.length > 0 && (
                   <p className="text-[11px] text-brand mt-1.5 font-medium">
                     {selectedDepts.length} department{selectedDepts.length !== 1 ? 's' : ''} selected
+                  </p>
+                )}
+              </div>
+
+              {/* Options (Programs) */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400">
+                    Programs (Options)
+                    <span className="normal-case font-normal ml-1 text-ink-300">(leave empty = all)</span>
+                  </label>
+                  {filteredOptions.length > 0 && (
+                    <button
+                      type="button"
+                      className="text-[11px] text-brand hover:underline"
+                      onClick={toggleAllOptions}
+                    >
+                      {selectedOptions.length === filteredOptions.length ? 'Deselect all' : 'Select all'}
+                    </button>
+                  )}
+                </div>
+                <div className="border border-ink-200 dark:border-ink-600 rounded-xl p-2 max-h-44 overflow-y-auto space-y-0.5 bg-ink-50/50 dark:bg-ink-900/30">
+                  {filteredOptions.length === 0 && (
+                    <p className="text-xs text-ink-400 py-1 px-1">{selectedDepts.length > 0 ? 'No programs in selected departments' : 'Select departments to see programs'}</p>
+                  )}
+                  {filteredOptions.map((o: any) => (
+                    <label
+                      key={o.id}
+                      className={`flex items-center gap-2.5 cursor-pointer rounded-lg px-2 py-1.5 transition-colors ${
+                        selectedOptions.includes(o.id)
+                          ? 'bg-brand/10 dark:bg-brand/20'
+                          : 'hover:bg-ink-100 dark:hover:bg-ink-700/40'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        className="rounded accent-brand"
+                        checked={selectedOptions.includes(o.id)}
+                        onChange={() => toggleOption(o.id)}
+                      />
+                      <span className="text-xs leading-none">{o.name}</span>
+                    </label>
+                  ))}
+                </div>
+                {selectedOptions.length > 0 && (
+                  <p className="text-[11px] text-brand mt-1.5 font-medium">
+                    {selectedOptions.length} program{selectedOptions.length !== 1 ? 's' : ''} selected
                   </p>
                 )}
               </div>
@@ -588,21 +910,21 @@ function FeeStructureModal({ years, departments, levels, feeTypeOptions, initial
                 {form.amount > 0 && (
                   <div className="rounded-xl border border-ink-200 dark:border-ink-600 overflow-hidden">
                     <div className="bg-ink-50 dark:bg-ink-700/40 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-ink-500">
-                      Payment schedule — {formatRWF(form.amount)} total
+                      Payment schedule — {formatAmount(form.amount)} total
                     </div>
                     <div className="divide-y divide-ink-100 dark:divide-ink-700">
                       {breakdown.map((item, i) => (
                         <div key={i} className="flex items-center justify-between px-3 py-2">
                           <span className="text-xs text-ink-500">{item.label}</span>
                           <span className="text-xs font-mono font-semibold text-ink-800 dark:text-ink-100">
-                            {formatRWF(item.amount)}
+                            {formatAmount(item.amount)}
                           </span>
                         </div>
                       ))}
                     </div>
                     {activePlan !== 'full_year' && (
                       <div className="bg-brand/5 px-3 py-2 text-[11px] text-brand font-medium">
-                        Each payment: {formatRWF(breakdown[0]?.amount ?? 0)}
+                        Each payment: {formatAmount(breakdown[0]?.amount ?? 0)}
                         {activePlan === 'per_semester' && ' · Paid once per semester'}
                         {activePlan === 'per_installment' && ` · ${installCount} installments per year`}
                       </div>

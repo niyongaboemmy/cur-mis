@@ -94,7 +94,7 @@ class FinesController extends BaseController
         // Create FINE invoice automatically
         $invoiceNumber = 'FINE-' . strtoupper(substr(md5(uniqid()), 0, 8));
         $currentYear   = $this->db->fetchOne(
-            "SELECT id FROM `academic_years` WHERE is_active = 1 ORDER BY id DESC LIMIT 1"
+            "SELECT id FROM `academic_years` ORDER BY id DESC LIMIT 1"
         );
         $academicYearId = $currentYear ? (int)$currentYear['id'] : null;
 

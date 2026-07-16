@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CUR-MIS API Test Tool</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .status {
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+
+        .status.ok {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .test-section {
+            margin-bottom: 30px;
+        }
+
+        .test-section h2 {
+            font-size: 18px;
+            color: #333;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        .test-button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+            transition: background 0.3s;
+        }
+
+        .test-button:hover {
+            background: #764ba2;
+        }
+
+        .test-button.secondary {
+            background: #6c757d;
+        }
+
+        .test-button.secondary:hover {
+            background: #5a6268;
+        }
+
+        .result {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            padding: 15px;
+            margin-top: 15px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 12px;
+            color: #333;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .result.success {
+            background: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+
+        .result.error {
+            background: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+
+        .loading {
+            display: inline-block;
+            margin-left: 10px;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(0,0,0,.1);
+            border-radius: 50%;
+            border-top-color: currentColor;
+            animation: spin .6s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 CUR-MIS API Test Tool</h1>
+        <p style="color: #666; margin-bottom: 20px;">Test if the backend API is working correctly</p>
+
+        <div id="status" class="status" style="display: none;"></div>
+
+        <div class="test-section">
+            <h2>1. Check API Health (Basic Test)</h2>
+            <button class="test-button" onclick="testHealthEndpoint()">Test API Health</button>
+            <div id="health-result"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>2. Test Portal Endpoints</h2>
+            <button class="test-button" onclick="testPortalEndpoint('intakes')">Test /api/portal/intakes</button>
+            <button class="test-button" onclick="testPortalEndpoint('guidance-videos')">Test /api/portal/guidance-videos</button>
+            <button class="test-button" onclick="testPortalEndpoint('faculties')">Test /api/portal/faculties</button>
+            <div id="portal-result"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>3. Test Auth Endpoint</h2>
+            <button class="test-button" onclick="testAuthEndpoint()">Test /api/auth/me (requires token)</button>
+            <div id="auth-result"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>4. Diagnostics</h2>
+            <button class="test-button secondary" onclick="showDiagnostics()">Show Diagnostics</button>
+            <div id="diagnostics-result"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin + (window.location.pathname.includes('/umis') ? '/umis' : '/cur-mis');
+
+        function showStatus(message, type = 'ok') {
+            const el = document.getElementById('status');
+            el.textContent = message;
+            el.className = `status ${type}`;
+            el.style.display = 'block';
+        }
+
+        async function testHealthEndpoint() {
+            const resultEl = document.getElementById('health-result');
+            resultEl.innerHTML = '<div class="loading"><span class="spinner"></span> Testing...</div>';
+
+            try {
+                const response = await fetch(`${API_BASE}/api/health`);
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    resultEl.className = 'result success';
+                    resultEl.textContent = '✅ API is healthy!\n\n' + JSON.stringify(data, null, 2);
+                    showStatus('✅ API Health Check: PASSED', 'ok');
+                } else {
+                    resultEl.className = 'result error';
+                    resultEl.textContent = '❌ API returned error:\n\n' + JSON.stringify(data, null, 2);
+                    showStatus('❌ API Health Check: FAILED', 'error');
+                }
+            } catch (error) {
+                resultEl.className = 'result error';
+                resultEl.textContent = `❌ Network Error:\n\n${error.message}\n\nMake sure the API is accessible at: ${API_BASE}/api/health`;
+                showStatus('❌ API Health Check: NETWORK ERROR', 'error');
+            }
+        }
+
+        async function testPortalEndpoint(endpoint) {
+            const resultEl = document.getElementById('portal-result');
+            resultEl.innerHTML = '<div class="loading"><span class="spinner"></span> Testing /api/portal/' + endpoint + '...</div>';
+
+            try {
+                const response = await fetch(`${API_BASE}/api/portal/${endpoint}`);
+                const data = await response.json();
+
+                if (response.ok) {
+                    resultEl.className = 'result success';
+                    resultEl.textContent = `✅ /api/portal/${endpoint} works!\n\n` + JSON.stringify(data, null, 2).substring(0, 500) + (JSON.stringify(data).length > 500 ? '\n... (truncated)' : '');
+                } else {
+                    resultEl.className = 'result error';
+                    resultEl.textContent = `❌ /api/portal/${endpoint} error (HTTP ${response.status}):\n\n` + JSON.stringify(data, null, 2);
+                }
+            } catch (error) {
+                resultEl.className = 'result error';
+                resultEl.textContent = `❌ /api/portal/${endpoint} - Network Error:\n\n${error.message}`;
+            }
+        }
+
+        async function testAuthEndpoint() {
+            const resultEl = document.getElementById('auth-result');
+            const token = localStorage.getItem('cur-mis-auth');
+
+            if (!token) {
+                resultEl.className = 'result error';
+                resultEl.textContent = '⚠️  No auth token found in localStorage\n\nYou need to be logged in to test this endpoint.\nTry logging in first, then come back here.';
+                return;
+            }
+
+            resultEl.innerHTML = '<div class="loading"><span class="spinner"></span> Testing /api/auth/me...</div>';
+
+            try {
+                const response = await fetch(`${API_BASE}/api/auth/me`, {
+                    headers: {
+                        'Authorization': `Bearer ${JSON.parse(token).token || token}`
+                    }
+                });
+                const data = await response.json();
+
+                if (response.ok) {
+                    resultEl.className = 'result success';
+                    resultEl.textContent = `✅ /api/auth/me works!\n\n` + JSON.stringify(data, null, 2).substring(0, 500) + (JSON.stringify(data).length > 500 ? '\n... (truncated)' : '');
+                } else {
+                    resultEl.className = 'result error';
+                    resultEl.textContent = `❌ /api/auth/me error (HTTP ${response.status}):\n\n` + JSON.stringify(data, null, 2);
+                }
+            } catch (error) {
+                resultEl.className = 'result error';
+                resultEl.textContent = `❌ /api/auth/me - Network Error:\n\n${error.message}`;
+            }
+        }
+
+        function showDiagnostics() {
+            const resultEl = document.getElementById('diagnostics-result');
+            const diag = `
+=== CUR-MIS Diagnostics ===
+
+API Base URL: ${API_BASE}
+Current URL: ${window.location.href}
+User Agent: ${navigator.userAgent}
+
+Connection Test:
+- API Health: ${API_BASE}/api/health
+
+Portal Endpoints:
+- Intakes: ${API_BASE}/api/portal/intakes
+- Guidance Videos: ${API_BASE}/api/portal/guidance-videos
+- Faculties: ${API_BASE}/api/portal/faculties
+
+Auth Status:
+- Token in Storage: ${localStorage.getItem('cur-mis-auth') ? 'YES' : 'NO'}
+- Storage Key: cur-mis-auth
+
+Frontend Files:
+- HTML: ${API_BASE}/frontend/dist/index.html
+- JS: ${API_BASE}/frontend/dist/assets/
+
+Backend Files:
+- Router: ${API_BASE}/api-router.php
+- Health: ${API_BASE}/api/health
+
+If you're getting 404 errors:
+1. Check that api-router.php exists in root
+2. Verify .htaccess has RewriteEngine On
+3. Ensure backend/public/index.php exists
+4. Check Apache error logs
+
+Open browser console (F12) for detailed errors.
+            `;
+            resultEl.className = 'result';
+            resultEl.textContent = diag.trim();
+        }
+
+        // Auto-test on load
+        window.addEventListener('load', () => {
+            showStatus('🔍 Testing API connectivity...', 'ok');
+            testHealthEndpoint();
+        });
+    </script>
+</body>
+</html>

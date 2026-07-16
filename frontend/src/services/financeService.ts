@@ -1,4 +1,5 @@
 import { api, apiClient } from "@/services/api";
+import { useAuthStore } from "@/store/authStore";
 import type { PaginatedResponse } from "@/types";
 import type {
   FeeStructure,
@@ -10,6 +11,7 @@ import type {
   FinanceSummary,
   RevenueByType,
   CreateFeeStructurePayload,
+  StudentCategory,
   CreateInvoicePayload,
   GenerateInvoicesPayload,
   GenerateInvoicesResult,
@@ -21,6 +23,8 @@ import type {
   CreateExpensePayload,
   ExpenseBudget,
   SaveBudgetPayload,
+  BudgetExecutionRow,
+  BudgetExecutionCompareResult,
   ClearanceResult,
   StudentClearance,
   ClearanceReport,
@@ -41,6 +45,12 @@ import type {
   FeeTypeRecord,
   CreateFeeTypePayload,
   UpdateFeeTypePayload,
+  PaymentCalendarEvent,
+  CreatePaymentCalendarEventPayload,
+  UpdatePaymentCalendarEventPayload,
+  PgIntlFeeStructure,
+  CreatePgIntlFeeStructurePayload,
+  UpdatePgIntlFeeStructurePayload,
 } from "@/types/finance";
 
 // ─── Fee Structures ───────────────────────────────────────────────────────────
@@ -51,6 +61,7 @@ export const feeStructureService = {
       academic_year_id?: number;
       department_id?: number | null;
       level_id?: number | null;
+      student_category?: StudentCategory | "";
       fee_type?: string;
       is_active?: 0 | 1;
     },
@@ -341,6 +352,55 @@ export const budgetService = {
 
   save: (data: SaveBudgetPayload) =>
     api.post<null>("/api/finance/budgets", data),
+};
+
+// ─── Budget Execution (Phase 4) ────────────────────────────────────────────────
+
+export const budgetExecutionService = {
+  list: (
+    academicYearId: number,
+    departmentId?: number | null,
+    signal?: AbortSignal,
+  ) =>
+    api.get<BudgetExecutionRow[]>(
+      "/api/finance/budget-execution",
+      { academic_year_id: academicYearId, department_id: departmentId ?? undefined },
+      signal,
+    ),
+
+  compare: (
+    yearA: number,
+    yearB: number,
+    departmentId?: number | null,
+    signal?: AbortSignal,
+  ) =>
+    api.get<BudgetExecutionCompareResult>(
+      "/api/finance/budget-execution/compare",
+      { year_a: yearA, year_b: yearB, department_id: departmentId ?? undefined },
+      signal,
+    ),
+
+  download: (
+    format: "xlsx" | "pdf",
+    academicYearId: number,
+    departmentId?: number | null,
+  ): void => {
+    // useAuthStore's token, not the "auth_token" localStorage key used by
+    // exportService.downloadCSV — nothing in the app ever sets that key, so
+    // pulling from the actual persisted auth store is what makes the
+    // token=... query param (required by AuthMiddleware for plain <a> downloads
+    // that can't send an Authorization header) actually work.
+    const token = useAuthStore.getState().token ?? "";
+    const base = import.meta.env.VITE_API_URL ?? "";
+    const dept = departmentId ? `&department_id=${departmentId}` : "";
+    const url = `${base}/api/finance/budget-execution/export?academic_year_id=${academicYearId}&format=${format}${dept}&token=${token}`;
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  },
 };
 
 // ─── Clearance ────────────────────────────────────────────────────────────────
@@ -838,4 +898,51 @@ export const feeInvoicePdfService = {
     link.parentNode?.removeChild(link);
     window.URL.revokeObjectURL(url);
   },
+};
+
+// ─── Payment Calendar ─────────────────────────────────────────────────────────
+
+export const paymentCalendarService = {
+  list: (
+    params?: { academic_year_id?: number; event_type?: string; is_active?: 0 | 1 },
+    signal?: AbortSignal,
+  ) => api.get<PaymentCalendarEvent[]>("/api/finance/payment-calendar", params ?? {}, signal),
+
+  listMine: (params?: { academic_year_id?: number }, signal?: AbortSignal) =>
+    api.get<PaymentCalendarEvent[]>("/api/finance/my/payment-calendar", params ?? {}, signal),
+
+  create: (data: CreatePaymentCalendarEventPayload) =>
+    api.post<{ id: number }>("/api/finance/payment-calendar", data),
+
+  update: (id: number, data: UpdatePaymentCalendarEventPayload) =>
+    api.put<null>(`/api/finance/payment-calendar/${id}`, data),
+
+  delete: (id: number) =>
+    api.delete<null>(`/api/finance/payment-calendar/${id}`),
+};
+
+// ─── Postgraduate Fees — International Students (Phase 5) ────────────────────
+
+export const pgIntlFeeStructureService = {
+  list: (
+    params?: {
+      academic_year_id?: number
+      department_id?: number
+      level_id?: number
+      fee_type?: string
+      nationality_region?: string
+      surcharge_type?: string
+      is_active?: 0 | 1
+    },
+    signal?: AbortSignal,
+  ) => api.get<PgIntlFeeStructure[]>("/api/finance/pg-intl-structures", params ?? {}, signal),
+
+  create: (data: CreatePgIntlFeeStructurePayload) =>
+    api.post<{ id: number }>("/api/finance/pg-intl-structures", data),
+
+  update: (id: number, data: UpdatePgIntlFeeStructurePayload) =>
+    api.put<null>(`/api/finance/pg-intl-structures/${id}`, data),
+
+  delete: (id: number) =>
+    api.delete<null>(`/api/finance/pg-intl-structures/${id}`),
 };

@@ -32,10 +32,16 @@ export interface FeeStructure {
   dept_ids?:            string | null
   level_id:             number | null
   level_name?:          string | null
+  campus_id:            number | null
+  campus_name?:         string | null
+  /** comma-separated option IDs from fee_structure_options join */
+  option_ids?:          string | null
+  student_category?:    StudentCategory | null
   fee_type:             Exclude<FeeType, 'ARREARS' | 'BURSARY_CREDIT'>
   label:                string
   amount:               number
-  semester:             1 | 2 | null
+  currency?:            string
+  semester:             1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | null
   payment_plan?:        PaymentPlan
   installment_count?:   number | null
   is_active:            0 | 1
@@ -44,15 +50,21 @@ export interface FeeStructure {
   updated_at:           string
 }
 
+export type StudentCategory = 'local' | 'international' | 'sponsored' | 'self_sponsored'
+
 export interface CreateFeeStructurePayload {
   academic_year_id:   number
   department_id?:     number | null
   department_ids?:    number[]
   level_id?:          number | null
+  campus_id?:         number | null
+  option_ids?:        number[]
+  student_category?:  StudentCategory | null
   fee_type:           string
   label:              string
   amount:             number
-  semester?:          1 | 2 | null
+  currency?:          string
+  semester?:          1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | null
   payment_plan?:      PaymentPlan
   installment_count?: number | null
 }
@@ -406,6 +418,8 @@ export interface ExpenseBudget {
   academic_year_id: number
   category_id:      number
   category_name?:   string
+  department_id?:   number | null
+  department_name?: string | null
   amount:           number
   spent?:           number
   notes?:           string
@@ -415,6 +429,32 @@ export interface SaveBudgetPayload {
   academic_year_id: number
   category_id:      number
   amount:           number
+  department_id?:   number | null
+}
+
+// ─── Budget Execution (Phase 4) ────────────────────────────────────────────────
+
+export interface BudgetExecutionRow {
+  category_id:      number
+  category_name:    string
+  department_id:    number | null
+  department_name:  string | null
+  planned_budget:   number
+  amount_spent:     number
+  balance:          number
+  variance:         number
+  is_overspend:     boolean
+}
+
+export interface BudgetExecutionYearResult {
+  academic_year_id: number
+  label:            string
+  rows:             BudgetExecutionRow[]
+}
+
+export interface BudgetExecutionCompareResult {
+  year_a: BudgetExecutionYearResult
+  year_b: BudgetExecutionYearResult
 }
 
 // ─── Account Balance ──────────────────────────────────────────────────────────
@@ -680,5 +720,131 @@ export interface MobilePaymentRecord {
   created_at:         string
   invoice_number:     string | null
   fee_type:           string | null
+}
+
+// ─── Payment Calendar ─────────────────────────────────────────────────────────
+
+export type PaymentCalendarEventType =
+  | 'registration_deadline'
+  | 'installment_due'
+  | 'penalty_start'
+  | 'semester_start'
+  | 'semester_end'
+
+export const PAYMENT_CALENDAR_EVENT_TYPES: PaymentCalendarEventType[] = [
+  'registration_deadline',
+  'installment_due',
+  'penalty_start',
+  'semester_start',
+  'semester_end',
+]
+
+export const PAYMENT_CALENDAR_EVENT_TYPE_LABELS: Record<PaymentCalendarEventType, string> = {
+  registration_deadline: 'Registration Deadline',
+  installment_due:       'Installment Due',
+  penalty_start:         'Penalty Start',
+  semester_start:        'Semester Start',
+  semester_end:          'Semester End',
+}
+
+export interface PaymentCalendarEvent {
+  id:                  number
+  academic_year_id:    number
+  academic_year_label: string | null
+  event_type:          PaymentCalendarEventType
+  label:               string
+  event_date:          string
+  fee_structure_id:    number | null
+  fee_structure_label: string | null
+  is_active:           0 | 1
+  created_by:          number | null
+  created_at:          string
+  updated_at:          string
+}
+
+export interface CreatePaymentCalendarEventPayload {
+  academic_year_id:  number
+  event_type:        PaymentCalendarEventType
+  label:             string
+  event_date:        string
+  fee_structure_id?: number | null
+  is_active?:        0 | 1
+}
+
+export interface UpdatePaymentCalendarEventPayload {
+  academic_year_id?: number
+  event_type?:       PaymentCalendarEventType
+  label?:            string
+  event_date?:       string
+  fee_structure_id?: number | null
+  is_active?:        0 | 1
+}
+
+// ─── Postgraduate Fees — International Students (Phase 5) ────────────────────
+// Deliberately separate from FeeStructure/CreateFeeStructurePayload — the client
+// asked for postgraduate/international fees to stay a distinct table/view, not
+// merged into the regular fee schedule.
+
+export type SurchargeType = 'visa' | 'insurance' | 'other' | 'none'
+
+export const SURCHARGE_TYPES: SurchargeType[] = ['visa', 'insurance', 'other', 'none']
+
+export const SURCHARGE_TYPE_LABELS: Record<SurchargeType, string> = {
+  visa:      'Visa',
+  insurance: 'Insurance',
+  other:     'Other',
+  none:      'None',
+}
+
+export interface PgIntlFeeStructure {
+  id:                   number
+  academic_year_id:     number
+  academic_year_label?: string
+  department_id:        number | null
+  department_name?:     string | null
+  level_id:             number | null
+  level_name?:          string | null
+  fee_type:             string
+  label:                string
+  amount:               number
+  currency:             string
+  semester:             1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | null
+  payment_plan:         PaymentPlan
+  installment_count:    number | null
+  nationality_region:   string | null
+  surcharge_type:       SurchargeType
+  is_active:            0 | 1
+  created_by:           number | null
+  created_at:           string
+  updated_at:           string
+}
+
+export interface CreatePgIntlFeeStructurePayload {
+  academic_year_id:    number
+  department_id?:      number | null
+  level_id?:           number | null
+  fee_type:            string
+  label:               string
+  amount:              number
+  currency?:           string
+  semester?:           1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | null
+  payment_plan?:       PaymentPlan
+  installment_count?:  number | null
+  nationality_region?: string | null
+  surcharge_type?:     SurchargeType
+}
+
+export interface UpdatePgIntlFeeStructurePayload {
+  department_id?:      number | null
+  level_id?:           number | null
+  label?:              string
+  amount?:             number
+  currency?:           string
+  semester?:           1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | null
+  payment_plan?:       PaymentPlan
+  installment_count?:  number | null
+  nationality_region?: string | null
+  surcharge_type?:     SurchargeType
+  is_active?:          0 | 1
 }
 
