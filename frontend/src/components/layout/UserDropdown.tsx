@@ -9,6 +9,7 @@ import { useLogout } from "@/hooks/useAuth";
 import { studentService } from "@/services/studentService";
 import { authService } from "@/services/authService";
 import { PERMISSIONS } from "@/constants/permissions";
+import { usePermission } from "@/utils/permissions";
 
 export default function UserDropdown() {
   const [isOpen, setIsOpen] = useState(false);
@@ -39,7 +40,7 @@ export default function UserDropdown() {
   // Non-students: photo lives on the users table, exposed via /api/auth/me/photo.
   // Use user?.photo (from auth store, updated on upload) as the cache-buster so
   // the avatar refreshes immediately after a photo upload — no error-state needed.
-  const isStudent = (user?.permissions ?? []).includes(PERMISSIONS.ACCESS_STUDENT_PORTAL);
+  const isStudent = usePermission(PERMISSIONS.ACCESS_STUDENT_PORTAL);
 
   const studentQ = useQuery({
     queryKey: ['student', 'me'],
@@ -127,7 +128,7 @@ export default function UserDropdown() {
 
             {/* Menu */}
             <div className="p-1.5">
-              <MenuItem icon={<User     className="h-4 w-4" />} onClick={() => go((user?.permissions ?? []).includes(PERMISSIONS.ACCESS_STUDENT_PORTAL) ? '/me/profile' : '/profile')}>My profile</MenuItem>
+              <MenuItem icon={<User     className="h-4 w-4" />} onClick={() => go(isStudent ? '/me/profile' : '/profile')}>My profile</MenuItem>
 
               {/* Theme toggle */}
               <button

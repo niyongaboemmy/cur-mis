@@ -15,6 +15,8 @@ import type {
 import { SURCHARGE_TYPES, SURCHARGE_TYPE_LABELS } from '@/types/finance'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import ModalPortal from '@/components/ui/ModalPortal'
+import { PERMISSIONS } from '@/constants'
+import { usePermission } from '@/utils/permissions'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -58,6 +60,7 @@ const SURCHARGE_COLORS: Record<SurchargeType, string> = {
 // ── PostgraduateInternationalFeesPage ──────────────────────────────────────────
 
 export default function PostgraduateInternationalFeesPage() {
+  const canManage = usePermission(PERMISSIONS.MANAGE_FINANCE)
   const qc = useQueryClient()
   const [yearId, setYearId]       = useState<number | ''>('')
   const [isOpen, setIsOpen]       = useState(false)
@@ -219,10 +222,12 @@ export default function PostgraduateInternationalFeesPage() {
             <p className="text-xs text-ink-500">Kept separate from the regular fee schedule. Amounts are fixed quoted rates per academic year (no live FX conversion).</p>
           </div>
         </div>
-        <button onClick={openCreate} className="btn btn-primary flex items-center gap-2 text-sm">
-          <Plus className="w-4 h-4" />
-          New Fee
-        </button>
+        {canManage && (
+          <button onClick={openCreate} className="btn btn-primary flex items-center gap-2 text-sm">
+            <Plus className="w-4 h-4" />
+            New Fee
+          </button>
+        )}
       </div>
 
       {/* Filter bar */}
@@ -481,29 +486,31 @@ export default function PostgraduateInternationalFeesPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button
-                          onClick={() => openEdit(row)}
-                          className="p-1.5 text-brand hover:bg-brand/10 rounded-md transition-colors"
-                          title="Edit"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => archiveMut.mutate({ id: row.id, is_active: row.is_active ? 0 : 1 })}
-                          className="p-1.5 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-md transition-colors"
-                          title={row.is_active ? 'Archive' : 'Restore'}
-                        >
-                          {row.is_active ? <Archive className="w-3.5 h-3.5" /> : <ArchiveRestore className="w-3.5 h-3.5" />}
-                        </button>
-                        <button
-                          onClick={() => handleDelete(row)}
-                          className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors"
-                          title="Delete"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                      {canManage && (
+                        <div className="flex justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => openEdit(row)}
+                            className="p-1.5 text-brand hover:bg-brand/10 rounded-md transition-colors"
+                            title="Edit"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => archiveMut.mutate({ id: row.id, is_active: row.is_active ? 0 : 1 })}
+                            className="p-1.5 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-md transition-colors"
+                            title={row.is_active ? 'Archive' : 'Restore'}
+                          >
+                            {row.is_active ? <Archive className="w-3.5 h-3.5" /> : <ArchiveRestore className="w-3.5 h-3.5" />}
+                          </button>
+                          <button
+                            onClick={() => handleDelete(row)}
+                            className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}

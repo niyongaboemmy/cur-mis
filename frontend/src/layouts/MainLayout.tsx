@@ -61,6 +61,7 @@ import {
 import { AnimatePresence, motion } from "framer-motion";
 import { useAuthStore } from "@/store/authStore";
 import { PERMISSIONS } from "@/constants/permissions";
+import { isSuperadmin } from "@/utils/permissions";
 
 /* ------------------------------------------------------------------
  * Nav tree — Home is a direct leaf (no sub-items). Groups with
@@ -989,7 +990,7 @@ export default function MainLayout() {
   const hasAccess = useCallback(
     (perms?: string[]) => {
       if (!perms || perms.length === 0) return true;
-      if (["superadmin", "admin"].includes(user?.role ?? "")) return true;
+      if (isSuperadmin(user)) return true;
       return perms.some((p) => (user?.permissions || []).includes(p));
     },
     [user],

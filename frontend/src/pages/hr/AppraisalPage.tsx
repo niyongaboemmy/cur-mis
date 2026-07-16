@@ -37,8 +37,8 @@ import type {
   AppraisalRating,
 } from "@/services/hrService";
 import ModalPortal from "@/components/ui/ModalPortal";
-import { useAuthStore } from "@/store/authStore";
 import { PERMISSIONS } from "@/constants/permissions";
+import { usePermission } from "@/utils/permissions";
 
 /* ── helpers ────────────────────────────────────────────────────────────── */
 
@@ -891,10 +891,7 @@ function AppraisalModal({
 type MainTab = "periods" | "appraisals";
 
 export default function AppraisalPage() {
-  const { user } = useAuthStore();
-  const canManage =
-    user?.role === "superadmin" ||
-    (user?.permissions ?? []).includes(PERMISSIONS.MANAGE_APPRAISALS);
+  const canManage = usePermission(PERMISSIONS.MANAGE_APPRAISALS);
 
   const qc = useQueryClient();
   const [mainTab, setMainTab] = useState<MainTab>("periods");

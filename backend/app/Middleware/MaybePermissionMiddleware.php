@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Middleware;
 
 use App\Helpers\ResponseHelper;
+use App\Services\AuthService;
 use Core\Request;
 use Core\Response;
 
@@ -36,7 +37,7 @@ class MaybePermissionMiddleware
 
         $user = (array) $user;
 
-        if (isset($user['role']) && in_array($user['role'], ['superadmin', 'admin'], true)) {
+        if (AuthService::isSuperadmin($user)) {
             return;
         }
 

@@ -13,8 +13,8 @@ import {
   type PaymentMethod,
   type PayrollRow,
 } from '@/services/hrService'
-import { useAuthStore } from '@/store/authStore'
 import { PERMISSIONS } from '@/constants'
+import { usePermission } from '@/utils/permissions'
 import ModalPortal from '@/components/ui/ModalPortal'
 
 /* ── helpers ── */
@@ -127,9 +127,7 @@ const METHOD_COLORS: Record<string, string> = {
    ══════════════════════════════════════════════════════════════════════ */
 export default function PaymentsPage() {
   const [sp, setSp]   = useSearchParams()
-  const { user }      = useAuthStore()
-  const canManage     = ['superadmin', 'admin'].includes(user?.role ?? '') ||
-    (user?.permissions ?? []).includes(PERMISSIONS.MANAGE_HR_EMPLOYEES)
+  const canManage = usePermission(PERMISSIONS.MANAGE_HR_EMPLOYEES)
   const qc            = useQueryClient()
 
   const periodYear  = parseInt(sp.get('period_year')  || String(CUR_Y))

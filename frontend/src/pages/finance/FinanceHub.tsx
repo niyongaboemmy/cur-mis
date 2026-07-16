@@ -23,6 +23,7 @@ import { useAuthStore } from "@/store/authStore";
 import { useQuery } from "@tanstack/react-query";
 import { paymentService } from "@/services/financeService";
 import { PERMISSIONS } from "@/constants/permissions";
+import { isSuperadmin } from "@/utils/permissions";
 
 const TABS = [
   {
@@ -170,7 +171,7 @@ const TABS = [
 export default function FinanceHub() {
   const user = useAuthStore((s) => s.user);
   const perms = user?.permissions ?? [];
-  const isSuper = user?.role === "superadmin";
+  const isSuper = isSuperadmin(user);
 
   const visible = TABS.filter(
     (t) => isSuper || t.permissions.some((p) => perms.includes(p)),

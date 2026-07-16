@@ -10,6 +10,8 @@ import {
   type Fine, type FineType, type FineStatus, type CreateFinePayload,
 } from '@/services/financeService'
 import ModalPortal from '@/components/ui/ModalPortal'
+import { PERMISSIONS } from '@/constants'
+import { usePermission } from '@/utils/permissions'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -49,6 +51,7 @@ const EMPTY_FORM: FormState = {
 // ── FinesManagementPage ───────────────────────────────────────────────────────
 
 export default function FinesManagementPage() {
+  const canManage = usePermission(PERMISSIONS.MANAGE_FINES)
   const qc = useQueryClient()
 
   // Filters
@@ -198,10 +201,12 @@ export default function FinesManagementPage() {
               <p className="text-xs text-ink-500">Issue and track student fines for academic document penalties.</p>
             </div>
           </div>
-          <button onClick={openCreate} className="btn btn-primary flex items-center gap-2 text-sm">
-            <Plus className="w-4 h-4" />
-            Issue Fine
-          </button>
+          {canManage && (
+            <button onClick={openCreate} className="btn btn-primary flex items-center gap-2 text-sm">
+              <Plus className="w-4 h-4" />
+              Issue Fine
+            </button>
+          )}
         </div>
 
         {/* Summary pills */}
@@ -489,6 +494,7 @@ export default function FinesManagementPage() {
                           {new Date(fine.created_at).toLocaleDateString()}
                         </td>
                         <td className="px-5 py-3.5 text-right">
+                          {canManage && (
                           <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             {fine.status !== 'waived' && fine.status !== 'paid' && (
                               <>
@@ -530,6 +536,7 @@ export default function FinesManagementPage() {
                               <XCircle className="w-4 h-4 text-ink-300 dark:text-ink-600" />
                             )}
                           </div>
+                          )}
                         </td>
                       </tr>
                     )

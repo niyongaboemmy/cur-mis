@@ -68,17 +68,17 @@ export default class ErrorBoundary extends Component<Props, State> {
 
       return (
         <div className="min-h-[300px] flex flex-col items-center justify-center gap-4 p-8 text-center">
-          <div className="w-14 h-14 rounded-full bg-red-100 flex items-center justify-center">
-            <AlertTriangle className="h-7 w-7 text-red-600" />
+          <div className="w-14 h-14 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center">
+            <AlertTriangle className="h-7 w-7 text-red-600 dark:text-red-400" />
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-gray-900">Something went wrong</h2>
-            <p className="text-sm text-gray-500 mt-1 max-w-sm">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Something went wrong</h2>
+            <p className="text-sm text-gray-500 dark:text-ink-400 mt-1 max-w-sm">
               An unexpected error occurred. Try refreshing the page.
             </p>
             {/* Always show the error message so it's visible in browser DevTools
                 and helps diagnose production issues */}
-            <pre className="mt-3 text-left text-xs bg-gray-100 text-gray-700 p-3 rounded overflow-auto max-w-md max-h-32">
+            <pre className="mt-3 text-left text-xs bg-gray-100 dark:bg-ink-900 text-gray-700 dark:text-ink-300 p-3 rounded overflow-auto max-w-md max-h-32">
               {this.state.error.message}
             </pre>
           </div>

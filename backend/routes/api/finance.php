@@ -21,46 +21,131 @@ use App\Constants\Permissions;
 
 $router->group('/api/finance', function ($router) {
 
-    // ── Read-only ─────────────────────────────────────────────────────────────
+    // ── Read-only: general (no granular sub-slug defined for these yet) ────────
     $router->group('', function ($r) {
-        $r->get('/reports/application-fee-reconciliation', [FeeController::class, 'applicationFeeReconciliation']);
-        $r->get('/structures',               [FeeController::class, 'listStructures']);
-        $r->get('/pg-intl-structures',        [PgIntlFeeStructureController::class, 'listPgIntlStructures']);
         $r->get('/payments',                 [FeeController::class, 'listPayments']);
         $r->get('/online-payments',          [FeeController::class, 'listOnlinePaymentsHistory']);
         $r->get('/payments/pending-count',   [FeeController::class, 'getPendingPaymentCount']);
         $r->get('/payments/:id/receipt',     [FeeController::class, 'getReceipt']);
         $r->get('/invoices/:id/pdf',         [FeeController::class, 'downloadInvoicePdf']);
         $r->get('/students/:studentId/bill/pdf', [FeeController::class, 'downloadStudentBillPdf']);
-        $r->get('/bursaries',                [FeeController::class, 'listBursaries']);
-        $r->get('/sponsors',                 [FeeController::class, 'listSponsors']);
         $r->get('/overrides',                [FeeController::class, 'listOverrides']);
-        $r->get('/refunds',                  [RefundController::class, 'listRefunds']);
-        $r->get('/summary',                  [FeeController::class, 'getSummary']);
-        $r->get('/balance',                  [FeeController::class, 'getAccountBalance']);
-        $r->get('/reports/monthly',          [FeeController::class, 'getMonthlyCollections']);
-        $r->get('/reports/revenue',          [FeeController::class, 'getRevenueReport']);
-        $r->get('/reports/outstanding',      [FeeController::class, 'getOutstandingReport']);
-        $r->get('/reports/projection',       [FeeController::class, 'getIncomeProjection']);
-        $r->get('/reports/export',           [FeeController::class, 'exportReport']);
         $r->get('/students/invoices',        [FeeController::class, 'getStudentInvoices']);
-        $r->get('/expenses',                 [FeeController::class, 'listExpenses']);
-        $r->get('/expenses/categories',      [FeeController::class, 'listExpenseCategories']);
         $r->get('/fee-types',                [FeeController::class, 'listFeeTypes']);
         $r->get('/per-credit-rates',         [FeeController::class, 'listPerCreditRates']);
-        $r->get('/clearance',                    [FeeController::class, 'getClearanceStatus']);
-        $r->get('/clearance/exam-eligibility',   [FeeController::class, 'getExamEligibility']);
-        $r->get('/clearance/bulk',               [FeeController::class, 'getBulkClearance']);
-        $r->get('/clearance/report',             [FeeController::class, 'getClearanceReport']);
-        $r->get('/billing/summary',          [FeeController::class, 'listBillingSummary']);
-        $r->get('/billing/all-students',     [FeeController::class, 'listAllStudentsWithStatus']);
-        $r->get('/billing/export',           [FeeController::class, 'exportBillingSummary']);
-
     }, [new MaybePermissionMiddleware([
         Permissions::VIEW_FINANCE,
         Permissions::MANAGE_FINANCE,
         Permissions::VIEW_MOBILE_PAYMENTS,
         Permissions::VIEW_ONLINE_PAYMENTS_HISTORY,
+        // /payments and /payments/pending-count back the Approvals tab.
+        Permissions::VIEW_FINANCE_APPROVALS,
+    ])]);
+
+    // ── Read-only: structures (Finding B — granular slug added alongside coarse) ─
+    $router->group('', function ($r) {
+        $r->get('/structures',               [FeeController::class, 'listStructures']);
+        $r->get('/pg-intl-structures',        [PgIntlFeeStructureController::class, 'listPgIntlStructures']);
+        $r->get('/structures/schedule-export',     [FeeController::class, 'scheduleExportJson']);
+        $r->get('/structures/schedule-export.pdf', [FeeController::class, 'scheduleExportPdf']);
+    }, [new MaybePermissionMiddleware([
+        Permissions::VIEW_FINANCE,
+        Permissions::MANAGE_FINANCE,
+        Permissions::VIEW_FINANCE_STRUCTURES,
+    ])]);
+
+    // ── Read-only: billing ───────────────────────────────────────────────────
+    $router->group('', function ($r) {
+        $r->get('/billing/summary',          [FeeController::class, 'listBillingSummary']);
+        $r->get('/billing/all-students',     [FeeController::class, 'listAllStudentsWithStatus']);
+        $r->get('/billing/export',           [FeeController::class, 'exportBillingSummary']);
+    }, [new MaybePermissionMiddleware([
+        Permissions::VIEW_FINANCE,
+        Permissions::MANAGE_FINANCE,
+        Permissions::VIEW_FINANCE_BILLING,
+    ])]);
+
+    // ── Read-only: bursaries ─────────────────────────────────────────────────
+    $router->group('', function ($r) {
+        $r->get('/bursaries',                [FeeController::class, 'listBursaries']);
+    }, [new MaybePermissionMiddleware([
+        Permissions::VIEW_FINANCE,
+        Permissions::MANAGE_FINANCE,
+        Permissions::VIEW_FINANCE_BURSARIES,
+    ])]);
+
+    // ── Read-only: sponsors ──────────────────────────────────────────────────
+    $router->group('', function ($r) {
+        $r->get('/sponsors',                 [FeeController::class, 'listSponsors']);
+    }, [new MaybePermissionMiddleware([
+        Permissions::VIEW_FINANCE,
+        Permissions::MANAGE_FINANCE,
+        Permissions::VIEW_FINANCE_SPONSORS,
+    ])]);
+
+    // ── Read-only: expenses ──────────────────────────────────────────────────
+    $router->group('', function ($r) {
+        $r->get('/expenses',                 [FeeController::class, 'listExpenses']);
+        $r->get('/expenses/categories',      [FeeController::class, 'listExpenseCategories']);
+    }, [new MaybePermissionMiddleware([
+        Permissions::VIEW_FINANCE,
+        Permissions::MANAGE_FINANCE,
+        Permissions::VIEW_FINANCE_EXPENSES,
+    ])]);
+
+    // ── Read-only: refunds ───────────────────────────────────────────────────
+    $router->group('', function ($r) {
+        $r->get('/refunds',                  [RefundController::class, 'listRefunds']);
+    }, [new MaybePermissionMiddleware([
+        Permissions::VIEW_FINANCE,
+        Permissions::MANAGE_FINANCE,
+        Permissions::VIEW_FINANCE_REFUNDS,
+    ])]);
+
+    // ── Read-only: balance ───────────────────────────────────────────────────
+    $router->group('', function ($r) {
+        $r->get('/balance',                  [FeeController::class, 'getAccountBalance']);
+    }, [new MaybePermissionMiddleware([
+        Permissions::VIEW_FINANCE,
+        Permissions::MANAGE_FINANCE,
+        Permissions::VIEW_FINANCE_BALANCE,
+    ])]);
+
+    // ── Read-only: clearance ─────────────────────────────────────────────────
+    $router->group('', function ($r) {
+        $r->get('/clearance',                    [FeeController::class, 'getClearanceStatus']);
+        $r->get('/clearance/exam-eligibility',   [FeeController::class, 'getExamEligibility']);
+        $r->get('/clearance/bulk',               [FeeController::class, 'getBulkClearance']);
+        $r->get('/clearance/report',             [FeeController::class, 'getClearanceReport']);
+    }, [new MaybePermissionMiddleware([
+        Permissions::VIEW_FINANCE,
+        Permissions::MANAGE_FINANCE,
+        Permissions::VIEW_FINANCE_CLEARANCE,
+        Permissions::VIEW_CLEARANCE,
+        Permissions::MANAGE_CLEARANCE,
+    ])]);
+
+    // ── Read-only: reports ───────────────────────────────────────────────────
+    $router->group('', function ($r) {
+        $r->get('/reports/application-fee-reconciliation', [FeeController::class, 'applicationFeeReconciliation']);
+        $r->get('/reports/monthly',          [FeeController::class, 'getMonthlyCollections']);
+        $r->get('/reports/revenue',          [FeeController::class, 'getRevenueReport']);
+        $r->get('/reports/outstanding',      [FeeController::class, 'getOutstandingReport']);
+        $r->get('/reports/projection',       [FeeController::class, 'getIncomeProjection']);
+        $r->get('/reports/export',           [FeeController::class, 'exportReport']);
+    }, [new MaybePermissionMiddleware([
+        Permissions::VIEW_FINANCE,
+        Permissions::MANAGE_FINANCE,
+        Permissions::VIEW_FINANCE_REPORTS,
+    ])]);
+
+    // ── Read-only: overview (top-level dashboard) ────────────────────────────
+    $router->group('', function ($r) {
+        $r->get('/summary',                  [FeeController::class, 'getSummary']);
+    }, [new MaybePermissionMiddleware([
+        Permissions::VIEW_FINANCE,
+        Permissions::MANAGE_FINANCE,
+        Permissions::VIEW_FINANCE_OVERVIEW,
     ])]);
 
     // ── Payment Calendar — read-only ─────────────────────────────────────────
@@ -91,15 +176,6 @@ $router->group('/api/finance', function ($router) {
     }, [new MaybePermissionMiddleware([
         Permissions::ACCESS_STUDENT_PORTAL,
         Permissions::MY_INVOICE,
-    ])]);
-
-    // ── Read-only exports ─────────────────────────────────────────────────────
-    $router->group('', function ($r) {
-        $r->get('/structures/schedule-export',     [FeeController::class, 'scheduleExportJson']);
-        $r->get('/structures/schedule-export.pdf', [FeeController::class, 'scheduleExportPdf']);
-    }, [new MaybePermissionMiddleware([
-        Permissions::VIEW_FINANCE,
-        Permissions::MANAGE_FINANCE,
     ])]);
 
     // ── Student Directory (Finance view) — read-only, Phase 2 ───────────────────

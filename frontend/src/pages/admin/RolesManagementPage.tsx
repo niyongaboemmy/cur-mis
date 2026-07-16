@@ -11,9 +11,14 @@ import {
   Search,
   Users,
   Activity,
+  Sparkles,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import ModalPortal from "@/components/ui/ModalPortal";
+import {
+  ROLE_TEMPLATES,
+  ROLE_TEMPLATE_CATEGORIES,
+} from "@/constants/roleTemplates";
 
 export default function RolesManagementPage() {
   const [roles, setRoles] = useState<Role[]>([]);
@@ -23,6 +28,10 @@ export default function RolesManagementPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<Role | null>(null);
   const [roleForm, setRoleForm] = useState({ name: "", description: "" });
+  // Suggested-template picker (Create Role only) — front-end convenience,
+  // never sent to the backend directly; only pre-fills the form and, after
+  // creation, pre-checks the matching permissions for the admin to review.
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
 
   const [isPermsOpen, setIsPermsOpen] = useState(false);
   const [selectedRoleForPerms, setSelectedRoleForPerms] = useState<Role | null>(
@@ -70,6 +79,7 @@ export default function RolesManagementPage() {
   };
 
   const openForm = (role?: Role) => {
+    setSelectedTemplateId("");
     if (role) {
       setEditingRole(role);
       setRoleForm({ name: role.name, description: role.description || "" });
@@ -80,18 +90,63 @@ export default function RolesManagementPage() {
     setIsModalOpen(true);
   };
 
+  const applyTemplate = (templateId: string) => {
+    setSelectedTemplateId(templateId);
+    const template = ROLE_TEMPLATES.find((t) => t.id === templateId);
+    if (template) {
+      setRoleForm({ name: template.name, description: template.description });
+    }
+  };
+
+  // After creating a role from a template, pre-check its suggested
+  // permissions in the Permissions modal — the admin still has to review
+  // and hit "Apply Changes" for anything to actually be granted.
+  const openPermsWithSuggestedSlugs = (role: Role, slugs: string[]) => {
+    setSelectedRoleForPerms(role);
+    setEnforceCampusScope(false);
+    const allPerms = categories.flatMap((c) => c.permissions || []);
+    const matchedIds = slugs
+      .map((slug) => allPerms.find((p) => p.slug === slug)?.id)
+      .filter(Boolean) as number[];
+    setSelectedPerms(matchedIds);
+    setIsPermsOpen(true);
+  };
+
   const handleSaveRole = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       if (editingRole) {
         await rbacService.updateRole(editingRole.id, roleForm);
         toast.success("Role updated successfully");
+        setIsModalOpen(false);
+        fetchData();
       } else {
-        await rbacService.createRole(roleForm);
+        const res = await rbacService.createRole(roleForm);
         toast.success("Role created successfully");
+        setIsModalOpen(false);
+
+        const template = ROLE_TEMPLATES.find(
+          (t) => t.id === selectedTemplateId,
+        );
+        const newId = (res as any)?.data?.id;
+        if (template && newId) {
+          toast(
+            `Suggested permissions for "${template.name}" are pre-checked — review and apply.`,
+            { icon: "✨" },
+          );
+          openPermsWithSuggestedSlugs(
+            {
+              id: newId,
+              name: roleForm.name,
+              description: roleForm.description,
+              permissions: [],
+              created_at: new Date().toISOString(),
+            },
+            template.permissions,
+          );
+        }
+        fetchData();
       }
-      setIsModalOpen(false);
-      fetchData();
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Failed to save role");
     }
@@ -296,11 +351,11 @@ export default function RolesManagementPage() {
               <button
                 onClick={() => openForm(role)}
                 className="w-10 h-10 rounded-xl bg-white dark:bg-gray-700 border border-gray-100 dark:border-gray-600 flex items-center justify-center text-gray-500 hover:text-primary-600 transition-colors"
-                title="Edit Role"
+                title={role.is_system ? "Edit Role (name is locked)" : "Edit Role"}
               >
                 <Edit className="w-4 h-4" />
               </button>
-              {role.name !== "superadmin" && (
+              {!role.is_system && (
                 <button
                   onClick={() => handleDelete(role.id)}
                   className="w-10 h-10 rounded-xl bg-white dark:bg-gray-700 border border-gray-100 dark:border-gray-600 flex items-center justify-center text-gray-500 hover:text-red-600 transition-colors"
@@ -435,6 +490,42 @@ export default function RolesManagementPage() {
               </button>
             </div>
             <form onSubmit={handleSaveRole} className="p-6 space-y-4">
+              {!editingRole && (
+                <div>
+                  <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <Sparkles className="w-3.5 h-3.5 text-primary-500" />
+                    Start from a suggested role (optional)
+                  </label>
+                  <select
+                    value={selectedTemplateId}
+                    onChange={(e) => applyTemplate(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all outline-none"
+                  >
+                    <option value="">— Start from scratch —</option>
+                    {ROLE_TEMPLATE_CATEGORIES.map((cat) => (
+                      <optgroup key={cat} label={cat}>
+                        {ROLE_TEMPLATES.filter((t) => t.category === cat).map(
+                          (t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.name}
+                            </option>
+                          ),
+                        )}
+                      </optgroup>
+                    ))}
+                  </select>
+                  {selectedTemplateId && (
+                    <p className="mt-1.5 text-xs text-gray-500 leading-relaxed">
+                      {
+                        ROLE_TEMPLATES.find((t) => t.id === selectedTemplateId)
+                          ?.description
+                      }{" "}
+                      Name/description are editable below — permissions can be
+                      reviewed and adjusted right after you create the role.
+                    </p>
+                  )}
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Role Name
@@ -442,13 +533,19 @@ export default function RolesManagementPage() {
                 <input
                   autoFocus
                   required
+                  disabled={Boolean(editingRole?.is_system)}
                   value={roleForm.name}
                   onChange={(e) =>
                     setRoleForm({ ...roleForm, name: e.target.value })
                   }
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all outline-none"
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all outline-none disabled:opacity-60 disabled:cursor-not-allowed"
                   placeholder="e.g. manager"
                 />
+                {Boolean(editingRole?.is_system) && (
+                  <p className="mt-1 text-xs text-gray-500">
+                    System role names cannot be changed.
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -467,7 +564,7 @@ export default function RolesManagementPage() {
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="flex-1 px-4 py-2 rounded-xl border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors font-medium"
+                  className="flex-1 px-4 py-2 rounded-xl border border-gray-300 dark:border-ink-600 text-gray-700 dark:text-ink-200 hover:bg-gray-50 dark:hover:bg-ink-700 transition-colors font-medium"
                 >
                   Cancel
                 </button>

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useAuthStore } from '@/store/authStore'
+import { useAnyPermission } from '@/utils/permissions'
 import { PERMISSIONS } from '@/constants/permissions'
 import {
   Loader2, Save, GraduationCap, Users, Percent,
@@ -555,12 +555,7 @@ function MarksEditor({
     setPreview(null)
   }
 
-  const authUser = useAuthStore((s) => s.user)
-  const canWrite =
-    authUser?.role === 'superadmin' ||
-    authUser?.role === 'admin' ||
-    (authUser?.permissions ?? []).includes(PERMISSIONS.RECORD_MODULE_MARKS) ||
-    (authUser?.permissions ?? []).includes(PERMISSIONS.MANAGE_MODULE_MARKS)
+  const canWrite = useAnyPermission([PERMISSIONS.RECORD_MODULE_MARKS, PERMISSIONS.MANAGE_MODULE_MARKS])
 
   const canExport = !!roster && roster.length > 0
   const canImport = canExport && !isLocked && canWrite

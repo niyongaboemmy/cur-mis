@@ -536,6 +536,17 @@ class AuthService
         return ['success' => true, 'message' => 'Password updated successfully.'];
     }
 
+    /**
+     * The only blanket permission bypass. Deliberately excludes 'admin' —
+     * that role's near-full access comes from its actual role_permissions
+     * grants, not a name-string special case (see RBAC_PERMISSIONS_AUDIT.md
+     * Finding A: a role renamed to 'admin' must not inherit a bypass).
+     */
+    public static function isSuperadmin(array $user): bool
+    {
+        return ($user['role'] ?? $user['role_name'] ?? '') === 'superadmin';
+    }
+
     public function generateToken(array $user): string
     {
         $now     = time();

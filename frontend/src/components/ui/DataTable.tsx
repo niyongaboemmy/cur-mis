@@ -54,7 +54,7 @@ export default function DataTable<T>({
 
   const SortIcon = ({ colKey }: { colKey: string }) => {
     if (!sort || sort.key !== colKey)
-      return <ChevronsUpDown className="h-3.5 w-3.5 text-gray-400" />
+      return <ChevronsUpDown className="h-3.5 w-3.5 text-gray-400 dark:text-ink-500" />
     return sort.direction === 'asc'
       ? <ChevronUp   className="h-3.5 w-3.5 text-primary-600" />
       : <ChevronDown className="h-3.5 w-3.5 text-primary-600" />
@@ -64,16 +64,16 @@ export default function DataTable<T>({
 
   return (
     <div className={cn('space-y-4', className)}>
-      <div className="overflow-x-auto rounded-lg border border-gray-200">
+      <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-ink-700">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b border-gray-200">
+          <thead className="bg-gray-50 dark:bg-ink-900/40 border-b border-gray-200 dark:border-ink-700">
             <tr>
               {columns.map((col) => (
                 <th
                   key={String(col.key)}
                   className={cn(
-                    'px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap',
-                    col.sortable && onSort && 'cursor-pointer select-none hover:text-gray-900',
+                    'px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-ink-400 uppercase tracking-wide whitespace-nowrap',
+                    col.sortable && onSort && 'cursor-pointer select-none hover:text-gray-900 dark:hover:text-white',
                     col.headerClassName,
                   )}
                   onClick={col.sortable ? () => handleSort(String(col.key)) : undefined}
@@ -86,7 +86,7 @@ export default function DataTable<T>({
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100 bg-white">
+          <tbody className="divide-y divide-gray-100 dark:divide-ink-700 bg-white dark:bg-ink-800">
             {data.length === 0 ? (
               <tr>
                 <td colSpan={columns.length}>
@@ -99,11 +99,11 @@ export default function DataTable<T>({
               </tr>
             ) : (
               data.map((row) => (
-                <tr key={keyExtractor(row)} className="hover:bg-gray-50 transition-colors">
+                <tr key={keyExtractor(row)} className="hover:bg-gray-50 dark:hover:bg-ink-700/40 transition-colors">
                   {columns.map((col) => (
                     <td
                       key={String(col.key)}
-                      className={cn('px-4 py-3 text-gray-700', col.className)}
+                      className={cn('px-4 py-3 text-gray-700 dark:text-ink-300', col.className)}
                     >
                       {col.render
                         ? col.render(row)

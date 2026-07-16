@@ -13,8 +13,11 @@ import { expenseService } from "@/services/financeService";
 import { toast } from "sonner";
 import type { ExpenseCategory } from "@/types/finance";
 import Modal from "@/components/ui/Modal";
+import { PERMISSIONS } from "@/constants";
+import { usePermission } from "@/utils/permissions";
 
 export default function ExpenseCategoriesPage() {
+  const canManage = usePermission(PERMISSIONS.MANAGE_FINANCE);
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -103,13 +106,15 @@ export default function ExpenseCategoriesPage() {
             </p>
           </div>
         </div>
-        <button
-          onClick={() => setIsFormOpen(true)}
-          className="btn btn-primary flex items-center gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          New Category
-        </button>
+        {canManage && (
+          <button
+            onClick={() => setIsFormOpen(true)}
+            className="btn btn-primary flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            New Category
+          </button>
+        )}
       </header>
 
       {/* Modal Form - using 'open' prop as per Modal.tsx */}
@@ -250,6 +255,7 @@ export default function ExpenseCategoriesPage() {
                     </div>
                   </td>
                   <td className="px-6 py-4 text-right">
+                    {canManage && (
                     <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
                         onClick={() => handleEdit(c)}
@@ -269,6 +275,7 @@ export default function ExpenseCategoriesPage() {
                         />
                       </button>
                     </div>
+                    )}
                   </td>
                 </tr>
               ))

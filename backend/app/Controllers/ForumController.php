@@ -14,6 +14,7 @@ use App\Models\AnnouncementModel;
 use App\Helpers\ValidationHelper;
 use App\Helpers\FileServerClient;
 use App\Services\SystemLogService;
+use App\Services\AuthService;
 
 /**
  * Discussion forums — categories → threads → posts, with audience-scoped
@@ -491,7 +492,7 @@ class ForumController extends BaseController
 
     private function canModerate(array $actor): bool
     {
-        if (in_array($actor['role'] ?? '', ['superadmin', 'admin'], true)) return true;
+        if (AuthService::isSuperadmin($actor)) return true;
         return in_array('MODERATE_FORUMS', (array) ($actor['permissions'] ?? []), true);
     }
 

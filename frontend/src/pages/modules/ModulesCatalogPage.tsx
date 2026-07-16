@@ -6,10 +6,13 @@ import { moduleCatalogService } from '@/services/modulesService'
 import { academicsMgmtService } from '@/services/academicsMgmtService'
 import type { Module } from '@/types/modules'
 import ModuleFormModal from './ModuleFormModal'
+import { PERMISSIONS } from '@/constants'
+import { usePermission } from '@/utils/permissions'
 
 type Status = '' | 'draft' | 'active' | 'archived'
 
 export default function ModulesCatalogPage() {
+  const canManage = usePermission(PERMISSIONS.MANAGE_MODULES)
   const qc = useQueryClient()
   const [filters, setFilters] = useState<{ q: string; status: Status; level: string; department: string }>({
     q: '', status: '', level: '', department: '',
@@ -64,9 +67,11 @@ export default function ModulesCatalogPage() {
           <h2 className="text-lg font-bold text-ink-900 dark:text-white">Modules Catalog</h2>
           <p className="text-[13px] text-ink-500">The full list of modules offered across departments.</p>
         </div>
-        <button className="btn-primary btn-sm" onClick={() => setEditing({})}>
-          <Plus className="w-3.5 h-3.5" /> New module
-        </button>
+        {canManage && (
+          <button className="btn-primary btn-sm" onClick={() => setEditing({})}>
+            <Plus className="w-3.5 h-3.5" /> New module
+          </button>
+        )}
       </div>
 
       {/* Filters */}
@@ -155,17 +160,19 @@ export default function ModulesCatalogPage() {
                   </span>
                 </td>
                 <td className="px-4 py-3 text-right">
-                  <div className="flex items-center justify-end gap-1">
-                    <button className="icon-btn" onClick={() => setEditing(m)}>
-                      <Pencil className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      className="icon-btn text-red-500 hover:bg-red-50"
-                      onClick={() => confirm(`Delete module ${m.module_code}?`) && remove.mutate(m.module_id)}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                  {canManage && (
+                    <div className="flex items-center justify-end gap-1">
+                      <button className="icon-btn" onClick={() => setEditing(m)}>
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        className="icon-btn text-red-500 hover:bg-red-50"
+                        onClick={() => confirm(`Delete module ${m.module_code}?`) && remove.mutate(m.module_id)}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
                 </td>
               </tr>
             ))}

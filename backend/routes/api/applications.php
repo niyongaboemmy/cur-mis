@@ -12,6 +12,7 @@ use App\Controllers\DocumentTypeController;
 use App\Controllers\IntakeController;
 use App\Middleware\AuthMiddleware;
 use App\Middleware\PermissionMiddleware;
+use App\Middleware\MaybePermissionMiddleware;
 use App\Constants\Permissions;
 
 /**
@@ -145,14 +146,23 @@ $router->group('/api/admin', function ($router) {
     }, [new PermissionMiddleware(Permissions::VERIFY_DOCUMENTS)]);
 
     // ── 5. Merit list management ──────────────────────────────────────────────
-    // Permission: MANAGE_ADMISSIONS
     $router->group('/merit', function ($router) {
         $router->get('/criteria',  [MeritListController::class, 'getCriteria']);
+        $router->get('/list',      [MeritListController::class, 'getMeritList']);
+    }, [new MaybePermissionMiddleware([
+        Permissions::MANAGE_ADMISSIONS,
+        Permissions::VIEW_MERIT_LIST,
+        Permissions::MANAGE_MERIT_LIST,
+    ])]);
+
+    $router->group('/merit', function ($router) {
         $router->post('/criteria', [MeritListController::class, 'saveCriteria']);
         $router->post('/generate', [MeritListController::class, 'generateMeritList']);
-        $router->get('/list',      [MeritListController::class, 'getMeritList']);
         $router->patch('/publish', [MeritListController::class, 'publishMeritList']);
-    }, [new PermissionMiddleware(Permissions::MANAGE_ADMISSIONS)]);
+    }, [new MaybePermissionMiddleware([
+        Permissions::MANAGE_ADMISSIONS,
+        Permissions::MANAGE_MERIT_LIST,
+    ])]);
 
     // ── 6. Admission offers, enrollment & letters ─────────────────────────────
     // Permission: MANAGE_ADMISSIONS

@@ -16,10 +16,10 @@ const CERT_TYPES: CertificateType[] = ['degree', 'diploma', 'certificate', 'prov
 const DEGREE_CLASSES = ['First Class', 'Upper Second', 'Lower Second', 'Pass', 'Distinction']
 
 const STATUS_BADGE: Record<CertificateStatus, string> = {
-  draft:      'bg-gray-100 text-gray-700',
-  issued:     'bg-green-100 text-green-800',
-  dispatched: 'bg-blue-100 text-blue-800',
-  revoked:    'bg-red-100 text-red-800',
+  draft:      'bg-gray-100 text-gray-700 dark:bg-ink-700 dark:text-ink-300',
+  issued:     'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300',
+  dispatched: 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-300',
+  revoked:    'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300',
 }
 
 const EMPTY_FORM: CertificateIssuePayload & { regnumber: string } = {
@@ -118,8 +118,8 @@ export default function AcademicCertificatesPage() {
         <div className="flex items-center gap-3">
           <Award className="w-6 h-6 text-blue-600" />
           <div>
-            <h1 className="text-xl font-bold text-gray-900">Academic Certificates</h1>
-            <p className="text-sm text-gray-500">Issue, track, and dispatch degrees, diplomas, and certificates.</p>
+            <h1 className="text-xl font-bold text-gray-900 dark:text-white">Academic Certificates</h1>
+            <p className="text-sm text-gray-500 dark:text-ink-400">Issue, track, and dispatch degrees, diplomas, and certificates.</p>
           </div>
         </div>
         <button onClick={() => setIssueOpen(true)}
@@ -129,54 +129,54 @@ export default function AcademicCertificatesPage() {
       </div>
 
       <div className="flex flex-wrap gap-3 mb-4">
-        <div className="flex items-center gap-2 border rounded-lg px-3 py-2 bg-white text-sm">
-          <Search className="w-4 h-4 text-gray-400" />
+        <div className="flex items-center gap-2 border rounded-lg px-3 py-2 bg-white text-sm dark:border-ink-700 dark:bg-ink-800">
+          <Search className="w-4 h-4 text-gray-400 dark:text-ink-500" />
           <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1) }}
-            placeholder="Name, reg# or cert#…" className="outline-none w-48" />
+            placeholder="Name, reg# or cert#…" className="outline-none w-48 dark:bg-ink-800 dark:text-white" />
         </div>
         <select value={status} onChange={(e) => { setStatus(e.target.value as CertificateStatus | ''); setPage(1) }}
-          className="border rounded-lg px-3 py-2 text-sm bg-white outline-none">
+          className="border rounded-lg px-3 py-2 text-sm bg-white outline-none dark:border-ink-700 dark:bg-ink-800 dark:text-white">
           <option value="">All Statuses</option>
           {(['draft', 'issued', 'dispatched', 'revoked'] as CertificateStatus[]).map((s) => (
             <option key={s} value={s} className="capitalize">{s}</option>
           ))}
         </select>
         <select value={type} onChange={(e) => { setType(e.target.value as CertificateType | ''); setPage(1) }}
-          className="border rounded-lg px-3 py-2 text-sm bg-white outline-none">
+          className="border rounded-lg px-3 py-2 text-sm bg-white outline-none dark:border-ink-700 dark:bg-ink-800 dark:text-white">
           <option value="">All Types</option>
           {CERT_TYPES.map((t) => <option key={t} value={t} className="capitalize">{t}</option>)}
         </select>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-ink-700 dark:bg-ink-800">
         {isLoading ? (
-          <div className="p-8 text-center text-gray-400">Loading…</div>
+          <div className="p-8 text-center text-gray-400 dark:text-ink-500">Loading…</div>
         ) : rows.length === 0 ? (
-          <div className="p-8 text-center text-gray-400">No certificates found.</div>
+          <div className="p-8 text-center text-gray-400 dark:text-ink-500">No certificates found.</div>
         ) : (
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
+            <thead className="bg-gray-50 border-b border-gray-200 dark:bg-ink-900/40 dark:border-ink-700">
               <tr>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">Student</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">Certificate #</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">Type</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">Degree Class</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-700">Issue Date</th>
-                <th className="px-4 py-3 text-center font-semibold text-gray-700">Status</th>
-                <th className="px-4 py-3 text-center font-semibold text-gray-700">Actions</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-ink-200">Student</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-ink-200">Certificate #</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-ink-200">Type</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-ink-200">Degree Class</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-700 dark:text-ink-200">Issue Date</th>
+                <th className="px-4 py-3 text-center font-semibold text-gray-700 dark:text-ink-200">Status</th>
+                <th className="px-4 py-3 text-center font-semibold text-gray-700 dark:text-ink-200">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-gray-100 dark:divide-ink-700">
               {rows.map((r) => (
-                <tr key={r.id} className="hover:bg-gray-50">
+                <tr key={r.id} className="hover:bg-gray-50 dark:hover:bg-ink-700/50">
                   <td className="px-4 py-3">
-                    <div className="font-medium text-gray-900">{r.lname} {r.fname}</div>
-                    <div className="text-xs text-gray-500">{r.regnumber}</div>
+                    <div className="font-medium text-gray-900 dark:text-white">{r.lname} {r.fname}</div>
+                    <div className="text-xs text-gray-500 dark:text-ink-400">{r.regnumber}</div>
                   </td>
-                  <td className="px-4 py-3 font-mono text-xs text-gray-700">{r.certificate_number ?? '—'}</td>
-                  <td className="px-4 py-3 capitalize text-gray-700">{r.certificate_type}</td>
-                  <td className="px-4 py-3 text-gray-700">{r.degree_class ?? '—'}</td>
-                  <td className="px-4 py-3 text-gray-500 text-xs">{r.issue_date ?? '—'}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-gray-700 dark:text-ink-200">{r.certificate_number ?? '—'}</td>
+                  <td className="px-4 py-3 capitalize text-gray-700 dark:text-ink-200">{r.certificate_type}</td>
+                  <td className="px-4 py-3 text-gray-700 dark:text-ink-200">{r.degree_class ?? '—'}</td>
+                  <td className="px-4 py-3 text-gray-500 text-xs dark:text-ink-400">{r.issue_date ?? '—'}</td>
                   <td className="px-4 py-3 text-center">
                     <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium capitalize ${STATUS_BADGE[r.status]}`}>
                       {r.status}
@@ -187,21 +187,21 @@ export default function AcademicCertificatesPage() {
                       {r.status === 'issued' && (
                         <button title="Dispatch"
                           onClick={() => { setDispatchId(r.id); setDispatchDate(new Date().toISOString().slice(0, 10)); setDispatchNotes('') }}
-                          className="p-1.5 rounded text-blue-600 hover:bg-blue-50">
+                          className="p-1.5 rounded text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20">
                           <Truck className="w-4 h-4" />
                         </button>
                       )}
                       {['issued', 'dispatched'].includes(r.status) && (
                         <button title="Revoke"
                           onClick={() => { if (window.confirm('Revoke this certificate?')) revokeMut.mutate(r.id) }}
-                          className="p-1.5 rounded text-orange-500 hover:bg-orange-50">
+                          className="p-1.5 rounded text-orange-500 hover:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-900/20">
                           <Ban className="w-4 h-4" />
                         </button>
                       )}
                       {r.status === 'draft' && (
                         <button title="Delete"
                           onClick={() => { if (window.confirm('Delete this draft certificate?')) deleteMut.mutate(r.id) }}
-                          className="p-1.5 rounded text-red-500 hover:bg-red-50">
+                          className="p-1.5 rounded text-red-500 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20">
                           <Trash2 className="w-4 h-4" />
                         </button>
                       )}
@@ -215,14 +215,14 @@ export default function AcademicCertificatesPage() {
       </div>
 
       {lastPage > 1 && (
-        <div className="flex items-center justify-between mt-4 text-sm text-gray-600">
+        <div className="flex items-center justify-between mt-4 text-sm text-gray-600 dark:text-ink-300">
           <span>{total} certificate{total !== 1 ? 's' : ''}</span>
           <div className="flex gap-2">
             <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}
-              className="p-2 border rounded hover:bg-gray-50 disabled:opacity-40"><ChevronLeft className="w-4 h-4" /></button>
-            <span className="px-3 py-2 border rounded bg-white">{page} / {lastPage}</span>
+              className="p-2 border rounded hover:bg-gray-50 disabled:opacity-40 dark:border-ink-700 dark:hover:bg-ink-700/50"><ChevronLeft className="w-4 h-4" /></button>
+            <span className="px-3 py-2 border rounded bg-white dark:border-ink-700 dark:bg-ink-800 dark:text-white">{page} / {lastPage}</span>
             <button onClick={() => setPage(p => Math.min(lastPage, p + 1))} disabled={page >= lastPage}
-              className="p-2 border rounded hover:bg-gray-50 disabled:opacity-40"><ChevronRight className="w-4 h-4" /></button>
+              className="p-2 border rounded hover:bg-gray-50 disabled:opacity-40 dark:border-ink-700 dark:hover:bg-ink-700/50"><ChevronRight className="w-4 h-4" /></button>
           </div>
         </div>
       )}
@@ -231,54 +231,54 @@ export default function AcademicCertificatesPage() {
       <Modal open={issueOpen} title="Issue Academic Certificate" onClose={() => setIssueOpen(false)}>
         <div className="space-y-4 p-1">
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Student Registration Number</label>
+            <label className="block text-xs font-medium text-gray-700 mb-1 dark:text-ink-300">Student Registration Number</label>
             <div className="flex gap-2">
               <input value={form.regnumber}
                 onChange={(e) => setForm(f => ({ ...f, regnumber: e.target.value, student_id: 0 }))}
                 placeholder="e.g. STD/2024/001"
-                className="flex-1 border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
-              <button onClick={findStudent} className="px-3 py-2 text-sm border rounded-lg hover:bg-gray-50">Find</button>
+                className="flex-1 border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:border-ink-700 dark:bg-ink-900 dark:text-white" />
+              <button onClick={findStudent} className="px-3 py-2 text-sm border rounded-lg hover:bg-gray-50 dark:border-ink-700 dark:text-ink-200 dark:hover:bg-ink-700/50">Find</button>
             </div>
-            {form.student_id > 0 && <p className="text-xs text-green-600 mt-1">Student resolved (ID: {form.student_id})</p>}
+            {form.student_id > 0 && <p className="text-xs text-green-600 mt-1 dark:text-green-400">Student resolved (ID: {form.student_id})</p>}
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Certificate Type</label>
+            <label className="block text-xs font-medium text-gray-700 mb-1 dark:text-ink-300">Certificate Type</label>
             <select value={form.certificate_type}
               onChange={(e) => setForm(f => ({ ...f, certificate_type: e.target.value as CertificateType }))}
-              className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500">
+              className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:border-ink-700 dark:bg-ink-900 dark:text-white">
               {CERT_TYPES.map((t) => <option key={t} value={t} className="capitalize">{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Degree Classification</label>
+            <label className="block text-xs font-medium text-gray-700 mb-1 dark:text-ink-300">Degree Classification</label>
             <select value={form.degree_class ?? ''}
               onChange={(e) => setForm(f => ({ ...f, degree_class: e.target.value }))}
-              className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500">
+              className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:border-ink-700 dark:bg-ink-900 dark:text-white">
               {DEGREE_CLASSES.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Issue Date</label>
+            <label className="block text-xs font-medium text-gray-700 mb-1 dark:text-ink-300">Issue Date</label>
             <input type="date" value={form.issue_date ?? ''}
               onChange={(e) => setForm(f => ({ ...f, issue_date: e.target.value }))}
-              className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
+              className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:border-ink-700 dark:bg-ink-900 dark:text-white" />
           </div>
-          <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+          <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer dark:text-ink-200">
             <input type="checkbox" checked={form.is_replacement ?? false}
               onChange={(e) => setForm(f => ({ ...f, is_replacement: e.target.checked }))} className="rounded" />
             This is a replacement certificate
           </label>
           {form.is_replacement && (
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Replacement Reason</label>
+              <label className="block text-xs font-medium text-gray-700 mb-1 dark:text-ink-300">Replacement Reason</label>
               <input value={form.replacement_reason ?? ''}
                 onChange={(e) => setForm(f => ({ ...f, replacement_reason: e.target.value }))}
                 placeholder="e.g. Lost original"
-                className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
+                className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:border-ink-700 dark:bg-ink-900 dark:text-white" />
             </div>
           )}
           <div className="flex justify-end gap-2 pt-2">
-            <button onClick={() => setIssueOpen(false)} className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50">Cancel</button>
+            <button onClick={() => setIssueOpen(false)} className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50 dark:border-ink-700 dark:text-ink-200 dark:hover:bg-ink-700/50">Cancel</button>
             <button onClick={handleIssue} disabled={issueMut.isPending}
               className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
               {issueMut.isPending ? 'Issuing…' : 'Issue Certificate'}
@@ -291,18 +291,18 @@ export default function AcademicCertificatesPage() {
       <Modal open={dispatchId !== null} title="Dispatch Certificate" onClose={() => setDispatchId(null)}>
         <div className="space-y-4 p-1">
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Dispatch Date</label>
+            <label className="block text-xs font-medium text-gray-700 mb-1 dark:text-ink-300">Dispatch Date</label>
             <input type="date" value={dispatchDate} onChange={(e) => setDispatchDate(e.target.value)}
-              className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
+              className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:border-ink-700 dark:bg-ink-900 dark:text-white" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Dispatch Notes (optional)</label>
+            <label className="block text-xs font-medium text-gray-700 mb-1 dark:text-ink-300">Dispatch Notes (optional)</label>
             <textarea value={dispatchNotes} onChange={(e) => setDispatchNotes(e.target.value)} rows={2}
               placeholder="Courier ref, collection details…"
-              className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
+              className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:border-ink-700 dark:bg-ink-900 dark:text-white" />
           </div>
           <div className="flex justify-end gap-2">
-            <button onClick={() => setDispatchId(null)} className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50">Cancel</button>
+            <button onClick={() => setDispatchId(null)} className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50 dark:border-ink-700 dark:text-ink-200 dark:hover:bg-ink-700/50">Cancel</button>
             <button onClick={() => dispatchId !== null && dispatchMut.mutate(dispatchId)} disabled={dispatchMut.isPending}
               className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
               {dispatchMut.isPending ? 'Saving…' : 'Confirm Dispatch'}

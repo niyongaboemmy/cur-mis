@@ -43,13 +43,13 @@ export default function ConfirmDialog({
     >
       <div className="flex gap-4">
         {variant === 'danger' && (
-          <div className="flex-shrink-0 w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
-            <AlertTriangle className="h-5 w-5 text-red-600" />
+          <div className="flex-shrink-0 w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center">
+            <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
           </div>
         )}
         <div>
-          <h3 className="font-semibold text-gray-900">{title}</h3>
-          <p className="mt-1 text-sm text-gray-500">{message}</p>
+          <h3 className="font-semibold text-gray-900 dark:text-white">{title}</h3>
+          <p className="mt-1 text-sm text-gray-500 dark:text-ink-400">{message}</p>
         </div>
       </div>
     </Modal>

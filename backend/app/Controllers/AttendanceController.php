@@ -10,6 +10,7 @@ use Core\Database;
 use App\Constants\Permissions;
 use App\Helpers\ValidationHelper;
 use App\Helpers\AttendanceReportPdf;
+use App\Services\AuthService;
 
 /**
  * Attendance module controller.
@@ -55,7 +56,7 @@ class AttendanceController extends BaseController
     private function hasPerm(Request $request, string $slug): bool
     {
         $user = (array) ($request->param('_auth_user') ?? []);
-        if (($user['role'] ?? '') === 'superadmin')
+        if (AuthService::isSuperadmin($user))
             return true;
         return in_array($slug, $this->authPerms($request), true);
     }

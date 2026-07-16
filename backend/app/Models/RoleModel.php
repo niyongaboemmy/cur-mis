@@ -21,6 +21,19 @@ class RoleModel extends BaseModel
     }
 
     /**
+     * Case-insensitive name lookup, independent of the column's collation —
+     * a role named "Admin" must collide with "admin" (Finding A: a
+     * case-variant name must not slip past the system-role bypass).
+     */
+    public function findByNameCaseInsensitive(string $name): array|false
+    {
+        return $this->db->fetchOne(
+            "SELECT * FROM `{$this->table}` WHERE LOWER(`name`) = LOWER(?) LIMIT 1",
+            [$name]
+        );
+    }
+
+    /**
      * Get all roles with the number of users assigned to each.
      */
     public function getWithUserCounts(): array

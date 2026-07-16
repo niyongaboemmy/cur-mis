@@ -15,8 +15,8 @@ import {
 import { budgetExecutionService, budgetService } from '@/services/financeService'
 import { academicService as academicSvc } from '@/services/academicService'
 import { academicsMgmtService } from '@/services/academicsMgmtService'
-import { useAuthStore } from '@/store/authStore'
 import { PERMISSIONS } from '@/constants/permissions'
+import { usePermission } from '@/utils/permissions'
 import type { BudgetExecutionRow, SaveBudgetPayload } from '@/types/finance'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import ModalPortal from '@/components/ui/ModalPortal'
@@ -24,9 +24,7 @@ import { formatRWF } from '@/utils/formatCurrency'
 
 export default function BudgetExecutionPage() {
   const qc = useQueryClient()
-  const user = useAuthStore((s) => s.user)
-  const perms = user?.permissions ?? []
-  const canManage = user?.role === 'superadmin' || perms.includes(PERMISSIONS.MANAGE_BUDGET_EXECUTION)
+  const canManage = usePermission(PERMISSIONS.MANAGE_BUDGET_EXECUTION)
 
   const [yearId, setYearId] = useState<number | ''>('')
   const [compareYearId, setCompareYearId] = useState<number | ''>('')

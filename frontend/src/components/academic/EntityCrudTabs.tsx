@@ -35,6 +35,7 @@ import type { AcMgmtEntity } from '@/types/academic'
 import { useAuthStore } from '@/store/authStore'
 import type { AuthUser } from '@/store/authStore'
 import { PERMISSIONS } from '@/constants'
+import { isSuperadmin } from '@/utils/permissions'
 
 /* ─────────────────────────────────────────────────────────────
    Entity / field types and the master ENTITIES registry.
@@ -540,12 +541,14 @@ export const ENTITIES: EntityCfg[] = [
 ]
 
 /* ─────────────────────────────────────────────────────────────
-   Permission helper — mirrors PermissionMiddleware bypass logic.
+   Permission helper — mirrors PermissionMiddleware bypass logic
+   (superadmin only; 'admin' relies on its actual permission grants,
+   see RBAC_PERMISSIONS_AUDIT.md Finding A).
    ───────────────────────────────────────────────────────────── */
 
 function canManageEntity(user: AuthUser | null, permission?: string): boolean {
   if (!user) return false
-  if (user.role === 'superadmin' || user.role === 'admin') return true
+  if (isSuperadmin(user)) return true
   if (!permission) return true
   return (user.permissions ?? []).includes(permission)
 }

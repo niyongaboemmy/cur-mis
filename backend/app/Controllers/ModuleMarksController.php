@@ -10,6 +10,7 @@ use Core\Database;
 use App\Constants\Permissions;
 use App\Helpers\ValidationHelper;
 use App\Helpers\TranscriptPdf;
+use App\Services\AuthService;
 
 /**
  * Module marks controller.
@@ -50,7 +51,7 @@ class ModuleMarksController extends BaseController
     private function hasPerm(Request $request, string $slug): bool
     {
         $user = (array)($request->param('_auth_user') ?? []);
-        if (($user['role'] ?? '') === 'superadmin') return true;
+        if (AuthService::isSuperadmin($user)) return true;
         return in_array($slug, $this->authPerms($request), true);
     }
 

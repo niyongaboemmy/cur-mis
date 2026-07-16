@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Controllers;
 
 use App\Constants\Permissions;
+use App\Services\AuthService;
 use Core\Request;
 use Core\Response;
 use Core\Database;
@@ -15,7 +16,7 @@ use Core\Database;
  * Unlike the frontend's static page-navigation index, this looks inside
  * actual records (students, staff, applications, announcements, forum
  * threads). Each entity is only searched if the requesting user holds the
- * relevant view permission — superadmin/admin bypass, matching
+ * relevant view permission — superadmin bypass, matching
  * PermissionMiddleware's own rule. A user with no matching permissions
  * simply gets fewer groups back, never a 403.
  */
@@ -37,9 +38,8 @@ class SearchController extends BaseController
             ], 'Query too short.');
         }
 
-        $role = (string) ($user['role'] ?? '');
         $permissions = (array) ($user['permissions'] ?? []);
-        $isBypass = in_array($role, ['superadmin', 'admin'], true);
+        $isBypass = AuthService::isSuperadmin($user);
         $can = static fn (string $perm): bool => $isBypass || in_array($perm, $permissions, true);
 
         $db = Database::getInstance();

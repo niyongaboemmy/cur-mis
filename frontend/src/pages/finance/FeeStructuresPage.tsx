@@ -13,6 +13,8 @@ import { useSystemStore } from '@/store/systemStore'
 import { formatRWF } from '@/utils/formatCurrency'
 import ModalPortal from '@/components/ui/ModalPortal'
 import { api } from '@/services/api'
+import { PERMISSIONS } from '@/constants'
+import { usePermission } from '@/utils/permissions'
 
 const PER_PAGE = 15
 
@@ -27,6 +29,7 @@ const studentCategoryLabel = (v?: string | null) =>
   STUDENT_CATEGORY_OPTIONS.find((o) => o.value === v)?.label ?? null
 
 export default function FeeStructuresPage() {
+  const canManage = usePermission(PERMISSIONS.MANAGE_FINANCE)
   const qc = useQueryClient()
   const basics = useSystemStore((s) => s.basics)
   const selectedYearLabel = useSystemStore((s) => s.selectedYearLabel)
@@ -249,18 +252,22 @@ export default function FeeStructuresPage() {
           <p className="text-[13px] text-ink-500">Configure fee amounts per type, department, level and academic year.</p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <button className="btn-secondary btn-sm" onClick={() => setShowImportModal(true)}>
-            <Upload className="w-3.5 h-3.5" /> Import CSV
-          </button>
+          {canManage && (
+            <button className="btn-secondary btn-sm" onClick={() => setShowImportModal(true)}>
+              <Upload className="w-3.5 h-3.5" /> Import CSV
+            </button>
+          )}
           <button className="btn-secondary btn-sm" onClick={handleExportExcel} disabled={exportLoading || !yearId}>
             <Download className="w-3.5 h-3.5" /> {exportLoading ? 'Exporting...' : 'Export Excel'}
           </button>
           <button className="btn-secondary btn-sm" onClick={handleExportPdf} disabled={exportLoading || !yearId}>
             <Download className="w-3.5 h-3.5" /> {exportLoading ? 'Exporting...' : 'Export PDF'}
           </button>
-          <button className="btn-primary btn-sm" onClick={() => { setEditing(null); setShowForm(true) }}>
-            <Plus className="w-3.5 h-3.5" /> New structure
-          </button>
+          {canManage && (
+            <button className="btn-primary btn-sm" onClick={() => { setEditing(null); setShowForm(true) }}>
+              <Plus className="w-3.5 h-3.5" /> New structure
+            </button>
+          )}
         </div>
       </div>
 
@@ -322,8 +329,8 @@ export default function FeeStructuresPage() {
                   {rows.map((row: FeeStructure) => (
                     <tr
                       key={row.id}
-                      className="hover:bg-ink-50/50 dark:hover:bg-ink-700/30 cursor-pointer"
-                      onClick={() => { setEditing(row); setShowForm(true) }}
+                      className={canManage ? "hover:bg-ink-50/50 dark:hover:bg-ink-700/30 cursor-pointer" : ""}
+                      onClick={canManage ? () => { setEditing(row); setShowForm(true) } : undefined}
                     >
                       <td className="px-4 py-2.5 font-medium">{row.label}</td>
                       <td className="px-4 py-2.5 text-ink-500">{feeTypes.find((t) => t.code === row.fee_type)?.label ?? row.fee_type}</td>
@@ -351,26 +358,28 @@ export default function FeeStructuresPage() {
                         <span className={`inline-block w-2 h-2 rounded-full ${row.is_active ? 'bg-green-500' : 'bg-ink-300'}`} />
                       </td>
                       <td className="px-4 py-2.5 text-right" onClick={e => e.stopPropagation()}>
-                        <div className="flex gap-1 justify-end">
-                          <button className="btn-ghost btn-xs" onClick={() => { setEditing(row); setShowForm(true) }}>
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            className="btn-ghost btn-xs"
-                            title={row.is_active ? 'Archive' : 'Restore'}
-                            onClick={() => archiveMutation.mutate({ id: row.id, is_active: row.is_active ? 0 : 1 })}
-                          >
-                            {row.is_active
-                              ? <Archive className="w-3.5 h-3.5" />
-                              : <ArchiveRestore className="w-3.5 h-3.5 text-green-600" />}
-                          </button>
-                          <button
-                            className="btn-ghost btn-xs text-red-500"
-                            onClick={() => { if (confirm('Delete this fee structure?')) deleteMutation.mutate(row.id) }}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
+                        {canManage && (
+                          <div className="flex gap-1 justify-end">
+                            <button className="btn-ghost btn-xs" onClick={() => { setEditing(row); setShowForm(true) }}>
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              className="btn-ghost btn-xs"
+                              title={row.is_active ? 'Archive' : 'Restore'}
+                              onClick={() => archiveMutation.mutate({ id: row.id, is_active: row.is_active ? 0 : 1 })}
+                            >
+                              {row.is_active
+                                ? <Archive className="w-3.5 h-3.5" />
+                                : <ArchiveRestore className="w-3.5 h-3.5 text-green-600" />}
+                            </button>
+                            <button
+                              className="btn-ghost btn-xs text-red-500"
+                              onClick={() => { if (confirm('Delete this fee structure?')) deleteMutation.mutate(row.id) }}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))}

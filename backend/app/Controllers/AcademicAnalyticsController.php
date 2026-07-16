@@ -8,6 +8,7 @@ use Core\Request;
 use Core\Response;
 use Core\Database;
 use App\Constants\Permissions;
+use App\Services\AuthService;
 
 /**
  * Academic Analytics & Reporting Dashboard (Gap 14).
@@ -37,7 +38,7 @@ class AcademicAnalyticsController extends BaseController
     private function hasPerm(Request $request, string $slug): bool
     {
         $user = (array)($request->param('_auth_user') ?? []);
-        if (($user['role'] ?? '') === 'superadmin') return true;
+        if (AuthService::isSuperadmin($user)) return true;
         return in_array($slug, (array)($user['permissions'] ?? []), true);
     }
 

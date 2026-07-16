@@ -5,8 +5,11 @@ import { Layers, Plus, Pencil, Trash2, Loader2 } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 import { documentTypeService } from '@/services/admissionService'
 import type { DocumentType } from '@/types/admission'
+import { PERMISSIONS } from '@/constants'
+import { usePermission } from '@/utils/permissions'
 
 export default function DocumentTypesPage() {
+  const canManage = usePermission(PERMISSIONS.MANAGE_ADMISSION_REQUIREMENTS)
   const qc = useQueryClient()
   const [editing, setEditing] = useState<Partial<DocumentType> | null>(null)
 
@@ -37,9 +40,11 @@ export default function DocumentTypesPage() {
           <p className="section-sub">Global catalogue of possible admission documents.</p>
         </div>
         <div className="flex-1" />
-        <button className="btn-primary btn-sm" onClick={() => setEditing({})}>
-          <Plus className="w-3.5 h-3.5" /> New type
-        </button>
+        {canManage && (
+          <button className="btn-primary btn-sm" onClick={() => setEditing({})}>
+            <Plus className="w-3.5 h-3.5" /> New type
+          </button>
+        )}
       </div>
 
       {listQ.isLoading ? (
@@ -57,18 +62,20 @@ export default function DocumentTypesPage() {
                 <td>{d.is_active ? <span className="chip-success">Yes</span> : <span className="chip-soft">No</span>}</td>
                 <td>{d.sort_order ?? 0}</td>
                 <td className="text-right">
-                  <div className="inline-flex gap-1">
-                    <button className="icon-btn" onClick={() => setEditing(d)}><Pencil className="w-3.5 h-3.5" /></button>
-                    <button
-                      className="icon-btn text-red-500 hover:text-red-600 hover:bg-red-50"
-                      onClick={() => confirm(`Delete "${d.name}"?`) && remove.mutate(d.id)}
-                      disabled={remove.isPending && remove.variables === d.id}
-                    >
-                      {remove.isPending && remove.variables === d.id
-                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        : <Trash2 className="w-3.5 h-3.5" />}
-                    </button>
-                  </div>
+                  {canManage && (
+                    <div className="inline-flex gap-1">
+                      <button className="icon-btn" onClick={() => setEditing(d)}><Pencil className="w-3.5 h-3.5" /></button>
+                      <button
+                        className="icon-btn text-red-500 hover:text-red-600 hover:bg-red-50"
+                        onClick={() => confirm(`Delete "${d.name}"?`) && remove.mutate(d.id)}
+                        disabled={remove.isPending && remove.variables === d.id}
+                      >
+                        {remove.isPending && remove.variables === d.id
+                          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          : <Trash2 className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  )}
                 </td>
               </tr>
             ))}

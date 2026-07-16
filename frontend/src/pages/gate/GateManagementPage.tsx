@@ -31,6 +31,8 @@ import {
   type ScanType,
   type AccessResult,
 } from '@/services/gateService'
+import { PERMISSIONS } from '@/constants'
+import { useAnyPermission } from '@/utils/permissions'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -236,6 +238,7 @@ function LogRow({ log, animate }: { log: GateLog; animate?: boolean }) {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function GateManagementPage() {
+  const canVerify = useAnyPermission([PERMISSIONS.ACCESS_GATE, PERMISSIONS.MANAGE_GATE])
   const qc = useQueryClient()
 
   // ── Scanner state ─────────────────────────────────────────────────────────
@@ -246,7 +249,7 @@ export default function GateManagementPage() {
   const inputRef = useRef<HTMLInputElement>(null)
 
   // ── Log filters state ─────────────────────────────────────────────────────
-  const [tab,          setTab]          = useState<'scanner' | 'logs' | 'stats'>('scanner')
+  const [tab,          setTab]          = useState<'scanner' | 'logs' | 'stats'>(canVerify ? 'scanner' : 'logs')
   const [filterResult, setFilterResult] = useState<AccessResult | ''>('')
   const [filterSearch, setFilterSearch] = useState('')
   const [logPage,      setLogPage]      = useState(1)
@@ -388,7 +391,7 @@ export default function GateManagementPage() {
       {/* ── Tabs ───────────────────────────────────────────────────────────── */}
       <div className="flex gap-1 p-1 bg-ink-100 dark:bg-ink-800 rounded-xl w-fit">
         {([
-          { id: 'scanner', label: 'Scanner',   icon: ScanLine },
+          ...(canVerify ? [{ id: 'scanner', label: 'Scanner',   icon: ScanLine }] as const : []),
           { id: 'logs',    label: 'Audit Logs', icon: Clock },
           { id: 'stats',   label: 'Analytics',  icon: BarChart2 },
         ] as const).map(({ id, label, icon: Icon }) => (
@@ -410,7 +413,7 @@ export default function GateManagementPage() {
       {/* ─────────────────────────────────────────────────────────────────── */}
       {/* TAB: Scanner                                                        */}
       {/* ─────────────────────────────────────────────────────────────────── */}
-      {tab === 'scanner' && (
+      {tab === 'scanner' && canVerify && (
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
 
           {/* Left: search + result */}

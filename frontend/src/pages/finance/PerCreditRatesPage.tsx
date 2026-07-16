@@ -9,6 +9,8 @@ import { formatRWF } from '@/utils/formatCurrency'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import ModalPortal from '@/components/ui/ModalPortal'
 import { useSystemStore } from '@/store/systemStore'
+import { PERMISSIONS } from '@/constants'
+import { usePermission } from '@/utils/permissions'
 
 interface PerCreditRate {
   id: number
@@ -39,6 +41,7 @@ const perCreditRateService = {
 }
 
 export default function PerCreditRatesPage() {
+  const canManage = usePermission(PERMISSIONS.MANAGE_FINANCE)
   const qc = useQueryClient()
   const selectedYearLabel = useSystemStore((s) => s.selectedYearLabel)
   const basics = useSystemStore((s) => s.basics)
@@ -190,10 +193,12 @@ export default function PerCreditRatesPage() {
             </p>
           </div>
         </div>
-        <button onClick={openCreate} className="btn btn-primary flex items-center gap-2 text-sm">
-          <Plus className="w-4 h-4" />
-          New Rate
-        </button>
+        {canManage && (
+          <button onClick={openCreate} className="btn btn-primary flex items-center gap-2 text-sm">
+            <Plus className="w-4 h-4" />
+            New Rate
+          </button>
+        )}
       </div>
 
       {/* Year filter */}
@@ -465,22 +470,24 @@ export default function PerCreditRatesPage() {
                       </span>
                     </td>
                     <td className="px-5 py-3.5 text-right">
-                      <div className="flex justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button
-                          onClick={() => openEdit(r)}
-                          className="p-1.5 text-brand hover:bg-brand/10 rounded-md transition-colors"
-                          title="Edit"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(r)}
-                          className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors"
-                          title="Delete"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                      {canManage && (
+                        <div className="flex justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => openEdit(r)}
+                            className="p-1.5 text-brand hover:bg-brand/10 rounded-md transition-colors"
+                            title="Edit"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(r)}
+                            className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}

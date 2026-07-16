@@ -4,8 +4,11 @@ import { Plus, Pencil, Trash2, Power, Loader2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { intakeService } from "@/services/admissionService";
 import Modal from "@/components/ui/Modal";
+import { PERMISSIONS } from "@/constants";
+import { usePermission } from "@/utils/permissions";
 
 export default function IntakesManagementPage() {
+  const canManage = usePermission(PERMISSIONS.MANAGE_ADMISSIONS);
   const qc = useQueryClient();
   const q = useQuery({
     queryKey: ["admin", "intakes"],
@@ -44,9 +47,11 @@ export default function IntakesManagementPage() {
             Manage intake periods and their activation status.
           </p>
         </div>
-        <button className="btn-primary btn-sm" onClick={() => setEditing({})}>
-          <Plus className="w-3.5 h-3.5" /> Create Intake
-        </button>
+        {canManage && (
+          <button className="btn-primary btn-sm" onClick={() => setEditing({})}>
+            <Plus className="w-3.5 h-3.5" /> Create Intake
+          </button>
+        )}
       </div>
 
       <div className="card overflow-hidden">
@@ -107,29 +112,33 @@ export default function IntakesManagementPage() {
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
-                      <button
-                        className="icon-btn"
-                        title="Toggle Active"
-                        onClick={() => toggle.mutate(it.id)}
-                      >
-                        <Power
-                          className={`w-3.5 h-3.5 ${it.is_active ? "text-emerald-500" : "text-ink-400"}`}
-                        />
-                      </button>
-                      <button
-                        className="icon-btn"
-                        onClick={() => setEditing(it)}
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        className="icon-btn text-red-500 hover:bg-red-50"
-                        onClick={() =>
-                          confirm("Delete this intake?") && remove.mutate(it.id)
-                        }
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {canManage && (
+                        <>
+                          <button
+                            className="icon-btn"
+                            title="Toggle Active"
+                            onClick={() => toggle.mutate(it.id)}
+                          >
+                            <Power
+                              className={`w-3.5 h-3.5 ${it.is_active ? "text-emerald-500" : "text-ink-400"}`}
+                            />
+                          </button>
+                          <button
+                            className="icon-btn"
+                            onClick={() => setEditing(it)}
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            className="icon-btn text-red-500 hover:bg-red-50"
+                            onClick={() =>
+                              confirm("Delete this intake?") && remove.mutate(it.id)
+                            }
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>

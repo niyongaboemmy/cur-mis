@@ -165,10 +165,34 @@ function App() {
               {/* Self-service payroll — every authenticated user sees their own
                   payslip history; data is scoped server-side to their account. */}
               <Route path="/me/payroll" element={<MyPayrollPage />} />
-              <Route path="/messages" element={<MessagesPage />} />
-              <Route path="/announcements" element={<AnnouncementsPage />} />
-              <Route path="/forums" element={<ForumsPage />} />
-              <Route path="/forums/threads/:id" element={<ForumThreadPage />} />
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={PERMISSIONS.SEND_MESSAGES}
+                  />
+                }
+              >
+                <Route path="/messages" element={<MessagesPage />} />
+              </Route>
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={PERMISSIONS.VIEW_ANNOUNCEMENTS}
+                  />
+                }
+              >
+                <Route path="/announcements" element={<AnnouncementsPage />} />
+              </Route>
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={PERMISSIONS.VIEW_FORUMS}
+                  />
+                }
+              >
+                <Route path="/forums" element={<ForumsPage />} />
+                <Route path="/forums/threads/:id" element={<ForumThreadPage />} />
+              </Route>
 
               {/* ── Administration ── */}
               <Route

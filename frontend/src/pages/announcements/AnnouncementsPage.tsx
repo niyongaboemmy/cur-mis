@@ -5,8 +5,8 @@ import {
   Megaphone, Plus, Pencil, Trash2, Loader2, AlertTriangle,
   Pin, CalendarClock, X, Eye, EyeOff,
 } from 'lucide-react'
-import { useAuthStore } from '@/store/authStore'
 import { PERMISSIONS } from '@/constants/permissions'
+import { usePermission } from '@/utils/permissions'
 import {
   announcementService, AUDIENCE_LABELS,
   type Announcement, type AnnouncementInput,
@@ -30,10 +30,7 @@ function fmtDate(d: string | null) {
 }
 
 export default function AnnouncementsPage() {
-  const user = useAuthStore((s) => s.user)
-  const canManage =
-    ['superadmin', 'admin'].includes(user?.role ?? '') ||
-    (user?.permissions ?? []).includes(PERMISSIONS.MANAGE_ANNOUNCEMENTS)
+  const canManage = usePermission(PERMISSIONS.MANAGE_ANNOUNCEMENTS)
 
   const qc = useQueryClient()
   const [editing, setEditing] = useState<Announcement | null>(null)

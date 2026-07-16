@@ -49,21 +49,21 @@ export default function LoginPage() {
       )}
 
       {hasActiveIntake ? (
-        <div className="mt-8 rounded-xl bg-primary-50/50 p-5 border border-primary-100">
+        <div className="mt-8 rounded-xl bg-primary-50/50 dark:bg-primary-900/10 p-5 border border-primary-100 dark:border-primary-900/40">
           <div className="flex gap-4">
-            <div className="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center shrink-0">
-              <GraduationCap className="w-5 h-5 text-primary-600" />
+            <div className="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center shrink-0">
+              <GraduationCap className="w-5 h-5 text-primary-600 dark:text-primary-400" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-primary-900 mb-1">
+              <h3 className="text-sm font-semibold text-primary-900 dark:text-primary-200 mb-1">
                 Prospective Student?
               </h3>
-              <p className="text-xs text-primary-700/80 mb-3 leading-relaxed">
+              <p className="text-xs text-primary-700/80 dark:text-primary-300/80 mb-3 leading-relaxed">
                 Admissions for the upcoming academic year are now open.
               </p>
-              <Link 
-                to="/apply" 
-                className="inline-flex items-center text-xs font-semibold text-primary-700 hover:text-primary-800 transition-colors group"
+              <Link
+                to="/apply"
+                className="inline-flex items-center text-xs font-semibold text-primary-700 dark:text-primary-300 hover:text-primary-800 dark:hover:text-primary-200 transition-colors group"
               >
                 Apply now 
                 <span className="ml-1 inline-block transition-transform group-hover:translate-x-1">→</span>
@@ -73,7 +73,7 @@ export default function LoginPage() {
         </div>
       ) : (
         <div className="mt-8 pt-6 border-t border-gray-100 dark:border-gray-800 text-center">
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
             Don't have an account? Contact the system administrator.
           </p>
         </div>

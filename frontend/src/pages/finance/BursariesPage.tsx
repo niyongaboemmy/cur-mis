@@ -37,6 +37,8 @@ import StudentSearchSelect from "@/components/finance/StudentSearchSelect";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { useSystemStore } from "@/store/systemStore";
 import ModalPortal from "@/components/ui/ModalPortal";
+import { PERMISSIONS } from "@/constants";
+import { usePermission } from "@/utils/permissions";
 
 import { formatRWF } from "@/utils/formatCurrency";
 
@@ -67,6 +69,7 @@ const PER_PAGE = 15;
 type PageTab = "bursaries" | "sponsors";
 
 export default function BursariesPage() {
+  const canManage = usePermission(PERMISSIONS.MANAGE_FINANCE);
   const qc = useQueryClient();
   const basics = useSystemStore((s) => s.basics);
   const selectedYearLabel = useSystemStore((s) => s.selectedYearLabel);
@@ -214,7 +217,7 @@ export default function BursariesPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          {activeTab === "bursaries" && (
+          {activeTab === "bursaries" && canManage && (
             <>
               <button
                 className="btn-ghost btn-sm"
@@ -230,7 +233,7 @@ export default function BursariesPage() {
               </button>
             </>
           )}
-          {activeTab === "sponsors" && (
+          {activeTab === "sponsors" && canManage && (
             <button
               className="btn-primary btn-sm"
               onClick={() => {

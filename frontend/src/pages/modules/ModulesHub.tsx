@@ -2,6 +2,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { BookOpen, CalendarDays, Users, GraduationCap, ClipboardList } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { PERMISSIONS } from '@/constants'
+import { isSuperadmin } from '@/utils/permissions'
 
 const TABS = [
   { to: '/modules/catalog',       label: 'Catalog',       icon: BookOpen,       permissions: [PERMISSIONS.MANAGE_MODULES] },
@@ -21,7 +22,7 @@ export default function ModulesHub() {
   const atIndex = loc.pathname === '/modules'
 
   const visible = TABS.filter((t) => {
-    if (user?.role === 'superadmin') return true
+    if (isSuperadmin(user)) return true
     const userPerms = user?.permissions ?? []
     return t.permissions.some((p) => userPerms.includes(p))
   })

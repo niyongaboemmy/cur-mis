@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react'
 import userService from '@/services/userService'
 import { useAuthStore } from '@/store/authStore'
 import { useCampusFilterStore } from '@/store/campusFilterStore'
+import { PERMISSIONS } from '@/constants'
+import { usePermission } from '@/utils/permissions'
 
 /**
  * Topbar pill that lets a registry staffer scope the entire app to a
@@ -48,8 +50,6 @@ export default function CampusFilterSwitcher() {
     return () => window.removeEventListener('mousedown', onClick)
   }, [open])
 
-  const role            = (user?.role ?? '').toLowerCase()
-  const isPriviledged   = role === 'admin' || role === 'superadmin'
   const isScopeLocked   = !!user?.enforce_campus_scope
   const assignments     = (user?.assigned_campuses ?? []) as Array<{ id: number | string; name: string; code?: string | null; location?: string | null }>
   // Lock the pill whenever the user has exactly one assignment — the
@@ -61,7 +61,8 @@ export default function CampusFilterSwitcher() {
   // Catalog of every active campus — admins / superadmins with MANAGE_USERS
   // can drill into any campus, not just their own assignments. Scope-locked
   // users never need the catalog (they can't reach outside their set).
-  const canSeeCatalog = !!user?.permissions?.includes('MANAGE_USERS') && !isScopeLocked && !isLockedToOne
+  const hasManageUsers = usePermission(PERMISSIONS.MANAGE_USERS)
+  const canSeeCatalog = hasManageUsers && !isScopeLocked && !isLockedToOne
   const catalogQ = useQuery({
     queryKey: ['users', 'campuses-catalog'],
     queryFn:  () => userService.listAllCampuses(),
@@ -94,7 +95,7 @@ export default function CampusFilterSwitcher() {
   }, [selectedCampusId, my, canSeeCatalog, catalogQ.data, isScopeLocked, isLockedToOne, setSelectedCampusId])
 
   // Applicants don't get a campus scope at all.
-  if (!user || role === 'applicant') return null
+  if (!user || user.role === 'applicant') return null
 
   // No campuses anywhere → nothing meaningful to render.
   if (my.length === 0) return null
@@ -131,7 +132,7 @@ export default function CampusFilterSwitcher() {
     ? selected.name
     : isScopeLocked
       ? 'My campuses'
-      : isPriviledged
+      : hasManageUsers
         ? 'All campuses'
         : 'My campuses'
 
@@ -180,7 +181,7 @@ export default function CampusFilterSwitcher() {
                   : 'text-ink-700 dark:text-ink-200 hover:bg-ink-50 dark:hover:bg-ink-800')
               }
             >
-              <span>{isPriviledged ? 'All campuses' : 'All my campuses'}</span>
+              <span>{hasManageUsers ? 'All campuses' : 'All my campuses'}</span>
               {selectedCampusId == null && <Check className="w-3.5 h-3.5" />}
             </button>
           )}
