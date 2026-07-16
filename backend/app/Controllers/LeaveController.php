@@ -336,9 +336,14 @@ class LeaveController extends BaseController
         }
 
         $actor      = (array) $request->param('_auth_user');
-        $body       = $request->body();
-        $comment    = trim((string)($body['comment'] ?? ''));
-        $reviewerId = (int)($body['reviewer_id'] ?? ($actor['id'] ?? 0));
+        $reviewerId = (int)($actor['id'] ?? 0);
+
+        if ($reviewerId > 0 && (int)($row['user_id'] ?? 0) === $reviewerId) {
+            $this->error($response, 'You cannot approve your own leave request.', 403);
+        }
+
+        $body    = $request->body();
+        $comment = trim((string)($body['comment'] ?? ''));
 
         $this->requestModel->update($id, [
             'status'         => 'Approved',
@@ -380,9 +385,14 @@ class LeaveController extends BaseController
         }
 
         $actor      = (array) $request->param('_auth_user');
-        $body       = $request->body();
-        $comment    = trim((string)($body['comment'] ?? ''));
-        $reviewerId = (int)($body['reviewer_id'] ?? ($actor['id'] ?? 0));
+        $reviewerId = (int)($actor['id'] ?? 0);
+
+        if ($reviewerId > 0 && (int)($row['user_id'] ?? 0) === $reviewerId) {
+            $this->error($response, 'You cannot reject your own leave request.', 403);
+        }
+
+        $body    = $request->body();
+        $comment = trim((string)($body['comment'] ?? ''));
 
         if ($comment === '') {
             $this->error($response, 'A rejection reason/comment is required.', 422);

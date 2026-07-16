@@ -51,6 +51,7 @@ import type {
   PgIntlFeeStructure,
   CreatePgIntlFeeStructurePayload,
   UpdatePgIntlFeeStructurePayload,
+  FinanceStudentDirectoryRow,
 } from "@/types/finance";
 
 // ─── Fee Structures ───────────────────────────────────────────────────────────
@@ -945,4 +946,27 @@ export const pgIntlFeeStructureService = {
 
   delete: (id: number) =>
     api.delete<null>(`/api/finance/pg-intl-structures/${id}`),
+};
+
+// ─── Student Directory (Finance view, Phase 2) ────────────────────────────────
+
+export const financeStudentDirectoryService = {
+  list: (
+    params?: {
+      page?:             number
+      per_page?:         number
+      search?:           string
+      gender?:           string
+      nationality?:      string
+      academic_year_id?: number
+      sort_by?:          string
+      sort_dir?:         "ASC" | "DESC"
+    },
+    signal?: AbortSignal,
+  ) =>
+    api.get<PaginatedResponse<FinanceStudentDirectoryRow>>(
+      "/api/finance/students",
+      params ?? {},
+      signal,
+    ),
 };

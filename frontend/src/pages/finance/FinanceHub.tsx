@@ -17,6 +17,7 @@ import {
   CalendarClock,
   PiggyBank,
   GraduationCap,
+  Users,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useQuery } from "@tanstack/react-query";
@@ -58,6 +59,13 @@ const TABS = [
     icon: GraduationCap,
     end: false,
     permissions: [PERMISSIONS.VIEW_FINANCE_STRUCTURES],
+  },
+  {
+    to: "/finance/students",
+    label: "Student Directory",
+    icon: Users,
+    end: false,
+    permissions: [PERMISSIONS.VIEW_STUDENT_DIRECTORY_FINANCE],
   },
   {
     to: "/finance/fee-types",
