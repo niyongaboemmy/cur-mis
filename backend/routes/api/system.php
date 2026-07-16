@@ -27,5 +27,5 @@ $router->get('/api/portal/application-fee',    [SystemBasicsController::class, '
 // Application fee → finance fee type mapping settings.
 $router->group('/api/system', function ($router) {
     $router->get('/fee-mapping', [SystemBasicsController::class, 'getFeeMappingSettings']);
-    $router->patch('/fee-mapping', [SystemBasicsController::class, 'saveFeeMappingSettings']);
+    $router->post('/fee-mapping', [SystemBasicsController::class, 'saveFeeMappingSettings']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_SETTINGS)]);

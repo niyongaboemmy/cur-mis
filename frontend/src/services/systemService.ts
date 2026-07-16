@@ -52,5 +52,5 @@ export const systemService = {
   saveFeeMappingSettings: (d: {
     application_fee_mapped_fee_structure_id: number
     application_fee_credit_on_enrollment:    number
-  }) => api.patch<FeeMappingSettings>('/api/system/fee-mapping', d),
+  }) => api.post<FeeMappingSettings>('/api/system/fee-mapping', d),
 }
