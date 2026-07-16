@@ -120,6 +120,9 @@ import ReceiptPdfPage from "@/pages/finance/ReceiptPdfPage";
 import MyFinancePage from "@/pages/finance/MyFinancePage";
 import FinesManagementPage from "@/pages/finance/FinesManagementPage";
 import OverdueAlertsPage from "@/pages/finance/OverdueAlertsPage";
+import PaymentCalendarPage from "@/pages/finance/PaymentCalendarPage";
+import BudgetExecutionPage from "@/pages/finance/BudgetExecutionPage";
+import PostgraduateInternationalFeesPage from "@/pages/finance/PostgraduateInternationalFeesPage";
 
 function App() {
   const initTheme = useThemeStore((state) => state.initTheme);
@@ -553,6 +556,7 @@ function App() {
                     />
                   </Route>
                   <Route path="structures" element={<FeeStructuresPage />} />
+                  <Route path="pg-intl-structures" element={<PostgraduateInternationalFeesPage />} />
                   <Route path="fee-types" element={<FeeTypesPage />} />
                   <Route path="per-credit-rates" element={<PerCreditRatesPage />} />
                   <Route path="bursaries" element={<BursariesPage />} />
@@ -591,6 +595,30 @@ function App() {
                   >
                     <Route path="overdue-alerts" element={<OverdueAlertsPage />} />
                   <Route path="documents" element={<SystemDocumentsPage />} />
+                  </Route>
+                  <Route
+                    element={
+                      <ProtectedRoute
+                        requiredPermissions={[
+                          PERMISSIONS.VIEW_PAYMENT_CALENDAR,
+                          PERMISSIONS.MANAGE_PAYMENT_CALENDAR,
+                        ]}
+                      />
+                    }
+                  >
+                    <Route path="payment-calendar" element={<PaymentCalendarPage />} />
+                  </Route>
+                  <Route
+                    element={
+                      <ProtectedRoute
+                        requiredPermissions={[
+                          PERMISSIONS.VIEW_BUDGET_EXECUTION,
+                          PERMISSIONS.MANAGE_BUDGET_EXECUTION,
+                        ]}
+                      />
+                    }
+                  >
+                    <Route path="budget-execution" element={<BudgetExecutionPage />} />
                   </Route>
                 </Route>
               </Route>

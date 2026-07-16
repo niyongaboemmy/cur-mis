@@ -8,12 +8,12 @@ class FeeStructureModel extends BaseModel
 {
     protected string $table = 'fee_structures';
     protected array $fillable = [
-        'academic_year_id', 'department_id', 'level_id', 'campus_id',
-        'fee_type', 'label', 'amount', 'semester', 'payment_plan', 'installment_count',
+        'academic_year_id', 'department_id', 'level_id', 'campus_id', 'student_category',
+        'fee_type', 'label', 'amount', 'currency', 'semester', 'payment_plan', 'installment_count',
         'is_active',
     ];
 
-    /** @param array{academic_year_id?:int,department_id?:int,level_id?:int,campus_id?:int,fee_type?:string,is_active?:bool} $filters */
+    /** @param array{academic_year_id?:int,department_id?:int,level_id?:int,campus_id?:int,student_category?:string,fee_type?:string,is_active?:bool} $filters */
     public function listWithJoins(array $filters = []): array
     {
         $where    = [];
@@ -34,6 +34,10 @@ class FeeStructureModel extends BaseModel
         if (isset($filters['campus_id'])) {
             $where[]    = 'fs.campus_id = ?';
             $bindings[] = $filters['campus_id'] ? (int)$filters['campus_id'] : null;
+        }
+        if (!empty($filters['student_category'])) {
+            $where[]    = 'fs.student_category = ?';
+            $bindings[] = $filters['student_category'];
         }
         if (!empty($filters['fee_type'])) {
             $where[]    = 'fs.fee_type = ?';
@@ -71,18 +75,29 @@ class FeeStructureModel extends BaseModel
     /**
      * Find the best-matching fee structure for a student's profile.
      * Checks both the legacy department_id column and the fee_structure_departments join table.
+     *
+     * $studentCategory resolution mirrors $semester: passing null only matches structures with
+     * student_category IS NULL (category-agnostic); passing a value matches that value OR NULL,
+     * with an exact match ranked above a NULL (universal) structure.
      */
     public function findBestMatch(
         int $academicYearId,
         string $feeType,
         ?int $departmentId,
         ?int $levelId,
-        ?int $semester = null
+        ?int $semester = null,
+        ?string $studentCategory = null
     ): array|false {
         $semesterSql = $semester !== null ? 'AND (fs.semester = ? OR fs.semester IS NULL)' : 'AND fs.semester IS NULL';
-        $bindings    = [$academicYearId, $feeType];
+        $categorySql = $studentCategory !== null ? 'AND (fs.student_category = ? OR fs.student_category IS NULL)' : 'AND fs.student_category IS NULL';
+        $categoryOrderSql = $studentCategory !== null ? ', (fs.student_category = ?) DESC' : '';
+
+        $bindings = [$academicYearId, $feeType];
         if ($semester !== null) {
             $bindings[] = $semester;
+        }
+        if ($studentCategory !== null) {
+            $bindings[] = $studentCategory;
         }
 
         // dept match bindings: used in WHERE (×2 for EXISTS) and ORDER BY (×2)
@@ -92,6 +107,9 @@ class FeeStructureModel extends BaseModel
             $departmentId, $departmentId,  // ORDER BY dept priority
             $levelId,                       // ORDER BY level priority
         ]);
+        if ($studentCategory !== null) {
+            $bindings[] = $studentCategory; // ORDER BY category priority
+        }
 
         return $this->db->fetchOne(
             "SELECT fs.*
@@ -100,6 +118,7 @@ class FeeStructureModel extends BaseModel
                AND fs.fee_type = ?
                AND fs.is_active = 1
                {$semesterSql}
+               {$categorySql}
                AND (
                      fs.department_id = ?
                   OR fs.department_id IS NULL
@@ -115,6 +134,7 @@ class FeeStructureModel extends BaseModel
                   WHERE fsd3.fee_structure_id = fs.id AND fsd3.department_id = ?
                )) DESC,
                (fs.level_id = ?) DESC
+               {$categoryOrderSql}
              LIMIT 1",
             $bindings
         );

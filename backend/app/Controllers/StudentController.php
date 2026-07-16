@@ -250,6 +250,121 @@ class StudentController extends BaseController
     }
 
     /**
+     * GET /api/finance/students
+     *
+     * Read-only Student Directory for Finance (Phase 2 of the MIS revision request,
+     * gated by VIEW_STUDENT_DIRECTORY_FINANCE). Reuses index()'s exact filter set
+     * (buildListFilters()/applyFilterableClauses()) rather than duplicating it, and
+     * decorates each row with a fee/payment status summary so Finance doesn't need
+     * a second request per student to see balance status.
+     *
+     * Strictly read-only — no corresponding write endpoint.
+     */
+    public function financeDirectory(Request $request, Response $response): never
+    {
+        $page    = (int)($request->query('page') ?? 1);
+        $perPage = (int)($request->query('per_page') ?? 15);
+
+        $sortBy  = $request->query('sort_by');
+        $sortDir = strtoupper($request->query('sort_dir') ?? 'DESC');
+
+        $allowedSorts = ['id', 'fname', 'lname', 'regnumber', 'email', 'gender', 'nationality'];
+        if (!in_array($sortBy, $allowedSorts, true)) {
+            $sortBy = 'id';
+        }
+        if (!in_array($sortDir, ['ASC', 'DESC'], true)) {
+            $sortDir = 'DESC';
+        }
+
+        [$where, $bindings] = $this->buildListFilters($request);
+
+        $paginated = $this->studentModel->paginate($page, $perPage, $where, $bindings, $sortBy, $sortDir);
+
+        $rows = $paginated['data'] ?? [];
+        if (!empty($rows)) {
+            $regnumbers = array_values(array_unique(array_filter(
+                array_map(fn ($r) => $r['regnumber'] ?? null, $rows)
+            )));
+            $feeStatusByReg = $this->fetchFeeStatusSummary($regnumbers, $request->query('academic_year_id'));
+
+            foreach ($rows as &$r) {
+                $reg = $r['regnumber'] ?? null;
+                $r['fee_status'] = ($reg !== null && isset($feeStatusByReg[$reg]))
+                    ? $feeStatusByReg[$reg]
+                    : ['total_due' => 0.0, 'total_paid' => 0.0, 'total_bursary' => 0.0, 'balance' => 0.0, 'status' => 'no_invoices', 'has_override' => false];
+            }
+            unset($r);
+            $paginated['data'] = $rows;
+        }
+
+        $this->success($response, $paginated, 'Finance student directory fetched.');
+    }
+
+    /**
+     * Aggregate fee_invoices (+ student_fee_overrides presence) per student, keyed
+     * by regnumber. Scoped to a single academic year when $academicYearId is given,
+     * otherwise aggregates the student's full invoice history.
+     *
+     * @param array<int, string> $regnumbers
+     * @return array<string, array{total_due:float,total_paid:float,total_bursary:float,balance:float,status:string,has_override:bool}>
+     */
+    private function fetchFeeStatusSummary(array $regnumbers, mixed $academicYearId): array
+    {
+        if (empty($regnumbers)) {
+            return [];
+        }
+
+        $db = $this->studentModel->db();
+        $ph = implode(',', array_fill(0, count($regnumbers), '?'));
+
+        $yearSql      = '';
+        $yearBindings = [];
+        if (!empty($academicYearId)) {
+            $yearSql      = 'AND academic_year_id = ?';
+            $yearBindings = [(int)$academicYearId];
+        }
+
+        $sums = $db->fetchAll(
+            "SELECT student_id,
+                    SUM(amount_due)      AS total_due,
+                    SUM(amount_paid)     AS total_paid,
+                    SUM(bursary_applied) AS total_bursary
+             FROM `fee_invoices`
+             WHERE student_id IN ($ph) AND fee_type != 'BURSARY_CREDIT' {$yearSql}
+             GROUP BY student_id",
+            array_merge($regnumbers, $yearBindings)
+        );
+
+        $overrides = $db->fetchAll(
+            "SELECT student_id, COUNT(*) AS override_count
+             FROM `student_fee_overrides`
+             WHERE student_id IN ($ph) {$yearSql}
+             GROUP BY student_id",
+            array_merge($regnumbers, $yearBindings)
+        );
+        $overrideByReg = array_column($overrides, 'override_count', 'student_id');
+
+        $summary = [];
+        foreach ($sums as $row) {
+            $due     = (float)$row['total_due'];
+            $paid    = (float)$row['total_paid'];
+            $bursary = (float)$row['total_bursary'];
+            $balance = $due - $paid - $bursary;
+
+            $summary[$row['student_id']] = [
+                'total_due'     => $due,
+                'total_paid'    => $paid,
+                'total_bursary' => $bursary,
+                'balance'       => $balance,
+                'status'        => $balance <= 0.0 ? 'cleared' : ($paid > 0.0 ? 'partial' : 'unpaid'),
+                'has_override'  => !empty($overrideByReg[$row['student_id']]),
+            ];
+        }
+
+        return $summary;
+    }
+
+    /**
      * Get a single student.
      */
     public function show(Request $request, Response $response): never

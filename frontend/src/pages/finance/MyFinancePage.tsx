@@ -15,8 +15,9 @@ import {
   ChevronDown,
   ChevronUp,
   Receipt,
+  CalendarDays,
 } from "lucide-react";
-import { myLedgerService } from "@/services/financeService";
+import { myLedgerService, paymentCalendarService } from "@/services/financeService";
 import { useSystemStore } from "@/store/systemStore";
 import InvoiceStatusBadge from "@/components/finance/InvoiceStatusBadge";
 import UrubutoPayInstructionsModal from "@/components/finance/UrubutoPayInstructionsModal";
@@ -24,6 +25,7 @@ import {
   FEE_TYPE_LABELS,
   CLEARANCE_STATUS_LABELS,
   CLEARANCE_STATUS_COLORS,
+  PAYMENT_CALENDAR_EVENT_TYPE_LABELS,
 } from "@/types/finance";
 import { formatRWF } from "@/utils/formatCurrency";
 import type {
@@ -31,6 +33,7 @@ import type {
   LedgerTotals,
   ClearanceResult,
   MobilePaymentRecord,
+  PaymentCalendarEvent,
 } from "@/types/finance";
 
 type Semester = "" | "1" | "2";
@@ -538,6 +541,9 @@ export default function MyFinancePage() {
               </div>
             )}
           </div>
+
+          {/* Payment Calendar */}
+          <MyPaymentCalendarWidget yearId={Number(yearId)} />
         </>
       )}
 
@@ -577,6 +583,55 @@ function StatCard({
         <Loader2 size={16} className="animate-spin text-ink-300 mt-1" />
       ) : (
         <p className={`text-[15px] font-bold ${valueClass}`}>{value}</p>
+      )}
+    </div>
+  );
+}
+
+function MyPaymentCalendarWidget({ yearId }: { yearId: number }) {
+  const calendarQ = useQuery({
+    queryKey: ["my-finance", "payment-calendar", yearId],
+    queryFn: (ctx) =>
+      paymentCalendarService.listMine({ academic_year_id: yearId }, ctx.signal),
+    enabled: !!yearId,
+  });
+
+  const events: PaymentCalendarEvent[] = calendarQ.data?.data ?? [];
+  const sorted = [...events].sort((a, b) => a.event_date.localeCompare(b.event_date));
+
+  if (!calendarQ.isLoading && sorted.length === 0) return null;
+
+  return (
+    <div className="card p-5 md:p-6">
+      <div className="flex items-center gap-2 mb-3">
+        <CalendarDays size={16} className="text-ink-400" />
+        <p className="text-[13px] font-bold text-ink-900 dark:text-white">
+          Payment Calendar
+        </p>
+      </div>
+      {calendarQ.isLoading ? (
+        <Loader2 size={16} className="animate-spin text-ink-300" />
+      ) : (
+        <div className="divide-y divide-ink-50 dark:divide-ink-800">
+          {sorted.map((e) => (
+            <div
+              key={e.id}
+              className="flex items-center justify-between gap-3 py-2.5 text-[13px]"
+            >
+              <div className="min-w-0">
+                <p className="font-medium text-ink-900 dark:text-white truncate">
+                  {e.label}
+                </p>
+                <p className="text-[11px] text-ink-400">
+                  {PAYMENT_CALENDAR_EVENT_TYPE_LABELS[e.event_type]}
+                </p>
+              </div>
+              <p className="text-ink-500 dark:text-ink-400 whitespace-nowrap">
+                {new Date(e.event_date).toLocaleDateString("en-GB")}
+              </p>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );

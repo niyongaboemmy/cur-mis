@@ -70,6 +70,19 @@ $matrix = [
     ['registrar',       'GET', '/api/finance/budgets',      403, 'Cannot-Access: Registrar <> budget'],
     ['registrar',       'GET', '/api/hr/payroll',           403, 'Cannot-Access: Registrar <> payroll'],
     ['registrar',       'GET', '/api/employees',            403, 'Cannot-Access: Registrar <> HR data (Phase 6)'],
+
+    // Phase 4 — Budget Execution (VIEW_BUDGET_EXECUTION / MANAGE_BUDGET_EXECUTION).
+    // Client matrix: Registrar and HR are both excluded from budget data.
+    ['finance_officer', 'GET',  '/api/finance/budget-execution?academic_year_id=1',                          200, 'Can-View: Finance own module (budget execution)'],
+    ['registrar',       'GET',  '/api/finance/budget-execution?academic_year_id=1',                          403, 'Cannot-Access: Registrar <> budget execution'],
+    ['registrar',       'GET',  '/api/finance/budget-execution/compare?year_a=1&year_b=2',                   403, 'Cannot-Access: Registrar <> budget execution compare'],
+    ['registrar',       'GET',  '/api/finance/budget-execution/export?academic_year_id=1&format=xlsx',       403, 'Cannot-Access: Registrar <> budget execution export'],
+    ['registrar',       'POST', '/api/finance/budgets',                                                      403, 'Cannot-Access: Registrar <> budget write'],
+    ['hr_manager',      'GET',  '/api/finance/budgets',                                                      403, 'Cannot-Access: HR <> budget'],
+    ['hr_manager',      'GET',  '/api/finance/budget-execution?academic_year_id=1',                          403, 'Cannot-Access: HR <> budget execution'],
+    ['hr_manager',      'GET',  '/api/finance/budget-execution/compare?year_a=1&year_b=2',                   403, 'Cannot-Access: HR <> budget execution compare'],
+    ['hr_manager',      'GET',  '/api/finance/budget-execution/export?academic_year_id=1&format=xlsx',       403, 'Cannot-Access: HR <> budget execution export'],
+    ['hr_manager',      'POST', '/api/finance/budgets',                                                      403, 'Cannot-Access: HR <> budget write'],
 ];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

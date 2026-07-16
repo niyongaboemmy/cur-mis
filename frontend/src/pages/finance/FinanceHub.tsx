@@ -14,6 +14,9 @@ import {
   ChevronRight,
   GitMerge,
   FileText,
+  CalendarClock,
+  PiggyBank,
+  GraduationCap,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useQuery } from "@tanstack/react-query";
@@ -46,6 +49,13 @@ const TABS = [
     to: "/finance/structures",
     label: "Fee Rates",
     icon: Settings2,
+    end: false,
+    permissions: [PERMISSIONS.VIEW_FINANCE_STRUCTURES],
+  },
+  {
+    to: "/finance/pg-intl-structures",
+    label: "PG/Intl Fees",
+    icon: GraduationCap,
     end: false,
     permissions: [PERMISSIONS.VIEW_FINANCE_STRUCTURES],
   },
@@ -132,6 +142,20 @@ const TABS = [
     icon: FileText,
     end: false,
     permissions: [PERMISSIONS.VIEW_FINANCE],
+  },
+  {
+    to: "/finance/payment-calendar",
+    label: "Payment Calendar",
+    icon: CalendarClock,
+    end: false,
+    permissions: [PERMISSIONS.VIEW_PAYMENT_CALENDAR, PERMISSIONS.MANAGE_PAYMENT_CALENDAR],
+  },
+  {
+    to: "/finance/budget-execution",
+    label: "Budget Execution",
+    icon: PiggyBank,
+    end: false,
+    permissions: [PERMISSIONS.VIEW_BUDGET_EXECUTION, PERMISSIONS.MANAGE_BUDGET_EXECUTION],
   },
 ];
 

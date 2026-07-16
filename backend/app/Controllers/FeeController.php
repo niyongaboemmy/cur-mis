@@ -15,7 +15,6 @@ use App\Models\SponsorModel;
 use App\Models\ExpenseModel;
 use App\Models\ExpenseCategoryModel;
 use App\Models\FeeTypeModel;
-use App\Models\ExpenseBudgetModel;
 use App\Models\ClearanceModel;
 use App\Models\StudentApplicationModel;
 use App\Services\FeeService;
@@ -35,7 +34,6 @@ class FeeController extends BaseController
     private ExpenseModel            $expenseModel;
     private ExpenseCategoryModel    $expenseCategoryModel;
     private FeeTypeModel            $feeTypeModel;
-    private ExpenseBudgetModel      $budgetModel;
     private ClearanceModel          $clearanceModel;
     private StudentApplicationModel $applicationModel;
     private FeeService              $service;
@@ -53,7 +51,6 @@ class FeeController extends BaseController
         $this->expenseModel         = new ExpenseModel();
         $this->expenseCategoryModel = new ExpenseCategoryModel();
         $this->feeTypeModel         = new FeeTypeModel();
-        $this->budgetModel          = new ExpenseBudgetModel();
         $this->clearanceModel       = new ClearanceModel();
         $this->applicationModel     = new StudentApplicationModel();
         $this->service              = new FeeService();
@@ -107,6 +104,7 @@ class FeeController extends BaseController
                                     ? ((int)$request->query('level_id') ?: null) : null,
             'campus_id'        => $request->query('campus_id') !== null
                                     ? ((int)$request->query('campus_id') ?: null) : null,
+            'student_category' => $request->query('student_category') ?? '',
             'fee_type'         => $request->query('fee_type')    ?? '',
             'is_active'        => $request->query('is_active') !== null
                                     ? (int)$request->query('is_active') : null,
@@ -123,11 +121,14 @@ class FeeController extends BaseController
     {
         $data   = $request->body();
         $actor  = $request->param('_auth_user');
+        $validCategories = ['local', 'international', 'sponsored', 'self_sponsored'];
         $errors = ValidationHelper::validate($data, [
             'academic_year_id' => 'required|numeric',
             'fee_type'         => 'required|in:' . implode(',', $this->getActiveFeeCodes()),
             'label'            => 'required|string|max:120',
             'amount'           => 'required|numeric',
+            'student_category' => 'nullable|in:' . implode(',', $validCategories),
+            'currency'         => 'nullable|string|max:10',
         ]);
         if (!empty($errors)) {
             $this->error($response, 'Validation failed.', 422, $errors);
@@ -152,9 +153,12 @@ class FeeController extends BaseController
             'department_id'     => !empty($deptIds) ? $deptIds[0] : null,
             'level_id'          => !empty($data['level_id'])  ? (int)$data['level_id']  : null,
             'campus_id'         => !empty($data['campus_id']) ? (int)$data['campus_id'] : null,
+            'student_category'  => in_array($data['student_category'] ?? '', $validCategories, true)
+                                     ? $data['student_category'] : null,
             'fee_type'          => $data['fee_type'],
             'label'             => $data['label'],
             'amount'            => (float)$data['amount'],
+            'currency'          => !empty($data['currency']) ? strtoupper((string)$data['currency']) : 'RWF',
             'semester'          => !empty($data['semester'])  ? (int)$data['semester']  : null,
             'payment_plan'      => $paymentPlan,
             'installment_count' => !empty($data['installment_count']) ? (int)$data['installment_count'] : null,
@@ -185,12 +189,20 @@ class FeeController extends BaseController
             $this->error($response, 'Fee structure not found.', 404);
         }
 
-        $validPlans = ['full_year', 'per_semester', 'per_installment'];
+        $validPlans      = ['full_year', 'per_semester', 'per_installment'];
+        $validCategories = ['local', 'international', 'sponsored', 'self_sponsored'];
+
+        if (isset($data['student_category']) && $data['student_category'] !== '' && !in_array($data['student_category'], $validCategories, true)) {
+            $this->error($response, 'Validation failed.', 422, ['student_category' => ['The student_category field must be one of: ' . implode(', ', $validCategories) . '.']]);
+        }
+
         $this->structureModel->update($id, array_filter([
             'label'             => $data['label']     ?? null,
             'amount'            => isset($data['amount'])    ? (float)$data['amount']    : null,
+            'currency'          => isset($data['currency']) ? strtoupper((string)$data['currency']) : null,
             'semester'          => isset($data['semester'])  ? (int)$data['semester']    : null,
             'campus_id'         => isset($data['campus_id']) ? ((int)$data['campus_id'] ?: null) : null,
+            'student_category'  => isset($data['student_category']) ? ($data['student_category'] ?: null) : null,
             'payment_plan'      => isset($data['payment_plan']) && in_array($data['payment_plan'], $validPlans, true)
                                      ? $data['payment_plan'] : null,
             'installment_count' => isset($data['installment_count']) ? ((int)$data['installment_count'] ?: null) : null,
@@ -1231,39 +1243,6 @@ class FeeController extends BaseController
     // ──────────────────────────────────────────────────────────────────────────
 
 
-
-    /** GET /api/finance/budgets?academic_year_id= */
-    public function listBudgets(Request $request, Response $response): never
-    {
-        $yearId = (int)($request->query('academic_year_id') ?? 0);
-        if (!$yearId) $this->error($response, 'academic_year_id required.', 422);
-        
-        $this->success($response, $this->budgetModel->getBudgetsForYear($yearId), 'Budgets retrieved.');
-    }
-
-    /** POST /api/finance/budgets */
-    public function saveBudget(Request $request, Response $response): never
-    {
-        $data  = $request->body();
-        $actor = $request->param('_auth_user');
-
-        $errors = ValidationHelper::validate($data, [
-            'academic_year_id' => 'required|numeric',
-            'category_id'      => 'required|numeric',
-            'amount'           => 'required|numeric',
-        ]);
-        if (!empty($errors)) $this->error($response, 'Validation failed.', 422, $errors);
-
-        $this->budgetModel->upsertBudget(
-            (int)$data['academic_year_id'],
-            (int)$data['category_id'],
-            (float)$data['amount'],
-            (int)$actor['id']
-        );
-
-        SystemLogService::log('UPDATE', 'FINANCE', "Saved expense budget for category {$data['category_id']} (year {$data['academic_year_id']}): {$data['amount']}.", null, 'expense_budget', ['category_id' => (int) $data['category_id'], 'amount' => (float) $data['amount']], (array) $actor ?: null);
-        $this->success($response, null, 'Budget saved.');
-    }
 
     /**
      * GET /api/finance/summary
