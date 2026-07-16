@@ -21,9 +21,9 @@ $router->group('/api/users', function ($router) {
     $router->get('/bulk-preview',  [UserController::class, 'bulkPreview']);
     $router->post('/bulk-create',   [UserController::class, 'bulkCreate']);
     $router->get('/:id',   [UserController::class, 'show']);
-    $router->put('/:id',   [UserController::class, 'update']);
+    $router->post('/:id',   [UserController::class, 'update']);
     $router->get('/:id/photo', [UserController::class, 'downloadPhoto']);
-    $router->patch('/:id/toggle-status', [UserController::class, 'toggleStatus']);
+    $router->post('/:id/toggle-status', [UserController::class, 'toggleStatus']);
     $router->delete('/:id',              [UserController::class, 'delete']);
 
     // Registry campus scoping — assign or revoke a campus to/from a user.

@@ -48,7 +48,7 @@ $router->group('/api/attendance', function ($router) {
     // Writes (teacher + admin)
     $router->group('', function ($r) {
         $r->post('/sessions',              [AttendanceController::class, 'createSession']);
-        $r->put('/sessions/:id/records',   [AttendanceController::class, 'saveRecords']);
+        $r->post('/sessions/:id/records',   [AttendanceController::class, 'saveRecords']);
         $r->post('/sessions/:id/reopen',   [AttendanceController::class, 'reopenSession']);
         $r->post('/sessions/:id/lock',     [AttendanceController::class, 'toggleLock']);
         $r->delete('/sessions/:id',        [AttendanceController::class, 'deleteSession']);

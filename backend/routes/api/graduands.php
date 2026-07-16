@@ -17,9 +17,9 @@ $router->group('/api/graduands', function ($router) {
     // Write actions
     $router->group('', function ($r) {
         $r->post('',                [GraduandController::class, 'add']);
-        $r->put('/:id/approve',     [GraduandController::class, 'approve']);
-        $r->put('/:id/graduate',    [GraduandController::class, 'graduate']);
-        $r->put('/:id/defer',       [GraduandController::class, 'defer']);
+        $r->post('/:id/approve',     [GraduandController::class, 'approve']);
+        $r->post('/:id/graduate',    [GraduandController::class, 'graduate']);
+        $r->post('/:id/defer',       [GraduandController::class, 'defer']);
         $r->delete('/:id',          [GraduandController::class, 'delete']);
     }, [new PermissionMiddleware(Permissions::MANAGE_GRADUANDS)]);
 }, [AuthMiddleware::class]);

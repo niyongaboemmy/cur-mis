@@ -11,7 +11,7 @@ $router->group('/api/grading-scales', function ($router) {
     $router->get('', [GradingScaleController::class, 'list']);
 
     $router->group('', function ($r) {
-        $r->put('',       [GradingScaleController::class, 'upsert']);
+        $r->post('',       [GradingScaleController::class, 'upsert']);
         $r->post('/reset',[GradingScaleController::class, 'reset']);
     }, [new PermissionMiddleware(Permissions::MANAGE_GRADING_SCALES)]);
 }, [AuthMiddleware::class]);

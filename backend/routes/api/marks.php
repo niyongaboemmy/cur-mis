@@ -32,7 +32,7 @@ $router->group('/api/marks', function ($router) {
     ])]);
 
     $router->group('', function ($r) {
-        $r->put('',          [ModuleMarksController::class, 'saveMarks']);
+        $r->post('',          [ModuleMarksController::class, 'saveMarks']);
         $r->post('/workflow',[ModuleMarksController::class, 'workflow']);
         $r->delete('/:id',   [ModuleMarksController::class, 'deleteMark']);
     }, [new MaybePermissionMiddleware([

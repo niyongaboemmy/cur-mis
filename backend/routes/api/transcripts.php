@@ -11,8 +11,8 @@ $router->group('/api/transcripts', function ($router) {
     // Admin: list and manage all requests
     $router->group('', function ($r) {
         $r->get('',                 [TranscriptController::class, 'list']);
-        $r->put('/:id/review',      [TranscriptController::class, 'review']);
-        $r->put('/:id/dispatch',    [TranscriptController::class, 'dispatch']);
+        $r->post('/:id/review',      [TranscriptController::class, 'review']);
+        $r->post('/:id/dispatch',    [TranscriptController::class, 'dispatch']);
     }, [new PermissionMiddleware(Permissions::MANAGE_TRANSCRIPT_REQUESTS)]);
 
     // Student self-service

@@ -10,8 +10,8 @@ use App\Constants\Permissions;
 $router->group('/api/academic-certificates', function ($router) {
     $router->get('',                   [AcademicCertificateController::class, 'list']);
     $router->post('',                  [AcademicCertificateController::class, 'issue']);
-    $router->put('/:id/dispatch',      [AcademicCertificateController::class, 'dispatch']);
-    $router->put('/:id/revoke',        [AcademicCertificateController::class, 'revoke']);
+    $router->post('/:id/dispatch',      [AcademicCertificateController::class, 'dispatch']);
+    $router->post('/:id/revoke',        [AcademicCertificateController::class, 'revoke']);
     $router->delete('/:id',            [AcademicCertificateController::class, 'delete']);
 }, [
     AuthMiddleware::class,

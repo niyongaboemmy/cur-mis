@@ -187,54 +187,54 @@ $router->group('/api/finance', function ($router) {
     $router->group('', function ($r) {
         $r->post('/structures',              [FeeController::class, 'createStructure']);
         $r->post('/structures/bulk-import',  [FeeController::class, 'bulkImportStructures']);
-        $r->put('/structures/:id',           [FeeController::class, 'updateStructure']);
+        $r->post('/structures/:id',           [FeeController::class, 'updateStructure']);
         $r->delete('/structures/:id',        [FeeController::class, 'deleteStructure']);
 
         $r->post('/pg-intl-structures',       [PgIntlFeeStructureController::class, 'createPgIntlStructure']);
-        $r->put('/pg-intl-structures/:id',    [PgIntlFeeStructureController::class, 'updatePgIntlStructure']);
+        $r->post('/pg-intl-structures/:id',    [PgIntlFeeStructureController::class, 'updatePgIntlStructure']);
         $r->delete('/pg-intl-structures/:id', [PgIntlFeeStructureController::class, 'deletePgIntlStructure']);
 
         $r->post('/students/generate',       [FeeController::class, 'generateInvoices']);
         $r->post('/billing/bulk-generate',   [FeeController::class, 'bulkGenerateInvoices']);
 
         $r->post('/invoices',                [FeeController::class, 'createInvoice']);
-        $r->put('/invoices/:id',             [FeeController::class, 'updateInvoice']);
+        $r->post('/invoices/:id',             [FeeController::class, 'updateInvoice']);
 
         $r->post('/payments',                [FeeController::class, 'recordPayment']);
-        $r->patch('/payments/:id/approve',   [FeeController::class, 'approvePayment']);
-        $r->patch('/payments/:id/reject',    [FeeController::class, 'rejectPayment']);
+        $r->post('/payments/:id/approve',   [FeeController::class, 'approvePayment']);
+        $r->post('/payments/:id/reject',    [FeeController::class, 'rejectPayment']);
 
         // Bulk bursary must come before the parameterised bursary routes
         $r->post('/bursaries/bulk',          [FeeController::class, 'bulkCreateBursaries']);
         $r->post('/bursaries',               [FeeController::class, 'createBursary']);
-        $r->put('/bursaries/:id',            [FeeController::class, 'updateBursary']);
+        $r->post('/bursaries/:id',            [FeeController::class, 'updateBursary']);
         $r->delete('/bursaries/:id',         [FeeController::class, 'deleteBursary']);
-        $r->patch('/bursaries/:id/confirm',  [FeeController::class, 'confirmBursary']);
-        $r->patch('/bursaries/:id/cancel',   [FeeController::class, 'cancelBursary']);
+        $r->post('/bursaries/:id/confirm',  [FeeController::class, 'confirmBursary']);
+        $r->post('/bursaries/:id/cancel',   [FeeController::class, 'cancelBursary']);
 
         $r->post('/sponsors',                [FeeController::class, 'createSponsor']);
-        $r->put('/sponsors/:id',             [FeeController::class, 'updateSponsor']);
+        $r->post('/sponsors/:id',             [FeeController::class, 'updateSponsor']);
 
         $r->post('/overrides',               [FeeController::class, 'createOverride']);
         $r->delete('/overrides/:id',         [FeeController::class, 'deleteOverride']);
 
         $r->post('/refunds',                 [RefundController::class, 'createRefund']);
-        $r->patch('/refunds/:id/process',    [RefundController::class, 'processRefund']);
-        $r->patch('/refunds/:id/reject',     [RefundController::class, 'rejectRefund']);
+        $r->post('/refunds/:id/process',    [RefundController::class, 'processRefund']);
+        $r->post('/refunds/:id/reject',     [RefundController::class, 'rejectRefund']);
 
         $r->post('/expenses',                [FeeController::class, 'createExpense']);
-        $r->put('/expenses/:id',             [FeeController::class, 'updateExpense']);
+        $r->post('/expenses/:id',             [FeeController::class, 'updateExpense']);
         $r->delete('/expenses/:id',          [FeeController::class, 'deleteExpense']);
         $r->post('/expenses/categories',      [FeeController::class, 'createExpenseCategory']);
-        $r->put('/expenses/categories/:id',   [FeeController::class, 'updateExpenseCategory']);
+        $r->post('/expenses/categories/:id',   [FeeController::class, 'updateExpenseCategory']);
         $r->delete('/expenses/categories/:id', [FeeController::class, 'deleteExpenseCategory']);
 
         $r->post('/fee-types',               [FeeController::class, 'createFeeType']);
-        $r->put('/fee-types/:id',            [FeeController::class, 'updateFeeType']);
+        $r->post('/fee-types/:id',            [FeeController::class, 'updateFeeType']);
         $r->delete('/fee-types/:id',         [FeeController::class, 'deleteFeeType']);
 
         $r->post('/per-credit-rates',        [FeeController::class, 'createPerCreditRate']);
-        $r->put('/per-credit-rates/:id',     [FeeController::class, 'updatePerCreditRate']);
+        $r->post('/per-credit-rates/:id',     [FeeController::class, 'updatePerCreditRate']);
         $r->delete('/per-credit-rates/:id',  [FeeController::class, 'deletePerCreditRate']);
 
         $r->post('/clearance',               [FeeController::class, 'grantClearance']);
@@ -245,7 +245,7 @@ $router->group('/api/finance', function ($router) {
     // ── Payment Calendar — writes ────────────────────────────────────────────
     $router->group('', function ($r) {
         $r->post('/payment-calendar',       [PaymentCalendarController::class, 'createEvent']);
-        $r->put('/payment-calendar/:id',    [PaymentCalendarController::class, 'updateEvent']);
+        $r->post('/payment-calendar/:id',    [PaymentCalendarController::class, 'updateEvent']);
         $r->delete('/payment-calendar/:id', [PaymentCalendarController::class, 'deleteEvent']);
     }, [new PermissionMiddleware(Permissions::MANAGE_PAYMENT_CALENDAR)]);
 

@@ -33,9 +33,9 @@ $router->group('/api/fines', function ($router) {
     // ── Fine management writes ────────────────────────────────────────────────
     $router->group('', function ($r) {
         $r->post('',              [FinesController::class, 'createFine']);
-        $r->put('/:id',           [FinesController::class, 'updateFine']);
+        $r->post('/:id',           [FinesController::class, 'updateFine']);
         $r->delete('/:id',        [FinesController::class, 'deleteFine']);
-        $r->patch('/:id/waive',   [FinesController::class, 'waiveFine']);
+        $r->post('/:id/waive',   [FinesController::class, 'waiveFine']);
     }, [new PermissionMiddleware(Permissions::MANAGE_FINES)]);
 
     // ── Alert dispatch ────────────────────────────────────────────────────────

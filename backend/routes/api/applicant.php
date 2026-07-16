@@ -35,7 +35,7 @@ $router->group('/api/applicant', function ($router) {
 
     // ── Profile ───────────────────────────────────────────────────────────────
     $router->get('/profile',       [ApplicantProfileController::class, 'getProfile']);
-    $router->put('/profile',       [ApplicantProfileController::class, 'updateProfile']);
+    $router->post('/profile',       [ApplicantProfileController::class, 'updateProfile']);
     $router->post('/profile/photo', [ApplicantProfileController::class, 'uploadPhoto']);
 
     // ── Application creation & verification ──────────────────────────────────
@@ -55,14 +55,14 @@ $router->group('/api/applicant', function ($router) {
     $router->get('/application',      [ApplicantProfileController::class, 'getApplication']);
     $router->get('/application/:id',  [ApplicantProfileController::class, 'getApplicationDetails']);
     $router->get('/application/:id/timeline', [ApplicantProfileController::class, 'getApplicationTimeline']);
-    $router->put('/application/:id',  [ApplicantProfileController::class, 'updateApplication']);
+    $router->post('/application/:id',  [ApplicantProfileController::class, 'updateApplication']);
     $router->post('/application/:id/respond', [ApplicantProfileController::class, 'respondToOffer']);
     $router->get('/application/:id/payment-slip', [ApplicantProfileController::class, 'downloadPaymentSlip']);
 
     // ── Academic records ──────────────────────────────────────────────────────
     $router->get('/academic-records',                        [ApplicantProfileController::class, 'listAcademicRecords']);
     $router->post('/academic-records',                       [ApplicantProfileController::class, 'addAcademicRecord']);
-    $router->put('/academic-records/:id',                    [ApplicantProfileController::class, 'updateAcademicRecord']);
+    $router->post('/academic-records/:id',                    [ApplicantProfileController::class, 'updateAcademicRecord']);
     $router->delete('/academic-records/:id',                 [ApplicantProfileController::class, 'deleteAcademicRecord']);
     $router->post('/academic-records/:id/set-primary',       [ApplicantProfileController::class, 'setPrimaryRecord']);
 

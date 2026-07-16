@@ -37,7 +37,7 @@ $router->group('/api/revaluations', function ($router) {
     // Staff review.
     $router->group('', function ($r) {
         $r->get('',       [RevaluationController::class, 'index']);
-        $r->put('/:id',   [RevaluationController::class, 'review']);
+        $r->post('/:id',   [RevaluationController::class, 'review']);
     }, [new MaybePermissionMiddleware([
         Permissions::MANAGE_REVALUATIONS,
     ])]);

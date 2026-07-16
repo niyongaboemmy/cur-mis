@@ -56,11 +56,12 @@ export const api = {
   post: <T>(url: string, body?: unknown, signal?: AbortSignal) =>
     apiClient.post<ApiResponse<T>>(url, body, { signal }).then((r) => r.data),
 
+  // Server does not support PUT/PATCH — these are sent as POST.
   put: <T>(url: string, body?: unknown, signal?: AbortSignal) =>
-    apiClient.put<ApiResponse<T>>(url, body, { signal }).then((r) => r.data),
+    apiClient.post<ApiResponse<T>>(url, body, { signal }).then((r) => r.data),
 
   patch: <T>(url: string, body?: unknown, signal?: AbortSignal) =>
-    apiClient.patch<ApiResponse<T>>(url, body, { signal }).then((r) => r.data),
+    apiClient.post<ApiResponse<T>>(url, body, { signal }).then((r) => r.data),
 
   delete: <T>(url: string, signal?: AbortSignal) =>
     apiClient.delete<ApiResponse<T>>(url, { signal }).then((r) => r.data),

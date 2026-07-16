@@ -69,7 +69,7 @@ $router->group('/api/admin', function ($router) {
         $router->get('',        [DocumentTypeController::class, 'index']);
         $router->post('',       [DocumentTypeController::class, 'create']);
         $router->get('/:id',    [DocumentTypeController::class, 'show']);
-        $router->put('/:id',    [DocumentTypeController::class, 'update']);
+        $router->post('/:id',    [DocumentTypeController::class, 'update']);
         $router->delete('/:id', [DocumentTypeController::class, 'delete']);
     }, [new PermissionMiddleware(Permissions::MANAGE_ADMISSION_REQUIREMENTS)]);
 
@@ -85,7 +85,7 @@ $router->group('/api/admin', function ($router) {
         );
 
         $router->get('/:id',    [AdmissionRequirementController::class, 'show']);
-        $router->put('/:id',    [AdmissionRequirementController::class, 'update']);
+        $router->post('/:id',    [AdmissionRequirementController::class, 'update']);
         $router->delete('/:id', [AdmissionRequirementController::class, 'delete']);
     }, [new PermissionMiddleware(Permissions::MANAGE_ADMISSION_REQUIREMENTS)]);
 
@@ -105,7 +105,7 @@ $router->group('/api/admin', function ($router) {
         $router->get('/:id',          [ApplicationAdminController::class, 'show']);
         $router->get('/:id/payment-slip', [ApplicationAdminController::class, 'downloadPaymentSlip']);
         $router->get('/:id/photo',        [ApplicationAdminController::class, 'downloadApplicantPhoto']);
-        $router->patch('/:id/status', [ApplicationAdminController::class, 'updateStatus']);
+        $router->post('/:id/status', [ApplicationAdminController::class, 'updateStatus']);
         $router->post('/:id/notes',   [ApplicationAdminController::class, 'addNote']);
         // Shared, visible "why pending" notes — readable by every registry
         // staff regardless of their campus scope.
@@ -114,10 +114,10 @@ $router->group('/api/admin', function ($router) {
         // Pre-enrollment check: is this applicant already a CUR student?
         $router->get('/:id/returning-check', [ApplicationAdminController::class, 'returningCheck']);
         // Hide / restore (Task 1.9)
-        $router->patch('/:id/hide',    [ApplicationAdminController::class, 'hideApplication']);
-        $router->patch('/:id/restore', [ApplicationAdminController::class, 'restoreApplication']);
+        $router->post('/:id/hide',    [ApplicationAdminController::class, 'hideApplication']);
+        $router->post('/:id/restore', [ApplicationAdminController::class, 'restoreApplication']);
         // Credit-transfer exemption-letter status (Task 1.11)
-        $router->patch('/:id/exemption-status', [ApplicationAdminController::class, 'setExemptionStatus']);
+        $router->post('/:id/exemption-status', [ApplicationAdminController::class, 'setExemptionStatus']);
         $router->post('/:id/enroll',  [AdmissionController::class, 'initiateEnrollmentByAppId']);
         $router->post('/:id/accept-offer', [AdmissionController::class, 'acceptOfferByAppId']);
     }, [new PermissionMiddleware(Permissions::MANAGE_STUDENT_APPLICATIONS)]);
@@ -131,7 +131,7 @@ $router->group('/api/admin', function ($router) {
             '/:application_id/documents',
             [DocumentVerificationController::class, 'getApplicationDocuments']
         );
-        $router->patch(
+        $router->post(
             '/:application_id/documents/:document_id',
             [DocumentVerificationController::class, 'verifyDocument']
         );
@@ -158,7 +158,7 @@ $router->group('/api/admin', function ($router) {
     $router->group('/merit', function ($router) {
         $router->post('/criteria', [MeritListController::class, 'saveCriteria']);
         $router->post('/generate', [MeritListController::class, 'generateMeritList']);
-        $router->patch('/publish', [MeritListController::class, 'publishMeritList']);
+        $router->post('/publish', [MeritListController::class, 'publishMeritList']);
     }, [new MaybePermissionMiddleware([
         Permissions::MANAGE_ADMISSIONS,
         Permissions::MANAGE_MERIT_LIST,
@@ -183,9 +183,9 @@ $router->group('/api/admin', function ($router) {
     $router->group('/intakes', function ($router) {
         $router->get('',               [IntakeController::class, 'index']);
         $router->post('',              [IntakeController::class, 'create']);
-        $router->put('/:id',           [IntakeController::class, 'update']);
+        $router->post('/:id',           [IntakeController::class, 'update']);
         $router->delete('/:id',        [IntakeController::class, 'delete']);
-        $router->patch('/:id/toggle',  [IntakeController::class, 'toggleActive']);
+        $router->post('/:id/toggle',  [IntakeController::class, 'toggleActive']);
     }, [new PermissionMiddleware(Permissions::MANAGE_ADMISSIONS)]);
 
 }, [AuthMiddleware::class]);

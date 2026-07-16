@@ -25,7 +25,7 @@ $router->group('/api/messages', function ($router) {
     $router->post('/drafts', [MessageController::class, 'saveDraft']);
 
     // Read receipt (single message)
-    $router->put('/messages/:id/read', [MessageController::class, 'markRead']);
+    $router->post('/messages/:id/read', [MessageController::class, 'markRead']);
 
     // Navbar badge + dropdown preview
     $router->get('/unread-count', [MessageController::class, 'unreadCount']);

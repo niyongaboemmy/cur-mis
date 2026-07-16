@@ -21,7 +21,7 @@ $router->group('/api/system', function ($router) {
 
 // Guidance videos — admins set the two public help-video URLs.
 $router->group('/api/system', function ($router) {
-    $router->put('/guidance-videos', [SystemBasicsController::class, 'saveGuidanceVideos']);
+    $router->post('/guidance-videos', [SystemBasicsController::class, 'saveGuidanceVideos']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_SETTINGS)]);
 
 // Public read for the apply / login pages (no auth required).

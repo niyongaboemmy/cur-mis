@@ -36,7 +36,7 @@ $router->group('/api/deliberation', function ($router) {
     // Write: session management (MANAGE_DELIBERATIONS)
     $router->group('/sessions', function ($r) {
         $r->post('',                [DeliberationController::class, 'createSession']);
-        $r->put('/:id',             [DeliberationController::class, 'updateSession']);
+        $r->post('/:id',             [DeliberationController::class, 'updateSession']);
         $r->post('/:id/finalize',   [DeliberationController::class, 'finalizeSession']);
     }, [new PermissionMiddleware(Permissions::MANAGE_DELIBERATIONS)]);
 }, [AuthMiddleware::class]);

@@ -23,10 +23,10 @@ $router->group('/api/hr/employees/:emp_id', function ($router) {
 // Write: MANAGE_HR_EMPLOYEES
 $router->group('/api/hr/employees/:emp_id', function ($router) {
     $router->post('/qualifications',       [StaffProfileController::class, 'storeQualification']);
-    $router->put('/qualifications/:id',    [StaffProfileController::class, 'updateQualification']);
+    $router->post('/qualifications/:id',    [StaffProfileController::class, 'updateQualification']);
     $router->delete('/qualifications/:id', [StaffProfileController::class, 'deleteQualification']);
 
     $router->post('/subjects',       [StaffProfileController::class, 'storeSubject']);
-    $router->put('/subjects/:id',    [StaffProfileController::class, 'updateSubject']);
+    $router->post('/subjects/:id',    [StaffProfileController::class, 'updateSubject']);
     $router->delete('/subjects/:id', [StaffProfileController::class, 'deleteSubject']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES)]);

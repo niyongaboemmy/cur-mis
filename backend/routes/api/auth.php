@@ -17,7 +17,7 @@ $router->post('/api/auth/verify-reset-otp',   [AuthController::class, 'verifyRes
 $router->post('/api/auth/reset-password',     [AuthController::class, 'resetPassword'],      [RateLimitMiddleware::class]);
 $router->post('/api/auth/logout',             [AuthController::class, 'logout'],             [AuthMiddleware::class]);
 $router->get('/api/auth/me',                  [AuthController::class, 'me'],                 [AuthMiddleware::class]);
-$router->put('/api/auth/me',                  [AuthController::class, 'updateMe'],           [AuthMiddleware::class]);
+$router->post('/api/auth/me',                  [AuthController::class, 'updateMe'],           [AuthMiddleware::class]);
 $router->get('/api/auth/me/photo',            [AuthController::class, 'downloadMyPhoto'],    [AuthMiddleware::class]);
 $router->post('/api/auth/me/photo',           [AuthController::class, 'uploadMyPhoto'],      [AuthMiddleware::class]);
 $router->post('/api/auth/change-password',    [AuthController::class, 'changePassword'],     [AuthMiddleware::class, RateLimitMiddleware::class]);

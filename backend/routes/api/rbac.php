@@ -20,7 +20,7 @@ $router->group('/api', function ($router) {
         $router->get('', [RoleController::class, 'index']);
         $router->post('', [RoleController::class, 'create']);
         $router->get('/:id', [RoleController::class, 'show']);
-        $router->put('/:id', [RoleController::class, 'update']);
+        $router->post('/:id', [RoleController::class, 'update']);
         $router->delete('/:id', [RoleController::class, 'destroy']);
         
         // Assign permissions to a role
@@ -33,11 +33,11 @@ $router->group('/api', function ($router) {
         
         $router->group('/categories', function ($router) {
             $router->post('', [PermissionController::class, 'createCategory']);
-            $router->put('/:id', [PermissionController::class, 'updateCategory']);
+            $router->post('/:id', [PermissionController::class, 'updateCategory']);
         });
 
         $router->post('', [PermissionController::class, 'createPermission']);
-        $router->put('/:id', [PermissionController::class, 'updatePermission']);
+        $router->post('/:id', [PermissionController::class, 'updatePermission']);
         $router->delete('/:id', [PermissionController::class, 'deletePermission']);
     }, [new PermissionMiddleware(Permissions::MANAGE_PERMISSIONS)]);
 

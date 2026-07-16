@@ -22,9 +22,9 @@ $router->group('/api/employees', function ($router) {
 // Write: requires MANAGE_HR_EMPLOYEES
 $router->group('/api/employees', function ($router) {
     $router->post('',                    [HrEmployeeController::class, 'create']);
-    $router->put('/:id',                 [HrEmployeeController::class, 'update']);
+    $router->post('/:id',                 [HrEmployeeController::class, 'update']);
     $router->delete('/:id',              [HrEmployeeController::class, 'delete']);
-    $router->patch('/:id/toggle-status', [HrEmployeeController::class, 'toggleStatus']);
+    $router->post('/:id/toggle-status', [HrEmployeeController::class, 'toggleStatus']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES)]);
 
 // Qualifications — read: VIEW_HR_EMPLOYEES
@@ -35,6 +35,6 @@ $router->group('/api/employees', function ($router) {
 // Qualifications — write: MANAGE_HR_EMPLOYEES
 $router->group('/api/employees', function ($router) {
     $router->post('/:id/qualifications',          [StaffQualificationController::class, 'create']);
-    $router->put('/:id/qualifications/:qid',      [StaffQualificationController::class, 'update']);
+    $router->post('/:id/qualifications/:qid',      [StaffQualificationController::class, 'update']);
     $router->delete('/:id/qualifications/:qid',   [StaffQualificationController::class, 'delete']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES)]);

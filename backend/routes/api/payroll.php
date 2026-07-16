@@ -32,7 +32,7 @@ $router->group('/api/hr/payroll', function ($router) {
     $router->post('',                [HrPayrollController::class, 'upsert']);
     $router->post('/import-excel',   [HrPayrollController::class, 'importFromExcel']);
     $router->post('/copy-period',    [HrPayrollController::class, 'copyPeriod']);
-    $router->patch('/:id/status',    [HrPayrollController::class, 'setStatus']);
+    $router->post('/:id/status',    [HrPayrollController::class, 'setStatus']);
     $router->delete('/:id',          [HrPayrollController::class, 'destroy']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_PAYROLL)]);
 
@@ -44,9 +44,9 @@ $router->group('/api/hr', function ($router) {
 
 // Payroll config: update rates + manage custom deductions
 $router->group('/api/hr', function ($router) {
-    $router->put('/config',                    [PayrollConfigController::class, 'update']);
+    $router->post('/config',                    [PayrollConfigController::class, 'update']);
     $router->post('/config/deductions',        [PayrollConfigController::class, 'addDeduction']);
-    $router->put('/config/deductions/:id',     [PayrollConfigController::class, 'updateDeduction']);
+    $router->post('/config/deductions/:id',     [PayrollConfigController::class, 'updateDeduction']);
     $router->delete('/config/deductions/:id',  [PayrollConfigController::class, 'deleteDeduction']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES)]);
 
@@ -70,6 +70,6 @@ $router->group('/api/hr/employees/:emp_id/deductions', function ($router) {
 // Per-employee deductions: write
 $router->group('/api/hr/employees/:emp_id/deductions', function ($router) {
     $router->post('',       [EmployeeDeductionController::class, 'store']);
-    $router->put('/:id',    [EmployeeDeductionController::class, 'update']);
+    $router->post('/:id',    [EmployeeDeductionController::class, 'update']);
     $router->delete('/:id', [EmployeeDeductionController::class, 'destroy']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_PAYROLL)]);

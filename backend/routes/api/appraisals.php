@@ -25,12 +25,12 @@ $router->group('/api/appraisals', function ($router) {
 // Periods — write (MANAGE only)
 $router->group('/api/appraisals', function ($router) {
     $router->post('/periods',                          [AppraisalController::class, 'createPeriod']);
-    $router->put('/periods/:id',                       [AppraisalController::class, 'updatePeriod']);
-    $router->patch('/periods/:id/status',              [AppraisalController::class, 'setPeriodStatus']);
+    $router->post('/periods/:id',                       [AppraisalController::class, 'updatePeriod']);
+    $router->post('/periods/:id/status',              [AppraisalController::class, 'setPeriodStatus']);
     $router->delete('/periods/:id',                    [AppraisalController::class, 'deletePeriod']);
     $router->post('/periods/:id/initiate',             [AppraisalController::class, 'initiate']);
     $router->post('/periods/:id/criteria',             [AppraisalController::class, 'createCriterion']);
-    $router->put('/periods/:id/criteria/:cid',         [AppraisalController::class, 'updateCriterion']);
+    $router->post('/periods/:id/criteria/:cid',         [AppraisalController::class, 'updateCriterion']);
     $router->delete('/periods/:id/criteria/:cid',      [AppraisalController::class, 'deleteCriterion']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_APPRAISALS)]);
 
@@ -42,7 +42,7 @@ $router->group('/api/appraisals', function ($router) {
 
 // Appraisal records — workflow (MANAGE only)
 $router->group('/api/appraisals', function ($router) {
-    $router->patch('/:id/self',       [AppraisalController::class, 'saveSelf']);
-    $router->patch('/:id/supervisor', [AppraisalController::class, 'saveSupervisor']);
-    $router->patch('/:id/hr',         [AppraisalController::class, 'saveHr']);
+    $router->post('/:id/self',       [AppraisalController::class, 'saveSelf']);
+    $router->post('/:id/supervisor', [AppraisalController::class, 'saveSupervisor']);
+    $router->post('/:id/hr',         [AppraisalController::class, 'saveHr']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_APPRAISALS)]);

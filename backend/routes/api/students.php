@@ -17,7 +17,7 @@ use App\Constants\Permissions;
 // the `/:id` matchers.
 $router->group('/api/students', function ($router) {
     $router->get('/me',                                 [StudentController::class, 'me']);
-    $router->put('/me',                                 [StudentController::class, 'updateMe']);
+    $router->post('/me',                                 [StudentController::class, 'updateMe']);
     $router->get('/me/photo',                           [StudentController::class, 'downloadMyPhoto']);
     $router->post('/me/photo',                          [StudentController::class, 'uploadMyPhoto']);
     $router->get('/me/documents',                       [StudentController::class, 'meDocuments']);
@@ -68,12 +68,12 @@ $router->group('/api/students', function ($router) {
     $router->post('/bulk-validate',      [StudentController::class, 'bulkValidate']);
     $router->post('/bulk-upload',        [StudentController::class, 'bulkUpload']);
     $router->post('',              [StudentController::class, 'create']);
-    $router->put('/:id',           [StudentController::class, 'update']);
+    $router->post('/:id',           [StudentController::class, 'update']);
     $router->delete('/:id',        [StudentController::class, 'delete']);
     $router->post('/:id/photo',    [StudentController::class, 'uploadPhoto']);
     // Task 1.13 — visa record write + registry officer assignment.
     $router->post('/:id/visa',           [StudentController::class, 'addVisaRecord']);
-    $router->patch('/:id/assign-registry', [StudentController::class, 'assignRegistryOfficer']);
+    $router->post('/:id/assign-registry', [StudentController::class, 'assignRegistryOfficer']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_STUDENTS)]);
 
 // Module exemptions — admin-only override that records a mark for a module

@@ -25,7 +25,7 @@ $router->group('/api/announcements', function ($router) {
     $router->group('', function ($r) {
         $r->get('/manage',  [AnnouncementController::class, 'index']);
         $r->post('',        [AnnouncementController::class, 'store']);
-        $r->put('/:id',     [AnnouncementController::class, 'update']);
+        $r->post('/:id',     [AnnouncementController::class, 'update']);
         $r->delete('/:id',  [AnnouncementController::class, 'destroy']);
     }, [new MaybePermissionMiddleware([
         Permissions::MANAGE_ANNOUNCEMENTS,

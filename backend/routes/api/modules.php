@@ -29,7 +29,7 @@ $router->group('/api/modules', function ($router) {
         $r->get('',                   [ModulesManagementController::class, 'listSchedules']);
         $r->post('/check-conflicts',  [ModulesManagementController::class, 'checkConflicts']);
         $r->post('',                  [ModulesManagementController::class, 'createSchedule']);
-        $r->put('/:id',               [ModulesManagementController::class, 'updateSchedule']);
+        $r->post('/:id',               [ModulesManagementController::class, 'updateSchedule']);
         $r->delete('/:id',            [ModulesManagementController::class, 'deleteSchedule']);
     }, [new PermissionMiddleware(Permissions::MANAGE_MODULE_SCHEDULES)]);
 
@@ -38,7 +38,7 @@ $router->group('/api/modules', function ($router) {
         $r->get('',          [ModulesManagementController::class, 'listAssignments']);
         $r->get('/workload', [ModulesManagementController::class, 'workloadSummary']);
         $r->post('',         [ModulesManagementController::class, 'createAssignment']);
-        $r->put('/:id',      [ModulesManagementController::class, 'updateAssignment']);
+        $r->post('/:id',      [ModulesManagementController::class, 'updateAssignment']);
         $r->delete('/:id',   [ModulesManagementController::class, 'deleteAssignment']);
     }, [new PermissionMiddleware(Permissions::MANAGE_MODULE_ASSIGNMENTS)]);
 
@@ -47,7 +47,7 @@ $router->group('/api/modules', function ($router) {
         $r->get('',        [ModulesManagementController::class, 'listRegistrations']);
         $r->post('',       [ModulesManagementController::class, 'registerStudentAdmin']);
         $r->post('/bulk',  [ModulesManagementController::class, 'bulkRegister']);
-        $r->put('/:id',    [ModulesManagementController::class, 'updateRegistration']);
+        $r->post('/:id',    [ModulesManagementController::class, 'updateRegistration']);
         $r->delete('/:id', [ModulesManagementController::class, 'deleteRegistration']);
     }, [new PermissionMiddleware(Permissions::MANAGE_MODULE_REGISTRATIONS)]);
 
@@ -66,6 +66,6 @@ $router->group('/api/modules', function ($router) {
         new MaybePermissionMiddleware([Permissions::MANAGE_MODULES, Permissions::VIEW_MY_MODULES]),
     ]);
     $router->post('',    [ModulesManagementController::class, 'createCatalog'], [new PermissionMiddleware(Permissions::MANAGE_MODULES)]);
-    $router->put('/:id', [ModulesManagementController::class, 'updateCatalog'], [new PermissionMiddleware(Permissions::MANAGE_MODULES)]);
+    $router->post('/:id', [ModulesManagementController::class, 'updateCatalog'], [new PermissionMiddleware(Permissions::MANAGE_MODULES)]);
     $router->delete('/:id', [ModulesManagementController::class, 'deleteCatalog'], [new PermissionMiddleware(Permissions::MANAGE_MODULES)]);
 }, [AuthMiddleware::class]);

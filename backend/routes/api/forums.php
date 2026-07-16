@@ -38,9 +38,9 @@ $router->group('/api/forums', function ($router) {
     // Moderation — MODERATE_FORUMS.
     $router->group('', function ($r) {
         $r->post('/categories',        [ForumController::class, 'createCategory']);
-        $r->put('/categories/:id',     [ForumController::class, 'updateCategory']);
+        $r->post('/categories/:id',     [ForumController::class, 'updateCategory']);
         $r->delete('/categories/:id',  [ForumController::class, 'deleteCategory']);
-        $r->put('/threads/:id',        [ForumController::class, 'updateThread']);
+        $r->post('/threads/:id',        [ForumController::class, 'updateThread']);
     }, [new MaybePermissionMiddleware([
         Permissions::MODERATE_FORUMS,
     ])]);

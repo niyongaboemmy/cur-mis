@@ -21,7 +21,7 @@ $router->group('/api/grades', function ($router) {
     // Grading scale — management.
     $router->group('', function ($r) {
         $r->post('/scales',       [GradeController::class, 'createScale']);
-        $r->put('/scales/:id',    [GradeController::class, 'updateScale']);
+        $r->post('/scales/:id',    [GradeController::class, 'updateScale']);
         $r->delete('/scales/:id', [GradeController::class, 'deleteScale']);
     }, [new MaybePermissionMiddleware([
         Permissions::MANAGE_GRADING_SCALES,

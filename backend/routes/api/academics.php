@@ -17,16 +17,16 @@ $router->group('/api/academic', function ($router) {
     // Years
     $router->get('/years',           [AcademicController::class, 'listYears']); // Viewable by all authenticated
     $router->post('/years',          [AcademicController::class, 'createYear'],   [new PermissionMiddleware(Permissions::MANAGE_ACADEMIC_YEARS)]);
-    $router->put('/years/:id',       [AcademicController::class, 'updateYear'],   [new PermissionMiddleware(Permissions::MANAGE_ACADEMIC_YEARS)]);
+    $router->post('/years/:id',       [AcademicController::class, 'updateYear'],   [new PermissionMiddleware(Permissions::MANAGE_ACADEMIC_YEARS)]);
     $router->delete('/years/:id',    [AcademicController::class, 'deleteYear'],   [new PermissionMiddleware(Permissions::MANAGE_ACADEMIC_YEARS)]);
-    $router->patch('/years/:id/activate', [AcademicController::class, 'activateYear'], [new PermissionMiddleware(Permissions::MANAGE_ACADEMIC_YEARS)]);
+    $router->post('/years/:id/activate', [AcademicController::class, 'activateYear'], [new PermissionMiddleware(Permissions::MANAGE_ACADEMIC_YEARS)]);
 
     // Terms
     $router->get('/terms',           [AcademicController::class, 'listTerms']);
     $router->post('/terms',          [AcademicController::class, 'createTerm'],   [new PermissionMiddleware(Permissions::MANAGE_ACADEMIC_TERMS)]);
-    $router->put('/terms/:id',       [AcademicController::class, 'updateTerm'],   [new PermissionMiddleware(Permissions::MANAGE_ACADEMIC_TERMS)]);
+    $router->post('/terms/:id',       [AcademicController::class, 'updateTerm'],   [new PermissionMiddleware(Permissions::MANAGE_ACADEMIC_TERMS)]);
     $router->delete('/terms/:id',    [AcademicController::class, 'deleteTerm'],   [new PermissionMiddleware(Permissions::MANAGE_ACADEMIC_TERMS)]);
-    $router->patch('/terms/:id/activate', [AcademicController::class, 'activateTerm'], [new PermissionMiddleware(Permissions::MANAGE_ACADEMIC_TERMS)]);
+    $router->post('/terms/:id/activate', [AcademicController::class, 'activateTerm'], [new PermissionMiddleware(Permissions::MANAGE_ACADEMIC_TERMS)]);
 }, [AuthMiddleware::class]);
 
 // 2. Academics Management (Granular Permissions)
@@ -63,7 +63,7 @@ $router->group('/api/academics-management/modules', function (Core\Router $r) {
     $r->get('/:id',                [AcademicsManagementController::class, 'show']);
     $r->post('',                   [AcademicsManagementController::class, 'create']);
     $r->post('/bulk-import',       [AcademicsManagementController::class, 'bulkImport']);
-    $r->put('/:id',                [AcademicsManagementController::class, 'update']);
+    $r->post('/:id',                [AcademicsManagementController::class, 'update']);
     $r->delete('/:id',             [AcademicsManagementController::class, 'delete']);
     $r->post('/program-import',    [AcademicsManagementController::class, 'programImport']);
     $r->post('/curriculum-import', [AcademicsManagementController::class, 'curriculumImport']);
@@ -105,7 +105,7 @@ foreach ($entityPermissions as $entity => $permission) {
         $r->get('/:id',          [AcademicsManagementController::class, 'show']);
         $r->post('',             [AcademicsManagementController::class, 'create']);
         $r->post('/bulk-import', [AcademicsManagementController::class, 'bulkImport']);
-        $r->put('/:id',          [AcademicsManagementController::class, 'update']);
+        $r->post('/:id',          [AcademicsManagementController::class, 'update']);
         $r->delete('/:id',        [AcademicsManagementController::class, 'delete']);
     }, [AuthMiddleware::class, new PermissionMiddleware($permission)]);
 }
@@ -115,5 +115,5 @@ foreach ($entityPermissions as $entity => $permission) {
 // catalogue is the same one assigning campuses.
 $router->group('/api/academics-management/options', function (Core\Router $r) {
     $r->get('/:id/campuses', [AcademicsManagementController::class, 'listOptionCampuses']);
-    $r->put('/:id/campuses', [AcademicsManagementController::class, 'setOptionCampuses']);
+    $r->post('/:id/campuses', [AcademicsManagementController::class, 'setOptionCampuses']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_OPTIONS)]);
