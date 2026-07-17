@@ -131,14 +131,14 @@ export default function ExamAttendanceModal({ examId, onClose }: Props) {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.97, y: 8 }}
             transition={{ duration: 0.18, ease: 'easeOut' }}
-            className="relative z-10 w-full max-w-5xl bg-white rounded-xl shadow-2xl flex flex-col max-h-[92vh]"
+            className="relative z-10 w-full max-w-5xl bg-white rounded-xl shadow-2xl flex flex-col max-h-[92vh] dark:bg-ink-800"
             role="dialog"
             aria-modal="true"
             aria-label="Exam attendance sheet"
           >
             {/* Modal toolbar — hidden in the print view */}
-            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 flex-shrink-0">
-              <h2 className="text-[14.5px] font-semibold text-gray-900 inline-flex items-center gap-2">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 flex-shrink-0 dark:border-ink-700">
+              <h2 className="text-[14.5px] font-semibold text-gray-900 inline-flex items-center gap-2 dark:text-white">
                 <Users className="w-4 h-4" /> Exam attendance list
               </h2>
               <div className="flex items-center gap-2">
@@ -160,7 +160,7 @@ export default function ExamAttendanceModal({ examId, onClose }: Props) {
                 </button>
                 <button
                   onClick={onClose}
-                  className="rounded-md p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                  className="rounded-md p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors dark:text-ink-400 dark:hover:text-ink-200 dark:hover:bg-ink-700"
                   aria-label="Close"
                 >
                   <X className="h-5 w-5" />
@@ -168,13 +168,13 @@ export default function ExamAttendanceModal({ examId, onClose }: Props) {
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-5 py-4 bg-gray-50">
+            <div className="flex-1 overflow-y-auto px-5 py-4 bg-gray-50 dark:bg-ink-900/40">
               {attQ.isLoading ? (
-                <div className="py-16 flex items-center justify-center text-gray-500 text-[13px]">
+                <div className="py-16 flex items-center justify-center text-gray-500 text-[13px] dark:text-ink-400">
                   <Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading attendance…
                 </div>
               ) : !header ? (
-                <div className="py-16 text-center text-gray-500 text-[13px]">
+                <div className="py-16 text-center text-gray-500 text-[13px] dark:text-ink-400">
                   Could not load this exam.
                 </div>
               ) : (

@@ -58,7 +58,7 @@ class RoleController extends BaseController
             $this->error($response, 'Validation failed', 422, $errors);
         }
 
-        if ($this->roleModel->exists('name', $data['name'])) {
+        if ($this->roleModel->findByNameCaseInsensitive($data['name'])) {
             $this->error($response, 'Role name already exists.', 409);
         }
 
@@ -77,7 +77,8 @@ class RoleController extends BaseController
         $id = (int)$request->param('id');
         $data = $request->body();
 
-        if (!$this->roleModel->find($id)) {
+        $role = $this->roleModel->find($id);
+        if (!$role) {
             $this->error($response, 'Role not found', 404);
         }
 
@@ -89,8 +90,13 @@ class RoleController extends BaseController
             $this->error($response, 'Validation failed', 422, $errors);
         }
 
-        // check unique excluding self
-        $existing = $this->roleModel->findBy('name', $data['name']);
+        $isRename = strcasecmp((string)$role['name'], (string)$data['name']) !== 0;
+        if ($isRename && (int)($role['is_system'] ?? 0) === 1) {
+            $this->error($response, 'System roles cannot be renamed.', 403);
+        }
+
+        // check unique excluding self, case-insensitive
+        $existing = $this->roleModel->findByNameCaseInsensitive($data['name']);
         if ($existing && $existing['id'] != $id) {
             $this->error($response, 'Role name already exists.', 409);
         }
@@ -113,11 +119,17 @@ class RoleController extends BaseController
     {
         $id = (int)$request->param('id');
 
-        if (!$this->roleModel->find($id)) {
+        $role = $this->roleModel->find($id);
+        if (!$role) {
             $this->error($response, 'Role not found', 404);
         }
 
-        // Cannot delete Superadmin easily if we want to protect it, but for now standard delete.
+        // Finding A (RBAC_PERMISSIONS_AUDIT.md): system roles are load-bearing
+        // for the permission model itself and must never be deletable via the API.
+        if ((int)($role['is_system'] ?? 0) === 1) {
+            $this->error($response, 'System roles cannot be deleted.', 403);
+        }
+
         $this->roleModel->delete($id);
         $actor = (array) $request->param('_auth_user');
         SystemLogService::log('DELETE', 'ROLES', "Deleted role ID {$id}.", $id, 'role', null, $actor ?: null);

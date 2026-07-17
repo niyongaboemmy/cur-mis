@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Controllers\SystemBasicsController;
 use App\Middleware\AuthMiddleware;
 use App\Middleware\PermissionMiddleware;
+use App\Middleware\MaybePermissionMiddleware;
 use App\Constants\Permissions;
 
 /**
@@ -13,7 +14,10 @@ use App\Constants\Permissions;
 
 $router->group('/api/system', function ($router) {
     $router->get('/basics', [SystemBasicsController::class, 'getBasics']);
-}, [AuthMiddleware::class, new PermissionMiddleware(Permissions::VIEW_SYSTEM_BASICS)]);
+}, [AuthMiddleware::class, new MaybePermissionMiddleware([
+    Permissions::VIEW_SYSTEM_BASICS,
+    Permissions::VIEW_SETTINGS,
+])]);
 
 // Guidance videos — admins set the two public help-video URLs.
 $router->group('/api/system', function ($router) {
@@ -27,5 +31,5 @@ $router->get('/api/portal/application-fee',    [SystemBasicsController::class, '
 // Application fee → finance fee type mapping settings.
 $router->group('/api/system', function ($router) {
     $router->get('/fee-mapping', [SystemBasicsController::class, 'getFeeMappingSettings']);
-    $router->put('/fee-mapping', [SystemBasicsController::class, 'saveFeeMappingSettings']);
+    $router->post('/fee-mapping', [SystemBasicsController::class, 'saveFeeMappingSettings']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_SETTINGS)]);

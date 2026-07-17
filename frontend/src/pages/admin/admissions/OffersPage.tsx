@@ -10,6 +10,8 @@ import { offerService, intakeService } from '@/services/admissionService'
 import { academicService } from '@/services/academicService'
 import { academicsMgmtService } from '@/services/academicsMgmtService'
 import AdmissionLetter from '@/components/admission/AdmissionLetter'
+import { PERMISSIONS } from '@/constants'
+import { usePermission } from '@/utils/permissions'
 
 const STATUS_TONE: Record<string, string> = {
   pending:  'chip-warning',
@@ -19,6 +21,7 @@ const STATUS_TONE: Record<string, string> = {
 }
 
 export default function OffersPage() {
+  const canManage = usePermission(PERMISSIONS.MANAGE_ADMISSIONS)
   const qc = useQueryClient()
   const [status, setStatus] = useState('')
   const [newOpen, setNewOpen] = useState(false)
@@ -134,13 +137,17 @@ export default function OffersPage() {
         </select>
 
         {/* Bulk Send Letters */}
-        <button className="btn-secondary btn-sm border-emerald-300 text-emerald-700 dark:text-emerald-400" onClick={() => setBulkSendOpen(true)}>
-          <MailCheck className="w-3.5 h-3.5" /> Bulk Send Letters
-        </button>
+        {canManage && (
+          <button className="btn-secondary btn-sm border-emerald-300 text-emerald-700 dark:text-emerald-400" onClick={() => setBulkSendOpen(true)}>
+            <MailCheck className="w-3.5 h-3.5" /> Bulk Send Letters
+          </button>
+        )}
 
-        <button className="btn-secondary btn-sm" onClick={() => setBulkOpen(true)}>
-          <Layers className="w-3.5 h-3.5" /> Bulk Offer
-        </button>
+        {canManage && (
+          <button className="btn-secondary btn-sm" onClick={() => setBulkOpen(true)}>
+            <Layers className="w-3.5 h-3.5" /> Bulk Offer
+          </button>
+        )}
       </div>
 
       {/* Table */}
@@ -209,7 +216,7 @@ export default function OffersPage() {
                         </a>
 
                         {/* Send Letter */}
-                        {['pending', 'accepted'].includes(o.status) && (
+                        {canManage && ['pending', 'accepted'].includes(o.status) && (
                           <button
                             className="btn-secondary btn-sm border-emerald-300 text-emerald-700 dark:text-emerald-400"
                             title={o.letter_sent_at ? 'Resend Letter' : 'Send Letter'}
@@ -225,7 +232,7 @@ export default function OffersPage() {
                         )}
 
                         {/* Enroll */}
-                        {o.status === 'accepted' && !o.enrollment_initiated && (
+                        {canManage && o.status === 'accepted' && !o.enrollment_initiated && (
                           <button
                             className="btn-primary btn-sm"
                             onClick={() => enroll.mutate(o.id)}
@@ -272,7 +279,7 @@ export default function OffersPage() {
         }
       >
         {viewingOffer && (
-          <div className="bg-slate-100 p-6 rounded-xl overflow-y-auto max-h-[70vh]">
+          <div className="bg-slate-100 dark:bg-ink-900 p-6 rounded-xl overflow-y-auto max-h-[70vh]">
             <AdmissionLetter offer={viewingOffer} />
           </div>
         )}

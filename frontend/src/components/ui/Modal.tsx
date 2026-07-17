@@ -66,7 +66,7 @@ export default function Modal({
             exit={{ opacity: 0, scale: 0.95, y: 8 }}
             transition={{ duration: 0.2, ease: 'easeOut' }}
             className={cn(
-              'relative z-10 w-full bg-white rounded-xl shadow-2xl flex flex-col max-h-[90vh]',
+              'relative z-10 w-full bg-white dark:bg-ink-800 rounded-xl shadow-2xl flex flex-col max-h-[90vh]',
               sizeClasses[size],
               className,
             )}
@@ -76,11 +76,11 @@ export default function Modal({
           >
             {/* Header */}
             {(title != null) && (
-              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0">
-                <h2 id="modal-title" className="text-lg font-semibold text-gray-900">{title}</h2>
+              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-ink-700 flex-shrink-0">
+                <h2 id="modal-title" className="text-lg font-semibold text-gray-900 dark:text-white">{title}</h2>
                 <button
                   onClick={onClose}
-                  className="rounded-md p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                  className="rounded-md p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:text-ink-500 dark:hover:text-ink-300 dark:hover:bg-ink-700 transition-colors"
                   aria-label="Close modal"
                 >
                   <X className="h-5 w-5" />
@@ -93,7 +93,7 @@ export default function Modal({
 
             {/* Footer */}
             {footer && (
-              <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-end gap-3 flex-shrink-0 bg-gray-50 rounded-b-xl">
+              <div className="px-6 py-4 border-t border-gray-200 dark:border-ink-700 flex items-center justify-end gap-3 flex-shrink-0 bg-gray-50 dark:bg-ink-900/40 rounded-b-xl">
                 {footer}
               </div>
             )}

@@ -7,8 +7,11 @@ import {
 import { sponsorService } from '@/services/financeService'
 import toast from 'react-hot-toast'
 import type { Sponsor } from '@/types/finance'
+import { PERMISSIONS } from '@/constants'
+import { usePermission } from '@/utils/permissions'
 
 export default function SponsorsPage() {
+  const canManage = usePermission(PERMISSIONS.MANAGE_FINANCE)
   const queryClient = useQueryClient()
   const [searchTerm, setSearchTerm] = useState('')
   const [isAdding, setIsAdding] = useState(false)
@@ -62,13 +65,15 @@ export default function SponsorsPage() {
             <p className="text-sm text-ink-500">Manage corporate and individual sponsors linked to bursaries</p>
           </div>
         </div>
-        <button 
-          onClick={() => setIsAdding(true)}
-          className="btn btn-primary flex items-center gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          Add New Sponsor
-        </button>
+        {canManage && (
+          <button
+            onClick={() => setIsAdding(true)}
+            className="btn btn-primary flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            Add New Sponsor
+          </button>
+        )}
       </header>
 
       {/* Main Content */}
@@ -103,12 +108,14 @@ export default function SponsorsPage() {
                   <div className="flex justify-between items-start mb-3">
                     <h3 className="font-bold text-ink-900 dark:text-ink-50 line-clamp-1">{s.name}</h3>
                     <div className="flex items-center gap-1">
-                      <button 
-                        onClick={() => handleEdit(s)}
-                        className="p-1.5 text-ink-400 hover:text-brand hover:bg-brand/5 rounded-md transition-colors"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
+                      {canManage && (
+                        <button
+                          onClick={() => handleEdit(s)}
+                          className="p-1.5 text-ink-400 hover:text-brand hover:bg-brand/5 rounded-md transition-colors"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                       <button className="p-1.5 text-ink-400 hover:bg-ink-50 rounded-md transition-colors">
                         <MoreVertical className="w-3.5 h-3.5" />
                       </button>
@@ -219,7 +226,7 @@ export default function SponsorsPage() {
                 </button>
               </div>
             </form>
-          ) : (
+          ) : canManage ? (
             <div className="bg-brand/5 dark:bg-brand/10 p-6 rounded-xl border border-brand/20 border-dashed text-center space-y-3">
               <div className="p-3 bg-brand/20 text-brand rounded-full w-fit mx-auto">
                 <ShieldCheck className="w-8 h-8" />
@@ -228,14 +235,14 @@ export default function SponsorsPage() {
               <p className="text-sm text-ink-600 dark:text-ink-400 px-4">
                 Sponsors are required before you can record certain types of bursaries.
               </p>
-              <button 
+              <button
                 onClick={() => setIsAdding(true)}
                 className="btn btn-primary w-full py-2.5 mt-2"
               >
                 Get Started
               </button>
             </div>
-          )}
+          ) : null}
         </div>
       </div>
     </div>

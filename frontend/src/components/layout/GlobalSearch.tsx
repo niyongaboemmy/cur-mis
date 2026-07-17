@@ -24,6 +24,7 @@ import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
 import { PERMISSIONS } from "@/constants";
+import { isSuperadmin } from "@/utils/permissions";
 import { api } from "@/services/api";
 import { useDebounce } from "@/hooks/useDebounce";
 
@@ -520,7 +521,7 @@ export default function GlobalSearch() {
   const hasAccess = useCallback(
     (perms?: string[]) => {
       if (!perms || perms.length === 0) return true;
-      if (user?.role === "superadmin") return true;
+      if (isSuperadmin(user)) return true;
       return perms.some((p) => (user?.permissions ?? []).includes(p));
     },
     [user],

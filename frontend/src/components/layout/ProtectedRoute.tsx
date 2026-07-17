@@ -1,5 +1,6 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
+import { isSuperadmin } from '@/utils/permissions'
 
 /**
  * Route guard — redirects unauthenticated users to /login.
@@ -42,7 +43,7 @@ export default function ProtectedRoute({ requiredPermissions, requiredRoles }: P
     }
   }
 
-  if (requiredPermissions && !['superadmin', 'admin'].includes(user?.role ?? '')) {
+  if (requiredPermissions && !isSuperadmin(user)) {
     const required  = Array.isArray(requiredPermissions) ? requiredPermissions : [requiredPermissions]
     const userPerms = user?.permissions || []
 

@@ -33,6 +33,9 @@ class Permissions
     public const MANAGE_MODULES = 'MANAGE_MODULES';
     public const MANAGE_SCHOOLS = 'MANAGE_SCHOOLS';
     public const MANAGE_CAMPUSES = 'MANAGE_CAMPUSES';
+    // Reserved for a future dedicated timetable module (RBAC_IMPLEMENTATION_PLAN.md
+    // Phase 3) — no timetable route/page exists yet; scheduling today lives
+    // under MANAGE_MODULE_SCHEDULES instead.
     public const VIEW_TIMETABLE = 'VIEW_TIMETABLE';
     public const MANAGE_TIMETABLE = 'MANAGE_TIMETABLE';
 
@@ -84,6 +87,10 @@ class Permissions
     public const MANAGE_MERIT_LIST = 'MANAGE_MERIT_LIST';
 
     // Examinations
+    // VIEW_EXAMS/MANAGE_EXAMS: reserved for a future dedicated exam-scheduling
+    // module (RBAC_IMPLEMENTATION_PLAN.md Phase 3) — today's exam-adjacent
+    // features (deliberation, grading, module marks) are gated by their own
+    // specific slugs below, not these.
     public const VIEW_EXAMS = 'VIEW_EXAMS';
     public const MANAGE_EXAMS = 'MANAGE_EXAMS';
     public const MANAGE_REVALUATIONS = 'MANAGE_REVALUATIONS';
@@ -104,7 +111,11 @@ class Permissions
     // Document Generation
     public const GENERATE_DOCUMENTS = 'GENERATE_DOCUMENTS';
 
-    // Applicant self-service
+    // Applicant self-service. Not route-gated: the applicant profile-update
+    // endpoint (routes/api/applicant.php) is scoped by ApplicantMiddleware's
+    // identity check instead, which is stricter than any RBAC grant could be
+    // (it ties the row to the JWT's own user ID). Reserved in case a staff-
+    // facing "manage own profile" screen is added later.
     public const MANAGE_OWN_PROFILE = 'MANAGE_OWN_PROFILE';
 
     // Messaging

@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { PERMISSIONS } from "@/constants";
+import { isSuperadmin } from "@/utils/permissions";
 import { applicantService } from "@/services/admissionService";
 import type { ApplicationStatus } from "@/types/admission";
 
@@ -271,7 +272,7 @@ export default function WelcomePage() {
   const role = user?.role ?? "";
   const userPerms = user?.permissions ?? [];
   const isApplicant = role === "applicant" || user?.is_applicant;
-  const isSuperadmin = role === "superadmin";
+  const isSuper = isSuperadmin(user);
 
   // Hooks must run unconditionally — all useMemo calls before any early return.
   const firstName = useMemo(
@@ -291,10 +292,10 @@ export default function WelcomePage() {
       // No permission requirement → universally visible
       if (!qa.permissions || qa.permissions.length === 0) return true;
       // Superadmin sees every permission-gated card; everyone else needs a match
-      if (isSuperadmin) return true;
+      if (isSuper) return true;
       return qa.permissions.some((p) => userPerms.includes(p));
     });
-  }, [role, userPerms, isSuperadmin]);
+  }, [role, userPerms, isSuper]);
 
   // Early return AFTER all hooks so Rules of Hooks are satisfied.
   if (isApplicant) {

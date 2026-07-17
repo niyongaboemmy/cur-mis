@@ -29,6 +29,8 @@ import type {
 import type { Student } from "@/types/academic";
 import toast from "react-hot-toast";
 import ModalPortal from "@/components/ui/ModalPortal";
+import { PERMISSIONS } from "@/constants";
+import { usePermission } from "@/utils/permissions";
 
 const EMPTY_FORM: CreateRefundPayload = {
   student_id: "",
@@ -175,10 +177,12 @@ function RefundDetailModal({
   refund,
   onClose,
   onReview,
+  canManage,
 }: {
   refund: FeeRefund
   onClose: () => void
   onReview: () => void
+  canManage: boolean
 }) {
   const statusConfig = {
     processed: { icon: CheckCircle, label: 'Processed', cls: 'text-emerald-600 bg-emerald-50 border-emerald-200' },
@@ -284,7 +288,7 @@ function RefundDetailModal({
         {/* Footer */}
         <div className="px-6 pb-6 flex gap-3">
           <button onClick={onClose} className="btn btn-secondary flex-1">Close</button>
-          {refund.status === 'pending' && (
+          {refund.status === 'pending' && canManage && (
             <button onClick={onReview} className="btn btn-primary flex-1">
               Review Refund
             </button>
@@ -454,6 +458,7 @@ function ActionModal({
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function RefundsPage() {
+  const canManage = usePermission(PERMISSIONS.MANAGE_FINANCE);
   const queryClient = useQueryClient();
   const [studentId, setStudentId] = useState("");
   const [status, setStatus] = useState<RefundStatus | "">("");
@@ -554,13 +559,15 @@ export default function RefundsPage() {
             </p>
           </div>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="btn btn-primary flex items-center gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          Record New Refund
-        </button>
+        {canManage && (
+          <button
+            onClick={() => setShowForm(true)}
+            className="btn btn-primary flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            Record New Refund
+          </button>
+        )}
       </header>
 
       {/* Filters */}
@@ -742,6 +749,7 @@ export default function RefundsPage() {
           refund={viewRefund}
           onClose={() => setViewRefund(null)}
           onReview={() => { setActionRefund(viewRefund); setViewRefund(null) }}
+          canManage={canManage}
         />
       )}
 

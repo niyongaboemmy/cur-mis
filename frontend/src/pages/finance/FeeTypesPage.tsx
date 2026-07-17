@@ -6,6 +6,8 @@ import { feeTypeService } from '@/services/financeService'
 import type { FeeTypeRecord, CreateFeeTypePayload, UpdateFeeTypePayload } from '@/types/finance'
 import ModalPortal from '@/components/ui/ModalPortal'
 import FeeMappingPanel from './FeeMappingPanel'
+import { PERMISSIONS } from '@/constants'
+import { usePermission } from '@/utils/permissions'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -22,6 +24,7 @@ const EMPTY: FormState = { code: '', label: '', description: '', is_active: true
 // ── FeeTypesPage ──────────────────────────────────────────────────────────────
 
 export default function FeeTypesPage() {
+  const canManage = usePermission(PERMISSIONS.MANAGE_FINANCE)
   const qc = useQueryClient()
   const [search, setSearch]         = useState('')
   const [isOpen, setIsOpen]         = useState(false)
@@ -145,10 +148,12 @@ export default function FeeTypesPage() {
             <p className="text-xs text-ink-500">Manage categories used to classify fees across the system.</p>
           </div>
         </div>
-        <button onClick={openCreate} className="btn btn-primary flex items-center gap-2 text-sm">
-          <Plus className="w-4 h-4" />
-          New Fee Type
-        </button>
+        {canManage && (
+          <button onClick={openCreate} className="btn btn-primary flex items-center gap-2 text-sm">
+            <Plus className="w-4 h-4" />
+            New Fee Type
+          </button>
+        )}
       </div>
 
       {/* Modal */}
@@ -352,23 +357,25 @@ export default function FeeTypesPage() {
                           </span>
                         </td>
                         <td className="px-5 py-3.5 text-right">
-                          <div className="flex justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button
-                              onClick={() => openEdit(t)}
-                              className="p-1.5 text-brand hover:bg-brand/10 rounded-md transition-colors"
-                              title="Edit"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => handleDelete(t)}
-                              disabled={inUse > 0}
-                              className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                              title={inUse > 0 ? 'In use — cannot delete' : 'Delete'}
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
+                          {canManage && (
+                            <div className="flex justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button
+                                onClick={() => openEdit(t)}
+                                className="p-1.5 text-brand hover:bg-brand/10 rounded-md transition-colors"
+                                title="Edit"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDelete(t)}
+                                disabled={inUse > 0}
+                                className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                                title={inUse > 0 ? 'In use — cannot delete' : 'Delete'}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     )

@@ -17,11 +17,13 @@ import {
   CalendarClock,
   PiggyBank,
   GraduationCap,
+  Users,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useQuery } from "@tanstack/react-query";
 import { paymentService } from "@/services/financeService";
 import { PERMISSIONS } from "@/constants/permissions";
+import { isSuperadmin } from "@/utils/permissions";
 
 const TABS = [
   {
@@ -58,6 +60,13 @@ const TABS = [
     icon: GraduationCap,
     end: false,
     permissions: [PERMISSIONS.VIEW_FINANCE_STRUCTURES],
+  },
+  {
+    to: "/finance/students",
+    label: "Student Directory",
+    icon: Users,
+    end: false,
+    permissions: [PERMISSIONS.VIEW_STUDENT_DIRECTORY_FINANCE],
   },
   {
     to: "/finance/fee-types",
@@ -162,7 +171,7 @@ const TABS = [
 export default function FinanceHub() {
   const user = useAuthStore((s) => s.user);
   const perms = user?.permissions ?? [];
-  const isSuper = user?.role === "superadmin";
+  const isSuper = isSuperadmin(user);
 
   const visible = TABS.filter(
     (t) => isSuper || t.permissions.some((p) => perms.includes(p)),

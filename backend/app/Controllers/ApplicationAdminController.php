@@ -13,6 +13,7 @@ use App\Models\ApplicationPendingNoteModel;
 use App\Models\UserCampusAssignmentModel;
 use App\Services\ApplicationService;
 use App\Services\SystemLogService;
+use App\Services\AuthService;
 use App\Helpers\ValidationHelper;
 
 class ApplicationAdminController extends BaseController
@@ -26,9 +27,6 @@ class ApplicationAdminController extends BaseController
 
     /** Application statuses that are considered final (cannot transition from). */
     private const FINAL_STATUSES = ['enrolled', 'offer_declined'];
-
-    /** Roles that bypass campus scoping (see all applications). */
-    private const UNSCOPED_ROLES = ['superadmin', 'admin'];
 
     public function __construct()
     {
@@ -73,9 +71,9 @@ class ApplicationAdminController extends BaseController
             }
         }
         if (!$enforce) {
-            // Legacy behaviour: admin/superadmin bypass; anyone else with
+            // Legacy behaviour: superadmin bypass; anyone else with
             // assignments gets scoped automatically.
-            if (in_array($role, self::UNSCOPED_ROLES, true)) {
+            if (AuthService::isSuperadmin($authUser)) {
                 return null;
             }
             if ($userId === 0) {

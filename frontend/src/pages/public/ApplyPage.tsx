@@ -572,7 +572,7 @@ export default function ApplyPage() {
             <h2 className="text-[20px] font-bold text-ink-900 dark:text-white">
               You already have an active application
             </h2>
-            <p className="text-[13.5px] text-ink-500 mt-2 leading-relaxed">
+            <p className="text-[13.5px] text-ink-500 dark:text-ink-400 mt-2 leading-relaxed">
               Your application{' '}
               <span className="font-mono font-semibold text-brand">
                 {blockingApp.application_number}
@@ -616,7 +616,7 @@ export default function ApplyPage() {
                     className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-semibold ${
                       done ? 'bg-emerald-500 text-white'
                            : current ? 'bg-brand text-white'
-                                     : 'bg-ink-100 text-ink-500'
+                                     : 'bg-ink-100 dark:bg-ink-700 text-ink-500 dark:text-ink-400'
                     }`}
                   >
                     {done ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Icon className="w-3.5 h-3.5" />}
@@ -702,7 +702,7 @@ export default function ApplyPage() {
         )}
 
         {/* Always-visible bottom nav: Previous + Continue/Submit. */}
-        <div className="flex justify-between items-center pt-6 border-t border-ink-100 gap-3 flex-wrap">
+        <div className="flex justify-between items-center pt-6 border-t border-ink-100 dark:border-ink-700 gap-3 flex-wrap">
           <button
             type="button"
             onClick={goPrev}
@@ -776,8 +776,8 @@ function Shell({ children }: { children: React.ReactNode }) {
   const applyUrl = videosQ.data?.data?.video_application_guide_url ?? '';
 
   return (
-    <div className="min-h-screen bg-slate-50/50">
-      <header className="bg-white border-b border-ink-100 py-4 px-4 sm:px-6 sticky top-0 z-50">
+    <div className="min-h-screen bg-slate-50/50 dark:bg-ink-900">
+      <header className="bg-white dark:bg-ink-800 border-b border-ink-100 dark:border-ink-700 py-4 px-4 sm:px-6 sticky top-0 z-50">
         <div className="w-full max-w-7xl mx-auto flex items-center justify-between">
           <Logo />
           <div className="flex items-center gap-4">
@@ -793,19 +793,19 @@ function Shell({ children }: { children: React.ReactNode }) {
                   <PlayCircle className="w-4 h-4" />
                   Watch: How to apply
                 </a>
-                <div className="w-px h-4 bg-ink-200" />
+                <div className="w-px h-4 bg-ink-200 dark:bg-ink-700" />
               </>
             )}
             {isAuthenticated && user ? (
               <div className="flex items-center gap-3">
-                <span className="text-[13px] font-medium text-ink-900">
+                <span className="text-[13px] font-medium text-ink-900 dark:text-white">
                   Welcome, {user.full_name || user.username || 'Applicant'}
                 </span>
-                <div className="w-px h-4 bg-ink-200" />
+                <div className="w-px h-4 bg-ink-200 dark:bg-ink-700" />
                 <button
                   onClick={() => logoutM.mutate()}
                   disabled={logoutM.isPending}
-                  className="text-[13px] text-ink-600 hover:text-red-600 transition-colors"
+                  className="text-[13px] text-ink-600 dark:text-ink-300 hover:text-red-600 dark:hover:text-red-400 transition-colors"
                 >
                   {logoutM.isPending ? 'Signing out...' : 'Sign Out'}
                 </button>
@@ -814,14 +814,14 @@ function Shell({ children }: { children: React.ReactNode }) {
               <>
                 <Link
                   to="/apply/track"
-                  className="text-[13px] text-ink-600 hover:text-brand"
+                  className="text-[13px] text-ink-600 dark:text-ink-300 hover:text-brand"
                 >
                   Track Status
                 </Link>
-                <div className="w-px h-4 bg-ink-200" />
+                <div className="w-px h-4 bg-ink-200 dark:bg-ink-700" />
                 <Link
                   to="/login"
-                  className="text-[13px] text-ink-600 hover:text-brand"
+                  className="text-[13px] text-ink-600 dark:text-ink-300 hover:text-brand"
                 >
                   Staff Access
                 </Link>
@@ -838,10 +838,10 @@ function Shell({ children }: { children: React.ReactNode }) {
 function SectionTitle({ title, sub }: { title: string; sub?: string }) {
   return (
     <div className="space-y-1">
-      <h2 className="text-[18px] font-semibold text-ink-900 tracking-tight">
+      <h2 className="text-[18px] font-semibold text-ink-900 dark:text-white tracking-tight">
         {title}
       </h2>
-      {sub && <p className="text-[13px] text-ink-500 leading-relaxed">{sub}</p>}
+      {sub && <p className="text-[13px] text-ink-500 dark:text-ink-400 leading-relaxed">{sub}</p>}
     </div>
   );
 }
@@ -857,7 +857,7 @@ function Field({
 }) {
   return (
     <div className="space-y-1.5">
-      <label className="text-[13px] font-medium text-ink-700">{label}</label>
+      <label className="text-[13px] font-medium text-ink-700 dark:text-ink-200">{label}</label>
       {children}
       {error && (
         <p className="text-[12px] text-red-500 animate-in fade-in slide-in-from-top-1">
@@ -946,7 +946,7 @@ function PersonalInfoStep({
               {photoPreview ? (
                 <img src={photoPreview} alt="Passport preview" className="w-full h-full object-cover" />
               ) : (
-                <Camera className="w-8 h-8 text-ink-400" />
+                <Camera className="w-8 h-8 text-ink-400 dark:text-ink-500" />
               )}
               <input
                 type="file"
@@ -967,7 +967,7 @@ function PersonalInfoStep({
             <p className="mt-2 text-[11px] font-bold uppercase tracking-wider text-ink-700 dark:text-ink-200">
               Upload Passport Photo
             </p>
-            <p className="text-[11px] text-ink-500">(Max 2MB, JPG/PNG)</p>
+            <p className="text-[11px] text-ink-500 dark:text-ink-400">(Max 2MB, JPG/PNG)</p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -1170,7 +1170,7 @@ function AcademicInfoStep({ form }: { form: ReturnType<typeof useForm<FormValues
             />
             <div className="text-[13px] text-ink-700 dark:text-ink-200">
               <strong>I am applying via credit transfer / upgrading.</strong>
-              <p className="text-[12px] text-ink-500 mt-0.5">
+              <p className="text-[12px] text-ink-500 dark:text-ink-400 mt-0.5">
                 Check this if you have prior study credits from another institution. The
                 faculty will then issue an exemption letter before your admission letter is released.
               </p>
@@ -1256,7 +1256,7 @@ function ProgramsStep({
           </div>
 
           {programs.length === 0 ? (
-            <div className="rounded-md border border-dashed border-ink-200 p-4 text-center text-ink-500 text-[13px]">
+            <div className="rounded-md border border-dashed border-ink-200 dark:border-ink-700 p-4 text-center text-ink-500 dark:text-ink-400 text-[13px]">
               No active programs to display.
             </div>
           ) : (
@@ -1281,12 +1281,12 @@ function ProgramsStep({
                       <p className={`text-[13.5px] font-semibold leading-snug ${checked ? 'text-brand' : 'text-ink-900 dark:text-white'}`}>
                         {p.name}
                       </p>
-                      <p className="text-[11.5px] text-ink-500 truncate mt-0.5">
+                      <p className="text-[11.5px] text-ink-500 dark:text-ink-400 truncate mt-0.5">
                         {p.department_name ?? '—'}
                         {p.faculty_name ? ` · ${p.faculty_name}` : ''}
                       </p>
                       {p.campuses.length > 0 && (
-                        <p className="text-[10.5px] text-ink-400 truncate mt-0.5">
+                        <p className="text-[10.5px] text-ink-400 dark:text-ink-500 truncate mt-0.5">
                           Available on: {p.campuses.map((c) => c.name).join(', ')}
                         </p>
                       )}
@@ -1295,7 +1295,7 @@ function ProgramsStep({
                 );
               })}
               {filtered.length === 0 && (
-                <p className="p-4 text-center text-ink-400 text-[12.5px]">No programs match your search.</p>
+                <p className="p-4 text-center text-ink-400 dark:text-ink-500 text-[12.5px]">No programs match your search.</p>
               )}
             </div>
           )}
@@ -1305,7 +1305,7 @@ function ProgramsStep({
         {/* ── Campus / Mode / Level / Intake ─────────────────────── */}
         <FieldGroup title="Study options">
           {!selectedProgramId ? (
-            <div className="rounded-md border border-dashed border-ink-200 p-6 text-center text-ink-500 text-[13px]">
+            <div className="rounded-md border border-dashed border-ink-200 dark:border-ink-700 p-6 text-center text-ink-500 dark:text-ink-400 text-[13px]">
               Select a program on the left to choose your campus, mode of study, level and intake.
             </div>
           ) : (
@@ -1497,7 +1497,7 @@ function PaymentStep({
       <FieldGroup title="Payment">
         {/* Tab selector for new vs already-paid */}
         {!paid && (
-          <div className="flex gap-2 mb-4 pb-4 border-b border-ink-100">
+          <div className="flex gap-2 mb-4 pb-4 border-b border-ink-100 dark:border-ink-700">
             <button
               type="button"
               onClick={() => setShowAlreadyPaid(false)}
@@ -1543,13 +1543,13 @@ function PaymentStep({
             </Field>
 
             <Field label="Invoice / Proof of Payment *" error={undefined}>
-              <label className="flex items-center justify-center w-full px-4 py-6 border-2 border-dashed border-ink-300 rounded-lg cursor-pointer hover:bg-ink-50 dark:hover:bg-ink-900/20 transition">
+              <label className="flex items-center justify-center w-full px-4 py-6 border-2 border-dashed border-ink-300 dark:border-ink-600 rounded-lg cursor-pointer hover:bg-ink-50 dark:hover:bg-ink-900/20 transition">
                 <div className="text-center">
-                  <FileUp className="w-6 h-6 mx-auto text-ink-400 mb-2" />
+                  <FileUp className="w-6 h-6 mx-auto text-ink-400 dark:text-ink-500 mb-2" />
                   <p className="text-[13px] font-medium text-ink-700 dark:text-ink-200">
                     {invoiceFile ? invoiceFile.name : 'Click to upload or drag and drop'}
                   </p>
-                  <p className="text-[12px] text-ink-500">PDF, JPG, or PNG (max 5 MB)</p>
+                  <p className="text-[12px] text-ink-500 dark:text-ink-400">PDF, JPG, or PNG (max 5 MB)</p>
                 </div>
                 <input
                   type="file"
@@ -1637,7 +1637,7 @@ function PaymentStep({
               </div>
             )}
 
-            <p className="text-[11.5px] text-ink-400">
+            <p className="text-[11.5px] text-ink-400 dark:text-ink-500">
               A secure Urubuto Pay window opens in a new tab — just enter your MoMo number or card and
               confirm. The {formatFee} RWF amount is fixed. Keep this page open; it unlocks automatically
               once your payment is confirmed.
@@ -1708,7 +1708,7 @@ function PaymentStep({
             type="checkbox"
             checked={confirmAccurate}
             onChange={(e) => onConfirmChange(e.target.checked)}
-            className="mt-1 rounded border-ink-300 text-brand focus:ring-brand/30"
+            className="mt-1 rounded border-ink-300 dark:border-ink-600 text-brand focus:ring-brand/30"
           />
           <span className="text-[13px] text-ink-700 dark:text-ink-200">
             I confirm that all information provided is accurate.
@@ -1730,9 +1730,9 @@ function PayDetailRow({
   return (
     <div className="flex items-center gap-3 px-4 py-2.5">
       <div className="min-w-0">
-        <p className="text-[11px] uppercase tracking-wide text-ink-400">{label}</p>
+        <p className="text-[11px] uppercase tracking-wide text-ink-400 dark:text-ink-500">{label}</p>
         <p className="text-[13.5px] font-semibold text-ink-800 dark:text-ink-100 font-mono truncate">{value}</p>
-        {hint && <p className="text-[11px] text-ink-400">{hint}</p>}
+        {hint && <p className="text-[11px] text-ink-400 dark:text-ink-500">{hint}</p>}
       </div>
       {onCopy && (
         <button
@@ -1765,7 +1765,7 @@ function FieldGroup({
     <div className="rounded-xl border border-ink-100 dark:border-ink-800 bg-white/40 dark:bg-ink-900/40 p-4 sm:p-5">
       <div className="mb-4 pb-3 border-b border-ink-100 dark:border-ink-800">
         <h3 className="text-[14px] font-semibold text-ink-900 dark:text-white">{title}</h3>
-        {sub && <p className="text-[12px] text-ink-500 mt-0.5">{sub}</p>}
+        {sub && <p className="text-[12px] text-ink-500 dark:text-ink-400 mt-0.5">{sub}</p>}
       </div>
       {children}
     </div>
@@ -1774,11 +1774,11 @@ function FieldGroup({
 
 function ReviewSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-ink-100 overflow-hidden">
-      <div className="bg-ink-50 dark:bg-ink-800 px-4 py-2 border-b border-ink-100">
-        <p className="text-[11px] uppercase tracking-wider font-semibold text-ink-500">{title}</p>
+    <div className="rounded-lg border border-ink-100 dark:border-ink-700 overflow-hidden">
+      <div className="bg-ink-50 dark:bg-ink-800 px-4 py-2 border-b border-ink-100 dark:border-ink-700">
+        <p className="text-[11px] uppercase tracking-wider font-semibold text-ink-500 dark:text-ink-400">{title}</p>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-0 divide-y sm:divide-y-0 sm:divide-x divide-ink-100">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-0 divide-y sm:divide-y-0 sm:divide-x divide-ink-100 dark:divide-ink-700">
         {children}
       </div>
     </div>
@@ -1788,8 +1788,8 @@ function ReviewSection({ title, children }: { title: string; children: React.Rea
 function ReviewRow({ k, v }: { k: string; v: string | undefined | null }) {
   return (
     <div className="px-4 py-3">
-      <p className="text-[11px] text-ink-400 uppercase tracking-wider">{k}</p>
-      <p className="text-[13px] font-medium text-ink-900 mt-0.5">{v || '—'}</p>
+      <p className="text-[11px] text-ink-400 dark:text-ink-500 uppercase tracking-wider">{k}</p>
+      <p className="text-[13px] font-medium text-ink-900 dark:text-white mt-0.5">{v || '—'}</p>
     </div>
   );
 }

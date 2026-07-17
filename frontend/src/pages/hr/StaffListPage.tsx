@@ -30,8 +30,8 @@ import {
   type HrBreakdownRow,
 } from '@/services/hrService'
 import { useDebounce } from '@/hooks/useDebounce'
-import { useAuthStore } from '@/store/authStore'
 import { PERMISSIONS } from '@/constants'
+import { usePermission, useAnyPermission } from '@/utils/permissions'
 import DonutChart from '@/components/dashboard/DonutChart'
 import BarChart, { type BarDatum } from '@/components/dashboard/BarChart'
 import SearchableSelect from '@/components/ui/SearchableSelect'
@@ -47,10 +47,7 @@ export default function StaffListPage() {
   const tab = (sp.get('tab') as Tab) || 'active'
   const [showModal, setShow] = useState(false)
 
-  const { user } = useAuthStore()
-  const canManage =
-    user?.role === 'superadmin' ||
-    (user?.permissions || []).includes(PERMISSIONS.MANAGE_HR_EMPLOYEES)
+  const canManage = usePermission(PERMISSIONS.MANAGE_HR_EMPLOYEES)
 
   const statsQ = useQuery({
     queryKey: ['hr-stats'],
@@ -486,10 +483,7 @@ function AllTab({ stats }: { stats: HrStats | null }) {
 
 function EmployeeRow({ e }: { e: HrEmployee }) {
   const qc = useQueryClient()
-  const { user } = useAuthStore()
-  const canManage = user?.role === 'superadmin' ||
-    (user?.permissions || []).includes(PERMISSIONS.MANAGE_HR_EMPLOYEES) ||
-    (user?.permissions || []).includes(PERMISSIONS.VIEW_HR_EMPLOYEES)
+  const canManage = useAnyPermission([PERMISSIONS.MANAGE_HR_EMPLOYEES, PERMISSIONS.VIEW_HR_EMPLOYEES])
   const [editOpen, setEditOpen] = useState(false)
 
   const isUser = e.source === 'user'

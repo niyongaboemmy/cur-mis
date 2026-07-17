@@ -123,6 +123,7 @@ import OverdueAlertsPage from "@/pages/finance/OverdueAlertsPage";
 import PaymentCalendarPage from "@/pages/finance/PaymentCalendarPage";
 import BudgetExecutionPage from "@/pages/finance/BudgetExecutionPage";
 import PostgraduateInternationalFeesPage from "@/pages/finance/PostgraduateInternationalFeesPage";
+import StudentDirectoryPage from "@/pages/finance/StudentDirectoryPage";
 
 function App() {
   const initTheme = useThemeStore((state) => state.initTheme);
@@ -164,10 +165,34 @@ function App() {
               {/* Self-service payroll — every authenticated user sees their own
                   payslip history; data is scoped server-side to their account. */}
               <Route path="/me/payroll" element={<MyPayrollPage />} />
-              <Route path="/messages" element={<MessagesPage />} />
-              <Route path="/announcements" element={<AnnouncementsPage />} />
-              <Route path="/forums" element={<ForumsPage />} />
-              <Route path="/forums/threads/:id" element={<ForumThreadPage />} />
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={PERMISSIONS.SEND_MESSAGES}
+                  />
+                }
+              >
+                <Route path="/messages" element={<MessagesPage />} />
+              </Route>
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={PERMISSIONS.VIEW_ANNOUNCEMENTS}
+                  />
+                }
+              >
+                <Route path="/announcements" element={<AnnouncementsPage />} />
+              </Route>
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={PERMISSIONS.VIEW_FORUMS}
+                  />
+                }
+              >
+                <Route path="/forums" element={<ForumsPage />} />
+                <Route path="/forums/threads/:id" element={<ForumThreadPage />} />
+              </Route>
 
               {/* ── Administration ── */}
               <Route
@@ -557,6 +582,17 @@ function App() {
                   </Route>
                   <Route path="structures" element={<FeeStructuresPage />} />
                   <Route path="pg-intl-structures" element={<PostgraduateInternationalFeesPage />} />
+                  <Route
+                    element={
+                      <ProtectedRoute
+                        requiredPermissions={[
+                          PERMISSIONS.VIEW_STUDENT_DIRECTORY_FINANCE,
+                        ]}
+                      />
+                    }
+                  >
+                    <Route path="students" element={<StudentDirectoryPage />} />
+                  </Route>
                   <Route path="fee-types" element={<FeeTypesPage />} />
                   <Route path="per-credit-rates" element={<PerCreditRatesPage />} />
                   <Route path="bursaries" element={<BursariesPage />} />

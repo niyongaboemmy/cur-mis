@@ -77,19 +77,19 @@ export default function CountrySelect({
         {selected ? (
           <span className="text-[18px] leading-none" aria-hidden>{countryFlag(selected.code)}</span>
         ) : (
-          <Globe2 className="w-4 h-4 text-ink-400" />
+          <Globe2 className="w-4 h-4 text-ink-400 dark:text-ink-500" />
         )}
-        <span className={`flex-1 truncate ${selected ? 'text-ink-900 dark:text-white' : 'text-ink-400'}`}>
+        <span className={`flex-1 truncate ${selected ? 'text-ink-900 dark:text-white' : 'text-ink-400 dark:text-ink-500'}`}>
           {displayLabel || placeholder}
         </span>
-        <ChevronDown className={`w-3.5 h-3.5 text-ink-400 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`w-3.5 h-3.5 text-ink-400 dark:text-ink-500 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
       {open && (
         <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-700 rounded-lg shadow-xl overflow-hidden">
           <div className="p-2 border-b border-ink-100 dark:border-ink-700">
             <div className="relative">
-              <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-400" />
+              <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-400 dark:text-ink-500" />
               <input
                 ref={inputRef}
                 type="text"
@@ -103,7 +103,7 @@ export default function CountrySelect({
 
           <div className="max-h-72 overflow-y-auto">
             {filtered.length === 0 ? (
-              <p className="p-4 text-center text-ink-400 text-[12px]">No countries match.</p>
+              <p className="p-4 text-center text-ink-400 dark:text-ink-500 text-[12px]">No countries match.</p>
             ) : (
               filtered.map((c) => {
                 const isSel = selected?.code === c.code
@@ -123,12 +123,12 @@ export default function CountrySelect({
                   >
                     <span className="text-[20px] leading-none shrink-0" aria-hidden>{countryFlag(c.code)}</span>
                     <span className="flex-1 min-w-0">
-                      <span className="block text-[13px] truncate">{c.name}</span>
+                      <span className="block text-[13px] truncate text-ink-900 dark:text-ink-100">{c.name}</span>
                       {mode === 'nationality' && (
-                        <span className="block text-[11px] text-ink-400 truncate">{c.nationality}</span>
+                        <span className="block text-[11px] text-ink-400 dark:text-ink-500 truncate">{c.nationality}</span>
                       )}
                     </span>
-                    <span className="text-[10.5px] font-mono text-ink-400 shrink-0">{c.code}</span>
+                    <span className="text-[10.5px] font-mono text-ink-400 dark:text-ink-500 shrink-0">{c.code}</span>
                   </button>
                 )
               })

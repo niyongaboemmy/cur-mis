@@ -30,8 +30,8 @@ import {
   attendanceService,
   type StudentAttendanceStatus,
 } from "@/services/attendanceService";
-import { useAuthStore } from "@/store/authStore";
 import { PERMISSIONS } from "@/constants/permissions";
+import { usePermission, useAnyPermission } from "@/utils/permissions";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import toast from "react-hot-toast";
@@ -149,11 +149,7 @@ export default function StudentDetailsPage({
   };
   const [isEditing, setIsEditing] = useState(false);
 
-  const authUser = useAuthStore((s) => s.user);
-  const canManageStudents =
-    authUser?.role === 'superadmin' ||
-    authUser?.role === 'admin' ||
-    (authUser?.permissions ?? []).includes(PERMISSIONS.MANAGE_STUDENTS);
+  const canManageStudents = usePermission(PERMISSIONS.MANAGE_STUDENTS);
 
   const fromSearch = location.state?.fromSearch;
   const backUrl =
@@ -2406,9 +2402,8 @@ function ProgramCurriculumTab({
 }) {
   const studentId = student?.id;
   const qc = useQueryClient();
-  const user = useAuthStore((s) => s.user);
-  const isAdmin =
-    !selfMode && (user?.role === "superadmin" || user?.role === "admin");
+  const canManageMarks = useAnyPermission([PERMISSIONS.RECORD_MODULE_MARKS, PERMISSIONS.MANAGE_MODULE_MARKS]);
+  const isAdmin = !selfMode && canManageMarks;
   const [exempting, setExempting] = useState<{
     moduleId: number;
     moduleCode: string;
@@ -5046,7 +5041,7 @@ function TranscriptTab({ student }: { student: any }) {
                   {r.purpose && <span className="text-ink-400 ml-2">— {r.purpose}</span>}
                   <span className="text-ink-400 ml-2 text-[11px]">{new Date(r.created_at).toLocaleDateString()}</span>
                 </div>
-                <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-medium capitalize ${TR_STATUS_BADGE[r.status] ?? 'bg-gray-100 text-gray-600'}`}>
+                <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-medium capitalize ${TR_STATUS_BADGE[r.status] ?? 'bg-gray-100 text-gray-600 dark:bg-ink-700 dark:text-ink-300'}`}>
                   {r.status}
                 </span>
               </div>
@@ -5208,10 +5203,7 @@ function tFmt(v: string | number | null | undefined): string {
 
 function IdCardTab({ student }: { student: any }) {
   const studentId = student?.id as number | string | undefined;
-  const authUser = useAuthStore((s) => s.user);
-  const canManage =
-    ["superadmin", "admin"].includes(authUser?.role ?? "") ||
-    (authUser?.permissions ?? []).includes(PERMISSIONS.MANAGE_STUDENT_IDS);
+  const canManage = usePermission(PERMISSIONS.MANAGE_STUDENT_IDS);
 
   const qc = useQueryClient();
   const [preview, setPreview] = useState<string | null>(null);

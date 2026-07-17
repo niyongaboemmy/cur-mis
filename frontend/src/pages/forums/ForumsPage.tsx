@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { PERMISSIONS } from '@/constants/permissions'
+import { usePermission } from '@/utils/permissions'
 import {
   forumService, FORUM_AUDIENCE_LABELS,
   type ForumCategory, type ForumAudience, type ForumMessage,
@@ -78,9 +79,7 @@ function Avatar({ name, photoId, size = 32 }: { name: string | null; photoId?: s
 
 export default function ForumsPage() {
   const user = useAuthStore((s) => s.user)
-  const canModerate =
-    ['superadmin', 'admin'].includes(user?.role ?? '') ||
-    (user?.permissions ?? []).includes(PERMISSIONS.MODERATE_FORUMS)
+  const canModerate = usePermission(PERMISSIONS.MODERATE_FORUMS)
 
   const qc = useQueryClient()
   const [selected, setSelected] = useState<ForumCategory | null>(null)

@@ -22,8 +22,8 @@ import {
   type LeaveStatus,
   type LeaveType,
 } from "@/services/hrService";
-import { useAuthStore } from "@/store/authStore";
 import { PERMISSIONS } from "@/constants";
+import { usePermission } from "@/utils/permissions";
 import ModalPortal from "@/components/ui/ModalPortal";
 
 /* ── helpers ── */
@@ -63,10 +63,7 @@ const STATUS_OPTS: { v: LeaveStatus | ""; label: string }[] = [
    MAIN PAGE
    ══════════════════════════════════════════════════════════════════════ */
 export default function LeavePage() {
-  const { user } = useAuthStore();
-  const canManage =
-    ["superadmin", "admin"].includes(user?.role ?? "") ||
-    (user?.permissions ?? []).includes(PERMISSIONS.MANAGE_LEAVE_REQUESTS);
+  const canManage = usePermission(PERMISSIONS.MANAGE_LEAVE_REQUESTS);
   const qc = useQueryClient();
 
   const [search, setSearch] = useState("");

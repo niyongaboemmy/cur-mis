@@ -12,6 +12,8 @@ import { academicsMgmtService } from '@/services/academicsMgmtService'
 import { portalService } from '@/services/admissionService'
 import { useModulesScopeStore } from '@/store/modulesScopeStore'
 import type { Module, ModuleScheduleRow, ScheduleConflict, SchedulePayload } from '@/types/modules'
+import { PERMISSIONS } from '@/constants'
+import { usePermission } from '@/utils/permissions'
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const EMPTY: SchedulePayload = { module_id: 0, academic_term_id: 0, room_id: 0, day_of_week: 1, start_time: '08:00', end_time: '10:00', session_type: 'lecture', start_date: '', end_date: '', module_assignment_id: null }
@@ -139,6 +141,7 @@ function MultiCheckSelect({
 
 
 export default function ModulesSchedulePage() {
+  const canManage = usePermission(PERMISSIONS.MANAGE_MODULE_SCHEDULES)
   const qc = useQueryClient()
 
   // ── Data sources ──
@@ -542,6 +545,7 @@ export default function ModulesSchedulePage() {
       ) : (
         <div className={isFullscreen ? 'space-y-4' : 'grid grid-cols-1 lg:grid-cols-5 gap-4'}>
           {/* ── Add/Edit Form ── */}
+          {canManage && (
           <div className={`card overflow-hidden ${isFullscreen ? 'hidden' : 'lg:col-span-2'}`}>
             {/* Header */}
             <div className="px-4 py-2.5 border-b border-ink-100 dark:border-ink-700 flex items-center justify-between">
@@ -737,6 +741,7 @@ export default function ModulesSchedulePage() {
               </button>
             </div>
           </div>
+          )}
 
           {/* ── Calendar (Week / Month / Year) ── */}
           <div ref={calendarRef} className={`card overflow-hidden ${isFullscreen ? 'fixed inset-0 z-50 rounded-none flex flex-col' : 'lg:col-span-3'}`}>
@@ -884,8 +889,12 @@ export default function ModulesSchedulePage() {
                                       {dept && <div className="text-[10px] opacity-70 mt-0.5 truncate flex items-center gap-1"><Building2 className="w-2.5 h-2.5" />{dept.dep_name}</div>}
                                       <div className="mt-1 flex justify-end gap-1">
                                         <button className="icon-btn" title="Recolor module" onClick={(e) => { e.stopPropagation(); setColorPickerFor(pickerOpen ? null : r.module_id) }}><Palette className="w-3 h-3" /></button>
-                                        <button className="icon-btn" title="Edit" onClick={() => editEntry(r)}><Pencil className="w-3 h-3" /></button>
-                                        <button className="icon-btn text-red-500" onClick={() => confirm('Delete?') && remove.mutate(r.id)}><Trash2 className="w-3 h-3" /></button>
+                                        {canManage && (
+                                          <>
+                                            <button className="icon-btn" title="Edit" onClick={() => editEntry(r)}><Pencil className="w-3 h-3" /></button>
+                                            <button className="icon-btn text-red-500" onClick={() => confirm('Delete?') && remove.mutate(r.id)}><Trash2 className="w-3 h-3" /></button>
+                                          </>
+                                        )}
                                       </div>
                                       {pickerOpen && (
                                         <div className="absolute z-20 right-1 top-full mt-1 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-700 rounded-lg shadow-xl p-2 w-[150px]">
@@ -1118,8 +1127,12 @@ export default function ModulesSchedulePage() {
                       </td>
                       <td className="px-4 py-2.5 text-right">
                         <div className="flex items-center justify-end gap-1">
-                          <button className="icon-btn" onClick={() => editEntry(r)}><Pencil className="w-3.5 h-3.5" /></button>
-                          <button className="icon-btn text-red-500" onClick={() => confirm('Delete?') && remove.mutate(r.id)}><Trash2 className="w-3.5 h-3.5" /></button>
+                          {canManage && (
+                            <>
+                              <button className="icon-btn" onClick={() => editEntry(r)}><Pencil className="w-3.5 h-3.5" /></button>
+                              <button className="icon-btn text-red-500" onClick={() => confirm('Delete?') && remove.mutate(r.id)}><Trash2 className="w-3.5 h-3.5" /></button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>

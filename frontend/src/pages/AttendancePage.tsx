@@ -48,8 +48,8 @@ import { studentService } from '@/services/studentService'
 import { academicsMgmtService } from '@/services/academicsMgmtService'
 import { portalService } from '@/services/admissionService'
 import { useSystemStore } from '@/store/systemStore'
-import { useAuthStore } from '@/store/authStore'
 import { PERMISSIONS } from '@/constants'
+import { useAnyPermission, usePermission } from '@/utils/permissions'
 import type { AcademicTerm } from '@/types/academic'
 import Modal from '@/components/ui/Modal'
 import type { Student } from '@/types/academic'
@@ -76,12 +76,8 @@ export default function AttendancePage() {
   const setTab = (t: Tab) => { const n = new URLSearchParams(sp); n.set('tab', t); setSp(n, { replace: true }) }
 
   // Permissions
-  const { user } = useAuthStore()
-  const perms = user?.permissions ?? []
-  const canRecord = user?.role === 'superadmin' || user?.role === 'admin'
-    || perms.includes(PERMISSIONS.RECORD_ATTENDANCE)
-    || perms.includes(PERMISSIONS.MANAGE_ATTENDANCE)
-  const canManage = user?.role === 'superadmin' || user?.role === 'admin' || perms.includes(PERMISSIONS.MANAGE_ATTENDANCE)
+  const canRecord = useAnyPermission([PERMISSIONS.RECORD_ATTENDANCE, PERMISSIONS.MANAGE_ATTENDANCE])
+  const canManage = usePermission(PERMISSIONS.MANAGE_ATTENDANCE)
 
   // Term selector — default to active term
   const basics = useSystemStore((s) => s.basics)
@@ -1001,10 +997,8 @@ function mostRecentAllowedDate(
 
 function RosterEditor({ sessionId, onSaved }: { sessionId: number; onSaved?: () => void }) {
   const qc = useQueryClient()
-  const { user } = useAuthStore()
-  const perms = user?.permissions ?? []
-  const canRecord = user?.role === 'superadmin' || user?.role === 'admin' || perms.includes(PERMISSIONS.RECORD_ATTENDANCE) || perms.includes(PERMISSIONS.MANAGE_ATTENDANCE)
-  const canManage = user?.role === 'superadmin' || user?.role === 'admin' || perms.includes(PERMISSIONS.MANAGE_ATTENDANCE)
+  const canRecord = useAnyPermission([PERMISSIONS.RECORD_ATTENDANCE, PERMISSIONS.MANAGE_ATTENDANCE])
+  const canManage = usePermission(PERMISSIONS.MANAGE_ATTENDANCE)
 
   const q = useQuery({
     queryKey: ['attendance-session', sessionId],

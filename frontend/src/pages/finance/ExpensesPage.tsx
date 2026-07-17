@@ -27,6 +27,8 @@ import Pagination from "@/components/ui/Pagination";
 import { useSystemStore } from "@/store/systemStore";
 import { formatRWF } from "@/utils/formatCurrency";
 import ModalPortal from "@/components/ui/ModalPortal";
+import { PERMISSIONS } from "@/constants";
+import { usePermission } from "@/utils/permissions";
 
 const PAYMENT_METHODS = [
   { value: "BANK_TRANSFER", label: "Bank Transfer" },
@@ -52,6 +54,7 @@ function today(): string {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function ExpensesPage() {
+  const canManage = usePermission(PERMISSIONS.MANAGE_FINANCE);
   const basics = useSystemStore((s) => s.basics);
   const selectedYearLabel = useSystemStore((s) => s.selectedYearLabel);
   const qc = useQueryClient();
@@ -178,15 +181,17 @@ export default function ExpensesPage() {
           >
             <Download className="w-3.5 h-3.5" /> Export CSV
           </button>
-          <button
-            className="btn-primary btn-sm"
-            onClick={() => {
-              setEditing(null);
-              setShowForm(true);
-            }}
-          >
-            <Plus className="w-3.5 h-3.5" /> Record Expense
-          </button>
+          {canManage && (
+            <button
+              className="btn-primary btn-sm"
+              onClick={() => {
+                setEditing(null);
+                setShowForm(true);
+              }}
+            >
+              <Plus className="w-3.5 h-3.5" /> Record Expense
+            </button>
+          )}
         </div>
       </div>
 
@@ -422,7 +427,7 @@ export default function ExpensesPage() {
                 No expenses recorded
                 {fromDate || toDate || catId ? " for these filters" : " yet"}.
               </p>
-              {!fromDate && !toDate && !catId && (
+              {!fromDate && !toDate && !catId && canManage && (
                 <button
                   className="btn-secondary btn-sm mt-3"
                   onClick={() => setShowForm(true)}

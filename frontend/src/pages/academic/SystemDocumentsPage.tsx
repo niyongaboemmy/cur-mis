@@ -11,18 +11,18 @@ import {
   AlertCircle,
 } from 'lucide-react'
 import { systemDocumentService, type SystemDocument } from '@/services/systemDocumentService'
-import { useAuthStore } from '@/store/authStore'
 import Modal from '@/components/ui/Modal'
 import Button from '@/components/ui/Button'
+import { PERMISSIONS } from '@/constants'
+import { usePermission } from '@/utils/permissions'
 
 export default function SystemDocumentsPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>('')
   const [showUploadModal, setShowUploadModal] = useState(false)
   const [uploadLoading, setUploadLoading] = useState(false)
   const [deleteId, setDeleteId] = useState<number | null>(null)
-  const { user } = useAuthStore()
 
-  const isAdmin = user?.role === 'admin' || user?.role === 'superadmin'
+  const isAdmin = usePermission(PERMISSIONS.MANAGE_ACADEMIC_SETTINGS)
 
   // Fetch all documents
   const { data: docs = [], isLoading, refetch } = useQuery({
@@ -105,8 +105,8 @@ export default function SystemDocumentsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">System Documents</h1>
-          <p className="text-gray-600 mt-1">Fee structures, policies, and institutional documents</p>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">System Documents</h1>
+          <p className="text-gray-600 mt-1 dark:text-ink-300">Fee structures, policies, and institutional documents</p>
         </div>
         {isAdmin && (
           <Button
@@ -127,7 +127,7 @@ export default function SystemDocumentsPage() {
             className={`px-4 py-2 rounded-lg font-medium transition ${
               selectedCategory === ''
                 ? 'bg-blue-500 text-white'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-ink-700 dark:text-ink-200 dark:hover:bg-ink-600'
             }`}
           >
             All ({docs.length})
@@ -139,7 +139,7 @@ export default function SystemDocumentsPage() {
               className={`px-4 py-2 rounded-lg font-medium transition ${
                 selectedCategory === cat.category
                   ? 'bg-blue-500 text-white'
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-ink-700 dark:text-ink-200 dark:hover:bg-ink-600'
               }`}
             >
               {cat.category} ({cat.count})
@@ -150,25 +150,25 @@ export default function SystemDocumentsPage() {
 
       {/* Documents Display */}
       {filteredDocs.length === 0 ? (
-        <div className="text-center py-12 bg-gray-50 rounded-lg">
-          <FolderOpen className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-          <p className="text-gray-600">No documents found</p>
+        <div className="text-center py-12 bg-gray-50 rounded-lg dark:bg-ink-900/40">
+          <FolderOpen className="w-12 h-12 text-gray-400 mx-auto mb-3 dark:text-ink-500" />
+          <p className="text-gray-600 dark:text-ink-300">No documents found</p>
         </div>
       ) : (
         <div className="space-y-3">
           {filteredDocs.map((doc) => (
             <div
               key={doc.id}
-              className="flex items-center justify-between p-4 bg-white border border-gray-200 rounded-lg hover:shadow-md transition"
+              className="flex items-center justify-between p-4 bg-white border border-gray-200 rounded-lg hover:shadow-md transition dark:bg-ink-800 dark:border-ink-700"
             >
               <div className="flex items-center gap-3 flex-1">
                 {getFileIcon()}
                 <div className="flex-1">
-                  <h3 className="font-semibold text-gray-900">{doc.name}</h3>
+                  <h3 className="font-semibold text-gray-900 dark:text-white">{doc.name}</h3>
                   {doc.description && (
-                    <p className="text-sm text-gray-600">{doc.description}</p>
+                    <p className="text-sm text-gray-600 dark:text-ink-300">{doc.description}</p>
                   )}
-                  <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                  <div className="flex items-center gap-3 mt-1 text-xs text-gray-500 dark:text-ink-400">
                     <span>{doc.category}</span>
                     <span>•</span>
                     <span>{formatFileSize(doc.file_size)}</span>
@@ -187,7 +187,7 @@ export default function SystemDocumentsPage() {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => handleDownload(doc)}
-                  className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition"
+                  className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition dark:text-blue-400 dark:hover:bg-blue-900/20"
                   title="Download"
                 >
                   <Download className="w-5 h-5" />
@@ -195,7 +195,7 @@ export default function SystemDocumentsPage() {
                 {isAdmin && (
                   <button
                     onClick={() => setDeleteId(doc.id)}
-                    className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition"
+                    className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition dark:text-red-400 dark:hover:bg-red-900/20"
                     title="Delete"
                   >
                     <Trash2 className="w-5 h-5" />
@@ -215,7 +215,7 @@ export default function SystemDocumentsPage() {
       >
         <form onSubmit={handleUpload} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-ink-300">
               Document Name *
             </label>
             <input
@@ -223,19 +223,19 @@ export default function SystemDocumentsPage() {
               name="name"
               required
               maxLength={255}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:border-ink-700 dark:bg-ink-900 dark:text-white"
               placeholder="e.g., Fee Structure 2025-2026"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-ink-300">
               Category *
             </label>
             <select
               name="category"
               required
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:border-ink-700 dark:bg-ink-900 dark:text-white"
             >
               <option value="">Select category</option>
               <option value="Fee Structure">Fee Structure</option>
@@ -247,20 +247,20 @@ export default function SystemDocumentsPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-ink-300">
               Description
             </label>
             <textarea
               name="description"
               maxLength={1000}
               rows={3}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:border-ink-700 dark:bg-ink-900 dark:text-white"
               placeholder="Optional description"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-ink-300">
               File (PDF, Word, Excel) *
             </label>
             <input
@@ -268,16 +268,16 @@ export default function SystemDocumentsPage() {
               name="file"
               required
               accept=".pdf,.doc,.docx,.xls,.xlsx"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:border-ink-700 dark:bg-ink-900 dark:text-white"
             />
-            <p className="text-xs text-gray-500 mt-1">Max file size: 10MB</p>
+            <p className="text-xs text-gray-500 mt-1 dark:text-ink-400">Max file size: 10MB</p>
           </div>
 
           <div className="flex gap-2 justify-end pt-4">
             <button
               type="button"
               onClick={() => setShowUploadModal(false)}
-              className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
+              className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition dark:text-ink-200 dark:bg-ink-700 dark:hover:bg-ink-600"
             >
               Cancel
             </button>
@@ -300,9 +300,9 @@ export default function SystemDocumentsPage() {
         title="Delete Document"
       >
         <div className="space-y-4">
-          <div className="flex items-start gap-3 p-3 bg-red-50 rounded-lg">
-            <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-            <p className="text-sm text-red-800">
+          <div className="flex items-start gap-3 p-3 bg-red-50 rounded-lg dark:bg-red-900/10">
+            <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5 dark:text-red-400" />
+            <p className="text-sm text-red-800 dark:text-red-300">
               Are you sure you want to delete this document? This action cannot be undone.
             </p>
           </div>
@@ -310,7 +310,7 @@ export default function SystemDocumentsPage() {
           <div className="flex gap-2 justify-end">
             <button
               onClick={() => setDeleteId(null)}
-              className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
+              className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition dark:text-ink-200 dark:bg-ink-700 dark:hover:bg-ink-600"
             >
               Cancel
             </button>

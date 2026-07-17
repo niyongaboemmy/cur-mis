@@ -211,7 +211,7 @@ class SystemBasicsController extends BaseController
     }
 
     /**
-     * PUT /api/system/fee-mapping
+     * POST /api/system/fee-mapping
      * Admin — persist fee structure ID + auto-credit toggle.
      */
     public function saveFeeMappingSettings(Request $request, Response $response): never

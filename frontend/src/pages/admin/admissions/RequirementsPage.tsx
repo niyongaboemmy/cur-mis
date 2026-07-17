@@ -3,8 +3,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { ListChecks, Plus, Trash2, Loader2 } from 'lucide-react'
 import { admissionRequirementService, documentTypeService, portalService } from '@/services/admissionService'
+import { PERMISSIONS } from '@/constants'
+import { usePermission } from '@/utils/permissions'
 
 export default function RequirementsPage() {
+  const canManage = usePermission(PERMISSIONS.MANAGE_ADMISSION_REQUIREMENTS)
   const qc = useQueryClient()
 
   const facultiesQ = useQuery({ queryKey: ['portal', 'faculties'], queryFn: () => portalService.getFaculties() })
@@ -90,15 +93,17 @@ export default function RequirementsPage() {
                     <td>{r.is_required ? <span className="chip-primary">Required</span> : <span className="chip-soft">Optional</span>}</td>
                     <td className="text-ink-500 text-[12.5px]">{r.notes || '—'}</td>
                     <td className="text-right">
-                      <button
-                        className="icon-btn text-red-500 hover:text-red-600 hover:bg-red-50"
-                        onClick={() => remove.mutate(r.id)}
-                        disabled={remove.isPending && remove.variables === r.id}
-                      >
-                        {remove.isPending && remove.variables === r.id
-                          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          : <Trash2 className="w-3.5 h-3.5" />}
-                      </button>
+                      {canManage && (
+                        <button
+                          className="icon-btn text-red-500 hover:text-red-600 hover:bg-red-50"
+                          onClick={() => remove.mutate(r.id)}
+                          disabled={remove.isPending && remove.variables === r.id}
+                        >
+                          {remove.isPending && remove.variables === r.id
+                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            : <Trash2 className="w-3.5 h-3.5" />}
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -107,10 +112,12 @@ export default function RequirementsPage() {
           )}
 
           {/* Add new */}
-          <div className="rounded-md border border-ink-100 p-4 bg-ink-50">
-            <p className="text-[13px] font-semibold mb-3 flex items-center gap-1.5"><Plus className="w-3.5 h-3.5 text-brand" /> Add requirement</p>
-            <AddRow docTypes={docTypes} onAdd={(v) => create.mutate(v)} busy={create.isPending} />
-          </div>
+          {canManage && (
+            <div className="rounded-md border border-ink-100 p-4 bg-ink-50">
+              <p className="text-[13px] font-semibold mb-3 flex items-center gap-1.5"><Plus className="w-3.5 h-3.5 text-brand" /> Add requirement</p>
+              <AddRow docTypes={docTypes} onAdd={(v) => create.mutate(v)} busy={create.isPending} />
+            </div>
+          )}
         </>
       )}
     </section>

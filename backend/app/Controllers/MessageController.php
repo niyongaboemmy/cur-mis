@@ -12,6 +12,8 @@ use App\Models\ConversationModel;
 use App\Helpers\ValidationHelper;
 use App\Services\MailService;
 use App\Services\SystemLogService;
+use App\Services\AuthService;
+use App\Constants\Permissions;
 
 class MessageController extends BaseController
 {
@@ -24,6 +26,19 @@ class MessageController extends BaseController
         $this->messageModel = new MessageModel();
         $this->convModel    = new ConversationModel();
         $this->db           = Database::getInstance();
+    }
+
+    /**
+     * Wires the previously-dead BROADCAST_MESSAGES/MANAGE_MESSAGES slugs
+     * (RBAC_PERMISSIONS_AUDIT.md dead-slug list) into the audience-expansion
+     * gate, replacing the old superadmin-only check.
+     */
+    private function canBroadcast(array $actor): bool
+    {
+        if (AuthService::isSuperadmin($actor)) return true;
+        $perms = (array) ($actor['permissions'] ?? []);
+        return in_array(Permissions::BROADCAST_MESSAGES, $perms, true)
+            || in_array(Permissions::MANAGE_MESSAGES, $perms, true);
     }
 
     // ── Role expansion ────────────────────────────────────────────────────────
@@ -59,7 +74,7 @@ class MessageController extends BaseController
         ];
 
         $allowedRoleSlugs = ['all_students', 'all_lecturers'];
-        $isAdmin          = in_array($actor['role'] ?? '', ['superadmin', 'admin'], true);
+        $isAdmin          = $this->canBroadcast($actor);
 
         $userIds   = [];
         $roleSlugs = [];
@@ -578,7 +593,7 @@ class MessageController extends BaseController
         }
 
         $roleGroups = [];
-        $isAdmin    = \in_array($actor['role'] ?? '', ['superadmin', 'admin'], true);
+        $isAdmin    = $this->canBroadcast($actor);
 
         if ($isAdmin) {
             $allGroups = [

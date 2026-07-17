@@ -291,14 +291,15 @@ class HrPayrollController extends BaseController
         }
 
         // 3. Exact full-name match, tolerating column order + stray whitespace.
+        // Only trusted when the name is unique — two staff sharing a name must
+        // never be able to resolve to each other's salary record.
         if ($fullName !== '') {
-            $row = $db->fetchOne(
-                $select . "WHERE LOWER(TRIM(CONCAT(TRIM(e.employee_fname), ' ', TRIM(e.employee_lname)))) = ?
-                            OR LOWER(TRIM(CONCAT(TRIM(e.employee_lname), ' ', TRIM(e.employee_fname)))) = ?
-                          LIMIT 1",
-                [$fullName, $fullName]
-            );
-            if ($row) return $row;
+            $nameWhere = "WHERE LOWER(TRIM(CONCAT(TRIM(e.employee_fname), ' ', TRIM(e.employee_lname)))) = ?
+                             OR LOWER(TRIM(CONCAT(TRIM(e.employee_lname), ' ', TRIM(e.employee_fname)))) = ?";
+            $matches = $db->fetchAll($select . $nameWhere, [$fullName, $fullName]);
+            if (count($matches) === 1) {
+                return $matches[0];
+            }
         }
 
         return null;
@@ -427,6 +428,15 @@ class HrPayrollController extends BaseController
             $this->error($response, 'Payroll entry not found.', 404);
         }
 
+        // Forward-only workflow: Pending -> Approved -> Paid. A paid payslip is final.
+        $order = ['Pending' => 0, 'Approved' => 1, 'Paid' => 2];
+        if ($existing['status'] === 'Paid' && $status !== 'Paid') {
+            $this->error($response, 'A paid payroll entry cannot be reverted.', 409);
+        }
+        if (($order[$status] ?? 0) < ($order[$existing['status']] ?? 0)) {
+            $this->error($response, "Cannot move payroll status backward from '{$existing['status']}' to '{$status}'.", 409);
+        }
+
         $this->payrollModel->update($id, ['status' => $status]);
         $actor = (array) $request->param('_auth_user');
         SystemLogService::log('UPDATE', 'HR', "Payroll entry ID {$id} (emp {$existing['emp_id']}) marked as {$status}.", $id, 'hr_payroll', ['status' => $status, 'emp_id' => $existing['emp_id'] ?? null], $actor ?: null);
@@ -471,29 +481,36 @@ class HrPayrollController extends BaseController
         $copied  = 0;
         $skipped = 0;
 
-        foreach ($source as $row) {
-            $exists = $this->payrollModel->findByPeriod((int)$row['emp_id'], $toYear, $toMonth);
-            if ($exists) { $skipped++; continue; }
+        $db->beginTransaction();
+        try {
+            foreach ($source as $row) {
+                $exists = $this->payrollModel->findByPeriod((int)$row['emp_id'], $toYear, $toMonth);
+                if ($exists) { $skipped++; continue; }
 
-            $this->payrollModel->create([
-                'emp_id'              => $row['emp_id'],
-                'pay_month'           => $toPayMonth,
-                'period_year'         => $toYear,
-                'period_month'        => $toMonth,
-                'basic_salary'        => $row['basic_salary'],
-                'housing_allowance'   => $row['housing_allowance'],
-                'transport_allowance' => $row['transport_allowance'],
-                'other_allowances'    => $row['other_allowances'],
-                'gross'               => $row['gross'],
-                'tax'                 => $row['tax'],
-                'pension'             => $row['pension'],
-                'rama'                => $row['rama'],
-                'maternity'           => $row['maternity'],
-                'cbhi'                => $row['cbhi'],
-                'net'                 => $row['net'],
-                'status'              => 'Pending',
-            ]);
-            $copied++;
+                $this->payrollModel->create([
+                    'emp_id'              => $row['emp_id'],
+                    'pay_month'           => $toPayMonth,
+                    'period_year'         => $toYear,
+                    'period_month'        => $toMonth,
+                    'basic_salary'        => $row['basic_salary'],
+                    'housing_allowance'   => $row['housing_allowance'],
+                    'transport_allowance' => $row['transport_allowance'],
+                    'other_allowances'    => $row['other_allowances'],
+                    'gross'               => $row['gross'],
+                    'tax'                 => $row['tax'],
+                    'pension'             => $row['pension'],
+                    'rama'                => $row['rama'],
+                    'maternity'           => $row['maternity'],
+                    'cbhi'                => $row['cbhi'],
+                    'net'                 => $row['net'],
+                    'status'              => 'Pending',
+                ]);
+                $copied++;
+            }
+            $db->commit();
+        } catch (\Throwable $e) {
+            $db->rollBack();
+            $this->error($response, 'Payroll copy failed and was rolled back: ' . $e->getMessage(), 500);
         }
 
         $actor = (array) $request->param('_auth_user');
@@ -582,107 +599,114 @@ class HrPayrollController extends BaseController
         $inserted = 0;
         $skipped  = 0;
 
-        foreach ($excelRows as $row) {
-            $fname = trim((string)($row['fname'] ?? ''));
-            $lname = trim((string)($row['lname'] ?? ''));
-            $gross = (float)($row['gross'] ?? 0);
-            $paye  = (float)($row['paye']  ?? 0);
-            $net   = max(0, $gross - $paye);
-
-            if ($fname === '' || $lname === '' || $gross <= 0) {
-                $results[] = ['row' => "{$fname} {$lname}", 'status' => 'skipped', 'reason' => 'Missing data'];
-                $skipped++;
-                continue;
-            }
-
-            // Strip academic/honorary titles from fname for DB lookup
-            $fnameClean = preg_replace('/^(Dr|DR|Prof|Mr|Mrs|Ms)\.?\s+/i', '', $fname);
-
-            // 1. Find in `employees` by employee_lname LIKE (given name column)
-            $candidates = $db->fetchAll(
-                "SELECT employee_id, employee_fname, employee_lname
-                 FROM employees WHERE employee_lname LIKE ? LIMIT 5",
-                ["%{$lname}%"]
-            );
-
-            $emp = null;
-            if (count($candidates) === 1) {
-                $emp = $candidates[0];
-            } elseif (count($candidates) > 1) {
-                foreach ($candidates as $c) {
-                    if (stripos((string)$c['employee_fname'], $fnameClean) !== false) {
-                        $emp = $c;
-                        break;
-                    }
+        $db->beginTransaction();
+        try {
+            foreach ($excelRows as $row) {
+                $fname = trim((string)($row['fname'] ?? ''));
+                $lname = trim((string)($row['lname'] ?? ''));
+                $gross = (float)($row['gross'] ?? 0);
+                $paye  = (float)($row['paye']  ?? 0);
+                $net   = max(0, $gross - $paye);
+    
+                if ($fname === '' || $lname === '' || $gross <= 0) {
+                    $results[] = ['row' => "{$fname} {$lname}", 'status' => 'skipped', 'reason' => 'Missing data'];
+                    $skipped++;
+                    continue;
                 }
-                if (!$emp) $emp = $candidates[0];
-            }
-
-            // 1b. Fallback: search by all-caps surname in both fname and lname columns
-            if (!$emp) {
-                $candidates2 = $db->fetchAll(
+    
+                // Strip academic/honorary titles from fname for DB lookup
+                $fnameClean = preg_replace('/^(Dr|DR|Prof|Mr|Mrs|Ms)\.?\s+/i', '', $fname);
+    
+                // 1. Find in `employees` by employee_lname LIKE (given name column)
+                $candidates = $db->fetchAll(
                     "SELECT employee_id, employee_fname, employee_lname
-                     FROM employees
-                     WHERE employee_fname LIKE ? OR employee_lname LIKE ? LIMIT 5",
-                    ["%{$fnameClean}%", "%{$fnameClean}%"]
+                     FROM employees WHERE employee_lname LIKE ? LIMIT 5",
+                    ["%{$lname}%"]
                 );
-                if (count($candidates2) === 1) {
-                    $emp = $candidates2[0];
-                } elseif (count($candidates2) > 1) {
-                    foreach ($candidates2 as $c) {
-                        if (stripos((string)$c['employee_fname'], $lname) !== false ||
-                            stripos((string)$c['employee_lname'], $lname) !== false) {
+    
+                $emp = null;
+                if (count($candidates) === 1) {
+                    $emp = $candidates[0];
+                } elseif (count($candidates) > 1) {
+                    foreach ($candidates as $c) {
+                        if (stripos((string)$c['employee_fname'], $fnameClean) !== false) {
                             $emp = $c;
                             break;
                         }
                     }
-                    if (!$emp) $emp = $candidates2[0];
+                    if (!$emp) $emp = $candidates[0];
                 }
-            }
-
-            // 1c. Still not found — create a minimal employee record
-            if (!$emp) {
+    
+                // 1b. Fallback: search by all-caps surname in both fname and lname columns
+                if (!$emp) {
+                    $candidates2 = $db->fetchAll(
+                        "SELECT employee_id, employee_fname, employee_lname
+                         FROM employees
+                         WHERE employee_fname LIKE ? OR employee_lname LIKE ? LIMIT 5",
+                        ["%{$fnameClean}%", "%{$fnameClean}%"]
+                    );
+                    if (count($candidates2) === 1) {
+                        $emp = $candidates2[0];
+                    } elseif (count($candidates2) > 1) {
+                        foreach ($candidates2 as $c) {
+                            if (stripos((string)$c['employee_fname'], $lname) !== false ||
+                                stripos((string)$c['employee_lname'], $lname) !== false) {
+                                $emp = $c;
+                                break;
+                            }
+                        }
+                        if (!$emp) $emp = $candidates2[0];
+                    }
+                }
+    
+                // 1c. Still not found — create a minimal employee record
+                if (!$emp) {
+                    $db->execute(
+                        "INSERT INTO employees (employee_fname, employee_lname, employee_status, account_status, employee_reg_date)
+                         VALUES (?, ?, 'Permanent', 'Active', CURDATE())",
+                        [$fnameClean, $lname]
+                    );
+                    $newEmpId = (int)$db->lastInsertId();
+                    $emp = ['employee_id' => $newEmpId, 'employee_fname' => $fnameClean, 'employee_lname' => $lname];
+                    $results[] = ['row' => "{$fname} {$lname}", 'status' => 'created', 'reason' => 'New employee added to employees table'];
+                }
+    
+                $empId = (int)$emp['employee_id'];
+    
+                // 2. Upsert into hr_payroll using employees.employee_id as emp_id
                 $db->execute(
-                    "INSERT INTO employees (employee_fname, employee_lname, employee_status, account_status, employee_reg_date)
-                     VALUES (?, ?, 'Permanent', 'Active', CURDATE())",
-                    [$fnameClean, $lname]
+                    "INSERT INTO hr_payroll
+                       (emp_id, pay_month, period_year, period_month,
+                        basic_salary, housing_allowance, transport_allowance, other_allowances,
+                        gross, tax, pension, rama, maternity, cbhi, net, status)
+                     VALUES (?, ?, ?, ?,  ?, 0, 0, 0,  ?, ?, 0, 0, 0, 0, ?, 'Approved')
+                     ON DUPLICATE KEY UPDATE
+                       pay_month    = VALUES(pay_month),
+                       basic_salary = VALUES(basic_salary),
+                       gross        = VALUES(gross),
+                       tax          = VALUES(tax),
+                       net          = VALUES(net),
+                       status       = VALUES(status)",
+                    [
+                        $empId, $payMonth, $periodYear, $periodMonth,
+                        $gross, $gross, $paye, $net,
+                    ]
                 );
-                $newEmpId = (int)$db->lastInsertId();
-                $emp = ['employee_id' => $newEmpId, 'employee_fname' => $fnameClean, 'employee_lname' => $lname];
-                $results[] = ['row' => "{$fname} {$lname}", 'status' => 'created', 'reason' => 'New employee added to employees table'];
+    
+                $results[] = [
+                    'row'    => $emp['employee_fname'] . ' ' . $emp['employee_lname'],
+                    'emp_id' => $empId,
+                    'gross'  => $gross,
+                    'paye'   => $paye,
+                    'net'    => $net,
+                    'status' => 'imported',
+                ];
+                $inserted++;
             }
-
-            $empId = (int)$emp['employee_id'];
-
-            // 2. Upsert into hr_payroll using employees.employee_id as emp_id
-            $db->execute(
-                "INSERT INTO hr_payroll
-                   (emp_id, pay_month, period_year, period_month,
-                    basic_salary, housing_allowance, transport_allowance, other_allowances,
-                    gross, tax, pension, rama, maternity, cbhi, net, status)
-                 VALUES (?, ?, ?, ?,  ?, 0, 0, 0,  ?, ?, 0, 0, 0, 0, ?, 'Approved')
-                 ON DUPLICATE KEY UPDATE
-                   pay_month    = VALUES(pay_month),
-                   basic_salary = VALUES(basic_salary),
-                   gross        = VALUES(gross),
-                   tax          = VALUES(tax),
-                   net          = VALUES(net),
-                   status       = VALUES(status)",
-                [
-                    $empId, $payMonth, $periodYear, $periodMonth,
-                    $gross, $gross, $paye, $net,
-                ]
-            );
-
-            $results[] = [
-                'row'    => $emp['employee_fname'] . ' ' . $emp['employee_lname'],
-                'emp_id' => $empId,
-                'gross'  => $gross,
-                'paye'   => $paye,
-                'net'    => $net,
-                'status' => 'imported',
-            ];
-            $inserted++;
+            $db->commit();
+        } catch (\Throwable $e) {
+            $db->rollBack();
+            $this->error($response, 'Payroll import failed and was rolled back: ' . $e->getMessage(), 500);
         }
 
         $actor = (array) $request->param('_auth_user');

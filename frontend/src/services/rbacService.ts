@@ -10,6 +10,8 @@ export interface Role {
   /** When 1, users with this role only ever see data belonging to the
    *  campuses they're assigned to — even if they have an "admin" role name. */
   enforce_campus_scope?: 0 | 1 | boolean;
+  /** When 1, this is one of the 8 canonical roles — cannot be renamed or deleted. */
+  is_system?: 0 | 1 | boolean;
 }
 
 export interface Permission {

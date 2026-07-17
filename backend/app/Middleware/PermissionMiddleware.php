@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Middleware;
 
 use App\Helpers\ResponseHelper;
+use App\Services\AuthService;
 use Core\Request;
 use Core\Response;
 
@@ -34,8 +35,7 @@ class PermissionMiddleware
         // Ensure $user is an array (JWT decode might return stdClass)
         $user = (array) $user;
 
-        // Superadmin and admin bypass — both roles have full access
-        if (isset($user['role']) && in_array($user['role'], ['superadmin', 'admin'], true)) {
+        if (AuthService::isSuperadmin($user)) {
             return;
         }
 

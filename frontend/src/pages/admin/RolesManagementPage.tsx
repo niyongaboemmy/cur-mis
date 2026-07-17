@@ -11,9 +11,17 @@ import {
   Search,
   Users,
   Activity,
+  Sparkles,
+  LayoutGrid,
+  List as ListIcon,
+  ChevronRight,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import ModalPortal from "@/components/ui/ModalPortal";
+import {
+  ROLE_TEMPLATES,
+  ROLE_TEMPLATE_CATEGORIES,
+} from "@/constants/roleTemplates";
 
 export default function RolesManagementPage() {
   const [roles, setRoles] = useState<Role[]>([]);
@@ -23,6 +31,10 @@ export default function RolesManagementPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<Role | null>(null);
   const [roleForm, setRoleForm] = useState({ name: "", description: "" });
+  // Suggested-template picker (Create Role only) — front-end convenience,
+  // never sent to the backend directly; only pre-fills the form and, after
+  // creation, pre-checks the matching permissions for the admin to review.
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
 
   const [isPermsOpen, setIsPermsOpen] = useState(false);
   const [selectedRoleForPerms, setSelectedRoleForPerms] = useState<Role | null>(
@@ -40,6 +52,7 @@ export default function RolesManagementPage() {
   // Roles list management
   const [rolesSearchQuery, setRolesSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState<"name" | "users">("name");
+  const [viewMode, setViewMode] = useState<"list" | "card">("list");
 
   const abortController = useRef<AbortController | null>(null);
 
@@ -70,6 +83,7 @@ export default function RolesManagementPage() {
   };
 
   const openForm = (role?: Role) => {
+    setSelectedTemplateId("");
     if (role) {
       setEditingRole(role);
       setRoleForm({ name: role.name, description: role.description || "" });
@@ -80,18 +94,63 @@ export default function RolesManagementPage() {
     setIsModalOpen(true);
   };
 
+  const applyTemplate = (templateId: string) => {
+    setSelectedTemplateId(templateId);
+    const template = ROLE_TEMPLATES.find((t) => t.id === templateId);
+    if (template) {
+      setRoleForm({ name: template.name, description: template.description });
+    }
+  };
+
+  // After creating a role from a template, pre-check its suggested
+  // permissions in the Permissions modal — the admin still has to review
+  // and hit "Apply Changes" for anything to actually be granted.
+  const openPermsWithSuggestedSlugs = (role: Role, slugs: string[]) => {
+    setSelectedRoleForPerms(role);
+    setEnforceCampusScope(false);
+    const allPerms = categories.flatMap((c) => c.permissions || []);
+    const matchedIds = slugs
+      .map((slug) => allPerms.find((p) => p.slug === slug)?.id)
+      .filter(Boolean) as number[];
+    setSelectedPerms(matchedIds);
+    setIsPermsOpen(true);
+  };
+
   const handleSaveRole = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       if (editingRole) {
         await rbacService.updateRole(editingRole.id, roleForm);
         toast.success("Role updated successfully");
+        setIsModalOpen(false);
+        fetchData();
       } else {
-        await rbacService.createRole(roleForm);
+        const res = await rbacService.createRole(roleForm);
         toast.success("Role created successfully");
+        setIsModalOpen(false);
+
+        const template = ROLE_TEMPLATES.find(
+          (t) => t.id === selectedTemplateId,
+        );
+        const newId = (res as any)?.data?.id;
+        if (template && newId) {
+          toast(
+            `Suggested permissions for "${template.name}" are pre-checked — review and apply.`,
+            { icon: "✨" },
+          );
+          openPermsWithSuggestedSlugs(
+            {
+              id: newId,
+              name: roleForm.name,
+              description: roleForm.description,
+              permissions: [],
+              created_at: new Date().toISOString(),
+            },
+            template.permissions,
+          );
+        }
+        fetchData();
       }
-      setIsModalOpen(false);
-      fetchData();
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Failed to save role");
     }
@@ -212,8 +271,8 @@ export default function RolesManagementPage() {
               label: "Assigned Users",
               value: totalAssignedUsers,
               icon: Users,
-              color: "text-indigo-600",
-              bg: "bg-indigo-50 dark:bg-indigo-900/20",
+              color: "text-primary-600",
+              bg: "bg-primary-50 dark:bg-primary-900/20",
             },
             {
               label: "Total Perms",
@@ -225,7 +284,7 @@ export default function RolesManagementPage() {
           ].map((stat, i) => (
             <div
               key={i}
-              className="flex items-center gap-4 px-6 py-4 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700"
+              className="flex items-center gap-4 px-6 py-4 bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800"
             >
               <div
                 className={`w-10 h-10 rounded-xl ${stat.bg} ${stat.color} flex items-center justify-center`}
@@ -246,7 +305,7 @@ export default function RolesManagementPage() {
       </div>
 
       {/* Filter Bar */}
-      <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-white/50 dark:bg-gray-800/50 backdrop-blur-md p-4 rounded-3xl border border-white/20 dark:border-gray-700/30">
+      <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-white/50 dark:bg-gray-900/60 backdrop-blur-md p-4 rounded-3xl border border-white/20 dark:border-gray-800/60">
         <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
           <div className="relative w-full md:w-80 group">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-primary-500 transition-colors" />
@@ -262,139 +321,263 @@ export default function RolesManagementPage() {
           <div className="flex items-center gap-2 bg-gray-100 dark:bg-gray-900 p-1 rounded-2xl w-full md:w-auto">
             <button
               onClick={() => setSortBy("name")}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${sortBy === "name" ? "bg-white dark:bg-gray-800 text-primary-600" : "text-gray-500 hover:text-gray-700"}`}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${sortBy === "name" ? "bg-white dark:bg-gray-800 text-primary-600 dark:text-white" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-200"}`}
             >
               Sort by Name
             </button>
             <button
               onClick={() => setSortBy("users")}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${sortBy === "users" ? "bg-white dark:bg-gray-800 text-primary-600" : "text-gray-500 hover:text-gray-700"}`}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${sortBy === "users" ? "bg-white dark:bg-gray-800 text-primary-600 dark:text-white" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-200"}`}
             >
               Sort by Users
             </button>
           </div>
         </div>
 
-        <button
-          onClick={() => openForm()}
-          className="w-full md:w-auto flex items-center justify-center gap-3 px-8 py-3.5 bg-primary-600 hover:bg-primary-700 text-white rounded-2xl transition-all duration-300 font-bold text-sm"
-        >
-          <Plus className="w-5 h-5" />
-          <span>Create New Role</span>
-        </button>
+        <div className="flex items-center gap-3 w-full md:w-auto">
+          <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-900 p-1 rounded-xl shrink-0">
+            <button
+              onClick={() => setViewMode("list")}
+              title="List view"
+              className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all ${viewMode === "list" ? "bg-white dark:bg-gray-800 text-primary-600 shadow-sm" : "text-gray-400 hover:text-gray-600"}`}
+            >
+              <ListIcon className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setViewMode("card")}
+              title="Card view"
+              className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all ${viewMode === "card" ? "bg-white dark:bg-gray-800 text-primary-600 shadow-sm" : "text-gray-400 hover:text-gray-600"}`}
+            >
+              <LayoutGrid className="w-4 h-4" />
+            </button>
+          </div>
+
+          <button
+            onClick={() => openForm()}
+            className="flex-1 md:flex-none flex items-center justify-center gap-2 px-5 py-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-xl transition-all duration-300 font-bold text-sm"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Create New Role</span>
+          </button>
+        </div>
       </div>
 
-      {/* Role Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-6">
-        {filteredRoles.map((role) => (
-          <div
-            key={role.id}
-            className="group relative bg-white dark:bg-gray-800 rounded-[2rem] p-8 border border-gray-100 dark:border-gray-700 transition-all duration-500 flex flex-col h-full overflow-hidden"
-          >
-            {/* Hover actions */}
-            <div className="absolute top-6 right-6 flex gap-2 translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 z-10">
-              <button
-                onClick={() => openForm(role)}
-                className="w-10 h-10 rounded-xl bg-white dark:bg-gray-700 border border-gray-100 dark:border-gray-600 flex items-center justify-center text-gray-500 hover:text-primary-600 transition-colors"
-                title="Edit Role"
+      {/* Role Card Grid */}
+      {viewMode === "card" && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4">
+          {filteredRoles.map((role) => {
+            const permPct = Math.round(
+              ((role.permissions?.length || 0) / (allPermissions.length || 1)) *
+                100,
+            );
+            return (
+              <div
+                key={role.id}
+                className="group relative bg-white dark:bg-gray-900 rounded-2xl p-5 border border-gray-100 dark:border-gray-800 hover:border-primary-200 dark:hover:border-primary-800/60 hover:shadow-md transition-all duration-300 flex flex-col"
               >
-                <Edit className="w-4 h-4" />
-              </button>
-              {role.name !== "superadmin" && (
-                <button
-                  onClick={() => handleDelete(role.id)}
-                  className="w-10 h-10 rounded-xl bg-white dark:bg-gray-700 border border-gray-100 dark:border-gray-600 flex items-center justify-center text-gray-500 hover:text-red-600 transition-colors"
-                  title="Delete Role"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              )}
-            </div>
+                {/* Hover actions */}
+                <div className="absolute top-4 right-4 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10">
+                  <button
+                    onClick={() => openForm(role)}
+                    className="w-8 h-8 rounded-lg bg-gray-50 dark:bg-gray-700 border border-gray-100 dark:border-gray-600 flex items-center justify-center text-gray-500 hover:text-primary-600 transition-colors"
+                    title={
+                      role.is_system
+                        ? "Edit Role (name is locked)"
+                        : "Edit Role"
+                    }
+                  >
+                    <Edit className="w-3.5 h-3.5" />
+                  </button>
+                  {!role.is_system && (
+                    <button
+                      onClick={() => handleDelete(role.id)}
+                      className="w-8 h-8 rounded-lg bg-gray-50 dark:bg-gray-700 border border-gray-100 dark:border-gray-600 flex items-center justify-center text-gray-500 hover:text-red-600 transition-colors"
+                      title="Delete Role"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
 
-            {/* Role Header */}
-            <div className="flex items-center gap-5 mb-6">
-              <div className="w-16 h-16 rounded-[1.25rem] bg-gradient-to-br from-primary-500 to-indigo-600 flex items-center justify-center text-white transform group-hover:scale-110 group-hover:rotate-3 transition-transform duration-500">
-                <Shield className="w-8 h-8" />
+                {/* Role Header */}
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-11 h-11 shrink-0 rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center text-white">
+                    <Shield className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-bold text-gray-900 dark:text-white capitalize truncate pr-14">
+                      {role.name}
+                    </h3>
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/30 px-1.5 py-0.5 rounded-md mt-1">
+                      <Users className="w-3 h-3" />
+                      {role.user_count || 0}{" "}
+                      {role.user_count === 1 ? "User" : "Users"}
+                    </span>
+                  </div>
+                </div>
+
+                <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 leading-relaxed mb-4 flex-1">
+                  {role.description ||
+                    "No specific description has been provided for this system role."}
+                </p>
+
+                {/* Permissions Summary */}
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">
+                      Permissions
+                    </span>
+                    <span className="text-[10px] font-black text-primary-600">
+                      {permPct}%
+                    </span>
+                  </div>
+
+                  <div className="w-full h-1 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-primary-500 to-primary-600 rounded-full transition-all duration-700 ease-out"
+                      style={{
+                        width: `${Math.min(100, Math.max(4, permPct))}%`,
+                      }}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 pt-1">
+                    <div className="flex -space-x-1.5">
+                      {(role.permissions || []).slice(0, 3).map((p, idx) => (
+                        <div
+                          key={idx}
+                          className="w-6 h-6 rounded-full bg-white dark:bg-gray-700 border-2 border-gray-50 dark:border-gray-800 flex items-center justify-center"
+                          title={p}
+                        >
+                          <Lock className="w-3 h-3 text-gray-400" />
+                        </div>
+                      ))}
+                      {(role.permissions?.length || 0) > 3 && (
+                        <div className="w-6 h-6 rounded-full bg-gray-100 dark:bg-gray-700 border-2 border-white dark:border-gray-800 flex items-center justify-center text-[9px] font-bold text-gray-500">
+                          +{(role.permissions?.length || 0) - 3}
+                        </div>
+                      )}
+                      {(role.permissions?.length || 0) === 0 && (
+                        <span className="text-[9px] font-bold text-gray-300 italic">
+                          None assigned
+                        </span>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={() => openPerms(role)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 hover:bg-primary-600 dark:bg-gray-950 dark:border dark:border-gray-800 dark:hover:bg-primary-600 dark:hover:border-primary-600 text-gray-600 hover:text-white dark:text-gray-400 dark:hover:text-white rounded-lg transition-all duration-200 font-bold text-[9px]"
+                    >
+                      <Activity className="w-3 h-3" />
+                      Manage
+                    </button>
+                  </div>
+                </div>
               </div>
-              <div className="min-w-0">
-                <h3 className="text-xl font-bold text-gray-900 dark:text-white capitalize truncate pr-12">
-                  {role.name}
-                </h3>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="flex items-center gap-1 text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-lg">
-                    <Users className="w-3 h-3" />
+            );
+          })}
+        </div>
+      )}
+
+      {/* Role List */}
+      {viewMode === "list" && (
+        <div className="flex flex-col gap-2">
+          {filteredRoles.map((role) => {
+            const permPct = Math.round(
+              ((role.permissions?.length || 0) / (allPermissions.length || 1)) *
+                100,
+            );
+            return (
+              <div
+                key={role.id}
+                className="group flex items-center gap-4 bg-white dark:bg-gray-900 rounded-xl px-4 py-3 border border-gray-200 dark:border-gray-800 hover:border-primary-300 dark:hover:border-primary-800/60 hover:shadow-sm transition-all duration-200"
+              >
+                <div className="w-10 h-10 shrink-0 rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center text-white">
+                  <Shield className="w-4 h-4" />
+                </div>
+
+                <div className="min-w-0 w-44 shrink-0">
+                  <h3 className="text-sm font-bold text-gray-900 dark:text-white capitalize truncate">
+                    {role.name}
+                  </h3>
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/30 px-1.5 py-0.5 rounded-md mt-0.5">
+                    <Users className="w-2.5 h-2.5" />
                     {role.user_count || 0}{" "}
                     {role.user_count === 1 ? "User" : "Users"}
                   </span>
                 </div>
-              </div>
-            </div>
 
-            <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-3 font-medium leading-relaxed mb-8 flex-1">
-              {role.description ||
-                "No specific description has been provided for this system role."}
-            </p>
+                <p className="hidden md:block flex-1 min-w-0 text-xs text-gray-500 dark:text-gray-400 truncate">
+                  {role.description ||
+                    "No specific description has been provided for this system role."}
+                </p>
 
-            {/* Permissions Summary */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                  Permissions
-                </span>
-                <span className="text-[10px] font-black text-primary-600">
-                  {Math.round(
-                    ((role.permissions?.length || 0) /
-                      (allPermissions.length || 1)) *
-                      100,
-                  )}
-                  %
-                </span>
-              </div>
+                <div className="hidden lg:flex items-center gap-2 w-40 shrink-0">
+                  <div className="flex-1 h-1 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-primary-500 to-primary-600 rounded-full transition-all duration-700 ease-out"
+                      style={{
+                        width: `${Math.min(100, Math.max(4, permPct))}%`,
+                      }}
+                    />
+                  </div>
+                  <span className="text-[10px] font-black text-primary-600 w-8 text-right">
+                    {permPct}%
+                  </span>
+                </div>
 
-              <div className="w-full h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-primary-500 to-indigo-600 rounded-full transition-all duration-1000 ease-out group-hover:scale-x-105"
-                  style={{
-                    width: `${Math.min(100, Math.max(5, ((role.permissions?.length || 0) / (allPermissions.length || 1)) * 100))}%`,
-                  }}
-                />
-              </div>
-
-              <div className="flex items-center justify-between gap-3 pt-2">
-                <div className="flex -space-x-2">
+                <div className="hidden xl:flex -space-x-1.5 shrink-0">
                   {(role.permissions || []).slice(0, 3).map((p, idx) => (
                     <div
                       key={idx}
-                      className="w-8 h-8 rounded-full bg-white dark:bg-gray-700 border-2 border-gray-50 dark:border-gray-800 flex items-center justify-center"
+                      className="w-6 h-6 rounded-full bg-white dark:bg-gray-700 border-2 border-gray-50 dark:border-gray-800 flex items-center justify-center"
                       title={p}
                     >
-                      <Lock className="w-3.5 h-3.5 text-gray-400" />
+                      <Lock className="w-3 h-3 text-gray-400" />
                     </div>
                   ))}
                   {(role.permissions?.length || 0) > 3 && (
-                    <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-700 border-2 border-white dark:border-gray-800 flex items-center justify-center text-[10px] font-bold text-gray-500">
+                    <div className="w-6 h-6 rounded-full bg-gray-100 dark:bg-gray-700 border-2 border-white dark:border-gray-800 flex items-center justify-center text-[9px] font-bold text-gray-500">
                       +{(role.permissions?.length || 0) - 3}
                     </div>
                   )}
-                  {(role.permissions?.length || 0) === 0 && (
-                    <span className="text-[10px] font-bold text-gray-300 italic">
-                      None assigned
-                    </span>
-                  )}
                 </div>
 
-                <button
-                  onClick={() => openPerms(role)}
-                  className="flex items-center gap-2 px-4 py-2 bg-gray-50 hover:bg-primary-600 dark:bg-gray-900 dark:hover:bg-primary-600 text-gray-600 hover:text-white dark:text-gray-400 dark:hover:text-white rounded-xl transition-all duration-300 font-bold text-[10px]"
-                >
-                  <Activity className="w-3.5 h-3.5" />
-                  Manage Perms
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => openPerms(role)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 hover:bg-primary-600 dark:bg-gray-950 dark:border dark:border-gray-800 dark:hover:bg-primary-600 dark:hover:border-primary-600 text-gray-600 hover:text-white dark:text-gray-400 dark:hover:text-white rounded-lg transition-all duration-200 font-bold text-[10px]"
+                  >
+                    <Activity className="w-3 h-3" />
+                    <span className="hidden sm:inline">Manage Perms</span>
+                  </button>
+                  <button
+                    onClick={() => openForm(role)}
+                    className="w-8 h-8 rounded-lg bg-gray-50 dark:bg-gray-950 border border-gray-100 dark:border-gray-800 flex items-center justify-center text-gray-500 hover:text-primary-600 transition-colors"
+                    title={
+                      role.is_system
+                        ? "Edit Role (name is locked)"
+                        : "Edit Role"
+                    }
+                  >
+                    <Edit className="w-3.5 h-3.5" />
+                  </button>
+                  {!role.is_system && (
+                    <button
+                      onClick={() => handleDelete(role.id)}
+                      className="w-8 h-8 rounded-lg bg-gray-50 dark:bg-gray-950 border border-gray-100 dark:border-gray-800 flex items-center justify-center text-gray-500 hover:text-red-600 transition-colors"
+                      title="Delete Role"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  <ChevronRight className="w-4 h-4 text-gray-300 dark:text-gray-600 shrink-0" />
+                </div>
               </div>
-            </div>
-          </div>
-        ))}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Empty State */}
       {filteredRoles.length === 0 && (
@@ -421,334 +604,258 @@ export default function RolesManagementPage() {
       {/* Role Form Modal */}
       {isModalOpen && (
         <ModalPortal>
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-md border border-gray-100 dark:border-gray-800 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-gray-800/50">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                {editingRole ? "Edit Role" : "Create New Role"}
-              </h3>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <form onSubmit={handleSaveRole} className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Role Name
-                </label>
-                <input
-                  autoFocus
-                  required
-                  value={roleForm.name}
-                  onChange={(e) =>
-                    setRoleForm({ ...roleForm, name: e.target.value })
-                  }
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all outline-none"
-                  placeholder="e.g. manager"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Description
-                </label>
-                <textarea
-                  value={roleForm.description}
-                  onChange={(e) =>
-                    setRoleForm({ ...roleForm, description: e.target.value })
-                  }
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all outline-none min-h-[100px]"
-                  placeholder="Optional description"
-                />
-              </div>
-              <div className="flex gap-3 pt-4">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-md border border-gray-100 dark:border-gray-800 overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center bg-gray-50/50 dark:bg-gray-800/50">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  {editingRole ? "Edit Role" : "Create New Role"}
+                </h3>
                 <button
-                  type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="flex-1 px-4 py-2 rounded-xl border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors font-medium"
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 px-4 py-2 rounded-xl bg-primary-600 hover:bg-primary-700 text-white transition-colors font-medium"
-                >
-                  Save Role
+                  <X className="w-5 h-5" />
                 </button>
               </div>
-            </form>
+              <form onSubmit={handleSaveRole} className="p-6 space-y-4">
+                {!editingRole && (
+                  <div>
+                    <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      <Sparkles className="w-3.5 h-3.5 text-primary-500" />
+                      Start from a suggested role (optional)
+                    </label>
+                    <select
+                      value={selectedTemplateId}
+                      onChange={(e) => applyTemplate(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all outline-none"
+                    >
+                      <option value="">— Start from scratch —</option>
+                      {ROLE_TEMPLATE_CATEGORIES.map((cat) => (
+                        <optgroup key={cat} label={cat}>
+                          {ROLE_TEMPLATES.filter((t) => t.category === cat).map(
+                            (t) => (
+                              <option key={t.id} value={t.id}>
+                                {t.name}
+                              </option>
+                            ),
+                          )}
+                        </optgroup>
+                      ))}
+                    </select>
+                    {selectedTemplateId && (
+                      <p className="mt-1.5 text-xs text-gray-500 leading-relaxed">
+                        {
+                          ROLE_TEMPLATES.find(
+                            (t) => t.id === selectedTemplateId,
+                          )?.description
+                        }{" "}
+                        Name/description are editable below — permissions can be
+                        reviewed and adjusted right after you create the role.
+                      </p>
+                    )}
+                  </div>
+                )}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Role Name
+                  </label>
+                  <input
+                    autoFocus
+                    required
+                    disabled={Boolean(editingRole?.is_system)}
+                    value={roleForm.name}
+                    onChange={(e) =>
+                      setRoleForm({ ...roleForm, name: e.target.value })
+                    }
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all outline-none disabled:opacity-60 disabled:cursor-not-allowed"
+                    placeholder="e.g. manager"
+                  />
+                  {Boolean(editingRole?.is_system) && (
+                    <p className="mt-1 text-xs text-gray-500">
+                      System role names cannot be changed.
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Description
+                  </label>
+                  <textarea
+                    value={roleForm.description}
+                    onChange={(e) =>
+                      setRoleForm({ ...roleForm, description: e.target.value })
+                    }
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all outline-none min-h-[100px]"
+                    placeholder="Optional description"
+                  />
+                </div>
+                <div className="flex gap-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setIsModalOpen(false)}
+                    className="flex-1 px-4 py-2 rounded-xl border border-gray-300 dark:border-ink-600 text-gray-700 dark:text-ink-200 hover:bg-gray-50 dark:hover:bg-ink-700 transition-colors font-medium"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 px-4 py-2 rounded-xl bg-primary-600 hover:bg-primary-700 text-white transition-colors font-medium"
+                  >
+                    Save Role
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
         </ModalPortal>
       )}
 
       {/* Permissions Assignment Modal */}
       {isPermsOpen && selectedRoleForPerms && (
         <ModalPortal>
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-md transition-all duration-300">
-          <div className="bg-white dark:bg-gray-900 rounded-[2rem] w-full max-w-6xl overflow-hidden flex flex-col h-[85vh] animate-in fade-in zoom-in duration-300 border border-white/20">
-            {/* Modal Header */}
-            <div className="px-8 py-6 border-b border-gray-100 dark:border-gray-800 flex flex-col md:flex-row justify-between items-center gap-4 bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center text-primary-600 dark:text-primary-400">
-                  <Lock className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                    Permissions —{" "}
-                    <span className="bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 px-3 py-1 rounded-lg text-sm font-semibold capitalize tracking-wide">
-                      {selectedRoleForPerms.name}
-                    </span>
-                  </h3>
-                  <p className="text-xs text-gray-500 mt-1 font-medium">
-                    {selectedPerms.length} permissions assigned to this role
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 w-full md:w-auto">
-                <div className="relative flex-1 md:w-80">
-                  <X
-                    className={`absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 cursor-pointer hover:text-gray-600 transition-colors ${searchQuery ? "opacity-100" : "opacity-0 pointer-events-none"}`}
-                    onClick={() => setSearchQuery("")}
-                  />
-                  <input
-                    type="text"
-                    placeholder="Search permissions..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-4 pr-10 py-2.5 bg-gray-100 dark:bg-gray-800 border-transparent focus:bg-white dark:focus:bg-gray-700 focus:ring-2 focus:ring-primary-500/20 rounded-2xl text-sm transition-all outline-none font-medium"
-                  />
-                </div>
-                <button
-                  onClick={() => setIsPermsOpen(false)}
-                  className="p-2.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-2xl transition-all duration-300"
-                >
-                  <X className="w-6 h-6" />
-                </button>
-              </div>
-            </div>
-
-            {/* Campus scope toggle — restrict everything this role sees to
-                the user's assigned campus(es). Saved with the permissions. */}
-            <div className="px-8 py-3 bg-primary-50/40 dark:bg-primary-900/10 border-b border-primary-100 dark:border-primary-900/40">
-              <label className="flex items-start gap-3 cursor-pointer select-none max-w-3xl">
-                <span className="relative inline-flex items-center mt-0.5 shrink-0">
-                  <input
-                    type="checkbox"
-                    className="sr-only peer"
-                    checked={enforceCampusScope}
-                    onChange={(e) => setEnforceCampusScope(e.target.checked)}
-                  />
-                  <span className="w-10 h-6 rounded-full bg-gray-300 dark:bg-gray-700 peer-checked:bg-primary-600 transition-colors" />
-                  <span className="absolute left-0.5 top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-4" />
-                </span>
-                <span className="min-w-0">
-                  <span className="block text-[13px] font-semibold text-ink-900 dark:text-white">
-                    Show only data from assigned campus(es)
-                  </span>
-                  <span className="block text-[11.5px] text-ink-500 mt-0.5">
-                    When on, every page in the admin app (admissions, students, statistics, exports…)
-                    is automatically filtered to the campus(es) this user is assigned to.
-                    Users with this role can only see records belonging to those campuses.
-                  </span>
-                </span>
-              </label>
-            </div>
-
-            <div className="flex-1 flex overflow-hidden">
-              {/* Sidebar Categories */}
-              <div className="w-72 border-r border-gray-100 dark:border-gray-800 bg-gray-50/30 dark:bg-gray-900/30 overflow-y-auto p-4 hidden lg:block">
-                <div className="space-y-1">
-                  <button
-                    onClick={() => setActiveCategoryId("all")}
-                    className={`w-full text-left px-4 py-3 rounded-2xl text-sm font-semibold transition-all duration-300 flex items-center justify-between group ${
-                      activeCategoryId === "all"
-                        ? "bg-primary-600 text-white translate-x-1"
-                        : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
-                    }`}
-                  >
-                    <span className="flex items-center gap-3">
-                      <Shield
-                        className={`w-4 h-4 ${activeCategoryId === "all" ? "text-white" : "text-gray-400 group-hover:text-primary-500"}`}
-                      />
-                      All Categories
-                    </span>
-                    <span
-                      className={`text-[10px] px-2 py-0.5 rounded-full ${activeCategoryId === "all" ? "bg-white/20 text-white" : "bg-gray-200 dark:bg-gray-700 text-gray-500"}`}
-                    >
-                      {categories.reduce(
-                        (acc, c) => acc + (c.permissions?.length || 0),
-                        0,
-                      )}
-                    </span>
-                  </button>
-
-                  <div className="pt-4 pb-2 px-4">
-                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                      Modules
-                    </span>
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-md transition-all duration-300">
+            <div className="bg-white dark:bg-gray-900 rounded-[2rem] w-full max-w-6xl overflow-hidden flex flex-col h-[85vh] animate-in fade-in zoom-in duration-300 border border-white/20">
+              {/* Modal Header */}
+              <div className="px-8 py-6 border-b border-gray-100 dark:border-gray-800 flex flex-col md:flex-row justify-between items-center gap-4 bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center text-primary-600 dark:text-primary-400">
+                    <Lock className="w-6 h-6" />
                   </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                      Permissions —{" "}
+                      <span className="bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 px-3 py-1 rounded-lg text-sm font-semibold capitalize tracking-wide">
+                        {selectedRoleForPerms.name}
+                      </span>
+                    </h3>
+                    <p className="text-xs text-gray-500 mt-1 font-medium">
+                      {selectedPerms.length} permissions assigned to this role
+                    </p>
+                  </div>
+                </div>
 
-                  {categories.map((cat) => (
+                <div className="flex items-center gap-3 w-full md:w-auto">
+                  <div className="relative flex-1 md:w-80">
+                    <X
+                      className={`absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 cursor-pointer hover:text-gray-600 transition-colors ${searchQuery ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+                      onClick={() => setSearchQuery("")}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Search permissions..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-4 pr-10 py-2.5 bg-gray-100 dark:bg-gray-800 border-transparent focus:bg-white dark:focus:bg-gray-700 focus:ring-2 focus:ring-primary-500/20 rounded-2xl text-sm transition-all outline-none font-medium"
+                    />
+                  </div>
+                  <button
+                    onClick={() => setIsPermsOpen(false)}
+                    className="p-2.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-2xl transition-all duration-300"
+                  >
+                    <X className="w-6 h-6" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Campus scope toggle — restrict everything this role sees to
+                the user's assigned campus(es). Saved with the permissions. */}
+              <div className="px-8 py-3 bg-primary-50/40 dark:bg-primary-900/10 border-b border-primary-100 dark:border-primary-900/40">
+                <label className="flex items-start gap-3 cursor-pointer select-none max-w-3xl">
+                  <span className="relative inline-flex items-center mt-0.5 shrink-0">
+                    <input
+                      type="checkbox"
+                      className="sr-only peer"
+                      checked={enforceCampusScope}
+                      onChange={(e) => setEnforceCampusScope(e.target.checked)}
+                    />
+                    <span className="w-10 h-6 rounded-full bg-gray-300 dark:bg-gray-700 peer-checked:bg-primary-600 transition-colors" />
+                    <span className="absolute left-0.5 top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-4" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-[13px] font-semibold text-ink-900 dark:text-white">
+                      Show only data from assigned campus(es)
+                    </span>
+                    <span className="block text-[11.5px] text-ink-500 mt-0.5">
+                      When on, every page in the admin app (admissions,
+                      students, statistics, exports…) is automatically filtered
+                      to the campus(es) this user is assigned to. Users with
+                      this role can only see records belonging to those
+                      campuses.
+                    </span>
+                  </span>
+                </label>
+              </div>
+
+              <div className="flex-1 flex overflow-hidden">
+                {/* Sidebar Categories */}
+                <div className="w-72 border-r border-gray-100 dark:border-gray-800 bg-gray-50/30 dark:bg-gray-900/30 overflow-y-auto p-4 hidden lg:block">
+                  <div className="space-y-1">
                     <button
-                      key={cat.id}
-                      onClick={() => setActiveCategoryId(cat.id)}
+                      onClick={() => setActiveCategoryId("all")}
                       className={`w-full text-left px-4 py-3 rounded-2xl text-sm font-semibold transition-all duration-300 flex items-center justify-between group ${
-                        activeCategoryId === cat.id
-                          ? "bg-white dark:bg-gray-800 text-primary-600 dark:text-primary-400 border border-gray-100 dark:border-gray-700 translate-x-1"
+                        activeCategoryId === "all"
+                          ? "bg-primary-600 text-white translate-x-1"
                           : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
                       }`}
                     >
-                      <span className="flex items-center gap-3 truncate pr-2">
-                        <div
-                          className={`w-1.5 h-1.5 rounded-full transition-colors ${activeCategoryId === cat.id ? "bg-primary-500" : "bg-gray-300 dark:bg-gray-600 group-hover:bg-primary-400"}`}
+                      <span className="flex items-center gap-3">
+                        <Shield
+                          className={`w-4 h-4 ${activeCategoryId === "all" ? "text-white" : "text-gray-400 group-hover:text-primary-500"}`}
                         />
-                        {cat.name}
+                        All Categories
                       </span>
                       <span
-                        className={`text-[10px] px-2 py-0.5 rounded-full ${activeCategoryId === cat.id ? "bg-primary-50 text-primary-600" : "bg-gray-200 dark:bg-gray-700 text-gray-500"}`}
+                        className={`text-[10px] px-2 py-0.5 rounded-full ${activeCategoryId === "all" ? "bg-white/20 text-white" : "bg-gray-200 dark:bg-gray-700 text-gray-500"}`}
                       >
-                        {cat.permissions?.length || 0}
+                        {categories.reduce(
+                          (acc, c) => acc + (c.permissions?.length || 0),
+                          0,
+                        )}
                       </span>
                     </button>
-                  ))}
-                </div>
-              </div>
 
-              {/* Permissions Grid */}
-              <div className="flex-1 overflow-y-auto p-8 bg-gray-50/20 dark:bg-black/10">
-                {categories
-                  .filter(
-                    (cat) =>
-                      activeCategoryId === "all" || cat.id === activeCategoryId,
-                  )
-                  .map((cat) => {
-                    const filteredPerms = (cat.permissions || []).filter(
-                      (p) =>
-                        p.name
-                          .toLowerCase()
-                          .includes(searchQuery.toLowerCase()) ||
-                        p.slug
-                          .toLowerCase()
-                          .includes(searchQuery.toLowerCase()),
-                    );
-
-                    if (searchQuery && filteredPerms.length === 0) return null;
-
-                    const allCatSelected =
-                      filteredPerms.length > 0 &&
-                      filteredPerms.every((p) => selectedPerms.includes(p.id));
-
-                    return (
-                      <div key={cat.id} className="mb-12 last:mb-0">
-                        <div className="flex items-center justify-between mb-6 pb-2 border-b border-gray-100 dark:border-gray-800/50">
-                          <div className="flex items-center gap-3">
-                            <h4 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider">
-                              {cat.name}
-                            </h4>
-                            <span className="text-[10px] px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-gray-500 rounded-full font-bold">
-                              {filteredPerms.length} PERMS
-                            </span>
-                          </div>
-                          <button
-                            onClick={() => {
-                              const pids = filteredPerms.map((p) => p.id);
-                              if (allCatSelected) {
-                                setSelectedPerms((prev) =>
-                                  prev.filter((id) => !pids.includes(id)),
-                                );
-                              } else {
-                                setSelectedPerms((prev) =>
-                                  Array.from(new Set([...prev, ...pids])),
-                                );
-                              }
-                            }}
-                            className={`text-[10px] font-bold px-3 py-1.5 rounded-xl transition-all duration-300 ${
-                              allCatSelected
-                                ? "bg-red-50 text-red-600 hover:bg-red-100"
-                                : "bg-primary-50 text-primary-600 hover:bg-primary-100"
-                            }`}
-                          >
-                            {allCatSelected
-                              ? "Deselect Category"
-                              : "Select Category"}
-                          </button>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                          {filteredPerms.map((perm) => {
-                            const isSelected = selectedPerms.includes(perm.id);
-                            return (
-                              <div
-                                key={perm.id}
-                                onClick={() => togglePerm(perm.id)}
-                                className={`group cursor-pointer p-5 rounded-2xl border-2 transition-all duration-300 relative overflow-hidden ${
-                                  isSelected
-                                    ? "border-primary-500 bg-primary-50/50 dark:bg-primary-900/10 ring-4 ring-primary-500/5"
-                                    : "border-gray-100 dark:border-gray-800 hover:border-primary-200 dark:hover:border-primary-800"
-                                }`}
-                              >
-                                {isSelected && (
-                                  <div className="absolute top-0 right-0 w-12 h-12 bg-primary-500 text-white flex items-center justify-center rounded-bl-3xl animate-in slide-in-from-top-right duration-300">
-                                    <Check className="w-5 h-5 stroke-[3]" />
-                                  </div>
-                                )}
-                                <div className="space-y-3">
-                                  <div className="pr-8">
-                                    <h5
-                                      className={`font-bold text-sm transition-colors ${isSelected ? "text-primary-700 dark:text-primary-300" : "text-gray-800 dark:text-gray-100 group-hover:text-primary-600"}`}
-                                    >
-                                      {perm.name}
-                                    </h5>
-                                    <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1 line-clamp-2 leading-relaxed">
-                                      {perm.description ||
-                                        `Allows access to ${perm.name.toLowerCase()} features.`}
-                                    </p>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <span
-                                      className={`text-[9px] font-bold px-2 py-0.5 rounded-lg font-mono uppercase tracking-tight ${
-                                        isSelected
-                                          ? "bg-primary-100 dark:bg-primary-900/40 text-primary-600 dark:text-primary-400"
-                                          : "bg-gray-100 dark:bg-gray-800 text-gray-400 group-hover:text-primary-400"
-                                      }`}
-                                    >
-                                      {perm.slug}
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })}
-
-                {categories.length === 0 && (
-                  <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
-                    <div className="w-20 h-20 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400">
-                      <Lock className="w-10 h-10 opacity-20" />
+                    <div className="pt-4 pb-2 px-4">
+                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                        Modules
+                      </span>
                     </div>
-                    <div>
-                      <p className="text-gray-900 dark:text-white font-bold text-lg">
-                        No permissions found
-                      </p>
-                      <p className="text-gray-500 text-sm">
-                        Please register some permissions in the system settings
-                        first.
-                      </p>
-                    </div>
+
+                    {categories.map((cat) => (
+                      <button
+                        key={cat.id}
+                        onClick={() => setActiveCategoryId(cat.id)}
+                        className={`w-full text-left px-4 py-3 rounded-2xl text-sm font-semibold transition-all duration-300 flex items-center justify-between group ${
+                          activeCategoryId === cat.id
+                            ? "bg-white dark:bg-gray-800 text-primary-600 dark:text-primary-400 border border-gray-100 dark:border-gray-700 translate-x-1"
+                            : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+                        }`}
+                      >
+                        <span className="flex items-center gap-3 truncate pr-2">
+                          <div
+                            className={`w-1.5 h-1.5 rounded-full transition-colors ${activeCategoryId === cat.id ? "bg-primary-500" : "bg-gray-300 dark:bg-gray-600 group-hover:bg-primary-400"}`}
+                          />
+                          {cat.name}
+                        </span>
+                        <span
+                          className={`text-[10px] px-2 py-0.5 rounded-full ${activeCategoryId === cat.id ? "bg-primary-50 text-primary-600" : "bg-gray-200 dark:bg-gray-700 text-gray-500"}`}
+                        >
+                          {cat.permissions?.length || 0}
+                        </span>
+                      </button>
+                    ))}
                   </div>
-                )}
+                </div>
 
-                {searchQuery &&
-                  categories.every(
-                    (cat) =>
-                      (cat.permissions || []).filter(
+                {/* Permissions Grid */}
+                <div className="flex-1 overflow-y-auto p-8 bg-gray-50/20 dark:bg-black/10">
+                  {categories
+                    .filter(
+                      (cat) =>
+                        activeCategoryId === "all" ||
+                        cat.id === activeCategoryId,
+                    )
+                    .map((cat) => {
+                      const filteredPerms = (cat.permissions || []).filter(
                         (p) =>
                           p.name
                             .toLowerCase()
@@ -756,72 +863,199 @@ export default function RolesManagementPage() {
                           p.slug
                             .toLowerCase()
                             .includes(searchQuery.toLowerCase()),
-                      ).length === 0,
-                  ) && (
+                      );
+
+                      if (searchQuery && filteredPerms.length === 0)
+                        return null;
+
+                      const allCatSelected =
+                        filteredPerms.length > 0 &&
+                        filteredPerms.every((p) =>
+                          selectedPerms.includes(p.id),
+                        );
+
+                      return (
+                        <div key={cat.id} className="mb-12 last:mb-0">
+                          <div className="flex items-center justify-between mb-6 pb-2 border-b border-gray-100 dark:border-gray-800/50">
+                            <div className="flex items-center gap-3">
+                              <h4 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider">
+                                {cat.name}
+                              </h4>
+                              <span className="text-[10px] px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-gray-500 rounded-full font-bold">
+                                {filteredPerms.length} PERMS
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => {
+                                const pids = filteredPerms.map((p) => p.id);
+                                if (allCatSelected) {
+                                  setSelectedPerms((prev) =>
+                                    prev.filter((id) => !pids.includes(id)),
+                                  );
+                                } else {
+                                  setSelectedPerms((prev) =>
+                                    Array.from(new Set([...prev, ...pids])),
+                                  );
+                                }
+                              }}
+                              className={`text-[10px] font-bold px-3 py-1.5 rounded-xl transition-all duration-300 ${
+                                allCatSelected
+                                  ? "bg-red-50 text-red-600 hover:bg-red-100"
+                                  : "bg-primary-50 text-primary-600 hover:bg-primary-100"
+                              }`}
+                            >
+                              {allCatSelected
+                                ? "Deselect Category"
+                                : "Select Category"}
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                            {filteredPerms.map((perm) => {
+                              const isSelected = selectedPerms.includes(
+                                perm.id,
+                              );
+                              return (
+                                <div
+                                  key={perm.id}
+                                  onClick={() => togglePerm(perm.id)}
+                                  className={`group cursor-pointer p-5 rounded-2xl border-2 transition-all duration-300 relative overflow-hidden ${
+                                    isSelected
+                                      ? "border-primary-500 bg-primary-50/50 dark:bg-primary-900/10 ring-4 ring-primary-500/5"
+                                      : "border-gray-100 dark:border-gray-800 hover:border-primary-200 dark:hover:border-primary-800"
+                                  }`}
+                                >
+                                  {isSelected && (
+                                    <div className="absolute top-0 right-0 w-12 h-12 bg-primary-500 text-white flex items-center justify-center rounded-bl-3xl animate-in slide-in-from-top-right duration-300">
+                                      <Check className="w-5 h-5 stroke-[3]" />
+                                    </div>
+                                  )}
+                                  <div className="space-y-3">
+                                    <div className="pr-8">
+                                      <h5
+                                        className={`font-bold text-sm transition-colors ${isSelected ? "text-primary-700 dark:text-primary-300" : "text-gray-800 dark:text-gray-100 group-hover:text-primary-600"}`}
+                                      >
+                                        {perm.name}
+                                      </h5>
+                                      <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1 line-clamp-2 leading-relaxed">
+                                        {perm.description ||
+                                          `Allows access to ${perm.name.toLowerCase()} features.`}
+                                      </p>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <span
+                                        className={`text-[9px] font-bold px-2 py-0.5 rounded-lg font-mono uppercase tracking-tight ${
+                                          isSelected
+                                            ? "bg-primary-100 dark:bg-primary-900/40 text-primary-600 dark:text-primary-400"
+                                            : "bg-gray-100 dark:bg-gray-800 text-gray-400 group-hover:text-primary-400"
+                                        }`}
+                                      >
+                                        {perm.slug}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                  {categories.length === 0 && (
                     <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
                       <div className="w-20 h-20 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400">
-                        <Shield className="w-10 h-10 opacity-20" />
+                        <Lock className="w-10 h-10 opacity-20" />
                       </div>
                       <div>
                         <p className="text-gray-900 dark:text-white font-bold text-lg">
-                          No results for "{searchQuery}"
+                          No permissions found
                         </p>
                         <p className="text-gray-500 text-sm">
-                          Try adjusting your search terms or filters.
+                          Please register some permissions in the system
+                          settings first.
                         </p>
-                        <button
-                          onClick={() => setSearchQuery("")}
-                          className="mt-4 text-primary-600 font-bold hover:underline"
-                        >
-                          Clear search
-                        </button>
                       </div>
                     </div>
                   )}
-              </div>
-            </div>
 
-            {/* Modal Footer */}
-            <div className="p-8 border-t border-gray-100 dark:border-gray-800 bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl flex flex-col sm:flex-row justify-between items-center gap-6">
-              <div className="flex items-center gap-6">
-                <div className="flex -space-x-2">
-                  {[1, 2, 3].map((i) => (
-                    <div
-                      key={i}
-                      className="w-8 h-8 rounded-full bg-primary-50 dark:bg-primary-900/20 border-2 border-white dark:border-gray-900 flex items-center justify-center"
-                    >
-                      <Shield className="w-3.5 h-3.5 text-primary-500" />
-                    </div>
-                  ))}
-                </div>
-                <div className="text-xs">
-                  <span className="block font-bold text-gray-900 dark:text-white">
-                    {selectedPerms.length} Selected
-                  </span>
-                  <span className="text-gray-500 font-medium">
-                    Total permissions: {allPermissions.length}
-                  </span>
+                  {searchQuery &&
+                    categories.every(
+                      (cat) =>
+                        (cat.permissions || []).filter(
+                          (p) =>
+                            p.name
+                              .toLowerCase()
+                              .includes(searchQuery.toLowerCase()) ||
+                            p.slug
+                              .toLowerCase()
+                              .includes(searchQuery.toLowerCase()),
+                        ).length === 0,
+                    ) && (
+                      <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
+                        <div className="w-20 h-20 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400">
+                          <Shield className="w-10 h-10 opacity-20" />
+                        </div>
+                        <div>
+                          <p className="text-gray-900 dark:text-white font-bold text-lg">
+                            No results for "{searchQuery}"
+                          </p>
+                          <p className="text-gray-500 text-sm">
+                            Try adjusting your search terms or filters.
+                          </p>
+                          <button
+                            onClick={() => setSearchQuery("")}
+                            className="mt-4 text-primary-600 font-bold hover:underline"
+                          >
+                            Clear search
+                          </button>
+                        </div>
+                      </div>
+                    )}
                 </div>
               </div>
 
-              <div className="flex items-center gap-3 w-full sm:w-auto">
-                <button
-                  onClick={() => setIsPermsOpen(false)}
-                  className="flex-1 sm:flex-none px-8 py-3 rounded-2xl border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all duration-300 font-bold text-sm"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSavePerms}
-                  className="flex-1 sm:flex-none px-8 py-3 rounded-2xl bg-primary-600 hover:bg-primary-700 text-white transition-all duration-300 font-bold text-sm flex items-center justify-center gap-2"
-                >
-                  <Check className="w-4 h-4 stroke-[3]" />
-                  Apply Changes
-                </button>
+              {/* Modal Footer */}
+              <div className="p-8 border-t border-gray-100 dark:border-gray-800 bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl flex flex-col sm:flex-row justify-between items-center gap-6">
+                <div className="flex items-center gap-6">
+                  <div className="flex -space-x-2">
+                    {[1, 2, 3].map((i) => (
+                      <div
+                        key={i}
+                        className="w-8 h-8 rounded-full bg-primary-50 dark:bg-primary-900/20 border-2 border-white dark:border-gray-900 flex items-center justify-center"
+                      >
+                        <Shield className="w-3.5 h-3.5 text-primary-500" />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="text-xs">
+                    <span className="block font-bold text-gray-900 dark:text-white">
+                      {selectedPerms.length} Selected
+                    </span>
+                    <span className="text-gray-500 font-medium">
+                      Total permissions: {allPermissions.length}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 w-full sm:w-auto">
+                  <button
+                    onClick={() => setIsPermsOpen(false)}
+                    className="flex-1 sm:flex-none px-8 py-3 rounded-2xl border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all duration-300 font-bold text-sm"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSavePerms}
+                    className="flex-1 sm:flex-none px-8 py-3 rounded-2xl bg-primary-600 hover:bg-primary-700 text-white transition-all duration-300 font-bold text-sm flex items-center justify-center gap-2"
+                  >
+                    <Check className="w-4 h-4 stroke-[3]" />
+                    Apply Changes
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
         </ModalPortal>
       )}
     </div>

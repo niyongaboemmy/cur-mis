@@ -14,8 +14,8 @@ import {
 } from "lucide-react";
 import { hrService, type PayrollEntry } from "@/services/hrService";
 import type { HrEmployee } from "@/types/academic";
-import { useAuthStore } from "@/store/authStore";
 import { PERMISSIONS } from "@/constants";
+import { usePermission } from "@/utils/permissions";
 import ModalPortal from "@/components/ui/ModalPortal";
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
@@ -77,10 +77,7 @@ export default function PayrollSlipPage() {
   const { id } = useParams<{ id: string }>();
   const empId = parseInt(id ?? "0");
   // const navigate = useNavigate()
-  const { user } = useAuthStore();
-  const canManage =
-    user?.role === "superadmin" ||
-    (user?.permissions || []).includes(PERMISSIONS.MANAGE_HR_EMPLOYEES);
+  const canManage = usePermission(PERMISSIONS.MANAGE_HR_EMPLOYEES);
 
   /* date range */
   const [fromYear, setFromYear] = useState<number>(CUR_Y);

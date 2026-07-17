@@ -848,3 +848,27 @@ export interface UpdatePgIntlFeeStructurePayload {
   is_active?:          0 | 1
 }
 
+// ─── Student Directory (Finance view, Phase 2) ────────────────────────────────
+
+export type FinanceStudentFeeStatus = 'no_invoices' | 'paid' | 'partial' | 'unpaid'
+
+export interface FinanceStudentFeeSummary {
+  total_due:     number
+  total_paid:    number
+  total_bursary: number
+  balance:       number
+  status:        FinanceStudentFeeStatus | string
+  has_override:  boolean
+}
+
+export interface FinanceStudentDirectoryRow {
+  id:           number
+  regnumber?:   string | null
+  fname:        string
+  lname:        string
+  email?:       string | null
+  gender?:      string | null
+  nationality?: string | null
+  fee_status:   FinanceStudentFeeSummary
+}
+

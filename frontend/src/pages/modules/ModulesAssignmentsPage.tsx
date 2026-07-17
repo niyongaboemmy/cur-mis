@@ -10,6 +10,8 @@ import {
 import { academicService } from '@/services/academicService'
 import { hrService } from '@/services/hrService'
 import type { ModuleAssignment, AssignmentPayload } from '@/types/modules'
+import { PERMISSIONS } from '@/constants'
+import { usePermission } from '@/utils/permissions'
 
 const EMPTY: AssignmentPayload = {
   module_id: 0, staff_id: 0, academic_term_id: 0,
@@ -17,6 +19,7 @@ const EMPTY: AssignmentPayload = {
 }
 
 export default function ModulesAssignmentsPage() {
+  const canManage = usePermission(PERMISSIONS.MANAGE_MODULE_ASSIGNMENTS)
   const qc = useQueryClient()
 
   const termsQ = useQuery({ queryKey: ['academic', 'terms'], queryFn: () => academicService.listTerms() })
@@ -73,13 +76,15 @@ export default function ModulesAssignmentsPage() {
               </option>
             ))}
           </select>
-          <button
-            className="btn-primary btn-sm"
-            disabled={!termId}
-            onClick={() => setEditing({ academic_term_id: termId })}
-          >
-            <Plus className="w-3.5 h-3.5" /> New assignment
-          </button>
+          {canManage && (
+            <button
+              className="btn-primary btn-sm"
+              disabled={!termId}
+              onClick={() => setEditing({ academic_term_id: termId })}
+            >
+              <Plus className="w-3.5 h-3.5" /> New assignment
+            </button>
+          )}
         </div>
       </div>
 
@@ -111,14 +116,16 @@ export default function ModulesAssignmentsPage() {
                     <td className="px-4 py-3">{a.role}</td>
                     <td className="px-4 py-3">{String(a.hours_per_week)}</td>
                     <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <button className="icon-btn" onClick={() => setEditing(a)}>
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                        <button className="icon-btn text-red-500" onClick={() => confirm('Remove this assignment?') && remove.mutate(a.id)}>
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                      {canManage && (
+                        <div className="flex items-center justify-end gap-1">
+                          <button className="icon-btn" onClick={() => setEditing(a)}>
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button className="icon-btn text-red-500" onClick={() => confirm('Remove this assignment?') && remove.mutate(a.id)}>
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}
