@@ -336,8 +336,13 @@ class FeeController extends BaseController
             ];
         }, $legacyRows);
 
-        // Merge: MIS fee_payments first, then all legacy bank transactions
-        $allPayments = array_merge($misPayments['data'] ?? [], $legacyPayments);
+        // Merge: MIS fee_payments first, then legacy bank transactions not
+        // already represented in fee_payments. UrubutoPay payments are
+        // dual-written to both tables, so without this dedup the same
+        // transaction shows up twice (once "confirmed" from fee_payments,
+        // once from the legacy Debit row) — and a later legacy-only
+        // reversal only cancels one of the two.
+        $allPayments = array_merge($misPayments['data'] ?? [], $this->dedupeLegacyPayments($misPayments['data'] ?? [], $legacyPayments));
 
         $this->success($response, [
             'invoices'      => $invoices,
@@ -432,13 +437,43 @@ class FeeController extends BaseController
             ];
         }, $legacyRows);
 
-        $allPayments = array_merge($misPayments['data'] ?? [], $legacyPayments);
+        $allPayments = array_merge($misPayments['data'] ?? [], $this->dedupeLegacyPayments($misPayments['data'] ?? [], $legacyPayments));
 
         $this->success($response, [
             'invoices' => $invoices,
             'payments' => $allPayments,
             'totals'   => $totals,
         ], 'Your finance ledger retrieved.');
+    }
+
+    /**
+     * Filter out legacy `payment` rows (mapped by the caller into the same
+     * shape as fee_payments) whose transaction is already represented in
+     * $misPayments — UrubutoPay dual-writes every payment to both
+     * fee_payments and the legacy payment/bank_payment tables, so a naive
+     * merge would show each transaction twice. Mirrors the dedup logic in
+     * UrubutoPayService::getMobilePaymentHistory().
+     *
+     * @param array $misPayments    fee_payments rows (have 'reference_number')
+     * @param array $legacyPayments mapped legacy rows (have 'reference_number' = external_transaction_id/slip_no)
+     */
+    private function dedupeLegacyPayments(array $misPayments, array $legacyPayments): array
+    {
+        $modernTxCodes = array_filter(array_column($misPayments, 'reference_number'));
+
+        return array_values(array_filter($legacyPayments, function (array $row) use ($modernTxCodes): bool {
+            $txCode = (string)($row['reference_number'] ?? '');
+            if ($txCode === '') {
+                return true;
+            }
+            $baseCode = explode('-', $txCode)[0];
+            foreach ($modernTxCodes as $mc) {
+                if (str_starts_with((string)$mc, $baseCode)) {
+                    return false;
+                }
+            }
+            return true;
+        }));
     }
 
     /**

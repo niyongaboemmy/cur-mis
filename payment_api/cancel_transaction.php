@@ -14,7 +14,7 @@ $responseJson = ob_get_clean();
 echo $responseJson;
 
 $response = json_decode($responseJson, true);
-if (isset($response['status']) && $response['status'] === 200) {
+if (isset($response['status']) && $response['status'] === 200 && empty($response['duplicate'])) {
     try {
         $creds = getDbCredentials();
         $conn  = new mysqli($creds['host'], $creds['user'], $creds['pass'], $creds['db'], $creds['port']);

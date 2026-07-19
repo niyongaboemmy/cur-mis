@@ -726,6 +726,30 @@ class Rest
             return;
         }
 
+        // ── Idempotency: UrubutoPay (and most gateways) retry webhooks that
+        // don't get a fast/clean 200 back. Without this check, every retry of
+        // the same reversal event inserted another Credit row and re-ran the
+        // invoice rollback, over-reversing a single payment multiple times.
+        $stmtDup = $this->db->prepare(
+            "SELECT id FROM payment WHERE external_transaction_id = ? AND payment_notifi = 'Credit' LIMIT 1"
+        );
+        $stmtDup->bind_param('s', $transactionId);
+        $stmtDup->execute();
+        $dup = $stmtDup->get_result()->fetch_assoc();
+        $stmtDup->close();
+
+        if ($dup) {
+            http_response_code(200);
+            echo json_encode([
+                'timestamp'  => $date,
+                'message'    => 'Payment already reversed',
+                'status'     => 200,
+                'duplicate'  => true,
+                'data'       => ['external_transaction_id' => $transactionId],
+            ]);
+            return;
+        }
+
         $orig           = $res->fetch_assoc();
         $reversalAmount = $amount > 0 ? $amount : (float)$orig['amount'];
 

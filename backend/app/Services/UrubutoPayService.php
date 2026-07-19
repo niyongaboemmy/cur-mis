@@ -434,8 +434,9 @@ class UrubutoPayService
         }
 
         // ── Resolve student from either modern or legacy record ───────────────
-        $studentId     = '';
-        $totalReversed = 0.0;
+        $studentId       = '';
+        $totalReversed   = 0.0;
+        $reversedIds     = [];
 
         if (!empty($payments)) {
             $studentId = (string)$payments[0]['student_id'];
@@ -460,6 +461,7 @@ class UrubutoPayService
                     $this->invoiceModel->applyPayment((int)$payment['invoice_id'], -$apply);
                 }
 
+                $reversedIds[]  = (int)$payment['id'];
                 $totalReversed += $apply;
             }
         } else {
@@ -501,9 +503,9 @@ class UrubutoPayService
             'UPDATE',
             'FINANCE',
             "UrubutoPay reversal: tx={$txCode}, student={$studentId}, amount_reversed={$totalReversed} RWF.",
-            null,
+            $reversedIds[0] ?? null,
             'fee_payment',
-            ['transaction_code' => $txCode, 'amount_reversed' => $totalReversed]
+            ['transaction_code' => $txCode, 'amount_reversed' => $totalReversed, 'fee_payment_ids' => $reversedIds]
         );
 
         return [
