@@ -48,6 +48,8 @@ $router->group('/api/finance', function ($router) {
         $r->get('/pg-intl-structures',        [PgIntlFeeStructureController::class, 'listPgIntlStructures']);
         $r->get('/structures/schedule-export',     [FeeController::class, 'scheduleExportJson']);
         $r->get('/structures/schedule-export.pdf', [FeeController::class, 'scheduleExportPdf']);
+        $r->get('/postgraduate/schedule-export',     [FeeController::class, 'postgraduateScheduleExportJson']);
+        $r->get('/postgraduate/schedule-export.pdf', [FeeController::class, 'postgraduateScheduleExportPdf']);
     }, [new MaybePermissionMiddleware([
         Permissions::VIEW_FINANCE,
         Permissions::MANAGE_FINANCE,

@@ -100,13 +100,13 @@ class DocumentHelper
         $pageCss    = PdfLayout::pageCss(44, 28);
         $fullName   = strtoupper(trim(($s['fname'] ?? '') . ' ' . ($s['lname'] ?? '')));
         $today      = date('m-d-Y');
-        $facultyRaw = $s['fac_name'] ?? $s['faculty'] ?? '';
+        $facultyRaw = (string) ($s['fac_name'] ?? $s['faculty'] ?? '');
         $faculty    = htmlspecialchars(self::normalizeFacultyName($facultyRaw), ENT_QUOTES);
-        $department = htmlspecialchars($s['dep_name']   ?? $s['department'] ?? '', ENT_QUOTES);
-        $level      = htmlspecialchars($s['current_level'] ?? '', ENT_QUOTES);
-        $intake     = htmlspecialchars(self::formatSemester($s['intake'] ?? ''), ENT_QUOTES);
-        $program    = htmlspecialchars(ucfirst(strtolower($s['program'] ?? 'Day')), ENT_QUOTES);
-        $accYear    = htmlspecialchars($s['acc_year'] ?? date('Y'), ENT_QUOTES);
+        $department = htmlspecialchars((string) ($s['dep_name']   ?? $s['department'] ?? ''), ENT_QUOTES);
+        $level      = htmlspecialchars((string) ($s['current_level'] ?? ''), ENT_QUOTES);
+        $intake     = htmlspecialchars(self::formatSemester((string) ($s['intake'] ?? '')), ENT_QUOTES);
+        $program    = htmlspecialchars(ucfirst(strtolower((string) ($s['program'] ?? 'Day'))), ENT_QUOTES);
+        $accYear    = htmlspecialchars((string) ($s['acc_year'] ?? date('Y')), ENT_QUOTES);
         $regnumber  = $s['regnumber'] ?? '';
 
         $qr = self::qrHtml("https://mis.cur.ac.rw/verify?doc=admission&reg={$regnumber}&d={$today}");
@@ -226,14 +226,14 @@ class DocumentHelper
         $pageCss    = PdfLayout::pageCss(44, 28);
         $fullName   = strtoupper(trim(($s['fname'] ?? '') . ' ' . ($s['lname'] ?? '')));
         $today      = self::ordinalDate();
-        $faculty    = htmlspecialchars($s['fac_name']   ?? $s['faculty']    ?? '', ENT_QUOTES);
-        $department = htmlspecialchars($s['dep_name']   ?? $s['department'] ?? '', ENT_QUOTES);
-        $option     = htmlspecialchars($s['option_name'] ?? '', ENT_QUOTES);
-        $accYear    = htmlspecialchars($s['acc_year'] ?? date('Y'), ENT_QUOTES);
-        $regnumber  = htmlspecialchars($s['regnumber'] ?? '—', ENT_QUOTES);
-        $nationalId = htmlspecialchars($s['id_card'] ?? '—', ENT_QUOTES);
+        $faculty    = htmlspecialchars((string) ($s['fac_name']   ?? $s['faculty']    ?? ''), ENT_QUOTES);
+        $department = htmlspecialchars((string) ($s['dep_name']   ?? $s['department'] ?? ''), ENT_QUOTES);
+        $option     = htmlspecialchars((string) ($s['option_name'] ?? ''), ENT_QUOTES);
+        $accYear    = htmlspecialchars((string) ($s['acc_year'] ?? date('Y')), ENT_QUOTES);
+        $regnumber  = htmlspecialchars((string) ($s['regnumber'] ?? '—'), ENT_QUOTES);
+        $nationalId = htmlspecialchars((string) ($s['id_card'] ?? '—'), ENT_QUOTES);
 
-        $gender  = strtolower($s['gender'] ?? '');
+        $gender  = strtolower((string) ($s['gender'] ?? ''));
         $he      = ($gender === 'f' || $gender === 'female') ? 'She' : 'He';
         $him     = ($gender === 'f' || $gender === 'female') ? 'her' : 'him';
         $his     = ($gender === 'f' || $gender === 'female') ? 'her' : 'his';
@@ -337,22 +337,22 @@ class DocumentHelper
     {
         $header     = self::headerHtml();
         $pageCss    = PdfLayout::pageCss(36, 22);
-        $surname    = htmlspecialchars(strtoupper($s['lname'] ?? ''), ENT_QUOTES);
-        $firstName  = htmlspecialchars(strtoupper($s['fname'] ?? ''), ENT_QUOTES);
-        $regnumber  = htmlspecialchars($s['regnumber']   ?? '—',    ENT_QUOTES);
-        $faculty    = htmlspecialchars($s['fac_name']    ?? $s['faculty']    ?? '', ENT_QUOTES);
-        $department = htmlspecialchars($s['dep_name']    ?? $s['department'] ?? '', ENT_QUOTES);
-        $option     = htmlspecialchars($s['option_name'] ?? '',                ENT_QUOTES);
-        $level      = htmlspecialchars($s['current_level'] ?? '',              ENT_QUOTES);
-        $intake     = htmlspecialchars($s['intake']      ?? '',                ENT_QUOTES);
-        $program    = htmlspecialchars(strtoupper($s['program'] ?? 'DAY'),     ENT_QUOTES);
-        $accYear    = htmlspecialchars($s['acc_year']    ?? date('Y'),         ENT_QUOTES);
-        $category   = htmlspecialchars(strtoupper($s['category'] ?? 'FULL'),   ENT_QUOTES);
-        $sponsor    = htmlspecialchars(strtoupper($s['sponsor']  ?? ''),       ENT_QUOTES);
-        $lastSchool = htmlspecialchars($s['last_school'] ?? $s['last_university'] ?? '', ENT_QUOTES);
-        $phone      = htmlspecialchars($s['phone']       ?? '',                ENT_QUOTES);
-        $email      = htmlspecialchars($s['email']       ?? '',                ENT_QUOTES);
-        $reference  = htmlspecialchars($s['reference']   ?? $s['phone'] ?? '', ENT_QUOTES);
+        $surname    = htmlspecialchars(strtoupper((string) ($s['lname'] ?? '')), ENT_QUOTES);
+        $firstName  = htmlspecialchars(strtoupper((string) ($s['fname'] ?? '')), ENT_QUOTES);
+        $regnumber  = htmlspecialchars((string) ($s['regnumber']   ?? '—'),    ENT_QUOTES);
+        $faculty    = htmlspecialchars((string) ($s['fac_name']    ?? $s['faculty']    ?? ''), ENT_QUOTES);
+        $department = htmlspecialchars((string) ($s['dep_name']    ?? $s['department'] ?? ''), ENT_QUOTES);
+        $option     = htmlspecialchars((string) ($s['option_name'] ?? ''),                ENT_QUOTES);
+        $level      = htmlspecialchars((string) ($s['current_level'] ?? ''),              ENT_QUOTES);
+        $intake     = htmlspecialchars((string) ($s['intake']      ?? ''),                ENT_QUOTES);
+        $program    = htmlspecialchars(strtoupper((string) ($s['program'] ?? 'DAY')),     ENT_QUOTES);
+        $accYear    = htmlspecialchars((string) ($s['acc_year']    ?? date('Y')),         ENT_QUOTES);
+        $category   = htmlspecialchars(strtoupper((string) ($s['category'] ?? 'FULL')),   ENT_QUOTES);
+        $sponsor    = htmlspecialchars(strtoupper((string) ($s['sponsor']  ?? '')),       ENT_QUOTES);
+        $lastSchool = htmlspecialchars((string) ($s['last_school'] ?? $s['last_university'] ?? ''), ENT_QUOTES);
+        $phone      = htmlspecialchars((string) ($s['phone']       ?? ''),                ENT_QUOTES);
+        $email      = htmlspecialchars((string) ($s['email']       ?? ''),                ENT_QUOTES);
+        $reference  = htmlspecialchars((string) ($s['reference']   ?? $s['phone'] ?? ''), ENT_QUOTES);
         $today      = date('d/m/Y');
 
         $classLabel  = $level ? "Level {$level} {$intake}" : $intake;
@@ -506,7 +506,7 @@ class DocumentHelper
         $header    = self::headerHtml();
         $pageCss   = PdfLayout::pageCss(30, 20);
         $fullName  = strtoupper(trim(($s['fname'] ?? '') . ' ' . ($s['lname'] ?? '')));
-        $regnumber = htmlspecialchars($s['regnumber'] ?? '—', ENT_QUOTES);
+        $regnumber = htmlspecialchars((string) ($s['regnumber'] ?? '—'), ENT_QUOTES);
         $today     = date('d F Y');
         $issueLoc  = 'TABA';
 
@@ -608,15 +608,15 @@ class DocumentHelper
         $header     = self::headerHtml();
         $pageCss    = PdfLayout::pageCss(40, 28);
         $fullName   = strtoupper(trim(($s['fname'] ?? '') . ' ' . ($s['lname'] ?? '')));
-        $regnumber  = htmlspecialchars($s['regnumber'] ?? '—', ENT_QUOTES);
+        $regnumber  = htmlspecialchars((string) ($s['regnumber'] ?? '—'), ENT_QUOTES);
         $faculty    = htmlspecialchars(
-            isset($s['fac_name']) && $s['fac_name'] !== ''
-                ? 'Faculty of ' . self::normalizeFacultyName($s['fac_name'])
-                : ($s['faculty'] ?? '—'),
+            (string) (isset($s['fac_name']) && $s['fac_name'] !== ''
+                ? 'Faculty of ' . self::normalizeFacultyName((string) $s['fac_name'])
+                : ($s['faculty'] ?? '—')),
             ENT_QUOTES
         );
-        $department = htmlspecialchars($s['dep_name']   ?? $s['department'] ?? '—', ENT_QUOTES);
-        $option     = htmlspecialchars($s['option_name'] ?? '-', ENT_QUOTES);
+        $department = htmlspecialchars((string) ($s['dep_name']   ?? $s['department'] ?? '—'), ENT_QUOTES);
+        $option     = htmlspecialchars((string) ($s['option_name'] ?? '-'), ENT_QUOTES);
         $today      = date('d-m-y');
         $issueLoc   = 'TABA';
 
@@ -637,12 +637,13 @@ class DocumentHelper
                           </td></tr>';
         } else {
             foreach ($modules as $r) {
-                $code     = htmlspecialchars($r['module_code'] ?? '', ENT_QUOTES);
-                $name     = htmlspecialchars($r['module_name'] ?? '', ENT_QUOTES);
-                $level    = htmlspecialchars($r['level'] ?? '', ENT_QUOTES);
+                $code     = htmlspecialchars((string) ($r['module_code'] ?? ''), ENT_QUOTES);
+                $name     = htmlspecialchars((string) ($r['module_name'] ?? ''), ENT_QUOTES);
+                $level    = htmlspecialchars((string) ($r['level'] ?? ''), ENT_QUOTES);
                 $credits  = (int) ($r['module_credits'] ?? 0);
                 $pct      = $r['percentage'] !== null ? (float) $r['percentage'] : null;
-                $grade    = htmlspecialchars($r['grade'] ?? '—', ENT_QUOTES);
+                $grade    = htmlspecialchars((string) ($r['grade'] ?? '—'), ENT_QUOTES);
+                $exempt   = (bool) ($r['is_exempted'] ?? false);
 
                 if ($pct !== null) {
                     $marksDisplay  = (string) round($pct) . '%';
@@ -817,9 +818,9 @@ class DocumentHelper
         $header     = self::headerHtml();
         $pageCss    = PdfLayout::pageCss(44, 28);
         $fullName   = strtoupper(trim(($s['fname'] ?? '') . ' ' . ($s['lname'] ?? '')));
-        $regnumber  = htmlspecialchars($s['regnumber'] ?? '—', ENT_QUOTES);
-        $faculty    = htmlspecialchars($s['fac_name']   ?? $s['faculty']    ?? '', ENT_QUOTES);
-        $department = htmlspecialchars($s['dep_name']   ?? $s['department'] ?? '', ENT_QUOTES);
+        $regnumber  = htmlspecialchars((string) ($s['regnumber'] ?? '—'), ENT_QUOTES);
+        $faculty    = htmlspecialchars((string) ($s['fac_name']   ?? $s['faculty']    ?? ''), ENT_QUOTES);
+        $department = htmlspecialchars((string) ($s['dep_name']   ?? $s['department'] ?? ''), ENT_QUOTES);
 
         // Extract from letter data, with sensible defaults
         $sourceInstitution = htmlspecialchars(trim((string)($letter['source_institution'] ?? '')), ENT_QUOTES);
@@ -1214,17 +1215,22 @@ class DocumentHelper
      * Build the official fee schedule table (14 columns, grouped by faculty).
      * Output is a styled HTML table matching the PDF template layout.
      */
-    public static function buildFeeSchedule(array $rows, array $meta = []): string
+    public static function buildFeeSchedule(array $rows, array $generalFees = [], array $meta = []): string
     {
         $acYear = $meta['academic_year'] ?? date('Y');
         $generatedDate = $meta['generated_date'] ?? date('Y-m-d');
+
+        // dompdf's CSS `@page` margin is not honored by this build, so the letterhead painted
+        // by PdfLayout::stampHeader() (a fixed-position canvas overlay, not part of normal flow)
+        // is reserved for with an ordinary block spacer instead (see buildPostgraduateFeeSchedule).
+        $headerSpace = 190;
 
         $fmtNum = fn ($n) => $n !== null ? number_format((float)$n, 0, '', ',') . ' RWF' : '—';
 
         // Group rows by faculty
         $grouped = [];
         foreach ($rows as $row) {
-            $fac = $row['fac_name'] ?? 'Ungrouped';
+            $fac = $row['fac_name'] ?? 'General';
             if (!isset($grouped[$fac])) {
                 $grouped[$fac] = [];
             }
@@ -1237,36 +1243,55 @@ class DocumentHelper
             // Faculty header row
             $tbody .= <<<HTML
             <tr style="background: #e8e8e8; font-weight: bold; border: 1px solid #ddd;">
-                <td colspan="14" style="padding: 10px; border: 1px solid #ddd;">{$facName}</td>
+                <td colspan="10" style="padding: 8px; border: 1px solid #ddd;">{$facName}</td>
             </tr>
             HTML;
 
             // Program rows under this faculty
             foreach ($facRows as $row) {
-                $progName = $row['option_name'] ?? 'Unknown Program';
+                $progName = $row['option_name'] ?? 'Unnamed Program';
                 $semesterLabel = $row['semester'] ? 'Semester ' . $row['semester'] : 'Full year';
                 $duration = $row['level_name'] ? ' (' . $row['level_name'] . ')' : '';
 
                 $tbody .= <<<HTML
                 <tr style="border: 1px solid #ddd;">
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 11px;">{$sn}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; font-size: 11px;">{$progName}{$duration}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 11px;">{$semesterLabel}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-size: 11px;">{$fmtNum($row['application_fee'])}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-size: 11px;">{$fmtNum($row['registration_fee'])}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-size: 11px;">{$fmtNum($row['cursu_fee'])}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-size: 11px; font-weight: bold;">{$fmtNum($row['tuition_fee'])}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-size: 11px;">{$fmtNum($row['internship_fee'])}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-size: 11px;">{$fmtNum($row['final_project_fee'])}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-size: 11px;">{$fmtNum($row['graduation_fee'])}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 11px;">—</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 11px;">—</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-size: 11px;">—</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-size: 11px;">—</td>
+                    <td style="border: 1px solid #ddd; padding: 5px 6px; text-align: center; font-size: 9.5px;">{$sn}</td>
+                    <td style="border: 1px solid #ddd; padding: 5px 6px; font-size: 9.5px;">{$progName}{$duration}</td>
+                    <td style="border: 1px solid #ddd; padding: 5px 6px; text-align: center; font-size: 9.5px;">{$semesterLabel}</td>
+                    <td style="border: 1px solid #ddd; padding: 5px 6px; text-align: right; font-size: 9.5px;">{$fmtNum($row['application_fee'])}</td>
+                    <td style="border: 1px solid #ddd; padding: 5px 6px; text-align: right; font-size: 9.5px;">{$fmtNum($row['registration_fee'])}</td>
+                    <td style="border: 1px solid #ddd; padding: 5px 6px; text-align: right; font-size: 9.5px;">{$fmtNum($row['cursu_fee'])}</td>
+                    <td style="border: 1px solid #ddd; padding: 5px 6px; text-align: right; font-size: 9.5px; font-weight: bold;">{$fmtNum($row['tuition_fee'])}</td>
+                    <td style="border: 1px solid #ddd; padding: 5px 6px; text-align: right; font-size: 9.5px;">{$fmtNum($row['internship_fee'])}</td>
+                    <td style="border: 1px solid #ddd; padding: 5px 6px; text-align: right; font-size: 9.5px;">{$fmtNum($row['final_project_fee'])}</td>
+                    <td style="border: 1px solid #ddd; padding: 5px 6px; text-align: right; font-size: 9.5px;">{$fmtNum($row['graduation_fee'])}</td>
                 </tr>
                 HTML;
                 $sn++;
             }
+        }
+
+        $generalRows = '';
+        foreach ($generalFees as $fee) {
+            $catLabel = $fee['student_category'] ? ' (' . $fee['student_category'] . ')' : '';
+            $generalRows .= <<<HTML
+            <tr>
+                <td style="border: 1px solid #ddd; padding: 5px 8px; font-size: 9.5px;">{$fee['label']}{$catLabel}</td>
+                <td style="border: 1px solid #ddd; padding: 5px 8px; text-align: right; font-size: 9.5px;">{$fmtNum($fee['amount'])}</td>
+            </tr>
+            HTML;
+        }
+
+        $generalSection = '';
+        if ($generalRows !== '') {
+            $generalSection = <<<HTML
+            <div class="subtitle">Fees Applying to All Departments</div>
+            <table style="width: 60%;">
+                <tbody>
+                    {$generalRows}
+                </tbody>
+            </table>
+            HTML;
         }
 
         return <<<HTML
@@ -1278,43 +1303,37 @@ class DocumentHelper
             <title>Academic Fees Structure {$acYear}</title>
             <style>
                 * { margin: 0; padding: 0; box-sizing: border-box; }
-                body { font-family: 'Times New Roman', Times, serif; font-size: 12px; color: #333; line-height: 1.3; }
-                .page { max-width: 29.7cm; margin: 0 auto; padding: 15mm; background: white; }
-                .header { text-align: center; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid #333; }
-                .header h1 { font-size: 18px; font-weight: bold; margin-bottom: 3px; }
-                .header p { font-size: 10px; color: #666; margin: 2px 0; }
-                .title { font-size: 14px; font-weight: bold; margin: 15px 0 10px 0; }
-                table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-                table th { background: #f5f5f5; border: 1px solid #ddd; padding: 8px; text-align: left; font-weight: bold; font-size: 10px; }
-                table td { border: 1px solid #ddd; padding: 8px; font-size: 10px; }
-                .footer { margin-top: 20px; padding-top: 10px; border-top: 1px solid #ddd; font-size: 9px; color: #999; text-align: center; }
+                body { font-family: 'Times New Roman', Times, serif; font-size: 12px; color: #333; line-height: 1.15; }
+                .page { max-width: 29.7cm; margin: 0 auto; padding: 0 15mm 6mm 15mm; background: white; }
+                .letterhead-spacer { height: {$headerSpace}px; }
+                .title { font-size: 13px; font-weight: bold; margin: 0 0 8px 0; text-align: center; }
+                .subtitle { font-size: 11px; font-weight: bold; margin: 8px 0 4px 0; }
+                table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+                table th { background: #f5f5f5; border: 1px solid #ddd; padding: 5px 6px; text-align: left; font-weight: bold; font-size: 9.5px; }
+                table td { border: 1px solid #ddd; padding: 5px 6px; font-size: 9.5px; }
+                .notes { font-size: 9px; margin-top: 4px; }
+                .notes li { margin-bottom: 0; }
+                .signature { margin-top: 6px; font-size: 10px; font-weight: bold; }
+                .footer { margin-top: 8px; padding-top: 4px; border-top: 1px solid #ddd; font-size: 8px; color: #999; text-align: center; }
             </style>
         </head>
         <body>
             <div class="page">
-                <div class="header">
-                    <h1>CATHOLIC UNIVERSITY OF RWANDA</h1>
-                    <p>Academic Fees Structure {$acYear}</p>
-                </div>
-
-                <div class="title">Fee Schedule by Faculty and Program</div>
+                <div class="letterhead-spacer"></div>
+                <div class="title">Academic Fees Structure {$acYear} — Fee Schedule by Faculty and Program</div>
                 <table>
                     <thead>
                         <tr>
                             <th style="width: 3%;">S/N</th>
-                            <th style="width: 18%;">Program</th>
-                            <th style="width: 8%;">Duration</th>
-                            <th style="width: 8%;">Application Fee</th>
-                            <th style="width: 8%;">Registration Fee</th>
-                            <th style="width: 8%;">CURSU Fee</th>
-                            <th style="width: 8%;">Total Tuition</th>
-                            <th style="width: 8%;">Internship Fee</th>
-                            <th style="width: 8%;">Final Project Fee</th>
-                            <th style="width: 8%;">Graduation Fee</th>
-                            <th style="width: 3%;">Semesters</th>
-                            <th style="width: 3%;">Internships</th>
-                            <th style="width: 5%;">Tuition/Sem</th>
-                            <th style="width: 5%;">Tuition/Year</th>
+                            <th style="width: 24%;">Program</th>
+                            <th style="width: 8%;">Semester</th>
+                            <th style="width: 11%;">Application Fee</th>
+                            <th style="width: 11%;">Registration Fee</th>
+                            <th style="width: 9%;">CURSU Fee</th>
+                            <th style="width: 11%;">Total Tuition</th>
+                            <th style="width: 11%;">Internship Fee</th>
+                            <th style="width: 11%;">Final Project Fee</th>
+                            <th style="width: 11%;">Graduation Fee</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1322,9 +1341,169 @@ class DocumentHelper
                     </tbody>
                 </table>
 
+                {$generalSection}
+
+                <ul class="notes">
+                    <li>All fees are calculated in Rwandan Francs</li>
+                    <li>Application fee is one time payment fee and <strong>non-refundable</strong></li>
+                    <li>Registration fee is paid after every 2 semesters.</li>
+                    <li>Internship fees is paid before going in internship.</li>
+                    <li>Graduation fees is paid before Graduation</li>
+                </ul>
+
+                <div class="signature">
+                    <p>GASANGO Lilianne</p>
+                    <p>Director of Administration and finance</p>
+                </div>
+
                 <div class="footer">
                     <p>Academic Year: {$acYear} | Generated: {$generatedDate}</p>
                     <p>For inquiries, contact the Finance Office</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        HTML;
+    }
+
+    /**
+     * Build the Postgraduate Studies fee schedule table, matching the signed Finance layout:
+     * "ACADEMIC FEES STRUCTURE FOR POSTGRADUATE STUDIES YEAR {year} (Rwandan and EAC students)"
+     * or "...(International student)" depending on $meta['category'].
+     *
+     * @param array $rows       One row per department, from FeeStructureModel::postgraduateScheduleExport()
+     *                          or PgIntlFeeStructureModel::scheduleExport().
+     * @param array $otherFees  Shared document fees (TO_WHOM, ENGLISH_CERTIFICATE, TRANSCRIPT).
+     * @param array $meta       ['academic_year' => string, 'category' => 'local'|'international', 'generated_date' => string]
+     */
+    public static function buildPostgraduateFeeSchedule(array $rows, array $otherFees, array $meta = []): string
+    {
+        $acYear        = $meta['academic_year'] ?? date('Y');
+        $category      = $meta['category'] ?? 'local';
+        $generatedDate = $meta['generated_date'] ?? date('Y-m-d');
+        $categoryLabel = $category === 'international' ? 'International student' : 'Rwandan and East African community (EAC) students';
+        $semesters     = 4;
+
+        $fmtNum = fn ($n) => $n !== null ? number_format((float)$n, 0, '', ',') . ' RWF' : '—';
+
+        // Reserve top space matching PdfLayout::stampHeader()'s painted letterhead image height
+        // (computed for A4 landscape, not PdfLayout::HEADER_SPACE which targets portrait Letter)
+        // so the real logo/address bar doesn't overlap the title below it.
+        $headerSpace = 190;
+
+        $tbody = '';
+        $sn = 1;
+        foreach ($rows as $row) {
+            $tuitionPerSem  = $row['tuition_fee_per_semester'] ?? null;
+            $totalTuition   = $tuitionPerSem !== null ? (float)$tuitionPerSem * $semesters : null;
+
+            $tbody .= <<<HTML
+            <tr style="border: 1px solid #ddd;">
+                <td style="border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 11px;">{$sn}</td>
+                <td style="border: 1px solid #ddd; padding: 8px; font-size: 11px;">{$row['department_name']}</td>
+                <td style="border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 11px;">{$semesters}</td>
+                <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-size: 11px;">{$fmtNum($row['application_fee'])}</td>
+                <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-size: 11px;">{$fmtNum($row['registration_fee'])}</td>
+                <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-size: 11px;">{$fmtNum($row['cursu_fee'])}</td>
+                <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-size: 11px;">{$fmtNum($row['internship_fee'])}</td>
+                <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-size: 11px; font-weight: bold;">{$fmtNum($tuitionPerSem)}</td>
+                <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-size: 11px; font-weight: bold;">{$fmtNum($totalTuition)}</td>
+                <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-size: 11px;">{$fmtNum($row['graduation_fee'])}</td>
+            </tr>
+            HTML;
+            $sn++;
+        }
+
+        $otherRows = '';
+        $otherLabels = [
+            'TO_WHOM'             => 'To Whom fees',
+            'ENGLISH_CERTIFICATE' => 'English Certificate fees',
+            'TRANSCRIPT'          => 'Transcript/ 1 transcript',
+        ];
+        foreach ($otherFees as $fee) {
+            $label = $otherLabels[$fee['fee_type']] ?? $fee['label'];
+            $otherRows .= <<<HTML
+            <tr>
+                <td style="border: 1px solid #ddd; padding: 6px 10px; font-size: 11px;">{$label}</td>
+                <td style="border: 1px solid #ddd; padding: 6px 10px; text-align: right; font-size: 11px;">{$fmtNum($fee['amount'])}</td>
+            </tr>
+            HTML;
+        }
+
+        return <<<HTML
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Postgraduate Fees Structure {$acYear}</title>
+            <style>
+                * { margin: 0; padding: 0; box-sizing: border-box; }
+                body { font-family: 'Times New Roman', Times, serif; font-size: 12px; color: #333; line-height: 1.15; }
+                .page { max-width: 29.7cm; margin: 0 auto; padding: 0 15mm 6mm 15mm; background: white; }
+                /* dompdf's CSS `@page` margin is not honored by this build, so the letterhead
+                   painted by PdfLayout::stampHeader() (a fixed-position canvas overlay, not part
+                   of normal flow) is reserved for with an ordinary block spacer instead. */
+                .letterhead-spacer { height: {$headerSpace}px; }
+                .title { font-size: 12px; font-weight: bold; margin: 0 0 6px 0; text-align: center; }
+                .subtitle { font-size: 11px; font-weight: bold; margin: 6px 0 4px 0; }
+                table { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
+                table th { background: #f5f5f5; border: 1px solid #ddd; padding: 5px 6px; text-align: left; font-weight: bold; font-size: 9.5px; }
+                table td { border: 1px solid #ddd; padding: 3px 6px; font-size: 9.5px; }
+                .notes { font-size: 9px; margin-top: 4px; }
+                .notes li { margin-bottom: 0; }
+                .signature { margin-top: 6px; font-size: 10px; font-weight: bold; }
+                .footer { margin-top: 4px; padding-top: 3px; border-top: 1px solid #ddd; font-size: 8px; color: #999; text-align: center; }
+            </style>
+        </head>
+        <body>
+            <div class="page">
+                <div class="letterhead-spacer"></div>
+                <div class="title">ACADEMIC FEES STRUCTURE FOR POSTGRADUATE STUDIES YEAR {$acYear} ({$categoryLabel})</div>
+                <div class="subtitle">POSTGRADUATE STUDIES</div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 3%;">S/N</th>
+                            <th style="width: 27%;">Program</th>
+                            <th style="width: 7%;">Semesters</th>
+                            <th style="width: 9%;">Application fee/ RWF</th>
+                            <th style="width: 10%;">Registration fee per year/RWF</th>
+                            <th style="width: 8%;">CURSU Fee/year</th>
+                            <th style="width: 9%;">Internship Fee</th>
+                            <th style="width: 10%;">Tuition fee Per Semester/Rwf</th>
+                            <th style="width: 9%;">Total program Tuition fee/Rwf</th>
+                            <th style="width: 8%;">Graduation Fee/ RWF</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {$tbody}
+                    </tbody>
+                </table>
+
+                <div class="subtitle">Other Fees/Document fees</div>
+                <table style="width: 50%;">
+                    <tbody>
+                        {$otherRows}
+                    </tbody>
+                </table>
+
+                <ul class="notes">
+                    <li>All fees are calculated in Rwandan Francs</li>
+                    <li>Application fee is one time payment fee and <strong>non-refundable</strong></li>
+                    <li>Registration fee is Paid after every 2 semesters.</li>
+                    <li>Internship fees is paid before going in internship.</li>
+                    <li>Graduation fees is paid before Graduation</li>
+                    <li>Student needs to show medical Insurance before admission</li>
+                </ul>
+
+                <div class="signature">
+                    <p>GASANGO Lilianne</p>
+                    <p>Director of Administration and finance</p>
+                </div>
+
+                <div class="footer">
+                    <p>Academic Year: {$acYear} | Generated: {$generatedDate}</p>
                 </div>
             </div>
         </body>

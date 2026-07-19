@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { GraduationCap, Plus, Pencil, Trash2, X, Info, Archive, ArchiveRestore } from 'lucide-react'
+import { GraduationCap, Plus, Pencil, Trash2, X, Info, Archive, ArchiveRestore, Download, FileText } from 'lucide-react'
 import toast from 'react-hot-toast'
+import * as XLSX from 'xlsx'
 import { pgIntlFeeStructureService, feeTypeService } from '@/services/financeService'
 import { academicsMgmtService } from '@/services/academicsMgmtService'
 import { academicService as academicSvc } from '@/services/academicService'
+import { api, apiClient } from '@/services/api'
 import type {
   PgIntlFeeStructure,
   CreatePgIntlFeeStructurePayload,
@@ -17,6 +19,25 @@ import SearchableSelect from '@/components/ui/SearchableSelect'
 import ModalPortal from '@/components/ui/ModalPortal'
 import { PERMISSIONS } from '@/constants'
 import { usePermission } from '@/utils/permissions'
+
+type FeeCategory = 'local' | 'international'
+
+interface ScheduleRow {
+  department_id: number
+  department_name: string
+  application_fee: number | null
+  registration_fee: number | null
+  cursu_fee: number | null
+  internship_fee: number | null
+  tuition_fee_per_semester: number | null
+  graduation_fee: number | null
+}
+
+interface OtherFee {
+  fee_type: string
+  label: string
+  amount: number
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -63,10 +84,12 @@ export default function PostgraduateInternationalFeesPage() {
   const canManage = usePermission(PERMISSIONS.MANAGE_FINANCE)
   const qc = useQueryClient()
   const [yearId, setYearId]       = useState<number | ''>('')
+  const [category, setCategory]   = useState<FeeCategory>('international')
   const [isOpen, setIsOpen]       = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [form, setForm]           = useState<FormState>(EMPTY)
+  const [exportLoading, setExportLoading] = useState(false)
 
   // ── Data ──────────────────────────────────────────────────────────────────
 
@@ -108,6 +131,125 @@ export default function PostgraduateInternationalFeesPage() {
       pgIntlFeeStructureService.list(yearId ? { academic_year_id: Number(yearId) } : {}, signal),
   })
   const rows: PgIntlFeeStructure[] = res?.data ?? []
+
+  const scheduleQ = useQuery({
+    queryKey: ['finance', 'postgraduate-schedule', yearId, category],
+    queryFn: ({ signal }) =>
+      api.get<any>(`/api/finance/postgraduate/schedule-export?academic_year_id=${yearId}&category=${category}`, undefined, signal),
+    enabled: !!yearId,
+  })
+  const scheduleRows: ScheduleRow[] = scheduleQ.data?.data?.rows ?? []
+  const otherFees: OtherFee[] = scheduleQ.data?.data?.other_fees ?? []
+
+  const yearLabel = years.find((y: any) => y.id === yearId)?.label || 'Postgraduate-Fee-Schedule'
+  const categorySuffix = category === 'international' ? 'International' : 'Local-EAC'
+
+  const handleExportPdf = async () => {
+    if (!yearId) {
+      toast.error('Select an academic year first')
+      return
+    }
+    // The PDF is generated entirely server-side (dompdf). Fetch it as an authenticated
+    // blob via the shared axios client (same pattern as feeInvoicePdfService.downloadInvoicePdf
+    // in financeService.ts) rather than a direct <a href> navigation — a bare navigation can't
+    // carry the Authorization header, resolves relative to the wrong origin, and silently fails
+    // ("Site wasn't available") instead of surfacing an error. The frontend's only job is
+    // saving the returned blob to the user's machine.
+    try {
+      setExportLoading(true)
+      const response = await apiClient.get(
+        `/api/finance/postgraduate/schedule-export.pdf?academic_year_id=${yearId}&category=${category}`,
+        { responseType: 'blob' },
+      )
+      const objectUrl = window.URL.createObjectURL(new Blob([response.data]))
+      const link = document.createElement('a')
+      link.href = objectUrl
+      link.download = `Postgraduate-Fee-Schedule-${categorySuffix}-${yearLabel}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(objectUrl)
+      toast.success('Postgraduate fee schedule exported to PDF')
+    } catch (e: any) {
+      toast.error(e?.message ?? 'PDF export failed')
+    } finally {
+      setExportLoading(false)
+    }
+  }
+
+  const handleExportExcel = async () => {
+    if (!yearId) {
+      toast.error('Select an academic year first')
+      return
+    }
+    try {
+      setExportLoading(true)
+      const res2 = await api.get<any>(`/api/finance/postgraduate/schedule-export?academic_year_id=${yearId}&category=${category}`)
+      const scheduleRowsData: ScheduleRow[] = res2.data?.rows ?? []
+      const otherFeesData: OtherFee[] = res2.data?.other_fees ?? []
+
+      if (scheduleRowsData.length === 0) {
+        toast.error('No postgraduate fee structures found for this academic year')
+        return
+      }
+
+      const categoryTitle = category === 'international' ? 'International student' : 'Rwandan and East African community (EAC) students'
+      const titleRows = [
+        ['CATHOLIC UNIVERSITY OF RWANDA'],
+        [`ACADEMIC FEES STRUCTURE FOR POSTGRADUATE STUDIES YEAR ${yearLabel} (${categoryTitle})`],
+        ['POSTGRADUATE STUDIES'],
+        [],
+      ]
+      const headerRow = ['S/N', 'Program', 'Semesters', 'Application fee/ RWF', 'Registration fee per year/RWF', 'CURSU Fee/year', 'Internship Fee', 'Tuition fee Per Semester/Rwf', 'Total program Tuition fee/Rwf', 'Graduation Fee/ RWF']
+      const dataRows = scheduleRowsData.map((row, i) => [
+        i + 1,
+        row.department_name,
+        4,
+        row.application_fee != null ? Number(row.application_fee) : '',
+        row.registration_fee != null ? Number(row.registration_fee) : '',
+        row.cursu_fee != null ? Number(row.cursu_fee) : '',
+        row.internship_fee != null ? Number(row.internship_fee) : '',
+        row.tuition_fee_per_semester != null ? Number(row.tuition_fee_per_semester) : '',
+        row.tuition_fee_per_semester != null ? Number(row.tuition_fee_per_semester) * 4 : '',
+        row.graduation_fee != null ? Number(row.graduation_fee) : '',
+      ])
+      const otherFeesTitleRow = otherFeesData.length > 0 ? [[], ['Other Fees/Document fees']] : []
+      const otherFeesRows = otherFeesData.map((f) => [f.label, Number(f.amount)])
+
+      const aoa = [...titleRows, headerRow, ...dataRows, ...otherFeesTitleRow, ...otherFeesRows]
+      const ws = XLSX.utils.aoa_to_sheet(aoa)
+
+      // Column widths (character units) for readability
+      ws['!cols'] = [
+        { wch: 5 }, { wch: 42 }, { wch: 10 }, { wch: 14 }, { wch: 16 },
+        { wch: 12 }, { wch: 12 }, { wch: 16 }, { wch: 16 }, { wch: 14 },
+      ]
+      // Merge the title rows across all columns
+      ws['!merges'] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 9 } },
+        { s: { r: 1, c: 0 }, e: { r: 1, c: 9 } },
+        { s: { r: 2, c: 0 }, e: { r: 2, c: 9 } },
+      ]
+      // Apply currency number format to fee columns
+      const headerRowIdx = titleRows.length
+      for (let r = 0; r < dataRows.length; r++) {
+        for (const c of [3, 4, 5, 6, 7, 8, 9]) {
+          const cell = ws[XLSX.utils.encode_cell({ r: headerRowIdx + 1 + r, c })]
+          if (cell && typeof cell.v === 'number') cell.z = '#,##0'
+        }
+      }
+
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Postgraduate Fees')
+
+      XLSX.writeFile(wb, `Postgraduate-Fee-Schedule-${categorySuffix}-${yearLabel}.xlsx`)
+      toast.success('Postgraduate fee schedule exported to Excel')
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message ?? 'Export failed')
+    } finally {
+      setExportLoading(false)
+    }
+  }
 
   // ── Mutations ─────────────────────────────────────────────────────────────
 
@@ -218,11 +360,11 @@ export default function PostgraduateInternationalFeesPage() {
             <GraduationCap className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-base font-bold text-ink-900 dark:text-ink-50">Postgraduate Fees — International Students</h1>
+            <h1 className="text-base font-bold text-ink-900 dark:text-ink-50">Postgraduate Fees — PG/Intl Fees</h1>
             <p className="text-xs text-ink-500">Kept separate from the regular fee schedule. Amounts are fixed quoted rates per academic year (no live FX conversion).</p>
           </div>
         </div>
-        {canManage && (
+        {canManage && category === 'international' && (
           <button onClick={openCreate} className="btn btn-primary flex items-center gap-2 text-sm">
             <Plus className="w-4 h-4" />
             New Fee
@@ -231,17 +373,127 @@ export default function PostgraduateInternationalFeesPage() {
       </div>
 
       {/* Filter bar */}
-      <div className="bg-white dark:bg-ink-900 p-4 rounded-xl border border-ink-200 dark:border-ink-800 shadow-sm">
-        <div className="max-w-xs space-y-1">
-          <label className="text-xs font-semibold text-ink-600 dark:text-ink-300">Academic Year</label>
-          <SearchableSelect
-            options={years.map((y: any) => ({ value: y.id, label: y.label }))}
-            value={yearId}
-            onChange={(v) => setYearId(v === '' ? '' : Number(v))}
-            placeholder="All academic years"
-            allLabel="All academic years"
-          />
+      <div className="bg-white dark:bg-ink-900 p-4 rounded-xl border border-ink-200 dark:border-ink-800 shadow-sm space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-end gap-3 justify-between">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="max-w-xs space-y-1">
+              <label className="text-xs font-semibold text-ink-600 dark:text-ink-300">Academic Year</label>
+              <SearchableSelect
+                options={years.map((y: any) => ({ value: y.id, label: y.label }))}
+                value={yearId}
+                onChange={(v) => setYearId(v === '' ? '' : Number(v))}
+                placeholder="All academic years"
+                allLabel="All academic years"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-ink-600 dark:text-ink-300">Category</label>
+              <div className="flex rounded-lg border border-ink-200 dark:border-ink-700 overflow-hidden">
+                <button
+                  onClick={() => setCategory('local')}
+                  className={`px-3 py-2 text-xs font-semibold transition-colors ${
+                    category === 'local'
+                      ? 'bg-brand text-white'
+                      : 'bg-white dark:bg-ink-900 text-ink-600 dark:text-ink-300 hover:bg-ink-50 dark:hover:bg-ink-800'
+                  }`}
+                >
+                  Local / EAC
+                </button>
+                <button
+                  onClick={() => setCategory('international')}
+                  className={`px-3 py-2 text-xs font-semibold transition-colors border-l border-ink-200 dark:border-ink-700 ${
+                    category === 'international'
+                      ? 'bg-brand text-white'
+                      : 'bg-white dark:bg-ink-900 text-ink-600 dark:text-ink-300 hover:bg-ink-50 dark:hover:bg-ink-800'
+                  }`}
+                >
+                  International
+                </button>
+              </div>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleExportExcel}
+              disabled={exportLoading || !yearId}
+              className="btn btn-secondary flex items-center gap-2 text-sm disabled:opacity-50"
+            >
+              <Download className="w-4 h-4" />
+              Export Excel
+            </button>
+            <button
+              onClick={handleExportPdf}
+              disabled={exportLoading || !yearId}
+              className="btn btn-secondary flex items-center gap-2 text-sm disabled:opacity-50"
+            >
+              <FileText className="w-4 h-4" />
+              Export PDF
+            </button>
+          </div>
         </div>
+      </div>
+
+      {/* Postgraduate Fee Schedule report (matches official signed layout) */}
+      <div className="bg-white dark:bg-ink-900 rounded-xl border border-ink-200 dark:border-ink-800 shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-ink-100 dark:border-ink-800">
+          <h2 className="text-sm font-semibold text-ink-900 dark:text-ink-50">
+            Fee Schedule — {category === 'international' ? 'International Student' : 'Rwandan & EAC Students'}
+          </h2>
+        </div>
+        {!yearId ? (
+          <div className="p-8 text-center text-ink-400 italic text-sm">Select an academic year to view the fee schedule.</div>
+        ) : scheduleQ.isLoading ? (
+          <div className="p-6 space-y-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="h-4 bg-ink-100 dark:bg-ink-800 rounded w-full animate-pulse" />
+            ))}
+          </div>
+        ) : scheduleRows.length === 0 ? (
+          <div className="p-8 text-center text-ink-400 italic text-sm">No postgraduate fee schedule found for this academic year/category.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-ink-50/60 dark:bg-ink-800/60 text-ink-500 dark:text-ink-400 text-xs">
+                <tr>
+                  <th className="text-left px-3 py-2 font-semibold">#</th>
+                  <th className="text-left px-3 py-2 font-semibold">Program</th>
+                  <th className="text-center px-3 py-2 font-semibold">Semesters</th>
+                  <th className="text-right px-3 py-2 font-semibold">Application</th>
+                  <th className="text-right px-3 py-2 font-semibold">Registration</th>
+                  <th className="text-right px-3 py-2 font-semibold">CURSU</th>
+                  <th className="text-right px-3 py-2 font-semibold">Internship</th>
+                  <th className="text-right px-3 py-2 font-semibold">Tuition/Sem</th>
+                  <th className="text-right px-3 py-2 font-semibold">Total Tuition</th>
+                  <th className="text-right px-3 py-2 font-semibold">Graduation</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-ink-100 dark:divide-ink-800">
+                {scheduleRows.map((row, i) => (
+                  <tr key={row.department_id} className="hover:bg-ink-50/40 dark:hover:bg-ink-800/40">
+                    <td className="px-3 py-2 text-ink-400">{i + 1}</td>
+                    <td className="px-3 py-2 font-semibold text-ink-900 dark:text-ink-50">{row.department_name}</td>
+                    <td className="px-3 py-2 text-center">4</td>
+                    <td className="px-3 py-2 text-right">{row.application_fee != null ? Number(row.application_fee).toLocaleString() : '—'}</td>
+                    <td className="px-3 py-2 text-right">{row.registration_fee != null ? Number(row.registration_fee).toLocaleString() : '—'}</td>
+                    <td className="px-3 py-2 text-right">{row.cursu_fee != null ? Number(row.cursu_fee).toLocaleString() : '—'}</td>
+                    <td className="px-3 py-2 text-right">{row.internship_fee != null ? Number(row.internship_fee).toLocaleString() : '—'}</td>
+                    <td className="px-3 py-2 text-right font-semibold">{row.tuition_fee_per_semester != null ? Number(row.tuition_fee_per_semester).toLocaleString() : '—'}</td>
+                    <td className="px-3 py-2 text-right font-semibold">{row.tuition_fee_per_semester != null ? (Number(row.tuition_fee_per_semester) * 4).toLocaleString() : '—'}</td>
+                    <td className="px-3 py-2 text-right">{row.graduation_fee != null ? Number(row.graduation_fee).toLocaleString() : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {otherFees.length > 0 && (
+              <div className="px-4 py-3 border-t border-ink-100 dark:border-ink-800 flex flex-wrap gap-4 text-xs text-ink-500">
+                <span className="font-semibold text-ink-700 dark:text-ink-300">Other Fees:</span>
+                {otherFees.map((f) => (
+                  <span key={f.fee_type}>{f.label}: {Number(f.amount).toLocaleString()} RWF</span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Modal */}
@@ -433,7 +685,9 @@ export default function PostgraduateInternationalFeesPage() {
         </ModalPortal>
       )}
 
-      {/* Table */}
+      {/* CRUD table — international rows are managed here; local/EAC rows are managed on the
+          regular Fee Rates page (they live in fee_structures, scoped by department + student_category). */}
+      {category === 'international' && (
       <div className="bg-white dark:bg-ink-900 rounded-xl border border-ink-200 dark:border-ink-800 shadow-sm overflow-hidden">
         {isLoading ? (
           <div className="p-6 space-y-3">
@@ -519,6 +773,7 @@ export default function PostgraduateInternationalFeesPage() {
           </div>
         )}
       </div>
+      )}
 
       {/* Info banner */}
       <div className="flex items-start gap-3 p-4 bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300 rounded-xl text-sm border border-amber-200 dark:border-amber-800">

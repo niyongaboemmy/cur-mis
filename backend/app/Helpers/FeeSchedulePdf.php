@@ -15,20 +15,21 @@ class FeeSchedulePdf
     /**
      * Build the full fee schedule HTML.
      *
-     * @param array $rows Pivoted fee schedule rows (from FeeStructureModel::scheduleExport)
-     * @param array $meta Metadata (academic_year, generated_date)
+     * @param array $rows        Pivoted fee schedule rows (from FeeStructureModel::scheduleExport)
+     * @param array $generalFees Fees that apply to all departments (from FeeStructureModel::generalFeeRows)
+     * @param array $meta        Metadata (academic_year, generated_date)
      */
-    public static function buildHtml(array $rows, array $meta = []): string
+    public static function buildHtml(array $rows, array $generalFees = [], array $meta = []): string
     {
-        return DocumentHelper::buildFeeSchedule($rows, $meta);
+        return DocumentHelper::buildFeeSchedule($rows, $generalFees, $meta);
     }
 
     /**
      * Stream the fee schedule as a PDF to the browser.
      */
-    public static function streamPdf(array $rows, array $meta = [], string $filename = 'fee-schedule.pdf'): void
+    public static function streamPdf(array $rows, array $generalFees = [], array $meta = [], string $filename = 'fee-schedule.pdf'): void
     {
-        $html = self::buildHtml($rows, $meta);
+        $html = self::buildHtml($rows, $generalFees, $meta);
 
         if (class_exists('\Dompdf\Dompdf')) {
             $options = new \Dompdf\Options();
@@ -54,13 +55,13 @@ class FeeSchedulePdf
     /**
      * Return PDF binary string (for email attachments or storage).
      */
-    public static function renderPdfBinary(array $rows, array $meta = []): ?string
+    public static function renderPdfBinary(array $rows, array $generalFees = [], array $meta = []): ?string
     {
         if (!class_exists('\Dompdf\Dompdf')) {
             return null;
         }
 
-        $html    = self::buildHtml($rows, $meta);
+        $html    = self::buildHtml($rows, $generalFees, $meta);
         $options = new \Dompdf\Options();
         $options->set('isHtml5ParserEnabled', true);
         $options->set('isRemoteEnabled', false);

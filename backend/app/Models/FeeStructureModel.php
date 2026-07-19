@@ -194,14 +194,28 @@ class FeeStructureModel extends BaseModel
      * Grouped by faculty and ordered by faculty → option name.
      * Returns: [{fac_name, option_name, semester, application_fee, registration_fee, ..., tuition_per_year}, ...]
      */
+    /**
+     * Pivot fee structures into a schedule export format: one row per department, with
+     * columns for each fee type (APPLICATION, REGISTRATION, CURSU, etc). Grouped by faculty
+     * and ordered by faculty → department name.
+     *
+     * Joins directly on `fee_structures.department_id` (added in migration 091) rather than
+     * the legacy `fee_structure_options` → `options` join table, which in practice is almost
+     * never populated (a handful of stale/orphaned links) and produced incomplete or
+     * mislabeled "Unknown"/"Ungrouped" rows that blended unrelated programs' amounts together
+     * via MAX() once every department-scoped row's option_id came back NULL.
+     *
+     * Rows with no department_id (fees that apply to all departments, e.g. shared document
+     * fees) are intentionally excluded here — see {@see generalFeeRows()}.
+     */
     public function scheduleExport(int $academicYearId): array
     {
         $rows = $this->db->fetchAll(
             "SELECT
                     f.fac_name,
                     f.fac_id,
-                    o.id as option_id,
-                    o.name as option_name,
+                    d.dep_id as option_id,
+                    d.dep_name as option_name,
                     fs.semester,
                     fs.level_id,
                     l.name as level_name,
@@ -213,14 +227,85 @@ class FeeStructureModel extends BaseModel
                     MAX(CASE WHEN fs.fee_type = 'FINAL_PROJECT' THEN fs.amount ELSE NULL END) as final_project_fee,
                     MAX(CASE WHEN fs.fee_type = 'GRADUATION' THEN fs.amount ELSE NULL END) as graduation_fee
              FROM `fee_structures` fs
-             LEFT JOIN `fee_structure_options` fso ON fso.fee_structure_id = fs.id
-             LEFT JOIN `options` o ON o.id = fso.option_id
-             LEFT JOIN `departements` d ON d.dep_id = o.department_id
+             INNER JOIN `departements` d ON d.dep_id = fs.department_id
              LEFT JOIN `faculty` f ON f.fac_id = d.fac_id
              LEFT JOIN `levels` l ON l.id = fs.level_id
              WHERE fs.academic_year_id = ? AND fs.is_active = 1
-             GROUP BY f.fac_id, o.id, fs.semester, fs.level_id
-             ORDER BY f.fac_name ASC, o.name ASC",
+             GROUP BY f.fac_id, d.dep_id, fs.semester, fs.level_id
+             ORDER BY f.fac_name ASC, d.dep_name ASC",
+            [$academicYearId]
+        );
+
+        return $rows ?? [];
+    }
+
+    /**
+     * Fee rows that apply to ALL departments (department_id IS NULL), listed individually
+     * rather than pivoted/aggregated — these are typically one-off or shared fees (document
+     * fees, generic placeholders) and don't belong to any single program's row.
+     */
+    public function generalFeeRows(int $academicYearId): array
+    {
+        $rows = $this->db->fetchAll(
+            "SELECT fee_type, label, amount, currency, student_category
+             FROM `fee_structures`
+             WHERE academic_year_id = ?
+               AND department_id IS NULL
+               AND is_active = 1
+             ORDER BY fee_type ASC",
+            [$academicYearId]
+        );
+
+        return $rows ?? [];
+    }
+
+    /**
+     * Pivot postgraduate (local/EAC) fee rows into a schedule export format: one row per
+     * postgraduate department, with columns for each fee type. Mirrors the signed Finance
+     * "Academic Fees Structure — Postgraduate Studies (Rwandan and EAC students)" schedule.
+     * Direct department_id join (not via the options table used by scheduleExport()), since
+     * postgraduate departments have no combination/options structure.
+     */
+    public function postgraduateScheduleExport(int $academicYearId): array
+    {
+        $rows = $this->db->fetchAll(
+            "SELECT
+                    d.dep_id as department_id,
+                    d.dep_name as department_name,
+                    MAX(CASE WHEN fs.fee_type = 'APPLICATION'  THEN fs.amount ELSE NULL END) as application_fee,
+                    MAX(CASE WHEN fs.fee_type = 'REGISTRATION' THEN fs.amount ELSE NULL END) as registration_fee,
+                    MAX(CASE WHEN fs.fee_type = 'CURSU'        THEN fs.amount ELSE NULL END) as cursu_fee,
+                    MAX(CASE WHEN fs.fee_type = 'INTERNSHIP'   THEN fs.amount ELSE NULL END) as internship_fee,
+                    MAX(CASE WHEN fs.fee_type = 'TUITION'      THEN fs.amount ELSE NULL END) as tuition_fee_per_semester,
+                    MAX(CASE WHEN fs.fee_type = 'GRADUATION'   THEN fs.amount ELSE NULL END) as graduation_fee
+             FROM `fee_structures` fs
+             INNER JOIN `departements` d ON d.dep_id = fs.department_id
+             WHERE fs.academic_year_id = ?
+               AND fs.student_category = 'local'
+               AND d.program_level = 'postgraduate'
+               AND fs.is_active = 1
+             GROUP BY d.dep_id, d.dep_name
+             ORDER BY d.dep_name ASC",
+            [$academicYearId]
+        );
+
+        return $rows ?? [];
+    }
+
+    /**
+     * The three "Other Fees / Document Fees" rows shared by all postgraduate students
+     * (department_id / student_category = NULL = applies to all).
+     */
+    public function postgraduateOtherFees(int $academicYearId): array
+    {
+        $rows = $this->db->fetchAll(
+            "SELECT fee_type, label, amount, currency
+             FROM `fee_structures`
+             WHERE academic_year_id = ?
+               AND department_id IS NULL
+               AND fee_type IN ('TO_WHOM', 'ENGLISH_CERTIFICATE', 'TRANSCRIPT')
+               AND is_active = 1
+             ORDER BY fee_type ASC",
             [$academicYearId]
         );
 

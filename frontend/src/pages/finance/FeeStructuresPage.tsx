@@ -12,7 +12,7 @@ import Pagination from '@/components/ui/Pagination'
 import { useSystemStore } from '@/store/systemStore'
 import { formatRWF } from '@/utils/formatCurrency'
 import ModalPortal from '@/components/ui/ModalPortal'
-import { api } from '@/services/api'
+import { api, apiClient } from '@/services/api'
 import { PERMISSIONS } from '@/constants'
 import { usePermission } from '@/utils/permissions'
 
@@ -158,20 +158,24 @@ export default function FeeStructuresPage() {
     try {
       setExportLoading(true)
       const res = await api.get<any>(`/api/finance/structures/schedule-export?academic_year_id=${yearId}`)
-      const rows = (Array.isArray(res.data) ? res.data : res.data?.data) ?? []
+      // Backend returns { rows, general_fees } — rows are pivoted directly off
+      // fee_structures.department_id (the real, populated linkage); general_fees are
+      // fees that apply to every department (department_id IS NULL), listed separately
+      // instead of being blended into a bogus "Ungrouped/Unknown" pivot row.
+      const rows: any[] = res.data?.rows ?? []
+      const generalFees: any[] = res.data?.general_fees ?? []
 
-      if (rows.length === 0) {
+      if (rows.length === 0 && generalFees.length === 0) {
         toast.error('No fee structures found for this academic year')
         return
       }
 
-      // Build header row
-      const headerRow = ['S/N', 'Faculty', 'Program', 'Duration', 'Application Fee', 'Registration Fee', 'CURSU Fee', 'Total Tuition', 'Internship Fee', 'Final Project Fee', 'Graduation Fee', 'Semesters', 'Internships', 'Tuition/Semester', 'Tuition/Year']
+      const headerRow = ['S/N', 'Faculty', 'Program', 'Semester', 'Application Fee', 'Registration Fee', 'CURSU Fee', 'Total Tuition', 'Internship Fee', 'Final Project Fee', 'Graduation Fee']
 
-      // Build data rows, grouped by faculty
+      // Group rows by faculty
       const grouped: Record<string, any[]> = {}
       rows.forEach((row: any) => {
-        const fac = row.fac_name || 'Ungrouped'
+        const fac = row.fac_name || 'General'
         if (!grouped[fac]) grouped[fac] = []
         grouped[fac].push(row)
       })
@@ -179,32 +183,42 @@ export default function FeeStructuresPage() {
       const dataRows: any[] = []
       let sn = 1
       Object.entries(grouped).forEach(([facName, facRows]) => {
-        // Faculty header row
-        dataRows.push([facName, '', '', '', '', '', '', '', '', '', '', '', '', '', ''])
-        // Program rows
+        dataRows.push([facName])
         facRows.forEach((row: any) => {
           dataRows.push([
             sn,
-            row.fac_name,
-            row.option_name || 'Unknown',
+            row.fac_name || '',
+            row.option_name || 'Unnamed Program',
             row.semester ? `Semester ${row.semester}` : 'Full year',
-            row.application_fee || '',
-            row.registration_fee || '',
-            row.cursu_fee || '',
-            row.tuition_fee || '',
-            row.internship_fee || '',
-            row.final_project_fee || '',
-            row.graduation_fee || '',
-            row.level_name || '',
-            '',
-            '',
-            '',
+            row.application_fee != null ? Number(row.application_fee) : '',
+            row.registration_fee != null ? Number(row.registration_fee) : '',
+            row.cursu_fee != null ? Number(row.cursu_fee) : '',
+            row.tuition_fee != null ? Number(row.tuition_fee) : '',
+            row.internship_fee != null ? Number(row.internship_fee) : '',
+            row.final_project_fee != null ? Number(row.final_project_fee) : '',
+            row.graduation_fee != null ? Number(row.graduation_fee) : '',
           ])
           sn++
         })
       })
 
-      const ws = XLSX.utils.aoa_to_sheet([headerRow, ...dataRows])
+      const generalTitleRow = generalFees.length > 0 ? [[], ['Fees Applying to All Departments']] : []
+      const generalRows = generalFees.map((f: any) => [f.label, Number(f.amount)])
+
+      const aoa = [headerRow, ...dataRows, ...generalTitleRow, ...generalRows]
+      const ws = XLSX.utils.aoa_to_sheet(aoa)
+      ws['!cols'] = [
+        { wch: 5 }, { wch: 22 }, { wch: 40 }, { wch: 12 }, { wch: 14 },
+        { wch: 16 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 },
+      ]
+      // Apply currency number format to fee columns
+      for (let r = 1; r < 1 + dataRows.length; r++) {
+        for (const c of [4, 5, 6, 7, 8, 9, 10]) {
+          const cell = ws[XLSX.utils.encode_cell({ r, c })]
+          if (cell && typeof cell.v === 'number') cell.z = '#,##0'
+        }
+      }
+
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, ws, 'Fee Schedule')
 
@@ -224,21 +238,31 @@ export default function FeeStructuresPage() {
       toast.error('Select an academic year first')
       return
     }
+    // The PDF is generated entirely server-side (dompdf). Fetch it as an authenticated
+    // blob via the shared axios client (same pattern as feeInvoicePdfService.downloadInvoicePdf
+    // in financeService.ts) rather than a direct <a href> navigation — a bare navigation can't
+    // carry the Authorization header and resolves relative to the wrong origin when
+    // VITE_API_URL points elsewhere, silently failing ("Site wasn't available") instead
+    // of surfacing an error. The frontend's only job is saving the returned blob.
     try {
       setExportLoading(true)
       const year = years.find(y => y.id == yearId)
       const yearLabel = year?.label || 'FeeSchedule'
-      // Download PDF directly
-      const url = `/api/finance/structures/schedule-export.pdf?academic_year_id=${yearId}`
+      const response = await apiClient.get(
+        `/api/finance/structures/schedule-export.pdf?academic_year_id=${yearId}`,
+        { responseType: 'blob' },
+      )
+      const objectUrl = window.URL.createObjectURL(new Blob([response.data]))
       const link = document.createElement('a')
-      link.href = url
+      link.href = objectUrl
       link.download = `Fee-Schedule-${yearLabel}.pdf`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
+      window.URL.revokeObjectURL(objectUrl)
       toast.success('Fee schedule exported to PDF')
     } catch (e: any) {
-      toast.error('PDF export failed')
+      toast.error(e?.message ?? 'PDF export failed')
     } finally {
       setExportLoading(false)
     }

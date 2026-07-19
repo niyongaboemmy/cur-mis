@@ -7,6 +7,7 @@ namespace App\Controllers;
 use Core\Request;
 use Core\Response;
 use App\Models\FeeStructureModel;
+use App\Models\PgIntlFeeStructureModel;
 use App\Models\FeeInvoiceModel;
 use App\Models\FeePaymentModel;
 use App\Models\FeeBursaryModel;
@@ -26,6 +27,7 @@ use Core\Database;
 class FeeController extends BaseController
 {
     private FeeStructureModel       $structureModel;
+    private PgIntlFeeStructureModel $pgIntlStructureModel;
     private FeeInvoiceModel         $invoiceModel;
     private FeePaymentModel         $paymentModel;
     private FeeBursaryModel         $bursaryModel;
@@ -43,6 +45,7 @@ class FeeController extends BaseController
     public function __construct()
     {
         $this->structureModel       = new FeeStructureModel();
+        $this->pgIntlStructureModel = new PgIntlFeeStructureModel();
         $this->invoiceModel         = new FeeInvoiceModel();
         $this->paymentModel         = new FeePaymentModel();
         $this->bursaryModel         = new FeeBursaryModel();
@@ -2216,8 +2219,10 @@ class FeeController extends BaseController
             $this->error($response, 'academic_year_id is required.', 422);
         }
 
-        $rows = $this->structureModel->scheduleExport($yearId);
-        $this->success($response, $rows, 'Fee schedule export data retrieved.');
+        $this->success($response, [
+            'rows'          => $this->structureModel->scheduleExport($yearId),
+            'general_fees'  => $this->structureModel->generalFeeRows($yearId),
+        ], 'Fee schedule export data retrieved.');
     }
 
     /**
@@ -2232,12 +2237,67 @@ class FeeController extends BaseController
             $this->error($response, 'academic_year_id is required.', 422);
         }
 
-        $rows = $this->structureModel->scheduleExport($yearId);
-        $year = $this->db->fetchOne("SELECT label FROM academic_years WHERE id = ?", [$yearId]);
-        $yearLabel = $year['label'] ?? 'Academic Year';
+        $rows        = $this->structureModel->scheduleExport($yearId);
+        $generalFees = $this->structureModel->generalFeeRows($yearId);
+        $year        = $this->db->fetchOne("SELECT label FROM academic_years WHERE id = ?", [$yearId]);
+        $yearLabel   = $year['label'] ?? 'Academic Year';
 
         // Stream PDF using the helper
-        \App\Helpers\FeeSchedulePdf::streamPdf($rows, ['academic_year' => $yearLabel], "Fee-Schedule-{$yearLabel}.pdf");
+        \App\Helpers\FeeSchedulePdf::streamPdf($rows, $generalFees, ['academic_year' => $yearLabel], "Fee-Schedule-{$yearLabel}.pdf");
+    }
+
+    /**
+     * GET /api/finance/postgraduate/schedule-export
+     * Export the postgraduate fee schedule (local/EAC or international) pivoted by department.
+     * Query params: academic_year_id (required), category=local|international (default local)
+     */
+    public function postgraduateScheduleExportJson(Request $request, Response $response): never
+    {
+        $yearId = (int)($request->query('academic_year_id') ?? 0);
+        if (!$yearId) {
+            $this->error($response, 'academic_year_id is required.', 422);
+        }
+        $category = $request->query('category') === 'international' ? 'international' : 'local';
+
+        $rows = $category === 'international'
+            ? $this->pgIntlStructureModel->scheduleExport($yearId)
+            : $this->structureModel->postgraduateScheduleExport($yearId);
+
+        $this->success($response, [
+            'category'    => $category,
+            'rows'        => $rows,
+            'other_fees'  => $this->structureModel->postgraduateOtherFees($yearId),
+        ], 'Postgraduate fee schedule export data retrieved.');
+    }
+
+    /**
+     * GET /api/finance/postgraduate/schedule-export.pdf
+     * Stream a PDF of the postgraduate fee schedule matching the official signed layout.
+     * Query params: academic_year_id (required), category=local|international (default local)
+     */
+    public function postgraduateScheduleExportPdf(Request $request, Response $response): never
+    {
+        $yearId = (int)($request->query('academic_year_id') ?? 0);
+        if (!$yearId) {
+            $this->error($response, 'academic_year_id is required.', 422);
+        }
+        $category = $request->query('category') === 'international' ? 'international' : 'local';
+
+        $rows = $category === 'international'
+            ? $this->pgIntlStructureModel->scheduleExport($yearId)
+            : $this->structureModel->postgraduateScheduleExport($yearId);
+        $otherFees = $this->structureModel->postgraduateOtherFees($yearId);
+
+        $year      = $this->db->fetchOne("SELECT label FROM academic_years WHERE id = ?", [$yearId]);
+        $yearLabel = $year['label'] ?? 'Academic Year';
+        $suffix    = $category === 'international' ? 'International' : 'Local-EAC';
+
+        \App\Helpers\PostgraduateFeeSchedulePdf::streamPdf(
+            $rows,
+            $otherFees,
+            ['academic_year' => $yearLabel, 'category' => $category],
+            "Postgraduate-Fee-Schedule-{$suffix}-{$yearLabel}.pdf"
+        );
     }
 
     // ────────────────────────────────────────────────────────────────────────
