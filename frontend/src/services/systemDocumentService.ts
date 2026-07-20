@@ -23,7 +23,7 @@ export const systemDocumentService = {
    * Get all active system documents
    */
   list: async () => {
-    const response = await api.get<SystemDocument[]>('/system-documents')
+    const response = await api.get<SystemDocument[]>('/api/system-documents')
     return response.data || []
   },
 
@@ -31,7 +31,7 @@ export const systemDocumentService = {
    * Get all document categories
    */
   getCategories: async () => {
-    const response = await api.get<DocumentCategory[]>('/system-documents/categories')
+    const response = await api.get<DocumentCategory[]>('/api/system-documents/categories')
     return response.data || []
   },
 

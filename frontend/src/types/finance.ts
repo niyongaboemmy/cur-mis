@@ -457,6 +457,89 @@ export interface BudgetExecutionCompareResult {
   year_b: BudgetExecutionYearResult
 }
 
+// ─── Financial Budget Plan (migration 106/107) ─────────────────────────────────
+
+export interface BudgetPlanLineItem {
+  id:               number
+  parent_id:        number | null
+  section:          string
+  label:            string
+  row_type:         'data' | 'subtotal' | 'header'
+  sort_order:       number
+  general_total:    number | null
+  months:           Record<string, number>
+  executed_total:   number | null
+  variance:         number | null
+  pct_realisation:  number | null
+}
+
+export interface BudgetPlanStudentProjection {
+  faculty_label:    string
+  department_label: string | null
+  level_label:      string
+  program_type:     'day' | 'weekend' | 'holiday'
+  intake_period:    string
+  headcount:        number
+  sort_order:       number
+}
+
+export interface BudgetPlanStudentExecution {
+  faculty_code: string
+  budgeted:     number
+  executed:     number
+  rank:         number | null
+  sort_order:   number
+}
+
+export interface BudgetPlanReferenceRate {
+  rate_group: string
+  label:      string
+  value1:     number | null
+  value2:     number | null
+  value3:     number | null
+  sort_order: number
+}
+
+export interface BudgetPlan {
+  id:                     number
+  academic_year_id:       number
+  academic_year_label:    string
+  title:                  string
+  student_count_budgeted: number | null
+  line_items:             BudgetPlanLineItem[]
+  student_projections:    BudgetPlanStudentProjection[]
+  student_executions:     BudgetPlanStudentExecution[]
+  reference_rates:        BudgetPlanReferenceRate[]
+  month_names:            Record<string, string>
+}
+
+export const BUDGET_PLAN_SECTIONS = [
+  'revenue', 'staff_cost', 'admin_cost', 'academic_cost', 'ict_cost',
+  'finance_cost', 'capex', 'financing', 'arrears', 'cashflow',
+] as const
+
+export const BUDGET_PLAN_ROW_TYPES = ['data', 'subtotal', 'header'] as const
+
+export interface CreateBudgetPlanPayload {
+  academic_year_id:       number
+  title?:                 string
+  student_count_budgeted?: number | null
+}
+
+export interface UpdateBudgetPlanPayload {
+  title?:                  string
+  student_count_budgeted?: number | null
+}
+
+export interface SaveBudgetLineItemPayload {
+  section?:        string
+  label?:          string
+  row_type?:       string
+  general_total?:  number | null
+  executed_total?: number | null
+  months?:         Record<number, number | null>
+}
+
 // ─── Account Balance ──────────────────────────────────────────────────────────
 
 export interface AccountBalance {

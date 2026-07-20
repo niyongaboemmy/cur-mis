@@ -25,6 +25,10 @@ import type {
   SaveBudgetPayload,
   BudgetExecutionRow,
   BudgetExecutionCompareResult,
+  BudgetPlan,
+  CreateBudgetPlanPayload,
+  UpdateBudgetPlanPayload,
+  SaveBudgetLineItemPayload,
   ClearanceResult,
   StudentClearance,
   ClearanceReport,
@@ -404,6 +408,65 @@ export const budgetExecutionService = {
   },
 };
 
+// ─── Financial Budget Plan (migration 106/107) ─────────────────────────────────
+
+export const budgetPlanService = {
+  get: (academicYearId: number, signal?: AbortSignal) =>
+    api.get<BudgetPlan>(
+      "/api/finance/budget-plan",
+      { academic_year_id: academicYearId },
+      signal,
+    ),
+
+  create: (data: CreateBudgetPlanPayload) =>
+    api.post<{ id: number }>("/api/finance/budget-plan", data),
+
+  update: (id: number, data: UpdateBudgetPlanPayload) =>
+    api.put<null>(`/api/finance/budget-plan/${id}`, data),
+
+  createLineItem: (planId: number, data: SaveBudgetLineItemPayload) =>
+    api.post<{ id: number }>(`/api/finance/budget-plan/${planId}/line-items`, data),
+
+  updateLineItem: (id: number, data: SaveBudgetLineItemPayload) =>
+    api.put<null>(`/api/finance/budget-plan/line-items/${id}`, data),
+
+  deleteLineItem: (id: number) =>
+    api.delete<null>(`/api/finance/budget-plan/line-items/${id}`),
+
+  import: (academicYearId: number, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return api.upload<{ plan_id: number; created: number; updated: number }>(
+      `/api/finance/budget-plan/import?academic_year_id=${academicYearId}`,
+      form,
+    );
+  },
+
+  download: (academicYearId: number): void => {
+    const token = useAuthStore.getState().token ?? "";
+    const base = import.meta.env.VITE_API_URL ?? "";
+    const url = `${base}/api/finance/budget-plan/export?academic_year_id=${academicYearId}&token=${token}`;
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  },
+
+  downloadTemplate: (academicYearId: number): void => {
+    const token = useAuthStore.getState().token ?? "";
+    const base = import.meta.env.VITE_API_URL ?? "";
+    const url = `${base}/api/finance/budget-plan/template?academic_year_id=${academicYearId}&token=${token}`;
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  },
+};
+
 // ─── Clearance ────────────────────────────────────────────────────────────────
 
 export const clearanceService = {
@@ -584,8 +647,8 @@ export const exportService = {
     type: "revenue" | "payments" | "outstanding" | "expenses",
     academicYearId?: number,
   ): void => {
-    const token = localStorage.getItem("auth_token") ?? "";
-    const base = import.meta.env.VITE_API_BASE_URL ?? "";
+    const token = useAuthStore.getState().token ?? "";
+    const base = import.meta.env.VITE_API_URL ?? "";
     const year = academicYearId ? `&academic_year_id=${academicYearId}` : "";
     const url = `${base}/api/finance/reports/export?type=${type}${year}&token=${token}`;
     const a = document.createElement("a");

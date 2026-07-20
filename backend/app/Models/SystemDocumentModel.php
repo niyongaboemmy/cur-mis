@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace App\Models;
 
-use Core\BaseModel;
-
 class SystemDocumentModel extends BaseModel
 {
     protected string $table = 'system_documents';

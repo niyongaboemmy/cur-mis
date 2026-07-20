@@ -959,7 +959,7 @@ function ExpenseFormModal({
                   <div className="col-span-2 flex items-center gap-2 text-xs text-ink-400 bg-ink-50 dark:bg-ink-700/30 rounded-lg p-2.5">
                     <CheckCircle2 className="w-3.5 h-3.5 text-ink-300 shrink-0" />
                     No budget limit set for this category. You can set one in
-                    the Budget Plan tab.
+                    the Budget Execution tab.
                   </div>
                 )}
               </div>

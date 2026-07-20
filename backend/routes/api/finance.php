@@ -7,6 +7,7 @@ use App\Controllers\RefundController;
 use App\Controllers\StudentController;
 use App\Controllers\PaymentCalendarController;
 use App\Controllers\BudgetController;
+use App\Controllers\BudgetPlanController;
 use App\Controllers\PgIntlFeeStructureController;
 use App\Middleware\AuthMiddleware;
 use App\Middleware\PermissionMiddleware;
@@ -169,6 +170,16 @@ $router->group('/api/finance', function ($router) {
         Permissions::MANAGE_BUDGET_EXECUTION,
     ])]);
 
+    // ── Financial Budget Plan (full institution revenue+expense model) ───────
+    $router->group('', function ($r) {
+        $r->get('/budget-plan',          [BudgetPlanController::class, 'show']);
+        $r->get('/budget-plan/export',   [BudgetPlanController::class, 'export']);
+        $r->get('/budget-plan/template', [BudgetPlanController::class, 'downloadTemplate']);
+    }, [new MaybePermissionMiddleware([
+        Permissions::VIEW_BUDGET_EXECUTION,
+        Permissions::MANAGE_BUDGET_EXECUTION,
+    ])]);
+
     // ── Student self-service ──────────────────────────────────────────────────
     $router->group('/my', function ($r) {
         $r->get('/invoices',  [FeeController::class, 'getMyInvoices']);
@@ -254,6 +265,16 @@ $router->group('/api/finance', function ($router) {
     // ── Budget Execution — writes ─────────────────────────────────────────────
     $router->group('', function ($r) {
         $r->post('/budgets', [BudgetController::class, 'saveBudget']);
+    }, [new PermissionMiddleware(Permissions::MANAGE_BUDGET_EXECUTION)]);
+
+    // ── Financial Budget Plan — writes ────────────────────────────────────────
+    $router->group('', function ($r) {
+        $r->post('/budget-plan',                       [BudgetPlanController::class, 'create']);
+        $r->post('/budget-plan/import',                [BudgetPlanController::class, 'import']);
+        $r->post('/budget-plan/:id',                   [BudgetPlanController::class, 'update']);
+        $r->post('/budget-plan/:planId/line-items',    [BudgetPlanController::class, 'createLineItem']);
+        $r->post('/budget-plan/line-items/:id',        [BudgetPlanController::class, 'updateLineItem']);
+        $r->delete('/budget-plan/line-items/:id',      [BudgetPlanController::class, 'deleteLineItem']);
     }, [new PermissionMiddleware(Permissions::MANAGE_BUDGET_EXECUTION)]);
 
 }, [AuthMiddleware::class]);

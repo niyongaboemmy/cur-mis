@@ -122,6 +122,7 @@ import FinesManagementPage from "@/pages/finance/FinesManagementPage";
 import OverdueAlertsPage from "@/pages/finance/OverdueAlertsPage";
 import PaymentCalendarPage from "@/pages/finance/PaymentCalendarPage";
 import BudgetExecutionPage from "@/pages/finance/BudgetExecutionPage";
+import BudgetPlanPage from "@/pages/finance/BudgetPlanPage";
 import PostgraduateInternationalFeesPage from "@/pages/finance/PostgraduateInternationalFeesPage";
 import StudentDirectoryPage from "@/pages/finance/StudentDirectoryPage";
 
@@ -655,6 +656,7 @@ function App() {
                     }
                   >
                     <Route path="budget-execution" element={<BudgetExecutionPage />} />
+                    <Route path="financial-plan" element={<BudgetPlanPage />} />
                   </Route>
                 </Route>
               </Route>

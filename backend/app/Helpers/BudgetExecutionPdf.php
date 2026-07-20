@@ -13,7 +13,7 @@ class BudgetExecutionPdf
 {
     public static function buildHtml(array $rows, array $meta = []): string
     {
-        $acYear        = $meta['academic_year'] ?? date('Y');
+        $acYear        = htmlspecialchars((string)($meta['academic_year'] ?? date('Y')), ENT_QUOTES);
         $generatedDate = $meta['generated_date'] ?? date('Y-m-d');
         $fmtNum        = fn ($n) => number_format((float)$n, 0, '', ',') . ' RWF';
 
@@ -21,8 +21,8 @@ class BudgetExecutionPdf
         foreach ($rows as $r) {
             $overspend     = !empty($r['is_overspend']);
             $rowStyle      = $overspend ? 'background: #fdecea;' : '';
-            $categoryName  = $r['category_name'];
-            $departmentName = $r['department_name'] ?: 'All Departments';
+            $categoryName  = htmlspecialchars((string)$r['category_name'], ENT_QUOTES);
+            $departmentName = htmlspecialchars((string)($r['department_name'] ?: 'All Departments'), ENT_QUOTES);
             $statusColor   = $overspend ? '#c0392b' : '#27ae60';
             $statusLabel   = $overspend ? 'OVER' : 'OK';
             $planned       = $fmtNum($r['planned_budget']);

@@ -1,7 +1,7 @@
-import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import * as XLSX from 'xlsx'
-import toast from 'react-hot-toast'
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import * as XLSX from "xlsx";
+import toast from "react-hot-toast";
 import {
   Wallet,
   Download,
@@ -11,53 +11,68 @@ import {
   X,
   AlertTriangle,
   Loader2,
-} from 'lucide-react'
-import { budgetExecutionService, budgetService } from '@/services/financeService'
-import { academicService as academicSvc } from '@/services/academicService'
-import { academicsMgmtService } from '@/services/academicsMgmtService'
-import { PERMISSIONS } from '@/constants/permissions'
-import { usePermission } from '@/utils/permissions'
-import type { BudgetExecutionRow, SaveBudgetPayload } from '@/types/finance'
-import SearchableSelect from '@/components/ui/SearchableSelect'
-import ModalPortal from '@/components/ui/ModalPortal'
-import { formatRWF } from '@/utils/formatCurrency'
+} from "lucide-react";
+import {
+  budgetExecutionService,
+  budgetService,
+} from "@/services/financeService";
+import { academicService as academicSvc } from "@/services/academicService";
+import { academicsMgmtService } from "@/services/academicsMgmtService";
+import { PERMISSIONS } from "@/constants/permissions";
+import { usePermission } from "@/utils/permissions";
+import type { BudgetExecutionRow, SaveBudgetPayload } from "@/types/finance";
+import SearchableSelect from "@/components/ui/SearchableSelect";
+import ModalPortal from "@/components/ui/ModalPortal";
+import { formatRWF } from "@/utils/formatCurrency";
 
 export default function BudgetExecutionPage() {
-  const qc = useQueryClient()
-  const canManage = usePermission(PERMISSIONS.MANAGE_BUDGET_EXECUTION)
+  const qc = useQueryClient();
+  const canManage = usePermission(PERMISSIONS.MANAGE_BUDGET_EXECUTION);
 
-  const [yearId, setYearId] = useState<number | ''>('')
-  const [compareYearId, setCompareYearId] = useState<number | ''>('')
-  const [departmentId, setDepartmentId] = useState<number | ''>('')
-  const [compareMode, setCompareMode] = useState(false)
-  const [editRow, setEditRow] = useState<BudgetExecutionRow | null>(null)
+  const [yearId, setYearId] = useState<number | "">("");
+  const [compareYearId, setCompareYearId] = useState<number | "">("");
+  const [departmentId, setDepartmentId] = useState<number | "">("");
+  const [compareMode, setCompareMode] = useState(false);
+  const [editRow, setEditRow] = useState<BudgetExecutionRow | null>(null);
 
   // ── Reference data ────────────────────────────────────────────────────────
 
   const yearsQ = useQuery({
-    queryKey: ['academic', 'years'],
+    queryKey: ["academic", "years"],
     queryFn: ({ signal }) => academicSvc.listYears(signal),
-  })
-  const years = yearsQ.data?.data ?? []
+  });
+  const years = yearsQ.data?.data ?? [];
 
   const deptsQ = useQuery({
-    queryKey: ['academics', 'departments'],
-    queryFn: () => academicsMgmtService.list<any>('departments', { per_page: 200 }),
-  })
-  const departments = deptsQ.data?.data?.data ?? []
+    queryKey: ["academics", "departments"],
+    queryFn: () =>
+      academicsMgmtService.list<any>("departments", { per_page: 200 }),
+  });
+  const departments = deptsQ.data?.data?.data ?? [];
 
   // ── Budget execution data ─────────────────────────────────────────────────
 
   const reportQ = useQuery({
-    queryKey: ['finance', 'budget-execution', yearId, departmentId],
+    queryKey: ["finance", "budget-execution", yearId, departmentId],
     queryFn: ({ signal }) =>
-      budgetExecutionService.list(Number(yearId), departmentId ? Number(departmentId) : null, signal),
+      budgetExecutionService.list(
+        Number(yearId),
+        departmentId ? Number(departmentId) : null,
+        signal,
+      ),
     enabled: !!yearId && !compareMode,
-  })
-  const rows: BudgetExecutionRow[] = reportQ.data?.data ?? []
+  });
+  const rows: BudgetExecutionRow[] = reportQ.data?.data ?? [];
 
   const compareQ = useQuery({
-    queryKey: ['finance', 'budget-execution', 'compare', yearId, compareYearId, departmentId],
+    queryKey: [
+      "finance",
+      "budget-execution",
+      "compare",
+      yearId,
+      compareYearId,
+      departmentId,
+    ],
     queryFn: ({ signal }) =>
       budgetExecutionService.compare(
         Number(yearId),
@@ -66,62 +81,114 @@ export default function BudgetExecutionPage() {
         signal,
       ),
     enabled: !!yearId && !!compareYearId && compareMode,
-  })
-  const compareResult = compareQ.data?.data
+  });
+  const compareResult = compareQ.data?.data;
 
-  const yearLabel = years.find((y: any) => y.id === Number(yearId))?.label ?? ''
-  const compareYearLabel = years.find((y: any) => y.id === Number(compareYearId))?.label ?? ''
+  const yearLabel =
+    years.find((y: any) => y.id === Number(yearId))?.label ?? "";
+  const compareYearLabel =
+    years.find((y: any) => y.id === Number(compareYearId))?.label ?? "";
 
   const totals = (list: BudgetExecutionRow[]) => ({
     planned: list.reduce((s, r) => s + Number(r.planned_budget), 0),
     spent: list.reduce((s, r) => s + Number(r.amount_spent), 0),
     balance: list.reduce((s, r) => s + Number(r.balance), 0),
-  })
-  const rowTotals = totals(rows)
+  });
+  const rowTotals = totals(rows);
 
   // ── Save budget mutation ──────────────────────────────────────────────────
 
   const saveMut = useMutation({
     mutationFn: (data: SaveBudgetPayload) => budgetService.save(data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['finance', 'budget-execution'] })
-      qc.invalidateQueries({ queryKey: ['finance', 'budgets'] })
-      toast.success('Budget saved')
-      setEditRow(null)
+      qc.invalidateQueries({ queryKey: ["finance", "budget-execution"] });
+      qc.invalidateQueries({ queryKey: ["finance", "budgets"] });
+      toast.success("Budget saved");
+      setEditRow(null);
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Save failed'),
-  })
+    onError: (e: any) =>
+      toast.error(e?.response?.data?.message ?? "Save failed"),
+  });
 
   // ── Export ────────────────────────────────────────────────────────────────
 
-  function exportExcel(list: BudgetExecutionRow[], label: string) {
-    if (!list.length) {
-      toast.error('Nothing to export')
-      return
-    }
-    const headerRow = ['Category', 'Department', 'Planned Budget (RWF)', 'Amount Spent (RWF)', 'Balance (RWF)', 'Variance (RWF)', 'Status']
-    const dataRows = list.map((r) => [
+  const EXCEL_HEADER = [
+    "Category",
+    "Department",
+    "Planned Budget (RWF)",
+    "Amount Spent (RWF)",
+    "Balance (RWF)",
+    "Variance (RWF)",
+    "Status",
+  ];
+  const toExcelRows = (list: BudgetExecutionRow[]) =>
+    list.map((r) => [
       r.category_name,
-      r.department_name ?? 'All Departments',
+      r.department_name ?? "All Departments",
       r.planned_budget,
       r.amount_spent,
       r.balance,
       r.variance,
-      r.is_overspend ? 'OVER' : 'OK',
-    ])
-    const ws = XLSX.utils.aoa_to_sheet([headerRow, ...dataRows])
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Budget Execution')
-    XLSX.writeFile(wb, `Budget-Execution-${label || 'Report'}.xlsx`)
-    toast.success('Exported to Excel')
+      r.is_overspend ? "OVER" : "OK",
+    ]);
+
+  // Excel sheet names can't contain : \ / ? * [ ] — year labels are "2024/2025".
+  const sheetSafe = (s: string) => s.replace(/[:\\/?*[\]]/g, "-").slice(0, 31);
+
+  function exportExcel() {
+    const wb = XLSX.utils.book_new();
+
+    if (compareMode) {
+      const rowsA = compareResult?.year_a.rows ?? [];
+      const rowsB = compareResult?.year_b.rows ?? [];
+      if (!rowsA.length && !rowsB.length) {
+        toast.error("Nothing to export");
+        return;
+      }
+      const labelA = compareResult?.year_a.label ?? yearLabel;
+      const labelB = compareResult?.year_b.label ?? compareYearLabel;
+      XLSX.utils.book_append_sheet(
+        wb,
+        XLSX.utils.aoa_to_sheet([EXCEL_HEADER, ...toExcelRows(rowsA)]),
+        sheetSafe(labelA) || "Year A",
+      );
+      XLSX.utils.book_append_sheet(
+        wb,
+        XLSX.utils.aoa_to_sheet([EXCEL_HEADER, ...toExcelRows(rowsB)]),
+        sheetSafe(labelB) || "Year B",
+      );
+      XLSX.writeFile(
+        wb,
+        `Budget-Execution-${sheetSafe(labelA)}-vs-${sheetSafe(labelB)}.xlsx`,
+      );
+    } else {
+      if (!rows.length) {
+        toast.error("Nothing to export");
+        return;
+      }
+      XLSX.utils.book_append_sheet(
+        wb,
+        XLSX.utils.aoa_to_sheet([EXCEL_HEADER, ...toExcelRows(rows)]),
+        "Budget Execution",
+      );
+      XLSX.writeFile(
+        wb,
+        `Budget-Execution-${sheetSafe(yearLabel) || "Report"}.xlsx`,
+      );
+    }
+    toast.success("Exported to Excel");
   }
 
   function exportPdf() {
     if (!yearId) {
-      toast.error('Select an academic year first')
-      return
+      toast.error("Select an academic year first");
+      return;
     }
-    budgetExecutionService.download('pdf', Number(yearId), departmentId ? Number(departmentId) : null)
+    budgetExecutionService.download(
+      "pdf",
+      Number(yearId),
+      departmentId ? Number(departmentId) : null,
+    );
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -135,26 +202,35 @@ export default function BudgetExecutionPage() {
             <Wallet className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-base font-bold text-ink-900 dark:text-ink-50">Budget Execution</h1>
-            <p className="text-xs text-ink-500">Planned vs. actual spend per category and department, with overspend flags and year-over-year comparison.</p>
+            <h1 className="text-base font-bold text-ink-900 dark:text-ink-50">
+              Budget Execution
+            </h1>
+            <p className="text-xs text-ink-500">
+              Planned vs. actual spend per expense category and department, with
+              overspend flags and year-over-year comparison. For the
+              university's full revenue/expense annual plan, see Financial Plan.
+            </p>
           </div>
         </div>
         <div className="flex gap-2">
           <button
-            className={`btn-sm flex items-center gap-1.5 ${compareMode ? 'btn-primary' : 'btn-ghost'}`}
+            className={`btn-sm flex items-center gap-1.5 ${compareMode ? "btn-primary" : "btn-ghost"}`}
             onClick={() => setCompareMode((m) => !m)}
           >
             <SplitSquareHorizontal className="w-3.5 h-3.5" />
-            Compare Years
+            <span className="truncate">Compare Years</span>
           </button>
           <button
             className="btn-ghost btn-sm flex items-center gap-1.5"
-            onClick={() => exportExcel(compareMode ? (compareResult?.year_a.rows ?? []) : rows, compareMode ? yearLabel : yearLabel)}
+            onClick={exportExcel}
           >
             <Download className="w-3.5 h-3.5" /> Excel
           </button>
           {!compareMode && (
-            <button className="btn-ghost btn-sm flex items-center gap-1.5" onClick={exportPdf}>
+            <button
+              className="btn-ghost btn-sm flex items-center gap-1.5"
+              onClick={exportPdf}
+            >
               <FileText className="w-3.5 h-3.5" /> PDF
             </button>
           )}
@@ -165,37 +241,56 @@ export default function BudgetExecutionPage() {
       <div className="bg-white dark:bg-ink-900 p-4 rounded-xl border border-ink-200 dark:border-ink-800 shadow-sm grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="space-y-1">
           <label className="text-xs font-semibold text-ink-600 dark:text-ink-300">
-            {compareMode ? 'Year A' : 'Academic Year'}
+            {compareMode ? "Year A" : "Academic Year"}
           </label>
           <SearchableSelect
             options={years.map((y: any) => ({ value: y.id, label: y.label }))}
             value={yearId}
-            onChange={(v) => setYearId(v === '' ? '' : Number(v))}
+            onChange={(v) => setYearId(v === "" ? "" : Number(v))}
             placeholder="Select academic year"
           />
         </div>
         {compareMode && (
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-ink-600 dark:text-ink-300">Year B</label>
+            <label className="text-xs font-semibold text-ink-600 dark:text-ink-300">
+              Year B
+            </label>
             <SearchableSelect
               options={years.map((y: any) => ({ value: y.id, label: y.label }))}
               value={compareYearId}
-              onChange={(v) => setCompareYearId(v === '' ? '' : Number(v))}
+              onChange={(v) => setCompareYearId(v === "" ? "" : Number(v))}
               placeholder="Select comparison year"
             />
           </div>
         )}
         <div className="space-y-1">
-          <label className="text-xs font-semibold text-ink-600 dark:text-ink-300">Department / Cost Center</label>
+          <label className="text-xs font-semibold text-ink-600 dark:text-ink-300">
+            Department / Cost Center
+          </label>
           <SearchableSelect
-            options={departments.map((d: any) => ({ value: d.dep_id, label: d.dep_name }))}
+            options={departments.map((d: any) => ({
+              value: d.dep_id,
+              label: d.dep_name,
+            }))}
             value={departmentId}
-            onChange={(v) => setDepartmentId(v === '' ? '' : Number(v))}
+            onChange={(v) => setDepartmentId(v === "" ? "" : Number(v))}
             placeholder="All departments (institution-wide)"
             allLabel="All departments (institution-wide)"
           />
         </div>
       </div>
+
+      {departmentId && (
+        <div className="flex items-start gap-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-3 text-xs text-amber-800 dark:text-amber-300">
+          <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+          <span>
+            "Planned" reflects this department's own budget, but "Spent" is the
+            total institution-wide expense for each category — individual
+            expense records aren't yet tagged by department, so spend cannot be
+            split per department.
+          </span>
+        </div>
+      )}
 
       {/* Edit budget modal */}
       {editRow && (
@@ -255,7 +350,7 @@ export default function BudgetExecutionPage() {
         />
       )}
     </div>
-  )
+  );
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -264,10 +359,13 @@ function LoadingCard() {
   return (
     <div className="bg-white dark:bg-ink-900 rounded-xl border border-ink-200 dark:border-ink-800 shadow-sm p-6 space-y-3">
       {Array.from({ length: 4 }).map((_, i) => (
-        <div key={i} className="h-4 bg-ink-100 dark:bg-ink-800 rounded w-full animate-pulse" />
+        <div
+          key={i}
+          className="h-4 bg-ink-100 dark:bg-ink-800 rounded w-full animate-pulse"
+        />
       ))}
     </div>
-  )
+  );
 }
 
 function BudgetTable({
@@ -277,19 +375,23 @@ function BudgetTable({
   onEdit,
   totals,
 }: {
-  title: string
-  rows: BudgetExecutionRow[]
-  canManage: boolean
-  onEdit: (row: BudgetExecutionRow) => void
-  totals?: { planned: number; spent: number; balance: number }
+  title: string;
+  rows: BudgetExecutionRow[];
+  canManage: boolean;
+  onEdit: (row: BudgetExecutionRow) => void;
+  totals?: { planned: number; spent: number; balance: number };
 }) {
   return (
     <div className="bg-white dark:bg-ink-900 rounded-xl border border-ink-200 dark:border-ink-800 shadow-sm overflow-hidden">
       <div className="px-5 py-3 border-b border-ink-100 dark:border-ink-800 bg-ink-50/60 dark:bg-ink-800/60">
-        <h3 className="text-sm font-bold text-ink-800 dark:text-ink-100">{title}</h3>
+        <h3 className="text-sm font-bold text-ink-800 dark:text-ink-100">
+          {title}
+        </h3>
       </div>
       {rows.length === 0 ? (
-        <div className="text-center py-10 text-ink-400 italic text-sm">No budget line items found.</div>
+        <div className="text-center py-10 text-ink-400 italic text-sm">
+          No budget line items found.
+        </div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -305,11 +407,18 @@ function BudgetTable({
             </thead>
             <tbody className="divide-y divide-ink-100 dark:divide-ink-700">
               {rows.map((r) => (
-                <tr key={r.category_id} className={r.is_overspend ? 'bg-red-50/40 dark:bg-red-900/10' : ''}>
+                <tr
+                  key={r.category_id}
+                  className={
+                    r.is_overspend ? "bg-red-50/40 dark:bg-red-900/10" : ""
+                  }
+                >
                   <td className="px-4 py-3 font-medium text-ink-900 dark:text-white">
                     {r.category_name}
                     {r.department_name && (
-                      <span className="ml-2 text-[10px] font-normal text-ink-400">{r.department_name}</span>
+                      <span className="ml-2 text-[10px] font-normal text-ink-400">
+                        {r.department_name}
+                      </span>
                     )}
                   </td>
                   <td className="px-4 py-3 text-right font-mono text-ink-700 dark:text-ink-200">
@@ -318,7 +427,9 @@ function BudgetTable({
                   <td className="px-4 py-3 text-right font-mono text-ink-600 dark:text-ink-300">
                     {formatRWF(r.amount_spent)}
                   </td>
-                  <td className={`px-4 py-3 text-right font-mono font-semibold ${r.balance < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                  <td
+                    className={`px-4 py-3 text-right font-mono font-semibold ${r.balance < 0 ? "text-red-600" : "text-green-600"}`}
+                  >
                     {formatRWF(r.balance)}
                   </td>
                   <td className="px-4 py-3 text-center">
@@ -349,10 +460,18 @@ function BudgetTable({
             {totals && (
               <tfoot className="border-t-2 border-ink-200 dark:border-ink-600">
                 <tr className="bg-ink-50 dark:bg-ink-800 font-bold text-sm">
-                  <td className="px-4 py-3 text-ink-700 dark:text-ink-200">Total</td>
-                  <td className="px-4 py-3 text-right font-mono text-ink-700 dark:text-ink-200">{formatRWF(totals.planned)}</td>
-                  <td className="px-4 py-3 text-right font-mono text-ink-600">{formatRWF(totals.spent)}</td>
-                  <td className={`px-4 py-3 text-right font-mono ${totals.balance < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                  <td className="px-4 py-3 text-ink-700 dark:text-ink-200">
+                    Total
+                  </td>
+                  <td className="px-4 py-3 text-right font-mono text-ink-700 dark:text-ink-200">
+                    {formatRWF(totals.planned)}
+                  </td>
+                  <td className="px-4 py-3 text-right font-mono text-ink-600">
+                    {formatRWF(totals.spent)}
+                  </td>
+                  <td
+                    className={`px-4 py-3 text-right font-mono ${totals.balance < 0 ? "text-red-600" : "text-green-600"}`}
+                  >
                     {formatRWF(totals.balance)}
                   </td>
                   <td colSpan={canManage ? 2 : 1} />
@@ -363,7 +482,7 @@ function BudgetTable({
         </div>
       )}
     </div>
-  )
+  );
 }
 
 function EditBudgetModal({
@@ -373,33 +492,45 @@ function EditBudgetModal({
   onClose,
   onSave,
 }: {
-  row: BudgetExecutionRow
-  departmentId: number | null
-  isPending: boolean
-  onClose: () => void
-  onSave: (amount: number) => void
+  row: BudgetExecutionRow;
+  departmentId: number | null;
+  isPending: boolean;
+  onClose: () => void;
+  onSave: (amount: number) => void;
 }) {
-  const [amount, setAmount] = useState(String(row.planned_budget))
-  const parsed = parseFloat(amount)
-  const valid = !isNaN(parsed) && parsed >= 0
+  const [amount, setAmount] = useState(String(row.planned_budget));
+  const parsed = parseFloat(amount);
+  const valid = !isNaN(parsed) && parsed >= 0;
 
   return (
     <ModalPortal>
       <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
         <div className="bg-white dark:bg-ink-800 rounded-xl shadow-xl w-full max-w-sm">
           <div className="flex items-center justify-between px-6 py-4 border-b border-ink-100 dark:border-ink-700">
-            <h3 className="text-base font-semibold text-ink-900 dark:text-white">Edit Planned Budget</h3>
-            <button onClick={onClose} className="btn-ghost btn-xs" aria-label="Close">
+            <h3 className="text-base font-semibold text-ink-900 dark:text-white">
+              Edit Planned Budget
+            </h3>
+            <button
+              onClick={onClose}
+              className="btn-ghost btn-xs"
+              aria-label="Close"
+            >
               <X className="w-4 h-4" />
             </button>
           </div>
           <div className="p-6 space-y-4">
             <p className="text-sm text-ink-500">
               {row.category_name}
-              {row.department_name ? ` — ${row.department_name}` : departmentId ? '' : ' (institution-wide)'}
+              {row.department_name
+                ? ` — ${row.department_name}`
+                : departmentId
+                  ? ""
+                  : " (institution-wide)"}
             </p>
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-ink-600 dark:text-ink-300">Planned Budget (RWF)</label>
+              <label className="text-xs font-semibold text-ink-600 dark:text-ink-300">
+                Planned Budget (RWF)
+              </label>
               <input
                 type="number"
                 min={0}
@@ -409,11 +540,16 @@ function EditBudgetModal({
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
               />
-              {!valid && <p className="text-red-500 text-[10px]">Must be a number ≥ 0</p>}
+              {!valid && (
+                <p className="text-red-500 text-[10px]">Must be a number ≥ 0</p>
+              )}
             </div>
           </div>
           <div className="flex justify-end gap-3 px-6 py-4 border-t border-ink-100 dark:border-ink-700">
-            <button className="btn btn-secondary text-sm px-5" onClick={onClose}>
+            <button
+              className="btn btn-secondary text-sm px-5"
+              onClick={onClose}
+            >
               Cancel
             </button>
             <button
@@ -421,11 +557,15 @@ function EditBudgetModal({
               disabled={!valid || isPending}
               onClick={() => onSave(parsed)}
             >
-              {isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Save'}
+              {isPending ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                "Save"
+              )}
             </button>
           </div>
         </div>
       </div>
     </ModalPortal>
-  )
+  );
 }

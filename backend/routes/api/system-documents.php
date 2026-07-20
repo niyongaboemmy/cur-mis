@@ -14,13 +14,13 @@ use App\Constants\Permissions;
 
 // Public routes (all authenticated users can view/download)
 $router->group('/api/system-documents', function ($router) {
-    $router->get('/', [SystemDocumentController::class, 'list']);
+    $router->get('', [SystemDocumentController::class, 'list']);
     $router->get('/categories', [SystemDocumentController::class, 'categories']);
     $router->get('/:id/download', [SystemDocumentController::class, 'download']);
 }, [AuthMiddleware::class]);
 
 // Admin routes (only admins can upload/delete)
 $router->group('/api/system-documents', function ($router) {
-    $router->post('/', [SystemDocumentController::class, 'upload']);
+    $router->post('', [SystemDocumentController::class, 'upload']);
     $router->delete('/:id', [SystemDocumentController::class, 'delete']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_ACADEMIC_SETTINGS)]);

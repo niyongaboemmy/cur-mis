@@ -53,7 +53,7 @@ class SystemDocumentController extends BaseController
     public function download(Request $request, Response $response): never
     {
         try {
-            $id = (int) ($request->getRouteParam('id') ?? 0);
+            $id = (int) $request->param('id', 0);
             if ($id <= 0) {
                 $this->error($response, 'Invalid document ID.', 400);
             }
@@ -64,6 +64,9 @@ class SystemDocumentController extends BaseController
             }
 
             $filePath = $doc['file_path'] ?? '';
+            if ($filePath !== '' && !str_starts_with($filePath, '/')) {
+                $filePath = BASE_PATH . '/' . $filePath;
+            }
             if (!file_exists($filePath)) {
                 $this->error($response, 'File not found on server.', 404);
             }
@@ -90,7 +93,7 @@ class SystemDocumentController extends BaseController
     public function upload(Request $request, Response $response): never
     {
         try {
-            $data = $request->getAll();
+            $data = $request->all();
 
             // Validate input
             $validation = ValidationHelper::validate($data, [
@@ -171,7 +174,7 @@ class SystemDocumentController extends BaseController
     public function delete(Request $request, Response $response): never
     {
         try {
-            $id = (int) ($request->getRouteParam('id') ?? 0);
+            $id = (int) $request->param('id', 0);
             if ($id <= 0) {
                 $this->error($response, 'Invalid document ID.', 400);
             }
@@ -197,7 +200,7 @@ class SystemDocumentController extends BaseController
      */
     private function getCurrentUserId(Request $request): int
     {
-        $auth = $request->getAttributes()['auth'] ?? null;
-        return $auth['user_id'] ?? 0;
+        $authUser = (array) $request->param('_auth_user');
+        return (int) ($authUser['id'] ?? 0);
     }
 }
