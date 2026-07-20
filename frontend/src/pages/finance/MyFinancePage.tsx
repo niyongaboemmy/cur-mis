@@ -25,7 +25,6 @@ import {
   FEE_TYPE_LABELS,
   CLEARANCE_STATUS_LABELS,
   CLEARANCE_STATUS_COLORS,
-  PAYMENT_CALENDAR_EVENT_TYPE_LABELS,
 } from "@/types/finance";
 import { formatRWF } from "@/utils/formatCurrency";
 import type {
@@ -33,7 +32,7 @@ import type {
   LedgerTotals,
   ClearanceResult,
   MobilePaymentRecord,
-  PaymentCalendarEvent,
+  PaymentCalendarDocument,
 } from "@/types/finance";
 
 type Semester = "" | "1" | "2";
@@ -596,10 +595,16 @@ function MyPaymentCalendarWidget({ yearId }: { yearId: number }) {
     enabled: !!yearId,
   });
 
-  const events: PaymentCalendarEvent[] = calendarQ.data?.data ?? [];
-  const sorted = [...events].sort((a, b) => a.event_date.localeCompare(b.event_date));
+  const documents: PaymentCalendarDocument[] = calendarQ.data?.data ?? [];
+  const rows = documents
+    .flatMap((d) =>
+      d.items
+        .filter((it) => it.is_active === 1)
+        .map((it) => ({ ...it, documentTitle: d.faculty_name ?? d.title })),
+    )
+    .sort((a, b) => a.deadline_date.localeCompare(b.deadline_date));
 
-  if (!calendarQ.isLoading && sorted.length === 0) return null;
+  if (!calendarQ.isLoading && rows.length === 0) return null;
 
   return (
     <div className="card p-5 md:p-6">
@@ -613,21 +618,22 @@ function MyPaymentCalendarWidget({ yearId }: { yearId: number }) {
         <Loader2 size={16} className="animate-spin text-ink-300" />
       ) : (
         <div className="divide-y divide-ink-50 dark:divide-ink-800">
-          {sorted.map((e) => (
+          {rows.map((it) => (
             <div
-              key={e.id}
+              key={it.id}
               className="flex items-center justify-between gap-3 py-2.5 text-[13px]"
             >
               <div className="min-w-0">
                 <p className="font-medium text-ink-900 dark:text-white truncate">
-                  {e.label}
+                  {it.item_label}
                 </p>
                 <p className="text-[11px] text-ink-400">
-                  {PAYMENT_CALENDAR_EVENT_TYPE_LABELS[e.event_type]}
+                  {it.documentTitle}
+                  {it.amount !== null ? ` · ${Number(it.amount).toLocaleString("en-US")} RWF` : ""}
                 </p>
               </div>
               <p className="text-ink-500 dark:text-ink-400 whitespace-nowrap">
-                {new Date(e.event_date).toLocaleDateString("en-GB")}
+                {new Date(it.deadline_date).toLocaleDateString("en-GB")}
               </p>
             </div>
           ))}

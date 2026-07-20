@@ -49,9 +49,10 @@ import type {
   FeeTypeRecord,
   CreateFeeTypePayload,
   UpdateFeeTypePayload,
-  PaymentCalendarEvent,
-  CreatePaymentCalendarEventPayload,
-  UpdatePaymentCalendarEventPayload,
+  PaymentCalendarDocument,
+  CreatePaymentCalendarDocumentPayload,
+  UpdatePaymentCalendarDocumentPayload,
+  PaymentCalendarItemPayload,
   PgIntlFeeStructure,
   CreatePgIntlFeeStructurePayload,
   UpdatePgIntlFeeStructurePayload,
@@ -968,21 +969,47 @@ export const feeInvoicePdfService = {
 
 export const paymentCalendarService = {
   list: (
-    params?: { academic_year_id?: number; event_type?: string; is_active?: 0 | 1 },
+    params?: { academic_year_id?: number; faculty_id?: number; is_active?: 0 | 1 },
     signal?: AbortSignal,
-  ) => api.get<PaymentCalendarEvent[]>("/api/finance/payment-calendar", params ?? {}, signal),
+  ) => api.get<PaymentCalendarDocument[]>("/api/finance/payment-calendar", params ?? {}, signal),
+
+  get: (id: number, signal?: AbortSignal) =>
+    api.get<PaymentCalendarDocument>(`/api/finance/payment-calendar/${id}`, {}, signal),
 
   listMine: (params?: { academic_year_id?: number }, signal?: AbortSignal) =>
-    api.get<PaymentCalendarEvent[]>("/api/finance/my/payment-calendar", params ?? {}, signal),
+    api.get<PaymentCalendarDocument[]>("/api/finance/my/payment-calendar", params ?? {}, signal),
 
-  create: (data: CreatePaymentCalendarEventPayload) =>
-    api.post<{ id: number }>("/api/finance/payment-calendar", data),
+  create: (data: CreatePaymentCalendarDocumentPayload) =>
+    api.post<PaymentCalendarDocument>("/api/finance/payment-calendar", data),
 
-  update: (id: number, data: UpdatePaymentCalendarEventPayload) =>
-    api.put<null>(`/api/finance/payment-calendar/${id}`, data),
+  update: (id: number, data: UpdatePaymentCalendarDocumentPayload) =>
+    api.put<PaymentCalendarDocument>(`/api/finance/payment-calendar/${id}`, data),
 
   delete: (id: number) =>
     api.delete<null>(`/api/finance/payment-calendar/${id}`),
+
+  createItem: (documentId: number, data: PaymentCalendarItemPayload) =>
+    api.post<PaymentCalendarDocument>(`/api/finance/payment-calendar/${documentId}/items`, data),
+
+  updateItem: (itemId: number, data: Partial<PaymentCalendarItemPayload>) =>
+    api.put<null>(`/api/finance/payment-calendar/items/${itemId}`, data),
+
+  deleteItem: (itemId: number) =>
+    api.delete<null>(`/api/finance/payment-calendar/items/${itemId}`),
+
+  downloadPdf: async (id: number, filename?: string) => {
+    const response = await apiClient.get(`/api/finance/payment-calendar/${id}/pdf`, {
+      responseType: "blob",
+    });
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", filename ?? `payment-calendar-${id}.pdf`);
+    document.body.appendChild(link);
+    link.click();
+    link.parentNode?.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  },
 };
 
 // ─── Postgraduate Fees — International Students (Phase 5) ────────────────────

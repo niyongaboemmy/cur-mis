@@ -1510,4 +1510,167 @@ class DocumentHelper
         </html>
         HTML;
     }
+
+    /**
+     * Build the Payment Calendar document — matches the official
+     * "PROPOSED PAYMENT CALENDAR" workbook layout: title block, faculty/
+     * department/level heading, a grouped installment schedule table with a
+     * computed Total Payment row, notes/bank-account/fines paragraphs, and a
+     * three-signature footer (Prepared by / Verified by / Approved by).
+     *
+     * @param array $document One row from payment_calendar_documents (+ academic_year_label, faculty_name)
+     * @param array $items    Rows from payment_calendar_items for this document, already sorted
+     */
+    public static function buildPaymentCalendar(array $document, array $items, array $meta = []): string
+    {
+        $acYear        = $document['academic_year_label'] ?? ($meta['academic_year'] ?? date('Y'));
+        $generatedDate = $meta['generated_date'] ?? date('Y-m-d');
+        $headerSpace   = 190;
+
+        $fmtNum  = fn ($n) => $n !== null ? number_format((float)$n, 0, '', ',') . ' RWF' : '—';
+        $fmtDate = fn ($d) => $d ? date('d M Y', strtotime((string)$d)) : '—';
+        $esc     = fn ($s) => htmlspecialchars((string)($s ?? ''), ENT_QUOTES, 'UTF-8');
+
+        $rows = '';
+        $lastGroup = null;
+        $total = 0.0;
+        foreach ($items as $item) {
+            $group = $item['group_label'] ?? null;
+            if ($group !== null && $group !== $lastGroup) {
+                $rows .= <<<HTML
+                <tr class="group-row">
+                    <td colspan="4">{$esc($group)}</td>
+                </tr>
+                HTML;
+                $lastGroup = $group;
+            }
+            $total += (float)($item['amount'] ?? 0);
+            $rows .= <<<HTML
+            <tr>
+                <td>{$esc($item['item_label'])}</td>
+                <td class="center">{$fmtDate($item['start_date'])}</td>
+                <td class="center">{$fmtDate($item['deadline_date'])}</td>
+                <td class="right">{$fmtNum($item['amount'])}</td>
+            </tr>
+            HTML;
+        }
+
+        $notesBlock = '';
+        foreach (['notes', 'bank_account_note', 'cursu_account_note', 'payment_method_note'] as $field) {
+            if (!empty($document[$field])) {
+                $notesBlock .= '<p>' . $esc($document[$field]) . '</p>';
+            }
+        }
+
+        $noticeBlock = '';
+        if (!empty($document['fine_notice'])) {
+            $noticeBlock = <<<HTML
+            <div class="notice">
+                <p class="notice-title">Notice:</p>
+                <p>{$esc($document['fine_notice'])}</p>
+            </div>
+            HTML;
+        }
+
+        $departmentLine = $document['department_label']
+            ? '<p class="subheading">' . $esc($document['department_label']) . '</p>' : '';
+        $levelLine = $document['level_label']
+            ? '<p class="subheading bold">' . $esc($document['level_label']) . '</p>' : '';
+        $intakeLine = !empty($document['intake_label'])
+            ? '<p class="subheading">' . $esc($document['intake_label']) . '</p>' : '';
+
+        return <<<HTML
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>{$esc($document['title'] ?? 'Payment Calendar')} {$acYear}</title>
+            <style>
+                * { margin: 0; padding: 0; box-sizing: border-box; }
+                body { font-family: 'Times New Roman', Times, serif; font-size: 12px; color: #222; line-height: 1.35; }
+                .page { max-width: 21cm; margin: 0 auto; padding: 0 15mm 10mm 15mm; background: white; }
+                .letterhead-spacer { height: {$headerSpace}px; }
+                .title { font-size: 15px; font-weight: bold; text-align: center; margin-bottom: 2px; text-transform: uppercase; }
+                .subheading { font-size: 12px; text-align: center; margin-bottom: 2px; }
+                .subheading.bold { font-weight: bold; }
+                .faculty { font-size: 13px; font-weight: bold; text-align: center; margin: 8px 0 2px 0; text-transform: uppercase; }
+                table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+                table th { background: #f0f0f0; border: 1px solid #999; padding: 6px 8px; text-align: left; font-weight: bold; font-size: 11px; }
+                table td { border: 1px solid #999; padding: 6px 8px; font-size: 11px; }
+                td.center, th.center { text-align: center; }
+                td.right, th.right { text-align: right; }
+                tr.group-row td { background: #e2e2e2; font-weight: bold; }
+                tr.total-row td { font-weight: bold; border-top: 2px solid #333; }
+                .notes { font-size: 10px; margin-top: 6px; }
+                .notes p { margin-bottom: 4px; }
+                .notice { font-size: 10px; margin-top: 8px; }
+                .notice-title { font-weight: bold; }
+                .signatures { width: 100%; border-collapse: collapse; margin-top: 28px; }
+                .signatures td { border: none; text-align: center; width: 33.33%; font-size: 11px; padding: 0 8px; vertical-align: top; }
+                .signatures .name { font-weight: bold; border-top: 1px solid #333; padding-top: 4px; margin-top: 24px; display: block; }
+                .signatures .role { color: #444; }
+                .footer { margin-top: 16px; padding-top: 6px; border-top: 1px solid #ddd; font-size: 8px; color: #999; text-align: center; }
+            </style>
+        </head>
+        <body>
+            <div class="page">
+                <div class="letterhead-spacer"></div>
+
+                <div class="title">{$esc($document['title'] ?? ('Payment Calendar Academic Year ' . $acYear))}</div>
+                {$intakeLine}
+                <div class="faculty">{$esc($document['faculty_name'] ?? '')}</div>
+                {$departmentLine}
+                {$levelLine}
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 48%;">Payment Schedule in Installments</th>
+                            <th class="center" style="width: 16%;">Starting Date</th>
+                            <th class="center" style="width: 16%;">Deadline Date</th>
+                            <th class="right" style="width: 20%;">Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {$rows}
+                        <tr class="total-row">
+                            <td colspan="3">Total Payment</td>
+                            <td class="right">{$fmtNum($total)}</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div class="notes">
+                    {$notesBlock}
+                </div>
+
+                {$noticeBlock}
+
+                <table class="signatures">
+                    <tr>
+                        <td>Prepared by:</td>
+                        <td>Verified by:</td>
+                        <td>Approved by:</td>
+                    </tr>
+                    <tr>
+                        <td><span class="name">{$esc($document['prepared_by_name'] ?? '')}</span></td>
+                        <td><span class="name">{$esc($document['verified_by_name'] ?? '')}</span></td>
+                        <td><span class="name">{$esc($document['approved_by_name'] ?? '')}</span></td>
+                    </tr>
+                    <tr>
+                        <td class="role">{$esc($document['prepared_by_title'] ?? '')}</td>
+                        <td class="role">{$esc($document['verified_by_title'] ?? '')}</td>
+                        <td class="role">{$esc($document['approved_by_title'] ?? '')}</td>
+                    </tr>
+                </table>
+
+                <div class="footer">
+                    <p>Academic Year: {$acYear} | Generated: {$generatedDate}</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        HTML;
+    }
 }

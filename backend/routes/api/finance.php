@@ -153,7 +153,9 @@ $router->group('/api/finance', function ($router) {
 
     // ── Payment Calendar — read-only ─────────────────────────────────────────
     $router->group('', function ($r) {
-        $r->get('/payment-calendar', [PaymentCalendarController::class, 'listEvents']);
+        $r->get('/payment-calendar',        [PaymentCalendarController::class, 'listDocuments']);
+        $r->get('/payment-calendar/:id',    [PaymentCalendarController::class, 'showDocument']);
+        $r->get('/payment-calendar/:id/pdf', [PaymentCalendarController::class, 'downloadPdf']);
     }, [new MaybePermissionMiddleware([
         Permissions::VIEW_PAYMENT_CALENDAR,
         Permissions::MANAGE_PAYMENT_CALENDAR,
@@ -185,7 +187,7 @@ $router->group('/api/finance', function ($router) {
         $r->get('/invoices',  [FeeController::class, 'getMyInvoices']);
         $r->get('/clearance', [FeeController::class, 'getMyClearance']);
         $r->get('/bill/pdf',  [FeeController::class, 'downloadMyBillPdf']);
-        $r->get('/payment-calendar', [PaymentCalendarController::class, 'listMyEvents']);
+        $r->get('/payment-calendar', [PaymentCalendarController::class, 'listMyDocuments']);
     }, [new MaybePermissionMiddleware([
         Permissions::ACCESS_STUDENT_PORTAL,
         Permissions::MY_INVOICE,
@@ -257,9 +259,12 @@ $router->group('/api/finance', function ($router) {
 
     // ── Payment Calendar — writes ────────────────────────────────────────────
     $router->group('', function ($r) {
-        $r->post('/payment-calendar',       [PaymentCalendarController::class, 'createEvent']);
-        $r->post('/payment-calendar/:id',    [PaymentCalendarController::class, 'updateEvent']);
-        $r->delete('/payment-calendar/:id', [PaymentCalendarController::class, 'deleteEvent']);
+        $r->post('/payment-calendar',                [PaymentCalendarController::class, 'createDocument']);
+        $r->post('/payment-calendar/:id',             [PaymentCalendarController::class, 'updateDocument']);
+        $r->delete('/payment-calendar/:id',          [PaymentCalendarController::class, 'deleteDocument']);
+        $r->post('/payment-calendar/:id/items',       [PaymentCalendarController::class, 'createItem']);
+        $r->post('/payment-calendar/items/:itemId',   [PaymentCalendarController::class, 'updateItem']);
+        $r->delete('/payment-calendar/items/:itemId', [PaymentCalendarController::class, 'deleteItem']);
     }, [new PermissionMiddleware(Permissions::MANAGE_PAYMENT_CALENDAR)]);
 
     // ── Budget Execution — writes ─────────────────────────────────────────────

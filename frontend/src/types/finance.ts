@@ -806,6 +806,10 @@ export interface MobilePaymentRecord {
 }
 
 // ─── Payment Calendar ─────────────────────────────────────────────────────────
+// Redesigned (Jul 2026) to model the official "PROPOSED PAYMENT CALENDAR"
+// workbook: one printable document per faculty/intake with dated, amounted
+// installment rows grouped under level/semester headings, plus notes and
+// Prepared/Verified/Approved signatures.
 
 export type PaymentCalendarEventType =
   | 'registration_deadline'
@@ -830,38 +834,81 @@ export const PAYMENT_CALENDAR_EVENT_TYPE_LABELS: Record<PaymentCalendarEventType
   semester_end:          'Semester End',
 }
 
-export interface PaymentCalendarEvent {
-  id:                  number
-  academic_year_id:    number
-  academic_year_label: string | null
-  event_type:          PaymentCalendarEventType
-  label:               string
-  event_date:          string
-  fee_structure_id:    number | null
-  fee_structure_label: string | null
-  is_active:           0 | 1
-  created_by:          number | null
-  created_at:          string
-  updated_at:          string
+export interface PaymentCalendarItem {
+  id:             number
+  document_id:    number
+  group_label:    string | null
+  item_label:     string
+  event_type:     PaymentCalendarEventType
+  start_date:     string | null
+  deadline_date:  string
+  amount:         string | number | null
+  is_active:      0 | 1
+  sort_order:     number
 }
 
-export interface CreatePaymentCalendarEventPayload {
-  academic_year_id:  number
-  event_type:        PaymentCalendarEventType
-  label:             string
-  event_date:        string
-  fee_structure_id?: number | null
-  is_active?:        0 | 1
+export interface PaymentCalendarDocument {
+  id:                   number
+  academic_year_id:     number
+  academic_year_label:  string | null
+  faculty_id:           number | null
+  faculty_name:         string | null
+  title:                string
+  intake_label:         string | null
+  department_label:     string | null
+  level_label:          string | null
+  notes:                string | null
+  bank_account_note:    string | null
+  cursu_account_note:   string | null
+  payment_method_note:  string | null
+  fine_notice:          string | null
+  prepared_by_name:     string | null
+  prepared_by_title:    string | null
+  verified_by_name:     string | null
+  verified_by_title:    string | null
+  approved_by_name:     string | null
+  approved_by_title:    string | null
+  is_active:            0 | 1
+  created_by:           number | null
+  created_at:           string
+  updated_at:           string
+  items:                PaymentCalendarItem[]
 }
 
-export interface UpdatePaymentCalendarEventPayload {
-  academic_year_id?: number
-  event_type?:       PaymentCalendarEventType
-  label?:            string
-  event_date?:       string
-  fee_structure_id?: number | null
-  is_active?:        0 | 1
+export interface PaymentCalendarItemPayload {
+  group_label?:    string | null
+  item_label:      string
+  event_type?:     PaymentCalendarEventType
+  start_date?:     string | null
+  deadline_date:   string
+  amount?:         number | null
+  is_active?:      0 | 1
+  sort_order?:     number
 }
+
+export interface CreatePaymentCalendarDocumentPayload {
+  academic_year_id:     number
+  faculty_id?:          number | null
+  title?:               string
+  intake_label?:        string | null
+  department_label?:    string | null
+  level_label?:         string | null
+  notes?:                string | null
+  bank_account_note?:    string | null
+  cursu_account_note?:   string | null
+  payment_method_note?:  string | null
+  fine_notice?:          string | null
+  prepared_by_name?:     string | null
+  prepared_by_title?:    string | null
+  verified_by_name?:     string | null
+  verified_by_title?:    string | null
+  approved_by_name?:     string | null
+  approved_by_title?:    string | null
+  is_active?:            0 | 1
+  items?:                PaymentCalendarItemPayload[]
+}
+
+export type UpdatePaymentCalendarDocumentPayload = Partial<CreatePaymentCalendarDocumentPayload>
 
 // ─── Postgraduate Fees — International Students (Phase 5) ────────────────────
 // Deliberately separate from FeeStructure/CreateFeeStructurePayload — the client
