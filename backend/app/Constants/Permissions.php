@@ -166,6 +166,15 @@ class Permissions
     public const MANAGE_PAYMENT_CALENDAR  = 'MANAGE_PAYMENT_CALENDAR';
     public const VIEW_STUDENT_DIRECTORY_FINANCE = 'VIEW_STUDENT_DIRECTORY_FINANCE';
 
+    // Public Service Request Platform (migration 112)
+    public const MANAGE_SERVICE_CATALOG        = 'MANAGE_SERVICE_CATALOG';
+    public const SUBMIT_SERVICE_REQUEST        = 'SUBMIT_SERVICE_REQUEST';
+    public const APPROVE_SERVICE_REQUEST_L1    = 'APPROVE_SERVICE_REQUEST_L1';
+    public const APPROVE_SERVICE_REQUEST_L2    = 'APPROVE_SERVICE_REQUEST_L2';
+    public const APPROVE_SERVICE_REQUEST_FINAL = 'APPROVE_SERVICE_REQUEST_FINAL';
+    public const VIEW_SERVICE_REQUESTS         = 'VIEW_SERVICE_REQUESTS';
+    public const VOID_SERVICE_REQUEST          = 'VOID_SERVICE_REQUEST';
+
     /**
      * Get all predefined system permissions.
      *
@@ -276,6 +285,13 @@ class Permissions
             self::VIEW_PAYMENT_CALENDAR,
             self::MANAGE_PAYMENT_CALENDAR,
             self::VIEW_STUDENT_DIRECTORY_FINANCE,
+            self::MANAGE_SERVICE_CATALOG,
+            self::SUBMIT_SERVICE_REQUEST,
+            self::APPROVE_SERVICE_REQUEST_L1,
+            self::APPROVE_SERVICE_REQUEST_L2,
+            self::APPROVE_SERVICE_REQUEST_FINAL,
+            self::VIEW_SERVICE_REQUESTS,
+            self::VOID_SERVICE_REQUEST,
         ];
     }
 }

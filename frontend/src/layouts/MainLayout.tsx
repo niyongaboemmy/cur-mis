@@ -30,6 +30,8 @@ import {
   ScanLine,
   Wallet,
   CalendarDays,
+  Package,
+  ListChecks,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -438,6 +440,16 @@ const NAV_TREE: NavNode[] = [
     roles: ["student"],
     permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL, PERMISSIONS.MY_INVOICE],
   },
+  // Student self-service — submit/track service requests (transcripts,
+  // enrollment letters, etc.) and pay/download once approved.
+  {
+    id: "my-service-requests",
+    label: "My Service Requests",
+    icon: Package,
+    to: "/my/service-requests",
+    roles: ["student"],
+    permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL, PERMISSIONS.SUBMIT_SERVICE_REQUEST],
+  },
   {
     id: "attendance-student",
     label: "Attendance",
@@ -519,6 +531,24 @@ const ADMIN_TREE: NavNode[] = [
     icon: Settings,
     to: "/permissions",
     permissions: [PERMISSIONS.MANAGE_PERMISSIONS],
+  },
+  {
+    id: "service-catalog",
+    label: "Service Catalog",
+    icon: Package,
+    to: "/admin/service-catalog",
+    permissions: [PERMISSIONS.MANAGE_SERVICE_CATALOG],
+  },
+  {
+    id: "service-request-approvals",
+    label: "Service Request Approvals",
+    icon: ListChecks,
+    to: "/service-requests/queue",
+    permissions: [
+      PERMISSIONS.APPROVE_SERVICE_REQUEST_L1,
+      PERMISSIONS.APPROVE_SERVICE_REQUEST_L2,
+      PERMISSIONS.APPROVE_SERVICE_REQUEST_FINAL,
+    ],
   },
   {
     id: "academics-management",
@@ -632,6 +662,18 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
   },
   "/roles": { title: "Roles", sub: "Who can do what in the system" },
   "/permissions": { title: "Permissions", sub: "Fine-grained access control" },
+  "/admin/service-catalog": {
+    title: "Service Catalog",
+    sub: "Configure public services and their approval stages",
+  },
+  "/service-requests/queue": {
+    title: "Service Request Approvals",
+    sub: "Requests awaiting a decision at your approval stage",
+  },
+  "/my/service-requests": {
+    title: "My Service Requests",
+    sub: "Track your submitted service requests",
+  },
   "/logs": { title: "System logs", sub: "Audit trail across the platform" },
   "/gate": { title: "Gate Management", sub: "Student access verification — payment & registration" },
   "/students": {

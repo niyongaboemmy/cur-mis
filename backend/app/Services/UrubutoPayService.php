@@ -268,6 +268,15 @@ class UrubutoPayService
             if ($application) {
                 return $this->recordApplicationPayment($application, $txCode, $amount, $currency, $paymentDate, $serviceCode);
             }
+
+            // Not an application either — check whether this is a service
+            // request fee (payer_code = request_code, e.g. SR-2026-000123).
+            // Public Service Request Platform, migration 112.
+            $serviceRequest = $this->lookupServiceRequest($payerCode);
+            if ($serviceRequest) {
+                return $this->recordServiceRequestPayment($serviceRequest, $txCode, $amount, $currency);
+            }
+
             return ['status' => 'error', 'payment_id' => null, 'message' => 'Student not found: ' . $payerCode];
         }
 
@@ -696,6 +705,123 @@ class UrubutoPayService
             [$payerCode]
         );
         return $row ?: null;
+    }
+
+    // ── Public Service Request Platform (migration 112) ────────────────────────
+
+    /**
+     * Build a checkout URL keyed by the service request's request_code — same
+     * shape as generateApplicationCheckoutUrl(), which uses application_number
+     * as payer_code instead of the student's regnumber. Using request_code
+     * avoids collisions with the tuition-invoice waterfall in
+     * recordMobilePayment() (which resolves payer_code via lookupStudent()
+     * first), since a request_code never matches a real regnumber format.
+     */
+    public function generateServiceRequestCheckoutUrl(int $requestId): array
+    {
+        $request = $this->db->fetchOne(
+            "SELECT sr.*, sc.name AS service_name, sc.fee_amount, sc.fee_currency
+               FROM `service_requests` sr
+               JOIN `service_catalog` sc ON sc.id = sr.service_id
+              WHERE sr.id = ? LIMIT 1",
+            [$requestId]
+        );
+        if (!$request) {
+            throw new \RuntimeException('Service request not found.');
+        }
+
+        $merchantCode = $this->merchantCode();
+        $serviceCode  = $this->serviceRequestServiceCode();
+        $checkoutBase = $_ENV['URUBUTOPAY_CHECKOUT_URL'] ?? self::CHECKOUT_BASE;
+
+        $checkoutUrl = rtrim($checkoutBase, '/') . '/initiate'
+            . '?origin=internal'
+            . '&mhcd=' . urlencode($merchantCode)
+            . '&pycd=' . urlencode($request['request_code'])
+            . '&sccd=' . urlencode($serviceCode);
+
+        return [
+            'checkout_url'  => $checkoutUrl,
+            'merchant_code' => $merchantCode,
+            'payer_code'    => $request['request_code'],
+            'amount'        => (float)$request['fee_amount'],
+            'currency'      => $request['fee_currency'],
+            'service_code'  => $serviceCode,
+        ];
+    }
+
+    /**
+     * UrubutoPay-registered service code for service-request fees. No
+     * dedicated code has been issued for this feature yet, so this falls
+     * back to the same generic CUR-SU code already reused for HOSTEL/FINE/
+     * ADMISSION — see SERVICE_MAP. Request a dedicated code from UrubutoPay
+     * if the university wants service-request revenue reported separately.
+     */
+    private function serviceRequestServiceCode(): string
+    {
+        return (string)($_ENV['URUBUTOPAY_SERVICE_REQUEST_SERVICE_CODE'] ?? 'cursu-fees-8249');
+    }
+
+    /** Look up a service request by its public request_code (used as the UrubutoPay payer code). */
+    private function lookupServiceRequest(string $payerCode): ?array
+    {
+        $row = $this->db->fetchOne(
+            "SELECT id, request_code, invoice_id, status, full_name, phone, email
+               FROM `service_requests`
+              WHERE request_code = ?
+              LIMIT 1",
+            [$payerCode]
+        );
+        return $row ?: null;
+    }
+
+    /**
+     * Record a successful UrubutoPay payment of a service request fee.
+     * Mirrors recordApplicationPayment(): a direct, targeted update (this
+     * request's own invoice by ID) rather than the tuition FIFO waterfall,
+     * since a service request's fee must not be able to pay off unrelated
+     * TUITION/HOSTEL/etc. invoices for the same student or vice versa.
+     */
+    private function recordServiceRequestPayment(array $serviceRequest, string $txCode, float $amount, string $currency): array
+    {
+        $requestId = (int)$serviceRequest['id'];
+
+        if ($serviceRequest['status'] === 'paid' || $serviceRequest['status'] === 'completed') {
+            return [
+                'status'             => 'duplicate',
+                'payment_id'         => $requestId,
+                'message'            => 'Payment already recorded',
+                'internal_tx_id'     => $serviceRequest['request_code'],
+                'external_tx_id'     => $txCode,
+                'payer_phone_number' => $serviceRequest['phone'] ?? '',
+            ];
+        }
+
+        if ($serviceRequest['status'] !== 'awaiting_payment') {
+            return ['status' => 'error', 'payment_id' => null, 'message' => 'Service request is not awaiting payment.'];
+        }
+
+        if (!empty($serviceRequest['invoice_id'])) {
+            $this->db->execute(
+                "UPDATE `fee_invoices` SET amount_paid = ?, status = 'paid' WHERE id = ?",
+                [$amount, $serviceRequest['invoice_id']]
+            );
+        }
+
+        (new ServiceRequestService())->markPaid($requestId, [
+            'transaction_id' => $txCode,
+            'amount'         => $amount,
+            'currency'       => $currency ?: 'RWF',
+        ]);
+
+        return [
+            'status'             => 'recorded',
+            'payment_id'         => $requestId,
+            'message'            => 'Payment recorded',
+            'internal_tx_id'     => $serviceRequest['request_code'],
+            'external_tx_id'     => $txCode,
+            'payer_phone_number' => $serviceRequest['phone'] ?? '',
+        ];
     }
 
     // ── Mobile Payment History ────────────────────────────────────────────────

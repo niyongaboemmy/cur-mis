@@ -1,4 +1,4 @@
-import { GraduationCap, PlayCircle } from "lucide-react";
+import { GraduationCap, PlayCircle, FileText } from "lucide-react";
 import { Link, Navigate } from "react-router-dom";
 import AuthLayout from "@/components/auth/AuthLayout";
 import LoginForm from "@/components/auth/LoginForm";
@@ -78,6 +78,29 @@ export default function LoginPage() {
           </p>
         </div>
       )}
+
+      <div className="mt-4 rounded-xl bg-gray-50 dark:bg-gray-800/40 p-5 border border-gray-100 dark:border-gray-800">
+        <div className="flex gap-4">
+          <div className="w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center shrink-0">
+            <FileText className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">
+              Need a document or service?
+            </h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-3 leading-relaxed">
+              Browse and request transcripts, enrollment letters, and other services — no login required to browse.
+            </p>
+            <Link
+              to="/services"
+              className="inline-flex items-center text-xs font-semibold text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors group"
+            >
+              Browse services
+              <span className="ml-1 inline-block transition-transform group-hover:translate-x-1">→</span>
+            </Link>
+          </div>
+        </div>
+      </div>
     </AuthLayout>
   );
 }

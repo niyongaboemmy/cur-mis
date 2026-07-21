@@ -16,6 +16,7 @@ import VerifyOtpPage from "@/pages/VerifyOtpPage";
 import ForgotPasswordPage from "@/pages/ForgotPasswordPage";
 import NotFoundPage from "@/pages/NotFoundPage";
 import RolesManagementPage from "@/pages/admin/RolesManagementPage";
+import ServiceCatalogManagementPage from "@/pages/admin/ServiceCatalogManagementPage";
 import PermissionsManagementPage from "@/pages/admin/PermissionsManagementPage";
 import UsersManagementPage from "@/pages/admin/UsersManagementPage";
 // University Modules
@@ -55,6 +56,11 @@ import GateManagementPage from "@/pages/gate/GateManagementPage";
 // Admissions / Student Management Module
 import ApplyPage from "@/pages/public/ApplyPage";
 import TrackApplicationPage from "@/pages/public/TrackApplicationPage";
+import ServiceCatalogPage from "@/pages/public/services/ServiceCatalogPage";
+import ServiceDetailPage from "@/pages/public/services/ServiceDetailPage";
+import TrackServiceRequestPage from "@/pages/public/services/TrackServiceRequestPage";
+import MyServiceRequestsPage from "@/pages/student/service-requests/MyServiceRequestsPage";
+import ServiceRequestApprovalQueuePage from "@/pages/service-requests/ServiceRequestApprovalQueuePage";
 import AdmissionsHub from "@/pages/admin/admissions/AdmissionsHub";
 import InternationalStudentsPage from "@/pages/admin/InternationalStudentsPage";
 import ApplicationStatisticsPage from "@/pages/admin/admissions/ApplicationStatisticsPage";
@@ -145,6 +151,9 @@ function App() {
           <Route path="/apply" element={<ApplyPage />} />
           <Route path="/apply/track" element={<TrackApplicationPage />} />
           <Route path="/verify/student" element={<VerifyStudentPage />} />
+          <Route path="/services" element={<ServiceCatalogPage />} />
+          <Route path="/services/track" element={<TrackServiceRequestPage />} />
+          <Route path="/services/:slug" element={<ServiceDetailPage />} />
 
           {/* Protected — requires valid JWT in Zustand store */}
           <Route element={<ProtectedRoute />}>
@@ -163,6 +172,21 @@ function App() {
               </Route>
               <Route path="/home" element={<HomePage />} />
               <Route path="/profile" element={<UserProfilePage />} />
+              <Route path="/my/service-requests" element={<MyServiceRequestsPage />} />
+
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={[
+                      PERMISSIONS.APPROVE_SERVICE_REQUEST_L1,
+                      PERMISSIONS.APPROVE_SERVICE_REQUEST_L2,
+                      PERMISSIONS.APPROVE_SERVICE_REQUEST_FINAL,
+                    ]}
+                  />
+                }
+              >
+                <Route path="/service-requests/queue" element={<ServiceRequestApprovalQueuePage />} />
+              </Route>
               {/* Self-service payroll — every authenticated user sees their own
                   payslip history; data is scoped server-side to their account. */}
               <Route path="/me/payroll" element={<MyPayrollPage />} />
@@ -204,6 +228,19 @@ function App() {
                 }
               >
                 <Route path="/roles" element={<RolesManagementPage />} />
+              </Route>
+
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={PERMISSIONS.MANAGE_SERVICE_CATALOG}
+                  />
+                }
+              >
+                <Route
+                  path="/admin/service-catalog"
+                  element={<ServiceCatalogManagementPage />}
+                />
               </Route>
 
               <Route
