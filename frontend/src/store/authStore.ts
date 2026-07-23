@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
+import { useEffect, useState } from 'react'
 import { AUTH_STORAGE_KEY } from '@/constants'
 
 export interface AuthUser {
@@ -56,11 +57,32 @@ export const useAuthStore = create<AuthState>()(
     {
       name:    AUTH_STORAGE_KEY,
       storage: createJSONStorage(() => localStorage),
-      partialize: (state) => ({ 
-        user: state.user, 
-        token: state.token, 
-        isAuthenticated: state.isAuthenticated 
+      partialize: (state) => ({
+        user: state.user,
+        token: state.token,
+        isAuthenticated: state.isAuthenticated
       }),
     },
   ),
 )
+
+/**
+ * True once the persisted auth state has been read back from localStorage.
+ * Zustand's persist middleware hydrates asynchronously, so on the very first
+ * render `isAuthenticated` is momentarily `false` even for an already-logged-in
+ * user — any logic that branches on "is this a guest?" (e.g. deciding whether
+ * to check for an existing unpaid service request) must wait for this to be
+ * true first, or it will wrongly treat a logged-in user as a guest.
+ */
+export function useAuthHydrated(): boolean {
+  const [hydrated, setHydrated] = useState(() => useAuthStore.persist.hasHydrated());
+
+  useEffect(() => {
+    if (hydrated) return;
+    const unsub = useAuthStore.persist.onFinishHydration(() => setHydrated(true));
+    if (useAuthStore.persist.hasHydrated()) setHydrated(true);
+    return unsub;
+  }, [hydrated]);
+
+  return hydrated;
+}

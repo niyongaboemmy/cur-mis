@@ -71,6 +71,7 @@ export interface ServiceCatalogAdmin {
   requirements: string[]
   required_attachments: RequiredAttachment[]
   document_template_type: string
+  document_type_id: number | null
   fee_amount: string | number
   fee_currency: string
   requires_payment: 0 | 1

@@ -8,6 +8,7 @@ import ModalPortal from "@/components/ui/ModalPortal";
 import StepTracker from "@/components/service-requests/StepTracker";
 
 const STATUS_STYLES: Record<string, string> = {
+  draft: "bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400",
   submitted: "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400",
   in_review: "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400",
   changes_requested: "bg-orange-50 text-orange-700 dark:bg-orange-900/20 dark:text-orange-400",

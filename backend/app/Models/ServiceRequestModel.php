@@ -25,15 +25,23 @@ class ServiceRequestModel extends BaseModel
         );
     }
 
-    public function findByStudent(string $regnumber): array
+    /**
+     * A request's requester_user_id is always populated at submission time
+     * from the authenticated caller — unlike student_regnumber, which is only
+     * set when the submitter matches a row in the (legacy, email-matched)
+     * students table. Filtering on requester_user_id is what actually makes
+     * every requester's own submissions show up in "my requests", including
+     * accounts with no linked student profile.
+     */
+    public function findByRequesterUser(int $userId): array
     {
         return $this->db->fetchAll(
             "SELECT sr.*, sc.name AS service_name, sc.slug AS service_slug
              FROM `service_requests` sr
              JOIN `service_catalog` sc ON sc.id = sr.service_id
-             WHERE sr.`student_regnumber` = ?
+             WHERE sr.`requester_user_id` = ?
              ORDER BY sr.created_at DESC",
-            [$regnumber]
+            [$userId]
         );
     }
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Controllers\ServiceCatalogController;
 use App\Controllers\ServiceRequestController;
 use App\Controllers\ServiceRequestApprovalController;
+use App\Controllers\ServiceRequestReportController;
 use App\Middleware\AuthMiddleware;
 use App\Middleware\PermissionMiddleware;
 use App\Middleware\MaybePermissionMiddleware;
@@ -25,7 +26,28 @@ use App\Constants\Permissions;
 
 $router->get('/api/services/track', [ServiceRequestController::class, 'track']);
 $router->get('/api/services', [ServiceCatalogController::class, 'index']);
+
+// Guest document download — same handler as the authenticated one below.
+// Security is the opaque 32-byte download_token itself (hash_equals check
+// inside ServiceRequestController::download()), same pattern as the
+// admission-offer letter link — a session isn't what gates access here, so
+// there's nothing lost by also reaching it without being logged in. This
+// lets someone who tracked a request via /services/track (no account)
+// download their finished document.
+$router->get('/api/services/:id/document', [ServiceRequestController::class, 'download']);
+
 $router->get('/api/services/:slug', [ServiceCatalogController::class, 'show']);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Reporting dashboard — registered before the /:id-bearing group below so
+// "reports" is never swallowed as an :id value.
+// ─────────────────────────────────────────────────────────────────────────────
+
+$router->group('/api/service-requests/reports', function ($router) {
+    $router->get('/overview', [ServiceRequestReportController::class, 'overview']);
+    $router->get('/list', [ServiceRequestReportController::class, 'list']);
+    $router->get('/export', [ServiceRequestReportController::class, 'export']);
+}, [AuthMiddleware::class, new PermissionMiddleware(Permissions::VIEW_SERVICE_REQUESTS)]);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Student (authenticated) — submit + own requests
@@ -68,6 +90,7 @@ $router->group('/api/admin/service-requests', function ($router) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 $router->group('/api/admin/service-catalog', function ($router) {
+    $router->get('/document-types', [ServiceCatalogController::class, 'documentTypes']);
     $router->get('', [ServiceCatalogController::class, 'listAdmin']);
     $router->post('', [ServiceCatalogController::class, 'store']);
     $router->get('/:id', [ServiceCatalogController::class, 'showAdmin']);

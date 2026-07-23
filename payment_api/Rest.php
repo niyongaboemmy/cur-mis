@@ -282,6 +282,48 @@ class Rest
         return $cfg;
     }
 
+    /**
+     * Look up a public service request by its request_code (used as the
+     * UrubutoPay payer_code for the pay-first service-request platform —
+     * see backend/app/Services/ServiceRequestService.php). Mirrors
+     * findApplication() above. This is the branch that was MISSING here,
+     * which is why the hosted checkout page showed "no data found for the
+     * given payer code" for every SR-* payer code — this legacy endpoint,
+     * not the modern backend, is the one actually registered with UrubutoPay.
+     */
+    private function findServiceRequest(string $requestCode): ?array
+    {
+        $sql = "SELECT sr.id, sr.request_code, sr.invoice_id, sr.status, sr.full_name,
+                       sr.phone, sr.email, sc.name AS service_name, sc.fee_amount, sc.fee_currency
+                  FROM service_requests sr
+                  JOIN service_catalog sc ON sc.id = sr.service_id
+                 WHERE sr.request_code = ?
+                 LIMIT 1";
+        $stmt = $this->db->prepare($sql);
+        $stmt->bind_param('s', $requestCode);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        return $row ?: null;
+    }
+
+    /** Service code registered for service-request fees — same fallback as the modern backend. */
+    private function serviceRequestServiceCode(): string
+    {
+        $path = __DIR__ . '/../backend/.env';
+        if (is_file($path)) {
+            foreach (file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+                $line = trim($line);
+                if ($line === '' || $line[0] === '#') continue;
+                $parts = explode('=', $line, 2);
+                if (count($parts) === 2 && trim($parts[0]) === 'URUBUTOPAY_SERVICE_REQUEST_SERVICE_CODE') {
+                    return trim($parts[1], "\"' ");
+                }
+            }
+        }
+        return 'cursu-fees-8249';
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // 0. CLAIM TOKEN  –  POST /api/token.php
     //    No bearer token required for this endpoint (define SKIP_TOKEN_CHECK).
@@ -413,6 +455,39 @@ class Rest
                             'service_name' => $cfg['service_name'],
                             'amount'       => $cfg['fee'],
                             'currency'     => 'RWF',
+                        ]],
+                    ],
+                ]);
+                return;
+            }
+
+            $serviceRequest = $this->findServiceRequest($payerCode);
+            if ($serviceRequest) {
+                $fee         = (float)($serviceRequest['fee_amount'] ?? 0);
+                $currency    = (string)($serviceRequest['fee_currency'] ?? 'RWF');
+                $serviceCode = $this->serviceRequestServiceCode();
+                $payerNames  = strtoupper(trim((string)($serviceRequest['full_name'] ?? '')));
+
+                http_response_code(200);
+                echo json_encode([
+                    'timestamp' => $date,
+                    'message'   => 'validated successfully',
+                    'status'    => 200,
+                    'data'      => [
+                        'merchant_code'               => $merchantCode,
+                        'payer_code'                  => $serviceRequest['request_code'],
+                        'payer_names'                 => $payerNames !== '' ? $payerNames : 'APPLICANT',
+                        'currency'                    => $currency,
+                        'payer_must_pay_total_amount' => 'YES',
+                        'amount'                      => $fee,
+                        'comment'                     => 'service request fee',
+                        'service_code'                => $serviceCode,
+                        'commission_rate'             => 0,
+                        'services'                    => [[
+                            'service_code' => $serviceCode,
+                            'service_name' => $serviceRequest['service_name'] ?? 'SERVICE REQUEST FEE',
+                            'amount'       => $fee,
+                            'currency'     => $currency,
                         ]],
                     ],
                 ]);
@@ -1015,6 +1090,65 @@ class Rest
                         'internal_transaction_id' => $application['application_number'],
                         'external_transaction_id' => $txCode,
                         'payer_phone_number'      => $application['phone'] ?? '',
+                    ],
+                ]);
+                return;
+            }
+
+            $serviceRequest = $this->findServiceRequest($payerCode);
+            if ($serviceRequest) {
+                // Idempotency — already paid/finalized, or not currently
+                // awaiting payment (e.g. a retried/duplicate webhook delivery).
+                if (in_array($serviceRequest['status'], ['paid', 'completed'], true)) {
+                    http_response_code(200);
+                    echo json_encode(['timestamp' => $date, 'status' => 200, 'message' => 'Payment already recorded']);
+                    return;
+                }
+                if ($serviceRequest['status'] !== 'awaiting_payment') {
+                    http_response_code(200);
+                    echo json_encode(['timestamp' => $date, 'status' => 200, 'message' => 'Service request is not awaiting payment']);
+                    return;
+                }
+
+                $currency = strtoupper(trim($data['currency'] ?? 'RWF')) ?: 'RWF';
+
+                if (!empty($serviceRequest['invoice_id'])) {
+                    $stmtInv = $this->db->prepare("UPDATE fee_invoices SET amount_paid = ?, status = 'paid' WHERE id = ?");
+                    $stmtInv->bind_param('di', $amount, $serviceRequest['invoice_id']);
+                    $stmtInv->execute();
+                    $stmtInv->close();
+                }
+
+                // Hand off to the modern service layer for the actual status
+                // transition (awaiting_payment → paid → submitted → in_review),
+                // document-generation hooks, and applicant notification email —
+                // single source of truth instead of re-implementing the state
+                // machine here. See ServiceRequestService::markPaid().
+                try {
+                    require_once __DIR__ . '/../backend/vendor/autoload.php';
+                    if (is_file(__DIR__ . '/../backend/.env')) {
+                        \Dotenv\Dotenv::createImmutable(__DIR__ . '/../backend')->safeLoad();
+                    }
+                    (new \App\Services\ServiceRequestService())->markPaid((int)$serviceRequest['id'], [
+                        'transaction_id' => $txCode,
+                        'amount'         => $amount,
+                        'currency'       => $currency,
+                    ]);
+                } catch (\Throwable $e) {
+                    http_response_code(500);
+                    echo json_encode(['timestamp' => $date, 'status' => 500, 'message' => 'Service request payment update failed: ' . $e->getMessage()]);
+                    return;
+                }
+
+                http_response_code(200);
+                echo json_encode([
+                    'timestamp' => $date,
+                    'status'    => 200,
+                    'message'   => 'Payment recorded',
+                    'data'      => [
+                        'internal_transaction_id' => $serviceRequest['request_code'],
+                        'external_transaction_id' => $txCode,
+                        'payer_phone_number'      => $serviceRequest['phone'] ?? '',
                     ],
                 ]);
                 return;

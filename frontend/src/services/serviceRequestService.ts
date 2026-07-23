@@ -10,6 +10,8 @@ export interface ServiceRequestTrackResult {
   total_steps: number
   submitted_at: string | null
   completed_at: string | null
+  document_id: number | null
+  download_token: string | null
 }
 
 export const serviceRequestService = {
@@ -34,10 +36,15 @@ export const serviceRequestService = {
   getCheckoutLink: (id: number) =>
     api.get<{ checkout_url: string; amount: number; currency: string }>(`/api/service-requests/${id}/checkout-link`),
 
-  /** Auth is a bearer JWT, so a plain <a href> won't carry it — fetch as a blob and save it. */
+  /**
+   * Fetch as a blob and save it (rather than a plain <a href>) so it works
+   * identically whether or not the caller is logged in — the download_token
+   * itself is the real credential, not the session. Hits the public route
+   * (no auth required) so a guest tracking a request can download it too.
+   */
   download: async (id: number, token: string, requestCode: string) => {
     const response = await apiClient.get(
-      `/api/service-requests/${id}/download`,
+      `/api/services/${id}/document`,
       { params: { token }, responseType: 'blob' },
     )
     const url = window.URL.createObjectURL(new Blob([response.data]))

@@ -11,7 +11,7 @@ class ServiceCatalogModel extends BaseModel
 
     protected array $fillable = [
         'code', 'name', 'slug', 'category', 'short_description', 'full_description',
-        'requirements', 'required_attachments', 'document_template_type',
+        'requirements', 'required_attachments', 'document_template_type', 'document_type_id',
         'fee_amount', 'fee_currency', 'requires_payment', 'payment_stage',
         'processing_sla_days', 'is_active', 'created_by', 'updated_by',
     ];

@@ -61,6 +61,7 @@ import ServiceDetailPage from "@/pages/public/services/ServiceDetailPage";
 import TrackServiceRequestPage from "@/pages/public/services/TrackServiceRequestPage";
 import MyServiceRequestsPage from "@/pages/student/service-requests/MyServiceRequestsPage";
 import ServiceRequestApprovalQueuePage from "@/pages/service-requests/ServiceRequestApprovalQueuePage";
+import ServiceRequestsDashboardPage from "@/pages/service-requests/ServiceRequestsDashboardPage";
 import AdmissionsHub from "@/pages/admin/admissions/AdmissionsHub";
 import InternationalStudentsPage from "@/pages/admin/InternationalStudentsPage";
 import ApplicationStatisticsPage from "@/pages/admin/admissions/ApplicationStatisticsPage";
@@ -186,6 +187,14 @@ function App() {
                 }
               >
                 <Route path="/service-requests/queue" element={<ServiceRequestApprovalQueuePage />} />
+              </Route>
+
+              <Route
+                element={
+                  <ProtectedRoute requiredPermissions={PERMISSIONS.VIEW_SERVICE_REQUESTS} />
+                }
+              >
+                <Route path="/service-requests/reports" element={<ServiceRequestsDashboardPage />} />
               </Route>
               {/* Self-service payroll — every authenticated user sees their own
                   payslip history; data is scoped server-side to their account. */}

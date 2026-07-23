@@ -82,16 +82,20 @@ class ServiceRequestController extends BaseController
         $this->success($response, $updated, 'Service request resubmitted successfully.');
     }
 
+    /**
+     * Every service request stores the submitter's requester_user_id at
+     * creation time, regardless of whether they have a linked student
+     * profile — so this looks up requests by the authenticated user's own ID
+     * directly rather than routing through the (legacy, email-matched)
+     * students table, which would silently hide requests for any account
+     * without a matching student row.
+     */
     public function myRequests(Request $request, Response $response): never
     {
         $authUser = (array)$request->param('_auth_user');
-        $student  = $this->studentModel->findByUserId((int)($authUser['id'] ?? 0), $authUser['email'] ?? null);
+        $userId   = (int)($authUser['id'] ?? 0);
 
-        if (!$student) {
-            $this->success($response, [], 'No linked student profile found.');
-        }
-
-        $this->success($response, $this->service->myRequests((string)$student['regnumber']), 'Requests fetched successfully.');
+        $this->success($response, $this->service->myRequests($userId), 'Requests fetched successfully.');
     }
 
     public function progress(Request $request, Response $response): never

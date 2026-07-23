@@ -143,6 +143,37 @@ class UrubutoPayService
             ];
         }
 
+        // Not a student or applicant either — check whether this is a service
+        // request fee (payer_code = request_code, e.g. SR-2026-000123). Without
+        // this branch UrubutoPay's checkout page 404s on verify with "invalid
+        // merchant code or payer code" for every service-request payment.
+        $serviceRequest = $this->lookupServiceRequest($payerCode);
+        if ($serviceRequest) {
+            $fee         = (float)($serviceRequest['fee_amount'] ?? 0);
+            $currency    = (string)($serviceRequest['fee_currency'] ?? 'RWF');
+            $serviceCode = $this->serviceRequestServiceCode();
+            $payerNames  = trim(strtoupper((string)($serviceRequest['full_name'] ?? '')));
+
+            return [
+                'merchant_code'               => $merchantCode,
+                'payer_code'                  => $serviceRequest['request_code'],
+                'payer_names'                 => $payerNames !== '' ? $payerNames : 'APPLICANT',
+                'currency'                    => $currency,
+                // Fixed fee — no partial payments on a service request.
+                'payer_must_pay_total_amount' => 'YES',
+                'amount'                      => $fee,
+                'comment'                     => 'service request fee',
+                'service_code'                => $serviceCode,
+                'commission_rate'             => 0,
+                'services'                    => [[
+                    'service_code' => $serviceCode,
+                    'service_name' => (string)($serviceRequest['service_name'] ?? 'SERVICE REQUEST FEE'),
+                    'amount'       => $fee,
+                    'currency'     => $currency,
+                ]],
+            ];
+        }
+
         return null;
     }
 
@@ -766,9 +797,11 @@ class UrubutoPayService
     private function lookupServiceRequest(string $payerCode): ?array
     {
         $row = $this->db->fetchOne(
-            "SELECT id, request_code, invoice_id, status, full_name, phone, email
-               FROM `service_requests`
-              WHERE request_code = ?
+            "SELECT sr.id, sr.request_code, sr.invoice_id, sr.status, sr.full_name, sr.phone, sr.email,
+                    sc.name AS service_name, sc.fee_amount, sc.fee_currency
+               FROM `service_requests` sr
+               JOIN `service_catalog` sc ON sc.id = sr.service_id
+              WHERE sr.request_code = ?
               LIMIT 1",
             [$payerCode]
         );

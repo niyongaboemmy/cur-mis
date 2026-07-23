@@ -13,6 +13,7 @@ use App\Models\ServiceCatalogStageModel;
 use App\Models\FeeInvoiceModel;
 use App\Models\StudentModel;
 use App\Helpers\FileServerClient;
+use App\Helpers\EmailTemplateHelper;
 
 /**
  * Core state machine for the public service request platform.
@@ -30,15 +31,23 @@ class ServiceRequestService
     private FeeInvoiceModel               $invoiceModel;
     private StudentModel                  $studentModel;
     private Database                      $db;
+    private MailService                   $mailService;
 
+    /**
+     * Fee-based services now pay upfront: submit() puts the request in
+     * 'awaiting_payment' immediately (before any reviewer sees it) instead of
+     * routing straight to 'in_review'. Once the UrubutoPay webhook confirms
+     * payment, markPaid() carries it into 'submitted'→'in_review' itself.
+     * Free services skip payment entirely and go straight to 'in_review'.
+     */
     private const ALLOWED_TRANSITIONS = [
-        'draft'             => ['submitted'],
+        'draft'             => ['submitted', 'awaiting_payment'],
+        'awaiting_payment'  => ['paid', 'cancelled', 'expired'],
         'submitted'         => ['in_review', 'cancelled'],
         'in_review'         => ['in_review', 'approved', 'rejected', 'changes_requested', 'cancelled'],
         'changes_requested' => ['submitted', 'cancelled'],
-        'approved'          => ['awaiting_payment', 'paid', 'cancelled'],
-        'awaiting_payment'  => ['paid', 'cancelled', 'expired'],
-        'paid'              => ['completed'],
+        'approved'          => ['paid', 'cancelled'],
+        'paid'              => ['submitted', 'completed'],
     ];
 
     /** Terminal states — no further transitions are ever allowed once reached. */
@@ -54,6 +63,52 @@ class ServiceRequestService
         $this->invoiceModel    = new FeeInvoiceModel();
         $this->studentModel    = new StudentModel();
         $this->db              = Database::getInstance();
+        $this->mailService     = new MailService();
+    }
+
+    /**
+     * Email the applicant a short status update with the request's reference
+     * number, at every step of the lifecycle. Mirrors ApplicationService's
+     * sendApplicationEmail: never throws, silently no-ops without an email on
+     * file, so a broken/slow SMTP server never blocks the underlying transition.
+     */
+    /**
+     * @param array{binary:string,filename:string}|null $attachment Optional PDF to attach (e.g. the finished document).
+     */
+    private function notifyApplicant(array $request, string $headline, string $message, ?array $attachment = null): void
+    {
+        try {
+            $email = trim((string)($request['email'] ?? ''));
+            if ($email === '') {
+                return;
+            }
+
+            $service = $this->catalogModel->find((int)$request['service_id']);
+            $html = EmailTemplateHelper::serviceRequestStatusTemplate(
+                $request['full_name'] ?? 'Applicant',
+                $request['request_code'],
+                $service['name'] ?? 'Service Request',
+                $headline,
+                $message
+            );
+
+            $subject = "{$headline} — {$request['request_code']}";
+
+            if ($attachment !== null) {
+                $this->mailService->sendWithAttachment(
+                    $email,
+                    $subject,
+                    $html,
+                    strip_tags($html),
+                    $attachment['binary'],
+                    $attachment['filename']
+                );
+            } else {
+                $this->mailService->send($email, $subject, $html, strip_tags($html));
+            }
+        } catch (\Throwable $e) {
+            error_log('[ServiceRequestService] Email error: ' . $e->getMessage());
+        }
     }
 
     private function transition(int $requestId, string $from, string $to, array $extra = []): void
@@ -150,7 +205,7 @@ class ServiceRequestService
             'email'                => $requester['email'] ?? null,
             'form_data'            => json_encode($formData),
             'current_stage_order'  => 1,
-            'status'               => 'submitted',
+            'status'               => 'draft',
             'submitted_at'         => date('Y-m-d H:i:s'),
         ]);
 
@@ -166,7 +221,19 @@ class ServiceRequestService
         }
 
         $this->logDecision($id, 1, 'submission', 'submitted', $requester['user_id'] ?? null, $requester['full_name'], $requester['requester_type'] ?? 'student', null);
-        $this->transition($id, 'submitted', 'in_review');
+
+        $requiresPayment = !empty($service['requires_payment']);
+
+        if ($requiresPayment) {
+            // Pay-first: hold the request out of the review queue until
+            // UrubutoPay confirms payment (see markPaid()).
+            $created   = $this->requestModel->find($id);
+            $invoiceId = $this->createInvoiceForRequest($id, $created, $service);
+            $this->transition($id, 'draft', 'awaiting_payment', ['invoice_id' => $invoiceId]);
+        } else {
+            $this->transition($id, 'draft', 'submitted');
+            $this->transition($id, 'submitted', 'in_review');
+        }
 
         SystemLogService::log(
             'CREATE',
@@ -178,7 +245,23 @@ class ServiceRequestService
             $requester['user_id'] ? ['id' => $requester['user_id'], 'full_name' => $requester['full_name'], 'email' => $requester['email'] ?? ''] : null
         );
 
-        return $this->requestModel->find($id);
+        $created = $this->requestModel->find($id);
+
+        if ($requiresPayment) {
+            $this->notifyApplicant(
+                $created,
+                'Payment Required',
+                "We've received your request for \"{$service['name']}\". Please complete payment of {$service['fee_amount']} {$service['fee_currency']} to start processing — your request will enter the review queue as soon as payment is confirmed."
+            );
+        } else {
+            $this->notifyApplicant(
+                $created,
+                'Request Received',
+                "We've received your request for \"{$service['name']}\" and it is now under review. Keep this reference number handy — you'll need it to track progress."
+            );
+        }
+
+        return $created;
     }
 
     /**
@@ -230,7 +313,14 @@ class ServiceRequestService
             'service_request'
         );
 
-        return $this->requestModel->find($requestId);
+        $updated = $this->requestModel->find($requestId);
+        $this->notifyApplicant(
+            $updated,
+            'Updated Request Received',
+            "Thanks for the update — we've received your revised submission and it's back under review."
+        );
+
+        return $updated;
     }
 
     /**
@@ -262,12 +352,19 @@ class ServiceRequestService
             ['id' => $actorId, 'full_name' => $actorName]
         );
 
-        return $this->requestModel->find($requestId);
+        $updated = $this->requestModel->find($requestId);
+        $this->notifyApplicant(
+            $updated,
+            'Request Cancelled',
+            'Your request has been cancelled.' . ($reason ? " Reason: {$reason}" : '')
+        );
+
+        return $updated;
     }
 
-    public function myRequests(string $regnumber): array
+    public function myRequests(int $userId): array
     {
-        return $this->requestModel->findByStudent($regnumber);
+        return $this->requestModel->findByRequesterUser($userId);
     }
 
     public function queueForActor(int $stageOrder, string $permissionSlug): array
@@ -318,13 +415,25 @@ class ServiceRequestService
         if ($decision === 'rejected') {
             $this->transition($requestId, 'in_review', 'rejected');
             SystemLogService::log('REJECT', 'SERVICE_REQUESTS', "Rejected service request {$request['request_code']} at stage '{$stage['stage_label']}'.", $requestId, 'service_request', ['comment' => $comment], ['id' => $actorId, 'full_name' => $actorName]);
-            return $this->requestModel->find($requestId);
+            $updated = $this->requestModel->find($requestId);
+            $this->notifyApplicant(
+                $updated,
+                'Request Rejected',
+                "Your request was rejected at the \"{$stage['stage_label']}\" stage." . ($comment ? " Reason: {$comment}" : '')
+            );
+            return $updated;
         }
 
         if ($decision === 'changes_requested') {
             $this->transition($requestId, 'in_review', 'changes_requested');
             SystemLogService::log('REJECT', 'SERVICE_REQUESTS', "Requested changes on service request {$request['request_code']} at stage '{$stage['stage_label']}'.", $requestId, 'service_request', ['comment' => $comment], ['id' => $actorId, 'full_name' => $actorName]);
-            return $this->requestModel->find($requestId);
+            $updated = $this->requestModel->find($requestId);
+            $this->notifyApplicant(
+                $updated,
+                'Changes Requested',
+                "Changes were requested at the \"{$stage['stage_label']}\" stage. Please log in and resubmit." . ($comment ? " Note: {$comment}" : '')
+            );
+            return $updated;
         }
 
         // decision === 'approved'
@@ -332,23 +441,22 @@ class ServiceRequestService
 
         if (!$stage['is_final_approval']) {
             $this->requestModel->update($requestId, ['current_stage_order' => (int)$stage['stage_order'] + 1]);
-            return $this->requestModel->find($requestId);
+            $updated   = $this->requestModel->find($requestId);
+            $nextStage = $this->stageModel->findStage((int)$request['service_id'], (int)$stage['stage_order'] + 1);
+            $this->notifyApplicant(
+                $updated,
+                'Request Approved — Next Stage',
+                "Your request passed the \"{$stage['stage_label']}\" stage" . ($nextStage ? " and is now under review at \"{$nextStage['stage_label']}\"." : '.')
+            );
+            return $updated;
         }
 
-        // Final approval — advance to payment (or straight to paid if the
-        // service doesn't require payment).
-        $service = $this->catalogModel->find((int)$request['service_id']);
-
-        if (empty($service['requires_payment'])) {
-            $this->transition($requestId, 'in_review', 'approved');
-            $this->transition($requestId, 'approved', 'paid');
-            $this->markPaid($requestId, ['method' => 'not_required']);
-            return $this->requestModel->find($requestId);
-        }
-
+        // Final approval — payment (if this service requires it) was already
+        // collected before the request ever entered review (see submit()),
+        // so there's nothing left to gate: go straight to document generation.
         $this->transition($requestId, 'in_review', 'approved');
-        $invoiceId = $this->createInvoiceForRequest($requestId, $request, $service);
-        $this->transition($requestId, 'approved', 'awaiting_payment', ['invoice_id' => $invoiceId]);
+        $this->transition($requestId, 'approved', 'paid');
+        $this->completeRequest($requestId);
 
         return $this->requestModel->find($requestId);
     }
@@ -378,17 +486,24 @@ class ServiceRequestService
         return $invoiceId;
     }
 
+    /**
+     * Webhook entry point — UrubutoPay confirming the upfront, pre-review fee.
+     * Clears the payment gate set by submit() and hands the request straight
+     * into the normal review queue (submitted → in_review), same as a free
+     * service. Idempotent: a request already past 'awaiting_payment' is a no-op,
+     * so a duplicate/retried webhook delivery can never double-advance it.
+     */
     public function markPaid(int $requestId, array $paymentMeta): void
     {
         $request = $this->requestModel->find($requestId);
         if (!$request) {
             throw new \RuntimeException('Service request not found.');
         }
-        if (!in_array($request['status'], ['awaiting_payment', 'approved'], true)) {
-            return; // already paid/completed — idempotent no-op
+        if ($request['status'] !== 'awaiting_payment') {
+            return; // already paid / not awaiting payment — idempotent no-op
         }
 
-        $this->transition($requestId, $request['status'], 'paid');
+        $this->transition($requestId, 'awaiting_payment', 'paid');
 
         $this->logDecision(
             $requestId,
@@ -410,13 +525,56 @@ class ServiceRequestService
             $paymentMeta
         );
 
+        $this->transition($requestId, 'paid', 'submitted');
+        $this->transition($requestId, 'submitted', 'in_review');
+
+        $updated = $this->requestModel->find($requestId);
+        $this->notifyApplicant(
+            $updated,
+            'Payment Confirmed',
+            "We've received your payment. Your request is now under review."
+        );
+    }
+
+    /**
+     * Final-approval tail: generate the document and mark the request
+     * completed. Called only from decide() once every approval stage has
+     * passed — by then, payment (if this service required it) already
+     * happened before review began, so there's no payment gate left to check.
+     */
+    private function completeRequest(int $requestId): void
+    {
+        $documentService = new ServiceRequestDocumentService();
+
         // Document generation + download token issuance happens here (Phase 6).
-        (new ServiceRequestDocumentService())->generateForRequest($requestId);
+        $documentService->generateForRequest($requestId);
 
         // The document is ready the instant it's generated — 'paid' and
         // 'completed' aren't independently actionable states in this flow,
         // so auto-advance rather than requiring a separate staff action.
         $this->transition($requestId, 'paid', 'completed', ['completed_at' => date('Y-m-d H:i:s')]);
+
+        $completed = $this->requestModel->find($requestId);
+
+        // Attach the actual document to the email when we can render it —
+        // the applicant shouldn't have to log in just to see it landed.
+        $attachment = null;
+        $pdfData = $documentService->buildPdfData($requestId);
+        if ($pdfData) {
+            $binary = \App\Helpers\ServiceRequestDocumentPdf::renderPdfBinary($pdfData);
+            if ($binary) {
+                $attachment = ['binary' => $binary, 'filename' => "{$completed['request_code']}.pdf"];
+            }
+        }
+
+        $this->notifyApplicant(
+            $completed,
+            'Document Ready',
+            $attachment !== null
+                ? "Your document is ready — it's attached to this email. You can also download it anytime from the tracking page or your account."
+                : "Your document is ready! Log in to your account to download it.",
+            $attachment
+        );
     }
 
     public function getTrackingStatus(string $requestCode, string $identifier): ?array
@@ -440,15 +598,22 @@ class ServiceRequestService
         $service = $this->catalogModel->find((int)$request['service_id']);
         $steps   = $this->buildStageSteps($request, $service);
 
+        // Only expose enough to download once the document actually exists —
+        // the identifier check above already proved this caller is the
+        // requester, so the token itself is safe to hand back here.
+        $canDownload = in_array($request['status'], ['paid', 'completed'], true) && !empty($request['download_token']);
+
         return [
-            'request_code'  => $request['request_code'],
-            'service_name'  => $service['name'] ?? null,
-            'status'        => $this->coarseStatusLabel($request['status']),
-            'steps'         => $steps,
-            'current_step'  => $this->currentStepIndex($steps),
-            'total_steps'   => count($steps),
-            'submitted_at'  => $request['submitted_at'],
-            'completed_at'  => $request['completed_at'],
+            'request_code'   => $request['request_code'],
+            'service_name'   => $service['name'] ?? null,
+            'status'         => $this->coarseStatusLabel($request['status']),
+            'steps'          => $steps,
+            'current_step'   => $this->currentStepIndex($steps),
+            'total_steps'    => count($steps),
+            'submitted_at'   => $request['submitted_at'],
+            'completed_at'   => $request['completed_at'],
+            'document_id'    => $canDownload ? (int)$request['id'] : null,
+            'download_token' => $canDownload ? $request['download_token'] : null,
         ];
     }
 
@@ -475,6 +640,9 @@ class ServiceRequestService
      * Build the ordered, per-service step list for progress display —
      * dynamic per service_catalog_stages, never a static/hardcoded chain.
      * Labels only; required_permission_slug is never exposed here.
+     *
+     * Payment (when required) now happens BEFORE review, so it's shown
+     * right after submission rather than after the approval stages.
      */
     private function buildStageSteps(array $request, array $service): array
     {
@@ -484,7 +652,7 @@ class ServiceRequestService
         $stages          = $this->stageModel->findByServiceOrdered((int)$service['id']);
 
         $terminalBad      = in_array($status, ['rejected', 'cancelled', 'expired'], true);
-        $reachedPayment   = in_array($status, ['awaiting_payment', 'paid', 'completed'], true);
+        $paymentPending   = in_array($status, ['draft', 'awaiting_payment'], true);
         $reachedCompleted = $status === 'completed';
 
         $steps = [[
@@ -493,10 +661,23 @@ class ServiceRequestService
             'state' => 'completed',
         ]];
 
+        if ($requiresPayment) {
+            if ($paymentPending) {
+                $state = ($status === 'cancelled') ? 'cancelled' : 'current';
+            } else {
+                // Payment already cleared before review began — every status
+                // past 'awaiting_payment' implies it succeeded.
+                $state = 'completed';
+            }
+            $steps[] = ['key' => 'payment', 'label' => 'Payment', 'state' => $state];
+        }
+
         foreach ($stages as $stage) {
             $order = (int)$stage['stage_order'];
 
-            if ($order < $currentOrder || ($order === $currentOrder && $reachedPayment)) {
+            if ($paymentPending) {
+                $state = 'pending'; // review hasn't started — waiting on payment
+            } elseif ($order < $currentOrder || ($order === $currentOrder && in_array($status, ['approved', 'paid', 'completed'], true))) {
                 $state = 'completed';
             } elseif ($order === $currentOrder && $status === 'rejected') {
                 $state = 'rejected';
@@ -515,17 +696,6 @@ class ServiceRequestService
                 'label' => $stage['stage_label'],
                 'state' => $state,
             ];
-        }
-
-        if ($requiresPayment) {
-            if ($reachedCompleted || $status === 'paid') {
-                $state = 'completed';
-            } elseif ($status === 'awaiting_payment') {
-                $state = 'current';
-            } else {
-                $state = $terminalBad ? 'skipped' : 'pending';
-            }
-            $steps[] = ['key' => 'payment', 'label' => 'Payment', 'state' => $state];
         }
 
         $steps[] = [
@@ -551,8 +721,8 @@ class ServiceRequestService
     private function coarseStatusLabel(string $status): string
     {
         return match ($status) {
-            'draft', 'submitted', 'in_review', 'changes_requested' => 'Processing',
-            'approved', 'awaiting_payment' => 'Awaiting Payment',
+            'draft', 'awaiting_payment' => 'Awaiting Payment',
+            'submitted', 'in_review', 'changes_requested', 'approved' => 'Processing',
             'paid' => 'Ready',
             'completed' => 'Completed',
             'rejected' => 'Rejected',

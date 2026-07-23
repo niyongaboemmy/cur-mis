@@ -11,6 +11,7 @@ export interface ServiceCatalogFormPayload {
   requirements?: string[]
   required_attachments?: Array<{ key: string; label: string; mime_types: string[]; max_size_kb: number; required: boolean }>
   document_template_type?: string
+  document_type_id?: number | null
   fee_amount: number
   fee_currency?: string
   requires_payment: boolean
@@ -20,9 +21,20 @@ export interface ServiceCatalogFormPayload {
   stages: ServiceCatalogStage[]
 }
 
+export interface ServiceDocumentType {
+  id: number
+  key: string
+  name: string
+  description: string | null
+  is_active: 0 | 1
+}
+
 export const serviceCatalogService = {
   getPublicList: (signal?: AbortSignal) =>
     api.get<ServiceCatalogPublic[]>('/api/services', {}, signal),
+
+  listDocumentTypes: (signal?: AbortSignal) =>
+    api.get<ServiceDocumentType[]>('/api/admin/service-catalog/document-types', {}, signal),
 
   getPublicDetail: (slug: string, signal?: AbortSignal) =>
     api.get<ServiceCatalogDetail>(`/api/services/${slug}`, {}, signal),

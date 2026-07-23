@@ -9,14 +9,23 @@ use Core\Response;
 use App\Services\ServiceCatalogService;
 use App\Services\SystemLogService;
 use App\Helpers\ValidationHelper;
+use App\Models\ServiceDocumentTypeModel;
 
 class ServiceCatalogController extends BaseController
 {
-    private ServiceCatalogService $service;
+    private ServiceCatalogService     $service;
+    private ServiceDocumentTypeModel  $documentTypeModel;
 
     public function __construct()
     {
-        $this->service = new ServiceCatalogService();
+        $this->service           = new ServiceCatalogService();
+        $this->documentTypeModel = new ServiceDocumentTypeModel();
+    }
+
+    /** GET /api/admin/service-catalog/document-types — options for the admin "generates" dropdown. */
+    public function documentTypes(Request $request, Response $response): never
+    {
+        $this->success($response, $this->documentTypeModel->listActive(), 'Document types fetched successfully.');
     }
 
     public function index(Request $request, Response $response): never

@@ -115,6 +115,7 @@ class ServiceCatalogService
             'requirements'            => json_encode($data['requirements'] ?? []),
             'required_attachments'    => json_encode($data['required_attachments'] ?? []),
             'document_template_type'  => $data['document_template_type'] ?? 'generic_service_letter',
+            'document_type_id'        => !empty($data['document_type_id']) ? (int)$data['document_type_id'] : null,
             'fee_amount'              => $data['fee_amount'] ?? 0,
             'fee_currency'            => $data['fee_currency'] ?? 'RWF',
             'requires_payment'        => !empty($data['requires_payment']) ? 1 : 0,
@@ -141,6 +142,9 @@ class ServiceCatalogService
             if (array_key_exists($field, $data)) {
                 $update[$field] = $data[$field];
             }
+        }
+        if (array_key_exists('document_type_id', $data)) {
+            $update['document_type_id'] = !empty($data['document_type_id']) ? (int)$data['document_type_id'] : null;
         }
         if (array_key_exists('requirements', $data)) {
             $update['requirements'] = json_encode($data['requirements']);

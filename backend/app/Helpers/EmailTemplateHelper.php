@@ -351,6 +351,40 @@ class EmailTemplateHelper
     }
 
     /**
+     * Template: service request status update — sent at every stage of the
+     * public service-request lifecycle (submitted, stage approved/rejected,
+     * changes requested, awaiting payment, payment confirmed, completed,
+     * cancelled). Always leads with the reference number so the applicant
+     * can track the request without needing an account.
+     */
+    public static function serviceRequestStatusTemplate(
+        string $name,
+        string $requestCode,
+        string $serviceName,
+        string $headline,
+        string $message
+    ): string {
+        $safeName     = htmlspecialchars($name);
+        $safeCode     = htmlspecialchars($requestCode);
+        $safeService  = htmlspecialchars($serviceName);
+        $safeHeadline = htmlspecialchars($headline);
+        $safeMessage  = nl2br(htmlspecialchars($message));
+
+        $content = "
+            Dear {$safeName},<br><br>
+            {$safeMessage}<br><br>
+            <div style='background-color: #f0f9ff; border: 1px solid #bae6fd; border-radius: 12px; padding: 20px; margin: 20px 0;'>
+                <p style='margin: 0 0 8px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: #0369a1;'>Reference Number</p>
+                <p style='margin: 0 0 6px 0; font-size: 18px; font-weight: 800; color: #0c4a6e; letter-spacing: 0.05em;'>{$safeCode}</p>
+                <p style='margin: 0; font-size: 13px; color: #0369a1;'>{$safeService}</p>
+            </div>
+            You can track the status of this request anytime using this reference number together with the phone, email, or ID you used to submit it.
+        ";
+
+        return self::wrap($safeHeadline, $content);
+    }
+
+    /**
      * Template for Password Reset.
      */
     public static function passwordResetTemplate(string $name, string $link): string

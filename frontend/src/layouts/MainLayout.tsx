@@ -31,7 +31,6 @@ import {
   Wallet,
   CalendarDays,
   Package,
-  ListChecks,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -533,21 +532,36 @@ const ADMIN_TREE: NavNode[] = [
     permissions: [PERMISSIONS.MANAGE_PERMISSIONS],
   },
   {
-    id: "service-catalog",
-    label: "Service Catalog",
+    id: "services",
+    label: "Services",
     icon: Package,
-    to: "/admin/service-catalog",
-    permissions: [PERMISSIONS.MANAGE_SERVICE_CATALOG],
-  },
-  {
-    id: "service-request-approvals",
-    label: "Service Request Approvals",
-    icon: ListChecks,
-    to: "/service-requests/queue",
     permissions: [
+      PERMISSIONS.MANAGE_SERVICE_CATALOG,
       PERMISSIONS.APPROVE_SERVICE_REQUEST_L1,
       PERMISSIONS.APPROVE_SERVICE_REQUEST_L2,
       PERMISSIONS.APPROVE_SERVICE_REQUEST_FINAL,
+      PERMISSIONS.VIEW_SERVICE_REQUESTS,
+    ],
+    children: [
+      {
+        to: "/admin/service-catalog",
+        label: "Service Catalog",
+        permissions: [PERMISSIONS.MANAGE_SERVICE_CATALOG],
+      },
+      {
+        to: "/service-requests/queue",
+        label: "Service Requests Approval",
+        permissions: [
+          PERMISSIONS.APPROVE_SERVICE_REQUEST_L1,
+          PERMISSIONS.APPROVE_SERVICE_REQUEST_L2,
+          PERMISSIONS.APPROVE_SERVICE_REQUEST_FINAL,
+        ],
+      },
+      {
+        to: "/service-requests/reports",
+        label: "Reports & Dashboard",
+        permissions: [PERMISSIONS.VIEW_SERVICE_REQUESTS],
+      },
     ],
   },
   {
@@ -669,6 +683,10 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
   "/service-requests/queue": {
     title: "Service Request Approvals",
     sub: "Requests awaiting a decision at your approval stage",
+  },
+  "/service-requests/reports": {
+    title: "Service Requests Report",
+    sub: "Volume, approval bottlenecks, revenue, and turnaround across all services",
   },
   "/my/service-requests": {
     title: "My Service Requests",
