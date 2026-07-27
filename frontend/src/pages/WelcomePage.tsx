@@ -263,6 +263,16 @@ const QUICK_ACTIONS: QA[] = [
       "bg-accent-lilac text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
     permissions: [PERMISSIONS.VIEW_FINANCE, PERMISSIONS.MANAGE_FINANCE],
   },
+
+  // Documents
+  {
+    to: "https://cur.ac.rw/umis/documents/",
+    icon: FileText,
+    label: "More Documents",
+    sub: "Access university documents",
+    accent:
+      "bg-accent-sky text-sky-700 dark:bg-sky-900/30 dark:text-sky-300",
+  },
 ];
 
 /* ─── main component ─────────────────────────────────────────────── */
@@ -417,6 +427,93 @@ export default function WelcomePage() {
       {/* ── quick actions ────────────────────────────────────────────── */}
       <div className="flex-1 bg-[rgb(var(--bg-app))] px-6 py-10">
         <div className="max-w-[1200px] mx-auto space-y-8">
+          {/* quick action cards grid */}
+          {actions.length > 0 && (
+            <motion.div
+              custom={4}
+              variants={fadeUp}
+              initial="hidden"
+              animate="visible"
+              className="space-y-3"
+            >
+              <div>
+                <h2 className="text-[15px] font-semibold text-ink-900 dark:text-white">
+                  Quick shortcuts
+                </h2>
+                <p className="text-[12.5px] text-ink-500 mt-0.5">
+                  Access common tasks and features
+                </p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {actions.map((action, idx) => {
+                  const Icon = action.icon;
+                  const isExternal = action.to.startsWith("http");
+
+                  if (isExternal) {
+                    return (
+                      <motion.a
+                        key={action.label}
+                        custom={5 + idx}
+                        variants={fadeUp}
+                        initial="hidden"
+                        animate="visible"
+                        href={action.to}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="group card p-4 flex items-center gap-3.5 hover:border-brand/40 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200"
+                      >
+                        <span
+                          className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${action.accent} transition-all group-hover:scale-110`}
+                        >
+                          <Icon className="w-[18px] h-[18px]" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[13.5px] font-semibold text-ink-900 dark:text-white leading-tight">
+                            {action.label}
+                          </p>
+                          <p className="text-[11.5px] text-ink-500 truncate mt-0.5">
+                            {action.sub}
+                          </p>
+                        </div>
+                        <ArrowRight className="w-3.5 h-3.5 text-ink-300 shrink-0 group-hover:text-brand group-hover:translate-x-0.5 transition-all" />
+                      </motion.a>
+                    );
+                  }
+
+                  return (
+                    <motion.div
+                      key={action.label}
+                      custom={5 + idx}
+                      variants={fadeUp}
+                      initial="hidden"
+                      animate="visible"
+                    >
+                      <Link
+                        to={action.to}
+                        className="group card p-4 flex items-center gap-3.5 hover:border-brand/40 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200"
+                      >
+                        <span
+                          className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${action.accent} transition-all group-hover:scale-110`}
+                        >
+                          <Icon className="w-[18px] h-[18px]" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[13.5px] font-semibold text-ink-900 dark:text-white leading-tight">
+                            {action.label}
+                          </p>
+                          <p className="text-[11.5px] text-ink-500 truncate mt-0.5">
+                            {action.sub}
+                          </p>
+                        </div>
+                        <ArrowRight className="w-3.5 h-3.5 text-ink-300 shrink-0 group-hover:text-brand group-hover:translate-x-0.5 transition-all" />
+                      </Link>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            </motion.div>
+          )}
+
           {/* bottom strip */}
           <motion.div
             custom={actions.length + 5}
