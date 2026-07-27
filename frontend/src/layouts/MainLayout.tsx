@@ -312,6 +312,7 @@ const NAV_TREE: NavNode[] = [
           PERMISSIONS.MANAGE_ACADEMIC_YEARS,
           PERMISSIONS.MANAGE_ACADEMIC_TERMS,
         ],
+        hideForRoles: ["student", "applicant"],
       },
       {
         to: "/academic/settings?tab=departments",
@@ -320,6 +321,7 @@ const NAV_TREE: NavNode[] = [
           PERMISSIONS.MANAGE_ACADEMIC_YEARS,
           PERMISSIONS.MANAGE_ACADEMIC_TERMS,
         ],
+        hideForRoles: ["student", "applicant"],
       },
       {
         to: "/academic/settings?tab=options",
@@ -328,6 +330,7 @@ const NAV_TREE: NavNode[] = [
           PERMISSIONS.MANAGE_ACADEMIC_YEARS,
           PERMISSIONS.MANAGE_ACADEMIC_TERMS,
         ],
+        hideForRoles: ["student", "applicant"],
       },
       {
         to: "/academic/settings?tab=modules",
@@ -336,6 +339,7 @@ const NAV_TREE: NavNode[] = [
           PERMISSIONS.MANAGE_ACADEMIC_YEARS,
           PERMISSIONS.MANAGE_ACADEMIC_TERMS,
         ],
+        hideForRoles: ["student", "applicant"],
       },
       {
         to: "/academic/settings?tab=scheduling",
@@ -344,6 +348,7 @@ const NAV_TREE: NavNode[] = [
           PERMISSIONS.MANAGE_ACADEMIC_YEARS,
           PERMISSIONS.MANAGE_ACADEMIC_TERMS,
         ],
+        hideForRoles: ["student", "applicant"],
       },
       {
         to: "/academic/settings?tab=registrations",
@@ -352,6 +357,7 @@ const NAV_TREE: NavNode[] = [
           PERMISSIONS.MANAGE_ACADEMIC_YEARS,
           PERMISSIONS.MANAGE_ACADEMIC_TERMS,
         ],
+        hideForRoles: ["student", "applicant"],
       },
       {
         to: "/academic/settings?tab=years-terms",
@@ -360,6 +366,7 @@ const NAV_TREE: NavNode[] = [
           PERMISSIONS.MANAGE_ACADEMIC_YEARS,
           PERMISSIONS.MANAGE_ACADEMIC_TERMS,
         ],
+        hideForRoles: ["student", "applicant"],
       },
     ],
   },
@@ -374,6 +381,7 @@ const NAV_TREE: NavNode[] = [
       PERMISSIONS.VIEW_FINANCE_STRUCTURES,
       PERMISSIONS.VIEW_FINANCE_BURSARIES,
     ],
+    hideForRoles: ["student", "applicant"],
     children: [
       {
         to: "/finance",

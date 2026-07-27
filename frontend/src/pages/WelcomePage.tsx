@@ -237,6 +237,7 @@ const QUICK_ACTIONS: QA[] = [
       PERMISSIONS.MANAGE_ACADEMIC_TERMS,
       PERMISSIONS.VIEW_SYSTEM_BASICS,
     ],
+    hideForRoles: ["student", "applicant"],
   },
 
   // HR
@@ -262,6 +263,7 @@ const QUICK_ACTIONS: QA[] = [
     accent:
       "bg-accent-lilac text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
     permissions: [PERMISSIONS.VIEW_FINANCE, PERMISSIONS.MANAGE_FINANCE],
+    hideForRoles: ["student", "applicant"],
   },
 
   // Documents
@@ -272,6 +274,7 @@ const QUICK_ACTIONS: QA[] = [
     sub: "Access university documents",
     accent:
       "bg-accent-sky text-sky-700 dark:bg-sky-900/30 dark:text-sky-300",
+    hideForRoles: ["student", "applicant"],
   },
 ];
 
