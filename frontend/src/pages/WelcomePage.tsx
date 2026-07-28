@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
@@ -22,6 +22,7 @@ import {
   AlertCircle,
   XCircle,
   Loader2,
+  X,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { PERMISSIONS } from "@/constants";
@@ -281,6 +282,7 @@ const QUICK_ACTIONS: QA[] = [
 /* ─── main component ─────────────────────────────────────────────── */
 export default function WelcomePage() {
   const { user } = useAuthStore();
+  const [showDocumentsModal, setShowDocumentsModal] = useState(false);
 
   const role = user?.role ?? "";
   const userPerms = user?.permissions ?? [];
@@ -451,6 +453,36 @@ export default function WelcomePage() {
                 {actions.map((action, idx) => {
                   const Icon = action.icon;
                   const isExternal = action.to.startsWith("http");
+                  const isDocumentsModal = action.label === "More Documents";
+
+                  if (isDocumentsModal) {
+                    return (
+                      <motion.button
+                        key={action.label}
+                        custom={5 + idx}
+                        variants={fadeUp}
+                        initial="hidden"
+                        animate="visible"
+                        onClick={() => setShowDocumentsModal(true)}
+                        className="group card p-4 flex items-center gap-3.5 hover:border-brand/40 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 text-left"
+                      >
+                        <span
+                          className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${action.accent} transition-all group-hover:scale-110`}
+                        >
+                          <Icon className="w-[18px] h-[18px]" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[13.5px] font-semibold text-ink-900 dark:text-white leading-tight">
+                            {action.label}
+                          </p>
+                          <p className="text-[11.5px] text-ink-500 truncate mt-0.5">
+                            {action.sub}
+                          </p>
+                        </div>
+                        <ArrowRight className="w-3.5 h-3.5 text-ink-300 shrink-0 group-hover:text-brand group-hover:translate-x-0.5 transition-all" />
+                      </motion.button>
+                    );
+                  }
 
                   if (isExternal) {
                     return (
@@ -541,6 +573,40 @@ export default function WelcomePage() {
           </motion.div>
         </div>
       </div>
+
+      {/* Documents Modal */}
+      {showDocumentsModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="bg-white dark:bg-ink-950 rounded-xl shadow-2xl w-full h-[90vh] flex flex-col max-w-[80%]"
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-6 border-b border-ink-200 dark:border-ink-800">
+              <h2 className="text-[18px] font-semibold text-ink-900 dark:text-white">
+                University Documents
+              </h2>
+              <button
+                onClick={() => setShowDocumentsModal(false)}
+                className="p-2 hover:bg-ink-100 dark:hover:bg-ink-800 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-ink-600 dark:text-ink-400" />
+              </button>
+            </div>
+
+            {/* Modal Content - iframe */}
+            <div className="flex-1 overflow-hidden">
+              <iframe
+                src="https://cur.ac.rw/umis/documents/"
+                title="University Documents"
+                className="w-full h-full border-0"
+              />
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }
