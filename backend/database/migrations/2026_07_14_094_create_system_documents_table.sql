@@ -20,4 +20,4 @@ CREATE TABLE IF NOT EXISTS `system_documents` (
   KEY `idx_is_active` (`is_active`),
   KEY `idx_uploaded_by` (`uploaded_by`),
   FOREIGN KEY (`uploaded_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

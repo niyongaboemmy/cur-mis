@@ -35,6 +35,6 @@ CREATE TABLE IF NOT EXISTS `fee_per_credit_rates` (
   INDEX `idx_fpcr_faculty` (`faculty_id`),
   CONSTRAINT `fk_fpcr_academic_year` FOREIGN KEY (`academic_year_id`) REFERENCES `academic_years` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_fpcr_faculty` FOREIGN KEY (`faculty_id`) REFERENCES `faculty` (`fac_id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 SET FOREIGN_KEY_CHECKS = 1;

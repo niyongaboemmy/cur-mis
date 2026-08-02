@@ -49,4 +49,4 @@ CREATE TABLE IF NOT EXISTS `postgraduate_international_fee_structures` (
   CONSTRAINT `fk_pgifs_department`    FOREIGN KEY (`department_id`)    REFERENCES `departements` (`dep_id`),
   CONSTRAINT `fk_pgifs_level`         FOREIGN KEY (`level_id`)         REFERENCES `levels` (`id`),
   CONSTRAINT `fk_pgifs_created_by`    FOREIGN KEY (`created_by`)       REFERENCES `users` (`id`) ON DELETE SET NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

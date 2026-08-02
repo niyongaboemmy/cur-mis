@@ -693,7 +693,7 @@ class AttendanceController extends BaseController
              $sessWhere
              GROUP BY st.regnumber, st.fname, st.lname
              HAVING total_records >= 1
-             ORDER BY (present_like / total_records) ASC, total_records DESC
+             ORDER BY (SUM(CASE WHEN r.status IN ('present','late') THEN 1 ELSE 0 END) / COUNT(*)) ASC, total_records DESC
              LIMIT 10",
             $sBindings
         );

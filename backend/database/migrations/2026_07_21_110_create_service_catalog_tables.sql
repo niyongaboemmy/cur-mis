@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS `service_catalog` (
   KEY `idx_service_catalog_active` (`is_active`),
   CONSTRAINT `fk_service_catalog_created_by` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_service_catalog_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE IF NOT EXISTS `service_catalog_stages` (
   `id`                        INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -48,4 +48,4 @@ CREATE TABLE IF NOT EXISTS `service_catalog_stages` (
   UNIQUE KEY `uq_service_catalog_stage_order` (`service_id`, `stage_order`),
   KEY `idx_service_catalog_stages_permission` (`required_permission_slug`),
   CONSTRAINT `fk_service_catalog_stages_service` FOREIGN KEY (`service_id`) REFERENCES `service_catalog` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

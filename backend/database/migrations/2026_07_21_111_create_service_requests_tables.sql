@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS `service_requests` (
   KEY `idx_service_requests_invoice` (`invoice_id`),
   CONSTRAINT `fk_service_requests_service` FOREIGN KEY (`service_id`) REFERENCES `service_catalog` (`id`),
   CONSTRAINT `fk_service_requests_requester` FOREIGN KEY (`requester_user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE IF NOT EXISTS `service_request_attachments` (
   `id`                 INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS `service_request_attachments` (
   PRIMARY KEY (`id`),
   KEY `idx_sra_request` (`service_request_id`),
   CONSTRAINT `fk_sra_request` FOREIGN KEY (`service_request_id`) REFERENCES `service_requests` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE IF NOT EXISTS `service_request_approvals` (
   `id`                 INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -68,4 +68,4 @@ CREATE TABLE IF NOT EXISTS `service_request_approvals` (
   PRIMARY KEY (`id`),
   KEY `idx_sra_approvals_request` (`service_request_id`),
   CONSTRAINT `fk_sra_approvals_request` FOREIGN KEY (`service_request_id`) REFERENCES `service_requests` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

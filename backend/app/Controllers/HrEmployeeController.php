@@ -257,12 +257,12 @@ class HrEmployeeController extends BaseController
         }
 
         $this->employeeModel->update($id, [
-            'employee_fname'    => trim($data['first_name']    ?? $row['employee_fname']),
-            'employee_lname'    => trim($data['last_name']     ?? $row['employee_lname']),
+            'employee_fname'    => trim((string)($data['first_name']    ?? $row['employee_fname'])),
+            'employee_lname'    => trim((string)($data['last_name']     ?? $row['employee_lname'])),
             'employee_gender'   => $data['gender']             ?? $row['employee_gender'],
-            'employee_post'     => trim($data['department']    ?? $row['employee_post']),
-            'employee_position' => trim($data['position']      ?? $row['employee_position']),
-            'employee_status'   => trim($data['contract_type'] ?? $row['employee_status']),
+            'employee_post'     => trim((string)($data['department']    ?? $row['employee_post'])),
+            'employee_position' => trim((string)($data['position']      ?? $row['employee_position'])),
+            'employee_status'   => trim((string)($data['contract_type'] ?? $row['employee_status'])),
             'account_status'    => $data['status']             ?? $row['account_status'],
             'employee_phone'    => $data['phone']              ?? $row['employee_phone'],
             'employee_idcard'   => trim($data['emp_code']      ?? $row['employee_idcard']),

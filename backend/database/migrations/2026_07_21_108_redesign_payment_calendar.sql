@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS `payment_calendar_documents` (
   CONSTRAINT `fk_pcd_academic_year` FOREIGN KEY (`academic_year_id`) REFERENCES `academic_years` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_pcd_faculty` FOREIGN KEY (`faculty_id`) REFERENCES `faculty` (`fac_id`) ON DELETE SET NULL,
   CONSTRAINT `fk_pcd_created_by` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE IF NOT EXISTS `payment_calendar_items` (
   `id`               INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -62,4 +62,4 @@ CREATE TABLE IF NOT EXISTS `payment_calendar_items` (
   KEY `idx_pci_event_type` (`event_type`),
   KEY `idx_pci_deadline_date` (`deadline_date`),
   CONSTRAINT `fk_pci_document` FOREIGN KEY (`document_id`) REFERENCES `payment_calendar_documents` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
