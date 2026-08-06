@@ -30,7 +30,7 @@ export default function DocumentGenerationPage() {
         onClose={() => setOpen(false)}
         title="Generate Official Documents"
         size="full"
-        className="w-[80vw] max-w-[80vw] h-[85vh]"
+        className="w-[65vw] max-w-[65vw] h-[85vh]"
       >
         <iframe
           src="https://cur.ac.rw/umis/documents/"
