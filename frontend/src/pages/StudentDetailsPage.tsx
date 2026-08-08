@@ -3839,7 +3839,7 @@ function KpiCard({
   );
 }
 
-function DocumentUploadSection({ studentId }: { studentId: number }) {
+function DocumentUploadSection() {
   const qc = useQueryClient();
   const [selectedDocType, setSelectedDocType] = useState("");
   const [showUploadForm, setShowUploadForm] = useState(false);
@@ -4076,7 +4076,7 @@ function DocumentsTab({
       )}
 
       {selfMode && canUpload && (
-        <DocumentUploadSection studentId={studentId} />
+        <DocumentUploadSection />
       )}
     </div>
   );

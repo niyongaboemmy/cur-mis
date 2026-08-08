@@ -299,6 +299,7 @@ export interface StudentDocumentsResponse {
   application_id:   number | null
   documents:        ApplicationDocument[]
   admission_offer:  AdmissionOfferSummary | null
+  can_upload?:      boolean
 }
 
 export const studentService = {
