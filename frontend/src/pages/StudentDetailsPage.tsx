@@ -3839,6 +3839,117 @@ function KpiCard({
   );
 }
 
+function DocumentUploadSection({ studentId }: { studentId: number }) {
+  const qc = useQueryClient();
+  const [selectedDocType, setSelectedDocType] = useState("");
+  const [showUploadForm, setShowUploadForm] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const uploadMutation = useMutation({
+    mutationFn: (file: File) => {
+      const formData = new FormData();
+      formData.append("document", file);
+      formData.append("document_type_id", selectedDocType);
+      return studentService.meUploadDocument(formData as any);
+    },
+    onSuccess: () => {
+      toast.success("Document uploaded successfully.");
+      setShowUploadForm(false);
+      setSelectedDocType("");
+      if (fileRef.current) fileRef.current.value = "";
+      qc.invalidateQueries({ queryKey: ["student-documents", "me"] });
+    },
+    onError: (err: any) =>
+      toast.error(err?.response?.data?.message ?? "Failed to upload document."),
+  });
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && selectedDocType) {
+      uploadMutation.mutate(file);
+    }
+  };
+
+  return (
+    <div className="card p-6">
+      {!showUploadForm ? (
+        <button
+          type="button"
+          onClick={() => setShowUploadForm(true)}
+          className="w-full btn btn-primary flex items-center justify-center gap-2 py-3"
+        >
+          <UploadCloud className="w-4 h-4" />
+          Upload Document
+        </button>
+      ) : (
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-semibold text-ink-900 dark:text-white mb-2">
+              Document Type
+            </label>
+            <select
+              value={selectedDocType}
+              onChange={(e) => setSelectedDocType(e.target.value)}
+              className="input w-full"
+            >
+              <option value="">Select a document type...</option>
+              <option value="1">National ID</option>
+              <option value="2">Passport</option>
+              <option value="3">Birth Certificate</option>
+              <option value="4">High School Diploma</option>
+              <option value="5">Academic Transcript</option>
+              <option value="6">Medical Certificate</option>
+              <option value="7">Other</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-ink-900 dark:text-white mb-2">
+              Select File
+            </label>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+              onChange={handleFileSelect}
+              disabled={!selectedDocType || uploadMutation.isPending}
+              className="input w-full"
+            />
+            <p className="text-xs text-ink-500 mt-1">
+              Accepted formats: PDF, JPG, PNG, DOC, DOCX
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setShowUploadForm(false);
+                setSelectedDocType("");
+              }}
+              disabled={uploadMutation.isPending}
+              className="flex-1 btn btn-secondary"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              disabled={!selectedDocType || uploadMutation.isPending}
+              className="flex-1 btn btn-primary flex items-center justify-center gap-2"
+            >
+              {uploadMutation.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <UploadCloud className="w-4 h-4" />
+              )}
+              {uploadMutation.isPending ? "Uploading..." : "Select & Upload"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DocumentsTab({
   student,
   selfMode = false,
@@ -3879,8 +3990,9 @@ function DocumentsTab({
   const applicationId = docsQ.data?.data?.application_id ?? null;
   const documents = docsQ.data?.data?.documents ?? [];
   const offer = docsQ.data?.data?.admission_offer ?? null;
+  const canUpload = docsQ.data?.data?.can_upload ?? false;
 
-  if (!applicationId && !offer) {
+  if (!applicationId && !offer && !canUpload) {
     return (
       <div className="card p-12 flex flex-col items-center justify-center text-center">
         <div className="w-16 h-16 rounded-full bg-ink-100 dark:bg-ink-800 flex items-center justify-center text-ink-400 mb-4">
@@ -3938,7 +4050,13 @@ function DocumentsTab({
 
       {offer && <AdmissionLetterRow offer={offer} />}
 
-      {documents.length === 0 ? (
+      {documents.length === 0 && !applicationId ? (
+        <div className="card p-8 text-center text-ink-500 text-sm">
+          {selfMode
+            ? "No documents have been attached to your profile yet."
+            : "No documents have been attached to this student's profile yet."}
+        </div>
+      ) : documents.length === 0 ? (
         <div className="card p-8 text-center text-ink-500 text-sm">
           {selfMode
             ? "No documents have been attached to your admission application."
@@ -3955,6 +4073,10 @@ function DocumentsTab({
             />
           ))}
         </div>
+      )}
+
+      {selfMode && canUpload && (
+        <DocumentUploadSection studentId={studentId} />
       )}
     </div>
   );

@@ -539,6 +539,18 @@ export const studentService = {
     }>(`/api/students/me/visa/document`, form)
   },
 
+  /** Self-service: upload a document (PDF/JPG/PNG/DOC/DOCX) to the student profile,
+   *  without requiring an admission application. */
+  meUploadDocument: (formData: FormData) => {
+    return api.upload<{
+      document_id:         string
+      file_server_id:      string
+      file_original_name:  string
+      file_mime:           string
+      file_size:           number
+    }>(`/api/students/me/documents`, formData)
+  },
+
   /** Self-service: tokenized download URL for the caller's own visa file.
    *  Used by the synthetic Visa row in the Documents tab. */
   meVisaDocumentUrl: () => {
