@@ -21,6 +21,7 @@ $router->group('/api/students', function ($router) {
     $router->get('/me/photo',                           [StudentController::class, 'downloadMyPhoto']);
     $router->post('/me/photo',                          [StudentController::class, 'uploadMyPhoto']);
     $router->get('/me/documents',                       [StudentController::class, 'meDocuments']);
+    $router->post('/me/documents',                      [StudentController::class, 'meUploadDocument']);
     $router->get('/me/documents/:document_id/download', [StudentController::class, 'meDownloadDocument']);
     $router->get('/me/program-modules',                 [StudentController::class, 'meProgramModules']);
     // Self-service visa for international students.

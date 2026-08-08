@@ -439,13 +439,43 @@ class StudentController extends BaseController
         }
         $student['application'] = $application;
 
+        // Enrich student with joined faculty, department, and program names
+        $student['faculty_name'] = null;
+        $student['department_name'] = null;
+        $student['program_name'] = null;
+
+        if (!empty($student['faculty'])) {
+            $facultyModel = new FacultyModel();
+            $faculty = $facultyModel->findBy('fac_id', $student['faculty']);
+            if ($faculty) {
+                $student['faculty_name'] = $faculty['fac_name'] ?? null;
+            }
+        }
+
+        if (!empty($student['department'])) {
+            $deptModel = new DepartmentModel();
+            $dept = $deptModel->findBy('dep_id', $student['department']);
+            if ($dept) {
+                $student['department_name'] = $dept['dep_name'] ?? null;
+            }
+        }
+
+        if (!empty($student['std_option'])) {
+            $optionModel = new OptionModel();
+            $option = $optionModel->find($student['std_option']);
+            if ($option) {
+                $student['program_name'] = $option['name'] ?? null;
+            }
+        }
+
         $this->success($response, $student, 'Student profile fetched.');
     }
 
     /**
      * GET /api/students/me/documents
      * Self-service: documents uploaded by the authenticated student during
-     * their admission application. Mirrors `documents()` but doesn't require
+     * their admission application, or documents they've uploaded directly to
+     * their student profile. Mirrors `documents()` but doesn't require
      * VIEW_STUDENTS — the row is auto-resolved to the caller.
      */
     public function meDocuments(Request $request, Response $response): never
@@ -469,6 +499,7 @@ class StudentController extends BaseController
             'application_id'  => $applicationId,
             'documents'       => $documents,
             'admission_offer' => $offer,
+            'can_upload'      => true,
         ], 'Documents fetched successfully.');
     }
 
@@ -3904,6 +3935,61 @@ class StudentController extends BaseController
      * yet, a minimal placeholder one is created so the file isn't orphaned;
      * the student can fill in the dates afterwards via meAddVisa().
      */
+    /**
+     * POST /api/students/me/documents
+     * Self-service: students upload required documents directly to their student
+     * profile, without requiring an admission application. Allows students who
+     * were not enrolled through the admissions portal to still upload documents.
+     */
+    public function meUploadDocument(Request $request, Response $response): never
+    {
+        $student   = $this->resolveSelfStudent($request, $response);
+        $studentId = (int)$student['id'];
+
+        $documentTypeId = (int)($request->input('document_type_id') ?? 0);
+        if ($documentTypeId <= 0) {
+            $this->error($response, 'document_type_id is required and must be a positive integer.', 422);
+        }
+
+        $file = $request->file('document');
+        if (!$file) {
+            $this->error($response, 'No file provided. Upload field must be named "document".', 422);
+        }
+
+        $allowed = ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx'];
+        $ext     = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        if (!in_array($ext, $allowed, true)) {
+            $this->error($response, "Invalid file type '{$ext}'. Allowed: " . implode(', ', $allowed), 422);
+        }
+
+        try {
+            $client   = new FileServerClient();
+            $uploaded = $client->upload($file);
+        } catch (\RuntimeException $e) {
+            $this->error($response, $e->getMessage(), 422);
+        }
+
+        $documentId = $this->docModel->upsertForProfile(
+            $studentId,
+            $documentTypeId,
+            [
+                'file_server_id'   => (string)$uploaded['id'],
+                'file_original_name' => $uploaded['original_name'],
+                'file_size'        => (int)$uploaded['size'],
+                'file_mime'        => $uploaded['mime'],
+                'verification_status' => 'pending',
+            ]
+        );
+
+        $this->success($response, [
+            'document_id'       => $documentId,
+            'file_server_id'    => (string)$uploaded['id'],
+            'file_original_name'=> $uploaded['original_name'],
+            'file_mime'         => $uploaded['mime'],
+            'file_size'         => (int)$uploaded['size'],
+        ], 'Document uploaded.', 201);
+    }
+
     public function meUploadVisaDocument(Request $request, Response $response): never
     {
         $student   = $this->resolveSelfStudent($request, $response);
