@@ -119,6 +119,15 @@ const NAV_TREE: NavNode[] = [
     permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL],
   },
   {
+    id: "student-services",
+    label: "Services",
+    icon: Briefcase,
+    to: "/my/service-requests",
+    // Role-scoped: enrolled students can request services.
+    roles: ["student"],
+    permissions: [PERMISSIONS.ACCESS_STUDENT_PORTAL],
+  },
+  {
     id: "applicant-dashboard",
     label: "Applications",
     icon: LayoutDashboard,
