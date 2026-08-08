@@ -77,7 +77,7 @@ export default function LoginPage() {
               onClick={() => setShowDocumentsModal(true)}
               className="px-3 py-1.5 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-xs font-semibold whitespace-nowrap transition-colors"
             >
-              Documents
+              Activate Account
             </button>
           </div>
         </div>
@@ -116,7 +116,7 @@ export default function LoginPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-3xl h-[85vh] flex flex-col overflow-hidden">
             <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-gray-800">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Student Documents</h2>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Activate Account</h2>
               <button
                 onClick={() => setShowDocumentsModal(false)}
                 className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
