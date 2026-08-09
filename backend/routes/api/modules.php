@@ -57,7 +57,6 @@ $router->group('/api/modules', function ($router) {
         $r->get('/registrations',  [ModulesManagementController::class, 'myRegistrations']);
         // Personal exam timetable for the My Exams sub-menu.
         $r->get('/exams',          [ModulesManagementController::class, 'myExams']);
-        $r->get('/teaching',       [ModulesManagementController::class, 'myTeachingModules']);
         $r->post('/register',      [ModulesManagementController::class, 'selfRegister']);
         $r->post('/drop/:id',      [ModulesManagementController::class, 'selfDrop']);
     }, [new PermissionMiddleware(Permissions::VIEW_MY_MODULES)]);
