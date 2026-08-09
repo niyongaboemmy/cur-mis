@@ -492,6 +492,52 @@ class ModulesManagementController extends BaseController
         if (!$termId) {
             $this->error($response, 'term_id is required.', 422);
         }
+
+        $user = $this->authUser($request);
+        $userId = (int)($user['id'] ?? 0);
+
+        // If user is a teacher, return their assigned teaching modules
+        if (!empty($user['role']) && in_array($user['role'], ['lecturer', 'staff'], true) && $userId > 0) {
+            $off = 1000000; // InstructorDirectory::USER_OFFSET
+            $staffId = $off + $userId;
+
+            $rows = $this->assignments->db()->fetchAll(
+                "SELECT
+                    a.id as assignment_id,
+                    m.module_id,
+                    m.module_code,
+                    m.module_name,
+                    m.module_credits,
+                    t.label AS term_label,
+                    t.id as term_id,
+                    a.role,
+                    a.hours_per_week
+                 FROM `module_assignments` a
+                 JOIN `modules` m ON m.module_id = a.module_id
+                 LEFT JOIN `academic_terms` t ON t.id = a.academic_term_id
+                 WHERE a.staff_id = ? AND a.academic_term_id = ?
+                 ORDER BY m.module_code ASC",
+                [$staffId, $termId],
+            );
+
+            $out = [];
+            foreach ($rows as $r) {
+                $out[] = [
+                    'assignment_id'    => (int)$r['assignment_id'],
+                    'module_id'        => (int)$r['module_id'],
+                    'module_code'      => (string)$r['module_code'],
+                    'module_name'      => (string)$r['module_name'],
+                    'module_credits'   => $r['module_credits'] !== null ? (int)$r['module_credits'] : null,
+                    'term_label'       => $r['term_label'] ?? null,
+                    'term_id'          => $r['term_id'] !== null ? (int)$r['term_id'] : null,
+                    'role'             => $r['role'] ?? null,
+                    'hours_per_week'   => $r['hours_per_week'] !== null ? (float)$r['hours_per_week'] : null,
+                ];
+            }
+            $this->success($response, $out, 'My teaching modules fetched.');
+        }
+
+        // Otherwise, return eligible modules for students
         $reg = $this->studentRegnumber($request);
         if (!$reg) {
             $this->error($response, 'No student record linked to this account.', 400);
