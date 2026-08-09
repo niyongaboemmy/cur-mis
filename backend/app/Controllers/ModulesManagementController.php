@@ -637,6 +637,69 @@ class ModulesManagementController extends BaseController
         $this->success($response, $out, 'My exam timetable fetched.');
     }
 
+    /**
+     * GET /api/modules/my/teaching[?term_id=]
+     *
+     * Returns the authenticated user's assigned teaching modules (if they are
+     * a staff member). Returns an array of assignments with module details.
+     */
+    public function myTeachingModules(Request $request, Response $response): never
+    {
+        $termId = (int)($request->query('term_id') ?? 0);
+        $user = $this->authUser($request);
+        $userId = (int)($user['id'] ?? 0);
+
+        if (!$userId) {
+            $this->error($response, 'No user record linked to this account.', 400);
+        }
+
+        $off = 1000000; // InstructorDirectory::USER_OFFSET
+        $staffId = $off + $userId;
+
+        $args  = [$staffId];
+        $where = ['a.staff_id = ?'];
+        if ($termId > 0) {
+            $where[] = 'a.academic_term_id = ?';
+            $args[]  = $termId;
+        }
+        $whereSql = 'WHERE ' . implode(' AND ', $where);
+
+        $rows = $this->assignments->db()->fetchAll(
+            "SELECT
+                a.id as assignment_id,
+                m.module_id,
+                m.module_code,
+                m.module_name,
+                m.module_credits,
+                t.label AS term_label,
+                t.id as term_id,
+                a.role,
+                a.hours_per_week
+             FROM `module_assignments` a
+             JOIN `modules` m ON m.module_id = a.module_id
+             LEFT JOIN `academic_terms` t ON t.id = a.academic_term_id
+             {$whereSql}
+             ORDER BY a.academic_term_id DESC, m.module_code ASC",
+            $args,
+        );
+
+        $out = [];
+        foreach ($rows as $r) {
+            $out[] = [
+                'assignment_id'    => (int)$r['assignment_id'],
+                'module_id'        => (int)$r['module_id'],
+                'module_code'      => (string)$r['module_code'],
+                'module_name'      => (string)$r['module_name'],
+                'module_credits'   => $r['module_credits'] !== null ? (int)$r['module_credits'] : null,
+                'term_label'       => $r['term_label'] ?? null,
+                'term_id'          => $r['term_id'] !== null ? (int)$r['term_id'] : null,
+                'role'             => $r['role'] ?? null,
+                'hours_per_week'   => $r['hours_per_week'] !== null ? (float)$r['hours_per_week'] : null,
+            ];
+        }
+        $this->success($response, $out, 'My teaching modules fetched.');
+    }
+
     public function selfDrop(Request $request, Response $response): never
     {
         $id = (int)$request->param('id');

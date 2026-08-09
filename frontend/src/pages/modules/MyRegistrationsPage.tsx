@@ -3,10 +3,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import { CalendarClock, CheckCircle2, Loader2, GraduationCap, Calendar, ClipboardList, Download, Scale, AlertTriangle, FileText, X } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { myModulesService, type MyExamRow } from '@/services/modulesService'
+import { myModulesService, type MyExamRow, type TeachingModule } from '@/services/modulesService'
 import { academicService } from '@/services/academicService'
 import { marksService } from '@/services/marksService'
 import { gradeService } from '@/services/gradeService'
+import { useAuthStore } from '@/store/authStore'
 import {
   revaluationService, STATUS_LABELS,
   type Revaluation, type BacklogRow,
@@ -20,6 +21,8 @@ const VALID_TABS: readonly Tab[] = ['available', 'mine', 'exams', 'marks', 'reva
 
 export default function MyRegistrationsPage() {
   const qc = useQueryClient()
+  const user = useAuthStore((s) => s.user)
+  const isTeacher = user?.role === 'lecturer' || user?.role === 'staff'
 
   const [sp, setSp] = useSearchParams()
 
@@ -50,9 +53,9 @@ export default function MyRegistrationsPage() {
 
   const eligibleQ = useQuery({
     queryKey: ['my-modules', 'eligible', termId],
-    queryFn: () => myModulesService.eligible(termId),
+    queryFn: async () => isTeacher ? myModulesService.teaching({ term_id: termId }) : myModulesService.eligible(termId),
     enabled: !!termId && tab === 'available',
-  })
+  }) as any
 
   const mineQ = useQuery({
     queryKey: ['my-modules', 'registrations', termId],
@@ -120,12 +123,17 @@ export default function MyRegistrationsPage() {
   const marksRows = marksData?.rows ?? []
   const marksTotals = marksData?.totals
 
+  const pageTitle = isTeacher ? 'My Teaching Modules' : 'My modules'
+  const pageSubtitle = isTeacher
+    ? 'Modules assigned to you for teaching this term.'
+    : 'Register for the modules you are eligible to take this term.'
+
   return (
     <div className="max-w-[1200px] mx-auto space-y-4 animate-fade-in">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h2 className="text-lg font-bold text-ink-900 dark:text-white">My modules</h2>
-          <p className="text-[13px] text-ink-500">Register for the modules you are eligible to take this term.</p>
+          <h2 className="text-lg font-bold text-ink-900 dark:text-white">{pageTitle}</h2>
+          <p className="text-[13px] text-ink-500">{pageSubtitle}</p>
         </div>
         <select className="input input-sm w-56" value={termId || ''} onChange={(e) => setTermId(Number(e.target.value))}>
           <option value="" disabled>Select term…</option>
@@ -143,32 +151,36 @@ export default function MyRegistrationsPage() {
           className={`px-3 py-1.5 text-[13px] rounded-md ${tab === 'available' ? 'bg-brand/10 text-brand font-semibold' : 'text-ink-600'}`}
           onClick={() => setTab('available')}
         >
-          <Calendar className="w-3.5 h-3.5 inline mr-1" /> Available
+          <Calendar className="w-3.5 h-3.5 inline mr-1" /> {isTeacher ? 'Teaching Modules' : 'Available'}
         </button>
-        <button
-          className={`px-3 py-1.5 text-[13px] rounded-md ${tab === 'mine' ? 'bg-brand/10 text-brand font-semibold' : 'text-ink-600'}`}
-          onClick={() => setTab('mine')}
-        >
-          <GraduationCap className="w-3.5 h-3.5 inline mr-1" /> My registrations
-        </button>
-        <button
-          className={`px-3 py-1.5 text-[13px] rounded-md ${tab === 'exams' ? 'bg-brand/10 text-brand font-semibold' : 'text-ink-600'}`}
-          onClick={() => setTab('exams')}
-        >
-          <CalendarClock className="w-3.5 h-3.5 inline mr-1" /> My exams
-        </button>
-        <button
-          className={`px-3 py-1.5 text-[13px] rounded-md ${tab === 'marks' ? 'bg-brand/10 text-brand font-semibold' : 'text-ink-600'}`}
-          onClick={() => setTab('marks')}
-        >
-          <ClipboardList className="w-3.5 h-3.5 inline mr-1" /> My marks
-        </button>
-        <button
-          className={`px-3 py-1.5 text-[13px] rounded-md ${tab === 'revaluation' ? 'bg-brand/10 text-brand font-semibold' : 'text-ink-600'}`}
-          onClick={() => setTab('revaluation')}
-        >
-          <Scale className="w-3.5 h-3.5 inline mr-1" /> Revaluation & backlog
-        </button>
+        {!isTeacher && (
+          <>
+            <button
+              className={`px-3 py-1.5 text-[13px] rounded-md ${tab === 'mine' ? 'bg-brand/10 text-brand font-semibold' : 'text-ink-600'}`}
+              onClick={() => setTab('mine')}
+            >
+              <GraduationCap className="w-3.5 h-3.5 inline mr-1" /> My registrations
+            </button>
+            <button
+              className={`px-3 py-1.5 text-[13px] rounded-md ${tab === 'exams' ? 'bg-brand/10 text-brand font-semibold' : 'text-ink-600'}`}
+              onClick={() => setTab('exams')}
+            >
+              <CalendarClock className="w-3.5 h-3.5 inline mr-1" /> My exams
+            </button>
+            <button
+              className={`px-3 py-1.5 text-[13px] rounded-md ${tab === 'marks' ? 'bg-brand/10 text-brand font-semibold' : 'text-ink-600'}`}
+              onClick={() => setTab('marks')}
+            >
+              <ClipboardList className="w-3.5 h-3.5 inline mr-1" /> My marks
+            </button>
+            <button
+              className={`px-3 py-1.5 text-[13px] rounded-md ${tab === 'revaluation' ? 'bg-brand/10 text-brand font-semibold' : 'text-ink-600'}`}
+              onClick={() => setTab('revaluation')}
+            >
+              <Scale className="w-3.5 h-3.5 inline mr-1" /> Revaluation & backlog
+            </button>
+          </>
+        )}
       </div>
 
       {tab === 'revaluation' ? (
@@ -196,7 +208,9 @@ export default function MyRegistrationsPage() {
         )
       ) : !termId ? (
         <div className="card p-8 text-center text-ink-400">Pick an academic term to continue.</div>
-      ) : tab === 'available' ? (
+      ) : tab === 'available' ? isTeacher ? (
+        <TeachingModulesTab loading={eligibleQ.isLoading} rows={eligible as TeachingModule[]} />
+      ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {eligibleQ.isLoading ? (
             <div className="col-span-full card p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-brand" /></div>
@@ -748,6 +762,49 @@ function MyRevaluationTab({ loadingReq, loadingBacklog, requests, backlog }: MyR
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+/* ─── Teaching Modules tab ──────────────────────────────────────────────── */
+
+function TeachingModulesTab({ loading, rows }: { loading: boolean; rows: TeachingModule[] }) {
+  if (loading) {
+    return <div className="card p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-brand" /></div>
+  }
+  if (rows.length === 0) {
+    return (
+      <div className="card p-8 text-center text-ink-400">
+        You have no modules assigned for teaching in this term. Contact your administrator if you believe this is incorrect.
+      </div>
+    )
+  }
+
+  return (
+    <div className="card overflow-hidden">
+      <table className="w-full text-left text-[13px]">
+        <thead>
+          <tr className="bg-ink-50 dark:bg-ink-800/50 border-b border-ink-100 dark:border-ink-700">
+            <th className="px-4 py-2.5 font-bold text-ink-400 text-[10px] uppercase">Module</th>
+            <th className="px-4 py-2.5 font-bold text-ink-400 text-[10px] uppercase">Credits</th>
+            <th className="px-4 py-2.5 font-bold text-ink-400 text-[10px] uppercase">Role</th>
+            <th className="px-4 py-2.5 font-bold text-ink-400 text-[10px] uppercase text-right">Hours/Week</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-ink-100 dark:divide-ink-700">
+          {rows.map((r) => (
+            <tr key={r.assignment_id} className="hover:bg-ink-50/50 dark:hover:bg-ink-700/20">
+              <td className="px-4 py-3">
+                <span className="font-mono">{r.module_code}</span>
+                <span className="text-ink-500 ml-1">— {r.module_name}</span>
+              </td>
+              <td className="px-4 py-3">{r.module_credits ?? '—'}</td>
+              <td className="px-4 py-3 capitalize">{r.role ?? '—'}</td>
+              <td className="px-4 py-3 text-right">{r.hours_per_week ?? '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }

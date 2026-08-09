@@ -130,6 +130,18 @@ export interface MyExamRow {
   notes:            string | null
 }
 
+export interface TeachingModule {
+  assignment_id: number
+  module_id: number
+  module_code: string
+  module_name: string
+  module_credits?: number | null
+  term_label?: string | null
+  term_id?: number | null
+  role?: string | null
+  hours_per_week?: number | null
+}
+
 export const myModulesService = {
   eligible: (term_id: number, signal?: AbortSignal) =>
     api.get<Module[]>('/api/modules/my/eligible', { term_id }, signal),
@@ -144,6 +156,12 @@ export const myModulesService = {
    */
   exams: (params: { term_id?: number } = {}, signal?: AbortSignal) =>
     api.get<MyExamRow[]>('/api/modules/my/exams', params, signal),
+
+  /**
+   * Teacher-facing modules: every module assigned to this user for teaching.
+   */
+  teaching: (params: { term_id?: number } = {}, signal?: AbortSignal) =>
+    api.get<TeachingModule[]>('/api/modules/my/teaching', params, signal),
 
   register: (data: SelfRegisterPayload) =>
     api.post<{ id: number }>('/api/modules/my/register', data),
