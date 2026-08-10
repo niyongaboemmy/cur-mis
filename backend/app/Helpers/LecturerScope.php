@@ -110,7 +110,44 @@ final class LecturerScope
             $sql .= " AND a.`academic_term_id` = ?";
             $args[] = $termId;
         }
-        return array_map(static fn ($r) => (int)$r['module_id'], $db->fetchAll($sql, $args));
+        $ids = array_map(static fn ($r) => (int)$r['module_id'], $db->fetchAll($sql, $args));
+
+        // Also count the timetable. Academics -> Scheduling assigns an instructor
+        // by writing `module_offerings.instructor_id` and never creates a
+        // `module_assignments` row, so a lecturer scheduled to teach a module was
+        // invisible to the whole portal until someone separately created an
+        // assignment. Same namespaced id space, so the same candidates apply.
+        foreach (self::offeringModuleIds($db, $userId) as $mid) {
+            $ids[] = $mid;
+        }
+
+        return array_values(array_unique($ids));
+    }
+
+    /**
+     * Module ids this user is the scheduled instructor for, from the timetable
+     * (`module_offerings.instructor_id`). Offerings carry no academic_term_id,
+     * so they are not term-filterable here.
+     *
+     * @return int[]
+     */
+    public static function offeringModuleIds(Database $db, int $userId): array
+    {
+        $candidates = self::staffIdCandidates($db, $userId);
+        if ($candidates === []) {
+            return [];
+        }
+        try {
+            $ph   = implode(',', array_fill(0, count($candidates), '?'));
+            $rows = $db->fetchAll(
+                "SELECT DISTINCT `module_id` FROM `module_offerings`
+                  WHERE `instructor_id` IN ($ph)",
+                $candidates
+            );
+            return array_map(static fn ($r) => (int)$r['module_id'], $rows);
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     /**
@@ -144,7 +181,61 @@ final class LecturerScope
         }
         $sql .= " ORDER BY a.`academic_term_id` DESC, m.`module_code` ASC";
 
-        return $db->fetchAll($sql, $args);
+        $rows = $db->fetchAll($sql, $args);
+        $have = [];
+        foreach ($rows as $r) {
+            $have[(int)$r['module_id']] = true;
+        }
+
+        // Modules this user is the scheduled instructor for but which have no
+        // module_assignments row (Academics -> Scheduling only writes the
+        // timetable). Synthesised so the portal lists them the moment they are
+        // scheduled; assignment_id 0 marks the row as timetable-derived.
+        $extra = array_values(array_filter(
+            self::offeringModuleIds($db, $userId),
+            static fn ($mid) => !isset($have[$mid])
+        ));
+
+        if ($extra !== []) {
+            // Offerings carry no term, so attribute them to the current term —
+            // that is the term the rest of the portal reads for enrolment,
+            // attendance and marks.
+            $cur = $db->fetchOne(
+                "SELECT id, academic_year_id, label FROM `academic_terms`
+                  WHERE is_current = 1 ORDER BY id ASC LIMIT 1"
+            ) ?: null;
+            $curId = $cur ? (int)$cur['id'] : 0;
+
+            // Respect an explicit term filter: a timetable-derived course only
+            // belongs to the current term.
+            if ($termId === null || $termId <= 0 || $termId === $curId) {
+                $ph  = implode(',', array_fill(0, count($extra), '?'));
+                foreach ($db->fetchAll(
+                    "SELECT m.module_id, m.module_code, m.module_name, m.module_credits,
+                            m.department AS department_id, m.level
+                     FROM `modules` m WHERE m.module_id IN ($ph)
+                     ORDER BY m.module_code ASC",
+                    $extra
+                ) as $m) {
+                    $rows[] = [
+                        'assignment_id'  => 0,
+                        'module_id'      => (int)$m['module_id'],
+                        'role'           => 'primary',
+                        'hours_per_week' => null,
+                        'term_id'        => $curId,
+                        'year_id'        => $cur['academic_year_id'] ?? null,
+                        'module_code'    => $m['module_code'],
+                        'module_name'    => $m['module_name'],
+                        'module_credits' => $m['module_credits'],
+                        'department_id'  => $m['department_id'],
+                        'level'          => $m['level'],
+                        'term_label'     => $cur['label'] ?? null,
+                    ];
+                }
+            }
+        }
+
+        return $rows;
     }
 
     /** True when this user is assigned to the given module (any term). */

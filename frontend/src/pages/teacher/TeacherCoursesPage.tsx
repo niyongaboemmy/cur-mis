@@ -474,7 +474,7 @@ export default function TeacherCoursesPage() {
       ) : view === 'grid' ? (
         <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
           {courses.map((c) => (
-            <CourseCard key={c.assignment_id} c={c} />
+            <CourseCard key={`${c.module_id}-${c.term_id}`} c={c} />
           ))}
         </div>
       ) : (
@@ -493,7 +493,7 @@ export default function TeacherCoursesPage() {
             <tbody className="divide-y divide-ink-100 dark:divide-ink-700">
               {courses.map((c) => (
                 <CourseRow
-                  key={c.assignment_id}
+                  key={`${c.module_id}-${c.term_id}`}
                   c={c}
                   onOpen={(x) => navigate(`/teacher/courses/${x.module_id}`)}
                 />

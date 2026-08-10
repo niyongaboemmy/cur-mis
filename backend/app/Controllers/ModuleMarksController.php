@@ -179,16 +179,24 @@ class ModuleMarksController extends BaseController
             if ($uid <= 0) {
                 $this->success($response, [], 'No user record linked to this account.');
             }
-            [$pred, $bindings] = \App\Helpers\LecturerScope::assignmentPredicate($this->db, $uid, 'ma');
-            $sql = "SELECT DISTINCT m.module_id, m.module_code, m.module_name, m.level,
-                           ma.academic_term_id
-                    FROM module_assignments ma
-                    JOIN modules m ON m.module_id = ma.module_id
-                    WHERE {$pred}"
-                    . ($termId > 0 ? " AND ma.academic_term_id = ?" : "")
-                    . " ORDER BY m.module_code ASC";
-            if ($termId > 0) $bindings[] = $termId;
-            $rows = $this->db->fetchAll($sql, $bindings);
+            // Same resolver as the save guard, so picker and guard agree; also
+            // covers timetable-only assignments (module_offerings.instructor_id).
+            $mine = \App\Helpers\LecturerScope::moduleIds($this->db, $uid, $termId > 0 ? $termId : null);
+            if ($mine === []) {
+                $mine = \App\Helpers\LecturerScope::moduleIds($this->db, $uid);
+            }
+            if ($mine === []) {
+                $this->success($response, [], 'You are not assigned to any module.');
+            }
+            $ph   = implode(',', array_fill(0, count($mine), '?'));
+            $rows = $this->db->fetchAll(
+                "SELECT DISTINCT m.module_id, m.module_code, m.module_name, m.level,
+                        NULL AS academic_term_id
+                 FROM modules m
+                 WHERE m.module_id IN ($ph)
+                 ORDER BY m.module_code ASC",
+                $mine
+            );
         }
 
         $this->success($response, $rows, 'Markable modules fetched.');

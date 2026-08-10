@@ -1039,6 +1039,14 @@ function BlockEditor({
   const timeBad = issues.endBeforeStartTime || issues.endTimeWithoutStart
   const timeMsg = issues.endBeforeStartTime ? 'End time must be after start time' : issues.endTimeWithoutStart ? 'Set a start time too' : ''
 
+  // Purely advisory — scheduling outside the term is permitted.
+  const outsideTerm = Boolean(
+    (termStart && d.start_date && d.start_date < termStart) ||
+    (termEnd   && d.start_date && d.start_date > termEnd)   ||
+    (termEnd   && d.end_date   && d.end_date   > termEnd)   ||
+    (termStart && d.end_date   && d.end_date   < termStart),
+  )
+
   return (
     <div className="space-y-3.5">
       {/* Days */}
@@ -1062,16 +1070,30 @@ function BlockEditor({
 
       {/* Dates */}
       <div className="grid grid-cols-2 gap-3">
+        {/* The term window is a HINT, not a hard min/max.
+            Clamping the picker to the term silently greyed out every date past
+            the term's end (Semester 1 ends 2026-06-30, so June looked like the
+            end of time) with nothing on screen explaining why, and blocked
+            legitimate scheduling into a future term or a block that runs past
+            the nominal term end. Out-of-window dates are now allowed and simply
+            flagged. */}
         <div>
           <label className="label">Start date</label>
-          <input type="date" className={`input input-sm w-full ${dateBad ? errInput : ''}`} min={termStart || undefined} max={termEnd || undefined} value={d.start_date} onChange={(e) => set({ start_date: e.target.value })} />
+          <input type="date" className={`input input-sm w-full ${dateBad ? errInput : ''}`} value={d.start_date} onChange={(e) => set({ start_date: e.target.value })} />
         </div>
         <div>
           <label className="label">End date</label>
-          <input type="date" className={`input input-sm w-full ${dateBad ? errInput : ''}`} min={(d.start_date || termStart) || undefined} max={termEnd || undefined} value={d.end_date} onChange={(e) => set({ end_date: e.target.value })} />
+          <input type="date" className={`input input-sm w-full ${dateBad ? errInput : ''}`} min={d.start_date || undefined} value={d.end_date} onChange={(e) => set({ end_date: e.target.value })} />
         </div>
         {dateBad && <p className="error-text col-span-2 -mt-1">End date can't be before start date.</p>}
-        {(termStart || termEnd) && !dateBad && <p className="col-span-2 text-[11px] text-ink-400 -mt-1">Dates are bounded by the selected term.</p>}
+        {!dateBad && outsideTerm && (
+          <p className="col-span-2 text-[11px] text-amber-600 dark:text-amber-400 -mt-1">
+            Outside the selected term ({termStart || '—'} → {termEnd || '—'}). That's allowed — just check it's intended.
+          </p>
+        )}
+        {!dateBad && !outsideTerm && (termStart || termEnd) && (
+          <p className="col-span-2 text-[11px] text-ink-400 -mt-1">Term runs {termStart || '—'} → {termEnd || '—'}.</p>
+        )}
       </div>
 
       {/* Activity + Semester */}
