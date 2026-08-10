@@ -444,6 +444,14 @@ export default function TeacherCourseDetailPage() {
           <main> (MainLayout.tsx) is the scroll container and carries
           `px-5 sm:px-6 lg:px-8 py-6`. Two consequences to cancel out:
 
+          z-index is deliberately 25, not 30: the topbar <header> is
+          `relative z-30`, and its campus/category dropdown panels are z-50
+          INSIDE that stacking context — so they resolve against 30. A z-30
+          page header appears later in the DOM and therefore won the tie,
+          clipping those menus. 25 keeps this header above the page content and
+          above the embedded roster's own `sticky z-20` bar, while staying
+          under the topbar.
+
           1. Horizontally, the negative margins + matching padding let the
              header's background span the full width, so rows scrolling under it
              are not visible in the side gutters.
@@ -453,7 +461,7 @@ export default function TeacherCourseDetailPage() {
              instead moves the pin up by exactly that padding, and the matching
              `pt-6` means nothing but background sits in the reclaimed strip.
              `-mt-6` keeps it flush with the top before any scrolling. */}
-      <div className="sticky -top-6 z-30 -mx-5 sm:-mx-6 lg:-mx-8 -mt-6 px-5 sm:px-6 lg:px-8 pt-6
+      <div className="sticky -top-6 z-[25] -mx-5 sm:-mx-6 lg:-mx-8 -mt-6 px-5 sm:px-6 lg:px-8 pt-6
                       bg-[rgb(var(--bg-app))] border-b border-ink-100 dark:border-ink-700">
         <Link
           to="/teacher/courses"
