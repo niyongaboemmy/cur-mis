@@ -265,7 +265,7 @@ class HrEmployeeController extends BaseController
             'employee_status'   => trim((string)($data['contract_type'] ?? $row['employee_status'])),
             'account_status'    => $data['status']             ?? $row['account_status'],
             'employee_phone'    => $data['phone']              ?? $row['employee_phone'],
-            'employee_idcard'   => trim($data['emp_code']      ?? $row['employee_idcard']),
+            'employee_idcard'   => trim((string)($data['emp_code']      ?? $row['employee_idcard'])),
             'employee_reg_date' => $data['start_date']         ?? $row['employee_reg_date'],
             'salary'            => isset($data['salary']) && $data['salary'] !== '' ? (float)$data['salary'] : ($row['salary'] ?? null),
             'employee_bank'     => $data['bank']               ?? $row['employee_bank'],
