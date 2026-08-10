@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(xargs grep *)",
-      "Bash(grep -n 'protected.*db\\\\|private.*db\\\\|$this->db' /Applications/MAMP/htdocs/cur-mis/backend/app/Controllers/BaseController.php)"
+      "Bash(grep -n 'protected.*db\\\\|private.*db\\\\|$this->db' /Applications/MAMP/htdocs/cur-mis/backend/app/Controllers/BaseController.php)",
+      "Bash(git pull *)",
+      "Bash(git stash *)"
     ]
   }
 }
