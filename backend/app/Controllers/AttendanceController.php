@@ -469,19 +469,19 @@ class AttendanceController extends BaseController
                       SELECT COUNT(*)
                       FROM attendance_records ar
                       JOIN attendance_sessions asx ON asx.id = ar.session_id
-                      WHERE asx.module_id = ? AND ar.student_regnumber = st.regnumber
+                      WHERE asx.module_id = ? AND ar.student_regnumber = st.regnumber COLLATE utf8mb4_general_ci
                     ) AS total_sessions,
                     (
                       SELECT COUNT(*)
                       FROM attendance_records ar
                       JOIN attendance_sessions asx ON asx.id = ar.session_id
-                      WHERE asx.module_id = ? AND ar.student_regnumber = st.regnumber
+                      WHERE asx.module_id = ? AND ar.student_regnumber = st.regnumber COLLATE utf8mb4_general_ci
                         AND ar.status IN ('present','late')
                     ) AS present_sessions
              FROM module_registrations mr
-             JOIN student st ON st.regnumber = mr.student_regnumber
+             JOIN student st ON st.regnumber = mr.student_regnumber COLLATE utf8mb4_general_ci
              LEFT JOIN attendance_records r
-                    ON r.session_id = ? AND r.student_regnumber = st.regnumber
+                    ON r.session_id = ? AND r.student_regnumber = st.regnumber COLLATE utf8mb4_general_ci
              WHERE mr.module_id = ? AND mr.academic_term_id = ?
                AND mr.status <> 'dropped'
              ORDER BY st.lname, st.fname",
@@ -766,7 +766,7 @@ class AttendanceController extends BaseController
                     SUM(CASE WHEN r.status IN ('present','late') THEN 1 ELSE 0 END) AS present_like
              FROM attendance_records r
              JOIN attendance_sessions s ON s.id = r.session_id
-             JOIN student st ON st.regnumber = r.student_regnumber
+             JOIN student st ON st.regnumber = r.student_regnumber COLLATE utf8mb4_general_ci
              $sessWhere
              GROUP BY st.regnumber, st.fname, st.lname
              HAVING total_records >= 1
@@ -1038,14 +1038,14 @@ class AttendanceController extends BaseController
                     r.status AS record_status, r.remarks,
                     (SELECT COUNT(*) FROM attendance_records ar
                        JOIN attendance_sessions asx ON asx.id = ar.session_id
-                       WHERE asx.module_id = ? AND ar.student_regnumber = st.regnumber) AS total_sessions,
+                       WHERE asx.module_id = ? AND ar.student_regnumber = st.regnumber COLLATE utf8mb4_general_ci) AS total_sessions,
                     (SELECT COUNT(*) FROM attendance_records ar
                        JOIN attendance_sessions asx ON asx.id = ar.session_id
-                       WHERE asx.module_id = ? AND ar.student_regnumber = st.regnumber
+                       WHERE asx.module_id = ? AND ar.student_regnumber = st.regnumber COLLATE utf8mb4_general_ci
                          AND ar.status IN ('present','late')) AS present_sessions
              FROM module_registrations mr
-             JOIN student st ON st.regnumber = mr.student_regnumber
-             LEFT JOIN attendance_records r ON r.session_id = ? AND r.student_regnumber = st.regnumber
+             JOIN student st ON st.regnumber = mr.student_regnumber COLLATE utf8mb4_general_ci
+             LEFT JOIN attendance_records r ON r.session_id = ? AND r.student_regnumber = st.regnumber COLLATE utf8mb4_general_ci
              WHERE mr.module_id = ? AND mr.academic_term_id = ? AND mr.status <> 'dropped'
              ORDER BY st.lname, st.fname",
             [$moduleId, $moduleId, $id, $moduleId, $termId]
@@ -1128,7 +1128,7 @@ class AttendanceController extends BaseController
                     SUM(CASE WHEN r.status = 'excused' THEN 1 ELSE 0 END) AS excused
              FROM attendance_records r
              JOIN attendance_sessions s ON s.id = r.session_id
-             JOIN student st            ON st.regnumber = r.student_regnumber
+             JOIN student st            ON st.regnumber = r.student_regnumber COLLATE utf8mb4_general_ci
              WHERE s.module_id = ?{$termClause}
              GROUP BY st.regnumber, st.fname, st.lname
              ORDER BY st.lname, st.fname",

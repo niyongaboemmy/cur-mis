@@ -294,10 +294,10 @@ class ModuleMarksController extends BaseController
         $roster = $this->db->fetchAll(
             "SELECT $rosterCols, mr.status AS reg_status
              FROM module_registrations mr
-             JOIN student st ON st.regnumber = mr.student_regnumber
+             JOIN student st ON st.regnumber = mr.student_regnumber COLLATE utf8mb4_general_ci
              LEFT JOIN module_marks mm
                     ON mm.module_id = mr.module_id
-                   AND mm.student_regnumber = mr.student_regnumber
+                   AND mm.student_regnumber = mr.student_regnumber COLLATE utf8mb4_general_ci
                    AND mm.academic_term_id  = mr.academic_term_id
              WHERE mr.module_id = ? AND mr.academic_term_id = ?
                AND mr.status IN ('registered','completed','failed')
@@ -350,7 +350,7 @@ class ModuleMarksController extends BaseController
                 "SELECT $rosterCols, NULL AS reg_status
                  FROM `student` st
                  LEFT JOIN module_marks mm
-                        ON mm.student_regnumber = st.regnumber
+                        ON mm.student_regnumber = st.regnumber COLLATE utf8mb4_general_ci
                        AND mm.module_id        = ?
                        AND mm.academic_term_id = ?
                  WHERE $where

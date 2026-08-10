@@ -13,6 +13,7 @@
 --   §4  2026_08_09_121  rooms PRIMARY KEY/AUTO_INCREMENT + assignment uniqueness
 --   §5  2026_08_09_120  ACCESS_TEACHER_PORTAL permission + role grants
 --   §6  2026_08_09_122  revoke the global dashboard from teaching roles
+--   §7  2026_08_10_123  normalise the student regnumber collations
 --
 -- ORDER MATTERS: §2 must backfill user_id BEFORE §4 adds the unique key over it,
 -- and §3 must create exam_schedules.room_id BEFORE §4 touches `rooms`.
@@ -36,7 +37,8 @@
 --     ('2026_08_09_119_exam_rooms_and_exam_attendance.sql','applied'),
 --     ('2026_08_09_120_seed_teacher_portal_permission.sql','applied'),
 --     ('2026_08_09_121_rooms_pk_and_assignment_user_unique.sql','applied'),
---     ('2026_08_09_122_revoke_global_dashboard_from_teaching_roles.sql','applied');
+--     ('2026_08_09_122_revoke_global_dashboard_from_teaching_roles.sql','applied'),
+--     ('2026_08_10_123_normalise_regnumber_collations.sql','applied');
 -- ══════════════════════════════════════════════════════════════════════════════
 
 
@@ -50,10 +52,12 @@
 -- 2026_05_16_051, which does so by DROPping and recreating `fee_payments` —
 -- destructive on any populated database, so it must stay skipped there. This
 -- adds the column additively instead.
+SET @tbl := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'fee_payments');
 SET @col := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'fee_payments'
                AND COLUMN_NAME = 'bank_slip_file_id');
-SET @stmt := IF(@col = 0,
+SET @stmt := IF(@tbl > 0 AND @col = 0,
   'ALTER TABLE `fee_payments` ADD COLUMN `bank_slip_file_id` VARCHAR(36) NULL DEFAULT NULL COMMENT ''UUID in file-server'' AFTER `reference_number`',
   'SELECT 1');
 PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
@@ -69,10 +73,12 @@ PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
 
 -- ── 1b. options.title ────────────────────────────────────────────────────────
 -- GraduandController selects `o.title AS option_title`.
+SET @tbl := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'options');
 SET @col := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'options'
                AND COLUMN_NAME = 'title');
-SET @stmt := IF(@col = 0,
+SET @stmt := IF(@tbl > 0 AND @col = 0,
   'ALTER TABLE `options` ADD COLUMN `title` VARCHAR(255) NULL DEFAULT NULL AFTER `name`',
   'SELECT 1');
 PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
@@ -84,10 +90,12 @@ UPDATE `options` SET `title` = `name` WHERE `title` IS NULL;
 -- ModulesManagementController::createCatalog() passes $request->body() straight
 -- into create(). BaseModel::filterFillable() keeps any payload key present in
 -- $fillable, so posting a description without this column is a 1054 500.
+SET @tbl := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'modules');
 SET @col := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'modules'
                AND COLUMN_NAME = 'description');
-SET @stmt := IF(@col = 0,
+SET @stmt := IF(@tbl > 0 AND @col = 0,
   'ALTER TABLE `modules` ADD COLUMN `description` TEXT NULL DEFAULT NULL AFTER `module_name`',
   'SELECT 1');
 PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
@@ -104,18 +112,22 @@ PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
 -- (see App\Helpers\LecturerScope). `staff_id` is left untouched.
 
 -- The column itself, for databases that predate 2026_06_02_079.
+SET @tbl := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'module_assignments');
 SET @col := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'module_assignments'
                AND COLUMN_NAME = 'user_id');
-SET @stmt := IF(@col = 0,
+SET @stmt := IF(@tbl > 0 AND @col = 0,
   'ALTER TABLE `module_assignments` ADD COLUMN `user_id` INT UNSIGNED NULL DEFAULT NULL AFTER `staff_id`',
   'SELECT 1');
 PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
 
+SET @tbl := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'module_assignments');
 SET @idx := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'module_assignments'
                AND INDEX_NAME = 'idx_ma_user');
-SET @stmt := IF(@idx = 0,
+SET @stmt := IF(@tbl > 0 AND @idx = 0,
   'ALTER TABLE `module_assignments` ADD INDEX `idx_ma_user` (`user_id`)',
   'SELECT 1');
 PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
@@ -148,18 +160,22 @@ WHERE a.`user_id` IS NULL
 -- ╚════════════════════════════════════════════════════════════════════════════╝
 
 -- ── 3a. exam_schedules.room_id — WHERE the exam is sat ───────────────────────
+SET @tbl := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'exam_schedules');
 SET @col := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'exam_schedules'
                AND COLUMN_NAME = 'room_id');
-SET @stmt := IF(@col = 0,
+SET @stmt := IF(@tbl > 0 AND @col = 0,
   'ALTER TABLE `exam_schedules` ADD COLUMN `room_id` INT UNSIGNED NULL DEFAULT NULL AFTER `campus_id`',
   'SELECT 1');
 PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
 
+SET @tbl := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'exam_schedules');
 SET @idx := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'exam_schedules'
                AND INDEX_NAME = 'idx_es_room');
-SET @stmt := IF(@idx = 0,
+SET @stmt := IF(@tbl > 0 AND @idx = 0,
   'ALTER TABLE `exam_schedules` ADD INDEX `idx_es_room` (`room_id`)',
   'SELECT 1');
 PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
@@ -168,18 +184,22 @@ PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
 -- `instructor_name` already exists but is free-text VARCHAR(120) holding a NAME,
 -- so "which exams am I invigilating?" is not answerable. This adds a real key
 -- without disturbing the display column.
+SET @tbl := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'exam_schedules');
 SET @col := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'exam_schedules'
                AND COLUMN_NAME = 'invigilator_user_id');
-SET @stmt := IF(@col = 0,
+SET @stmt := IF(@tbl > 0 AND @col = 0,
   'ALTER TABLE `exam_schedules` ADD COLUMN `invigilator_user_id` INT UNSIGNED NULL DEFAULT NULL COMMENT ''users.id of the assigned invigilator'' AFTER `instructor_name`',
   'SELECT 1');
 PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
 
+SET @tbl := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'exam_schedules');
 SET @idx := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'exam_schedules'
                AND INDEX_NAME = 'idx_es_invigilator');
-SET @stmt := IF(@idx = 0,
+SET @stmt := IF(@tbl > 0 AND @idx = 0,
   'ALTER TABLE `exam_schedules` ADD INDEX `idx_es_invigilator` (`invigilator_user_id`)',
   'SELECT 1');
 PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
@@ -367,6 +387,89 @@ JOIN `roles` r       ON r.id = rp.role_id
 JOIN `permissions` p ON p.id = rp.permission_id
 WHERE p.`slug` = 'VIEW_DASHBOARD'
   AND r.`name` IN ('lecturer', 'HOD');
+
+
+
+-- ╔════════════════════════════════════════════════════════════════════════════╗
+-- ║ §7  Student registration-number collations                                ║
+-- ╚════════════════════════════════════════════════════════════════════════════╝
+-- GET /api/teacher/courses/:id/students 500'd on production while the course
+-- header endpoint worked: the class list is the only one that JOINs `student`,
+-- and when `student`.`regnumber` and `module_registrations`.`student_regnumber`
+-- carry different collations the server refuses the comparison:
+--     ERROR 1267 Illegal mix of collations ... for operation '='
+-- Registration numbers are ASCII, so re-collating cannot change comparison
+-- results or truncate data. Each ALTER is guarded to the columns that actually
+-- differ, so this is a no-op on a consistent database and safe to re-run.
+
+-- ── student.regnumber ─────────────────────────────────────────────────────────
+SET @coll := (SELECT COLLATION_NAME FROM INFORMATION_SCHEMA.COLUMNS
+              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'student'
+                AND COLUMN_NAME = 'regnumber');
+SET @type := (SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'student'
+                AND COLUMN_NAME = 'regnumber');
+SET @stmt := IF(@coll IS NOT NULL AND @coll <> 'utf8mb4_general_ci',
+  CONCAT('ALTER TABLE `student` MODIFY `regnumber` ', @type,
+         ' CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci'),
+  'SELECT 1');
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
+
+
+-- ── module_registrations.student_regnumber ────────────────────────────────────
+SET @coll := (SELECT COLLATION_NAME FROM INFORMATION_SCHEMA.COLUMNS
+              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'module_registrations'
+                AND COLUMN_NAME = 'student_regnumber');
+SET @type := (SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'module_registrations'
+                AND COLUMN_NAME = 'student_regnumber');
+SET @stmt := IF(@coll IS NOT NULL AND @coll <> 'utf8mb4_general_ci',
+  CONCAT('ALTER TABLE `module_registrations` MODIFY `student_regnumber` ', @type,
+         ' CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL'),
+  'SELECT 1');
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
+
+
+-- ── module_marks.student_regnumber ────────────────────────────────────────────
+SET @coll := (SELECT COLLATION_NAME FROM INFORMATION_SCHEMA.COLUMNS
+              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'module_marks'
+                AND COLUMN_NAME = 'student_regnumber');
+SET @type := (SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'module_marks'
+                AND COLUMN_NAME = 'student_regnumber');
+SET @stmt := IF(@coll IS NOT NULL AND @coll <> 'utf8mb4_general_ci',
+  CONCAT('ALTER TABLE `module_marks` MODIFY `student_regnumber` ', @type,
+         ' CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL'),
+  'SELECT 1');
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
+
+
+-- ── attendance_records.student_regnumber ──────────────────────────────────────
+SET @coll := (SELECT COLLATION_NAME FROM INFORMATION_SCHEMA.COLUMNS
+              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'attendance_records'
+                AND COLUMN_NAME = 'student_regnumber');
+SET @type := (SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'attendance_records'
+                AND COLUMN_NAME = 'student_regnumber');
+SET @stmt := IF(@coll IS NOT NULL AND @coll <> 'utf8mb4_general_ci',
+  CONCAT('ALTER TABLE `attendance_records` MODIFY `student_regnumber` ', @type,
+         ' CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL'),
+  'SELECT 1');
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
+
+
+-- ── exam_attendance.student_regnumber (created by migration 119) ──────────────
+SET @coll := (SELECT COLLATION_NAME FROM INFORMATION_SCHEMA.COLUMNS
+              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'exam_attendance'
+                AND COLUMN_NAME = 'student_regnumber');
+SET @type := (SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'exam_attendance'
+                AND COLUMN_NAME = 'student_regnumber');
+SET @stmt := IF(@coll IS NOT NULL AND @coll <> 'utf8mb4_general_ci',
+  CONCAT('ALTER TABLE `exam_attendance` MODIFY `student_regnumber` ', @type,
+         ' CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL'),
+  'SELECT 1');
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
 
 
 -- ══════════════════════════════════════════════════════════════════════════════

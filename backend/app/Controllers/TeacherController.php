@@ -460,14 +460,11 @@ class TeacherController extends BaseController
                 SUM(CASE WHEN r.status = 'late'    THEN 1 ELSE 0 END) AS late,
                 SUM(CASE WHEN r.status = 'excused' THEN 1 ELSE 0 END) AS excused
              FROM `module_registrations` reg
-             LEFT JOIN `student` st
-                    ON st.regnumber = reg.student_regnumber
-                   AND st.id = (SELECT MIN(s2.id) FROM `student` s2
-                                 WHERE s2.regnumber = reg.student_regnumber)
+             LEFT JOIN `student` st ON st.regnumber = reg.student_regnumber COLLATE utf8mb4_general_ci
              LEFT JOIN `attendance_sessions` s
                     ON s.module_id = reg.module_id AND s.academic_term_id = reg.academic_term_id
              LEFT JOIN `attendance_records` r
-                    ON r.session_id = s.id AND r.student_regnumber = reg.student_regnumber
+                    ON r.session_id = s.id AND r.student_regnumber = reg.student_regnumber COLLATE utf8mb4_general_ci
              WHERE reg.module_id = ? AND reg.status <> 'dropped'{$regTerm}
              GROUP BY reg.student_regnumber
              ORDER BY full_name ASC, reg.student_regnumber ASC",
@@ -638,13 +635,10 @@ class TeacherController extends BaseController
                 mm.decision,
                 mm.status                                    AS marks_status
              FROM `module_registrations` r
-             LEFT JOIN `student` s
-                    ON s.regnumber = r.student_regnumber
-                   AND s.id = (SELECT MIN(s2.id) FROM `student` s2
-                                WHERE s2.regnumber = r.student_regnumber)
+             LEFT JOIN `student` s ON s.regnumber = r.student_regnumber COLLATE utf8mb4_general_ci
              LEFT JOIN `module_marks` mm
                     ON mm.module_id = r.module_id
-                   AND mm.student_regnumber = r.student_regnumber
+                   AND mm.student_regnumber = r.student_regnumber COLLATE utf8mb4_general_ci
                    AND mm.academic_term_id = r.academic_term_id
              WHERE r.module_id = ? AND r.status <> 'dropped'{$rTerm}
              ORDER BY full_name ASC, r.student_regnumber ASC",
@@ -669,9 +663,16 @@ class TeacherController extends BaseController
                 : null;
         }
 
-        $out = [];
+        $out  = [];
+        $seen = [];
         foreach ($rows as $r) {
             $reg = (string)$r['regnumber'];
+            // `student` contains duplicated regnumbers, so the join can return
+            // the same student more than once. One row per registration.
+            if (isset($seen[$reg])) {
+                continue;
+            }
+            $seen[$reg] = true;
             $out[] = [
                 'regnumber'       => $reg,
                 'full_name'       => $r['full_name'] !== null && trim((string)$r['full_name']) !== ''
@@ -735,10 +736,7 @@ class TeacherController extends BaseController
                 GROUP_CONCAT(DISTINCT TRIM(m.module_code) ORDER BY m.module_code SEPARATOR ', ') AS module_codes
              FROM `module_registrations` r
              JOIN `modules` m  ON m.module_id = r.module_id
-             LEFT JOIN `student` s
-                    ON s.regnumber = r.student_regnumber
-                   AND s.id = (SELECT MIN(s2.id) FROM `student` s2
-                                WHERE s2.regnumber = r.student_regnumber)
+             LEFT JOIN `student` s ON s.regnumber = r.student_regnumber COLLATE utf8mb4_general_ci
              WHERE r.module_id IN ($ph) AND r.status <> 'dropped'{$termSql}
              GROUP BY r.student_regnumber
              ORDER BY full_name ASC, r.student_regnumber ASC",
@@ -967,7 +965,7 @@ class TeacherController extends BaseController
                  JOIN `modules` m ON m.module_id = r.module_id
                  LEFT JOIN `module_marks` mm
                         ON mm.module_id = r.module_id
-                       AND mm.student_regnumber = r.student_regnumber
+                       AND mm.student_regnumber = r.student_regnumber COLLATE utf8mb4_general_ci
                        AND mm.academic_term_id = r.academic_term_id
                  WHERE r.module_id IN ($ph) AND r.status <> 'dropped'{$rT}
                  GROUP BY r.module_id, module_code, m.module_name
@@ -1178,13 +1176,10 @@ class TeacherController extends BaseController
                 s.gender, s.photo, s.current_level AS level,
                 ea.status, ea.seat_no, ea.signed_in_at, ea.signed_out_at, ea.remarks
              FROM `module_registrations` r
-             LEFT JOIN `student` s
-                    ON s.regnumber = r.student_regnumber
-                   AND s.id = (SELECT MIN(s2.id) FROM `student` s2
-                                WHERE s2.regnumber = r.student_regnumber)
+             LEFT JOIN `student` s ON s.regnumber = r.student_regnumber COLLATE utf8mb4_general_ci
              LEFT JOIN `exam_attendance` ea
                     ON ea.exam_schedule_id = ?
-                   AND ea.student_regnumber = r.student_regnumber
+                   AND ea.student_regnumber = r.student_regnumber COLLATE utf8mb4_general_ci
              WHERE r.module_id = ? AND r.status <> 'dropped'
              " . ($exam['term_id'] !== null ? "AND r.academic_term_id = ?" : "") . "
              ORDER BY full_name ASC, r.student_regnumber ASC",
@@ -1194,8 +1189,13 @@ class TeacherController extends BaseController
         );
 
         $students = [];
+        $seenExam = [];
         foreach ($rows as $r) {
             $reg = (string)$r['regnumber'];
+            if (isset($seenExam[$reg])) {
+                continue; // duplicated `student` rows must not duplicate a candidate
+            }
+            $seenExam[$reg] = true;
             $students[] = [
                 'regnumber'     => $reg,
                 'full_name'     => trim((string)$r['full_name']) !== '' ? trim((string)$r['full_name']) : $reg,
