@@ -453,20 +453,23 @@ class TeacherController extends BaseController
         $students = $this->db->fetchAll(
             "SELECT
                 reg.student_regnumber AS regnumber,
-                TRIM(CONCAT(COALESCE(st.fname,''),' ',COALESCE(st.lname,''))) AS full_name,
+                MAX(TRIM(CONCAT(COALESCE(st.fname,''),' ',COALESCE(st.lname,'')))) AS full_name,
                 COUNT(r.id) AS marked,
                 SUM(CASE WHEN r.status = 'present' THEN 1 ELSE 0 END) AS present,
                 SUM(CASE WHEN r.status = 'absent'  THEN 1 ELSE 0 END) AS absent,
                 SUM(CASE WHEN r.status = 'late'    THEN 1 ELSE 0 END) AS late,
                 SUM(CASE WHEN r.status = 'excused' THEN 1 ELSE 0 END) AS excused
              FROM `module_registrations` reg
-             LEFT JOIN `student` st ON st.regnumber = reg.student_regnumber
+             LEFT JOIN `student` st
+                    ON st.regnumber = reg.student_regnumber
+                   AND st.id = (SELECT MIN(s2.id) FROM `student` s2
+                                 WHERE s2.regnumber = reg.student_regnumber)
              LEFT JOIN `attendance_sessions` s
                     ON s.module_id = reg.module_id AND s.academic_term_id = reg.academic_term_id
              LEFT JOIN `attendance_records` r
                     ON r.session_id = s.id AND r.student_regnumber = reg.student_regnumber
              WHERE reg.module_id = ? AND reg.status <> 'dropped'{$regTerm}
-             GROUP BY reg.student_regnumber, full_name
+             GROUP BY reg.student_regnumber
              ORDER BY full_name ASC, reg.student_regnumber ASC",
             $hasTerm ? [$moduleId, $termId] : [$moduleId]
         );
@@ -635,15 +638,15 @@ class TeacherController extends BaseController
                 mm.decision,
                 mm.status                                    AS marks_status
              FROM `module_registrations` r
-             LEFT JOIN `student` s ON s.regnumber = r.student_regnumber
+             LEFT JOIN `student` s
+                    ON s.regnumber = r.student_regnumber
+                   AND s.id = (SELECT MIN(s2.id) FROM `student` s2
+                                WHERE s2.regnumber = r.student_regnumber)
              LEFT JOIN `module_marks` mm
                     ON mm.module_id = r.module_id
                    AND mm.student_regnumber = r.student_regnumber
                    AND mm.academic_term_id = r.academic_term_id
              WHERE r.module_id = ? AND r.status <> 'dropped'{$rTerm}
-             GROUP BY r.student_regnumber, full_name, s.gender, s.email, s.phone,
-                      s.photo, s.current_level, s.student_state,
-                      mm.total, mm.percentage, mm.grade, mm.decision, mm.status
              ORDER BY full_name ASC, r.student_regnumber ASC",
             $hasTerm ? [$moduleId, $termId] : [$moduleId]
         );
@@ -718,16 +721,26 @@ class TeacherController extends BaseController
         $rows = $this->db->fetchAll(
             "SELECT
                 r.student_regnumber                          AS regnumber,
-                TRIM(CONCAT(COALESCE(s.fname,''),' ',COALESCE(s.lname,''))) AS full_name,
-                s.gender, s.email, s.phone, s.photo,
-                s.current_level                              AS level,
+                -- Aggregated, not grouped: grouping by the regnumber alone keeps
+                -- the temp-table key to one column and keeps `photo` (TEXT) out
+                -- of the GROUP BY entirely, while still satisfying
+                -- ONLY_FULL_GROUP_BY. The student join already picks one row.
+                MAX(TRIM(CONCAT(COALESCE(s.fname,''),' ',COALESCE(s.lname,'')))) AS full_name,
+                MAX(s.gender)        AS gender,
+                MAX(s.email)         AS email,
+                MAX(s.phone)         AS phone,
+                MAX(s.photo)         AS photo,
+                MAX(s.current_level) AS level,
                 COUNT(DISTINCT r.module_id)                  AS modules,
                 GROUP_CONCAT(DISTINCT TRIM(m.module_code) ORDER BY m.module_code SEPARATOR ', ') AS module_codes
              FROM `module_registrations` r
              JOIN `modules` m  ON m.module_id = r.module_id
-             LEFT JOIN `student` s ON s.regnumber = r.student_regnumber
+             LEFT JOIN `student` s
+                    ON s.regnumber = r.student_regnumber
+                   AND s.id = (SELECT MIN(s2.id) FROM `student` s2
+                                WHERE s2.regnumber = r.student_regnumber)
              WHERE r.module_id IN ($ph) AND r.status <> 'dropped'{$termSql}
-             GROUP BY r.student_regnumber, full_name, s.gender, s.email, s.phone, s.photo, s.current_level
+             GROUP BY r.student_regnumber
              ORDER BY full_name ASC, r.student_regnumber ASC",
             $args
         );
@@ -1165,7 +1178,10 @@ class TeacherController extends BaseController
                 s.gender, s.photo, s.current_level AS level,
                 ea.status, ea.seat_no, ea.signed_in_at, ea.signed_out_at, ea.remarks
              FROM `module_registrations` r
-             LEFT JOIN `student` s ON s.regnumber = r.student_regnumber
+             LEFT JOIN `student` s
+                    ON s.regnumber = r.student_regnumber
+                   AND s.id = (SELECT MIN(s2.id) FROM `student` s2
+                                WHERE s2.regnumber = r.student_regnumber)
              LEFT JOIN `exam_attendance` ea
                     ON ea.exam_schedule_id = ?
                    AND ea.student_regnumber = r.student_regnumber
