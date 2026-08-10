@@ -30,8 +30,14 @@ $router->group('/api/teacher', function ($router) {
     // One course, same shape as a list row — lets the detail page deep-link.
     $router->get('/courses/:moduleId', [TeacherController::class, 'courseDetail']);
 
-    // The class list for one of my courses.
-    $router->get('/courses/:moduleId/students', [TeacherController::class, 'courseStudents']);
+    // The class list for one of my courses, and enrolling onto it. The admin
+    // registration routes need MANAGE_MODULE_REGISTRATIONS, which lecturers do
+    // not hold, so the portal has its own scoped pair.
+    $router->get('/courses/:moduleId/students',  [TeacherController::class, 'courseStudents']);
+    $router->post('/courses/:moduleId/students', [TeacherController::class, 'enrolStudents']);
+    // POST, not DELETE /:regnumber — registration numbers contain slashes
+    // (e.g. "STD/2026/23006"), which break path-segment matching.
+    $router->post('/courses/:moduleId/students/unenrol', [TeacherController::class, 'unenrolStudent']);
 
     // Sessions held + per-student tally, for the course's Attendance tab.
     $router->get('/courses/:moduleId/attendance', [TeacherController::class, 'courseAttendance']);

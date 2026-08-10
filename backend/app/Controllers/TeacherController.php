@@ -291,6 +291,129 @@ class TeacherController extends BaseController
     }
 
     /**
+     * POST /api/teacher/courses/:moduleId/students
+     *
+     * Enrol students onto one of the lecturer's own courses.
+     *
+     * The admin route (POST /api/modules/registrations) requires
+     * MANAGE_MODULE_REGISTRATIONS, which lecturers do not hold — so without
+     * this a teacher looking at an empty class list had no way to populate it.
+     * Scoped by ensureTeaches(), so a lecturer can only enrol into a module
+     * they actually teach.
+     *
+     * Body: { regnumbers: string[] }
+     */
+    public function enrolStudents(Request $request, Response $response): never
+    {
+        $moduleId = (int)$request->param('moduleId');
+        if ($moduleId <= 0) {
+            $this->error($response, 'A module id is required.', 422);
+        }
+        $this->ensureTeaches($request, $response, $moduleId);
+
+        $termId = $this->resolveTermId($request);
+        if ($termId === null || $termId <= 0) {
+            $this->error($response, 'No current academic term — cannot enrol.', 422);
+        }
+
+        $body = $request->body();
+        $regs = $body['regnumbers'] ?? null;
+        if (!is_array($regs) || $regs === []) {
+            $this->error($response, 'A non-empty `regnumbers` array is required.', 422);
+        }
+
+        // Validate every regnumber up-front so a bad one cannot leave a partial
+        // enrolment behind.
+        $clean = [];
+        foreach ($regs as $r) {
+            $reg = trim((string)$r);
+            if ($reg === '') {
+                continue;
+            }
+            $exists = $this->db->fetchOne(
+                "SELECT 1 AS ok FROM `student` WHERE regnumber = ? LIMIT 1",
+                [$reg]
+            );
+            if (!$exists) {
+                $this->error($response, "No student found with registration number \"{$reg}\".", 422);
+            }
+            $clean[$reg] = true;
+        }
+        if ($clean === []) {
+            $this->error($response, 'No valid registration numbers supplied.', 422);
+        }
+
+        $added = 0;
+        $already = 0;
+        foreach (array_keys($clean) as $reg) {
+            $has = $this->db->fetchOne(
+                "SELECT id, status FROM `module_registrations`
+                  WHERE module_id = ? AND student_regnumber = ? AND academic_term_id = ? LIMIT 1",
+                [$moduleId, $reg, $termId]
+            );
+            if ($has) {
+                // Re-enrolling someone previously dropped should bring them back
+                // rather than silently doing nothing.
+                if (($has['status'] ?? '') === 'dropped') {
+                    $this->db->execute(
+                        "UPDATE `module_registrations` SET status = 'registered' WHERE id = ?",
+                        [(int)$has['id']]
+                    );
+                    $added++;
+                } else {
+                    $already++;
+                }
+                continue;
+            }
+            $this->db->execute(
+                "INSERT INTO `module_registrations`
+                    (module_id, student_regnumber, academic_term_id, status)
+                 VALUES (?,?,?, 'registered')",
+                [$moduleId, $reg, $termId]
+            );
+            $added++;
+        }
+
+        $msg = "Enrolled {$added} student(s).";
+        if ($already > 0) {
+            $msg .= " {$already} already registered.";
+        }
+        $this->success($response, ['added' => $added, 'already' => $already], $msg);
+    }
+
+    /**
+     * POST /api/teacher/courses/:moduleId/students/unenrol   body: { regnumber }
+     *
+     * Un-enrol (mark dropped) rather than delete, so any marks or attendance
+     * already recorded against the student keep their referent.
+     *
+     * The regnumber travels in the body because registration numbers contain
+     * slashes ("STD/2026/23006") and would otherwise split the URL path.
+     */
+    public function unenrolStudent(Request $request, Response $response): never
+    {
+        $moduleId = (int)$request->param('moduleId');
+        $body     = $request->body();
+        $reg      = trim((string)($body['regnumber'] ?? ''));
+        if ($moduleId <= 0 || $reg === '') {
+            $this->error($response, 'A module id and registration number are required.', 422);
+        }
+        $this->ensureTeaches($request, $response, $moduleId);
+
+        $termId = $this->resolveTermId($request);
+        $n = $this->db->execute(
+            "UPDATE `module_registrations` SET status = 'dropped'
+              WHERE module_id = ? AND student_regnumber = ?"
+              . ($termId ? " AND academic_term_id = ?" : ""),
+            $termId ? [$moduleId, $reg, $termId] : [$moduleId, $reg]
+        );
+        if ($n === 0) {
+            $this->error($response, 'That student is not registered for this course.', 404);
+        }
+        $this->success($response, ['dropped' => $n], 'Student removed from the course.');
+    }
+
+    /**
      * GET /api/teacher/courses/:moduleId/attendance
      *
      * Attendance for one of the lecturer's courses, both ways round: the list of

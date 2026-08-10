@@ -290,6 +290,24 @@ export const teacherService = {
   courseDetail: (moduleId: number, signal?: AbortSignal) =>
     api.get<TeacherCourse>(`/api/teacher/courses/${moduleId}`, undefined, signal),
 
+  /**
+   * Enrol students onto one of my courses.
+   *
+   * The admin route (POST /api/modules/registrations) needs
+   * MANAGE_MODULE_REGISTRATIONS, which lecturers do not hold, so the portal has
+   * its own scoped endpoint — it only accepts modules you actually teach.
+   */
+  enrolStudents: (moduleId: number, regnumbers: string[], signal?: AbortSignal) =>
+    api.post<{ added: number; already: number }>(
+      `/api/teacher/courses/${moduleId}/students`, { regnumbers }, signal,
+    ),
+
+  /** Mark a student dropped (kept, not deleted, so marks/attendance still resolve). */
+  unenrolStudent: (moduleId: number, regnumber: string, signal?: AbortSignal) =>
+    api.post<{ dropped: number }>(
+      `/api/teacher/courses/${moduleId}/students/unenrol`, { regnumber }, signal,
+    ),
+
   /** Sessions held + per-student tally, for the course Attendance tab. */
   courseAttendance: (moduleId: number, termId?: number, signal?: AbortSignal) =>
     api.get<CourseAttendance>(

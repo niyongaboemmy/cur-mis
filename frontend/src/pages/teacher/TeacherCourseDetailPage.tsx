@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, Loader2, Search, Users, ClipboardCheck, GraduationCap,
-  CalendarRange, MapPin, Clock, Download, Pencil, Save,
+  CalendarRange, MapPin, Clock, Download, Pencil, Save, UserPlus, Check,
 } from 'lucide-react'
 import { teacherService, type TeacherClassStudent } from '@/services/teacherService'
 // The very same date-strip + roster editor the /attendance page uses, so a
@@ -11,6 +11,8 @@ import { teacherService, type TeacherClassStudent } from '@/services/teacherServ
 // module they already have open.
 import { RecordTab, DateStrip, mostRecentAllowedDate } from '@/pages/AttendancePage'
 import { attendanceService } from '@/services/attendanceService'
+import { studentService } from '@/services/studentService'
+import toast from 'react-hot-toast'
 // The real CUR mark sheet, embedded so marks are entered without leaving the course.
 import { MarksEditor } from '@/pages/modules/ModulesMarksPage'
 
@@ -30,10 +32,11 @@ const STATUS_CHIP: Record<string, string> = {
   unscheduled: 'chip-warning',
 }
 
-type TabKey = 'students' | 'attendance' | 'marks'
+type TabKey = 'students' | 'enroll' | 'attendance' | 'marks'
 
 const TABS: Array<{ key: TabKey; label: string; icon: typeof Users }> = [
   { key: 'students',   label: 'Students',   icon: Users },
+  { key: 'enroll',     label: 'Enroll',     icon: UserPlus },
   { key: 'attendance', label: 'Attendance', icon: ClipboardCheck },
   { key: 'marks',      label: 'Marks',      icon: GraduationCap },
 ]
@@ -93,6 +96,119 @@ function TableShell({
   )
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+ * Enroll tab — search the student directory and add students to this course
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+function EnrollPanel({
+  moduleId, moduleCode, enrolled, search, onDone,
+}: {
+  moduleId:   number
+  moduleCode: string
+  /** Reg numbers already on the course — shown as "Enrolled", not selectable. */
+  enrolled:   Set<string>
+  search:     string
+  onDone:     () => void
+}) {
+  const [picked, setPicked] = useState<Set<string>>(new Set())
+
+  // The directory holds 13k students, so require a search before listing —
+  // an arbitrary first page would be meaningless to the lecturer.
+  const needle = search.trim()
+  const q = useQuery({
+    queryKey: ['teacher', 'enrollSearch', needle],
+    queryFn:  ({ signal }) => studentService.list({ q: needle, per_page: 50 }, signal),
+    enabled:  needle.length >= 2,
+  })
+
+  const rows = useMemo(() => {
+    const d: any = q.data?.data
+    return (Array.isArray(d) ? d : d?.data ?? []) as Array<Record<string, any>>
+  }, [q.data])
+
+  const enrol = useMutation({
+    mutationFn: () => teacherService.enrolStudents(moduleId, [...picked]),
+    onSuccess: (r: any) => {
+      toast.success(r?.message ?? 'Students enrolled.')
+      setPicked(new Set())
+      onDone()
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Could not enrol.'),
+  })
+
+  const toggle = (reg: string) =>
+    setPicked((p) => {
+      const next = new Set(p)
+      if (next.has(reg)) next.delete(reg); else next.add(reg)
+      return next
+    })
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <p className="text-[12px] text-ink-500">
+          Search the student directory in the header, tick students, then add them to{' '}
+          <strong className="text-ink-700 dark:text-ink-200">{moduleCode}</strong>.
+        </p>
+        <button
+          className="btn-primary btn-sm"
+          disabled={picked.size === 0 || enrol.isPending}
+          onClick={() => enrol.mutate()}
+        >
+          {enrol.isPending
+            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            : <UserPlus className="w-3.5 h-3.5" />}
+          Enroll{picked.size > 0 ? ` ${picked.size}` : ''}
+        </button>
+      </div>
+
+      {needle.length < 2 ? (
+        <div className="card p-10 text-center">
+          <UserPlus className="w-7 h-7 mx-auto text-ink-300 mb-2" />
+          <p className="text-[13px] text-ink-500">
+            Type at least 2 characters in the search box above to find students.
+          </p>
+        </div>
+      ) : (
+        <TableShell
+          head={['', 'Reg number', 'Student', 'Level', 'Programme']}
+          colSpan={5}
+          isLoading={q.isLoading}
+          isError={q.isError}
+          isEmpty={rows.length === 0}
+          emptyText={`No student matches "${needle}".`}
+        >
+          {rows.map((st) => {
+            const reg    = String(st.regnumber ?? '')
+            const on     = enrolled.has(reg)
+            const chosen = picked.has(reg)
+            return (
+              <tr
+                key={reg}
+                onClick={() => { if (!on) toggle(reg) }}
+                className={on ? 'opacity-50' : 'cursor-pointer hover:bg-ink-50/60 dark:hover:bg-ink-700/20'}
+              >
+                <td className="px-4 py-2.5 w-10">
+                  {on
+                    ? <Check className="w-4 h-4 text-emerald-500" />
+                    : <input type="checkbox" checked={chosen} readOnly className="pointer-events-none" />}
+                </td>
+                <td className="px-4 py-2.5 font-mono text-[12px]">{reg}</td>
+                <td className="px-4 py-2.5 font-medium text-ink-900 dark:text-white">
+                  {`${st.fname ?? ''} ${st.lname ?? ''}`.trim() || reg}
+                  {on && <span className="chip-soft ml-2">Enrolled</span>}
+                </td>
+                <td className="px-4 py-2.5">{st.current_level ?? '—'}</td>
+                <td className="px-4 py-2.5 text-[12px] text-ink-500">{st.program ?? st.std_option ?? '—'}</td>
+              </tr>
+            )
+          })}
+        </TableShell>
+      )}
+    </div>
+  )
+}
+
 export default function TeacherCourseDetailPage() {
   const { moduleId } = useParams<{ moduleId: string }>()
   const id = Number(moduleId)
@@ -131,7 +247,7 @@ export default function TeacherCourseDetailPage() {
   const listQ = useQuery({
     queryKey: ['teacher', 'classList', id, c?.term_id],
     queryFn:  ({ signal }) => teacherService.classList(id, c?.term_id, signal),
-    enabled:  id > 0 && !!c && (tab === 'students' || tab === 'marks'),
+    enabled:  id > 0 && !!c && (tab === 'students' || tab === 'marks' || tab === 'enroll'),
   })
 
   const attQ = useQuery({
@@ -456,10 +572,10 @@ export default function TeacherCourseDetailPage() {
           isLoading={listQ.isLoading}
           isError={listQ.isError}
           isEmpty={students.length === 0}
-          emptyText={search ? 'No student matches that search.' : 'No students registered for this course.'}
+          emptyText={search ? 'No student matches that search.' : 'No students registered yet — use the Enroll tab to add them.'}
         >
           {students.map((s) => (
-            <tr key={s.regnumber} className="hover:bg-ink-50/50 dark:hover:bg-ink-700/20">
+            <tr key={s.regnumber} className="hover:bg-ink-50/50 dark:hover:bg-ink-700/20 group/row">
               <td className="px-4 py-2.5 font-mono text-[12px]">{s.regnumber}</td>
               <td className="px-4 py-2.5">
                 <span className="font-medium text-ink-900 dark:text-white">{s.full_name}</span>
@@ -474,6 +590,21 @@ export default function TeacherCourseDetailPage() {
             </tr>
           ))}
         </TableShell>
+      )}
+
+      {/* ══ Enroll ════════════════════════════════════════════════════════ */}
+      {tab === 'enroll' && (
+        <EnrollPanel
+          moduleId={id}
+          moduleCode={c.module_code}
+          enrolled={new Set((listQ.data?.data ?? []).map((s) => s.regnumber))}
+          search={search}
+          onDone={() => {
+            qc.invalidateQueries({ queryKey: ['teacher', 'classList', id] })
+            qc.invalidateQueries({ queryKey: ['teacher', 'course', id] })
+            qc.invalidateQueries({ queryKey: ['teacher', 'courses'] })
+          }}
+        />
       )}
 
       {/* ══ Attendance ════════════════════════════════════════════════════
@@ -640,10 +771,10 @@ export default function TeacherCourseDetailPage() {
           isLoading={listQ.isLoading}
           isError={listQ.isError}
           isEmpty={students.length === 0}
-          emptyText={search ? 'No student matches that search.' : 'No students registered for this course.'}
+          emptyText={search ? 'No student matches that search.' : 'No students registered yet — use the Enroll tab to add them.'}
         >
           {students.map((s) => (
-            <tr key={s.regnumber} className="hover:bg-ink-50/50 dark:hover:bg-ink-700/20">
+            <tr key={s.regnumber} className="hover:bg-ink-50/50 dark:hover:bg-ink-700/20 group/row">
               <td className="px-4 py-2.5 font-mono text-[12px]">{s.regnumber}</td>
               <td className="px-4 py-2.5 font-medium text-ink-900 dark:text-white">{s.full_name}</td>
               <td className="px-4 py-2.5 tabular-nums">{s.total ?? <span className="text-ink-400">—</span>}</td>
