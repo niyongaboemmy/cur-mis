@@ -36,7 +36,9 @@ $router->group('/api/teacher', function ($router) {
     $router->get('/courses/:moduleId/students',  [TeacherController::class, 'courseStudents']);
     $router->post('/courses/:moduleId/students', [TeacherController::class, 'enrolStudents']);
     // POST, not DELETE /:regnumber — registration numbers contain slashes
-    // (e.g. "STD/2026/23006"), which break path-segment matching.
+    // (e.g. "STD/2026/23006"), which break path-segment matching. Same reason
+    // the impact preview takes the regnumber as a query value.
+    $router->get('/courses/:moduleId/students/removal-impact', [TeacherController::class, 'removalImpact']);
     $router->post('/courses/:moduleId/students/unenrol', [TeacherController::class, 'unenrolStudent']);
 
     // Sessions held + per-student tally, for the course's Attendance tab.

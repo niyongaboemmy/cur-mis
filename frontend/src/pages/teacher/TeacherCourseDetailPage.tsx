@@ -4,8 +4,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, Loader2, Search, Users, ClipboardCheck, GraduationCap,
   CalendarRange, MapPin, Clock, Download, Pencil, Save, UserPlus, Check,
+  Trash2, AlertTriangle, UserMinus,
 } from 'lucide-react'
 import { teacherService, type TeacherClassStudent } from '@/services/teacherService'
+import { useAuthStore } from '@/store/authStore'
+import Modal from '@/components/ui/Modal'
 // The very same date-strip + roster editor the /attendance page uses, so a
 // lecturer records attendance in place instead of being sent off to re-pick the
 // module they already have open.
@@ -97,20 +100,234 @@ function TableShell({
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
+ * Removing an enrolled student
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/** One line in the "what gets deleted" list. */
+function ImpactRow({ label, n, muted }: { label: string; n: number; muted?: boolean }) {
+  return (
+    <li className={`flex items-center justify-between gap-4 py-1 ${muted ? 'opacity-45' : ''}`}>
+      <span className="text-[12.5px] text-ink-600 dark:text-ink-300">{label}</span>
+      <span className={`text-[12.5px] font-semibold tabular-nums ${
+        n > 0 && !muted ? 'text-red-600 dark:text-red-400' : 'text-ink-400'
+      }`}>
+        {n}
+      </span>
+    </li>
+  )
+}
+
+/**
+ * Confirm removing one student from this course.
+ *
+ * The counts are fetched rather than guessed: a warning that names the exact
+ * number of marks and attendance records about to be destroyed is the whole
+ * point of the dialog, and "this cannot be undone" on its own tells a
+ * superadmin nothing about what they are about to lose.
+ */
+function RemoveStudentDialog({
+  moduleId, moduleCode, termId, student, onClose, onDone,
+}: {
+  moduleId:   number
+  moduleCode: string
+  termId?:    number
+  student:    TeacherClassStudent
+  onClose:    () => void
+  onDone:     () => void
+}) {
+  const impactQ = useQuery({
+    queryKey: ['teacher', 'removalImpact', moduleId, student.regnumber, termId],
+    queryFn:  ({ signal }) => teacherService.removalImpact(moduleId, student.regnumber, termId, signal),
+  })
+  const impact = impactQ.data?.data
+
+  /* Checked by default: the request is "remove this student", and a removal
+     that leaves the marks behind is exactly what makes them keep appearing in
+     the deliberation grid with a grade. Unticking downgrades to a soft drop. */
+  const [purge, setPurge]       = useState(true)
+  const [allTerms, setAllTerms] = useState(false)
+
+  const canPurge   = !!impact?.can_purge
+  const willPurge  = purge && canPurge
+  const otherMarks = impact?.other_terms_marks ?? 0
+
+  const remove = useMutation({
+    mutationFn: () => teacherService.unenrolStudent(moduleId, student.regnumber, {
+      purge:           willPurge,
+      purgeOtherTerms: willPurge && allTerms,
+      termId,
+    }),
+    onSuccess: (r: any) => {
+      toast.success(r?.message ?? 'Student removed.')
+      onDone()
+      onClose()
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Could not remove the student.'),
+  })
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      size="md"
+      static={remove.isPending}
+      footer={
+        <>
+          <button className="btn-secondary btn-sm" onClick={onClose} disabled={remove.isPending}>
+            Cancel
+          </button>
+          <button
+            className="btn-danger btn-sm"
+            onClick={() => remove.mutate()}
+            disabled={remove.isPending || impactQ.isLoading}
+          >
+            {remove.isPending
+              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              : <Trash2 className="w-3.5 h-3.5" />}
+            {willPurge ? 'Remove and delete records' : 'Remove from course'}
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div className="flex gap-3">
+          <div className="shrink-0 w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/25 flex items-center justify-center">
+            <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400" />
+          </div>
+          <div className="min-w-0">
+            <h3 className="font-semibold text-ink-900 dark:text-white">
+              Remove {impact?.full_name ?? student.full_name}?
+            </h3>
+            <p className="text-[12.5px] text-ink-500 mt-0.5">
+              <span className="font-mono">{student.regnumber}</span> will be taken off{' '}
+              <strong className="text-ink-700 dark:text-ink-200">{moduleCode}</strong>.
+            </p>
+          </div>
+        </div>
+
+        {impactQ.isLoading ? (
+          <div className="p-6 text-center">
+            <Loader2 className="w-5 h-5 animate-spin mx-auto text-brand" />
+          </div>
+        ) : impactQ.isError ? (
+          <p className="text-[13px] text-rose-500">
+            Could not check what this would delete. Try again before removing.
+          </p>
+        ) : impact && (
+          <>
+            <label className="flex items-start gap-3 p-3 rounded-lg border border-ink-100 dark:border-ink-700
+                              cursor-pointer hover:bg-ink-50 dark:hover:bg-ink-700/30 transition-colors">
+              <input
+                type="checkbox"
+                className="mt-0.5 rounded border-ink-300 text-brand focus:ring-brand/30"
+                checked={willPurge}
+                disabled={!canPurge}
+                onChange={(e) => setPurge(e.target.checked)}
+              />
+              <span className="min-w-0">
+                <span className="block text-[13px] font-medium text-ink-900 dark:text-white">
+                  Also delete their marks and attendance
+                </span>
+                <span className="block text-[12px] text-ink-500 mt-0.5">
+                  {canPurge
+                    ? 'Permanently deletes the records below. This cannot be undone.'
+                    : 'Only a superadmin can delete records. They will be kept and the student marked dropped.'}
+                </span>
+              </span>
+            </label>
+
+            <div className="rounded-lg bg-ink-50 dark:bg-ink-900/40 px-3 py-2">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-ink-400 mb-1">
+                {willPurge ? 'Will be deleted' : 'Will be kept'}
+              </p>
+              <ul className="divide-y divide-ink-100 dark:divide-ink-700/60">
+                <ImpactRow label="Marks"                  n={impact.marks}              muted={!willPurge} />
+                <ImpactRow label="Attendance records"     n={impact.attendance_records} muted={!willPurge} />
+                <ImpactRow label="Exam attendance"        n={impact.exam_attendance}    muted={!willPurge} />
+                {impact.revaluations > 0 && (
+                  <ImpactRow label="Revaluation requests" n={impact.revaluations}       muted={!willPurge} />
+                )}
+              </ul>
+            </div>
+
+            {/* A mark recorded in another term survives a term-scoped removal,
+                and the deliberation grid reads marks directly — so the student
+                would come back with a grade. Surface it instead of guessing. */}
+            {willPurge && otherMarks > 0 && (
+              <label className="flex items-start gap-3 p-3 rounded-lg border border-amber-200 bg-amber-50
+                                dark:border-amber-500/30 dark:bg-amber-500/10 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 rounded border-amber-400 text-amber-600 focus:ring-amber-400/30"
+                  checked={allTerms}
+                  onChange={(e) => setAllTerms(e.target.checked)}
+                />
+                <span className="min-w-0">
+                  <span className="block text-[13px] font-medium text-amber-900 dark:text-amber-200">
+                    Also remove {otherMarks} mark{otherMarks === 1 ? '' : 's'} recorded in other terms
+                  </span>
+                  <span className="block text-[12px] text-amber-800/80 dark:text-amber-300/80 mt-0.5">
+                    {impact.other_terms
+                      .map((t) => `${t.term_label ?? `Term ${t.term_id ?? '—'}`}${t.grade ? ` · ${t.grade}` : ''}${t.locked ? ' · confirmed' : ''}`)
+                      .join(', ')}
+                    . Left in place, these keep the student showing in deliberation with a grade.
+                  </span>
+                </span>
+              </label>
+            )}
+
+            {impact.registration_status === 'completed' && (
+              <p className="text-[12px] text-amber-700 dark:text-amber-300 flex items-start gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                This registration is marked <strong>completed</strong> — the student has already
+                finished the module.
+              </p>
+            )}
+          </>
+        )}
+      </div>
+    </Modal>
+  )
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
  * Enroll tab — search the student directory and add students to this course
  * ═══════════════════════════════════════════════════════════════════════ */
 
 function EnrollPanel({
-  moduleId, moduleCode, enrolled, search, onDone,
+  moduleId, moduleCode, termId, students, search, onDone,
 }: {
   moduleId:   number
   moduleCode: string
-  /** Reg numbers already on the course — shown as "Enrolled", not selectable. */
-  enrolled:   Set<string>
+  termId?:    number
+  /** The current class list — already on the course, so not re-addable. */
+  students:   TeacherClassStudent[]
   search:     string
   onDone:     () => void
 }) {
   const [picked, setPicked] = useState<Set<string>>(new Set())
+  /** Which student the removal dialog is open for, if any. */
+  const [removing, setRemoving] = useState<TeacherClassStudent | null>(null)
+
+  /* Deleting a student's marks and attendance is destructive and institution-
+     wide in effect, so the entry point is superadmin-only — matching the server,
+     which refuses `purge` for anyone else. */
+  const isSuperadmin = useAuthStore((s) => s.user)?.role === 'superadmin'
+
+  const enrolled = useMemo(
+    () => new Set(students.map((s) => s.regnumber)),
+    [students],
+  )
+
+  /* The header search box drives both halves of this tab: it filters the class
+     list below and searches the directory above. */
+  const enrolledShown = useMemo(() => {
+    const needle = search.trim().toLowerCase()
+    if (!needle) return students
+    return students.filter((s) =>
+      s.full_name.toLowerCase().includes(needle) ||
+      s.regnumber.toLowerCase().includes(needle))
+  }, [students, search])
 
   // The directory holds 13k students, so require a search before listing —
   // an arbitrary first page would be meaningless to the lecturer.
@@ -144,14 +361,65 @@ function EnrollPanel({
     })
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <p className="text-[12px] text-ink-500">
+    <div className="space-y-5">
+      {/* ── Already on the course ─────────────────────────────────────────
+          Listed here, not only on the Students tab, because removing someone
+          is an enrolment action and this is the enrolment tab. */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <h3 className="text-[13px] font-semibold text-ink-900 dark:text-white flex items-center gap-1.5">
+            <Users className="w-3.5 h-3.5 text-ink-400" />
+            Enrolled
+            <span className="chip-soft">{students.length}</span>
+          </h3>
+          {!isSuperadmin && students.length > 0 && (
+            <p className="text-[11.5px] text-ink-400">
+              Only a superadmin can remove an enrolled student.
+            </p>
+          )}
+        </div>
+
+        <TableShell
+          head={isSuperadmin ? ['Reg number', 'Student', 'Level', ''] : ['Reg number', 'Student', 'Level']}
+          colSpan={isSuperadmin ? 4 : 3}
+          isLoading={false}
+          isError={false}
+          isEmpty={enrolledShown.length === 0}
+          emptyText={
+            students.length === 0
+              ? 'Nobody is enrolled on this course yet — search below to add students.'
+              : 'No enrolled student matches that search.'
+          }
+        >
+          {enrolledShown.map((s) => (
+            <tr key={s.regnumber} className="hover:bg-ink-50/50 dark:hover:bg-ink-700/20">
+              <td className="px-4 py-2 font-mono text-[12px]">{s.regnumber}</td>
+              <td className="px-4 py-2 font-medium text-ink-900 dark:text-white">{s.full_name}</td>
+              <td className="px-4 py-2">{s.level ?? '—'}</td>
+              {isSuperadmin && (
+                <td className="px-4 py-2 text-right">
+                  <button
+                    className="btn-ghost btn-sm text-red-600 hover:bg-red-50 hover:text-red-700
+                               dark:text-red-400 dark:hover:bg-red-500/10"
+                    onClick={() => setRemoving(s)}
+                  >
+                    <UserMinus className="w-3.5 h-3.5" /> Remove
+                  </button>
+                </td>
+              )}
+            </tr>
+          ))}
+        </TableShell>
+      </div>
+
+      {/* ── Add more ──────────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between gap-3 flex-wrap pt-1 border-t border-ink-100 dark:border-ink-700">
+        <p className="text-[12px] text-ink-500 pt-3">
           Search the student directory in the header, tick students, then add them to{' '}
           <strong className="text-ink-700 dark:text-ink-200">{moduleCode}</strong>.
         </p>
         <button
-          className="btn-primary btn-sm"
+          className="btn-primary btn-sm mt-3"
           disabled={picked.size === 0 || enrol.isPending}
           onClick={() => enrol.mutate()}
         >
@@ -161,6 +429,21 @@ function EnrollPanel({
           Enroll{picked.size > 0 ? ` ${picked.size}` : ''}
         </button>
       </div>
+
+      {removing && (
+        <RemoveStudentDialog
+          /* Keyed on the student so the checkboxes can never carry over from a
+             previous one — ticking "delete the records" for A and then opening
+             B must not arrive pre-armed. */
+          key={removing.regnumber}
+          moduleId={moduleId}
+          moduleCode={moduleCode}
+          termId={termId}
+          student={removing}
+          onClose={() => setRemoving(null)}
+          onDone={onDone}
+        />
+      )}
 
       {needle.length < 2 ? (
         <div className="card p-10 text-center">
@@ -605,12 +888,19 @@ export default function TeacherCourseDetailPage() {
         <EnrollPanel
           moduleId={id}
           moduleCode={c.module_code}
-          enrolled={new Set((listQ.data?.data ?? []).map((s) => s.regnumber))}
+          termId={c.term_id}
+          students={listQ.data?.data ?? []}
           search={search}
           onDone={() => {
             qc.invalidateQueries({ queryKey: ['teacher', 'classList', id] })
             qc.invalidateQueries({ queryKey: ['teacher', 'course', id] })
             qc.invalidateQueries({ queryKey: ['teacher', 'courses'] })
+            // A purge deletes attendance rows too, so the Attendance tab's
+            // session tallies are stale the moment this returns. Same for the
+            // impact preview, which a soft drop leaves cached against a student
+            // who is still on the list.
+            qc.invalidateQueries({ queryKey: ['teacher', 'courseAttendance', id] })
+            qc.invalidateQueries({ queryKey: ['teacher', 'removalImpact', id] })
           }}
         />
       )}

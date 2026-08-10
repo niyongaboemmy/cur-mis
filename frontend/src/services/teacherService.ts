@@ -74,6 +74,44 @@ export interface TeacherClassStudent {
   attendance_rate: number | null
 }
 
+/** Marks for this module sitting in a term other than the one on screen. */
+export interface RemovalImpactTerm {
+  term_id:    number | null
+  term_label: string | null
+  marks:      number
+  /** At least one of them is submitted or confirmed — i.e. a real result. */
+  locked:     boolean
+  grade:      string | null
+}
+
+export interface RemovalImpact {
+  regnumber:  string
+  full_name:  string
+  term_id:    number | null
+  registered: boolean
+  registration_status: string | null
+  marks:               number
+  attendance_records:  number
+  exam_attendance:     number
+  revaluations:        number
+  /** Everything above added up, including the registration row itself. */
+  total:               number
+  other_terms:         RemovalImpactTerm[]
+  other_terms_marks:   number
+  /** Only a superadmin may delete records; everyone else can only drop. */
+  can_purge:           boolean
+}
+
+export interface UnenrolResult {
+  purged:              boolean
+  dropped?:            number
+  registrations?:      number
+  marks?:              number
+  attendance_records?: number
+  exam_attendance?:    number
+  revaluations?:       number
+}
+
 export interface CourseAttendance {
   sessions: Array<{
     id:           number
@@ -302,10 +340,43 @@ export const teacherService = {
       `/api/teacher/courses/${moduleId}/students`, { regnumbers }, signal,
     ),
 
-  /** Mark a student dropped (kept, not deleted, so marks/attendance still resolve). */
-  unenrolStudent: (moduleId: number, regnumber: string, signal?: AbortSignal) =>
-    api.post<{ dropped: number }>(
-      `/api/teacher/courses/${moduleId}/students/unenrol`, { regnumber }, signal,
+  /**
+   * What removing this student would destroy — real counts for the
+   * confirmation dialog, plus `can_purge` so the UI never offers a deletion
+   * the API will refuse.
+   */
+  removalImpact: (moduleId: number, regnumber: string, termId?: number, signal?: AbortSignal) =>
+    api.get<RemovalImpact>(
+      `/api/teacher/courses/${moduleId}/students/removal-impact`,
+      { regnumber, ...(termId ? { term_id: termId } : {}) },
+      signal,
+    ),
+
+  /**
+   * Remove a student from a course.
+   *
+   * `purge` false (the default) marks the registration dropped and keeps every
+   * record. `purge` true DELETES the marks, attendance, exam attendance and
+   * revaluation requests as well, and is refused with a 403 for anyone but a
+   * superadmin. `purgeOtherTerms` widens a purge to this module in every term,
+   * which is what stops a mark recorded in another term from keeping the
+   * student in the deliberation grid.
+   */
+  unenrolStudent: (
+    moduleId: number,
+    regnumber: string,
+    opts?: { purge?: boolean; purgeOtherTerms?: boolean; termId?: number },
+    signal?: AbortSignal,
+  ) =>
+    api.post<UnenrolResult>(
+      `/api/teacher/courses/${moduleId}/students/unenrol`
+        + (opts?.termId ? `?term_id=${opts.termId}` : ''),
+      {
+        regnumber,
+        purge:             opts?.purge ?? false,
+        purge_other_terms: opts?.purgeOtherTerms ?? false,
+      },
+      signal,
     ),
 
   /** Sessions held + per-student tally, for the course Attendance tab. */

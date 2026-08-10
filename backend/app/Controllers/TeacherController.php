@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Controllers;
 
 use App\Helpers\LecturerScope;
+use App\Services\AuthService;
+use App\Services\SystemLogService;
 use Core\Database;
 use Core\Request;
 use Core\Response;
@@ -277,6 +279,36 @@ class TeacherController extends BaseController
                 $match = $a;
             }
         }
+        // A superadmin holds no teaching assignment, so the loop above finds
+        // nothing and every course would 404 for them — including the ones they
+        // are the only role allowed to manage enrolment on. Fall back to the
+        // catalogue row so the page opens; the shape is identical, with the
+        // assignment-only fields left null.
+        if ($match === null && AuthService::isSuperadmin((array)$request->param('_auth_user'))) {
+            $row = $this->db->fetchOne(
+                // `m.department` aliased to department_id, matching LecturerScope
+                // — the column is named `department` on `modules`.
+                "SELECT m.module_id, m.module_code, m.module_name, m.module_credits,
+                        m.level, m.department AS department_id
+                   FROM `modules` m WHERE m.module_id = ? LIMIT 1",
+                [$moduleId]
+            );
+            if ($row) {
+                $term = $want ?? $this->resolveTermId($request);
+                $termRow = $term !== null
+                    ? ($this->db->fetchOne(
+                        "SELECT label FROM `academic_terms` WHERE id = ? LIMIT 1", [$term]
+                      ) ?: null)
+                    : null;
+                $match = $row + [
+                    'assignment_id'  => 0,
+                    'term_id'        => (int)($term ?? 0),
+                    'term_label'     => $termRow['label'] ?? null,
+                    'role'           => 'primary',
+                    'hours_per_week' => null,
+                ];
+            }
+        }
         if ($match === null) {
             $this->error($response, 'Course not found.', 404);
         }
@@ -382,10 +414,186 @@ class TeacherController extends BaseController
     }
 
     /**
-     * POST /api/teacher/courses/:moduleId/students/unenrol   body: { regnumber }
+     * GET /api/teacher/courses/:moduleId/students/removal-impact?regnumber=…
      *
-     * Un-enrol (mark dropped) rather than delete, so any marks or attendance
-     * already recorded against the student keep their referent.
+     * Exactly what removing this student would delete, so the confirmation
+     * dialog states real numbers instead of a vague "this cannot be undone".
+     *
+     * A GET with the regnumber in the QUERY STRING rather than the path:
+     * registration numbers contain slashes ("STD/2026/23006"), which break
+     * path-segment matching but survive URL-encoding in a query value.
+     */
+    public function removalImpact(Request $request, Response $response): never
+    {
+        $moduleId = (int)$request->param('moduleId');
+        $reg      = trim((string)($request->query('regnumber') ?? ''));
+        if ($moduleId <= 0 || $reg === '') {
+            $this->error($response, 'A module id and registration number are required.', 422);
+        }
+        $this->ensureTeaches($request, $response, $moduleId);
+
+        $impact = $this->removalImpactFor($moduleId, $reg, $this->resolveTermId($request));
+        // Drives the dialog: without this the UI would offer a purge the API
+        // will refuse. Resolved server-side so the two can never disagree.
+        $impact['can_purge'] = AuthService::isSuperadmin((array)$request->param('_auth_user'));
+
+        $this->success($response, $impact, 'Removal impact resolved.');
+    }
+
+    /**
+     * Every row a purge would delete, counted, and split by term.
+     *
+     * The term split is not cosmetic. `module_marks` is NOT constrained to the
+     * terms a student is registered for — legacy imports left marks in terms
+     * with no matching registration — and the deliberation grid reads
+     * `module_marks` directly and deliberately, "so a recorded mark surfaces
+     * even when the matching `module_registrations` row is missing, dropped, or
+     * recorded in a different term" (DeliberationController). So a removal
+     * scoped to the course's own term can delete the registration and still
+     * leave a confirmed grade behind that keeps the student turning up in
+     * deliberation. The dialog surfaces that rather than silently picking one
+     * behaviour for the superadmin.
+     */
+    private function removalImpactFor(int $moduleId, string $reg, ?int $termId): array
+    {
+        $hasTerm = $termId !== null && $termId > 0;
+        $tp      = $hasTerm ? [$moduleId, $reg, $termId] : [$moduleId, $reg];
+
+        // `?: null` matters: fetchOne returns FALSE when nothing matches, and
+        // `false !== null`, so a bare null-check would report every student as
+        // registered and hand the caller a phantom row to delete.
+        $student = $this->db->fetchOne(
+            "SELECT TRIM(CONCAT(COALESCE(fname,''),' ',COALESCE(lname,''))) AS full_name
+               FROM `student` WHERE regnumber = ? LIMIT 1",
+            [$reg]
+        ) ?: null;
+
+        $registration = $this->db->fetchOne(
+            "SELECT id, status, academic_term_id FROM `module_registrations`
+              WHERE module_id = ? AND student_regnumber = ?"
+              . ($hasTerm ? ' AND academic_term_id = ?' : '')
+              . ' ORDER BY id DESC LIMIT 1',
+            $tp
+        ) ?: null;
+
+        $marks = $this->count(
+            "SELECT COUNT(*) AS n FROM `module_marks`
+              WHERE module_id = ? AND student_regnumber = ?"
+              . ($hasTerm ? ' AND academic_term_id = ?' : ''),
+            $tp
+        );
+
+        $attendance = $this->count(
+            "SELECT COUNT(*) AS n
+               FROM `attendance_records` ar
+               JOIN `attendance_sessions` s ON s.id = ar.session_id
+              WHERE s.module_id = ? AND ar.student_regnumber = ?"
+              . ($hasTerm ? ' AND s.academic_term_id = ?' : ''),
+            $tp
+        );
+
+        // exam_schedules.term_id is nullable, and a sitting with no term still
+        // belongs to this module — excluding it would under-count the warning.
+        $examAttendance = !$this->tableExists('exam_attendance') ? 0 : $this->count(
+            "SELECT COUNT(*) AS n
+               FROM `exam_attendance` ea
+               JOIN `exam_schedules` es ON es.id = ea.exam_schedule_id
+              WHERE es.module_id = ? AND ea.student_regnumber = ?"
+              . ($hasTerm ? ' AND (es.term_id = ? OR es.term_id IS NULL)' : ''),
+            $tp
+        );
+
+        // Reachable only through module_marks.id, and the table carries no
+        // foreign key — so once the mark goes, an orphan here is unfindable.
+        $revaluations = !$this->tableExists('revaluations') ? 0 : $this->count(
+            "SELECT COUNT(*) AS n
+               FROM `revaluations` r
+               JOIN `module_marks` mm ON mm.id = r.exam_id
+              WHERE mm.module_id = ? AND mm.student_regnumber = ?"
+              . ($hasTerm ? ' AND mm.academic_term_id = ?' : ''),
+            $tp
+        );
+
+        // Marks for this module sitting in any OTHER term — the ones a
+        // term-scoped removal would leave behind.
+        $otherTerms = [];
+        if ($hasTerm) {
+            foreach ($this->db->fetchAll(
+                "SELECT mm.academic_term_id                                   AS term_id,
+                        t.label                                               AS term_label,
+                        COUNT(*)                                              AS marks,
+                        SUM(mm.status IN ('submitted','confirmed'))           AS locked,
+                        MAX(mm.grade)                                         AS grade
+                   FROM `module_marks` mm
+              LEFT JOIN `academic_terms` t ON t.id = mm.academic_term_id
+                  WHERE mm.module_id = ? AND mm.student_regnumber = ?
+                    AND (mm.academic_term_id IS NULL OR mm.academic_term_id <> ?)
+               GROUP BY mm.academic_term_id, t.label
+               ORDER BY mm.academic_term_id ASC",
+                [$moduleId, $reg, $termId]
+            ) as $row) {
+                $otherTerms[] = [
+                    'term_id'    => $row['term_id'] !== null ? (int)$row['term_id'] : null,
+                    'term_label' => $row['term_label'] ?: null,
+                    'marks'      => (int)$row['marks'],
+                    'locked'     => (int)$row['locked'] > 0,
+                    'grade'      => $row['grade'] ?: null,
+                ];
+            }
+        }
+
+        return [
+            'regnumber'   => $reg,
+            'full_name'   => trim((string)($student['full_name'] ?? '')) ?: $reg,
+            'term_id'     => $hasTerm ? $termId : null,
+            'registered'  => $registration !== null,
+            'registration_status' => $registration['status'] ?? null,
+            'marks'               => $marks,
+            'attendance_records'  => $attendance,
+            'exam_attendance'     => $examAttendance,
+            'revaluations'        => $revaluations,
+            'total'               => $marks + $attendance + $examAttendance + $revaluations
+                                     + ($registration !== null ? 1 : 0),
+            'other_terms'         => $otherTerms,
+            'other_terms_marks'   => array_sum(array_column($otherTerms, 'marks')),
+        ];
+    }
+
+    /** COUNT(*) helper — every impact query returns a single `n`. */
+    private function count(string $sql, array $params): int
+    {
+        return (int)($this->db->fetchOne($sql, $params)['n'] ?? 0);
+    }
+
+    /**
+     * Both `exam_attendance` (migration 119) and `revaluations` are absent from
+     * older databases. Checking beforehand keeps a missing table from aborting
+     * the whole purge transaction with a 1146.
+     */
+    private function tableExists(string $table): bool
+    {
+        return (int)($this->db->fetchOne(
+            "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.TABLES
+              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?",
+            [$table]
+        )['n'] ?? 0) > 0;
+    }
+
+    /**
+     * POST /api/teacher/courses/:moduleId/students/unenrol
+     *   body: { regnumber, purge?: bool, purge_other_terms?: bool }
+     *
+     * Two behaviours behind one route, because they answer the same question
+     * with different force:
+     *
+     *   purge = false (default, any assigned lecturer)
+     *       Marks the registration `dropped`. Nothing is deleted, so marks and
+     *       attendance keep their referent and audit history stays intact.
+     *
+     *   purge = true (SUPERADMIN ONLY)
+     *       Deletes the registration outright along with the student's marks,
+     *       attendance, exam attendance and revaluation requests for this
+     *       module. Irreversible.
      *
      * The regnumber travels in the body because registration numbers contain
      * slashes ("STD/2026/23006") and would otherwise split the URL path.
@@ -401,16 +609,128 @@ class TeacherController extends BaseController
         $this->ensureTeaches($request, $response, $moduleId);
 
         $termId = $this->resolveTermId($request);
-        $n = $this->db->execute(
-            "UPDATE `module_registrations` SET status = 'dropped'
-              WHERE module_id = ? AND student_regnumber = ?"
-              . ($termId ? " AND academic_term_id = ?" : ""),
-            $termId ? [$moduleId, $reg, $termId] : [$moduleId, $reg]
-        );
-        if ($n === 0) {
+        $purge  = filter_var($body['purge'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+        if (!$purge) {
+            $n = $this->db->execute(
+                "UPDATE `module_registrations` SET status = 'dropped'
+                  WHERE module_id = ? AND student_regnumber = ?"
+                  . ($termId ? " AND academic_term_id = ?" : ""),
+                $termId ? [$moduleId, $reg, $termId] : [$moduleId, $reg]
+            );
+            if ($n === 0) {
+                $this->error($response, 'That student is not registered for this course.', 404);
+            }
+            $this->success($response, ['dropped' => $n, 'purged' => false],
+                'Student removed from the course. Their marks and attendance were kept.');
+        }
+
+        // ── Hard removal ────────────────────────────────────────────────────
+        // Gated on superadmin rather than on the module assignment: the
+        // teaching check above already proves the caller owns this course, but
+        // destroying a student's academic record is not a teaching act.
+        $user = (array)$request->param('_auth_user');
+        if (!AuthService::isSuperadmin($user)) {
+            $this->error(
+                $response,
+                'Only a superadmin can delete a student\'s marks and attendance. '
+                . 'Remove them without deleting records instead.',
+                403
+            );
+        }
+
+        // Widening to every term is what actually closes the deliberation leak
+        // described on removalImpactFor(): a mark left in another term keeps
+        // rendering with a grade long after the student was "removed".
+        $allTerms = filter_var($body['purge_other_terms'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $scoped   = $termId !== null && $termId > 0 && !$allTerms;
+
+        $before = $this->removalImpactFor($moduleId, $reg, $scoped ? $termId : null);
+        if (!$before['registered']
+            && $before['marks'] === 0
+            && $before['attendance_records'] === 0
+            && $before['exam_attendance'] === 0) {
             $this->error($response, 'That student is not registered for this course.', 404);
         }
-        $this->success($response, ['dropped' => $n], 'Student removed from the course.');
+
+        $hasExamAttendance = $this->tableExists('exam_attendance');
+        $hasRevaluations   = $this->tableExists('revaluations');
+
+        $deleted = $this->db->transaction(function () use (
+            $moduleId, $reg, $termId, $scoped, $hasExamAttendance, $hasRevaluations
+        ) {
+            $p  = $scoped ? [$moduleId, $reg, $termId] : [$moduleId, $reg];
+            $out = ['revaluations' => 0, 'exam_attendance' => 0,
+                    'attendance_records' => 0, 'marks' => 0, 'registrations' => 0];
+
+            // ORDER MATTERS. revaluations reaches a module only through
+            // module_marks.id and has no foreign key, so deleting the mark
+            // first would strand a row that nothing can ever find again.
+            if ($hasRevaluations) {
+                $out['revaluations'] = $this->db->execute(
+                    "DELETE r FROM `revaluations` r
+                       JOIN `module_marks` mm ON mm.id = r.exam_id
+                      WHERE mm.module_id = ? AND mm.student_regnumber = ?"
+                      . ($scoped ? ' AND mm.academic_term_id = ?' : ''),
+                    $p
+                );
+            }
+
+            if ($hasExamAttendance) {
+                $out['exam_attendance'] = $this->db->execute(
+                    "DELETE ea FROM `exam_attendance` ea
+                       JOIN `exam_schedules` es ON es.id = ea.exam_schedule_id
+                      WHERE es.module_id = ? AND ea.student_regnumber = ?"
+                      . ($scoped ? ' AND (es.term_id = ? OR es.term_id IS NULL)' : ''),
+                    $p
+                );
+            }
+
+            // Delete the RECORDS, never the sessions: an attendance_session is
+            // a class-level object with no student column, and its children
+            // cascade — dropping one would erase every other student's
+            // attendance for that meeting too.
+            $out['attendance_records'] = $this->db->execute(
+                "DELETE ar FROM `attendance_records` ar
+                   JOIN `attendance_sessions` s ON s.id = ar.session_id
+                  WHERE s.module_id = ? AND ar.student_regnumber = ?"
+                  . ($scoped ? ' AND s.academic_term_id = ?' : ''),
+                $p
+            );
+
+            $out['marks'] = $this->db->execute(
+                "DELETE FROM `module_marks`
+                  WHERE module_id = ? AND student_regnumber = ?"
+                  . ($scoped ? ' AND academic_term_id = ?' : ''),
+                $p
+            );
+
+            $out['registrations'] = $this->db->execute(
+                "DELETE FROM `module_registrations`
+                  WHERE module_id = ? AND student_regnumber = ?"
+                  . ($scoped ? ' AND academic_term_id = ?' : ''),
+                $p
+            );
+
+            return $out;
+        });
+
+        SystemLogService::log(
+            'DELETE', 'MODULES',
+            "Purged student {$reg} from module #{$moduleId}"
+            . ($scoped ? " (term #{$termId})" : ' (all terms)')
+            . ": {$deleted['registrations']} registration(s), {$deleted['marks']} mark(s), "
+            . "{$deleted['attendance_records']} attendance record(s), "
+            . "{$deleted['exam_attendance']} exam attendance record(s), "
+            . "{$deleted['revaluations']} revaluation(s).",
+            $moduleId, 'module', $deleted + ['regnumber' => $reg, 'term_id' => $scoped ? $termId : null],
+            $user ?: null
+        );
+
+        $this->success($response, ['purged' => true] + $deleted,
+            "Removed {$reg} and deleted {$deleted['marks']} mark(s), "
+            . "{$deleted['attendance_records']} attendance record(s) and "
+            . "{$deleted['exam_attendance']} exam attendance record(s).");
     }
 
     /**
@@ -504,8 +824,23 @@ class TeacherController extends BaseController
     }
 
     /** 403s unless the caller is assigned to $moduleId (in any term). */
+    /**
+     * Every per-course endpoint goes through here: you may only touch a module
+     * you actually teach.
+     *
+     * Superadmin is exempt, matching TeacherPortalMiddleware and the app-wide
+     * rule that superadmin bypasses permission checks. Without the exemption a
+     * superadmin — who by definition holds no teaching assignment — could not
+     * open a course at all, which would make the enrolment management on this
+     * page unusable for the only role allowed to do it. It grants no new
+     * reach: the same class lists are already readable through the admin
+     * endpoints.
+     */
     private function ensureTeaches(Request $request, Response $response, int $moduleId): void
     {
+        if (AuthService::isSuperadmin((array)$request->param('_auth_user'))) {
+            return;
+        }
         $uid = $this->userId($request);
         if ($uid <= 0 || !LecturerScope::teaches($this->db, $uid, $moduleId)) {
             $this->error($response, 'You are not assigned to this module.', 403);
