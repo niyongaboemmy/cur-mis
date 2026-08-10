@@ -844,21 +844,40 @@ class TeacherController extends BaseController
                 }
             }
 
-            // Today's classes, by weekday (1 = Monday, matching module_schedules).
-            $dow = (int)date('N');
-            $todayClasses = $this->db->fetchAll(
-                "SELECT sc.id, sc.module_id, sc.start_time, sc.end_time, sc.session_type,
-                        TRIM(m.module_code) AS module_code, m.module_name,
-                        rm.name AS room_name
-                 FROM `module_schedules` sc
-                 JOIN `modules` m ON m.module_id = sc.module_id
-                 LEFT JOIN `rooms` rm ON rm.id = sc.room_id
-                 WHERE sc.module_id IN ($ph) AND sc.day_of_week = ?
-                   AND (sc.start_date IS NULL OR sc.start_date <= CURDATE())
-                   AND (sc.end_date   IS NULL OR sc.end_date   >= CURDATE())
-                 ORDER BY sc.start_time ASC",
-                array_merge($ids, [$dow])
-            );
+            // Today's classes, by weekday (1 = Monday).
+            //
+            // Derived from schedulesForModules() — the SAME union of
+            // `module_schedules` and `module_offerings` that courses() and
+            // calendar() use. Reading module_schedules directly made the
+            // dashboard say "No classes scheduled for today" for a module the
+            // calendar beside it was showing, whenever that module was
+            // timetabled only in module_offerings.
+            $dow   = (int)date('N');
+            $today = date('Y-m-d');
+            $names = [];
+            foreach ($this->db->fetchAll(
+                "SELECT module_id, TRIM(module_code) AS module_code, module_name
+                 FROM `modules` WHERE module_id IN ($ph)", $ids) as $m) {
+                $names[(int)$m['module_id']] = $m;
+            }
+            $todayClasses = [];
+            foreach ($this->schedulesForModules($ids, $termId) as $mid => $list) {
+                foreach ($list as $b) {
+                    if ((int)($b['day_of_week'] ?? 0) !== $dow)            continue;
+                    if ($b['start_date'] !== null && $b['start_date'] > $today) continue;
+                    if ($b['end_date']   !== null && $b['end_date']   < $today) continue;
+                    $todayClasses[] = [
+                        'module_id'    => $mid,
+                        'start_time'   => $b['start_time'],
+                        'end_time'     => $b['end_time'],
+                        'session_type' => $b['session_type'],
+                        'module_code'  => $names[$mid]['module_code'] ?? '',
+                        'module_name'  => $names[$mid]['module_name'] ?? '',
+                        'room_name'    => $b['room'],
+                    ];
+                }
+            }
+            usort($todayClasses, static fn ($a, $b) => strcmp((string)$a['start_time'], (string)$b['start_time']));
 
             $upcomingExams = $this->db->fetchAll(
                 "SELECT es.id, es.module_id, es.component, es.exam_date, es.start_time, es.end_time,
