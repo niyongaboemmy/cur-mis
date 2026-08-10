@@ -117,7 +117,7 @@ export default function TeacherCourseDetailPage() {
 
   /** Save handles published by the embedded editors, so the single header
    *  button can save without either editor showing its own Save. */
-  type EditorBridge = { save: () => void; saving: boolean; canSave: boolean } | null
+  type EditorBridge = { save: () => Promise<unknown>; saving: boolean; canSave: boolean } | null
   const [attBridge, setAttBridge]     = useState<EditorBridge>(null)
   const [marksBridge, setMarksBridge] = useState<EditorBridge>(null)
 
@@ -273,8 +273,10 @@ export default function TeacherCourseDetailPage() {
       <button
         className="btn-primary btn-sm"
         disabled={attBridge?.saving}
-        onClick={() => {
-          attBridge?.save()
+        onClick={async () => {
+          // Await the editor's save before invalidating, otherwise the refetch
+          // races the in-flight mutation and re-reads the OLD rows.
+          try { await attBridge?.save() } catch { /* editor surfaces its own toast */ }
           setRecording(false)
           afterSave([
             ['teacher', 'courseAttendance', id],
@@ -299,8 +301,8 @@ export default function TeacherCourseDetailPage() {
       <button
         className="btn-primary btn-sm"
         disabled={marksBridge?.saving}
-        onClick={() => {
-          marksBridge?.save()
+        onClick={async () => {
+          try { await marksBridge?.save() } catch { /* editor surfaces its own toast */ }
           setEditingMarks(false)
           afterSave([
             ['teacher', 'classList', id],

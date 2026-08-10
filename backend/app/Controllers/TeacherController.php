@@ -261,16 +261,20 @@ class TeacherController extends BaseController
         }
         $this->ensureTeaches($request, $response, $moduleId);
 
-        $uid = $this->userId($request);
-        $all = LecturerScope::assignments($this->db, $uid, null);
+        $uid  = $this->userId($request);
+        $want = $this->resolveTermId($request);
+        $all  = LecturerScope::assignments($this->db, $uid, null);
 
+        // Honour ?term_id first — otherwise the detail header could resolve a
+        // different term than the card that was clicked and report a completely
+        // different roster/room. Falls back to the most recent term only when no
+        // specific term was asked for (or the module was not taught in it).
         $match = null;
         foreach ($all as $a) {
-            if ((int)$a['module_id'] === $moduleId) {
-                // Prefer the most recent term when a module was taught repeatedly.
-                if ($match === null || (int)$a['term_id'] > (int)$match['term_id']) {
-                    $match = $a;
-                }
+            if ((int)$a['module_id'] !== $moduleId) continue;
+            if ($want !== null && (int)$a['term_id'] === $want) { $match = $a; break; }
+            if ($match === null || (int)$a['term_id'] > (int)$match['term_id']) {
+                $match = $a;
             }
         }
         if ($match === null) {

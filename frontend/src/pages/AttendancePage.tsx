@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
@@ -683,7 +683,7 @@ export function RecordTab({
   /** Forwarded to RosterEditor — drops the duplicated title block. */
   compact?: boolean
   /** Forwarded to RosterEditor — lets the host header own Save. */
-  onBridge?: (api: { save: () => void; saving: boolean; canSave: boolean } | null) => void
+  onBridge?: (api: { save: () => Promise<unknown>; saving: boolean; canSave: boolean } | null) => void
 }) {
   const qc = useQueryClient()
 
@@ -1026,7 +1026,7 @@ function RosterEditor({ sessionId, onSaved, externalFilter, compact = false, onB
   sessionId: number
   onSaved?: () => void
   /** Lets a host (the teacher course page) drive Save from its own header. */
-  onBridge?: (api: { save: () => void; saving: boolean; canSave: boolean } | null) => void
+  onBridge?: (api: { save: () => Promise<unknown>; saving: boolean; canSave: boolean } | null) => void
   /** When supplied, the roster's own search box is hidden and this value is
    *  used instead — the teacher course page owns the search in its header. */
   externalFilter?: string
@@ -1113,17 +1113,25 @@ function RosterEditor({ sessionId, onSaved, externalFilter, compact = false, onB
 
   const markedCount = Object.keys(edits).length
 
-  // Publish a save handle so a host header can own the Save button. Runs on
-  // every render (no dep array) because `saving`/`canSave` must stay current.
+  // Publish a save handle so a host header can own the Save button.
+  //
+  // The effect MUST be keyed on primitives only. Publishing a fresh object on
+  // every render (no dep array) fed a new reference into the host's setState
+  // each time, which re-rendered, which re-ran the effect — an infinite loop
+  // that pinned the CPU. The callback is held in a ref so its identity is
+  // stable while still closing over the latest mutation.
+  const rosterSaveRef = useRef<() => Promise<unknown>>(() => Promise.resolve())
+  rosterSaveRef.current = () => saveMut.mutateAsync()
+  const canSaveNow = canEditNow && markedCount > 0 && !saveMut.isPending
   useEffect(() => {
     if (!onBridge) return
     onBridge({
-      save:    () => saveMut.mutate(),
+      save:    () => rosterSaveRef.current(),
       saving:  saveMut.isPending,
-      canSave: canEditNow && markedCount > 0 && !saveMut.isPending,
+      canSave: canSaveNow,
     })
     return () => onBridge(null)
-  })
+  }, [onBridge, saveMut.isPending, canSaveNow])
 
   // Counts for live tally chips in header. Must be declared before early returns.
   const tally = useMemo(() => {

@@ -135,7 +135,7 @@ export function MarksEditor({
    */
   embedded?: boolean
   /** Lets a host (the teacher course page) drive Save from its own header. */
-  onBridge?: (api: { save: () => void; saving: boolean; canSave: boolean } | null) => void
+  onBridge?: (api: { save: () => Promise<unknown>; saving: boolean; canSave: boolean } | null) => void
 }) {
   const qc = useQueryClient()
   const [, setSp] = useSearchParams()
@@ -566,17 +566,23 @@ export function MarksEditor({
 
   const canWrite = useAnyPermission([PERMISSIONS.RECORD_MODULE_MARKS, PERMISSIONS.MANAGE_MODULE_MARKS])
 
-  // Publish a save handle so a host header can own the Save button. No dep
-  // array: `saving`/`canSave` must reflect the latest render.
+  // Publish a save handle so a host header can own the Save button.
+  //
+  // Keyed on primitives only — publishing a new object every render fed a fresh
+  // reference into the host's setState, re-rendering and re-running the effect
+  // in an infinite loop. The callback lives in a ref to keep a stable identity.
+  const marksSaveRef = useRef<() => Promise<unknown>>(() => Promise.resolve())
+  marksSaveRef.current = () => save.mutateAsync()
+  const marksCanSave = canWrite && !isLocked && dirtyCount > 0 && !save.isPending
   useEffect(() => {
     if (!onBridge) return
     onBridge({
-      save:    () => save.mutate(),
+      save:    () => marksSaveRef.current(),
       saving:  save.isPending,
-      canSave: canWrite && !isLocked && dirtyCount > 0 && !save.isPending,
+      canSave: marksCanSave,
     })
     return () => onBridge(null)
-  })
+  }, [onBridge, save.isPending, marksCanSave])
 
   const canExport = !!roster && roster.length > 0
   const canImport = canExport && !isLocked && canWrite

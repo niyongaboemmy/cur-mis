@@ -356,6 +356,12 @@ class ModulesManagementController extends BaseController
             'role'           => ['in:primary,assistant'],
             'hours_per_week' => ['numeric'],
         ]);
+        // Reassigning a module to a different instructor must move the canonical
+        // user_id with it — otherwise the row keeps pointing at the PREVIOUS
+        // lecturer and the teacher portal shows the module to the wrong person.
+        if (array_key_exists('staff_id', $data)) {
+            $data['user_id'] = $this->resolveAssignmentUserId((int)$data['staff_id']);
+        }
         $this->assignments->update($id, $data);
         $this->success($response, null, 'Assignment updated.');
     }
