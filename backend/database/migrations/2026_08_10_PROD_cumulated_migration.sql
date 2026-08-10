@@ -6,7 +6,7 @@
 -- runnable file, so production can be brought up to date in a single paste
 -- (phpMyAdmin / mysql CLI) without running the migration runner.
 --
--- MIGRATIONS COVERED — applying this file is equivalent to running all six:
+-- MIGRATIONS COVERED — applying this file is equivalent to running all eight:
 --   §1  2026_08_09_117  reconcile fee_payments / options / modules columns
 --   §2  2026_08_09_118  module_assignments.user_id — canonical lecturer link
 --   §3  2026_08_09_119  exam room + invigilator + exam_attendance table
@@ -14,6 +14,7 @@
 --   §5  2026_08_09_120  ACCESS_TEACHER_PORTAL permission + role grants
 --   §6  2026_08_09_122  revoke the global dashboard from teaching roles
 --   §7  2026_08_10_123  normalise the student regnumber collations
+--   §8  2026_08_10_123  widen employees.employee_position / employee_post
 --
 -- ORDER MATTERS: §2 must backfill user_id BEFORE §4 adds the unique key over it,
 -- and §3 must create exam_schedules.room_id BEFORE §4 touches `rooms`.
@@ -401,6 +402,17 @@ WHERE p.`slug` = 'VIEW_DASHBOARD'
 -- Registration numbers are ASCII, so re-collating cannot change comparison
 -- results or truncate data. Each ALTER is guarded to the columns that actually
 -- differ, so this is a no-op on a consistent database and safe to re-run.
+--
+-- `ALTER TABLE ... MODIFY` rebuilds every row, which re-validates existing
+-- values against the current session sql_mode — legacy `0000-00-00` dates then
+-- fail with "1292 Incorrect date value" even though only a character column is
+-- being touched. Relax just the zero-date modes here; restored at the end of
+-- this section. (Same idiom as migration 092.)
+SET @_orig_sql_mode := @@SESSION.sql_mode;
+SET SESSION sql_mode = (
+  SELECT REPLACE(REPLACE(REPLACE(@@SESSION.sql_mode,
+    'STRICT_TRANS_TABLES', ''), 'NO_ZERO_DATE', ''), 'NO_ZERO_IN_DATE', '')
+);
 
 -- ── student.regnumber ─────────────────────────────────────────────────────────
 SET @coll := (SELECT COLLATION_NAME FROM INFORMATION_SCHEMA.COLUMNS
@@ -470,6 +482,39 @@ SET @stmt := IF(@coll IS NOT NULL AND @coll <> 'utf8mb4_general_ci',
          ' CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL'),
   'SELECT 1');
 PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
+
+
+
+-- ╔════════════════════════════════════════════════════════════════════════════╗
+-- ║ §8  employees.employee_position / employee_post width                      ║
+-- ╚════════════════════════════════════════════════════════════════════════════╝
+-- Mirrors 2026_08_10_123_widen_employee_position_and_post.sql. Both columns were
+-- created VARCHAR(21) in 027_comprehensive_schema and never widened; production
+-- log 2026-08-05 shows "1406 Data too long for column 'employee_position'" for
+-- the value "Communications Officer" (22 chars). Guarded on the current length,
+-- so it is a no-op once widened. Kept inside the relaxed-sql_mode window above:
+-- `employees` carries legacy `0000-00-00` values in `employee_reg_date`, which
+-- the row rebuild would otherwise reject with 1292.
+
+SET @len := (SELECT CHARACTER_MAXIMUM_LENGTH FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees'
+               AND COLUMN_NAME = 'employee_position');
+SET @stmt := IF(@len IS NOT NULL AND @len < 100,
+  'ALTER TABLE `employees` MODIFY COLUMN `employee_position` VARCHAR(100) NOT NULL',
+  'SELECT 1');
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
+
+SET @len := (SELECT CHARACTER_MAXIMUM_LENGTH FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees'
+               AND COLUMN_NAME = 'employee_post');
+SET @stmt := IF(@len IS NOT NULL AND @len < 100,
+  'ALTER TABLE `employees` MODIFY COLUMN `employee_post` VARCHAR(100) NOT NULL',
+  'SELECT 1');
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
+
+
+-- ── Restore the caller's sql_mode ─────────────────────────────────────────────
+SET SESSION sql_mode = @_orig_sql_mode;
 
 
 -- ══════════════════════════════════════════════════════════════════════════════

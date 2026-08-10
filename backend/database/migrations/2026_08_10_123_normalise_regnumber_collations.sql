@@ -39,6 +39,19 @@
 --   on `student`.`idx_fk_regnumber`, which an explicit COLLATE suppresses.
 -- ══════════════════════════════════════════════════════════════════════════════
 
+-- `ALTER TABLE ... MODIFY` rebuilds every row, which forces the server to
+-- re-validate existing values against the CURRENT session sql_mode — legacy
+-- rows holding `0000-00-00` dates (accepted under an older, looser mode when
+-- they were written) then fail with "1292 Incorrect date value" even though
+-- this migration only touches a character column. Relax just the modes that
+-- reject already-stored zero-dates for this session; restored at the end.
+-- Same reasoning, same idiom as 2026_07_09_092.
+SET @_orig_sql_mode := @@SESSION.sql_mode;
+SET SESSION sql_mode = (
+  SELECT REPLACE(REPLACE(REPLACE(@@SESSION.sql_mode,
+    'STRICT_TRANS_TABLES', ''), 'NO_ZERO_DATE', ''), 'NO_ZERO_IN_DATE', '')
+);
+
 -- ── student.regnumber ─────────────────────────────────────────────────────────
 SET @coll := (SELECT COLLATION_NAME FROM INFORMATION_SCHEMA.COLUMNS
               WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'student'
@@ -107,3 +120,7 @@ SET @stmt := IF(@coll IS NOT NULL AND @coll <> 'utf8mb4_general_ci',
          ' CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL'),
   'SELECT 1');
 PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
+
+
+-- ── Restore the caller's sql_mode ─────────────────────────────────────────────
+SET SESSION sql_mode = @_orig_sql_mode;
