@@ -1790,7 +1790,11 @@ class AcademicsManagementController extends BaseController
         // The term filter is applied when an exam term is set; otherwise
         // we accept registrations across terms (still scoped to module).
         $args  = [$moduleId];
-        $where = "mr.module_id = ? AND mr.status = 'registered'";
+        // `<> 'dropped'` not `= 'registered'`: ModuleMarksController::saveMarks
+        // flips module_registrations.status to 'completed'/'failed' once a student
+        // is marked, so filtering on 'registered' silently removed marked students
+        // from the exam sheet — they could not be signed in or marked absent.
+        $where = "mr.module_id = ? AND mr.status <> 'dropped'";
         if ($termId !== null) {
             $where .= " AND mr.academic_term_id = ?";
             $args[] = $termId;

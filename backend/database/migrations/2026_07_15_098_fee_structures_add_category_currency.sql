@@ -16,10 +16,21 @@
 
 SET FOREIGN_KEY_CHECKS = 0;
 
-ALTER TABLE `fee_structures`
-  ADD COLUMN IF NOT EXISTS `student_category` ENUM('local','international','sponsored','self_sponsored') NULL DEFAULT NULL AFTER `level_id`;
+-- Guarded via INFORMATION_SCHEMA rather than `ADD COLUMN IF NOT EXISTS`, which
+-- is MariaDB-only syntax and is a 1064 syntax error on MySQL 8.
 
-ALTER TABLE `fee_structures`
-  ADD COLUMN IF NOT EXISTS `currency` VARCHAR(10) NOT NULL DEFAULT 'RWF' AFTER `amount`;
+SET @col := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='fee_structures' AND COLUMN_NAME='student_category');
+SET @stmt := IF(@col=0,
+  'ALTER TABLE `fee_structures` ADD COLUMN `student_category` ENUM(''local'',''international'',''sponsored'',''self_sponsored'') NULL DEFAULT NULL AFTER `level_id`',
+  'SELECT 1');
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
+
+SET @col := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='fee_structures' AND COLUMN_NAME='currency');
+SET @stmt := IF(@col=0,
+  'ALTER TABLE `fee_structures` ADD COLUMN `currency` VARCHAR(10) NOT NULL DEFAULT ''RWF'' AFTER `amount`',
+  'SELECT 1');
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
 
 SET FOREIGN_KEY_CHECKS = 1;

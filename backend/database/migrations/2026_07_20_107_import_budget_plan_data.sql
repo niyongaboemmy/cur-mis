@@ -1529,13 +1529,13 @@ INSERT INTO budget_student_projections (budget_plan_id, faculty_label, departmen
 INSERT INTO budget_student_projections (budget_plan_id, faculty_label, department_label, level_label, program_type, intake_period, headcount, sort_order) VALUES (@plan_2024, '7.Postgraduate students', 'MINISANTE', 'HN&BLS', 'holiday', 'existing', 18715000.0, 83);
 
 -- ── student execution (budgeted vs actual) from INCOME EXECUTION 2024-2025 ──────────────────────────────
-INSERT INTO budget_student_executions (budget_plan_id, faculty_code, budgeted, executed, rank, sort_order) VALUES (@plan_2024, 'FCOM', 653.0, 717.0, 6.0, 1);
-INSERT INTO budget_student_executions (budget_plan_id, faculty_code, budgeted, executed, rank, sort_order) VALUES (@plan_2024, 'FSW', 102.0, 105.0, 2.0, 2);
-INSERT INTO budget_student_executions (budget_plan_id, faculty_code, budgeted, executed, rank, sort_order) VALUES (@plan_2024, 'FED', 1695.0, 1536.0, 3.0, 3);
-INSERT INTO budget_student_executions (budget_plan_id, faculty_code, budgeted, executed, rank, sort_order) VALUES (@plan_2024, 'FHS', 841.0, 671.0, 4.0, 4);
-INSERT INTO budget_student_executions (budget_plan_id, faculty_code, budgeted, executed, rank, sort_order) VALUES (@plan_2024, 'FST', 379.0, 279.0, 1.0, 5);
-INSERT INTO budget_student_executions (budget_plan_id, faculty_code, budgeted, executed, rank, sort_order) VALUES (@plan_2024, 'FCRS', 160.0, 100.0, 5.0, 6);
-INSERT INTO budget_student_executions (budget_plan_id, faculty_code, budgeted, executed, rank, sort_order) VALUES (@plan_2024, 'PGDE', 167.0, 34.0, 7.0, 7);
+INSERT INTO budget_student_executions (budget_plan_id, faculty_code, budgeted, executed, `rank`, sort_order) VALUES (@plan_2024, 'FCOM', 653.0, 717.0, 6.0, 1);
+INSERT INTO budget_student_executions (budget_plan_id, faculty_code, budgeted, executed, `rank`, sort_order) VALUES (@plan_2024, 'FSW', 102.0, 105.0, 2.0, 2);
+INSERT INTO budget_student_executions (budget_plan_id, faculty_code, budgeted, executed, `rank`, sort_order) VALUES (@plan_2024, 'FED', 1695.0, 1536.0, 3.0, 3);
+INSERT INTO budget_student_executions (budget_plan_id, faculty_code, budgeted, executed, `rank`, sort_order) VALUES (@plan_2024, 'FHS', 841.0, 671.0, 4.0, 4);
+INSERT INTO budget_student_executions (budget_plan_id, faculty_code, budgeted, executed, `rank`, sort_order) VALUES (@plan_2024, 'FST', 379.0, 279.0, 1.0, 5);
+INSERT INTO budget_student_executions (budget_plan_id, faculty_code, budgeted, executed, `rank`, sort_order) VALUES (@plan_2024, 'FCRS', 160.0, 100.0, 5.0, 6);
+INSERT INTO budget_student_executions (budget_plan_id, faculty_code, budgeted, executed, `rank`, sort_order) VALUES (@plan_2024, 'PGDE', 167.0, 34.0, 7.0, 7);
 
 -- ── reference rate tables ──────────────────────────────
 INSERT INTO budget_reference_rates (budget_plan_id, rate_group, label, value1, value2, value3, sort_order) VALUES (@plan_2024, 'communication_fee', 'Rector', 40000.0, NULL, NULL, 1);

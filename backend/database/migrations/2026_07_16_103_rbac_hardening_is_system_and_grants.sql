@@ -21,8 +21,14 @@
 
 -- ── §1  Protect canonical system roles from rename/delete ───────────────────
 
-ALTER TABLE `roles`
-    ADD COLUMN IF NOT EXISTS `is_system` TINYINT(1) NOT NULL DEFAULT 0 AFTER `description`;
+-- Guarded via INFORMATION_SCHEMA rather than `ADD COLUMN IF NOT EXISTS`, which
+-- is MariaDB-only syntax and is a 1064 syntax error on MySQL 8.
+SET @col := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='roles' AND COLUMN_NAME='is_system');
+SET @stmt := IF(@col=0,
+  'ALTER TABLE `roles` ADD COLUMN `is_system` TINYINT(1) NOT NULL DEFAULT 0 AFTER `description`',
+  'SELECT 1');
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
 
 UPDATE `roles`
 SET `is_system` = 1

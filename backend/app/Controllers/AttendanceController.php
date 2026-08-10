@@ -86,22 +86,16 @@ class AttendanceController extends BaseController
         if ($this->hasPerm($request, Permissions::MANAGE_ATTENDANCE))
             return null;
 
-        // Modules can be assigned against either the user's staff profile or the
-        // user account directly (namespaced id = USER_OFFSET + users.id).
-        $candidates = [];
-        $staffId = $this->authStaffId($request);
-        if ($staffId !== null) $candidates[] = $staffId;
+        // Delegated to the shared resolver so this guard, the marks guard, the
+        // module picker and the teacher portal all agree on what "mine" means.
+        // The previous inline version considered only `staff.id` and
+        // `USER_OFFSET + users.id`, and `staff.user_id` is NULL on every staff
+        // row, so a real lecturer resolved to zero teachable modules.
         $uid = $this->authUserId($request);
-        if ($uid > 0) $candidates[] = \App\Helpers\InstructorDirectory::USER_OFFSET + $uid;
-        if ($candidates === [])
+        if ($uid <= 0)
             return [];
 
-        $ph   = implode(',', array_fill(0, count($candidates), '?'));
-        $rows = $this->db->fetchAll(
-            "SELECT DISTINCT module_id FROM module_assignments WHERE staff_id IN ($ph)",
-            $candidates
-        );
-        return array_map(fn($r) => (int) $r['module_id'], $rows);
+        return \App\Helpers\LecturerScope::moduleIds($this->db, $uid);
     }
 
     private function ensureCanRecordForModule(Request $request, Response $response, int $moduleId): void
@@ -112,6 +106,44 @@ class AttendanceController extends BaseController
         if (!in_array($moduleId, $allowed, true)) {
             $this->error($response, 'You are not assigned to this module.', 403);
         }
+    }
+
+    /**
+     * READ-side counterpart of ensureCanRecordForModule.
+     *
+     * Every read endpoint here used to be institution-wide: a lecturer holding
+     * VIEW_ATTENDANCE could enumerate every session, open any module's roster
+     * and export any class's report. Reads are now held to the same scope as
+     * writes — you may read attendance for a module you are assigned to, and
+     * MANAGE_ATTENDANCE still grants the full institutional view.
+     */
+    private function ensureCanReadModule(Request $request, Response $response, int $moduleId): void
+    {
+        $allowed = $this->teachableModuleIds($request);
+        if ($allowed === null)
+            return; // full scope
+        if ($moduleId <= 0 || !in_array($moduleId, $allowed, true)) {
+            $this->error($response, 'You are not assigned to this module.', 403);
+        }
+    }
+
+    /**
+     * SQL fragment restricting a query to the caller's modules.
+     * Returns [sql, bindings]; sql is '1=1' when the caller has full scope.
+     *
+     * @return array{0:string,1:array<int,int>}
+     */
+    private function moduleScopeSql(Request $request, string $column): array
+    {
+        $allowed = $this->teachableModuleIds($request);
+        if ($allowed === null) {
+            return ['1 = 1', []];
+        }
+        if ($allowed === []) {
+            return ['1 = 0', []];
+        }
+        $ph = implode(',', array_fill(0, count($allowed), '?'));
+        return ["{$column} IN ($ph)", $allowed];
     }
 
     /* ══════════════════════════════════════════════════════════════════════
@@ -142,6 +174,16 @@ class AttendanceController extends BaseController
             $where[]    = 'mo.`mode` = ?';
             $bindings[] = $mode;
         }
+
+        // Restrict to the caller's own modules unless they hold MANAGE_ATTENDANCE.
+        // This endpoint feeds the module pickers on both the Attendance and Marks
+        // pages; without scoping it put the entire institution's timetable on the
+        // wire and the pages then narrowed it in the browser, which is not a
+        // security boundary.
+        [$scopeSql, $scopeArgs] = $this->moduleScopeSql($request, 'mo.module_id');
+        $where[]  = $scopeSql;
+        $bindings = array_merge($bindings, $scopeArgs);
+
         $whereSql = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
 
         $rows = $this->db->fetchAll(
@@ -199,19 +241,23 @@ class AttendanceController extends BaseController
             }
             $rows = $this->db->fetchAll($sql, $bindings);
         } else {
-            $staffId = $this->authStaffId($request);
-            if ($staffId === null) {
-                $this->success($response, [], 'No staff profile linked to this user.');
+            // Resolved via LecturerScope so the picker shows exactly the modules
+            // the write guard will accept. The previous version matched only
+            // `staff.user_id`, which is NULL on every staff row, so this branch
+            // always returned "No staff profile linked to this user."
+            $uid = $this->authUserId($request);
+            if ($uid <= 0) {
+                $this->success($response, [], 'No user record linked to this account.');
             }
+            [$pred, $bindings] = \App\Helpers\LecturerScope::assignmentPredicate($this->db, $uid, 'ma');
             $sql = "SELECT DISTINCT m.module_id, m.module_code, m.module_name, m.level,
                            ma.academic_term_id, ma.academic_year_id,
                            NULL AS teacher_first_name, NULL AS teacher_last_name
                     FROM module_assignments ma
                     JOIN modules m ON m.module_id = ma.module_id
-                    WHERE ma.staff_id = ?"
+                    WHERE {$pred}"
                 . ($termId > 0 ? " AND ma.academic_term_id = ?" : "")
                 . " ORDER BY m.module_code ASC";
-            $bindings = [$staffId];
             if ($termId > 0)
                 $bindings[] = $termId;
             $rows = $this->db->fetchAll($sql, $bindings);
@@ -258,6 +304,13 @@ class AttendanceController extends BaseController
             $clauses[] = "s.started_by = ?";
             $bindings[] = $this->authUserId($request);
         }
+
+        // Restrict to the caller's own modules unless they hold MANAGE_ATTENDANCE.
+        // Without this a lecturer could list every attendance session in the
+        // institution simply by calling this endpoint with no filters.
+        [$scopeSql, $scopeArgs] = $this->moduleScopeSql($request, 's.module_id');
+        $clauses[] = $scopeSql;
+        $bindings  = array_merge($bindings, $scopeArgs);
 
         $where = $clauses ? 'WHERE ' . implode(' AND ', $clauses) : '';
 
@@ -357,6 +410,10 @@ class AttendanceController extends BaseController
         if (!in_array($type, ['lecture', 'lab', 'tutorial', 'seminar', 'exam'], true))
             $type = 'lecture';
 
+        // Same scope as every other read here — otherwise a lecturer could probe
+        // any module's session metadata by guessing module_id + date.
+        $this->ensureCanReadModule($request, $response, $moduleId);
+
         $row = $this->db->fetchOne(
             "SELECT s.*, m.module_code, m.module_name, t.label AS term_label, u.full_name AS started_by_name,
                     (SELECT COUNT(*) FROM attendance_records r WHERE r.session_id = s.id) AS recorded_count
@@ -391,6 +448,9 @@ class AttendanceController extends BaseController
         $moduleId = (int) $session['module_id'];
         $termId = (int) $session['academic_term_id'];
 
+        // Opening a roster is a read of someone's class list — same scope as writing it.
+        $this->ensureCanReadModule($request, $response, $moduleId);
+
         // Roster = every registered student for this module+term.
         $roster = $this->db->fetchAll(
             "SELECT st.id AS student_id, st.regnumber, st.fname, st.lname, st.email,
@@ -413,7 +473,7 @@ class AttendanceController extends BaseController
              LEFT JOIN attendance_records r
                     ON r.session_id = ? AND r.student_regnumber = st.regnumber
              WHERE mr.module_id = ? AND mr.academic_term_id = ?
-               AND mr.status = 'registered'
+               AND mr.status <> 'dropped'
              ORDER BY st.lname, st.fname",
             [$moduleId, $moduleId, $id, $moduleId, $termId]
         );
@@ -613,6 +673,13 @@ class AttendanceController extends BaseController
             $sBindings[] = $this->authUserId($request);
         }
 
+        // Scope the whole overview to the caller's modules. Note this is broader
+        // than `mine=1`, which filters on s.started_by (session OWNERSHIP) and so
+        // misses sessions a colleague opened on a module you co-teach.
+        [$scopeSql, $scopeArgs] = $this->moduleScopeSql($request, 's.module_id');
+        $sClauses[]  = $scopeSql;
+        $sBindings   = array_merge($sBindings, $scopeArgs);
+
         $sessWhere = $sClauses ? 'WHERE ' . implode(' AND ', $sClauses) : '';
 
         $totals = $this->db->fetchOne(
@@ -727,6 +794,32 @@ class AttendanceController extends BaseController
 
     /** Same as `studentSummary` but takes a numeric student id, used so the
      *  caller doesn't have to URL-encode regnumbers that contain slashes. */
+    /**
+     * A whole-student attendance history spans every module they take, so it is
+     * far broader than a single module's roster and must not be readable by any
+     * lecturer holding VIEW_ATTENDANCE. MANAGE_ATTENDANCE keeps the full view; a
+     * lecturer may only open a student registered on one of THEIR modules.
+     */
+    private function ensureCanReadStudent(Request $request, Response $response, string $reg): void
+    {
+        $allowed = $this->teachableModuleIds($request);
+        if ($allowed === null) {
+            return; // full scope
+        }
+        if ($allowed === [] || $reg === '') {
+            $this->error($response, 'You are not assigned to any of this student\'s modules.', 403);
+        }
+        $ph  = implode(',', array_fill(0, count($allowed), '?'));
+        $hit = $this->db->fetchOne(
+            "SELECT 1 AS ok FROM `module_registrations`
+              WHERE student_regnumber = ? AND module_id IN ($ph) LIMIT 1",
+            array_merge([$reg], $allowed)
+        );
+        if (!$hit) {
+            $this->error($response, 'You are not assigned to any of this student\'s modules.', 403);
+        }
+    }
+
     public function studentSummaryById(Request $request, Response $response): never
     {
         $id = (int) $request->param('id');
@@ -785,6 +878,7 @@ class AttendanceController extends BaseController
         $reg = trim((string) $request->param('regnumber'));
         if ($reg === '')
             $this->error($response, 'regnumber required', 422);
+        $this->ensureCanReadStudent($request, $response, $reg);
 
         $termId = (int) ($request->query('academic_term_id') ?? 0);
         $termClauseMr = $termId > 0 ? " AND mr.academic_term_id = ?" : "";
@@ -926,6 +1020,9 @@ class AttendanceController extends BaseController
         $moduleId = (int) $session['module_id'];
         $termId = (int) $session['academic_term_id'];
 
+        // Exporting a session sheet is a read of that class — scope it like the rest.
+        $this->ensureCanReadModule($request, $response, $moduleId);
+
         $roster = $this->db->fetchAll(
             "SELECT st.regnumber, st.fname, st.lname,
                     r.status AS record_status, r.remarks,
@@ -939,7 +1036,7 @@ class AttendanceController extends BaseController
              FROM module_registrations mr
              JOIN student st ON st.regnumber = mr.student_regnumber
              LEFT JOIN attendance_records r ON r.session_id = ? AND r.student_regnumber = st.regnumber
-             WHERE mr.module_id = ? AND mr.academic_term_id = ? AND mr.status = 'registered'
+             WHERE mr.module_id = ? AND mr.academic_term_id = ? AND mr.status <> 'dropped'
              ORDER BY st.lname, st.fname",
             [$moduleId, $moduleId, $id, $moduleId, $termId]
         );
@@ -984,6 +1081,9 @@ class AttendanceController extends BaseController
         );
         if (!$module)
             $this->error($response, 'Module not found.', 404);
+
+        // A whole-module attendance report is the broadest read here — scope it.
+        $this->ensureCanReadModule($request, $response, $moduleId);
 
         $termClause = $termId > 0 ? ' AND s.academic_term_id = ?' : '';
         $termBind = $termId > 0 ? [$termId] : [];

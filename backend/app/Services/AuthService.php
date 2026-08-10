@@ -547,6 +547,26 @@ class AuthService
         return ($user['role'] ?? $user['role_name'] ?? '') === 'superadmin';
     }
 
+    /**
+     * Does this account hold any module assignment?
+     *
+     * Used to open the teaching workspace to anyone actually teaching, without
+     * requiring the `lecturer`/`HOD` role or an explicit ACCESS_TEACHER_PORTAL
+     * grant. Resolved through LecturerScope so it agrees exactly with what the
+     * /api/teacher/* endpoints will return.
+     */
+    public static function resolveIsTeaching(int $userId): bool
+    {
+        if ($userId <= 0) {
+            return false;
+        }
+        try {
+            return \App\Helpers\LecturerScope::moduleIds(\Core\Database::getInstance(), $userId) !== [];
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
     public function generateToken(array $user): string
     {
         $now     = time();
@@ -566,6 +586,12 @@ class AuthService
                 'enforce_campus_scope' => (int)($user['enforce_campus_scope'] ?? 0) === 1,
                 'assigned_campuses'    => $user['assigned_campuses'] ?? [],
                 'is_applicant'         => ($user['role_name'] ?? '') === 'applicant',
+                // True when this account is assigned to at least one module.
+                // Teaching access follows the ASSIGNMENT, not the role: whoever
+                // is put in front of a class needs the teaching workspace, even
+                // if their role is registrar/HR/whatever and carries no
+                // ACCESS_TEACHER_PORTAL grant.
+                'is_teaching'          => self::resolveIsTeaching((int)($user['id'] ?? 0)),
                 'created_at'           => $user['created_at'] ?? null,
             ],
         ];

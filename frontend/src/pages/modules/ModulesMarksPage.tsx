@@ -119,14 +119,23 @@ export default function ModulesMarksPage() {
   )
 }
 
-function MarksEditor({
-  moduleId, termId, terms, setTermId, onBackToSchedules,
+export function MarksEditor({
+  moduleId, termId, terms, setTermId, onBackToSchedules, embedded = false, onBridge,
 }: {
   moduleId:         number
   termId:           number
   terms:            any[]
   setTermId:        (id: number) => void
   onBackToSchedules: () => void
+  /**
+   * Embedded in the teacher course page: the host already shows the module
+   * identity and owns term/module selection, so the picker toolbar and the
+   * module header card are suppressed and the action bar stops being sticky
+   * (the host header is the only sticky element there).
+   */
+  embedded?: boolean
+  /** Lets a host (the teacher course page) drive Save from its own header. */
+  onBridge?: (api: { save: () => void; saving: boolean; canSave: boolean } | null) => void
 }) {
   const qc = useQueryClient()
   const [, setSp] = useSearchParams()
@@ -557,6 +566,18 @@ function MarksEditor({
 
   const canWrite = useAnyPermission([PERMISSIONS.RECORD_MODULE_MARKS, PERMISSIONS.MANAGE_MODULE_MARKS])
 
+  // Publish a save handle so a host header can own the Save button. No dep
+  // array: `saving`/`canSave` must reflect the latest render.
+  useEffect(() => {
+    if (!onBridge) return
+    onBridge({
+      save:    () => save.mutate(),
+      saving:  save.isPending,
+      canSave: canWrite && !isLocked && dirtyCount > 0 && !save.isPending,
+    })
+    return () => onBridge(null)
+  })
+
   const canExport = !!roster && roster.length > 0
   const canImport = canExport && !isLocked && canWrite
 
@@ -580,7 +601,7 @@ function MarksEditor({
         onApprove={applyImport}
       />
 
-      <div className="flex items-start justify-between gap-3 flex-wrap">
+      <div className={`items-start justify-between gap-3 flex-wrap ${embedded ? 'hidden' : 'flex'}`}>
         <div className="flex items-start gap-2 min-w-0">
           <button
             type="button"
@@ -622,8 +643,8 @@ function MarksEditor({
       </div>
 
       {/* Sticky action toolbar — Save / Export / Import always visible */}
-      {!!termId && !!moduleId && (
-        <div className="sticky top-0 z-20 -mx-5 sm:-mx-6 lg:-mx-8 px-5 sm:px-6 lg:px-8 py-2 bg-[rgb(var(--bg-app))]/95 backdrop-blur border-b border-ink-100 dark:border-ink-700 flex items-center justify-between gap-3 flex-wrap">
+      {!!termId && !!moduleId && !embedded && (
+        <div className={`${embedded ? 'rounded-lg border px-3' : 'sticky top-0 z-20 -mx-5 sm:-mx-6 lg:-mx-8 px-5 sm:px-6 lg:px-8 border-b'} py-2 bg-[rgb(var(--bg-app))]/95 backdrop-blur border-ink-100 dark:border-ink-700 flex items-center justify-between gap-3 flex-wrap`}>
           <div className="text-[12.5px] text-ink-500 inline-flex items-center gap-2">
             {dirtyCount > 0 ? (
               <span className="inline-flex items-center gap-1.5 text-amber-700 dark:text-amber-400">
@@ -674,7 +695,7 @@ function MarksEditor({
       ) : (
         <>
           {/* Official-template module header */}
-          <ModuleHeaderCard
+          {!embedded && <ModuleHeaderCard
             moduleH={moduleH}
             classSize={summary?.total_roster ?? 0}
             status={status}
@@ -682,7 +703,7 @@ function MarksEditor({
             canWrite={canWrite}
             onWorkflow={(a) => wf.mutate(a)}
             wfPending={wf.isPending}
-          />
+          />}
 
           {/* KPI strip */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

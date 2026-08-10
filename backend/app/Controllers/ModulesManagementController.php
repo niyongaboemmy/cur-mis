@@ -12,6 +12,8 @@ use App\Models\ModuleAssignmentModel;
 use App\Models\ModuleScheduleModel;
 use App\Models\ModuleRegistrationModel;
 use App\Helpers\ValidationHelper;
+use App\Helpers\InstructorDirectory;
+use App\Helpers\LecturerScope;
 
 /**
  * Modules Management — covers the four pillars:
@@ -256,6 +258,45 @@ class ModulesManagementController extends BaseController
         $this->success($response, $this->assignments->listWithJoins($filters), 'Assignments fetched.');
     }
 
+    /**
+     * Maps a namespaced `module_assignments.staff_id` (see
+     * App\Helpers\InstructorDirectory) back to the underlying `users.id`, so the
+     * canonical `user_id` link can be stored at write time.
+     *
+     * staff_id >= USER_OFFSET  → a user account, id = staff_id - USER_OFFSET
+     * staff_id <  USER_OFFSET  → an hr_employees row, matched to a user by email
+     *
+     * Returns null when the instructor has no user account (an HR-only lecturer
+     * who cannot log in) — the row still stores staff_id, so nothing is lost.
+     */
+    private function resolveAssignmentUserId(int $staffId): ?int
+    {
+        if ($staffId <= 0) {
+            return null;
+        }
+
+        if (InstructorDirectory::isUser($staffId)) {
+            $uid = InstructorDirectory::userId($staffId);
+            $row = $this->assignments->db()->fetchOne(
+                'SELECT id FROM `users` WHERE id = ? LIMIT 1',
+                [$uid]
+            );
+            return $row ? (int)$row['id'] : null;
+        }
+
+        // hr_employees has no user_id column, so email is the only bridge. Only
+        // accept an unambiguous match.
+        $row = $this->assignments->db()->fetchOne(
+            'SELECT u.id
+               FROM `hr_employees` e
+               JOIN `users` u ON LOWER(TRIM(u.email)) = LOWER(TRIM(e.email))
+              WHERE e.id = ? AND e.email IS NOT NULL AND TRIM(e.email) <> ""
+              LIMIT 2',
+            [$staffId]
+        );
+        return $row ? (int)$row['id'] : null;
+    }
+
     public function createAssignment(Request $request, Response $response): never
     {
         $data = $request->body();
@@ -293,6 +334,12 @@ class ModulesManagementController extends BaseController
         if (!empty($user['id'])) {
             $data['created_by'] = (int)$user['id'];
         }
+
+        // Resolve the canonical lecturer link alongside the namespaced staff_id,
+        // so the teacher portal (App\Helpers\LecturerScope) can match this row by
+        // a plain users.id instead of decoding an offset. Assignments written
+        // before this left user_id NULL — migration 2026_08_09_118 backfills those.
+        $data['user_id'] = $this->resolveAssignmentUserId((int)$data['staff_id']);
 
         $id = (int)$this->assignments->create($data);
         $this->success($response, ['id' => $id], 'Assignment created.', 201);
@@ -496,11 +543,19 @@ class ModulesManagementController extends BaseController
         $user = $this->authUser($request);
         $userId = (int)($user['id'] ?? 0);
 
-        // If user is a teacher, return their assigned teaching modules
-        if (!empty($user['role']) && in_array($user['role'], ['lecturer', 'staff'], true) && $userId > 0) {
-            $off = 1000000; // InstructorDirectory::USER_OFFSET
-            $staffId = $off + $userId;
+        // If the caller teaches anything, return their assigned modules.
+        //
+        // Resolved through LecturerScope rather than assuming the assignment was
+        // written as `USER_OFFSET + users.id`: staff_id is a namespaced id with
+        // four historical spaces, so matching only that one made a lecturer
+        // assigned via their staff/hr_employees record see an empty list here
+        // while the marks and attendance guards accepted them. Membership is
+        // also decided by the assignment itself rather than a role-name list —
+        // whoever is put in front of a class teaches, whatever their role.
+        [$pred, $args] = LecturerScope::assignmentPredicate($this->assignments->db(), $userId, 'a');
+        $args[] = $termId;
 
+        if ($userId > 0 && LecturerScope::moduleIds($this->assignments->db(), $userId) !== []) {
             $rows = $this->assignments->db()->fetchAll(
                 "SELECT
                     a.id as assignment_id,
@@ -515,9 +570,9 @@ class ModulesManagementController extends BaseController
                  FROM `module_assignments` a
                  JOIN `modules` m ON m.module_id = a.module_id
                  LEFT JOIN `academic_terms` t ON t.id = a.academic_term_id
-                 WHERE a.staff_id = ? AND a.academic_term_id = ?
+                 WHERE {$pred} AND a.academic_term_id = ?
                  ORDER BY m.module_code ASC",
-                [$staffId, $termId],
+                $args,
             );
 
             $out = [];
@@ -621,7 +676,12 @@ class ModulesManagementController extends BaseController
         }
 
         $args  = [$reg];
-        $where = ['mr.student_regnumber = ?', "mr.status = 'registered'"];
+        // `<> 'dropped'`: saveMarks flips status to 'completed'/'failed' once the
+        // student is marked, and filtering on 'registered' made the module (and
+        // its exam) vanish from the student's own timetable the moment a lecturer
+        // saved a mark — worst of all for a FAILED module, whose resit is exactly
+        // the exam they need to see.
+        $where = ['mr.student_regnumber = ?', "mr.status <> 'dropped'"];
         if ($termId > 0) {
             $where[] = 'mr.academic_term_id = ?';
             $args[]  = $termId;

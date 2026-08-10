@@ -107,6 +107,10 @@ class Permissions
     // External portals (role-bound permissions assigned via RBAC seed)
     public const ACCESS_APPLICANT_PORTAL = 'ACCESS_APPLICANT_PORTAL';
     public const ACCESS_STUDENT_PORTAL = 'ACCESS_STUDENT_PORTAL';
+    // Gates the whole /api/teacher/* surface and the teacher dashboard UI.
+    // Deliberately NOT reusing VIEW_MY_MODULES: the student role holds that slug
+    // too, so gating on it would expose the teacher portal to every student.
+    public const ACCESS_TEACHER_PORTAL = 'ACCESS_TEACHER_PORTAL';
 
     // Document Generation
     public const GENERATE_DOCUMENTS = 'GENERATE_DOCUMENTS';
@@ -257,6 +261,7 @@ class Permissions
             self::MANAGE_CLEARANCE,
             self::ACCESS_APPLICANT_PORTAL,
             self::ACCESS_STUDENT_PORTAL,
+            self::ACCESS_TEACHER_PORTAL,
             self::GENERATE_DOCUMENTS,
             self::MANAGE_OWN_PROFILE,
             self::SEND_MESSAGES,

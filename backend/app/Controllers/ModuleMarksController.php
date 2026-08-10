@@ -95,14 +95,13 @@ class ModuleMarksController extends BaseController
     private function teachableModuleIds(Request $request): ?array
     {
         if ($this->hasPerm($request, Permissions::MANAGE_MODULE_MARKS)) return null;
-        $staffIds = $this->authStaffIds($request);
-        if (empty($staffIds)) return [];
-        $ph   = implode(',', array_fill(0, count($staffIds), '?'));
-        $rows = $this->db->fetchAll(
-            "SELECT DISTINCT module_id FROM module_assignments WHERE staff_id IN ($ph)",
-            $staffIds
-        );
-        return array_map(fn($r) => (int)$r['module_id'], $rows);
+        // Delegated to the shared resolver so marks, attendance, the module
+        // picker and the teacher portal all agree on what "my modules" means.
+        // It additionally matches `module_assignments.user_id`, the canonical
+        // link, which the old staff_id-only query ignored.
+        $uid = $this->authUserId($request);
+        if ($uid <= 0) return [];
+        return \App\Helpers\LecturerScope::moduleIds($this->db, $uid);
     }
 
     private function ensureCanRecordForModule(Request $request, Response $response, int $moduleId): void
@@ -175,19 +174,19 @@ class ModuleMarksController extends BaseController
                 []
             );
         } else {
-            $staffIds = $this->authStaffIds($request);
-            if (empty($staffIds)) {
-                $this->success($response, [], 'No staff profile linked to this user.');
+            // Resolved via LecturerScope so this picker and the save guard agree.
+            $uid = $this->authUserId($request);
+            if ($uid <= 0) {
+                $this->success($response, [], 'No user record linked to this account.');
             }
-            $ph  = implode(',', array_fill(0, count($staffIds), '?'));
+            [$pred, $bindings] = \App\Helpers\LecturerScope::assignmentPredicate($this->db, $uid, 'ma');
             $sql = "SELECT DISTINCT m.module_id, m.module_code, m.module_name, m.level,
                            ma.academic_term_id
                     FROM module_assignments ma
                     JOIN modules m ON m.module_id = ma.module_id
-                    WHERE ma.staff_id IN ($ph)"
+                    WHERE {$pred}"
                     . ($termId > 0 ? " AND ma.academic_term_id = ?" : "")
                     . " ORDER BY m.module_code ASC";
-            $bindings = $staffIds;
             if ($termId > 0) $bindings[] = $termId;
             $rows = $this->db->fetchAll($sql, $bindings);
         }
@@ -212,6 +211,12 @@ class ModuleMarksController extends BaseController
         if ($moduleId <= 0 || $termId <= 0) {
             $this->error($response, 'module_id and academic_term_id are required.', 422);
         }
+
+        // Reading a mark sheet is as sensitive as writing one: it exposes every
+        // student's scores for the module. This endpoint was previously gated
+        // only by the route-level permission, so any RECORD_MODULE_MARKS holder
+        // could read any module's full sheet. MANAGE_MODULE_MARKS still bypasses.
+        $this->ensureCanRecordForModule($request, $response, $moduleId);
 
         $module = $this->db->fetchOne(
             "SELECT m.module_id, m.module_code, m.module_name, m.module_credits,
@@ -635,6 +640,33 @@ class ModuleMarksController extends BaseController
 
     /** id-based variants of the regnumber routes — necessary because some
      *  regnumbers have slashes which break path-segment routing. */
+    /**
+     * A whole-student view (every module, every term) is far broader than a
+     * single mark sheet, so it must not be readable by any lecturer who happens
+     * to hold RECORD_MODULE_MARKS. Admins (MANAGE_MODULE_MARKS) keep the full
+     * view; a lecturer may only open a student who is registered on one of THEIR
+     * modules.
+     */
+    private function ensureCanReadStudent(Request $request, Response $response, string $reg): void
+    {
+        $allowed = $this->teachableModuleIds($request);
+        if ($allowed === null) {
+            return; // MANAGE_MODULE_MARKS / superadmin — full scope
+        }
+        if ($allowed === [] || $reg === '') {
+            $this->error($response, 'You are not assigned to any of this student\'s modules.', 403);
+        }
+        $ph  = implode(',', array_fill(0, count($allowed), '?'));
+        $hit = $this->db->fetchOne(
+            "SELECT 1 AS ok FROM `module_registrations`
+              WHERE student_regnumber = ? AND module_id IN ($ph) LIMIT 1",
+            array_merge([$reg], $allowed)
+        );
+        if (!$hit) {
+            $this->error($response, 'You are not assigned to any of this student\'s modules.', 403);
+        }
+    }
+
     public function studentMarksById(Request $request, Response $response): never
     {
         $reg = $this->resolveRegnumberById($request, $response);
@@ -673,6 +705,7 @@ class ModuleMarksController extends BaseController
     {
         $reg = trim((string)$request->param('regnumber'));
         if ($reg === '') $this->error($response, 'regnumber required', 422);
+        $this->ensureCanReadStudent($request, $response, $reg);
 
         [$rows, $totals, $student] = $this->loadTranscriptRows($reg, $request);
         $this->success($response, [
@@ -690,6 +723,7 @@ class ModuleMarksController extends BaseController
     {
         $reg = trim((string)$request->param('regnumber'));
         if ($reg === '') $this->error($response, 'regnumber required', 422);
+        $this->ensureCanReadStudent($request, $response, $reg);
 
         [$rows, $totals, $student] = $this->loadTranscriptRows($reg, $request);
         $html = TranscriptPdf::buildHtml($student, $rows, $totals);

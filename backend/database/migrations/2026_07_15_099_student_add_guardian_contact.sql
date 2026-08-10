@@ -21,9 +21,35 @@
 
 SET FOREIGN_KEY_CHECKS = 0;
 
-ALTER TABLE `student` ADD COLUMN IF NOT EXISTS `guardian_name`         VARCHAR(150) NULL DEFAULT NULL AFTER `mother`;
-ALTER TABLE `student` ADD COLUMN IF NOT EXISTS `guardian_phone`        VARCHAR(30)  NULL DEFAULT NULL AFTER `guardian_name`;
-ALTER TABLE `student` ADD COLUMN IF NOT EXISTS `guardian_email`        VARCHAR(150) NULL DEFAULT NULL AFTER `guardian_phone`;
-ALTER TABLE `student` ADD COLUMN IF NOT EXISTS `guardian_relationship` VARCHAR(50)  NULL DEFAULT NULL AFTER `guardian_email`;
+-- Guarded via INFORMATION_SCHEMA rather than `ADD COLUMN IF NOT EXISTS`, which
+-- is MariaDB-only syntax and is a 1064 syntax error on MySQL 8.
+
+SET @col := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='student' AND COLUMN_NAME='guardian_name');
+SET @stmt := IF(@col=0,
+  'ALTER TABLE `student` ADD COLUMN `guardian_name` VARCHAR(150) NULL DEFAULT NULL AFTER `mother`',
+  'SELECT 1');
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
+
+SET @col := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='student' AND COLUMN_NAME='guardian_phone');
+SET @stmt := IF(@col=0,
+  'ALTER TABLE `student` ADD COLUMN `guardian_phone` VARCHAR(30) NULL DEFAULT NULL AFTER `guardian_name`',
+  'SELECT 1');
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
+
+SET @col := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='student' AND COLUMN_NAME='guardian_email');
+SET @stmt := IF(@col=0,
+  'ALTER TABLE `student` ADD COLUMN `guardian_email` VARCHAR(150) NULL DEFAULT NULL AFTER `guardian_phone`',
+  'SELECT 1');
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
+
+SET @col := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='student' AND COLUMN_NAME='guardian_relationship');
+SET @stmt := IF(@col=0,
+  'ALTER TABLE `student` ADD COLUMN `guardian_relationship` VARCHAR(50) NULL DEFAULT NULL AFTER `guardian_email`',
+  'SELECT 1');
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
 
 SET FOREIGN_KEY_CHECKS = 1;

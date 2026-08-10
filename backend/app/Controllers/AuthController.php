@@ -260,6 +260,10 @@ class AuthController extends BaseController
                 $user['permissions'] = (new \App\Models\RolePermissionModel())->getSlugsForRole($roleId);
             }
             $user['assigned_campuses'] = $authService->loadAssignedCampuses($userId);
+            // Re-resolved here (not just at token time) so a user who is given
+            // a module AFTER logging in gains the teaching workspace on the next
+            // /me refresh rather than having to log out and back in.
+            $user['is_teaching'] = \App\Services\AuthService::resolveIsTeaching($userId);
         }
         $this->success($response, $user, 'Authenticated user.');
     }

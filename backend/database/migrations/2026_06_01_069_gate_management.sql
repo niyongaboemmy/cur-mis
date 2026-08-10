@@ -6,14 +6,43 @@
 -- =============================================================================
 
 -- ── 1. Indexes on existing gate_logs ─────────────────────────────────────────
-ALTER TABLE `gate_logs`
-    ADD COLUMN IF NOT EXISTS `notes` VARCHAR(500) DEFAULT NULL AFTER `reason`,
-    ADD COLUMN IF NOT EXISTS `photo_url` VARCHAR(255) DEFAULT NULL AFTER `notes`;
+-- Guarded via INFORMATION_SCHEMA rather than `ADD COLUMN IF NOT EXISTS` /
+-- `CREATE INDEX IF NOT EXISTS`, which are MariaDB-only and are 1064 syntax
+-- errors on MySQL 8.
 
-CREATE INDEX IF NOT EXISTS `idx_gate_logs_student_id`  ON `gate_logs` (`student_id`);
-CREATE INDEX IF NOT EXISTS `idx_gate_logs_created_at`  ON `gate_logs` (`created_at`);
-CREATE INDEX IF NOT EXISTS `idx_gate_logs_result`      ON `gate_logs` (`result`);
-CREATE INDEX IF NOT EXISTS `idx_gate_logs_scan_type`   ON `gate_logs` (`scan_type`);
+SET @col := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='gate_logs' AND COLUMN_NAME='notes');
+SET @stmt := IF(@col=0,
+  'ALTER TABLE `gate_logs` ADD COLUMN `notes` VARCHAR(500) DEFAULT NULL AFTER `reason`',
+  'SELECT 1');
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
+
+SET @col := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='gate_logs' AND COLUMN_NAME='photo_url');
+SET @stmt := IF(@col=0,
+  'ALTER TABLE `gate_logs` ADD COLUMN `photo_url` VARCHAR(255) DEFAULT NULL AFTER `notes`',
+  'SELECT 1');
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
+
+SET @idx := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+             WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='gate_logs' AND INDEX_NAME='idx_gate_logs_student_id');
+SET @stmt := IF(@idx=0, 'CREATE INDEX `idx_gate_logs_student_id` ON `gate_logs` (`student_id`)', 'SELECT 1');
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
+
+SET @idx := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+             WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='gate_logs' AND INDEX_NAME='idx_gate_logs_created_at');
+SET @stmt := IF(@idx=0, 'CREATE INDEX `idx_gate_logs_created_at` ON `gate_logs` (`created_at`)', 'SELECT 1');
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
+
+SET @idx := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+             WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='gate_logs' AND INDEX_NAME='idx_gate_logs_result');
+SET @stmt := IF(@idx=0, 'CREATE INDEX `idx_gate_logs_result` ON `gate_logs` (`result`)', 'SELECT 1');
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
+
+SET @idx := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+             WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='gate_logs' AND INDEX_NAME='idx_gate_logs_scan_type');
+SET @stmt := IF(@idx=0, 'CREATE INDEX `idx_gate_logs_scan_type` ON `gate_logs` (`scan_type`)', 'SELECT 1');
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
 
 -- ── 2. Gate sessions (officer shift tracking) ────────────────────────────────
 CREATE TABLE IF NOT EXISTS `gate_sessions` (

@@ -103,6 +103,14 @@ import RevaluationsPage from "@/pages/exam/RevaluationsPage";
 import ProgramsPage from "@/pages/placeholders/ProgramsPage";
 import LogsPage from "@/pages/placeholders/LogsPage";
 import ComingSoonPage from "@/pages/placeholders/ComingSoonPage";
+// Teacher (lecturer) self-service portal
+import TeacherDashboardPage from "@/pages/teacher/TeacherDashboardPage";
+import TeacherCoursesPage from "@/pages/teacher/TeacherCoursesPage";
+import TeacherCourseDetailPage from "@/pages/teacher/TeacherCourseDetailPage";
+import TeacherStudentsPage from "@/pages/teacher/TeacherStudentsPage";
+import TeacherCalendarPage from "@/pages/teacher/TeacherCalendarPage";
+import TeacherExamsPage from "@/pages/teacher/TeacherExamsPage";
+import TeacherExamAttendancePage from "@/pages/teacher/TeacherExamAttendancePage";
 
 // Finance
 import FinanceHub from "@/pages/finance/FinanceHub";
@@ -354,6 +362,34 @@ function App() {
                 }
               >
                 <Route path="/me/leave" element={<MyLeavePage />} />
+              </Route>
+
+              {/* ── Teacher (lecturer) self-service portal ──
+                  Gated on ACCESS_TEACHER_PORTAL, NOT VIEW_MY_MODULES — the
+                  student role holds that slug too. Every page underneath is
+                  additionally scoped server-side to the lecturer's own
+                  assignments (App\Helpers\LecturerScope). */}
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={PERMISSIONS.ACCESS_TEACHER_PORTAL}
+                    allowWhenTeaching
+                  />
+                }
+              >
+                <Route path="/teacher" element={<TeacherDashboardPage />} />
+                <Route path="/teacher/courses" element={<TeacherCoursesPage />} />
+                <Route
+                  path="/teacher/courses/:moduleId"
+                  element={<TeacherCourseDetailPage />}
+                />
+                <Route path="/teacher/students" element={<TeacherStudentsPage />} />
+                <Route path="/teacher/calendar" element={<TeacherCalendarPage />} />
+                <Route path="/teacher/exams" element={<TeacherExamsPage />} />
+                <Route
+                  path="/teacher/exams/:id"
+                  element={<TeacherExamAttendancePage />}
+                />
               </Route>
 
               {/* ── Student self-service ── */}

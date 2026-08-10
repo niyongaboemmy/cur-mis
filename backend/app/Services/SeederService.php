@@ -6,6 +6,7 @@ namespace App\Services;
 
 use App\Seeders\PermissionsSeeder;
 use App\Seeders\SeederInterface;
+use App\Seeders\TeacherDemoSeeder;
 
 /**
  * Registry of named, on-demand data seeders.
@@ -15,7 +16,10 @@ use App\Seeders\SeederInterface;
 class SeederService
 {
     private const REGISTRY = [
-        'permissions' => PermissionsSeeder::class,
+        'permissions'  => PermissionsSeeder::class,
+        // DEV ONLY — seeds a lecturer teaching workload (assignments, rosters,
+        // timetable, exams) and resets the seeded lecturers' passwords.
+        'teacher-demo' => TeacherDemoSeeder::class,
     ];
 
     /** Names of all registered seeders. */

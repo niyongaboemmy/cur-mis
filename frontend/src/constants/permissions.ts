@@ -100,6 +100,9 @@ export const PERMISSIONS = {
   // External portals (assigned to `applicant` / `student` roles via DB seed)
   ACCESS_APPLICANT_PORTAL: 'ACCESS_APPLICANT_PORTAL',
   ACCESS_STUDENT_PORTAL:   'ACCESS_STUDENT_PORTAL',
+  // Teacher workspace (`lecturer` / `HOD` via migration 2026_08_09_120).
+  // Note this is NOT VIEW_MY_MODULES — students hold that slug too.
+  ACCESS_TEACHER_PORTAL:   'ACCESS_TEACHER_PORTAL',
 
   // Applicant self-service
   MANAGE_OWN_PROFILE: 'MANAGE_OWN_PROFILE',

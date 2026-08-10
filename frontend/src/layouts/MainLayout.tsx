@@ -31,6 +31,7 @@ import {
   Wallet,
   CalendarDays,
   Package,
+  Presentation,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -75,6 +76,8 @@ type NavChild = {
   permissions?: string[];
   roles?: string[];
   hideForRoles?: string[];
+  /** Also show to anyone assigned a module (user.is_teaching), whatever their role. */
+  showWhenTeaching?: boolean;
 };
 type NavNode = {
   id: string;
@@ -95,6 +98,13 @@ type NavNode = {
    * (e.g. hr_manager should not see Academics management).
    */
   hideForRoles?: string[];
+  /**
+   * Show this node to anyone assigned at least one module (`user.is_teaching`),
+   * even if their role carries none of `permissions`. Teaching access follows
+   * the assignment, not the role — a registrar who picks up a class still needs
+   * the teaching workspace.
+   */
+  showWhenTeaching?: boolean;
   children?: NavChild[];
 };
 
@@ -138,6 +148,49 @@ const NAV_TREE: NavNode[] = [
     permissions: [PERMISSIONS.ACCESS_APPLICANT_PORTAL],
   },
   {
+    // Teacher workspace. Gated on ACCESS_TEACHER_PORTAL rather than
+    // VIEW_MY_MODULES, because the `student` role holds VIEW_MY_MODULES too and
+    // would otherwise see a teaching menu. Every page is additionally scoped
+    // server-side to the lecturer's own module assignments.
+    id: "my-teaching",
+    label: "My Teaching",
+    icon: Presentation,
+    permissions: [PERMISSIONS.ACCESS_TEACHER_PORTAL],
+    showWhenTeaching: true,
+    children: [
+      {
+        to: "/teacher",
+        label: "Dashboard",
+        permissions: [PERMISSIONS.ACCESS_TEACHER_PORTAL],
+        showWhenTeaching: true,
+      },
+      {
+        to: "/teacher/courses",
+        label: "My courses",
+        permissions: [PERMISSIONS.ACCESS_TEACHER_PORTAL],
+        showWhenTeaching: true,
+      },
+      {
+        to: "/teacher/calendar",
+        label: "My calendar",
+        permissions: [PERMISSIONS.ACCESS_TEACHER_PORTAL],
+        showWhenTeaching: true,
+      },
+      {
+        to: "/teacher/exams",
+        label: "My exams",
+        permissions: [PERMISSIONS.ACCESS_TEACHER_PORTAL],
+        showWhenTeaching: true,
+      },
+      {
+        to: "/attendance",
+        label: "Attendance",
+        permissions: [PERMISSIONS.RECORD_ATTENDANCE, PERMISSIONS.VIEW_ATTENDANCE],
+        showWhenTeaching: true,
+      },
+    ],
+  },
+  {
     // Self-service payslips — available to every staff account regardless of
     // HR permissions. Hidden from students/applicants (handled by their own
     // portals). Server scopes the data to the signed-in user's employee record.
@@ -161,6 +214,12 @@ const NAV_TREE: NavNode[] = [
     id: "students-group",
     label: "Students",
     icon: GraduationCap,
+    // Hidden for teaching roles: everything a lecturer needs from this area is
+    // in "My Teaching", scoped to their own courses. Presentational only — the
+    // underlying permissions must stay granted (the embedded roster and mark
+    // sheet check RECORD_ATTENDANCE / RECORD_MODULE_MARKS), so this hides the
+    // duplicate entry point without disabling the feature.
+    hideForRoles: ["lecturer", "HOD"],
     permissions: [PERMISSIONS.VIEW_STUDENTS, PERMISSIONS.GENERATE_DOCUMENTS],
     children: [
       {
@@ -282,6 +341,12 @@ const NAV_TREE: NavNode[] = [
     id: "modules",
     label: "Academics",
     icon: BookOpen,
+    // Hidden for teaching roles: everything a lecturer needs from this area is
+    // in "My Teaching", scoped to their own courses. Presentational only — the
+    // underlying permissions must stay granted (the embedded roster and mark
+    // sheet check RECORD_ATTENDANCE / RECORD_MODULE_MARKS), so this hides the
+    // duplicate entry point without disabling the feature.
+    hideForRoles: ["lecturer", "HOD"],
     permissions: [
       PERMISSIONS.MANAGE_MODULES,
       PERMISSIONS.MANAGE_MODULE_SCHEDULES,
@@ -438,7 +503,8 @@ const NAV_TREE: NavNode[] = [
     label: "Attendance",
     icon: ClipboardCheck,
     to: "/attendance",
-    hideForRoles: ["student"],
+    // Lecturers reach attendance through My Teaching → their own course.
+    hideForRoles: ["student", "lecturer", "HOD"],
     permissions: [
       PERMISSIONS.VIEW_ATTENDANCE,
       PERMISSIONS.RECORD_ATTENDANCE,
@@ -478,6 +544,13 @@ const NAV_TREE: NavNode[] = [
     id: "exam",
     label: "Exam",
     icon: ClipboardList,
+    // Hidden for teaching roles: everything a lecturer needs from this area is
+    // in "My Teaching", scoped to their own courses. Presentational only — the
+    // underlying permissions must stay granted (the embedded roster and mark
+    // sheet check RECORD_ATTENDANCE / RECORD_MODULE_MARKS), so this hides the
+    // duplicate entry point without disabling the feature.
+    hideForRoles: ["lecturer", "HOD"],
+
     // Visible to admins/staff with MANAGE_EXAMS *or* to students who hold
     // VIEW_MY_MODULES (so they can see their personal exams + results).
     permissions: [PERMISSIONS.MANAGE_EXAMS, PERMISSIONS.VIEW_MY_MODULES],
@@ -794,6 +867,30 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
     title: "My Payroll",
     sub: "Your personal payslip history and salary breakdown",
   },
+  "/me/leave": {
+    title: "My Leave",
+    sub: "Request leave and track your own requests",
+  },
+  "/teacher": {
+    title: "My Teaching",
+    sub: "Your courses, students, timetable and records",
+  },
+  "/teacher/courses": {
+    title: "My Courses",
+    sub: "Modules you are assigned to teach",
+  },
+  "/teacher/students": {
+    title: "My Students",
+    sub: "Everyone registered on a module you teach",
+  },
+  "/teacher/calendar": {
+    title: "My Calendar",
+    sub: "Your classes, exam sittings and approved leave",
+  },
+  "/teacher/exams": {
+    title: "My Exams",
+    sub: "Exam rooms, candidates and attendance",
+  },
   "/hr/payments": {
     title: "Salary Payments",
     sub: "Disbursement history and payment records",
@@ -1091,8 +1188,10 @@ export default function MainLayout() {
       roles?: string[];
       permissions?: string[];
       hideForRoles?: string[];
+      showWhenTeaching?: boolean;
     }) => {
       if (node.hideForRoles?.includes(user?.role ?? "")) return false;
+      if (node.showWhenTeaching && user?.is_teaching) return matchesRoles(node.roles);
       return matchesRoles(node.roles) && hasAccess(node.permissions);
     },
     [matchesRoles, hasAccess, user],

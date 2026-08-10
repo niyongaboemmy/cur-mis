@@ -16,8 +16,28 @@
 
 SET FOREIGN_KEY_CHECKS = 0;
 
-ALTER TABLE `fee_structures` ADD COLUMN IF NOT EXISTS `department_id` INT UNSIGNED NULL DEFAULT NULL AFTER `academic_year_id`;
-ALTER TABLE `fee_structures` ADD COLUMN IF NOT EXISTS `level_id`      INT UNSIGNED NULL DEFAULT NULL AFTER `department_id`;
-ALTER TABLE `fee_structures` ADD COLUMN IF NOT EXISTS `label`         VARCHAR(120)   NULL DEFAULT NULL AFTER `fee_type`;
+-- Guarded via INFORMATION_SCHEMA rather than `ADD COLUMN IF NOT EXISTS`, which
+-- is MariaDB-only syntax and is a 1064 syntax error on MySQL 8.
+
+SET @col := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='fee_structures' AND COLUMN_NAME='department_id');
+SET @stmt := IF(@col=0,
+  'ALTER TABLE `fee_structures` ADD COLUMN `department_id` INT UNSIGNED NULL DEFAULT NULL AFTER `academic_year_id`',
+  'SELECT 1');
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
+
+SET @col := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='fee_structures' AND COLUMN_NAME='level_id');
+SET @stmt := IF(@col=0,
+  'ALTER TABLE `fee_structures` ADD COLUMN `level_id` INT UNSIGNED NULL DEFAULT NULL AFTER `department_id`',
+  'SELECT 1');
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
+
+SET @col := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='fee_structures' AND COLUMN_NAME='label');
+SET @stmt := IF(@col=0,
+  'ALTER TABLE `fee_structures` ADD COLUMN `label` VARCHAR(120) NULL DEFAULT NULL AFTER `fee_type`',
+  'SELECT 1');
+PREPARE s FROM @stmt; EXECUTE s; DEALLOCATE PREPARE s;
 
 SET FOREIGN_KEY_CHECKS = 1;

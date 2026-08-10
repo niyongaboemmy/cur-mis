@@ -28,6 +28,7 @@ import { useAuthStore } from "@/store/authStore";
 import { PERMISSIONS } from "@/constants";
 import { isSuperadmin } from "@/utils/permissions";
 import { applicantService } from "@/services/admissionService";
+import TeacherDashboardPage from "@/pages/teacher/TeacherDashboardPage";
 import type { ApplicationStatus } from "@/types/admission";
 
 /* ─── animation variants ─────────────────────────────────────────── */
@@ -89,6 +90,10 @@ const QUICK_ACTIONS: QA[] = [
     sub: "Overview & key metrics",
     accent:
       "bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300",
+    // Permission-gated as well as role-hidden: teaching roles had VIEW_DASHBOARD
+    // revoked (migration 2026_08_09_122) because their dashboard is /teacher, and
+    // this card would otherwise still point them at the institution-wide one.
+    permissions: [PERMISSIONS.VIEW_DASHBOARD],
     hideForRoles: ["student", "applicant"],
   },
 
@@ -282,6 +287,18 @@ const QUICK_ACTIONS: QA[] = [
 /* ─── main component ─────────────────────────────────────────────── */
 export default function WelcomePage() {
   const { user } = useAuthStore();
+
+  // Teaching staff land straight on their own dashboard. "/" is the post-login
+  // destination (useAuth navigates here after OTP verification), and for a
+  // lecturer the generic launcher is a detour — everything they need is on the
+  // teaching dashboard.
+  //
+  // NOTE: reads `user.permissions` directly rather than useAnyPermission(),
+  // which bypasses for superadmin and would redirect every superadmin here.
+  // ACCESS_TEACHER_PORTAL is granted only to `lecturer`/`HOD`.
+  if (user?.permissions?.includes(PERMISSIONS.ACCESS_TEACHER_PORTAL)) {
+    return <TeacherDashboardPage />;
+  }
   const [showDocumentsModal, setShowDocumentsModal] = useState(false);
 
   const role = user?.role ?? "";

@@ -16,9 +16,16 @@ import { isSuperadmin } from '@/utils/permissions'
 interface Props {
   requiredPermissions?: string | string[]
   requiredRoles?: string | string[]
+  /**
+   * Also admit anyone assigned to a module (`user.is_teaching`), regardless of
+   * role or permission. Used by the teacher workspace so a registrar/HR user who
+   * picks up a class can reach it; every page behind it is still scoped
+   * server-side to that person's own assignments.
+   */
+  allowWhenTeaching?: boolean
 }
 
-export default function ProtectedRoute({ requiredPermissions, requiredRoles }: Props) {
+export default function ProtectedRoute({ requiredPermissions, requiredRoles, allowWhenTeaching }: Props) {
   const { isAuthenticated, user } = useAuthStore((s) => ({
     isAuthenticated: s.isAuthenticated,
     user: s.user
@@ -48,6 +55,7 @@ export default function ProtectedRoute({ requiredPermissions, requiredRoles }: P
     const userPerms = user?.permissions || []
 
     const hasAccess = required.some((p) => userPerms.includes(p))
+      || (allowWhenTeaching === true && user?.is_teaching === true)
 
     if (!hasAccess) {
       return <Navigate to="/" replace />

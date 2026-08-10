@@ -9,8 +9,12 @@ use App\Helpers\InstructorDirectory;
 class ModuleAssignmentModel extends BaseModel
 {
     protected string $table = 'module_assignments';
+    // `user_id` is the canonical lecturer link (see App\Helpers\LecturerScope and
+    // migration 2026_08_09_118). It was previously omitted here, so every
+    // assignment written through this model left it NULL and the teacher portal
+    // had to fall back to decoding the namespaced `staff_id`.
     protected array $fillable = [
-        'module_id', 'staff_id', 'academic_year_id', 'academic_term_id',
+        'module_id', 'staff_id', 'user_id', 'academic_year_id', 'academic_term_id',
         'role', 'hours_per_week', 'notes', 'created_by',
     ];
 

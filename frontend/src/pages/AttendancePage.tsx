@@ -656,9 +656,18 @@ function OverviewTab({ termId, moduleId, mineOnly }: { termId: number; moduleId:
  * Record tab — module first, then date navigator; auto-loads the matching
  * session (if any). Saved sessions come back read-only with Edit / Lock.
  * ═══════════════════════════════════════════════════════════════════════ */
-function RecordTab({
+/**
+ * The date strip + editable attendance roster.
+ *
+ * Exported so the teacher course page (pages/teacher/TeacherCourseDetailPage)
+ * can embed the identical recording UI on its Attendance tab instead of sending
+ * the lecturer to /attendance and making them re-pick the module they already
+ * had open. Keeping one component means the two surfaces cannot drift apart.
+ */
+export function RecordTab({
   termId, pickedModule, initialSessionType, initialDate,
-  scopeDayPattern, scopeStartDate, scopeEndDate,
+  scopeDayPattern, scopeStartDate, scopeEndDate, showDateStrip = true,
+  externalFilter, compact = false, onBridge,
 }: {
   termId: number
   pickedModule: TeachableModule
@@ -667,6 +676,14 @@ function RecordTab({
   scopeDayPattern?: string | null
   scopeStartDate?: string | null
   scopeEndDate?: string | null
+  /** Set false when the host already renders its own DateStrip. */
+  showDateStrip?: boolean
+  /** Forwarded to RosterEditor — host-owned search box. */
+  externalFilter?: string
+  /** Forwarded to RosterEditor — drops the duplicated title block. */
+  compact?: boolean
+  /** Forwarded to RosterEditor — lets the host header own Save. */
+  onBridge?: (api: { save: () => void; saving: boolean; canSave: boolean } | null) => void
 }) {
   const qc = useQueryClient()
 
@@ -729,14 +746,16 @@ function RecordTab({
 
   return (
     <div className="space-y-4">
-      <DateStrip
-        moduleId={moduleId}
-        selected={sessionDate}
-        onSelect={setSessionDate}
-        allowedDows={allowedDows}
-        scopeStartDate={scopeStartDate ?? null}
-        scopeEndDate={scopeEndDate ?? null}
-      />
+      {showDateStrip && (
+        <DateStrip
+          moduleId={moduleId}
+          selected={sessionDate}
+          onSelect={setSessionDate}
+          allowedDows={allowedDows}
+          scopeStartDate={scopeStartDate ?? null}
+          scopeEndDate={scopeEndDate ?? null}
+        />
+      )}
 
       {termId === 0 && (
         <section className="card p-4 text-[12.5px] text-amber-900 bg-amber-50 border-amber-200 dark:bg-amber-900/30 dark:text-amber-100 dark:border-amber-700">
@@ -754,6 +773,9 @@ function RecordTab({
       {foundSession && (
         <RosterEditor
           sessionId={foundSession.id}
+          externalFilter={externalFilter}
+          compact={compact}
+          onBridge={onBridge}
           onSaved={() => {
             qc.invalidateQueries({ queryKey: ['attendance-overview'] })
             qc.invalidateQueries({ queryKey: ['attendance-sessions'] })
@@ -774,7 +796,11 @@ function RecordTab({
  * and are today or earlier are clickable. Days where this module already
  * has a recorded session get a checkmark stamp.
  * ═══════════════════════════════════════════════════════════════════════ */
-function DateStrip({ moduleId, selected, onSelect, allowedDows, scopeStartDate, scopeEndDate }: {
+/**
+ * Exported so the teacher course page can keep the date strip on screen in
+ * review mode too, not only while the roster editor is open.
+ */
+export function DateStrip({ moduleId, selected, onSelect, allowedDows, scopeStartDate, scopeEndDate }: {
   moduleId: number
   selected: string
   onSelect: (iso: string) => void
@@ -972,7 +998,8 @@ function stripDateISO(d: Date): string {
 /** Most recent past-or-today date that lies in `allowedDows` and inside the
  *  optional [start,end] window. Walks back from min(today, end) and stops
  *  at start. Returns today (clamped to the window) if no day matches. */
-function mostRecentAllowedDate(
+/** Exported for the teacher course page, which owns its own date state. */
+export function mostRecentAllowedDate(
   allowedDows: Set<number> | null,
   scopeStart: string | null | undefined,
   scopeEnd: string | null | undefined,
@@ -995,7 +1022,17 @@ function mostRecentAllowedDate(
   return scopeStart ?? todayIso
 }
 
-function RosterEditor({ sessionId, onSaved }: { sessionId: number; onSaved?: () => void }) {
+function RosterEditor({ sessionId, onSaved, externalFilter, compact = false, onBridge }: {
+  sessionId: number
+  onSaved?: () => void
+  /** Lets a host (the teacher course page) drive Save from its own header. */
+  onBridge?: (api: { save: () => void; saving: boolean; canSave: boolean } | null) => void
+  /** When supplied, the roster's own search box is hidden and this value is
+   *  used instead — the teacher course page owns the search in its header. */
+  externalFilter?: string
+  /** Drops the title/module line, which duplicates the host page's header. */
+  compact?: boolean
+}) {
   const qc = useQueryClient()
   const canRecord = useAnyPermission([PERMISSIONS.RECORD_ATTENDANCE, PERMISSIONS.MANAGE_ATTENDANCE])
   const canManage = usePermission(PERMISSIONS.MANAGE_ATTENDANCE)
@@ -1006,7 +1043,10 @@ function RosterEditor({ sessionId, onSaved }: { sessionId: number; onSaved?: () 
   })
 
   const [edits, setEdits] = useState<Record<string, { status: AttendanceStatus; remarks?: string | null }>>({})
-  const [filter, setFilter] = useState('')
+  const [ownFilter, setOwnFilter] = useState('')
+  const usingExternalFilter = externalFilter !== undefined
+  const filter = usingExternalFilter ? (externalFilter as string) : ownFilter
+  const setFilter = setOwnFilter
   const [editMode, setEditMode] = useState(false)
   const [showEnroll, setShowEnroll] = useState(false)
   const [selectedRegs, setSelectedRegs] = useState<Set<string>>(new Set())
@@ -1073,6 +1113,18 @@ function RosterEditor({ sessionId, onSaved }: { sessionId: number; onSaved?: () 
 
   const markedCount = Object.keys(edits).length
 
+  // Publish a save handle so a host header can own the Save button. Runs on
+  // every render (no dep array) because `saving`/`canSave` must stay current.
+  useEffect(() => {
+    if (!onBridge) return
+    onBridge({
+      save:    () => saveMut.mutate(),
+      saving:  saveMut.isPending,
+      canSave: canEditNow && markedCount > 0 && !saveMut.isPending,
+    })
+    return () => onBridge(null)
+  })
+
   // Counts for live tally chips in header. Must be declared before early returns.
   const tally = useMemo(() => {
     const c = { present: 0, late: 0, absent: 0, excused: 0 }
@@ -1122,15 +1174,19 @@ function RosterEditor({ sessionId, onSaved }: { sessionId: number; onSaved?: () 
                 </span>
               )}
             </div>
-            <p className="text-[12px] text-ink-500 truncate">
-              <span className="font-semibold">{moduleCode}</span> · {session.module_name}
-              <span className="hidden sm:inline"> · {summary.total_roster} students</span>
-            </p>
+            {!compact && (
+              <p className="text-[12px] text-ink-500 truncate">
+                <span className="font-semibold">{moduleCode}</span> · {session.module_name}
+                <span className="hidden sm:inline"> · {summary.total_roster} students</span>
+              </p>
+            )}
           </div>
 
           {/* Right-side action cluster — primary Save button + secondary actions */}
           <div className="flex items-center gap-2 shrink-0 flex-wrap">
-            {canEditNow && (
+            {/* Hidden when a host owns Save (teacher course page header) —
+                two Save buttons on one screen is a coin toss for the user. */}
+            {canEditNow && !onBridge && (
               <button
                 className={`btn-primary inline-flex items-center gap-1.5 ${markedCount === 0 ? 'opacity-60' : ''}`}
                 disabled={saveMut.isPending || markedCount === 0}
@@ -1180,7 +1236,7 @@ function RosterEditor({ sessionId, onSaved }: { sessionId: number; onSaved?: () 
 
         {/* Search + quick actions row */}
         <div className="px-4 sm:px-6 pb-3 flex flex-col sm:flex-row sm:items-center gap-2">
-          <div className="relative flex-1 min-w-0">
+          <div className={`relative flex-1 min-w-0 ${usingExternalFilter ? 'hidden' : ''}`}>
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-400" />
             <input
               value={filter}
