@@ -173,13 +173,7 @@ class GraduationAuditService
     {
         $db    = Database::getInstance();
         $start = microtime(true);
-
-        $optionSql = self::optionIdSql('s');
-        $startedOn = self::startedOnSql('s');
-        $srcSql    = self::startSourceSql('s');
-        $intakeSql = self::intakeYearSql('s');
-        $pass      = self::PASS_MARK;
-        $table     = self::SNAPSHOT_TABLE;
+        $table = self::SNAPSHOT_TABLE;
 
         // DELETE rather than TRUNCATE: TRUNCATE is DDL and would implicitly
         // commit, leaving readers looking at an empty table mid-rebuild.
@@ -190,6 +184,34 @@ class GraduationAuditService
                 $db->execute("DELETE FROM `{$table}`");
             }
 
+            $db->execute(self::rebuildSql($afterId, $limit));
+            $db->commit();
+        } catch (\Throwable $e) {
+            $db->rollBack();
+            throw $e;
+        }
+
+        return self::rebuildStats($afterId, $limit, $start);
+    }
+
+    /**
+     * The INSERT the rebuild runs, as text.
+     *
+     * Public so the same statement can be pasted into phpMyAdmin. An
+     * environment whose PHP request budget cannot finish the rebuild — or that
+     * is mid-deploy — can still populate the snapshot straight from SQL, and
+     * any incompatibility shows up as a plain SQL error rather than a 500.
+     */
+    public static function rebuildSql(int $afterId = 0, int $limit = 0): string
+    {
+        $optionSql = self::optionIdSql('s');
+        $startedOn = self::startedOnSql('s');
+        $srcSql    = self::startSourceSql('s');
+        $intakeSql = self::intakeYearSql('s');
+        $pass      = self::PASS_MARK;
+        $table     = self::SNAPSHOT_TABLE;
+
+        {
             // Per-student scalars resolved once. Keeping REGEXP_SUBSTR out of
             // any JOIN condition matters: evaluated per joined row instead of
             // per student it costs an order of magnitude.
@@ -211,8 +233,7 @@ class GraduationAuditService
                                   s.programme_level
                            FROM `student` s {$bound}";
 
-            $db->execute(
-                "INSERT INTO `{$table}` (
+            return "INSERT INTO `{$table}` (
                     student_id, regnumber, option_id, started_on, start_source, intake_year,
                     student_state, current_level, programme_level,
                     expected, recorded, passed, failed, exempted, pending, missing, outstanding,
@@ -313,13 +334,20 @@ class GraduationAuditService
                     percent_complete = VALUES(percent_complete), is_complete = VALUES(is_complete),
                     credits_expected = VALUES(credits_expected),
                     credits_earned = VALUES(credits_earned),
-                    weighted_avg = VALUES(weighted_avg), computed_at = VALUES(computed_at)"
-            );
-            $db->commit();
-        } catch (\Throwable $e) {
-            $db->rollBack();
-            throw $e;
+                    weighted_avg = VALUES(weighted_avg), computed_at = VALUES(computed_at)";
         }
+    }
+
+    /**
+     * Cursor and totals after a batch.
+     *
+     * @return array{processed:int, last_id:int, done:bool,
+     *               students:int, complete:int, seconds:float}
+     */
+    private static function rebuildStats(int $afterId, int $limit, float $start): array
+    {
+        $db    = Database::getInstance();
+        $table = self::SNAPSHOT_TABLE;
 
         // How far this batch got. Reading it back from `student` rather than
         // from the snapshot keeps the cursor correct even when a batch writes
