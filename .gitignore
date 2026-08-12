@@ -104,6 +104,10 @@ curac_cur_mis(Iyabo).sql
 # Root-only glob so it never touches backend/database/migrations/*.sql.
 /*.sql
 
+# Live-server DB exports dropped into database/ (e.g. "curac_save db.sql").
+# Only files directly in database/ — database/migrations/*.sql stays tracked.
+/database/*.sql
+
 # Handover deliverables and one-off reports (not application code).
 deliverables/
 IDENTITY_CONSOLIDATION_REPORT.md

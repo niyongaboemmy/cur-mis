@@ -2,12 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useAnyPermission } from '@/utils/permissions'
+import { useGradingScale } from '@/utils/gradingScale'
 import { PERMISSIONS } from '@/constants/permissions'
 import {
-  Loader2, Save, GraduationCap, Users, Percent,
+  Loader2, Save,
   CheckCircle2, FileCheck, SendHorizontal, RotateCcw, Lock,
   UserPlus, Search, X, Download, Upload, AlertTriangle,
   Filter, BookOpen, ChevronLeft, AlertCircle,
+  CalendarClock, UserSearch,
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import toast from 'react-hot-toast'
@@ -25,6 +27,7 @@ import {
   type MarksModuleHeader,
   type MarksWorkflow,
   type MarksWorkflowStatus,
+  type MyMarksRow,
 } from '@/services/marksService'
 
 interface RowDraft {
@@ -46,14 +49,9 @@ const num = (v: unknown): number | null => {
 const toStr = (v: unknown): string =>
   v === null || v === undefined || v === '' ? '' : String(v)
 
-// CUR official grading scale — keep in sync with backend ModuleMarksController.gradeFor().
-const gradeFor = (pct: number): string => {
-  if (pct >= 80) return 'A' // Very Good
-  if (pct >= 70) return 'B' // Good
-  if (pct >= 60) return 'C' // Satisfaction
-  if (pct >= 50) return 'D' // Pass
-  return 'E'                // Fail
-}
+// Grades come from the registry's configured scale (/academic/grading-scale)
+// via useGradingScale(), not from a ladder hardcoded here — see
+// @/utils/gradingScale and its server twin App\Helpers\GradingScale.
 
 const decisionFor = (pct: number | null): string | null =>
   pct === null ? null : pct >= 50 ? 'P' : 'F&R'
@@ -82,20 +80,68 @@ export default function ModulesMarksPage() {
     }
   }, [terms, termId])
 
+  const pickModule = (modId: number, code: string, name: string) => {
+    const next = new URLSearchParams(sp)
+    next.set('module_id', String(modId))
+    next.set('m_code', code || '')
+    next.set('m_name', name || '')
+    setSp(next, { replace: true })
+  }
+
+  /* ── Entry tabs ────────────────────────────────────────────────────────
+   * Three ways into the same marks data, because the schedule list alone
+   * only reaches modules that have a timetable block — four of them here,
+   * against 663 modules that actually hold marks. The tab lives in the URL
+   * so a reload or a back-navigation returns to the same place. */
+  const tab = (sp.get('tab') ?? 'schedules') as MarksEntryTab
+  const setTab = (t: MarksEntryTab) => {
+    const next = new URLSearchParams(sp)
+    next.set('tab', t)
+    setSp(next, { replace: true })
+  }
+
   if (!moduleId) {
     return (
-      <MarksSchedulePicker
-        termId={termId}
-        terms={terms}
-        onChangeTerm={setTermId}
-        onPickModule={(modId, code, name) => {
-          const next = new URLSearchParams(sp)
-          next.set('module_id', String(modId))
-          next.set('m_code', code || '')
-          next.set('m_name', name || '')
-          setSp(next, { replace: true })
-        }}
-      />
+      <div className="space-y-4 animate-fade-in">
+        <div className="flex items-center gap-1 border-b border-ink-100 dark:border-ink-700">
+          {([
+            ['schedules', 'Schedules',   CalendarClock],
+            ['modules',   'All modules', BookOpen],
+            ['student',   'By student',  UserSearch],
+          ] as [MarksEntryTab, string, typeof BookOpen][]).map(([id, label, Icon]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setTab(id)}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-[13px] font-semibold border-b-2 -mb-px transition-colors ${
+                tab === id
+                  ? 'border-brand text-brand'
+                  : 'border-transparent text-ink-500 hover:text-ink-800 dark:hover:text-ink-200'
+              }`}
+            >
+              <Icon className="w-4 h-4" /> {label}
+            </button>
+          ))}
+        </div>
+
+        {tab === 'schedules' && (
+          <MarksSchedulePicker
+            termId={termId}
+            terms={terms}
+            onChangeTerm={setTermId}
+            onPickModule={pickModule}
+          />
+        )}
+        {tab === 'modules' && (
+          <AllModulesPicker
+            termId={termId}
+            terms={terms}
+            onChangeTerm={setTermId}
+            onPickModule={pickModule}
+          />
+        )}
+        {tab === 'student' && <StudentMarksExplorer />}
+      </div>
     )
   }
 
@@ -119,6 +165,386 @@ export default function ModulesMarksPage() {
   )
 }
 
+type MarksEntryTab = 'schedules' | 'modules' | 'student'
+
+/**
+ * Every module that can hold marks, not just the timetabled ones.
+ *
+ * `/api/marks/markable-modules` returns every active module for a
+ * MANAGE_MODULE_MARKS holder and the lecturer's own modules otherwise, so this
+ * list is already correctly scoped per user.
+ */
+function AllModulesPicker({
+  termId, terms, onChangeTerm, onPickModule,
+}: {
+  termId:       number
+  terms:        any[]
+  onChangeTerm: (id: number) => void
+  onPickModule: (moduleId: number, code: string, name: string) => void
+}) {
+  const [search, setSearch] = useState('')
+
+  const modulesQ = useQuery({
+    queryKey: ['marks', 'markable-modules', termId],
+    queryFn:  () => marksService.markableModules({ academic_term_id: termId }),
+    enabled:  !!termId,
+  })
+  const modules: MarkableModule[] = modulesQ.data?.data ?? []
+
+  const shown = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return modules
+    return modules.filter((m) =>
+      `${m.module_code} ${m.module_name}`.toLowerCase().includes(q))
+  }, [modules, search])
+
+  return (
+    <div className="space-y-4">
+      <div className="card p-4 space-y-3">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <h2 className="text-lg font-bold text-ink-900 dark:text-white">All modules</h2>
+            <p className="text-[13px] text-ink-500">
+              Every module you can record or review marks for — including those with no
+              timetable block. Pick one to open its mark sheet.
+            </p>
+          </div>
+          <select
+            className="input input-sm w-44"
+            value={termId || ''}
+            onChange={(e) => onChangeTerm(Number(e.target.value))}
+          >
+            <option value="" disabled>Select term…</option>
+            {terms.map((t: any) => (
+              <option key={t.id} value={t.id}>{t.label}{t.is_current ? ' (current)' : ''}</option>
+            ))}
+          </select>
+        </div>
+        <div className="relative">
+          <Search className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-400 pointer-events-none" />
+          <input
+            className="input input-sm w-full pl-8"
+            placeholder="Search by module code or name…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="card overflow-hidden">
+        <div className="px-4 py-3 border-b border-ink-100 dark:border-ink-700">
+          <span className="font-bold text-ink-900 dark:text-white">
+            {modulesQ.isLoading ? 'Loading…' : `${shown.length} module${shown.length === 1 ? '' : 's'}`}
+          </span>
+        </div>
+        {modulesQ.isLoading ? (
+          <div className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-brand" /></div>
+        ) : shown.length === 0 ? (
+          <div className="p-8 text-center text-ink-400">
+            {termId ? 'No module matches that search.' : 'Pick a term to list modules.'}
+          </div>
+        ) : (
+          <div className="max-h-[620px] overflow-auto">
+            <table className="w-full text-left text-[13px]">
+              <thead className="sticky top-0 bg-sky-50 dark:bg-ink-800/50">
+                <tr className="border-b border-ink-100 dark:border-ink-700">
+                  <th className="px-4 py-2.5 text-[10px] uppercase font-bold text-ink-500">Code</th>
+                  <th className="px-4 py-2.5 text-[10px] uppercase font-bold text-ink-500">Module</th>
+                  <th className="px-4 py-2.5 text-[10px] uppercase font-bold text-ink-500">Level</th>
+                  <th className="px-4 py-2.5 text-[10px] uppercase font-bold text-ink-500 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-ink-100 dark:divide-ink-700">
+                {shown.map((m) => (
+                  <tr
+                    key={m.module_id}
+                    className="hover:bg-ink-50/60 dark:hover:bg-ink-700/20 cursor-pointer"
+                    onClick={() => onPickModule(m.module_id, m.module_code, m.module_name)}
+                  >
+                    <td className="px-4 py-2.5 font-mono font-bold text-brand">{m.module_code}</td>
+                    <td className="px-4 py-2.5 text-ink-800 dark:text-ink-100">{m.module_name}</td>
+                    <td className="px-4 py-2.5 text-ink-500">{m.level ? `Level ${m.level}` : '—'}</td>
+                    <td className="px-4 py-2.5 text-right">
+                      <span className="btn-primary btn-sm inline-flex">View marks</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Search a student, see their entire academic record.
+ *
+ * Reads `/api/marks/students/by-id/:id`, which returns every mark the student
+ * holds across all modules and terms — the id-based route rather than the
+ * regnumber one because CUR regnumbers can contain slashes that break
+ * path-segment routing.
+ */
+function StudentMarksExplorer() {
+  const [query, setQuery]     = useState('')
+  const [debounced, setDeb]   = useState('')
+  const [picked, setPicked]   = useState<{ id: number; label: string } | null>(null)
+
+  useEffect(() => {
+    const t = setTimeout(() => setDeb(query.trim()), 300)
+    return () => clearTimeout(t)
+  }, [query])
+
+  // Suggest only from 3 characters — two characters matches a large chunk of a
+  // 13k-student table and the list is noise.
+  const MIN_CHARS = 3
+  const canSearch = debounced.length >= MIN_CHARS
+
+  const searchQ = useQuery({
+    queryKey: ['marks', 'student-search', debounced],
+    queryFn:  () => studentService.list({ q: debounced, per_page: 20 }),
+    enabled:  canSearch && !picked,
+  })
+  // The students endpoint answers { data: { data: [...], pagination } } — the
+  // payload is nested twice. Reading only one level handed back an object, and
+  // `results.map` then threw "results.map is not a function".
+  const results: any[] = ((searchQ.data as any)?.data?.data ?? []) as any[]
+
+  const recordQ = useQuery({
+    queryKey: ['marks', 'student-record', picked?.id],
+    queryFn:  () => marksService.studentMarksById(picked!.id),
+    enabled:  !!picked,
+  })
+  const record = recordQ.data?.data
+  const rows   = record?.rows ?? []
+
+  // Completed vs still-outstanding programme modules.
+  const coverageQ = useQuery({
+    queryKey: ['marks', 'student-coverage', picked?.id],
+    queryFn:  () => marksService.studentCoverageById(picked!.id),
+    enabled:  !!picked,
+  })
+  const coverage = coverageQ.data?.data
+  const remaining = coverage?.remaining ?? []
+
+  // Group by academic year → term, the way a transcript reads.
+  const grouped = useMemo(() => {
+    const g = new Map<string, MyMarksRow[]>()
+    rows.forEach((r) => {
+      const key = `${r.year_label ?? '—'} · ${r.term_label ?? '—'}`
+      if (!g.has(key)) g.set(key, [])
+      g.get(key)!.push(r)
+    })
+    return Array.from(g.entries())
+  }, [rows])
+
+  return (
+    <div className="space-y-4">
+      <div className="card p-4 space-y-3">
+        <div>
+          <h2 className="text-lg font-bold text-ink-900 dark:text-white">Student academic record</h2>
+          <p className="text-[13px] text-ink-500">
+            Search a student to see every mark they hold — and which programme
+            modules they still have outstanding.
+          </p>
+        </div>
+        <div className="relative">
+          <Search className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-400 pointer-events-none" />
+          <input
+            className="input input-sm w-full pl-8"
+            placeholder={`Search by name or registration number (${MIN_CHARS}+ characters)…`}
+            value={picked ? picked.label : query}
+            onChange={(e) => { setPicked(null); setQuery(e.target.value) }}
+          />
+          {picked && (
+            <button
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-400 hover:text-ink-700"
+              onClick={() => { setPicked(null); setQuery('') }}
+              title="Clear"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+
+        {!picked && query.trim().length > 0 && !canSearch && (
+          <p className="text-[12px] text-ink-400">
+            Keep typing — {MIN_CHARS} characters or more to search.
+          </p>
+        )}
+
+        {!picked && canSearch && (
+          <div className="border border-ink-100 dark:border-ink-700 rounded-lg max-h-64 overflow-auto divide-y divide-ink-100 dark:divide-ink-700">
+            {searchQ.isLoading ? (
+              <div className="p-4 text-center"><Loader2 className="w-4 h-4 animate-spin mx-auto text-brand" /></div>
+            ) : results.length === 0 ? (
+              <div className="p-4 text-center text-ink-400 text-[13px]">No student found.</div>
+            ) : results.map((s: any) => (
+              <button
+                key={s.id}
+                className="w-full text-left px-3 py-2 hover:bg-ink-50 dark:hover:bg-ink-800 text-[13px]"
+                onClick={() => setPicked({ id: s.id, label: `${s.fname ?? ''} ${s.lname ?? ''} — ${s.regnumber}`.trim() })}
+              >
+                <span className="font-semibold text-ink-800 dark:text-ink-100">
+                  {s.fname} {s.lname}
+                </span>
+                <span className="text-ink-500 font-mono ml-2">{s.regnumber}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {picked && recordQ.isLoading && (
+        <div className="card p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-brand" /></div>
+      )}
+
+      {picked && !recordQ.isLoading && record && (
+        <>
+          <div className="card p-4 flex flex-wrap items-center gap-5">
+            <div className="min-w-0">
+              <div className="text-[15px] font-bold text-ink-900 dark:text-white">
+                {record.student?.fname} {record.student?.lname}
+              </div>
+              <div className="text-[12px] text-ink-500 font-mono">{record.student?.regnumber}</div>
+              {coverage?.student?.option_name && (
+                <div className="text-[12px] text-ink-500 mt-0.5">
+                  {coverage.student.option_acro ? `${coverage.student.option_acro} — ` : ''}
+                  {coverage.student.option_name}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-5 flex-wrap ml-auto">
+              <HeaderStat label="Completed" value={record.totals?.modules ?? rows.length} tone="good" />
+              <HeaderStat
+                label="Remaining"
+                value={coverage?.totals?.has_curriculum ? (coverage.totals.remaining ?? 0) : '—'}
+                tone={(coverage?.totals?.remaining ?? 0) > 0 ? 'warn' : undefined}
+              />
+              <HeaderStat label="Passed"   value={record.totals?.passed ?? 0} tone="good" />
+              <HeaderStat label="Failed"   value={record.totals?.failed ?? 0} tone={(record.totals?.failed ?? 0) > 0 ? 'warn' : undefined} />
+              <HeaderStat label="Average"  value={record.totals?.weighted_average != null ? `${record.totals.weighted_average}%` : '—'} />
+            </div>
+          </div>
+
+          {/* Outstanding programme modules. Shown FIRST — the reason to open a
+              student's record is usually "what are they still missing?", and
+              burying it under years of completed marks hides the answer. */}
+          {coverage && (
+            coverage.totals.has_curriculum ? (
+              remaining.length > 0 ? (
+                <div className="card overflow-hidden">
+                  <div className="px-4 py-2.5 border-b border-ink-100 dark:border-ink-700 flex items-center gap-2 flex-wrap">
+                    <AlertCircle className="w-4 h-4 text-amber-500" />
+                    <span className="font-semibold text-[13px] text-ink-800 dark:text-ink-100">
+                      Remaining — {remaining.length} module{remaining.length === 1 ? '' : 's'} with no mark
+                    </span>
+                    <span className="text-[12px] text-ink-400">
+                      {coverage.totals.credits_remaining} credit{coverage.totals.credits_remaining === 1 ? '' : 's'} outstanding
+                    </span>
+                  </div>
+                  {coverage.totals.curriculum_suspect && (
+                    <div className="px-4 py-2 bg-amber-50 dark:bg-amber-500/10 border-b border-ink-100 dark:border-ink-700 text-[12px] text-amber-800 dark:text-amber-300">
+                      This programme maps to {coverage.totals.curriculum_size} modules in
+                      {' '}<span className="font-mono">module_programs</span> — a legacy bulk
+                      import rather than a real curriculum, so treat this list as
+                      indicative, not a definitive backlog.
+                    </div>
+                  )}
+                  <div className="overflow-auto max-h-72">
+                    <table className="w-full text-left text-[12.5px]">
+                      <thead className="sticky top-0 bg-amber-50/70 dark:bg-amber-500/10">
+                        <tr className="border-b border-ink-100 dark:border-ink-700">
+                          <th className="px-3 py-2 text-[10px] uppercase font-bold text-ink-500">Code</th>
+                          <th className="px-3 py-2 text-[10px] uppercase font-bold text-ink-500">Module</th>
+                          <th className="px-3 py-2 text-[10px] uppercase font-bold text-ink-500 text-center">Level</th>
+                          <th className="px-3 py-2 text-[10px] uppercase font-bold text-ink-500 text-center">Credits</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-ink-100 dark:divide-ink-700">
+                        {remaining.map((r) => (
+                          <tr key={r.module_id} className="hover:bg-ink-50/50 dark:hover:bg-ink-700/20">
+                            <td className="px-3 py-2 font-mono font-semibold text-amber-700 dark:text-amber-400">{r.module_code}</td>
+                            <td className="px-3 py-2 text-ink-800 dark:text-ink-100">{r.module_name}</td>
+                            <td className="px-3 py-2 text-center text-ink-500">{r.level ?? '—'}</td>
+                            <td className="px-3 py-2 text-center text-ink-500">{r.module_credits ?? '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <div className="card p-4 flex items-center gap-2 text-[13px] text-emerald-700 dark:text-emerald-400">
+                  <CheckCircle2 className="w-4 h-4" />
+                  Every module in this student&apos;s programme has a recorded mark.
+                </div>
+              )
+            ) : (
+              // No programme mapped — "0 remaining" would read as "finished".
+              <div className="card p-4 flex items-center gap-2 text-[13px] text-ink-500">
+                <AlertCircle className="w-4 h-4 text-ink-400" />
+                No programme is mapped to this student, so outstanding modules
+                cannot be worked out. Their completed marks are listed below.
+              </div>
+            )
+          )}
+
+          {rows.length === 0 ? (
+            <div className="card p-8 text-center text-ink-400">
+              This student has no marks recorded.
+            </div>
+          ) : grouped.map(([label, list]) => (
+            <div key={label} className="card overflow-hidden">
+              <div className="px-4 py-2.5 border-b border-ink-100 dark:border-ink-700 font-semibold text-[13px] text-ink-700 dark:text-ink-200">
+                {label} <span className="text-ink-400 font-normal">· {list.length} module{list.length === 1 ? '' : 's'}</span>
+              </div>
+              <div className="overflow-auto">
+                <table className="w-full text-left text-[12.5px]">
+                  <thead className="bg-sky-50 dark:bg-ink-800/50">
+                    <tr className="border-b border-ink-100 dark:border-ink-700">
+                      <th className="px-3 py-2 text-[10px] uppercase font-bold text-ink-500">Code</th>
+                      <th className="px-3 py-2 text-[10px] uppercase font-bold text-ink-500">Module</th>
+                      <th className="px-3 py-2 text-[10px] uppercase font-bold text-ink-500 text-center">Credits</th>
+                      <th className="px-3 py-2 text-[10px] uppercase font-bold text-ink-500 text-center">CAT</th>
+                      <th className="px-3 py-2 text-[10px] uppercase font-bold text-ink-500 text-center">Exam</th>
+                      <th className="px-3 py-2 text-[10px] uppercase font-bold text-ink-500 text-center">Total</th>
+                      <th className="px-3 py-2 text-[10px] uppercase font-bold text-ink-500 text-center">%</th>
+                      <th className="px-3 py-2 text-[10px] uppercase font-bold text-ink-500 text-center">Grade</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-ink-100 dark:divide-ink-700">
+                    {list.map((r) => (
+                      <tr key={r.id} className="hover:bg-ink-50/50 dark:hover:bg-ink-700/20">
+                        <td className="px-3 py-2 font-mono font-semibold text-brand">{r.module_code}</td>
+                        <td className="px-3 py-2 text-ink-800 dark:text-ink-100">{r.module_name}</td>
+                        <td className="px-3 py-2 text-center text-ink-500">{r.module_credits ?? '—'}</td>
+                        <td className="px-3 py-2 text-center">{r.cat_marks ?? '—'}</td>
+                        <td className="px-3 py-2 text-center">{r.exam_marks ?? '—'}</td>
+                        <td className="px-3 py-2 text-center font-semibold">{r.total ?? '—'}</td>
+                        <td className="px-3 py-2 text-center">{r.percentage ?? '—'}</td>
+                        {/* The server grades every row off the configured scale,
+                            so this is only ever blank when there is no mark. */}
+                        <td
+                          className="px-3 py-2 text-center font-bold"
+                          title={r.grade_label ?? undefined}
+                        >
+                          {r.grade ?? '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  )
+}
+
 export function MarksEditor({
   moduleId, termId, terms, setTermId, onBackToSchedules, embedded = false, onBridge,
 }: {
@@ -139,6 +565,7 @@ export function MarksEditor({
 }) {
   const qc = useQueryClient()
   const [, setSp] = useSearchParams()
+  const scale = useGradingScale()
 
   const setModuleId = (id: number) => {
     setSp((prev) => {
@@ -180,6 +607,26 @@ export function MarksEditor({
   const summary  = payload?.summary
   const moduleH: MarksModuleHeader | undefined = payload?.module
   const workflow: MarksWorkflow | undefined    = payload?.workflow
+
+  /* ── The term the sheet is actually showing ─────────────────────────────
+   * Nearly every mark in the system was landed under the 'Legacy (imported
+   * marks)' term, so opening a module on the current term showed a guessed
+   * roster and not one mark. The server now falls back to the term that holds
+   * the module's marks and reports which one it served.
+   *
+   * The selector displays THAT term rather than the requested one, and writes
+   * go to it — saving against `termId` would fork a second sheet in a term the
+   * user is not looking at. The query key deliberately stays on `termId`: the
+   * request is what the user picked, so the redirect stays visible and
+   * explainable instead of erasing its own reason on a follow-up refetch. */
+  const servedTermId = payload?.term?.id ?? 0
+  const writeTermId  = servedTermId || termId
+  const redirectedTerm =
+    payload?.requested_term_id != null && servedTermId && payload.requested_term_id !== servedTermId
+      ? payload?.term ?? null
+      : null
+  /** Terms holding marks for this module other than the one on screen. */
+  const otherMarkTerms = (payload?.terms_with_marks ?? []).filter((t) => t.id !== servedTermId)
 
   /* ── manually-picked students (admin "let me select") ─────────── */
   const [extras, setExtras] = useState<Record<string, MarksRosterRow>>({})
@@ -286,21 +733,58 @@ export function MarksEditor({
       grade:     string | null
       decision:  string | null
       hasAny:    boolean
+      /** Values come from the legacy CAT/exam columns, not the CUR components. */
+      legacy:    boolean
     }
     const map: Record<string, Row> = {}
     if (!roster) return map
     const maxSum = maxes.cats + maxes.final
+    const blank = (): Row => ({
+      catsTotal: null, finalMark: null, total: null, pct: null,
+      grade: null, decision: null, hasAny: false, legacy: false,
+    })
+
+    /* Historical marks were recorded as a single CAT aggregate plus one exam
+     * mark — `cat_marks` / `exam_marks` / `total` — with no CAT1–Partial
+     * breakdown, and that is how 292,632 of the 292,648 rows in the system are
+     * stored. The sheet reads the CUR component columns, which are NULL on all
+     * of them, so those marks rendered as dashes. Fall back to what WAS
+     * recorded rather than showing nothing: the CAT total and the exam land in
+     * their aggregate columns, and the breakdown honestly stays blank. */
+    const legacyRow = (r: MarksRosterRow): Row | null => {
+      if (r.mark_id === null) return null
+      const lCats  = num(r.cat_marks)
+      const lExam  = num(r.exam_marks)
+      const lTotal = num(r.total)
+      if (lCats === null && lExam === null && lTotal === null) return null
+      const total = lTotal ?? (lCats ?? 0) + (lExam ?? 0)
+      const pct   = num(r.percentage) ?? (maxSum > 0 ? +(total / maxSum * 100).toFixed(2) : null)
+      return {
+        catsTotal: lCats,
+        finalMark: lExam,
+        total,
+        pct,
+        grade:    scale.gradeFor(pct) ?? r.grade,
+        decision: r.decision ?? decisionFor(pct),
+        hasAny:   true,
+        legacy:   true,
+      }
+    }
+
     for (const r of roster) {
       const d = drafts[r.regnumber]
       if (!d) {
-        map[r.regnumber] = { catsTotal: null, finalMark: null, total: null, pct: null, grade: null, decision: null, hasAny: false }
+        map[r.regnumber] = legacyRow(r) ?? blank()
         continue
       }
       const c1 = num(d.cat1), c2 = num(d.cat2), c3 = num(d.cat3), pe = num(d.partial)
       const e1 = num(d.exam1), e2 = num(d.exam2)
       const hasAny = [c1, c2, c3, pe, e1, e2].some((x) => x !== null)
       if (!hasAny) {
-        map[r.regnumber] = { catsTotal: null, finalMark: null, total: null, pct: null, grade: null, decision: null, hasAny: false }
+        // No components typed or saved — show the legacy figures if the row has
+        // them. Once any component IS entered the computed values win, so a row
+        // being re-keyed into the CUR template never shows stale legacy totals.
+        map[r.regnumber] = legacyRow(r) ?? blank()
         continue
       }
       const catsTotal = (c1 ?? 0) + (c2 ?? 0) + (c3 ?? 0) + (pe ?? 0)
@@ -312,13 +796,14 @@ export function MarksEditor({
         finalMark: finalMark !== null ? +finalMark.toFixed(2) : null,
         total: +total.toFixed(2),
         pct,
-        grade: pct !== null ? gradeFor(pct) : null,
+        grade: scale.gradeFor(pct),
         decision: decisionFor(pct),
         hasAny,
+        legacy: false,
       }
     }
     return map
-  }, [drafts, roster, maxes])
+  }, [drafts, roster, maxes, scale])
 
   const setCell = (reg: string, key: keyof RowDraft, val: string) => {
     setDrafts((prev) => ({
@@ -350,6 +835,12 @@ export function MarksEditor({
     return out
   }, [drafts, roster])
   const dirtyCount = Object.values(dirty).filter(Boolean).length
+
+  /** Rows displaying imported figures rather than CUR component scores. */
+  const legacyCount = useMemo(
+    () => Object.values(computed).filter((c) => c.legacy).length,
+    [computed]
+  )
 
   /* ── workflow lock ────────────────────────────────────────────── */
   const status: MarksWorkflowStatus = workflow?.status ?? 'draft'
@@ -385,7 +876,9 @@ export function MarksEditor({
       if (records.length === 0) return Promise.reject(new Error('Nothing to save yet.'))
       return marksService.save({
         module_id: moduleId,
-        academic_term_id: termId,
+        // The term the rows on screen belong to, which is not always the term
+        // in the selector — writing to `termId` here would fork a second sheet.
+        academic_term_id: writeTermId,
         records,
       })
     },
@@ -396,17 +889,17 @@ export function MarksEditor({
       // as dirty just because of decimal formatting, and so saved students
       // reappear with their marks instead of empty cells.
       hydratedKey.current = ''
-      qc.invalidateQueries({ queryKey: ['marks', 'list', moduleId, termId] })
+      qc.invalidateQueries({ queryKey: ['marks', 'list', moduleId] })
     },
     onError: (e: any) => toast.error(e?.response?.data?.message ?? e?.message ?? 'Save failed'),
   })
 
   const wf = useMutation({
     mutationFn: (action: 'open_claims' | 'submit' | 'confirm' | 'reset') =>
-      marksService.workflow({ module_id: moduleId, academic_term_id: termId, action }),
+      marksService.workflow({ module_id: moduleId, academic_term_id: writeTermId, action }),
     onSuccess: (res: any) => {
       toast.success(res?.message ?? 'Workflow updated.')
-      qc.invalidateQueries({ queryKey: ['marks', 'list', moduleId, termId] })
+      qc.invalidateQueries({ queryKey: ['marks', 'list', moduleId] })
     },
     onError: (e: any) => toast.error(e?.response?.data?.message ?? e?.message ?? 'Workflow update failed'),
   })
@@ -424,13 +917,22 @@ export function MarksEditor({
       `Partial (/${maxes.partial})`,
       `Exam 1st (/${maxes.final})`, `Exam 2nd (/${maxes.final})`,
       'Remarks',
+      // Read-only trailing columns so an imported sheet doesn't export blank —
+      // its marks live in these aggregates, not in the component boxes. The
+      // import matcher keys off the component headers above and ignores these.
+      'Recorded CAT total', 'Recorded exam', 'Recorded total', 'Recorded %', 'Grade',
     ]
+    // Export exactly what is on screen. Dumping the full roster would put back
+    // the eligibility-derived students the "With marks" view exists to remove,
+    // and re-importing that file would then create empty rows for them.
     const aoa: any[][] = [headers]
-    roster.forEach((r) => {
+    visibleRoster.forEach((r) => {
       const d = drafts[r.regnumber] ?? emptyDraft()
+      const c = computed[r.regnumber]
       aoa.push([
         r.regnumber, r.fname, r.lname, r.sex ?? '', r.student_program ?? '', r.option_acro ?? '',
         d.cat1, d.cat2, d.cat3, d.partial, d.exam1, d.exam2, d.remarks,
+        c?.catsTotal ?? '', c?.finalMark ?? '', c?.total ?? '', c?.pct ?? '', c?.grade ?? '',
       ])
     })
     const ws = XLSX.utils.aoa_to_sheet(aoa)
@@ -441,8 +943,9 @@ export function MarksEditor({
       { wch: 12 }, { wch: 8 },
       { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 9 },
       { wch: 11 }, { wch: 13 }, { wch: 24 },
+      { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 11 }, { wch: 8 },
     ]
-    for (let R = 1; R <= roster.length; R++) {
+    for (let R = 1; R <= visibleRoster.length; R++) {
       const ref = XLSX.utils.encode_cell({ c: 0, r: R })
       if (ws[ref]) { ws[ref].t = 's'; ws[ref].v = String(ws[ref].v ?? '') }
     }
@@ -566,6 +1069,83 @@ export function MarksEditor({
 
   const canWrite = useAnyPermission([PERMISSIONS.RECORD_MODULE_MARKS, PERMISSIONS.MANAGE_MODULE_MARKS])
 
+  // Confirming locks the sheet and re-opening it is the only way back — both are
+  // registry acts, deliberately NOT implied by being able to record marks. The
+  // backend enforces the same split, so hiding these buttons is presentation
+  // rather than the security boundary.
+  const canConfirm = useAnyPermission([PERMISSIONS.CONFIRM_MODULE_MARKS])
+
+  /* ── Roster filters — student search + when the mark was entered ────────
+   * Filtering is client-side on purpose: a roster is one class (hundreds of
+   * rows at most) and is already loaded, so this stays instant and costs no
+   * extra request. Save/Export deliberately keep using the FULL roster — the
+   * exported sheet is the official record, not the current view. */
+  const [rosterSearch, setRosterSearch] = useState('')
+  const [addedFrom,    setAddedFrom]    = useState('')
+  const [addedTo,      setAddedTo]      = useState('')
+
+  /* ── "With marks" vs "All students" ──────────────────────────────────
+   * The roster is padded by an eligibility guess (module → programs →
+   * options → students at that level) whenever formal registrations are
+   * absent, which is nearly always. That guess uses each student's CURRENT
+   * option and level, so it invents classmates who never sat the module —
+   * module 1008 listed 2,330 students for 2,047 real mark-holders.
+   *
+   * So the sheet defaults to the students who actually hold a mark. The
+   * exception is a sheet with no marks yet: filtering that to "with marks"
+   * would show an empty table and make recording impossible, so a fresh
+   * sheet opens on the full roster. */
+  const [markedOnly, setMarkedOnly] = useState(false)
+  const markedOnlyKey = useRef('')
+  useEffect(() => {
+    const key = `${moduleId}:${termId}`
+    if (!roster || markedOnlyKey.current === key) return
+    markedOnlyKey.current = key
+    setMarkedOnly(roster.some((r) => !!r.mark_id))
+  }, [moduleId, termId, roster])
+
+  const visibleRoster = useMemo<MarksRosterRow[]>(() => {
+    const all  = roster ?? []
+    const q    = rosterSearch.trim().toLowerCase()
+    // MySQL hands back "2026-08-12 10:19:27"; the space form is not reliably
+    // parseable across browsers, so normalise to ISO before comparing.
+    const from = addedFrom ? new Date(`${addedFrom}T00:00:00`).getTime()     : null
+    const to   = addedTo   ? new Date(`${addedTo}T23:59:59.999`).getTime()   : null
+    if (!q && from === null && to === null && !markedOnly) return all
+
+    return all.filter((r: MarksRosterRow) => {
+      // "With marks" — the sheet as a record of what was actually awarded,
+      // without the eligibility-derived students padding it out.
+      if (markedOnly && !r.mark_id) return false
+      if (q) {
+        const hay = `${r.fname ?? ''} ${r.lname ?? ''} ${r.regnumber ?? ''}`.toLowerCase()
+        if (!hay.includes(q)) return false
+      }
+      if (from !== null || to !== null) {
+        // A student with no mark yet has no entry date, so it cannot fall
+        // inside a window — that is the point of the filter.
+        if (!r.created_at) return false
+        const t = new Date(String(r.created_at).replace(' ', 'T')).getTime()
+        if (Number.isNaN(t)) return false
+        if (from !== null && t < from) return false
+        if (to   !== null && t > to)   return false
+      }
+      return true
+    })
+  }, [roster, rosterSearch, addedFrom, addedTo, markedOnly])
+
+  // Keep the printed row number tied to the student's position on the real
+  // mark sheet, so filtering never renumbers the class.
+  const rosterIndex = useMemo(() => {
+    const m = new Map<string, number>()
+    ;(roster ?? []).forEach((r: MarksRosterRow, i: number) => m.set(r.regnumber, i))
+    return m
+  }, [roster])
+
+  const markedCount   = useMemo(() => (roster ?? []).filter((r) => !!r.mark_id).length, [roster])
+  const filtersActive = !!rosterSearch.trim() || !!addedFrom || !!addedTo
+  const clearFilters  = () => { setRosterSearch(''); setAddedFrom(''); setAddedTo('') }
+
   // Publish a save handle so a host header can own the Save button.
   //
   // Keyed on primitives only — publishing a new object every render fed a fresh
@@ -628,7 +1208,9 @@ export function MarksEditor({
         <div className="flex gap-2 items-center flex-wrap">
           <select
             className="input input-sm w-44"
-            value={termId || ''}
+            // Shows the term the sheet is really on, which is not always the
+            // one requested — see the redirect note above.
+            value={servedTermId || termId || ''}
             onChange={(e) => setTermId(Number(e.target.value))}
           >
             <option value="" disabled>Select term…</option>
@@ -700,38 +1282,67 @@ export function MarksEditor({
         <div className="card p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-brand" /></div>
       ) : (
         <>
-          {/* Official-template module header */}
-          {!embedded && <ModuleHeaderCard
+          {/* One consolidated header: identity → progress → workflow → maxes.
+              Rendered in every mode; `compact` drops the identity/workflow rows
+              for the teacher portal, which already shows the course above. */}
+          <ModuleHeaderCard
+            compact={embedded}
             moduleH={moduleH}
-            classSize={summary?.total_roster ?? 0}
+            summary={summary}
             status={status}
             disabled={isLocked}
             canWrite={canWrite}
+            canConfirm={canConfirm}
+            workflow={workflow}
             onWorkflow={(a) => wf.mutate(a)}
             wfPending={wf.isPending}
-          />}
+            maxes={maxes}
+            setMaxes={setMaxes}
+          />
 
-          {/* KPI strip */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <Stat icon={<Users className="w-4 h-4" />} label="Roster" value={summary?.total_roster ?? 0} />
-            <Stat icon={<GraduationCap className="w-4 h-4" />} label="Recorded" value={summary?.recorded ?? 0} />
-            <Stat icon={<Users className="w-4 h-4" />} label="Unmarked" value={summary?.unmarked ?? 0} tone={(summary?.unmarked ?? 0) > 0 ? 'warn' : undefined} />
-            <Stat icon={<Percent className="w-4 h-4" />} label="Class avg %" value={`${summary?.avg_pct ?? 0}%`} />
-          </div>
-
-          {/* Maxes editor */}
-          <div className="card p-3 flex flex-wrap items-center gap-3 text-[13px]">
-            <span className="text-ink-500 font-semibold">Maxes:</span>
-            <MaxField label="CAT1"    value={maxes.cat1}    onChange={(v) => setMaxes({ ...maxes, cat1: v })} disabled={isLocked} />
-            <MaxField label="CAT2"    value={maxes.cat2}    onChange={(v) => setMaxes({ ...maxes, cat2: v })} disabled={isLocked} />
-            <MaxField label="CAT3"    value={maxes.cat3}    onChange={(v) => setMaxes({ ...maxes, cat3: v })} disabled={isLocked} />
-            <MaxField label="Partial" value={maxes.partial} onChange={(v) => setMaxes({ ...maxes, partial: v })} disabled={isLocked} />
-            <MaxField label="CATs"    value={maxes.cats}    onChange={(v) => setMaxes({ ...maxes, cats: v })} disabled={isLocked} />
-            <MaxField label="Final"   value={maxes.final}   onChange={(v) => setMaxes({ ...maxes, final: v })} disabled={isLocked} />
-            <span className="ml-auto text-ink-500">
-              Total max: <span className="font-semibold text-ink-800 dark:text-white">{maxes.cats + maxes.final}</span>
-            </span>
-          </div>
+          {/* Say plainly when the sheet is not on the term that was asked for,
+              and when the rows on it predate the CUR component template — both
+              are otherwise silent surprises about whose marks these are. */}
+          {(redirectedTerm || otherMarkTerms.length > 0 || legacyCount > 0) && (
+            <div className="card p-3 flex items-start gap-2 text-[12.5px] text-ink-600 dark:text-ink-300">
+              <AlertCircle className="w-4 h-4 mt-px shrink-0 text-sky-500" />
+              <div className="space-y-0.5">
+                {redirectedTerm && (
+                  <p>
+                    No marks are recorded for this module in the term you picked, so the sheet is
+                    showing <span className="font-semibold">{redirectedTerm.label}</span>, where its
+                    marks actually live.
+                  </p>
+                )}
+                {otherMarkTerms.length > 0 && (
+                  <p>
+                    This module also holds marks in{' '}
+                    {otherMarkTerms.map((t, n) => (
+                      <span key={t.id}>
+                        {n > 0 ? ', ' : ''}
+                        <button
+                          type="button"
+                          className="font-semibold text-brand hover:underline"
+                          onClick={() => setTermId(t.id)}
+                        >
+                          {t.label}
+                        </button>{' '}
+                        ({t.mark_count})
+                      </span>
+                    ))}
+                    . Switch term to see them.
+                  </p>
+                )}
+                {legacyCount > 0 && (
+                  <p>
+                    {legacyCount} of {roster.length} row{roster.length === 1 ? '' : 's'} are imported
+                    marks: only a CAT total and a final exam mark were recorded, so the
+                    CAT1–Partial breakdown is blank for them.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Manual student picker — adds students to the marks sheet on the fly */}
           <StudentPicker
@@ -754,6 +1365,88 @@ export function MarksEditor({
             extrasCount={Object.keys(extras).length}
           />
 
+          {/* Roster filters — find a student fast, or isolate marks entered in
+              a given window (e.g. "what was added after the claims deadline"). */}
+          {roster.length > 0 && (
+            <div className="card p-3 flex flex-wrap items-end gap-3">
+              <div className="flex-1 min-w-[220px]">
+                <label className="block text-[11px] font-semibold uppercase text-ink-400 mb-1">
+                  Find student
+                </label>
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-400 pointer-events-none" />
+                  <input
+                    className="input input-sm w-full pl-8"
+                    placeholder="Name or registration number…"
+                    value={rosterSearch}
+                    onChange={(e) => setRosterSearch(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold uppercase text-ink-400 mb-1">
+                  Marks added from
+                </label>
+                <input
+                  type="date"
+                  className="input input-sm"
+                  value={addedFrom}
+                  max={addedTo || undefined}
+                  onChange={(e) => setAddedFrom(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold uppercase text-ink-400 mb-1">
+                  to
+                </label>
+                <input
+                  type="date"
+                  className="input input-sm"
+                  value={addedTo}
+                  min={addedFrom || undefined}
+                  onChange={(e) => setAddedTo(e.target.value)}
+                />
+              </div>
+              {/* Who is on the sheet: the real mark-holders, or the padded
+                  eligible class. Segmented so the current choice is obvious —
+                  a hidden filter that silently drops students would be worse
+                  than the padding it removes. */}
+              <div className="inline-flex rounded-lg border border-ink-200 dark:border-ink-700 overflow-hidden shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setMarkedOnly(true)}
+                  className={`px-3 py-1.5 text-[12px] font-semibold transition-colors ${
+                    markedOnly
+                      ? 'bg-brand text-white'
+                      : 'bg-transparent text-ink-500 hover:bg-ink-50 dark:hover:bg-ink-800'
+                  }`}
+                >
+                  With marks ({markedCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMarkedOnly(false)}
+                  className={`px-3 py-1.5 text-[12px] font-semibold transition-colors ${
+                    !markedOnly
+                      ? 'bg-brand text-white'
+                      : 'bg-transparent text-ink-500 hover:bg-ink-50 dark:hover:bg-ink-800'
+                  }`}
+                >
+                  All students ({roster.length})
+                </button>
+              </div>
+              {filtersActive && (
+                <button className="btn-ghost btn-sm" onClick={clearFilters} title="Clear filters">
+                  <X className="w-3.5 h-3.5" /> Clear
+                </button>
+              )}
+              <div className="text-[12px] text-ink-500 ml-auto">
+                Showing <span className="font-semibold text-ink-700 dark:text-ink-200">{visibleRoster.length}</span>
+                {' '}of {markedOnly ? markedCount : roster.length} student{(markedOnly ? markedCount : roster.length) === 1 ? '' : 's'}
+              </div>
+            </div>
+          )}
+
           {roster.length === 0 ? (
             <div className="card p-8 text-center text-ink-400">
               No registered or eligible students were auto-detected for this module. Use
@@ -761,10 +1454,29 @@ export function MarksEditor({
               above to add a roster manually, or register students under
               <span className="font-mono"> Modules → Registrations</span>.
             </div>
+          ) : visibleRoster.length === 0 ? (
+            <div className="card p-8 text-center text-ink-400">
+              {markedOnly && markedCount === 0 && !filtersActive ? (
+                <>
+                  No marks have been recorded for this module yet.
+                  <button className="btn-ghost btn-sm ml-2" onClick={() => setMarkedOnly(false)}>
+                    Show all students to start recording
+                  </button>
+                </>
+              ) : (
+                <>
+                  No student matches these filters.
+                  <button className="btn-ghost btn-sm ml-2" onClick={clearFilters}>Clear filters</button>
+                </>
+              )}
+            </div>
           ) : (
             /* Roster table — CUR template */
             <div className="card overflow-auto max-h-[640px]">
-              <table className="w-full text-left text-[12.5px] min-w-[1500px]">
+              {/* min-width covers the fixed component columns plus the wide
+                  Remarks column below, so Remarks keeps its room instead of
+                  being squeezed to a few unreadable characters. */}
+              <table className="w-full text-left text-[12.5px] min-w-[1850px]">
                 <thead className="sticky top-0 z-10">
                   <tr className="bg-sky-50 dark:bg-ink-800/50 border-b border-ink-100 dark:border-ink-700">
                     <th rowSpan={2} className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase border-r border-ink-100 dark:border-ink-700">No</th>
@@ -782,8 +1494,9 @@ export function MarksEditor({
                     <th colSpan={2} className="px-2 py-1.5 font-bold text-ink-500 text-[10px] uppercase text-center border-r border-ink-100 dark:border-ink-700">Final Exam /{maxes.final}</th>
                     <th rowSpan={2} className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase text-center border-r border-ink-100 dark:border-ink-700 bg-amber-50 dark:bg-amber-500/10">Final Mark</th>
                     <th rowSpan={2} className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase text-center border-r border-ink-100 dark:border-ink-700 bg-amber-50 dark:bg-amber-500/10">Tot %</th>
+                    <th rowSpan={2} className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase text-center border-r border-ink-100 dark:border-ink-700 bg-amber-50 dark:bg-amber-500/10">Grade</th>
                     <th rowSpan={2} className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase text-center border-r border-ink-100 dark:border-ink-700 bg-amber-50 dark:bg-amber-500/10">Decision</th>
-                    <th rowSpan={2} className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase">Remarks</th>
+                    <th rowSpan={2} className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase w-[300px] min-w-[300px]">Remarks</th>
                   </tr>
                   <tr className="bg-sky-50 dark:bg-ink-800/50 border-b border-ink-100 dark:border-ink-700">
                     <th className="px-2 py-1.5 font-semibold text-ink-500 text-[10px] uppercase text-center border-r border-ink-100 dark:border-ink-700">1st sitting</th>
@@ -791,11 +1504,19 @@ export function MarksEditor({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-ink-100 dark:divide-ink-700">
-                  {roster.map((r: MarksRosterRow, i: number) => {
+                  {visibleRoster.map((r: MarksRosterRow) => {
+                    // Position on the full sheet, not within the filtered view.
+                    const i = rosterIndex.get(r.regnumber) ?? 0
                     const d = drafts[r.regnumber] ?? { cat1: '', cat2: '', cat3: '', partial: '', exam1: '', exam2: '', remarks: '' }
                     const c = computed[r.regnumber]
                     const isExempted = !!r.is_exempted
                     const rowDisabled = isLocked || isExempted
+                    // Values shown come from the legacy CAT/exam columns, not
+                    // from the CUR component boxes (which are empty for them).
+                    // Only collapse the component cells to static text while the
+                    // row is read-only — on a re-opened sheet the inputs must
+                    // stay live so the breakdown can be keyed in properly.
+                    const isLegacy = !!c?.legacy && !isExempted && rowDisabled
                     return (
                       <tr key={r.regnumber} className={`hover:bg-ink-50/50 dark:hover:bg-ink-700/20 ${
                         isExempted ? 'bg-violet-50/40 dark:bg-violet-500/10' :
@@ -839,26 +1560,50 @@ export function MarksEditor({
                         <td className="px-2 py-2 font-mono border-r border-ink-100 dark:border-ink-700">{r.regnumber}</td>
                         <td className="px-2 py-2 border-r border-ink-100 dark:border-ink-700">{r.student_program ?? '—'}</td>
                         <td className="px-2 py-2 border-r border-ink-100 dark:border-ink-700">{r.option_acro ?? '—'}</td>
-                        <td className="px-1 py-1 text-center border-r border-ink-100 dark:border-ink-700">
-                          <NumCell cellId={`${i}:0`} value={d.cat1} max={maxes.cat1} disabled={rowDisabled} onChange={(v) => setCell(r.regnumber, 'cat1', v)} />
-                        </td>
-                        <td className="px-1 py-1 text-center border-r border-ink-100 dark:border-ink-700">
-                          <NumCell cellId={`${i}:1`} value={d.cat2} max={maxes.cat2} disabled={rowDisabled} onChange={(v) => setCell(r.regnumber, 'cat2', v)} />
-                        </td>
-                        <td className="px-1 py-1 text-center border-r border-ink-100 dark:border-ink-700">
-                          <NumCell cellId={`${i}:2`} value={d.cat3} max={maxes.cat3} disabled={rowDisabled} onChange={(v) => setCell(r.regnumber, 'cat3', v)} />
-                        </td>
-                        <td className="px-1 py-1 text-center border-r border-ink-100 dark:border-ink-700">
-                          <NumCell cellId={`${i}:3`} value={d.partial} max={maxes.partial} disabled={rowDisabled} onChange={(v) => setCell(r.regnumber, 'partial', v)} />
-                        </td>
+                        {/* A legacy row has no CAT1–Partial breakdown to show —
+                            only the aggregate that was recorded — so the four
+                            component cells say so instead of offering four
+                            empty boxes that imply the marks are missing. */}
+                        {isLegacy ? (
+                          <td
+                            colSpan={4}
+                            className="px-2 py-2 text-center text-[11px] italic text-ink-400 border-r border-ink-100 dark:border-ink-700"
+                            title="Imported mark — recorded as a single CAT total, with no CAT1/CAT2/CAT3/Partial split"
+                          >
+                            no breakdown recorded
+                          </td>
+                        ) : (
+                          <>
+                            <td className="px-1 py-1 text-center border-r border-ink-100 dark:border-ink-700">
+                              <NumCell cellId={`${i}:0`} value={d.cat1} max={maxes.cat1} disabled={rowDisabled} onChange={(v) => setCell(r.regnumber, 'cat1', v)} />
+                            </td>
+                            <td className="px-1 py-1 text-center border-r border-ink-100 dark:border-ink-700">
+                              <NumCell cellId={`${i}:1`} value={d.cat2} max={maxes.cat2} disabled={rowDisabled} onChange={(v) => setCell(r.regnumber, 'cat2', v)} />
+                            </td>
+                            <td className="px-1 py-1 text-center border-r border-ink-100 dark:border-ink-700">
+                              <NumCell cellId={`${i}:2`} value={d.cat3} max={maxes.cat3} disabled={rowDisabled} onChange={(v) => setCell(r.regnumber, 'cat3', v)} />
+                            </td>
+                            <td className="px-1 py-1 text-center border-r border-ink-100 dark:border-ink-700">
+                              <NumCell cellId={`${i}:3`} value={d.partial} max={maxes.partial} disabled={rowDisabled} onChange={(v) => setCell(r.regnumber, 'partial', v)} />
+                            </td>
+                          </>
+                        )}
                         <td className="px-2 py-2 text-center font-semibold bg-amber-50/50 dark:bg-amber-500/5 border-r border-ink-100 dark:border-ink-700">
                           {isExempted ? '—' : (c?.catsTotal ?? '—')}
                         </td>
                         <td className="px-1 py-1 text-center border-r border-ink-100 dark:border-ink-700">
-                          <NumCell cellId={`${i}:4`} value={d.exam1} max={maxes.final} disabled={rowDisabled} onChange={(v) => setCell(r.regnumber, 'exam1', v)} />
+                          {isLegacy ? (
+                            <span className="font-medium text-ink-800 dark:text-ink-100">{c?.finalMark ?? '—'}</span>
+                          ) : (
+                            <NumCell cellId={`${i}:4`} value={d.exam1} max={maxes.final} disabled={rowDisabled} onChange={(v) => setCell(r.regnumber, 'exam1', v)} />
+                          )}
                         </td>
                         <td className="px-1 py-1 text-center border-r border-ink-100 dark:border-ink-700">
-                          <NumCell cellId={`${i}:5`} value={d.exam2} max={maxes.final} disabled={rowDisabled} onChange={(v) => setCell(r.regnumber, 'exam2', v)} />
+                          {isLegacy ? (
+                            <span className="text-ink-400">—</span>
+                          ) : (
+                            <NumCell cellId={`${i}:5`} value={d.exam2} max={maxes.final} disabled={rowDisabled} onChange={(v) => setCell(r.regnumber, 'exam2', v)} />
+                          )}
                         </td>
                         <td className="px-2 py-2 text-center font-semibold bg-amber-50/50 dark:bg-amber-500/5 border-r border-ink-100 dark:border-ink-700">
                           {isExempted ? '—' : (c?.finalMark ?? '—')}
@@ -868,15 +1613,33 @@ export function MarksEditor({
                             ? (r.percentage != null ? `${Math.round(Number(r.percentage))}%` : '—')
                             : (c?.pct != null ? `${c.pct}%` : '—')}
                         </td>
+                        {/* Letter grade from the registry's configured scale —
+                            the same bands the transcript and GPA are read off. */}
+                        <td
+                          className="px-2 py-2 text-center font-bold bg-amber-50/50 dark:bg-amber-500/5 border-r border-ink-100 dark:border-ink-700"
+                          title={scale.labelFor(isExempted ? num(r.percentage) : c?.pct ?? null) ?? undefined}
+                        >
+                          {isExempted
+                            ? (scale.gradeFor(num(r.percentage)) ?? '—')
+                            : (c?.grade ?? <span className="font-normal text-ink-400">—</span>)}
+                        </td>
                         <td className="px-2 py-2 text-center bg-amber-50/50 dark:bg-amber-500/5 border-r border-ink-100 dark:border-ink-700">
                           {isExempted
                             ? <DecisionPill decision={r.decision ?? (Number(r.percentage) >= 50 ? 'P' : 'F&R')} />
                             : (c?.decision ? <DecisionPill decision={c.decision} /> : <span className="text-ink-400">—</span>)}
                         </td>
-                        <td className="px-1 py-1">
+                        <td className="px-2 py-1 w-[300px] min-w-[300px] align-top">
                           {isExempted ? (
-                            <span className="text-[11.5px] italic text-violet-700 dark:text-violet-300">
+                            <span className="text-[11.5px] italic text-violet-700 dark:text-violet-300 whitespace-normal break-words">
                               Exempted{r.exemption_reason ? ` — ${r.exemption_reason}` : ''}
+                            </span>
+                          ) : isLocked ? (
+                            /* A locked sheet cannot be edited, and a disabled
+                               input just clips the text at the box edge. Render
+                               the remark as wrapping copy so a long one is
+                               actually readable. */
+                            <span className="block py-1 text-[11.5px] leading-snug whitespace-pre-wrap break-words text-ink-700 dark:text-ink-200">
+                              {d.remarks || <span className="text-ink-400">—</span>}
                             </span>
                           ) : (
                             <input
@@ -884,7 +1647,7 @@ export function MarksEditor({
                               className="input input-sm w-full"
                               placeholder="—"
                               value={d.remarks}
-                              disabled={isLocked}
+                              title={d.remarks || undefined}
                               onChange={(e) => setCell(r.regnumber, 'remarks', e.target.value)}
                             />
                           )}
@@ -917,17 +1680,44 @@ export function MarksEditor({
 
 /* ─── small UI bits ──────────────────────────────────────────────────── */
 
+/** Treat 0 / "" / "0" as "no value" — several module columns store 0 for
+ *  "unset", which `??` happily rendered as a literal "0" in the header. */
+function meaningful(v: unknown): string | null {
+  if (v === null || v === undefined) return null
+  const s = String(v).trim()
+  return s === '' || s === '0' ? null : s
+}
+
+/**
+ * One header for the whole mark sheet: identity → progress → workflow → maxes.
+ *
+ * This used to be four stacked cards (module card, KPI strip, maxes row, then
+ * the picker), which pushed the actual roster below the fold on a laptop. The
+ * facts a marker needs at a glance — which module, how far along, what state,
+ * what the components are out of — now live in one block.
+ */
 function ModuleHeaderCard({
-  moduleH, classSize, status, disabled, canWrite, onWorkflow, wfPending,
+  compact, moduleH, summary, status, disabled, canWrite, canConfirm, workflow,
+  onWorkflow, wfPending, maxes, setMaxes,
 }: {
-  moduleH: MarksModuleHeader
-  classSize: number
+  compact:  boolean
+  moduleH:  MarksModuleHeader
+  summary?: { total_roster: number; recorded: number; unmarked: number; avg_pct: number }
   status:   MarksWorkflowStatus
   disabled: boolean
   canWrite: boolean
+  canConfirm: boolean
+  workflow?: MarksWorkflow
   onWorkflow: (a: 'open_claims' | 'submit' | 'confirm' | 'reset') => void
   wfPending: boolean
+  maxes:    { cat1: number; cat2: number; cat3: number; partial: number; cats: number; final: number }
+  setMaxes: (m: { cat1: number; cat2: number; cat3: number; partial: number; cats: number; final: number }) => void
 }) {
+  // Maxes are configuration set once a term, not per-session data — collapsed
+  // by default so they stop eating a full row above the roster.
+  const [maxesOpen, setMaxesOpen] = useState(false)
+  const scale = useGradingScale()
+
   const statusLabel: Record<MarksWorkflowStatus, string> = {
     draft:        'Draft',
     claims_open:  'Claims open',
@@ -940,31 +1730,115 @@ function ModuleHeaderCard({
     submitted:    'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300',
     confirmed:    'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
   }
+
+  const total    = summary?.total_roster ?? 0
+  const recorded = summary?.recorded ?? 0
+  const unmarked = summary?.unmarked ?? 0
+  const pctDone  = total > 0 ? Math.round((recorded / total) * 100) : 0
+
+  // Subtitle facts, built from whatever the module actually carries. Anything
+  // unset simply drops out rather than rendering a placeholder.
+  const facts = [
+    meaningful(moduleH.dep_name) &&
+      `${moduleH.dep_name}${meaningful(moduleH.dep_acronym) ? ` (${moduleH.dep_acronym})` : ''}`,
+    meaningful(moduleH.fac_name) &&
+      `${moduleH.fac_name}${meaningful(moduleH.fac_code) ? ` (${moduleH.fac_code})` : ''}`,
+    meaningful(moduleH.level) && `Level ${moduleH.level}`,
+    meaningful(moduleH.program),
+    meaningful(moduleH.option_acronym),
+  ].filter(Boolean) as string[]
+
   return (
-    <div className="card p-4 space-y-3">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div className="space-y-1">
-          <div className="text-[12px] uppercase font-bold text-ink-400 tracking-wide">Catholic University of Rwanda</div>
-          <div className="text-[15px] font-bold text-ink-900 dark:text-white">
-            {moduleH.module_name}
+    <div className="card divide-y divide-ink-100 dark:divide-ink-700">
+      {/* ── Identity ───────────────────────────────────────────────────── */}
+      {!compact && (
+        <div className="p-4 flex items-start justify-between gap-3 flex-wrap">
+          <div className="min-w-0">
+            <div className="flex items-baseline gap-2 flex-wrap">
+              <span className="font-mono text-[13px] font-bold text-brand">{moduleH.module_code}</span>
+              <h2 className="text-[17px] font-bold text-ink-900 dark:text-white truncate">
+                {moduleH.module_name}
+              </h2>
+            </div>
+            {facts.length > 0 && (
+              <div className="text-[12.5px] text-ink-500 mt-0.5">{facts.join(' · ')}</div>
+            )}
           </div>
-          <div className="text-[12px] text-ink-500 font-mono">{moduleH.module_code}</div>
+          <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold shrink-0 ${statusTone[status]}`}>
+            {statusLabel[status]}
+          </span>
         </div>
-        <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${statusTone[status]}`}>
-          {statusLabel[status]}
-        </span>
+      )}
+
+      {/* ── Progress: the four numbers plus how far the sheet has got ──── */}
+      <div className="p-4 flex items-center gap-5 flex-wrap">
+        <div className="flex items-center gap-5 flex-wrap">
+          <HeaderStat label="Roster"   value={total} />
+          <HeaderStat label="Recorded" value={recorded} tone={recorded > 0 ? 'good' : undefined} />
+          <HeaderStat label="Unmarked" value={unmarked} tone={unmarked > 0 ? 'warn' : undefined} />
+          <HeaderStat label="Class avg" value={`${summary?.avg_pct ?? 0}%`} />
+        </div>
+        <div className="flex-1 min-w-[160px]">
+          <div className="flex justify-between text-[11px] text-ink-500 mb-1">
+            <span>Marking progress</span>
+            <span className="font-semibold">{pctDone}%</span>
+          </div>
+          <div className="h-1.5 rounded-full bg-ink-100 dark:bg-ink-700 overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${pctDone === 100 ? 'bg-emerald-500' : 'bg-brand'}`}
+              style={{ width: `${pctDone}%` }}
+            />
+          </div>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-1.5 text-[13px]">
-        <Field label="Program"    value={moduleH.program ?? moduleH.option_acronym ?? '—'} />
-        <Field label="Level"      value={moduleH.level !== null && moduleH.level !== undefined ? `Level ${moduleH.level}` : '—'} />
-        <Field label="Class size" value={String(classSize)} />
-        <Field label="Option"     value={moduleH.option_acronym ?? '—'} />
-        <Field label="Department" value={moduleH.dep_name ? `${moduleH.dep_name}${moduleH.dep_acronym ? ` (${moduleH.dep_acronym})` : ''}` : '—'} />
-        <Field label="Faculty"    value={moduleH.fac_name ? `${moduleH.fac_name}${moduleH.fac_code ? ` (${moduleH.fac_code})` : ''}` : '—'} />
+      {/* ── Mark maxes, collapsed ──────────────────────────────────────── */}
+      <div className="px-4 py-2.5">
+        <button
+          type="button"
+          onClick={() => setMaxesOpen((o) => !o)}
+          className="w-full flex items-center gap-2 text-[12.5px] text-ink-600 dark:text-ink-300 hover:text-brand transition-colors"
+        >
+          <ChevronLeft className={`w-3.5 h-3.5 transition-transform ${maxesOpen ? '-rotate-90' : 'rotate-180'}`} />
+          <span className="font-semibold">Mark maxes</span>
+          <span className="text-ink-400">
+            CAT1 {maxes.cat1} · CAT2 {maxes.cat2} · CAT3 {maxes.cat3} · Partial {maxes.partial} · CATs {maxes.cats} · Final {maxes.final}
+          </span>
+          <span className="ml-auto text-ink-500">
+            Total <span className="font-semibold text-ink-800 dark:text-white">{maxes.cats + maxes.final}</span>
+          </span>
+        </button>
+        {maxesOpen && (
+          <div className="flex flex-wrap items-center gap-3 text-[13px] pt-3">
+            <MaxField label="CAT1"    value={maxes.cat1}    onChange={(v) => setMaxes({ ...maxes, cat1: v })} disabled={disabled} />
+            <MaxField label="CAT2"    value={maxes.cat2}    onChange={(v) => setMaxes({ ...maxes, cat2: v })} disabled={disabled} />
+            <MaxField label="CAT3"    value={maxes.cat3}    onChange={(v) => setMaxes({ ...maxes, cat3: v })} disabled={disabled} />
+            <MaxField label="Partial" value={maxes.partial} onChange={(v) => setMaxes({ ...maxes, partial: v })} disabled={disabled} />
+            <MaxField label="CATs"    value={maxes.cats}    onChange={(v) => setMaxes({ ...maxes, cats: v })} disabled={disabled} />
+            <MaxField label="Final"   value={maxes.final}   onChange={(v) => setMaxes({ ...maxes, final: v })} disabled={disabled} />
+          </div>
+        )}
+
+        {/* The bands the Grade column is read off — configured by the registry
+            at /academic/grading-scale, not hardcoded here. */}
+        <div className="flex flex-wrap items-center gap-1.5 pt-2 text-[11px] text-ink-500">
+          <span className="font-semibold uppercase tracking-wide">Grading scale</span>
+          {scale.bands.map((b) => (
+            <span
+              key={b.id}
+              className="rounded border border-ink-200 px-1.5 py-0.5 dark:border-ink-700"
+              title={b.description ?? undefined}
+            >
+              <span className="font-bold text-ink-700 dark:text-ink-200">{b.grade}</span>{' '}
+              {Number(b.min_marks)}–{Number(b.max_marks)}
+            </span>
+          ))}
+        </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-ink-100 dark:border-ink-700">
+      {/* ── Workflow ───────────────────────────────────────────────────── */}
+      {!compact && (
+      <div className="p-3 flex flex-wrap items-center gap-2">
         {canWrite && (
           <>
             <button
@@ -983,11 +1857,19 @@ function ModuleHeaderCard({
             >
               <SendHorizontal className="w-3.5 h-3.5" /> Submit & close claims
             </button>
+          </>
+        )}
+
+        {/* Confirming and re-opening are registry-only. Rendered separately from
+            the recorder actions above so a lecturer never sees a button that
+            would 403 — the backend rejects these regardless of what shows. */}
+        {canConfirm && (
+          <>
             <button
               className="btn-ghost btn-sm"
               disabled={wfPending || status !== 'submitted'}
               onClick={() => onWorkflow('confirm')}
-              title="Confirm and send to options"
+              title="Confirm and send to options — this locks the sheet"
             >
               <CheckCircle2 className="w-3.5 h-3.5" /> Confirm & send to options
             </button>
@@ -997,44 +1879,63 @@ function ModuleHeaderCard({
               onClick={() => onWorkflow('reset')}
               title="Re-open editing for this module"
             >
-              <RotateCcw className="w-3.5 h-3.5" /> Reset to draft
+              <RotateCcw className="w-3.5 h-3.5" /> Re-open for editing
             </button>
           </>
         )}
+
         {disabled && (
           <span className="inline-flex items-center gap-1 text-[12px] text-ink-500">
             <Lock className="w-3 h-3" /> Read-only
           </span>
         )}
       </div>
+      )}
+
+      {/* A locked sheet is a dead end unless you know who to ask. */}
+      {!compact && (status === 'confirmed' || status === 'submitted') && (
+        <div className="px-4 py-2.5 text-[12px] text-ink-500 flex flex-wrap gap-x-4 gap-y-1">
+          {status === 'confirmed' && workflow?.confirmed_at && (
+            <span>
+              <span className="font-semibold text-ink-600 dark:text-ink-300">Confirmed</span>{' '}
+              {workflow.confirmed_by_name ? `by ${workflow.confirmed_by_name} ` : ''}
+              on {String(workflow.confirmed_at).slice(0, 16).replace('T', ' ')}
+            </span>
+          )}
+          {workflow?.submitted_at && (
+            <span>
+              <span className="font-semibold text-ink-600 dark:text-ink-300">Submitted</span>{' '}
+              {workflow.submitted_by_name ? `by ${workflow.submitted_by_name} ` : ''}
+              on {String(workflow.submitted_at).slice(0, 16).replace('T', ' ')}
+            </span>
+          )}
+          {!canConfirm && (
+            <span className="text-ink-400">Ask the registry to re-open this sheet before editing.</span>
+          )}
+        </div>
+      )}
     </div>
   )
 }
 
-function Field({ label, value }: { label: string; value: React.ReactNode }) {
+/** Compact inline figure for the header progress row. */
+function HeaderStat({ label, value, tone }: {
+  label: string; value: React.ReactNode; tone?: 'warn' | 'good'
+}) {
+  const toneCls =
+    tone === 'warn' ? 'text-amber-600 dark:text-amber-400'
+    : tone === 'good' ? 'text-emerald-600 dark:text-emerald-400'
+    : 'text-ink-900 dark:text-white'
   return (
-    <div className="flex">
-      <span className="text-ink-500 font-semibold w-32 shrink-0">{label}:</span>
-      <span className="text-ink-800 dark:text-white">{value}</span>
+    <div>
+      <div className={`text-[19px] font-bold leading-none ${toneCls}`}>{value}</div>
+      <div className="text-[11px] uppercase tracking-wide text-ink-400 mt-1">{label}</div>
     </div>
   )
 }
 
-function Stat({ icon, label, value, tone }: { icon: React.ReactNode; label: string; value: React.ReactNode; tone?: 'warn' }) {
-  return (
-    <div className={`card p-3 flex items-center gap-3 ${tone === 'warn' ? 'ring-1 ring-amber-300/60' : ''}`}>
-      <div className={`w-9 h-9 rounded-md flex items-center justify-center ${
-        tone === 'warn' ? 'bg-amber-100 text-amber-700' : 'bg-brand/10 text-brand dark:bg-brand/20 dark:text-gold-400'
-      }`}>
-        {icon}
-      </div>
-      <div>
-        <div className="text-[10px] uppercase font-bold text-ink-400">{label}</div>
-        <div className="text-base font-bold text-ink-900 dark:text-white leading-tight">{value}</div>
-      </div>
-    </div>
-  )
-}
+// `Field` and `Stat` retired with the old stacked header — the identity facts
+// are now a single subtitle line and the KPIs are inline in HeaderStat.
 
 function MaxField({
   label, value, onChange, disabled,
@@ -1263,6 +2164,8 @@ function toRosterRow(s: any): MarksRosterRow {
     status:            null,
     remarks:           null,
     updated_at:        null,
+    // Manually-picked student with no saved mark yet — no entry date to filter on.
+    created_at:        null,
     teaching_started_on: null,
     teaching_ended_on:   null,
   }

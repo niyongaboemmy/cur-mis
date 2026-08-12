@@ -16,6 +16,13 @@ interface ModalProps {
   /** Prevent closing when clicking the backdrop */
   static?:   boolean
   className?: string
+  /**
+   * Extra classes for the scrollable body. Mainly for overriding its default
+   * `py-5`: a body with top padding leaves a band that content scrolls up
+   * into and stays visible in, above anything the child pins with
+   * `sticky top-0`. Pass `pt-0` when the child owns the top edge.
+   */
+  bodyClassName?: string
 }
 
 const sizeClasses: Record<ModalSize, string> = {
@@ -28,6 +35,7 @@ const sizeClasses: Record<ModalSize, string> = {
 
 export default function Modal({
   open, onClose, title, children, footer, size = 'md', static: isStatic, className,
+  bodyClassName,
 }: ModalProps) {
   // Close on Escape key
   useEffect(() => {
@@ -89,7 +97,7 @@ export default function Modal({
             )}
 
             {/* Body */}
-            <div className="flex-1 overflow-y-auto px-6 py-5">{children}</div>
+            <div className={cn('flex-1 overflow-y-auto px-6 py-5', bodyClassName)}>{children}</div>
 
             {/* Footer */}
             {footer && (

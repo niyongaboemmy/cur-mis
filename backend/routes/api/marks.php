@@ -24,6 +24,8 @@ $router->group('/api/marks', function ($router) {
         // Numeric-id variants — regnumbers like "STD/2026/22699" contain
         // slashes that break the `:regnumber` segment matcher.
         $r->get('/students/by-id/:id',               [ModuleMarksController::class, 'studentMarksById']);
+        // Completed vs still-outstanding curriculum modules for one student.
+        $r->get('/students/by-id/:id/coverage',      [ModuleMarksController::class, 'studentCoverageById']);
         $r->get('/students/by-id/:id/transcript',    [ModuleMarksController::class, 'studentTranscriptById']);
     }, [new MaybePermissionMiddleware([
         Permissions::VIEW_MODULE_MARKS,

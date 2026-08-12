@@ -10,12 +10,25 @@ use App\Constants\Permissions;
 $router->group('/api/graduands', function ($router) {
     // Read-only (VIEW_GRADUANDS is enough)
     $router->group('', function ($r) {
-        $r->get('/eligibility', [GraduandController::class, 'eligibilityList']);
-        $r->get('',             [GraduandController::class, 'list']);
+        $r->get('/eligibility',      [GraduandController::class, 'eligibilityList']);
+        // Curriculum completion audit — cohort list, CSV export, and the
+        // per-student drill-down. `/completion/export` is declared before
+        // `/completion/:id` or it would match as a student id of 0.
+        $r->get('/completion/export',[GraduandController::class, 'completionExport']);
+        $r->get('/completion/:id',   [GraduandController::class, 'completionDetail']);
+        $r->get('/completion',       [GraduandController::class, 'completionList']);
+        // Students who have finished — what the graduation list is built from.
+        $r->get('/ready',            [GraduandController::class, 'readyList']);
+        $r->get('',                  [GraduandController::class, 'list']);
     }, [new PermissionMiddleware(Permissions::VIEW_GRADUANDS)]);
 
     // Write actions
     $router->group('', function ($r) {
+        // Recomputing the snapshot rewrites institution-wide figures, so it
+        // sits behind the same grant as editing the graduation list itself.
+        $r->post('/completion/rebuild', [GraduandController::class, 'completionRebuild']);
+        // Move a selection of finished students to a graduation status at once.
+        $r->post('/bulk-status',    [GraduandController::class, 'bulkStatus']);
         $r->post('',                [GraduandController::class, 'add']);
         $r->post('/:id/approve',     [GraduandController::class, 'approve']);
         $r->post('/:id/graduate',    [GraduandController::class, 'graduate']);

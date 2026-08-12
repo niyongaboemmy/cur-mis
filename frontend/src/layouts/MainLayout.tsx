@@ -23,10 +23,7 @@ import {
   ChevronDown,
   PanelLeftClose,
   PanelLeftOpen,
-  Scale,
-  FileText,
-  Award,
-  BarChart2,
+  ScrollText,
   ScanLine,
   Wallet,
   CalendarDays,
@@ -444,6 +441,100 @@ const NAV_TREE: NavNode[] = [
       },
     ],
   },
+  // Academic Records — the whole marks lifecycle in one place: record marks →
+  // review them → deliberate → revaluate → graduate → issue transcripts and
+  // certificates. These pages all existed before; they were split across the
+  // Exam menu and the flat ADMINISTRATION list, and the mark-entry grid
+  // (/modules/marks) was routed but reachable only by typing the URL.
+  //
+  // Hidden from teaching roles for the same reason the Exam menu is: a
+  // lecturer reaches their own mark sheets through My Teaching, scoped to
+  // their courses. Presentational only — the underlying permissions stay
+  // granted, so this hides the duplicate entry point without disabling
+  // anything. Each child keeps the exact permissions it carried before the
+  // move, so no one gains or loses access.
+  {
+    id: "academic-records",
+    label: "Academic Records",
+    icon: ScrollText,
+    hideForRoles: ["student", "applicant", "lecturer", "HOD"],
+    permissions: [
+      PERMISSIONS.RECORD_MODULE_MARKS,
+      PERMISSIONS.MANAGE_MODULE_MARKS,
+      PERMISSIONS.VIEW_MODULE_MARKS,
+      PERMISSIONS.MANAGE_EXAMS,
+      PERMISSIONS.MANAGE_REVALUATIONS,
+      PERMISSIONS.VIEW_GRADUANDS,
+      PERMISSIONS.MANAGE_GRADUANDS,
+      PERMISSIONS.MANAGE_TRANSCRIPT_REQUESTS,
+      PERMISSIONS.MANAGE_ACADEMIC_CERTIFICATES,
+      PERMISSIONS.MANAGE_GRADING_SCALES,
+      PERMISSIONS.VIEW_ACADEMIC_ANALYTICS,
+    ],
+    children: [
+      {
+        to: "/modules/marks",
+        label: "Record marks",
+        permissions: [
+          PERMISSIONS.RECORD_MODULE_MARKS,
+          PERMISSIONS.MANAGE_MODULE_MARKS,
+        ],
+      },
+      {
+        to: "/exams/results",
+        label: "All marks",
+        permissions: [PERMISSIONS.MANAGE_EXAMS],
+      },
+      {
+        to: "/exams/deliberation",
+        label: "Deliberation",
+        // Still gated on MANAGE_EXAMS, exactly as it was under the Exam menu.
+        // A MANAGE_DELIBERATIONS permission exists and is arguably the right
+        // gate, but switching it changes who can see the page.
+        permissions: [PERMISSIONS.MANAGE_EXAMS],
+      },
+      {
+        to: "/exams/revaluations",
+        label: "Revaluations",
+        permissions: [PERMISSIONS.MANAGE_REVALUATIONS],
+      },
+      {
+        to: "/academic/graduands",
+        label: "Graduand list",
+        permissions: [
+          PERMISSIONS.VIEW_GRADUANDS,
+          PERMISSIONS.MANAGE_GRADUANDS,
+        ],
+      },
+      {
+        to: "/academic/transcript-requests",
+        label: "Transcripts",
+        permissions: [PERMISSIONS.MANAGE_TRANSCRIPT_REQUESTS],
+      },
+      {
+        to: "/academic/certificates",
+        label: "Certificates",
+        permissions: [PERMISSIONS.MANAGE_ACADEMIC_CERTIFICATES],
+      },
+      {
+        // The institution-wide scale: bulk-saves every band at once and can
+        // reset to CUR's standard five-band scale. Preferred over the old
+        // /exams/grading-scale page, whose per-band delete could leave a
+        // percentage gap that GradingScaleModel::gradePointFor() can't match.
+        to: "/academic/grading-scale",
+        label: "Grading scale & GPA",
+        permissions: [
+          PERMISSIONS.MANAGE_GRADING_SCALES,
+          PERMISSIONS.VIEW_SYSTEM_BASICS,
+        ],
+      },
+      {
+        to: "/academic/analytics",
+        label: "Reports & analytics",
+        permissions: [PERMISSIONS.VIEW_ACADEMIC_ANALYTICS],
+      },
+    ],
+  },
   {
     id: "finance",
     label: "Finance",
@@ -561,26 +652,8 @@ const NAV_TREE: NavNode[] = [
         label: "Exam schedules",
         permissions: [PERMISSIONS.MANAGE_EXAMS],
       },
-      {
-        to: "/exams/results",
-        label: "Results",
-        permissions: [PERMISSIONS.MANAGE_EXAMS],
-      },
-      {
-        to: "/exams/deliberation",
-        label: "Deliberation",
-        permissions: [PERMISSIONS.MANAGE_EXAMS],
-      },
-      {
-        to: "/exams/grading-scale",
-        label: "Grading scale & GPA",
-        permissions: [PERMISSIONS.MANAGE_GRADING_SCALES],
-      },
-      {
-        to: "/exams/revaluations",
-        label: "Revaluations",
-        permissions: [PERMISSIONS.MANAGE_REVALUATIONS],
-      },
+      // Results, Deliberation, Revaluations and the grading scale moved to the
+      // Academic Records menu — this one now covers exam sittings only.
       // Student self-service — gated by VIEW_MY_MODULES, hidden from admins
       // who already have the admin views above.
       {
@@ -673,41 +746,9 @@ const ADMIN_TREE: NavNode[] = [
       PERMISSIONS.MANAGE_ACADEMIC_TERMS,
     ],
   },
-  {
-    id: "grading-scale",
-    label: "Grading Scale",
-    icon: Scale,
-    to: "/academic/grading-scale",
-    permissions: [PERMISSIONS.MANAGE_GRADING_SCALES, PERMISSIONS.VIEW_SYSTEM_BASICS],
-  },
-  {
-    id: "transcript-requests",
-    label: "Transcript Requests",
-    icon: FileText,
-    to: "/academic/transcript-requests",
-    permissions: [PERMISSIONS.MANAGE_TRANSCRIPT_REQUESTS],
-  },
-  {
-    id: "graduands",
-    label: "Graduand Management",
-    icon: GraduationCap,
-    to: "/academic/graduands",
-    permissions: [PERMISSIONS.VIEW_GRADUANDS, PERMISSIONS.MANAGE_GRADUANDS],
-  },
-  {
-    id: "academic-certificates",
-    label: "Academic Certificates",
-    icon: Award,
-    to: "/academic/certificates",
-    permissions: [PERMISSIONS.MANAGE_ACADEMIC_CERTIFICATES],
-  },
-  {
-    id: "academic-analytics",
-    label: "Academic Analytics",
-    icon: BarChart2,
-    to: "/academic/analytics",
-    permissions: [PERMISSIONS.VIEW_ACADEMIC_ANALYTICS],
-  },
+  // Grading Scale, Transcript Requests, Graduand Management, Academic
+  // Certificates and Academic Analytics moved to the Academic Records menu in
+  // the main tree, where they sit alongside the marks they depend on.
   {
     id: "gate-management",
     label: "Gate Management",
@@ -811,6 +852,10 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
   "/academic/certificates": {
     title: "Academic Certificates",
     sub: "Issue, track and dispatch degrees, diplomas and certificates",
+  },
+  "/academic/analytics": {
+    title: "Reports & Analytics",
+    sub: "Pass rates, grade distribution and progression trends",
   },
 
   "/admin/admissions": {
@@ -1450,7 +1495,11 @@ export default function MainLayout() {
           initial={{ opacity: 0, y: 4 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.18 }}
-          className="flex-1 overflow-y-auto px-5 sm:px-6 lg:px-8 py-6"
+          // No top padding: content starts flush under the header. Pages that
+          // pin a toolbar with `sticky top-0` (the mark sheet's Save/Export bar)
+          // were otherwise separated from the topnav by a 24px band of page
+          // background before they stuck.
+          className="flex-1 overflow-y-auto px-5 sm:px-6 lg:px-8 pb-6"
         >
           <Outlet />
         </motion.main>

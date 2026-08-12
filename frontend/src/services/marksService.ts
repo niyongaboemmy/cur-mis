@@ -43,7 +43,12 @@ export interface MarksRosterRow {
 
   total:             string | number | null
   percentage:        string | number | null
+  /** Resolved server-side from the configured grading scale, not the stored
+   *  column — imported marks were all landed with a NULL grade. */
   grade:             string | null
+  /** The band's description ('Distinction', 'Credit', …). */
+  grade_label?:      string | null
+  grade_point?:      number | string | null
   decision:          string | null
   status:            string | null
   /** Registration status from `module_registrations.status`:
@@ -53,6 +58,9 @@ export interface MarksRosterRow {
   exemption_reason?: string | null
   remarks:           string | null
   updated_at:        string | null
+  /** When this student's mark was first entered — backs the "added between"
+   *  filter. Null for a roster row that has no saved mark yet. */
+  created_at:        string | null
   teaching_started_on: string | null
   teaching_ended_on:   string | null
 }
@@ -89,14 +97,24 @@ export interface MarksWorkflow {
   claims_opened_at: string | null
   submitted_at:     string | null
   confirmed_at:     string | null
+  /** Resolved names of the actors, so a locked sheet says who locked it. */
+  submitted_by_name?: string | null
+  confirmed_by_name?: string | null
 }
 
 export interface MarksListResponse {
   module:   MarksModuleHeader
+  /** The term the sheet is ACTUALLY showing — not necessarily the one asked
+   *  for. The server redirects to the term holding the module's marks when the
+   *  requested one has none, so this is what a save must be written against. */
   term:     { id: number; label: string }
   roster:   MarksRosterRow[]
   summary:  { total_roster: number; recorded: number; unmarked: number; avg_pct: number }
   workflow: MarksWorkflow
+  /** The term_id in the request — differs from `term.id` when redirected. */
+  requested_term_id?: number
+  /** Every term this module holds marks in, busiest first. */
+  terms_with_marks?:  { id: number; label: string; mark_count: number }[]
 }
 
 export interface SaveMarkRecord {
@@ -159,7 +177,10 @@ export interface MyMarksRow {
   exam_max:          string | number
   total:             string | number | null
   percentage:        string | number | null
+  /** From the configured grading scale — see MarksRosterRow.grade. */
   grade:             string | null
+  grade_label?:      string | null
+  grade_point?:      number | string | null
   remarks:           string | null
   is_exempted?:      number | boolean | null
   exemption_reason?: string | null
@@ -178,6 +199,7 @@ export interface MyMarksTotals {
   weighted_average:      number | null
   overall_grade:         string | null
   overall_grade_label:   string | null
+  overall_grade_point?:  number | null
   decision:              'Promoted' | 'Repeat' | null
   passed:                number
   failed:                number
@@ -195,6 +217,67 @@ export interface MyMarksResponse {
   }
   rows:   MyMarksRow[]
   totals: MyMarksTotals
+}
+
+/** A module the student has a recorded mark for. */
+export interface CoverageCompletedRow {
+  module_id:      number
+  module_code:    string
+  module_name:    string
+  module_credits: number | string | null
+  level:          number | string | null
+  cat_marks:      number | string | null
+  exam_marks:     number | string | null
+  total:          number | string | null
+  percentage:     number | string | null
+  /** From the configured grading scale — see MarksRosterRow.grade. */
+  grade:          string | null
+  grade_label?:   string | null
+  grade_point?:   number | string | null
+  status:         string | null
+  term_label:     string | null
+  year_label:     string | null
+  created_at:     string | null
+}
+
+/** A programme module with no mark yet. */
+export interface CoverageRemainingRow {
+  module_id:      number
+  module_code:    string
+  module_name:    string
+  module_credits: number | string | null
+  level:          number | string | null
+}
+
+export interface StudentCoverageResponse {
+  student: {
+    id?:            number
+    regnumber:      string
+    fname?:         string
+    lname?:         string
+    current_level?: string | null
+    option_id?:     number | null
+    option_name?:   string | null
+    option_acro?:   string | null
+  }
+  completed: CoverageCompletedRow[]
+  remaining: CoverageRemainingRow[]
+  totals: {
+    completed:         number
+    remaining:         number
+    passed:            number
+    failed:            number
+    credits_completed: number
+    credits_remaining: number
+    /** False when the student has no programme mapped — "remaining" is then
+     *  unknowable rather than zero, and the UI must say so. */
+    has_curriculum:     boolean
+    curriculum_size:    number
+    /** True when `module_programs` looks like the legacy bulk import (the big
+     *  Education options map to 272+ modules) rather than a real curriculum,
+     *  so the "remaining" list is mostly noise. */
+    curriculum_suspect: boolean
+  }
 }
 
 const apiBase = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '')
@@ -226,6 +309,10 @@ export const marksService = {
    *  break path-segment routing (e.g. "STD/2026/22699"). */
   studentMarksById: (studentId: number | string, params: { academic_year_id?: number | string } = {}) =>
     api.get<StudentMarksResponse>(`/api/marks/students/by-id/${studentId}`, params as Record<string, unknown>),
+
+  /** Completed marks + the programme modules still outstanding. */
+  studentCoverageById: (studentId: number | string, signal?: AbortSignal) =>
+    api.get<StudentCoverageResponse>(`/api/marks/students/by-id/${studentId}/coverage`, {}, signal),
 
   /** Admin: stream a student's PDF transcript. */
   downloadStudentTranscript: async (regnumber: string, params: { academic_year_id?: number | string } = {}) => {

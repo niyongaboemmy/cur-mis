@@ -45,6 +45,9 @@ export const PERMISSIONS = {
   VIEW_MODULE_MARKS:           'VIEW_MODULE_MARKS',
   RECORD_MODULE_MARKS:         'RECORD_MODULE_MARKS',
   MANAGE_MODULE_MARKS:         'MANAGE_MODULE_MARKS',
+  // Confirm a mark sheet (locking it) and re-open a confirmed one. Registry-only:
+  // whoever records marks must not be able to sign them off and then unlock them.
+  CONFIRM_MODULE_MARKS:        'CONFIRM_MODULE_MARKS',
   MANAGE_GRADING_SCALES:       'MANAGE_GRADING_SCALES',
 
   // HR Management

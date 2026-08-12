@@ -47,6 +47,21 @@ class DegreeClassificationService
     }
 
     /**
+     * Same bands as {@see classify()}, but returns null instead of throwing
+     * when the average falls below the Pass threshold. For callers that are
+     * offering a suggestion rather than asserting an outcome — a sub-50
+     * average simply has no class to suggest.
+     */
+    public static function classifyOrNull(float $weightedAverage): ?string
+    {
+        try {
+            return self::classify($weightedAverage);
+        } catch (\InvalidArgumentException) {
+            return null;
+        }
+    }
+
+    /**
      * Check whether a student is eligible to graduate and compute their
      * classification.
      *

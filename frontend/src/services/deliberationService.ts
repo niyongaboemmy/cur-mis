@@ -16,6 +16,16 @@ export interface DeliberationCell {
   grade:          string | null
   decision:       string | null
   is_exempted:    boolean
+  /**
+   * Set when the stored components cannot be taken at face value:
+   * `out_of_scale` for a negative component or a raw total that was never on a
+   * /100 basis, `does_not_sum` when CAT + FAT does not reconcile with the
+   * recorded total. Note this is NOT "bigger than the column heading" — around
+   * 103 modules are legitimately marked on a different weighting (CAT/30 +
+   * FAT/70) and reconcile fine. The value is still shown; this only marks it so
+   * the board does not read it as verified.
+   */
+  anomaly:        'out_of_scale' | 'does_not_sum' | null
 }
 
 export interface DeliberationStudent {
@@ -183,6 +193,42 @@ export interface MarkStudentsParams {
   per_page?:      number
 }
 
+/** One row per mark, flattened for the board's spreadsheet. */
+export interface DeliberationExportRow {
+  regnumber:        string
+  fname:            string | null
+  lname:            string | null
+  sex:              string | null
+  current_level:    string | null
+  intake:           string | null
+  student_state:    string | null
+  declared_program: string | null
+  module_code:      string
+  module_name:      string
+  module_credits:   number | string | null
+  module_level:     number | string | null
+  department:       string | null
+  term_label:       string | null
+  cat_marks:        number | string | null
+  exam_marks:       number | string | null
+  total:            number | string | null
+  percentage:       number | string | null
+  grade:            string | null
+  decision:         string | null
+  status:           string | null
+  outcome:          'PASS' | 'FAIL'
+  created_at:       string | null
+}
+
+export interface DeliberationExportResponse {
+  rows:      DeliberationExportRow[]
+  count:     number
+  /** True when the row cap was hit — the file is partial, so say so. */
+  truncated: boolean
+  cap:       number
+  pass_mark: number
+}
+
 export const deliberationService = {
   grid: (params: DeliberationParams = {}, signal?: AbortSignal) =>
     api.get<DeliberationResponse>('/api/deliberation', params as Record<string, unknown>, signal),
@@ -195,6 +241,19 @@ export const deliberationService = {
 
   studentMarks: (regnumber: string, signal?: AbortSignal) =>
     api.get<StudentMarksResponse>('/api/deliberation/student-marks', { regnumber }, signal),
+
+  /** Unpaginated, one row per mark — the same filter the list is showing. */
+  exportMarkStudents: (params: MarkStudentsParams = {}, signal?: AbortSignal) =>
+    api.get<DeliberationExportResponse>(
+      '/api/deliberation/mark-students/export', params as Record<string, unknown>, signal),
+
+  /**
+   * Board approval — moves the marks to `confirmed`, which locks them against
+   * further edits. Pass `regnumbers` to approve a ticked selection, or omit it
+   * to approve everything the current filter covers.
+   */
+  approveMarks: (payload: MarkStudentsParams & { regnumbers?: string[] }) =>
+    api.post<{ approved: number }>('/api/deliberation/approve-marks', payload),
 
   listSessions: (params: { academic_year_id?: number } = {}, signal?: AbortSignal) =>
     api.get<DeliberationSession[]>('/api/deliberation/sessions', params as Record<string, unknown>, signal),

@@ -939,10 +939,26 @@ function Cell6({
       </>
     );
   }
+  /* The component marks are shown exactly as stored, so a row whose CAT or FAT
+     overflows its heading — or does not add up to the total beside it — is
+     tinted rather than silently presented as verified. */
+  const flagCls =
+    c.anomaly === "out_of_scale"
+      ? "text-amber-600 dark:text-amber-400"
+      : c.anomaly === "does_not_sum"
+      ? "text-amber-600/70 dark:text-amber-400/70"
+      : "";
+  const flagTitle =
+    c.anomaly === "out_of_scale"
+      ? "Raw marks for this module were not recorded on a /100 basis — the total shown is capped. Check the source record."
+      : c.anomaly === "does_not_sum"
+      ? "CAT + FAT is more than a mark away from the recorded total."
+      : undefined;
+
   return (
     <>
-      <td className={base}>{fmt(c.cats_60)}</td>
-      <td className={base}>{fmt(c.fat_40)}</td>
+      <td className={`${base} ${flagCls}`} title={flagTitle}>{fmt(c.cats_60)}</td>
+      <td className={`${base} ${flagCls}`} title={flagTitle}>{fmt(c.fat_40)}</td>
       <td className={`${base} font-semibold`}>
         {c.total_100 === null ? "—" : `${fmt(c.total_100)}`}
       </td>

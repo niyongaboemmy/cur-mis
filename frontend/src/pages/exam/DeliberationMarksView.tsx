@@ -13,12 +13,18 @@ import {
   XCircle,
   Layers,
   ClipboardList,
+  Download,
+  ShieldCheck,
 } from "lucide-react";
+import * as XLSX from "xlsx";
+import toast from "react-hot-toast";
 import {
   deliberationService,
   type MarkStudentRow,
   type StudentMarkRow,
 } from "@/services/deliberationService";
+import { usePermission } from "@/utils/permissions";
+import { PERMISSIONS } from "@/constants/permissions";
 import ModalPortal from "@/components/ui/ModalPortal";
 
 const n = (v: unknown): number => {
@@ -104,6 +110,85 @@ export default function DeliberationMarksView() {
     per_page: perPage,
     total: 0,
     last_page: 1,
+  };
+
+  /* ── Board actions: export + approve ──────────────────────────────────
+   * Both take the CURRENT filter rather than the current page — a board
+   * signs off a population (a department, a programme, a level), and an
+   * export of only the 50 visible rows would be misleading. */
+  const filterParams = {
+    department_id: deptId || undefined,
+    option_id: optionId || undefined,
+    current_level: level || undefined,
+    q: qDebounced || undefined,
+  };
+
+  const canApprove = usePermission(PERMISSIONS.CONFIRM_MODULE_MARKS);
+  const [exporting, setExporting] = useState(false);
+  const [approving, setApproving] = useState(false);
+  const [confirmApprove, setConfirmApprove] = useState(false);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const res = await deliberationService.exportMarkStudents(filterParams);
+      const rows = res.data?.rows ?? [];
+      if (rows.length === 0) {
+        toast.error("Nothing to export for these filters.");
+        return;
+      }
+      const headers = [
+        "Reg #", "First Name", "Surname", "Sex", "Level", "Intake", "State",
+        "Programme", "Department", "Module Code", "Module", "Credits",
+        "Term", "CAT", "Exam", "Total", "%", "Grade", "Decision",
+        "Outcome", "Mark status", "Recorded",
+      ];
+      const aoa: any[][] = [headers];
+      rows.forEach((r) => aoa.push([
+        r.regnumber, r.fname ?? "", r.lname ?? "", r.sex ?? "",
+        r.current_level ?? "", r.intake ?? "", r.student_state ?? "",
+        r.declared_program ?? "", r.department ?? "",
+        r.module_code, r.module_name, r.module_credits ?? "",
+        r.term_label ?? "", r.cat_marks ?? "", r.exam_marks ?? "",
+        r.total ?? "", r.percentage ?? "", r.grade ?? "", r.decision ?? "",
+        r.outcome, r.status ?? "", r.created_at ?? "",
+      ]));
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      // Force the Reg # column to text so Excel keeps leading zeros.
+      for (let R = 1; R <= rows.length; R++) {
+        const ref = XLSX.utils.encode_cell({ c: 0, r: R });
+        if (ws[ref]) { ws[ref].t = "s"; ws[ref].v = String(ws[ref].v ?? ""); }
+      }
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Deliberation");
+      XLSX.writeFile(wb, `deliberation_marks_${rows.length}.xlsx`);
+      if (res.data?.truncated) {
+        toast.error(
+          `Export capped at ${res.data.cap.toLocaleString()} rows — narrow the filters to get the rest.`,
+          { duration: 8000 },
+        );
+      } else {
+        toast.success(`Exported ${rows.length.toLocaleString()} marks.`);
+      }
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message ?? "Export failed.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleApprove = async () => {
+    setApproving(true);
+    try {
+      const res = await deliberationService.approveMarks(filterParams);
+      toast.success(`Approved and locked ${(res.data?.approved ?? 0).toLocaleString()} mark(s).`);
+      setConfirmApprove(false);
+      listQ.refetch();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message ?? "Approval failed.");
+    } finally {
+      setApproving(false);
+    }
   };
 
   const selectedDept = departments.find((d) => d.dep_id === deptId);
@@ -221,7 +306,71 @@ export default function DeliberationMarksView() {
             <X className="w-3.5 h-3.5" /> Clear
           </button>
         )}
+
+        {/* Board actions — always operate on the CURRENT filter, so what you
+            export and what you approve is exactly what is on screen. */}
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            className="btn-ghost btn-sm"
+            onClick={handleExport}
+            disabled={exporting}
+            title="Download every mark in the current filter as XLSX"
+          >
+            {exporting
+              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              : <Download className="w-3.5 h-3.5" />}
+            {exporting ? "Preparing…" : "Export"}
+          </button>
+          {canApprove && (
+            <button
+              className="btn-primary btn-sm"
+              onClick={() => setConfirmApprove(true)}
+              disabled={approving}
+              title="Approve and lock every mark in the current filter"
+            >
+              {approving
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                : <ShieldCheck className="w-3.5 h-3.5" />}
+              Approve marks
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Approving locks marks against further edits, and the scope is a filter
+          rather than a visible list of rows — so the count is spelled out. */}
+      {confirmApprove && (
+        <ModalPortal>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+            <div className="card p-5 max-w-md w-full space-y-3">
+              <h3 className="text-base font-bold text-ink-900 dark:text-white">
+                Approve marks?
+              </h3>
+              <p className="text-[13px] text-ink-600 dark:text-ink-300">
+                This confirms every mark in the current filter —{" "}
+                <span className="font-semibold">
+                  {(pagination.total || 0).toLocaleString()} student
+                  {pagination.total === 1 ? "" : "s"}
+                </span>
+                {deptId || optionId || level || qDebounced
+                  ? " matching the filters above"
+                  : " (no filters — the whole institution)"}
+                . Approved marks are locked: recording them again is refused
+                until the registry re-opens the sheet.
+              </p>
+              <div className="flex justify-end gap-2 pt-1">
+                <button className="btn-ghost btn-sm" onClick={() => setConfirmApprove(false)}>
+                  Cancel
+                </button>
+                <button className="btn-primary btn-sm" onClick={handleApprove} disabled={approving}>
+                  {approving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Approve &amp; lock
+                </button>
+              </div>
+            </div>
+          </div>
+        </ModalPortal>
+      )}
 
       {/* Student list */}
       {listQ.isLoading ? (

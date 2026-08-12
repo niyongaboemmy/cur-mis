@@ -10,6 +10,7 @@ use Core\Database;
 use App\Constants\Permissions;
 use App\Helpers\ValidationHelper;
 use App\Helpers\TranscriptPdf;
+use App\Helpers\GradingScale;
 use App\Services\AuthService;
 
 /**
@@ -113,14 +114,90 @@ class ModuleMarksController extends BaseController
         }
     }
 
-    /** Official CUR grading scheme — matches the printed transcript. */
-    private function gradeFor(float $pct): string
+    /**
+     * The workflow status of a module's mark sheet for one term.
+     *
+     * Status lives per row, but rows are written as a batch and therefore share
+     * it — the newest row is authoritative, matching how listMarks derives the
+     * status it hands the UI. Returns 'draft' when nothing is recorded yet.
+     */
+    private function sheetStatus(int $moduleId, int $termId): string
     {
-        if ($pct >= 80) return 'A'; // Very Good
-        if ($pct >= 70) return 'B'; // Good
-        if ($pct >= 60) return 'C'; // Satisfaction
-        if ($pct >= 50) return 'D'; // Pass
-        return 'E';                 // Fail
+        $row = $this->db->fetchOne(
+            "SELECT status FROM module_marks
+             WHERE module_id = ? AND academic_term_id = ?
+             ORDER BY id DESC LIMIT 1",
+            [$moduleId, $termId]
+        );
+
+        return (string)($row['status'] ?? 'draft');
+    }
+
+    /**
+     * Block writes to a sheet that has been submitted or confirmed.
+     *
+     * The UI already greys these sheets out, but that is cosmetic — before this
+     * guard a plain POST to /api/marks overwrote confirmed marks. Re-opening a
+     * locked sheet is a CONFIRM_MODULE_MARKS action (workflow → reset), so the
+     * 409 tells the client exactly which door to use.
+     */
+    private function ensureSheetUnlocked(Response $response, int $moduleId, int $termId): void
+    {
+        $status = $this->sheetStatus($moduleId, $termId);
+
+        if ($status === 'submitted' || $status === 'confirmed') {
+            $this->error(
+                $response,
+                $status === 'confirmed'
+                    ? 'These marks are confirmed and locked. Ask the registry to re-open the sheet before editing.'
+                    : 'These marks are submitted and locked. Ask the registry to re-open the sheet before editing.',
+                409
+            );
+        }
+    }
+
+    /**
+     * Letter grade for a percentage, from the registry's configured scale.
+     *
+     * This used to be a hardcoded A/B/C/D/E ladder, which meant the bands the
+     * registry maintains at /academic/grading-scale governed the settings
+     * screen and nothing else. @see \App\Helpers\GradingScale
+     */
+    private function gradeFor(float $pct): ?string
+    {
+        return GradingScale::gradeFor($pct);
+    }
+
+    /**
+     * Fill in `grade` (and `grade_point`) for rows that carry a percentage.
+     *
+     * Every one of the 292,632 imported marks was landed with a NULL grade, so
+     * every screen reading `module_marks.grade` showed a dash. Deriving from
+     * the percentage is also what keeps a single scale authoritative: a grade
+     * stored under the old hardcoded ladder would otherwise sit next to a
+     * freshly-computed one and disagree with it.
+     *
+     * @param array<int,array<string,mixed>> $rows
+     * @return array<int,array<string,mixed>>
+     */
+    private function withGrades(array $rows): array
+    {
+        foreach ($rows as &$r) {
+            $pct = isset($r['percentage']) && $r['percentage'] !== null
+                ? (float)$r['percentage']
+                : null;
+            if ($pct === null) {
+                // No percentage to grade from — keep whatever was stored.
+                $r['grade_point'] = null;
+                $r['grade_label'] = GradingScale::labelForGrade($r['grade'] ?? null);
+                continue;
+            }
+            $r['grade']       = GradingScale::gradeFor($pct);
+            $r['grade_point'] = GradingScale::gradePointFor($pct);
+            $r['grade_label'] = GradingScale::labelFor($pct);
+        }
+        unset($r);
+        return $rows;
     }
 
     /**
@@ -238,13 +315,68 @@ class ModuleMarksController extends BaseController
              LIMIT 1",
             [$moduleId]
         );
-        if (!$module) $this->error($response, 'Module not found.', 404);
+        // 15 module ids hold marks but have no catalogue row — modules deleted or
+        // renumbered before `module_id_map` existed, whose marks were kept during
+        // consolidation because the marks themselves are real. 404-ing here would
+        // strand those 203 rows: reachable in a student's record but on no sheet.
+        // Synthesise a header instead so the mark sheet still opens.
+        if (!$module) {
+            $module = [
+                'module_id'     => $moduleId,
+                'module_code'   => 'MODULE-' . $moduleId,
+                'module_name'   => 'Unknown module (not in catalogue)',
+                'module_credits'=> null,
+                'level'         => null,
+                'd_option'      => null,
+                'dep_id'        => null, 'dep_name' => null, 'dep_acronym' => null, 'dep_program' => null,
+                'fac_id'        => null, 'fac_name' => null, 'fac_code' => null,
+            ];
+        }
 
         $term = $this->db->fetchOne(
             "SELECT id, label FROM academic_terms WHERE id = ? LIMIT 1",
             [$termId]
         );
         if (!$term) $this->error($response, 'Term not found.', 404);
+
+        /* ── Serve the term that actually holds this module's marks ────────
+         * Every query below is term-scoped, and the client opens on the term
+         * flagged `is_current`. But 292,632 of the 292,648 marks in the system
+         * were landed by the legacy consolidation under the 'Legacy (imported
+         * marks)' term, so the current term is empty for 663 of the 664
+         * modules that hold marks — the sheet showed a guessed roster and not
+         * one number.
+         *
+         * So: if the requested term has no marks for this module but another
+         * term does, serve that term instead and say so. `requested_term_id`
+         * plus `terms_with_marks` let the client re-sync its own selector, and
+         * `term` stays authoritative for what a save must be written against.
+         * A module with marks in the requested term is never redirected.
+         */
+        $requestedTermId = $termId;
+        $termsWithMarks  = $this->db->fetchAll(
+            "SELECT mm.academic_term_id AS id,
+                    COALESCE(t.label, CONCAT('Term ', mm.academic_term_id)) AS label,
+                    COUNT(*) AS mark_count
+             FROM module_marks mm
+             LEFT JOIN academic_terms t ON t.id = mm.academic_term_id
+             WHERE mm.module_id = ?
+             GROUP BY mm.academic_term_id, t.label
+             ORDER BY mark_count DESC, mm.academic_term_id DESC",
+            [$moduleId]
+        );
+
+        $hasMarksHere = false;
+        foreach ($termsWithMarks as $t) {
+            if ((int)$t['id'] === $termId) { $hasMarksHere = true; break; }
+        }
+        if (!$hasMarksHere && count($termsWithMarks) > 0) {
+            $termId = (int)$termsWithMarks[0]['id'];
+            $term   = $this->db->fetchOne(
+                "SELECT id, label FROM academic_terms WHERE id = ? LIMIT 1",
+                [$termId]
+            ) ?: ['id' => $termId, 'label' => 'Term ' . $termId];
+        }
 
         // Best-effort lecturer + teaching dates from module_offerings (if present),
         // falling back to module_assignments → staff for the lecturer.
@@ -286,7 +418,11 @@ class ModuleMarksController extends BaseController
                        mm.total, mm.percentage, mm.grade, mm.decision, mm.status,
                        mm.is_exempted, mm.exemption_reason,
                        mm.remarks, mm.updated_at,
+                       mm.created_at,
                        mm.teaching_started_on, mm.teaching_ended_on";
+        // `created_at` backs the roster's "marks added between" filter.
+        // `updated_at` alone cannot tell a mark entered today apart from one
+        // entered in June and merely edited today.
 
         // Keep students whose marks have already been saved (status flips to
         // 'completed' or 'failed' inside saveMarks). Only `'dropped'` should
@@ -299,6 +435,7 @@ class ModuleMarksController extends BaseController
                     ON mm.module_id = mr.module_id
                    AND mm.student_regnumber = mr.student_regnumber COLLATE utf8mb4_general_ci
                    AND mm.academic_term_id  = mr.academic_term_id
+                   AND mm.superseded = 0
              WHERE mr.module_id = ? AND mr.academic_term_id = ?
                AND mr.status IN ('registered','completed','failed')
              ORDER BY st.lname, st.fname",
@@ -329,6 +466,14 @@ class ModuleMarksController extends BaseController
                 fn($r) => (string)($r['op_id'] ?? ''), $opIdRows
             ), fn($v) => $v !== ''));
 
+            // Guess only when there is something to guess FROM. With no level,
+            // no option mapping and no department the filter degrades to "any
+            // active student", which returned 1,000 arbitrary strangers for a
+            // module whose real class is 15 people. An empty roster here is
+            // honest — the mark-holder pass below still supplies everyone who
+            // actually has a mark.
+            $hasBasis = $level > 0 || count($optStdIds) > 0 || $depId > 0;
+
             // The two `?` for the module_marks LEFT JOIN come BEFORE the WHERE.
             $args  = [$moduleId, $termId];
             $where = "st.student_state = 'active'";
@@ -346,18 +491,72 @@ class ModuleMarksController extends BaseController
                 $args[] = (string)$depId;
             }
 
-            $roster = $this->db->fetchAll(
+            $roster = $hasBasis ? $this->db->fetchAll(
                 "SELECT $rosterCols, NULL AS reg_status
                  FROM `student` st
                  LEFT JOIN module_marks mm
                         ON mm.student_regnumber = st.regnumber COLLATE utf8mb4_general_ci
                        AND mm.module_id        = ?
                        AND mm.academic_term_id = ?
+                       AND mm.superseded = 0
                  WHERE $where
                  ORDER BY st.lname, st.fname
                  LIMIT 1000",
                 $args
-            );
+            ) : [];
+        }
+
+        /* ── Nothing-missed guarantee ──────────────────────────────────────
+         * Neither roster path above starts from `module_marks`: the primary
+         * one walks `module_registrations` (which covers only a couple of
+         * modules) and the fallback derives a class from each student's
+         * CURRENT option and level. So a student who sat this module in an
+         * earlier year — or whose option/level has since changed, or who has
+         * left and is no longer 'active' — could hold a mark that no screen
+         * would ever display. That is how ~26k legacy marks stayed invisible.
+         *
+         * Anyone holding a mark for this (module, term) is appended here, so a
+         * recorded mark is always reachable. `student` is LEFT JOINed and the
+         * regnumber falls back to the mark row, because some legacy marks name
+         * students who are no longer in the `student` table at all.
+         */
+        $seen = [];
+        foreach ($roster as $r) {
+            $key = strtolower(trim((string)($r['regnumber'] ?? '')));
+            if ($key !== '') $seen[$key] = true;
+        }
+
+        $markHolders = $this->db->fetchAll(
+            "SELECT st.id AS student_id,
+                    COALESCE(st.regnumber, mm.student_regnumber) AS regnumber,
+                    COALESCE(st.fname, '') AS fname,
+                    COALESCE(st.lname, '') AS lname,
+                    st.email,
+                    st.gender AS sex, st.program AS student_program, st.std_option AS option_acro,
+                    mm.id AS mark_id,
+                    mm.cat_marks, mm.assignment_marks, mm.exam_marks,
+                    mm.cat_max, mm.assignment_max, mm.exam_max,
+                    mm.cat1, mm.cat2, mm.cat3, mm.partial_exam,
+                    mm.cat1_max, mm.cat2_max, mm.cat3_max, mm.partial_exam_max, mm.cats_max,
+                    mm.exam_1st_sitting, mm.exam_2nd_sitting, mm.final_exam_max,
+                    mm.total, mm.percentage, mm.grade, mm.decision, mm.status,
+                    mm.is_exempted, mm.exemption_reason,
+                    mm.remarks, mm.updated_at, mm.created_at,
+                    mm.teaching_started_on, mm.teaching_ended_on,
+                    NULL AS reg_status
+             FROM module_marks mm
+             LEFT JOIN `student` st
+                    ON st.regnumber = mm.student_regnumber COLLATE utf8mb4_general_ci
+             WHERE mm.module_id = ? AND mm.academic_term_id = ?
+             ORDER BY mm.id DESC",
+            [$moduleId, $termId]
+        );
+
+        foreach ($markHolders as $row) {
+            $key = strtolower(trim((string)($row['regnumber'] ?? '')));
+            if ($key === '' || isset($seen[$key])) continue;
+            $seen[$key] = true;
+            $roster[] = $row;
         }
 
         // Workflow status & class-level teaching dates: mode of the saved rows
@@ -369,12 +568,19 @@ class ModuleMarksController extends BaseController
                 break;
             }
         }
+        // Resolve the submit/confirm actors to names so the sheet can say who
+        // locked it, not just when — a locked sheet is otherwise a dead end for
+        // whoever needs it re-opened.
         $batchRow = $this->db->fetchOne(
-            "SELECT status, claims_opened_at, submitted_at, confirmed_at,
-                    teaching_started_on, teaching_ended_on
-             FROM module_marks
-             WHERE module_id = ? AND academic_term_id = ?
-             ORDER BY id DESC LIMIT 1",
+            "SELECT mm.status, mm.claims_opened_at, mm.submitted_at, mm.confirmed_at,
+                    mm.teaching_started_on, mm.teaching_ended_on,
+                    TRIM(CONCAT(COALESCE(sub.first_name,''), ' ', COALESCE(sub.last_name,''))) AS submitted_by_name,
+                    TRIM(CONCAT(COALESCE(con.first_name,''), ' ', COALESCE(con.last_name,''))) AS confirmed_by_name
+             FROM module_marks mm
+             LEFT JOIN users sub ON sub.id = mm.submitted_by
+             LEFT JOIN users con ON con.id = mm.confirmed_by
+             WHERE mm.module_id = ? AND mm.academic_term_id = ?
+             ORDER BY mm.id DESC LIMIT 1",
             [$moduleId, $termId]
         ) ?: [];
         if ($batchRow) {
@@ -382,6 +588,8 @@ class ModuleMarksController extends BaseController
             $workflow['claims_opened_at']  = $batchRow['claims_opened_at'] ?? null;
             $workflow['submitted_at']      = $batchRow['submitted_at']     ?? null;
             $workflow['confirmed_at']      = $batchRow['confirmed_at']     ?? null;
+            $workflow['submitted_by_name'] = $batchRow['submitted_by_name'] ?: null;
+            $workflow['confirmed_by_name'] = $batchRow['confirmed_by_name'] ?: null;
             // Prefer batch dates over offering dates.
             if (!empty($batchRow['teaching_started_on'])) {
                 $module['teaching_started_on'] = $batchRow['teaching_started_on'];
@@ -390,6 +598,10 @@ class ModuleMarksController extends BaseController
                 $module['teaching_ended_on'] = $batchRow['teaching_ended_on'];
             }
         }
+
+        // Grade every row from the configured scale before it goes out — the
+        // imported marks all carry a NULL `grade` column.
+        $roster = $this->withGrades($roster);
 
         $summary = ['total_roster' => count($roster), 'recorded' => 0, 'unmarked' => 0, 'avg_pct' => 0];
         $sumPct = 0.0; $countedPct = 0;
@@ -412,6 +624,15 @@ class ModuleMarksController extends BaseController
             'roster'   => $roster,
             'summary'  => $summary,
             'workflow' => $workflow,
+            // `term` may differ from what was asked for — see the redirect
+            // above. The client re-syncs its term selector from these so the
+            // toolbar never claims a term the sheet is not showing.
+            'requested_term_id' => $requestedTermId,
+            'terms_with_marks'  => array_map(fn($t) => [
+                'id'         => (int)$t['id'],
+                'label'      => (string)$t['label'],
+                'mark_count' => (int)$t['mark_count'],
+            ], $termsWithMarks),
         ], 'Marks fetched.');
     }
 
@@ -444,6 +665,7 @@ class ModuleMarksController extends BaseController
         if (!is_array($records)) $this->error($response, 'records must be an array', 422);
 
         $this->ensureCanRecordForModule($request, $response, $moduleId);
+        $this->ensureSheetUnlocked($response, $moduleId, $termId);
 
         $userId = $this->authUserId($request) ?: null;
         $saved  = 0;
@@ -580,6 +802,31 @@ class ModuleMarksController extends BaseController
             $saved++;
         }
 
+        /* Keep the `superseded` flag true for this module + term.
+         *
+         * The INSERT above says ON DUPLICATE KEY UPDATE, but there is no UNIQUE
+         * key on (module_id, student_regnumber, academic_term_id) — only the
+         * auto-increment PK — so that branch never fires and every save appends
+         * a new row. That is how 71,648 (module, student, term) combinations
+         * ended up with duplicates, up to 33 deep.
+         *
+         * Rather than delete history, migration 127 flags the current row per
+         * combination and every read filters on it. One statement re-establishes
+         * that here, for the batch just written: newest id per student wins.
+         */
+        $this->db->execute(
+            "UPDATE module_marks mm
+             LEFT JOIN (
+                 SELECT MAX(id) AS id
+                 FROM module_marks
+                 WHERE module_id = ? AND academic_term_id = ?
+                 GROUP BY student_regnumber
+             ) live ON live.id = mm.id
+             SET mm.superseded = IF(live.id IS NULL, 1, 0)
+             WHERE mm.module_id = ? AND mm.academic_term_id = ?",
+            [$moduleId, $termId, $moduleId, $termId]
+        );
+
         $this->success($response, ['saved' => $saved], "$saved record(s) saved.");
     }
 
@@ -612,17 +859,53 @@ class ModuleMarksController extends BaseController
         };
         if (!$sets) $this->error($response, 'Unknown action.', 422);
 
+        // Confirming locks the sheet; `reset` is the ONLY way back out of a
+        // locked sheet. Both are registry acts — gating them on
+        // RECORD_MODULE_MARKS (as this did before) let the same lecturer who
+        // entered the marks confirm them and immediately unlock and change
+        // them, which makes confirmation meaningless.
+        if ($action === 'confirm' || $action === 'reset') {
+            if (!$this->hasPerm($request, Permissions::CONFIRM_MODULE_MARKS)) {
+                $this->error(
+                    $response,
+                    $action === 'confirm'
+                        ? 'You do not have permission to confirm marks.'
+                        : 'Only the registry can re-open a locked mark sheet.',
+                    403
+                );
+            }
+        } else {
+            // draft → claims_open → submitted are recorder-side transitions,
+            // but they must not walk backwards out of a locked sheet.
+            $this->ensureSheetUnlocked($response, $moduleId, $termId);
+        }
+
+        $userId = $this->authUserId($request) ?: null;
+
         if ($sets['col']) {
+            // Stamp the actor alongside the timestamp for submit/confirm so a
+            // locked sheet can be traced to a person, not just a moment.
+            $actorSql = match ($action) {
+                'submit'  => ', submitted_by = COALESCE(submitted_by, ?)',
+                'confirm' => ', confirmed_by = COALESCE(confirmed_by, ?)',
+                default   => '',
+            };
+            $params = [$sets['status']];
+            if ($actorSql !== '') $params[] = $userId;
+            $params[] = $moduleId;
+            $params[] = $termId;
+
             $this->db->execute(
                 "UPDATE module_marks
-                 SET status = ?, {$sets['col']} = COALESCE({$sets['col']}, NOW())
+                 SET status = ?, {$sets['col']} = COALESCE({$sets['col']}, NOW()){$actorSql}
                  WHERE module_id = ? AND academic_term_id = ?",
-                [$sets['status'], $moduleId, $termId]
+                $params
             );
         } else {
             $this->db->execute(
                 "UPDATE module_marks
-                 SET status = ?, claims_opened_at = NULL, submitted_at = NULL, confirmed_at = NULL
+                 SET status = ?, claims_opened_at = NULL, submitted_at = NULL, confirmed_at = NULL,
+                     submitted_by = NULL, confirmed_by = NULL
                  WHERE module_id = ? AND academic_term_id = ?",
                 [$sets['status'], $moduleId, $termId]
             );
@@ -635,10 +918,15 @@ class ModuleMarksController extends BaseController
     public function deleteMark(Request $request, Response $response): never
     {
         $id = (int)$request->param('id');
-        $row = $this->db->fetchOne("SELECT module_id FROM module_marks WHERE id = ?", [$id]);
+        $row = $this->db->fetchOne(
+            "SELECT module_id, academic_term_id FROM module_marks WHERE id = ?",
+            [$id]
+        );
         if (!$row) $this->error($response, 'Mark not found.', 404);
 
         $this->ensureCanRecordForModule($request, $response, (int)$row['module_id']);
+        // Clearing a row is a write like any other — a locked sheet stays locked.
+        $this->ensureSheetUnlocked($response, (int)$row['module_id'], (int)$row['academic_term_id']);
 
         $this->db->execute("DELETE FROM module_marks WHERE id = ?", [$id]);
         $this->success($response, null, 'Mark cleared.');
@@ -680,6 +968,128 @@ class ModuleMarksController extends BaseController
         $reg = $this->resolveRegnumberById($request, $response);
         $request->setRouteParams(['regnumber' => $reg]);
         $this->studentMarks($request, $response);
+    }
+
+    /**
+     * GET /api/marks/students/by-id/:id/coverage
+     *
+     * What the student has done against what their programme still requires.
+     *
+     * "Remaining" is the programme curriculum (`module_programs` for the
+     * student's `std_option`) minus every module they already hold a live mark
+     * for. Marks OUTSIDE that curriculum still count as completed — students
+     * carry marks from earlier options and from the legacy import — they simply
+     * cannot make a curriculum module stop being outstanding.
+     */
+    public function studentCoverageById(Request $request, Response $response): never
+    {
+        $reg = $this->resolveRegnumberById($request, $response);
+
+        $student = $this->db->fetchOne(
+            "SELECT st.id, st.regnumber, st.fname, st.lname, st.current_level,
+                    st.std_option, o.id AS option_id, o.name AS option_name, o.acro AS option_acro
+             FROM `student` st
+             -- `options.name` is utf8mb4_unicode_ci while `student.std_option`
+             -- is general_ci; both sides are pinned or MySQL raises 1267.
+             LEFT JOIN options o
+                    ON CAST(o.id AS CHAR) COLLATE utf8mb4_unicode_ci
+                     = st.std_option      COLLATE utf8mb4_unicode_ci
+             WHERE st.regnumber = ? LIMIT 1",
+            [$reg]
+        ) ?: ['regnumber' => $reg];
+
+        // Completed — every live mark, newest row per module/term.
+        $completed = $this->db->fetchAll(
+            "SELECT mm.module_id,
+                    COALESCE(m.module_code, CONCAT('MODULE-', mm.module_id)) AS module_code,
+                    COALESCE(m.module_name, 'Unknown module (not in catalogue)') AS module_name,
+                    m.module_credits, m.level,
+                    mm.cat_marks, mm.exam_marks, mm.total, mm.percentage, mm.grade,
+                    mm.status, t.label AS term_label, y.label AS year_label,
+                    mm.created_at
+             FROM module_marks mm
+             LEFT JOIN modules m         ON m.module_id = mm.module_id
+             LEFT JOIN academic_terms t  ON t.id = mm.academic_term_id
+             LEFT JOIN academic_years y  ON y.id = t.academic_year_id
+             WHERE mm.student_regnumber = ? AND mm.superseded = 0
+             ORDER BY m.level ASC, module_code ASC",
+            [$reg]
+        );
+
+        // Remaining — curriculum modules with no live mark for this student.
+        $optionId  = (int)($student['option_id'] ?? 0);
+        $remaining = $optionId > 0 ? $this->db->fetchAll(
+            "SELECT m.module_id, m.module_code, m.module_name, m.module_credits, m.level
+             FROM module_programs mp
+             JOIN modules m ON m.module_id = mp.module_id
+             WHERE mp.option_id = ?
+               AND m.status <> 'archived'
+               AND NOT EXISTS (
+                   SELECT 1 FROM module_marks mm
+                   WHERE mm.student_regnumber = ?
+                     AND mm.module_id = m.module_id
+                     AND mm.superseded = 0
+               )
+             ORDER BY m.level ASC, m.module_code ASC",
+            [$optionId, $reg]
+        ) : [];
+
+        $completed = $this->withGrades($completed);
+
+        $creditsDone = 0.0;
+        $passed = 0; $failed = 0;
+        foreach ($completed as $c) {
+            $creditsDone += (float)($c['module_credits'] ?? 0);
+            $pct = $this->dec($c['percentage'] ?? null);
+            if ($pct !== null) { if ($pct >= 50) $passed++; else $failed++; }
+        }
+        $creditsLeft = 0.0;
+        foreach ($remaining as $r) $creditsLeft += (float)($r['module_credits'] ?? 0);
+
+        // `module_programs` is a legacy bulk import for the big Education
+        // options (18-21, 26-28 map to 272-273 modules, against 129 for the
+        // largest genuine programme), so "remaining" there is mostly noise.
+        // Reuse the audit service's threshold rather than inventing a second one.
+        $curriculumSize = count($completed) + count($remaining);
+        $curriculumSize = $optionId > 0
+            ? (int)($this->db->fetchOne(
+                "SELECT COUNT(*) AS c
+                 FROM module_programs mp
+                 JOIN modules m ON m.module_id = mp.module_id
+                 WHERE mp.option_id = ? AND m.status <> 'archived'",
+                [$optionId]
+              )['c'] ?? 0)
+            : 0;
+        $suspect = $curriculumSize > \App\Services\GraduationAuditService::CURRICULUM_SUSPECT_THRESHOLD;
+
+        $this->success($response, [
+            'student'   => $student,
+            'completed' => $completed,
+            'remaining' => $remaining,
+            'totals'    => [
+                'completed'         => count($completed),
+                'remaining'         => count($remaining),
+                'passed'            => $passed,
+                'failed'            => $failed,
+                'credits_completed' => round($creditsDone, 1),
+                'credits_remaining' => round($creditsLeft, 1),
+                // No programme mapped means "remaining" cannot be computed —
+                // the UI says so rather than implying the student is finished.
+                'has_curriculum'     => $optionId > 0,
+                'curriculum_size'    => $curriculumSize,
+                // True when module_programs looks like the legacy bulk import
+                // rather than a real curriculum; the UI warns instead of
+                // presenting a 200-module backlog as fact.
+                'curriculum_suspect' => $suspect,
+            ],
+        ], 'Student coverage loaded.');
+    }
+
+    /** Numeric helper shared with the coverage roll-up. */
+    private function dec(mixed $v): ?float
+    {
+        if ($v === null || $v === '') return null;
+        return is_numeric($v) ? (float)$v : null;
     }
 
     public function studentTranscriptById(Request $request, Response $response): never
@@ -796,7 +1206,14 @@ class ModuleMarksController extends BaseController
         ) ?: ['regnumber' => $reg];
 
         $args = [$reg];
-        $where = "WHERE mm.student_regnumber = ?";
+        // One row per (module, term). `module_marks` carries repeated rows for
+        // the same student+module — re-entries accumulated over the years, and
+        // the consolidated legacy import added more. Without this the record
+        // lists a module several times AND the totals below are computed over
+        // the duplicates: one student showed 286 "modules" for 99 real ones,
+        // inflating total_credits and skewing the weighted average. The newest
+        // row wins, matching how the mark sheet resolves the same collision.
+        $where = "WHERE mm.student_regnumber = ? AND mm.superseded = 0";
         if ($yearId > 0) {
             $where .= " AND t.academic_year_id = ?";
             $args[] = $yearId;
@@ -825,6 +1242,11 @@ class ModuleMarksController extends BaseController
         $totalCreditPoints = 0.0;
         $passed            = 0;
         $failed            = 0;
+        // Grade the rows from the configured scale first — imported marks carry
+        // a NULL `grade`, which is why a transcript of 44 legacy modules showed
+        // a dash in every Grade cell.
+        $rows = $this->withGrades($rows);
+
         foreach ($rows as &$r) {
             $credits = (int)($r['module_credits'] ?? 0);
             $pct     = $r['percentage'] !== null ? (float)$r['percentage'] : null;
@@ -850,6 +1272,7 @@ class ModuleMarksController extends BaseController
             'weighted_average'     => $weightedAvg,
             'overall_grade'        => $overallGrade,
             'overall_grade_label'  => $weightedAvg !== null ? $this->gradeLabel($overallGrade ?? '') : null,
+            'overall_grade_point'  => $weightedAvg !== null ? GradingScale::gradePointFor($weightedAvg) : null,
             'decision'             => $decision,
             'passed'               => $passed,
             'failed'               => $failed,
@@ -858,15 +1281,11 @@ class ModuleMarksController extends BaseController
         return [$rows, $totals, $student];
     }
 
+    /** The band's own description ('Distinction', 'Credit', …) — no longer a
+     *  hardcoded A–E lookup, so renaming a band renames it everywhere. */
     private function gradeLabel(string $grade): string
     {
-        return [
-            'A' => 'Very Good',
-            'B' => 'Good',
-            'C' => 'Satisfaction',
-            'D' => 'Pass',
-            'E' => 'Fail',
-        ][$grade] ?? '';
+        return GradingScale::labelForGrade($grade) ?? '';
     }
 
     /* ── small helpers ─────────────────────────────────────────────────── */

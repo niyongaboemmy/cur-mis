@@ -2016,17 +2016,14 @@ class StudentController extends BaseController
     }
 
     /**
-     * Official CUR grading scheme — kept in sync with ModuleMarksController
-     * so an exemption mark gets the same letter grade it would have received
-     * had the student sat the module.
+     * The registry's configured grading scale, so an exemption mark gets the
+     * same letter grade it would have received had the student sat the module.
+     * Was a second hardcoded copy of the A–E ladder that could drift from
+     * ModuleMarksController's. @see \App\Helpers\GradingScale
      */
-    private function gradeFor(float $pct): string
+    private function gradeFor(float $pct): ?string
     {
-        if ($pct >= 80) return 'A'; // Very Good
-        if ($pct >= 70) return 'B'; // Good
-        if ($pct >= 60) return 'C'; // Satisfaction
-        if ($pct >= 50) return 'D'; // Pass
-        return 'E';                 // Fail
+        return \App\Helpers\GradingScale::gradeFor($pct);
     }
 
     /**

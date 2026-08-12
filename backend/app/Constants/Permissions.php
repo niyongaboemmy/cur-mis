@@ -47,6 +47,8 @@ class Permissions
     public const VIEW_MODULE_MARKS = 'VIEW_MODULE_MARKS';
     public const RECORD_MODULE_MARKS = 'RECORD_MODULE_MARKS';
     public const MANAGE_MODULE_MARKS = 'MANAGE_MODULE_MARKS';
+    /** Confirm a mark sheet (locking it) and re-open a confirmed one. Registry-only. */
+    public const CONFIRM_MODULE_MARKS = 'CONFIRM_MODULE_MARKS';
     public const MANAGE_GRADING_SCALES = 'MANAGE_GRADING_SCALES';
 
     // HR Management
@@ -220,6 +222,7 @@ class Permissions
             self::VIEW_MODULE_MARKS,
             self::RECORD_MODULE_MARKS,
             self::MANAGE_MODULE_MARKS,
+            self::CONFIRM_MODULE_MARKS,
             self::MANAGE_GRADING_SCALES,
             self::VIEW_HR_EMPLOYEES,
             self::MANAGE_HR_EMPLOYEES,

@@ -167,7 +167,11 @@ class GradeController extends BaseController
         foreach ($rows as $r) {
             $credits = (int) ($r['module_credits'] ?? 0);
             $pct     = (float) $r['percentage'];
-            $gp      = GradingScaleModel::gradePointFor($pct, $bands);
+            // Ladder lookup, not a strict min<=pct<=max range: the configured
+            // bands leave gaps (A is 80–100, B+ is 70–79), and a range match
+            // returned null for a percentage like 79.50 — which `continue`
+            // below then dropped from the GPA entirely.
+            $gp      = \App\Helpers\GradingScale::gradePointFor($pct);
             if ($gp === null || $credits <= 0) {
                 continue;
             }
