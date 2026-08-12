@@ -15,6 +15,9 @@ $router->group('/api/graduands', function ($router) {
         // per-student drill-down. `/completion/export` is declared before
         // `/completion/:id` or it would match as a student id of 0.
         $r->get('/completion/export',[GraduandController::class, 'completionExport']);
+        // Why this environment shows zeros — literal segment, so it is
+        // declared before the `/completion/:id` pattern.
+        $r->get('/completion/diagnostics', [GraduandController::class, 'completionDiagnostics']);
         $r->get('/completion/:id',   [GraduandController::class, 'completionDetail']);
         $r->get('/completion',       [GraduandController::class, 'completionList']);
         // Students who have finished — what the graduation list is built from.

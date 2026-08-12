@@ -4,7 +4,7 @@ import toast from 'react-hot-toast'
 import * as XLSX from 'xlsx'
 import jsPDF from 'jspdf'
 import {
-  AlertTriangle, CheckCircle2, Download, Info, Loader2, RefreshCw, Search, UserCheck, X,
+  AlertTriangle, CheckCircle2, Download, Info, Loader2, RefreshCw, Search, Stethoscope, UserCheck, X,
 } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 import Pagination, { DEFAULT_PER_PAGE_OPTIONS } from '@/components/ui/Pagination'
@@ -60,6 +60,7 @@ export default function GraduationRosterPanel() {
   const [page, setPage]                = useState(1)
   const [perPage, setPerPage]          = useState(DEFAULT_PER_PAGE_OPTIONS[0])
 
+  const [showDiag, setShowDiag]        = useState(false)
   const [selected, setSelected]        = useState<Set<number>>(new Set())
   const [openStudent, setOpenStudent]  = useState<ReadyRow | null>(null)
   const [bulkTarget, setBulkTarget]    = useState<GraduandStatus | null>(null)
@@ -313,6 +314,15 @@ export default function GraduationRosterPanel() {
                 ? `Computed ${timeAgo(roster.computed_at)}`
                 : isError ? 'Status unknown' : 'Never computed'}
             </span>
+            {canWrite && (
+              <button
+                onClick={() => setShowDiag(true)}
+                className="btn-ghost btn-sm"
+                title="Why is this list empty? Shows the snapshot state, the data it is built from, and which migrations this environment is missing."
+              >
+                <Stethoscope className="h-3.5 w-3.5" /> Diagnose
+              </button>
+            )}
             <button onClick={handleExcel} className="btn-ghost btn-sm" title="Download the rows below as XLSX">
               <Download className="h-3.5 w-3.5" /> Excel
             </button>
@@ -635,6 +645,8 @@ export default function GraduationRosterPanel() {
       {/* Same curriculum drill-down the audit tab uses */}
       <StudentAuditModal row={openStudent} onClose={() => setOpenStudent(null)} />
 
+      <DiagnosticsModal open={showDiag} onClose={() => setShowDiag(false)} />
+
       {/* Bulk status confirmation */}
       <Modal
         open={bulkTarget !== null}
@@ -699,5 +711,143 @@ export default function GraduationRosterPanel() {
         </div>
       </Modal>
     </div>
+  )
+}
+
+/* ── Diagnostics ───────────────────────────────────────────────────────────── */
+
+/**
+ * Answers "why is this environment showing zeros". Deployment ships code on
+ * push while migrations run from a separate manual workflow, so live can be
+ * running new code over an older schema or over un-consolidated data — and
+ * every one of those looks identical from the list itself.
+ */
+function DiagnosticsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { data: result, isLoading, isError } = useQuery({
+    queryKey: ['graduation-diagnostics'],
+    queryFn:  ({ signal }) => graduandService.completionDiagnostics(signal),
+    enabled:  open,
+  })
+  const d = result?.data
+
+  /**
+   * Only conclusions the counts actually prove.
+   *
+   * Two tempting checks are deliberately absent. The schema_migrations ledger
+   * reports MISSING for anything applied by hand, which is how 125-127 were
+   * applied — so it is shown as information, not as a fault. And "legacy marks
+   * outnumber module_marks" proves nothing either: migration 125 copies rows
+   * and deletes none, and it remaps module ids through module_id_map, so
+   * neither a row-count comparison nor a raw id join survives contact with it.
+   */
+  const problems = useMemo(() => {
+    if (!d) return []
+    const out: string[] = []
+
+    if (!d.snapshot.exists) {
+      out.push('The graduation_audit table does not exist here — migration 2026_08_12_128 has not been applied.')
+      return out
+    }
+    if ((d.snapshot.rows_total ?? 0) === 0) {
+      out.push('The snapshot has no rows — press Recompute to build it.')
+      return out
+    }
+    if ((d.snapshot.with_started_on ?? 0) === 0) {
+      out.push('No student resolved a start date, so every date-bounded list is empty. Check that regnumbers follow the 1CURyy… pattern.')
+    }
+    if ((d.sources.module_programs ?? 0) === 0) {
+      out.push('module_programs is empty — no program has a curriculum, so nothing can be judged complete.')
+    } else if ((d.snapshot.with_curriculum ?? 0) === 0) {
+      out.push('No student is attached to a program that has modules mapped to it — check student.std_option against options.id.')
+    }
+    if ((d.sources.module_marks ?? 0) === 0) {
+      out.push('module_marks is empty in this environment.')
+    } else if ((d.snapshot.with_any_mark ?? 0) === 0) {
+      out.push('Marks exist but not one of them lines up with a student\u2019s own curriculum — the marks are not reaching the audit.')
+    }
+
+    const mm = d.sources.module_marks ?? 0
+    const ok = d.sources.module_marks_matching_a_student ?? 0
+    if (mm > 0 && ok < mm) {
+      const lost = mm - ok
+      out.push(`${lost.toLocaleString()} of ${mm.toLocaleString()} mark rows match no student regnumber, so they are invisible to the audit.`)
+    }
+    return out
+  }, [d])
+
+  const Row = ({ k, v, bad }: { k: string; v: React.ReactNode; bad?: boolean }) => (
+    <div className="flex justify-between gap-4 border-b border-gray-100 py-1 last:border-0 dark:border-ink-700">
+      <span className="text-gray-500 dark:text-ink-400">{k}</span>
+      <span className={cn('font-medium tabular-nums', bad ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white')}>{v}</span>
+    </div>
+  )
+
+  return (
+    <Modal open={open} title="Graduation data diagnostics" onClose={onClose} size="lg">
+      {isLoading ? (
+        <div className="flex items-center justify-center gap-2 py-12 text-sm text-gray-400 dark:text-ink-500">
+          <Loader2 className="h-4 w-4 animate-spin" /> Checking…
+        </div>
+      ) : isError || !d ? (
+        <p className="py-8 text-center text-sm text-red-600 dark:text-red-400">
+          Could not read diagnostics from this environment.
+        </p>
+      ) : (
+        <div className="space-y-5 p-1 text-xs">
+          {problems.length > 0 ? (
+            <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-900 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-200">
+              <div className="flex items-center gap-2 font-semibold">
+                <AlertTriangle className="h-4 w-4" /> What is wrong here
+              </div>
+              <ul className="list-disc space-y-1 pl-5">
+                {problems.map((p) => <li key={p}>{p}</li>)}
+              </ul>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 p-3 font-medium text-green-800 dark:border-green-900/40 dark:bg-green-900/20 dark:text-green-300">
+              <CheckCircle2 className="h-4 w-4" /> No problems detected — the data behind this list looks healthy.
+            </div>
+          )}
+
+          <div>
+            <h4 className="mb-1 font-semibold text-gray-700 dark:text-ink-200">Snapshot</h4>
+            {d.snapshot.exists ? (
+              <>
+                <Row k="Students recorded"          v={(d.snapshot.rows_total ?? 0).toLocaleString()} bad={(d.snapshot.rows_total ?? 0) === 0} />
+                <Row k="…with a start date"         v={(d.snapshot.with_started_on ?? 0).toLocaleString()} />
+                <Row k="…assigned to a program"     v={(d.snapshot.with_program ?? 0).toLocaleString()} />
+                <Row k="…whose program has modules" v={(d.snapshot.with_curriculum ?? 0).toLocaleString()} />
+                <Row k="…with at least one mark"    v={(d.snapshot.with_any_mark ?? 0).toLocaleString()} bad={(d.snapshot.with_any_mark ?? 0) === 0} />
+                <Row k="…fully recorded"            v={(d.snapshot.complete ?? 0).toLocaleString()} />
+                <Row k="Computed"                   v={d.snapshot.computed_at ?? 'never'} bad={!d.snapshot.computed_at} />
+              </>
+            ) : (
+              <Row k="graduation_audit table" v="missing" bad />
+            )}
+          </div>
+
+          <div>
+            <h4 className="mb-1 font-semibold text-gray-700 dark:text-ink-200">Data it is built from</h4>
+            {Object.entries(d.sources).map(([k, v]) => (
+              <Row key={k} k={k.replace(/_/g, ' ')} v={v < 0 ? 'unavailable' : v.toLocaleString()} bad={v === 0 || v < 0} />
+            ))}
+            {Object.entries(d.legacy).map(([k, v]) => (
+              <Row key={k} k={`legacy "${k}" table`} v={v === null ? 'not present' : v.toLocaleString()} />
+            ))}
+          </div>
+
+          <div>
+            <h4 className="mb-1 font-semibold text-gray-700 dark:text-ink-200">Migrations</h4>
+            <p className="mb-1 text-gray-400 dark:text-ink-500">
+              Ledger status only. A migration applied by hand shows MISSING here even though its
+              changes are in place, so treat this as a hint rather than a verdict.
+            </p>
+            {Object.entries(d.migrations).map(([f, status]) => (
+              <Row key={f} k={f.replace(/^2026_08_12_/, '').replace(/\.sql$/, '')} v={status} />
+            ))}
+          </div>
+        </div>
+      )}
+    </Modal>
   )
 }

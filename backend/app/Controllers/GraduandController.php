@@ -751,6 +751,124 @@ class GraduandController extends BaseController
 
 
     /**
+     * GET /api/graduands/completion/diagnostics
+     *
+     * Why the graduation lists are empty in THIS environment. Deployment ships
+     * code on push while migrations are a separate manual workflow, so an
+     * environment can be running new code over an older schema, or over data a
+     * migration has not consolidated yet — and every one of those looks the
+     * same from the UI: zeros.
+     *
+     * Read-only counts, no heavyweight joins, safe to hit on production.
+     */
+    public function completionDiagnostics(Request $request, Response $response): never
+    {
+        $db = $this->db;
+
+        $tableExists = static function (string $t) use ($db): bool {
+            $r = $db->fetchOne(
+                "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.TABLES
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?", [$t]
+            );
+            return (int)($r['n'] ?? 0) > 0;
+        };
+        $count = static function (string $sql) use ($db): int {
+            try { return (int)($db->fetchOne($sql)['n'] ?? 0); }
+            catch (\Throwable) { return -1; }   // -1 = could not be measured
+        };
+
+        $snapshotExists = $tableExists(GraduationAuditService::SNAPSHOT_TABLE);
+        $snapshot = ['exists' => $snapshotExists];
+        if ($snapshotExists) {
+            $s = $db->fetchOne(
+                "SELECT COUNT(*) AS rows_total,
+                        SUM(started_on IS NOT NULL) AS with_started_on,
+                        SUM(option_id IS NOT NULL)  AS with_program,
+                        SUM(expected > 0)           AS with_curriculum,
+                        SUM(recorded > 0)           AS with_any_mark,
+                        SUM(is_complete = 1)        AS complete,
+                        MAX(computed_at)            AS computed_at
+                 FROM `" . GraduationAuditService::SNAPSHOT_TABLE . "`"
+            ) ?: [];
+            $snapshot += array_map(
+                static fn ($v) => is_numeric($v) ? (int)$v : $v,
+                array_intersect_key($s, array_flip([
+                    'rows_total', 'with_started_on', 'with_program',
+                    'with_curriculum', 'with_any_mark', 'complete',
+                ]))
+            );
+            $snapshot['computed_at'] = $s['computed_at'] ?? null;
+            $snapshot['by_state'] = $db->fetchAll(
+                "SELECT student_state AS state, COUNT(*) AS n
+                 FROM `" . GraduationAuditService::SNAPSHOT_TABLE . "`
+                 GROUP BY student_state ORDER BY n DESC LIMIT 8"
+            );
+        }
+
+        // The three inputs the audit is computed from.
+        $sources = [
+            'student'                => $count("SELECT COUNT(*) AS n FROM `student`"),
+            'student_with_program'   => $count(
+                "SELECT COUNT(*) AS n FROM `student` s WHERE "
+                . GraduationAuditService::optionIdSql('s') . " IS NOT NULL"),
+            'student_with_intake_year' => $count(
+                "SELECT COUNT(*) AS n FROM `student` s WHERE "
+                . GraduationAuditService::intakeYearSql('s') . " IS NOT NULL"),
+            'module_marks'           => $count("SELECT COUNT(*) AS n FROM `module_marks`"),
+            'module_marks_graded'    => $count("SELECT COUNT(*) AS n FROM `module_marks` WHERE percentage IS NOT NULL"),
+            'module_programs'        => $count("SELECT COUNT(*) AS n FROM `module_programs`"),
+            'modules'                => $count("SELECT COUNT(*) AS n FROM `modules`"),
+        ];
+
+        // Marks that cannot be attributed to a student are invisible to the
+        // audit — this is what migration 126 (whitespace) fixes.
+        $sources['module_marks_matching_a_student'] = $count(
+            "SELECT COUNT(*) AS n FROM `module_marks` mm
+             WHERE EXISTS (SELECT 1 FROM `student` s WHERE s.regnumber = mm.student_regnumber)"
+        );
+
+        // Legacy marks still living outside `module_marks` — migration 125.
+        $legacy = [];
+        foreach (['marks', 'marks_clone'] as $t) {
+            $legacy[$t] = $tableExists($t)
+                ? $count("SELECT COUNT(*) AS n FROM `{$t}`")
+                : null;   // null = table not present in this environment
+        }
+
+        // Which of the migrations this feature depends on have been recorded.
+        $needed = [
+            '2026_08_12_125_consolidate_all_legacy_marks.sql',
+            '2026_08_12_126_trim_module_marks_regnumbers.sql',
+            '2026_08_12_127_module_marks_superseded_flag.sql',
+            '2026_08_12_128_create_graduation_audit_snapshot.sql',
+            '2026_08_12_129_repair_graduands_table.sql',
+            '2026_08_12_130_graduand_status_waiting.sql',
+        ];
+        $applied = [];
+        if ($tableExists('schema_migrations')) {
+            $ph   = implode(',', array_fill(0, count($needed), '?'));
+            $rows = $db->fetchAll(
+                "SELECT filename, status FROM `schema_migrations` WHERE filename IN ({$ph})",
+                $needed
+            );
+            foreach ($rows as $r) {
+                $applied[$r['filename']] = $r['status'];
+            }
+        }
+        $migrations = [];
+        foreach ($needed as $f) {
+            $migrations[$f] = $applied[$f] ?? 'MISSING';
+        }
+
+        $this->success($response, [
+            'snapshot'   => $snapshot,
+            'sources'    => $sources,
+            'legacy'     => $legacy,
+            'migrations' => $migrations,
+        ], 'Graduation audit diagnostics.');
+    }
+
+    /**
      * POST /api/graduands/bulk-status
      *
      * Move a set of finished students to a graduation status in one go.

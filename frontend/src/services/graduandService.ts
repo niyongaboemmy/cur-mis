@@ -291,6 +291,25 @@ export interface ReadyListParams {
   per_page?:        number
 }
 
+/** Why an environment shows zeros: snapshot state, the counts it is computed
+ *  from, and which of the migrations it depends on have actually been run. */
+export interface CompletionDiagnostics {
+  snapshot: {
+    exists:           boolean
+    rows_total?:      number
+    with_started_on?: number
+    with_program?:    number
+    with_curriculum?: number
+    with_any_mark?:   number
+    complete?:        number
+    computed_at?:     string | null
+    by_state?:        Array<{ state: string | null; n: number }>
+  }
+  sources:    Record<string, number>
+  legacy:     Record<string, number | null>
+  migrations: Record<string, string>
+}
+
 export interface RebuildBatch {
   processed:   number
   last_id:     number
@@ -376,6 +395,10 @@ export const graduandService = {
     api.post<{ updated: number; skipped: number; status: GraduandStatus }>(
       '/api/graduands/bulk-status', payload,
     ),
+
+  /** Why this environment shows zeros — read-only counts, safe on production. */
+  completionDiagnostics: (signal?: AbortSignal) =>
+    api.get<CompletionDiagnostics>('/api/graduands/completion/diagnostics', {}, signal),
 
   /** Recompute one batch of the `graduation_audit` snapshot.
    *
