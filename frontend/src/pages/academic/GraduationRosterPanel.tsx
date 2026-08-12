@@ -88,11 +88,14 @@ export default function GraduationRosterPanel() {
     per_page:        perPage,
   }), [status, department, option, intakeYear, search, includeFailures, sort, page, perPage])
 
-  const { data: result, isFetching } = useQuery({
+  const { data: result, isFetching, isError, error } = useQuery({
     queryKey: ['graduation-roster', params],
     queryFn:  ({ signal }) => graduandService.readyList(params, signal),
     placeholderData: (prev) => prev,
   })
+
+  const errMessage = (error as { response?: { data?: { message?: string } } })
+    ?.response?.data?.message
   const roster  = result?.data
   const rows    = useMemo(() => roster?.data ?? [], [roster])
   const summary = roster?.summary
@@ -284,7 +287,9 @@ export default function GraduationRosterPanel() {
           </p>
           <div className="flex shrink-0 items-center gap-2">
             <span className="mr-1 text-xs text-gray-400 dark:text-ink-500">
-              {roster?.computed_at ? `Computed ${timeAgo(roster.computed_at)}` : 'Never computed'}
+              {roster?.computed_at
+                ? `Computed ${timeAgo(roster.computed_at)}`
+                : isError ? 'Status unknown' : 'Never computed'}
             </span>
             <button onClick={handleExcel} className="btn-ghost btn-sm" title="Download the rows below as XLSX">
               <Download className="h-3.5 w-3.5" /> Excel
@@ -446,6 +451,13 @@ export default function GraduationRosterPanel() {
         </div>
       )}
 
+      {isError && (
+        <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{errMessage ?? 'Could not load the graduation list.'}</span>
+        </div>
+      )}
+
       {/* Roster */}
       <div className="rounded-xl border border-gray-200 bg-white shadow-sm dark:border-ink-700 dark:bg-ink-800">
         {isFetching && (
@@ -490,9 +502,11 @@ export default function GraduationRosterPanel() {
             {rows.length === 0 && !isFetching && (
               <tr>
                 <td colSpan={canWrite ? 10 : 8} className="px-4 py-12 text-center text-gray-400 dark:text-ink-500">
-                  {roster?.computed_at
-                    ? 'No students match this filter.'
-                    : 'The completion snapshot has not been computed yet — use Recompute above.'}
+                  {isError
+                    ? 'The list could not be loaded — see the message above.'
+                    : roster?.computed_at
+                      ? 'No students match this filter.'
+                      : 'The completion snapshot has not been computed yet — use Recompute above.'}
                 </td>
               </tr>
             )}

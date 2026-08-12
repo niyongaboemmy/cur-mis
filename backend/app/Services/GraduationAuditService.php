@@ -311,6 +311,26 @@ class GraduationAuditService
         return $row['at'] ?? null;
     }
 
+    /**
+     * Whether the snapshot table exists at all.
+     *
+     * Deployment runs on push but migrations are a separate manual workflow, so
+     * new code can reach an environment whose schema has not caught up. Without
+     * this check every read here dies with a bare 1146 and the UI shows an empty
+     * list, which reads as "no students match" rather than "this environment is
+     * missing a migration".
+     */
+    public static function snapshotExists(): bool
+    {
+        $row = Database::getInstance()->fetchOne(
+            "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.TABLES
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?",
+            [self::SNAPSHOT_TABLE]
+        );
+
+        return (int)($row['n'] ?? 0) > 0;
+    }
+
     /* ── SQL fragments ───────────────────────────────────────────────────── */
 
     /**

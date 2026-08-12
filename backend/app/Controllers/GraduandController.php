@@ -270,6 +270,26 @@ class GraduandController extends BaseController
         ];
     }
 
+    /**
+     * 503 with an actionable message when `graduation_audit` is absent, rather
+     * than letting every query below die with a bare "table doesn't exist".
+     * The deploy workflow ships code on push but migrations run from a separate
+     * manual workflow, so this is the shape a half-migrated environment takes.
+     */
+    private function requireSnapshotTable(Response $response): void
+    {
+        if (!GraduationAuditService::snapshotExists()) {
+            $this->error(
+                $response,
+                'The graduation_audit table is missing — migration '
+                . '2026_08_12_128_create_graduation_audit_snapshot.sql has not been applied '
+                . 'to this environment.',
+                503,
+                ['code' => 'snapshot_table_missing']
+            );
+        }
+    }
+
     /** Validate `started_before`, or 422. */
     private function requireStartedBefore(Request $request, Response $response): string
     {
@@ -302,6 +322,7 @@ class GraduandController extends BaseController
      */
     public function completionList(Request $request, Response $response): never
     {
+        $this->requireSnapshotTable($response);
         $startedBefore = $this->requireStartedBefore($request, $response);
 
         $completion = (string)($request->query('completion') ?? 'complete');
@@ -394,6 +415,8 @@ class GraduandController extends BaseController
      */
     public function completionRebuild(Request $request, Response $response): never
     {
+        $this->requireSnapshotTable($response);
+
         @set_time_limit(300);
         $stats = GraduationAuditService::rebuildSnapshot();
 
@@ -419,6 +442,7 @@ class GraduandController extends BaseController
      */
     public function completionExport(Request $request, Response $response): never
     {
+        $this->requireSnapshotTable($response);
         $startedBefore = $this->requireStartedBefore($request, $response);
 
         $completion = (string)($request->query('completion') ?? 'complete');
@@ -524,6 +548,8 @@ class GraduandController extends BaseController
         // Unlike the audit, the roster has no natural cut-off — someone who
         // finished last year is still a graduand — so the date is optional and
         // defaults to "no bound".
+        $this->requireSnapshotTable($response);
+
         $startedBefore = trim((string)($request->query('started_before') ?? ''));
         if ($startedBefore !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $startedBefore)) {
             $this->error($response, 'started_before must be a YYYY-MM-DD date.', 422);
@@ -727,6 +753,8 @@ class GraduandController extends BaseController
      */
     public function bulkStatus(Request $request, Response $response): never
     {
+        $this->requireSnapshotTable($response);
+
         $body   = $request->body();
         $ids    = array_values(array_unique(array_filter(
             array_map('intval', (array)($body['student_ids'] ?? [])),
