@@ -291,6 +291,16 @@ export interface ReadyListParams {
   per_page?:        number
 }
 
+export interface RebuildBatch {
+  processed:   number
+  last_id:     number
+  done:        boolean
+  students:    number
+  complete:    number
+  seconds:     number
+  computed_at: string | null
+}
+
 export interface CompletionListParams {
   started_before: string
   completion?:    CompletionFilter
@@ -367,12 +377,17 @@ export const graduandService = {
       '/api/graduands/bulk-status', payload,
     ),
 
-  /** Recompute the `graduation_audit` snapshot. Takes a few seconds, so it gets
-   *  the same extended budget as the old live query did. */
-  rebuildCompletion: () =>
+  /** Recompute one batch of the `graduation_audit` snapshot.
+   *
+   *  Batched rather than one call: a shared host that caps requests at 30s
+   *  would roll the whole rebuild back and leave the table empty. Walk
+   *  `last_id` from the response until `done` is true. */
+  rebuildCompletion: (afterId = 0, limit = 2000) =>
     apiClient
-      .post<ApiResponse<{ students: number; complete: number; seconds: number; computed_at: string }>>(
-        '/api/graduands/completion/rebuild', {}, { timeout: AUDIT_TIMEOUT },
+      .post<ApiResponse<RebuildBatch>>(
+        '/api/graduands/completion/rebuild',
+        { after_id: afterId, limit },
+        { timeout: AUDIT_TIMEOUT },
       )
       .then((r) => r.data),
 

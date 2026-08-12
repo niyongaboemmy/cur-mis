@@ -106,15 +106,37 @@ export default function GraduationRosterPanel() {
     return department ? all.filter((p) => String(p.department_id) === department) : all
   }, [roster, department])
 
+  // Progress across the batch walk, so a multi-second rebuild shows movement
+  // instead of a frozen button.
+  const [rebuildDone, setRebuildDone] = useState(0)
+
   const rebuildMut = useMutation({
-    mutationFn: graduandService.rebuildCompletion,
-    onSuccess: (r) => {
-      const n = r.data?.students ?? 0
-      toast.success(`Recomputed ${n.toLocaleString()} students in ${r.data?.seconds ?? '?'}s.`)
+    mutationFn: async () => {
+      let afterId = 0
+      let guard   = 0
+      setRebuildDone(0)
+      // Bounded so a server that never advances the cursor cannot spin here.
+      for (;;) {
+        const r = await graduandService.rebuildCompletion(afterId, 2000)
+        const b = r.data
+        if (!b) throw new Error('Empty rebuild response')
+        setRebuildDone(b.students)
+        if (b.done) return b
+        if (b.last_id <= afterId || ++guard > 200) {
+          throw new Error('Rebuild did not advance')
+        }
+        afterId = b.last_id
+      }
+    },
+    onSuccess: (b) => {
+      toast.success(`Recomputed ${b.students.toLocaleString()} students — ${b.complete.toLocaleString()} have finished.`)
       qc.invalidateQueries({ queryKey: ['graduation-roster'] })
       qc.invalidateQueries({ queryKey: ['graduation-audit'] })
     },
-    onError: () => toast.error('Could not recompute the graduation figures.'),
+    onError: (e: unknown) => toast.error(
+      (e as { response?: { data?: { message?: string } } })?.response?.data?.message
+        ?? 'Could not recompute the graduation figures.',
+    ),
   })
 
   const approveMut = useMutation({
@@ -304,7 +326,9 @@ export default function GraduationRosterPanel() {
                 className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-ink-700 dark:text-ink-200 dark:hover:bg-ink-700/50"
               >
                 <RefreshCw className={cn('h-4 w-4', rebuildMut.isPending && 'animate-spin')} />
-                {rebuildMut.isPending ? 'Recomputing…' : 'Recompute'}
+                {rebuildMut.isPending
+                  ? `Recomputing… ${rebuildDone ? rebuildDone.toLocaleString() : ''}`
+                  : 'Recompute'}
               </button>
             )}
           </div>

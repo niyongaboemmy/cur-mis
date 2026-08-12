@@ -158,9 +158,18 @@ class GraduationAuditService
      * LEFT JOINs, so someone whose program has no curriculum mapped is recorded
      * with expected = 0 rather than vanishing from the cohort.
      *
-     * @return array{students:int, complete:int, seconds:float}
+     * Runs in batches so it can never outlive a request timeout. A shared host
+     * that caps execution at 30s would otherwise roll the whole thing back and
+     * leave the table empty — which looks exactly like "not computed yet" and
+     * is why pressing Recompute appeared to do nothing on production. Callers
+     * pass `$afterId` from the previous batch's `last_id` until `done`.
+     *
+     * `$limit = 0` processes every student in one pass (CLI / local use).
+     *
+     * @return array{processed:int, last_id:int, done:bool,
+     *               students:int, complete:int, seconds:float}
      */
-    public static function rebuildSnapshot(): array
+    public static function rebuildSnapshot(int $afterId = 0, int $limit = 0): array
     {
         $db    = Database::getInstance();
         $start = microtime(true);
@@ -176,11 +185,20 @@ class GraduationAuditService
         // commit, leaving readers looking at an empty table mid-rebuild.
         $db->beginTransaction();
         try {
-            $db->execute("DELETE FROM `{$table}`");
+            // Only the opening batch clears the table; the rest append.
+            if ($afterId === 0) {
+                $db->execute("DELETE FROM `{$table}`");
+            }
 
             // Per-student scalars resolved once. Keeping REGEXP_SUBSTR out of
             // any JOIN condition matters: evaluated per joined row instead of
             // per student it costs an order of magnitude.
+            // Bounding the student set here rather than at the end means each
+            // batch also only aggregates its own students' marks.
+            $bound = $limit > 0
+                ? "WHERE s.id > {$afterId} ORDER BY s.id LIMIT {$limit}"
+                : '';
+
             $studentSel = "SELECT s.id            AS student_id,
                                   s.regnumber,
                                   {$optionSql}    AS option_id,
@@ -191,7 +209,7 @@ class GraduationAuditService
                                   CAST(NULLIF(REGEXP_SUBSTR(s.current_level, '^[0-9]+'), '') AS UNSIGNED)
                                                   AS current_level,
                                   s.programme_level
-                           FROM `student` s";
+                           FROM `student` s {$bound}";
 
             $db->execute(
                 "INSERT INTO `{$table}` (
@@ -282,7 +300,20 @@ class GraduationAuditService
                        GROUP BY st.student_id, mp.module_id, m.module_credits
                     ) pm
                     GROUP BY pm.student_id
-                 ) mk ON mk.student_id = stu.student_id"
+                 ) mk ON mk.student_id = stu.student_id
+                 ON DUPLICATE KEY UPDATE
+                    regnumber = VALUES(regnumber), option_id = VALUES(option_id),
+                    started_on = VALUES(started_on), start_source = VALUES(start_source),
+                    intake_year = VALUES(intake_year), student_state = VALUES(student_state),
+                    current_level = VALUES(current_level), programme_level = VALUES(programme_level),
+                    expected = VALUES(expected), recorded = VALUES(recorded),
+                    passed = VALUES(passed), failed = VALUES(failed),
+                    exempted = VALUES(exempted), pending = VALUES(pending),
+                    missing = VALUES(missing), outstanding = VALUES(outstanding),
+                    percent_complete = VALUES(percent_complete), is_complete = VALUES(is_complete),
+                    credits_expected = VALUES(credits_expected),
+                    credits_earned = VALUES(credits_earned),
+                    weighted_avg = VALUES(weighted_avg), computed_at = VALUES(computed_at)"
             );
             $db->commit();
         } catch (\Throwable $e) {
@@ -290,14 +321,32 @@ class GraduationAuditService
             throw $e;
         }
 
+        // How far this batch got. Reading it back from `student` rather than
+        // from the snapshot keeps the cursor correct even when a batch writes
+        // nothing (it never does today, but the cursor must not stall).
+        $processed = 0;
+        $lastId    = $afterId;
+        if ($limit > 0) {
+            $row = $db->fetchOne(
+                "SELECT COUNT(*) AS n, COALESCE(MAX(id), ?) AS last_id
+                 FROM (SELECT id FROM `student` WHERE id > ? ORDER BY id LIMIT {$limit}) b",
+                [$afterId, $afterId]
+            ) ?: [];
+            $processed = (int)($row['n'] ?? 0);
+            $lastId    = (int)($row['last_id'] ?? $afterId);
+        }
+
         $counts = $db->fetchOne(
             "SELECT COUNT(*) AS students, SUM(is_complete = 1) AS complete FROM `{$table}`"
         ) ?: ['students' => 0, 'complete' => 0];
 
         return [
-            'students' => (int)($counts['students'] ?? 0),
-            'complete' => (int)($counts['complete'] ?? 0),
-            'seconds'  => round(microtime(true) - $start, 2),
+            'processed' => $limit > 0 ? $processed : (int)($counts['students'] ?? 0),
+            'last_id'   => $lastId,
+            'done'      => $limit === 0 || $processed < $limit,
+            'students'  => (int)($counts['students'] ?? 0),
+            'complete'  => (int)($counts['complete'] ?? 0),
+            'seconds'   => round(microtime(true) - $start, 2),
         ];
     }
 

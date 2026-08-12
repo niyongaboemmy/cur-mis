@@ -418,20 +418,34 @@ class GraduandController extends BaseController
         $this->requireSnapshotTable($response);
 
         @set_time_limit(300);
-        $stats = GraduationAuditService::rebuildSnapshot();
 
-        SystemLogService::log(
-            'UPDATE', 'STUDENTS',
-            "Graduation audit recomputed: {$stats['students']} students, {$stats['complete']} complete",
-            null, 'graduation_audit'
-        );
+        // Batched by default. The whole rebuild is ~3s locally but several
+        // times that on a shared host, and a request cut off at 30s rolls its
+        // transaction back — leaving the table empty and Recompute looking
+        // like it did nothing. The client walks `last_id` until `done`.
+        $afterId = max(0, (int)($request->body()['after_id'] ?? 0));
+        $limit   = (int)($request->body()['limit'] ?? 2000);
+        $limit   = $limit <= 0 ? 0 : min(20000, max(200, $limit));
+
+        $stats = GraduationAuditService::rebuildSnapshot($afterId, $limit);
+
+        if ($stats['done']) {
+            SystemLogService::log(
+                'UPDATE', 'STUDENTS',
+                "Graduation audit recomputed: {$stats['students']} students, {$stats['complete']} complete",
+                null, 'graduation_audit'
+            );
+        }
 
         $this->success($response, [
+            'processed'   => $stats['processed'],
+            'last_id'     => $stats['last_id'],
+            'done'        => $stats['done'],
             'students'    => $stats['students'],
             'complete'    => $stats['complete'],
             'seconds'     => $stats['seconds'],
             'computed_at' => GraduationAuditService::snapshotComputedAt(),
-        ], 'Graduation audit recomputed.');
+        ], $stats['done'] ? 'Graduation audit recomputed.' : 'Batch processed.');
     }
 
     /**
