@@ -200,13 +200,19 @@ export default function OffersPage() {
                       <div className="flex items-center justify-end gap-1.5 flex-wrap">
 
                         {/* View Letter */}
-                        <button className="btn-secondary btn-sm" onClick={() => setViewingOffer(o)}>
+                        <button
+                          className="btn-secondary btn-sm"
+                          onClick={() => {
+                            const url = offerService.letterPdfUrl(o.id, o.student_id)
+                            if (url) window.open(url, '_blank', 'noopener,noreferrer')
+                          }}
+                        >
                           <FileText className="w-3 h-3" /> Letter
                         </button>
 
                         {/* Download PDF */}
                         <a
-                          href={offerService.letterPdfUrl(o.id)}
+                          href={offerService.letterPdfUrl(o.id, o.student_id)}
                           target="_blank"
                           rel="noreferrer"
                           className="btn-secondary btn-sm"
@@ -265,7 +271,7 @@ export default function OffersPage() {
           <>
             <button className="btn-secondary" onClick={() => setViewingOffer(null)}>Close</button>
             <a
-              href={viewingOffer ? offerService.letterPdfUrl(viewingOffer.id) : '#'}
+              href={viewingOffer ? offerService.letterPdfUrl(viewingOffer.id, viewingOffer.student_id) : '#'}
               target="_blank"
               rel="noreferrer"
               className="btn-primary flex items-center gap-2"
