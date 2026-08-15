@@ -347,16 +347,6 @@ export const meritService = {
  * Admin — offers & enrollment
  * permission: MANAGE_ADMISSIONS
  * ─────────────────────────────────────────────────────────────── */
-const legacyAdmissionLetterUrl = (studentId?: number | null) => {
-  if (studentId == null || Number.isNaN(Number(studentId))) return ''
-
-  const url = new URL('https://cur.ac.rw/umis/documents/all_certificate/generate_document.php')
-  url.searchParams.set('type', 'admission_letter')
-  url.searchParams.set('student_id', String(studentId))
-  url.searchParams.set('file_name', 'Admission_Letter_FORMAT.pdf')
-  return url.toString()
-}
-
 export const offerService = {
   list: (params: { status?: string; department_id?: number; intake?: string; enrolled_only?: '0' | '1' } = {}, signal?: AbortSignal) =>
     api.get<PaginatedResponse<AdmissionOffer>>('/api/admin/admissions/offers', params, signal),
@@ -382,11 +372,8 @@ export const offerService = {
   bulkSendLetters: (d: { department_id: number; intake: string; academic_year_id: number }) =>
     api.post<{ total: number; sent: number; errors: string[] }>('/api/admin/admissions/letters/bulk-send', d),
 
-  /** Prefer the legacy document generator route when a student id is available. */
-  letterPdfUrl: (offerId: number, studentId?: number | null) => {
-    const legacyUrl = legacyAdmissionLetterUrl(studentId)
-    if (legacyUrl) return legacyUrl
-
+  /** Returns absolute URL for PDF download (admin, JWT-authenticated). */
+  letterPdfUrl: (offerId: number) => {
     const token = useAuthStore.getState().token
     const base  = import.meta.env.VITE_API_URL ?? ''
     return `${base}/api/admin/admissions/offers/${offerId}/letter?token=${token}`
