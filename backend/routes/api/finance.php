@@ -238,11 +238,14 @@ $router->group('/api/finance', function ($router) {
         $r->post('/refunds/:id/reject',     [RefundController::class, 'rejectRefund']);
 
         $r->post('/expenses',                [FeeController::class, 'createExpense']);
-        $r->post('/expenses/:id',             [FeeController::class, 'updateExpense']);
-        $r->delete('/expenses/:id',          [FeeController::class, 'deleteExpense']);
+        // Static /expenses/categories routes MUST come before the /expenses/:id
+        // param routes below — otherwise "/expenses/categories" is captured by
+        // /expenses/:id (:id="categories") and 404s as "Expense not found".
         $r->post('/expenses/categories',      [FeeController::class, 'createExpenseCategory']);
         $r->post('/expenses/categories/:id',   [FeeController::class, 'updateExpenseCategory']);
         $r->delete('/expenses/categories/:id', [FeeController::class, 'deleteExpenseCategory']);
+        $r->post('/expenses/:id',             [FeeController::class, 'updateExpense']);
+        $r->delete('/expenses/:id',          [FeeController::class, 'deleteExpense']);
 
         $r->post('/fee-types',               [FeeController::class, 'createFeeType']);
         $r->post('/fee-types/:id',            [FeeController::class, 'updateFeeType']);

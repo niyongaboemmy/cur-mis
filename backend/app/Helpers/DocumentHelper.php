@@ -99,7 +99,11 @@ class DocumentHelper
         $header     = self::headerHtml();
         $pageCss    = PdfLayout::pageCss(44, 28);
         $fullName   = strtoupper(trim(($s['fname'] ?? '') . ' ' . ($s['lname'] ?? '')));
-        $today      = date('m-d-Y');
+        $today      = date('d-m-Y');
+        // "Application received on" must be the applicant's submission date, not the
+        // day the letter is generated. Fall back to today only if it's unknown.
+        $appDateRaw = (string) ($s['application_date'] ?? '');
+        $appDate    = $appDateRaw !== '' ? date('d-m-Y', strtotime($appDateRaw)) : $today;
         $facultyRaw = (string) ($s['fac_name'] ?? $s['faculty'] ?? '');
         $faculty    = htmlspecialchars(self::normalizeFacultyName($facultyRaw), ENT_QUOTES);
         $department = htmlspecialchars((string) ($s['dep_name']   ?? $s['department'] ?? ''), ENT_QUOTES);
@@ -164,11 +168,11 @@ class DocumentHelper
           <br>
 
           <p class="para">
-            Referring to your application received on <strong>{$today}</strong> to study at the
+            Referring to your application received on <strong>{$appDate}</strong> to study at the
             Catholic University of Rwanda, with the recommendations of the Faculty, I am pleased
             to inform you that your request was accepted. You are hence admitted as a Full-Time
             student in the <strong>Faculty of {$faculty}</strong>, Department of
-            <strong>{$department}</strong> . Level <strong>{$level} {$intake}</strong>,
+            <strong>{$department}</strong>, <strong>{$level}</strong>, {$intake},
             Program: <strong>{$program}</strong>, Academic Year: <strong>{$accYear}</strong>.
           </p>
 

@@ -840,6 +840,11 @@ class ApplicationService
             [$offer['application_id']]
         );
 
+        $appMeta = $this->db->fetchOne(
+            "SELECT sa.submitted_at, sa.created_at FROM `student_applications` sa WHERE sa.id = ?",
+            [$offer['application_id']]
+        );
+
         return [
             'offer_letter_reference' => $offer['offer_letter_reference'],
             'first_name'             => $offer['first_name'],
@@ -852,6 +857,7 @@ class ApplicationService
             'level_name'             => $offer['level_name']     ?? '',
             'mode_of_study'          => $offer['mode_of_study']  ?? 'Day',
             'intake'                 => $intake['intake'] ?? '',
+            'application_date'       => $appMeta['submitted_at'] ?? $appMeta['created_at'] ?? null,
             'academic_year'          => $year['academic_year'] ?? date('Y'),
             'offered_at'             => $offer['offered_at'],
             'expires_at'             => $offer['expires_at'],
