@@ -878,9 +878,20 @@ class ApplicationService
         // Generate PDF binary
         $pdfBinary = AdmissionLetterPdf::renderPdfBinary($letterData);
 
-        // Build download URL (token-based, no login required) — points to backend API directly
-        $apiBase     = rtrim((string)(getenv('APP_URL') ?: 'http://localhost:8888/cur-mis/backend/public'), '/');
-        $downloadUrl = $apiBase . '/api/portal/admission-letter?token=' . $token;
+        // Build download URL. Prefer the legacy institutional generator when the
+        // student record is already available so the applicant receives the exact
+        // same document URL used elsewhere in the admissions flow.
+        $downloadUrl = '';
+        $studentId = isset($offer['student_id']) ? (int)$offer['student_id'] : 0;
+        if ($studentId > 0) {
+            $downloadUrl = 'https://cur.ac.rw/umis/documents/all_certificate/generate_document.php'
+                . '?type=admission_letter'
+                . '&student_id=' . rawurlencode((string)$studentId)
+                . '&file_name=Admission_Letter_FORMAT.pdf';
+        } else {
+            $apiBase     = rtrim((string)(getenv('APP_URL') ?: 'http://localhost:8888/cur-mis/backend/public'), '/');
+            $downloadUrl = $apiBase . '/api/portal/admission-letter?token=' . $token;
+        }
 
         // Send email
         $name = trim($letterData['first_name'] . ' ' . $letterData['last_name']);
