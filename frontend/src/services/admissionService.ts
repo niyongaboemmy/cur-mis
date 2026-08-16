@@ -373,7 +373,18 @@ export const offerService = {
     api.post<{ total: number; sent: number; errors: string[] }>('/api/admin/admissions/letters/bulk-send', d),
 
   /** Returns absolute URL for PDF download (admin, JWT-authenticated). */
-  letterPdfUrl: (offerId: number) => {
+  letterPdfUrl: (offerId: number, studentId?: number | null) => {
+    const legacyUrl = (() => {
+      if (studentId == null || Number.isNaN(Number(studentId))) return ''
+      const url = new URL('https://cur.ac.rw/umis/documents/all_certificate/generate_document.php')
+      url.searchParams.set('type', 'admission_letter')
+      url.searchParams.set('student_id', String(studentId))
+      url.searchParams.set('file_name', 'Admission_Letter_FORMAT.pdf')
+      return url.toString()
+    })()
+
+    if (legacyUrl) return legacyUrl
+
     const token = useAuthStore.getState().token
     const base  = import.meta.env.VITE_API_URL ?? ''
     return `${base}/api/admin/admissions/offers/${offerId}/letter?token=${token}`
