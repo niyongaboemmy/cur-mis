@@ -45,10 +45,17 @@ dropdown automatically once `SECTORS` / `CELLS` / `VILLAGES` in
 dataset. **No code change needed to enable them.**
 
 ### Environment issues found — NOT fixed (need an operator decision)
-1. **`backend/.env` has `FILE_SERVER_URL=http://localhost:8888/...` but Apache serves
-   port 80.** Verify with `GET /api/health?deep=1` → currently
-   `{"configured":true,"reachable":false}`. This is also the check to run in
-   production to confirm issue #1 is really resolved there.
+1. **Storage URL — fixed locally, still to verify in production.** After the code
+   fixes, photo upload still returned the new 502. Cause: `backend/.env` had
+   `FILE_SERVER_URL=http://localhost:8888/...` (nothing listening) while the file
+   server runs on **`:9001`** (`start-fileserver.bat`); the chain is
+   frontend `:5180` → Vite proxy → backend `:9000` → storage `:9001`. Keys matched;
+   only the URL was wrong. Corrected to `http://127.0.0.1:9001` and upload verified
+   end to end (POST 200, GET returns a byte-identical PNG).
+   `.env` is gitignored, so **production must be checked separately**:
+   `GET /api/health?deep=1` must report `{"configured":true,"reachable":true}`.
+   Added `backend/.env.example` documenting the correct URL for each serving mode
+   (php -S `:9001`, Apache, cPanel).
 2. **The local `curac_save` DB has no PRIMARY KEYs and no AUTO_INCREMENT** on
    `users`, `notifications`, `fee_fines`, `fee_invoices`, … Consequences seen live:
    duplicate `users.id` values, and a real applicant who registered on 17 Aug got
