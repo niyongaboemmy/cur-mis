@@ -1,0 +1,195 @@
+import type { HelpModule } from "../types";
+
+export const modulesCourses: HelpModule = {
+  id: "modules",
+  title: "Modules & Registration",
+  icon: "BookOpen",
+  accent: "emerald",
+  summary: "The course catalogue, term offerings, timetabling, lecturer assignment and student registration.",
+  intro:
+    "A [[module]] lives permanently in the catalogue. Each term it is *offered*, *scheduled* into a room and slot, *assigned* to a lecturer, and *registered* for by students. Those four steps happen in that order, and skipping one is the usual cause of an empty register or an empty mark sheet.",
+  audience: ["Registry", "Lecturer", "Student", "Administrator"],
+  routes: [
+    "/modules",
+    "/modules/catalog",
+    "/modules/scheduling",
+    "/modules/assignments",
+    "/modules/registrations",
+    "/modules/marks",
+    "/my-modules",
+  ],
+  articles: [
+    {
+      id: "term-setup",
+      title: "Set up a module for the term",
+      kind: "walkthrough",
+      summary: "Catalogue → offering → schedule → lecturer → open for registration.",
+      minutes: 8,
+      audience: ["Registry", "Administrator"],
+      access: "Needs: Manage modules and related rights",
+      route: "/modules/catalog",
+      keywords: ["set up module", "offering", "term setup", "prepare term", "open module", "new course"],
+      blocks: [
+        {
+          type: "callout",
+          tone: "info",
+          title: "The four-step rule",
+          text: "Catalogue entry → [[module offering]] → [[scheduling]] → [[module assignment]]. Only after all four can students register, a register exist, or marks be recorded.",
+        },
+        {
+          type: "steps",
+          steps: [
+            { title: "Check the module exists in the catalogue", detail: "Code, title, [[credit]]s, [[level]], and the [[programme]]s it belongs to.", route: "/modules/catalog" },
+            { title: "Create the offering for this year and term", detail: "This is what makes the module actually run now, as opposed to existing on paper." },
+            { title: "Schedule it", detail: "Room and time slot. The system flags clashes — same room, same lecturer, or the same student group booked twice.", route: "/modules/scheduling" },
+            { title: "Assign the lecturer", detail: "This is what opens the teaching workspace, register and mark sheet for them. Their [[role]] alone does not.", route: "/modules/assignments" },
+            { title: "Open registration and tell students", detail: "Students then see it under **My modules**.", route: "/modules/registrations" },
+          ],
+        },
+        {
+          type: "faq",
+          items: [
+            { q: "The lecturer says they cannot see the class.", a: "Almost always a missing [[module assignment]] for *this* term. An assignment from last term does not carry forward." },
+            { q: "The mark sheet is empty.", a: "No students are registered for that offering, or you are looking at the wrong [[term]]." },
+          ],
+        },
+      ],
+    },
+    {
+      id: "catalogue",
+      title: "Maintain the module catalogue",
+      kind: "howto",
+      summary: "Add, edit and retire modules, with credits, levels and prerequisites.",
+      minutes: 4,
+      audience: ["Registry"],
+      access: "Needs: Manage modules",
+      route: "/modules/catalog",
+      keywords: ["module catalog", "add module", "course code", "credits", "prerequisite", "retire module", "edit module"],
+      blocks: [
+        {
+          type: "steps",
+          steps: [
+            { title: "Open **Modules → Catalog**", route: "/modules/catalog" },
+            { title: "Add the module", detail: "Code, title, [[credit]] value, [[level]], and the [[programme]]s that include it." },
+            { title: "Set any [[prerequisite]]s", detail: "The system then warns at registration when a student has not passed them." },
+            { title: "Save" },
+          ],
+        },
+        {
+          type: "callout",
+          tone: "warning",
+          title: "Credits are load-bearing",
+          text: "[[Credit]]s decide [[GPA]] weighting, full-load checks, and — where [[per-credit rate]]s apply — what the student is charged. Changing them mid-programme changes past arithmetic.",
+        },
+      ],
+    },
+    {
+      id: "scheduling",
+      title: "Timetable modules and resolve clashes",
+      kind: "howto",
+      summary: "Place offerings into rooms and slots, and deal with the conflicts the system flags.",
+      minutes: 4,
+      audience: ["Registry"],
+      access: "Needs: Manage module schedules",
+      route: "/modules/scheduling",
+      keywords: ["timetable", "scheduling", "clash", "conflict", "room booking", "time slot", "lecture times"],
+      blocks: [
+        {
+          type: "steps",
+          steps: [
+            { title: "Open **Modules → Scheduling**", route: "/modules/scheduling" },
+            { title: "Filter to the year, term and campus you are timetabling" },
+            { title: "Place each offering into a room and slot" },
+            { title: "Read the clash warnings before saving", detail: "Three kinds: the same room twice, the same lecturer twice, or a student cohort with two compulsory modules at once." },
+            { title: "Resolve and re-check", tip: "Timetable the largest cohorts and the scarcest rooms first — they have the least room to move later." },
+          ],
+        },
+      ],
+    },
+    {
+      id: "assignments",
+      title: "Assign lecturers to modules",
+      kind: "howto",
+      summary: "Attach teaching staff to offerings and see the resulting workload.",
+      minutes: 3,
+      audience: ["Registry", "Administrator"],
+      access: "Needs: Manage module assignments",
+      route: "/modules/assignments",
+      keywords: ["assign lecturer", "teaching assignment", "workload", "who teaches", "allocate staff"],
+      blocks: [
+        {
+          type: "steps",
+          steps: [
+            { title: "Open **Modules → Assignments**", route: "/modules/assignments" },
+            { title: "Select the offering and choose the lecturer" },
+            { title: "Check the workload column", detail: "It totals what each member of staff is carrying this term, so an accidental overload is visible before the term starts." },
+            { title: "Save", detail: "The lecturer's workspace, register and mark sheet for that class open immediately." },
+          ],
+        },
+        {
+          type: "callout",
+          tone: "info",
+          title: "Assignment beats job title",
+          text: "Anyone assigned a module gets the teaching workspace for it — see [[lecturer scoping]]. That is how a registrar or head of department who takes a class gets access without a role change.",
+        },
+      ],
+    },
+    {
+      id: "registrations-admin",
+      title: "Register students for modules",
+      kind: "howto",
+      summary: "Bulk-register a cohort, fix an individual, and handle prerequisite warnings.",
+      minutes: 4,
+      audience: ["Registry"],
+      access: "Needs: Manage module registrations",
+      route: "/modules/registrations",
+      keywords: ["register students", "bulk registration", "module registration", "add student to module", "drop module"],
+      blocks: [
+        {
+          type: "steps",
+          steps: [
+            { title: "Open **Modules → Registrations**", route: "/modules/registrations" },
+            { title: "Filter to the programme, level and term" },
+            { title: "Bulk-register the cohort onto their compulsory modules", detail: "Far faster and far less error-prone than one at a time." },
+            { title: "Handle the exceptions individually", detail: "Repeats, electives, students carrying a failed module." },
+            { title: "Read [[prerequisite]] warnings before overriding one", detail: "An override is sometimes right, but it should be a decision, not a reflex." },
+          ],
+        },
+        {
+          type: "callout",
+          tone: "warning",
+          text: "[[Module registration]] is what puts a student on the register and the mark sheet. An unregistered student is invisible to their lecturer — and will have no mark at the end of term.",
+        },
+      ],
+    },
+    {
+      id: "my-registrations",
+      title: "Students: register for your modules",
+      kind: "howto",
+      summary: "Choose your modules for the term and check they were accepted.",
+      minutes: 3,
+      audience: ["Student"],
+      route: "/my-modules",
+      keywords: ["my modules", "register modules", "student registration", "choose courses", "my courses", "add module"],
+      blocks: [
+        {
+          type: "steps",
+          steps: [
+            { title: "Open **My modules**", route: "/my-modules" },
+            { title: "Check the [[term]] shown is the one you are registering for" },
+            { title: "Select the modules for your [[programme]] and [[level]]", detail: "Compulsory modules are usually already listed; electives you choose." },
+            { title: "Submit", detail: "If a [[prerequisite]] is unmet you will be told which one — speak to your department rather than trying again." },
+            { title: "Confirm each module shows as registered", detail: "Only registered modules appear on your register, your timetable and your results." },
+          ],
+        },
+        {
+          type: "callout",
+          tone: "warning",
+          title: "Registration and fees are linked",
+          text: "Where [[per-credit rate]]s apply, what you register for changes what you are billed. Check **My finance** after registering.",
+        },
+        { type: "terms", ids: ["module", "module-offering", "module-schedule", "module-assignment", "registration", "prerequisite", "credit"] },
+      ],
+    },
+  ],
+};

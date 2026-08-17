@@ -94,6 +94,13 @@ import AnnouncementsPage from "@/pages/announcements/AnnouncementsPage";
 import ForumsPage from "@/pages/forums/ForumsPage";
 import ForumThreadPage from "@/pages/forums/ForumThreadPage";
 import VerifyStudentPage from "@/pages/public/VerifyStudentPage";
+// Help Centre — end-user documentation. Deliberately ungated: every role
+// needs to be able to read every guide, including one written for another role.
+import HelpCenterPage from "@/pages/help/HelpCenterPage";
+import HelpModulePage from "@/pages/help/HelpModulePage";
+import HelpArticlePage from "@/pages/help/HelpArticlePage";
+import HelpSearchPage from "@/pages/help/HelpSearchPage";
+import HelpGlossaryPage from "@/pages/help/HelpGlossaryPage";
 // Placeholders still in use for modules not yet wired up
 import ExamSchedulesPage from "@/pages/exam/ExamSchedulesPage";
 import ExamResultsPage from "@/pages/exam/ExamResultsPage";
@@ -184,6 +191,16 @@ function App() {
               <Route path="/home" element={<HomePage />} />
               <Route path="/profile" element={<UserProfilePage />} />
               <Route path="/my/service-requests" element={<MyServiceRequestsPage />} />
+
+              {/* ── Help Centre ── */}
+              <Route path="/help" element={<HelpCenterPage />} />
+              <Route path="/help/search" element={<HelpSearchPage />} />
+              <Route path="/help/glossary" element={<HelpGlossaryPage />} />
+              <Route path="/help/m/:moduleId" element={<HelpModulePage />} />
+              <Route
+                path="/help/m/:moduleId/:articleId"
+                element={<HelpArticlePage />}
+              />
 
               <Route
                 element={

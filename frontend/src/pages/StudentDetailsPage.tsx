@@ -15,6 +15,7 @@ import {
 import { authService } from "@/services/authService";
 import {
   marksService,
+  type HonoursClassification,
   type MyMarksRow,
   type MyMarksTotals,
 } from "@/services/marksService";
@@ -25,6 +26,7 @@ import {
 } from "@/services/studentIdService";
 import { isPhotoUuid, legacyPhotoUrl } from "@/services/photoHelper";
 import { transcriptService } from "@/services/transcriptService";
+import { normalizeGrade } from "@/utils/gradingScale";
 import { academicService } from "@/services/academicService";
 import {
   attendanceService,
@@ -5160,6 +5162,10 @@ function TranscriptTab({ student }: { student: any }) {
         </button>
       </div>
 
+      {/* The class the regulations award — final-level modules only, so it is
+          absent for a student who has not reached them yet. */}
+      <TClassificationCard classification={totals?.classification} />
+
       {/* Transcript request history (admin view) */}
       {(requestsQ.data?.data?.data ?? []).length > 0 && (
         <div className="card p-4">
@@ -5272,6 +5278,77 @@ function TranscriptTab({ student }: { student: any }) {
   );
 }
 
+/**
+ * The degree classification, as the transcript PDF prints it.
+ *
+ * Shows the arithmetic behind the class as well as the class itself: a "2i"
+ * with nothing beside it is not something the registry can defend to an
+ * external verifier, and the caveats say plainly what the record could not
+ * confirm — most often a missing Project module.
+ *
+ * Renders nothing until the student has marks at the final levels; a first-year
+ * transcript has no class to state.
+ */
+function TClassificationCard({
+  classification: c,
+}: {
+  classification?: HonoursClassification | null;
+}) {
+  if (!c || c.modules === 0) return null;
+
+  const levels = c.levels.join(" & ");
+
+  return (
+    <div className="card p-4">
+      <h3 className="text-[12px] font-semibold text-ink-500 uppercase mb-2">
+        Degree Classification
+      </h3>
+      <div className="flex flex-wrap items-center gap-3">
+        <span
+          className={`inline-flex px-2.5 py-1 rounded-full text-[13px] font-bold ${
+            c.awarded
+              ? "bg-brand/10 text-brand dark:bg-brand/20 dark:text-gold-400"
+              : "bg-ink-100 text-ink-500 dark:bg-ink-700 dark:text-ink-300"
+          }`}
+        >
+          {c.label}
+        </span>
+        {c.awarded ? (
+          <span className="text-[12px] text-ink-500 dark:text-ink-400">
+            Assessed on levels {levels} — {c.qualifying_credits} of {c.credits}{" "}
+            credits at or above the class threshold
+            {c.lowest_mark !== null && <>, lowest mark {c.lowest_mark}%</>}.
+          </span>
+        ) : (
+          c.reason && (
+            <span className="text-[12px] text-ink-500 dark:text-ink-400">
+              Assessed on levels {levels}. {c.reason}
+            </span>
+          )
+        )}
+      </div>
+      {c.project && (
+        <div className="mt-2 text-[12px] text-ink-500 dark:text-ink-400">
+          Project: <span className="font-mono">{c.project.code}</span>{" "}
+          {c.project.name} — {c.project.mark}% ({c.project.credits} credits)
+        </div>
+      )}
+      {c.caveats.length > 0 && (
+        <ul className="mt-2 space-y-1">
+          {c.caveats.map((n, i) => (
+            <li
+              key={i}
+              className="text-[11px] italic text-amber-700 dark:text-amber-300"
+            >
+              {n}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 /** "Level 2 — Semesters 3 & 4"; level 1 is semesters 1 & 2, level 2 is 3 & 4, … */
 function tLevelLabel(level: string): string {
   if (level === "unclassified") return "Level not recorded";
@@ -5333,22 +5410,29 @@ function TStat({
   );
 }
 
+/**
+ * A letter grade as CUR issues it — whole letters only. A "B+" reaching here
+ * from a stored `module_marks.grade` is folded to "B" rather than shown as a
+ * grade the institution does not award; the server does the same on its way
+ * out, so this is the second of two doors on the same rule.
+ */
 function TGradePill({ grade }: { grade: string }) {
+  const letter = normalizeGrade(grade) ?? grade;
   const tone =
-    grade === "A"
+    letter === "A"
       ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
-      : grade === "B"
+      : letter === "B"
         ? "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300"
-        : grade === "C"
+        : letter === "C"
           ? "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300"
-          : grade === "D"
+          : letter === "D"
             ? "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300"
             : "bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300";
   return (
     <span
       className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-bold ${tone}`}
     >
-      {grade}
+      {letter}
     </span>
   );
 }

@@ -29,6 +29,7 @@ import {
   CalendarDays,
   Package,
   Presentation,
+  LifeBuoy,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -47,6 +48,7 @@ import CategoryFilterSwitcher from "@/components/layout/CategoryFilterSwitcher";
 
 import Logo from "@/components/brand/Logo";
 import GlobalSearch from "@/components/layout/GlobalSearch";
+import HelpLauncher from "@/components/help/HelpLauncher";
 // import AiChatWidget from "@/components/layout/AiChatWidget"; // re-enable when ANTHROPIC_API_KEY is set
 import { useCurrentUser } from "@/hooks/useAuth";
 import { useSystemBasics } from "@/hooks/useSystemBasics";
@@ -803,6 +805,14 @@ const ADMIN_TREE: NavNode[] = [
     to: "/logs",
     permissions: [PERMISSIONS.VIEW_SYSTEM_LOGS],
   },
+  // Help Centre — no `permissions`, so it survives every role filter. A user
+  // who cannot reach the guides is exactly the user who needs them.
+  {
+    id: "help",
+    label: "Help & Guides",
+    icon: LifeBuoy,
+    to: "/help",
+  },
 ];
 
 const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
@@ -838,6 +848,15 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
     sub: "Track your submitted service requests",
   },
   "/logs": { title: "System logs", sub: "Audit trail across the platform" },
+  "/help": {
+    title: "Help Centre",
+    sub: "Step-by-step guides for every module",
+  },
+  "/help/search": { title: "Help Centre", sub: "Search the guides" },
+  "/help/glossary": {
+    title: "Glossary",
+    sub: "Every word the system uses, explained",
+  },
   "/gate": { title: "Gate Management", sub: "Student access verification — payment & registration" },
   "/students": {
     title: "Students",
@@ -1508,6 +1527,7 @@ export default function MainLayout() {
             </RoundIconBtn>
             <NotificationBell />
             <MessageNotificationBell />
+            <HelpLauncher />
             <UserDropdown />
           </div>
         </header>

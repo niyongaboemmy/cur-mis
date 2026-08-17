@@ -12,6 +12,7 @@ use App\Helpers\ValidationHelper;
 use App\Helpers\TranscriptPdf;
 use App\Helpers\GradingScale;
 use App\Services\AuthService;
+use App\Services\DegreeClassificationService;
 
 /**
  * Module marks controller.
@@ -1290,6 +1291,12 @@ class ModuleMarksController extends BaseController
             'decision'             => $decision,
             'passed'               => $passed,
             'failed'               => $failed,
+            // The degree class the regulations award, computed from the rows
+            // just loaded rather than from the average — see
+            // DegreeClassificationService::honours(). A year-filtered request
+            // holds only part of the record, so classifying it would report a
+            // class off an incomplete final year.
+            'classification'       => $yearId > 0 ? null : DegreeClassificationService::honours($rows),
         ];
 
         return [$rows, $totals, $student];

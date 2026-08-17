@@ -192,6 +192,40 @@ export interface MyMarksRow {
   updated_at:        string | null
 }
 
+/**
+ * The degree class the CUR regulations award, as computed by
+ * `DegreeClassificationService::honours()` — decided on the final-level
+ * modules, not on the cumulative average. Null when the request was filtered
+ * to one academic year, since a partial record cannot be classified.
+ */
+export interface HonoursClassification {
+  /** '1st' | '2i' | '2ii' | '3', or null when no class is awarded. */
+  code:               string | null
+  /** Roster vocabulary — 'First Class', 'Upper Second', … */
+  class:              string | null
+  /** Full printed wording, or 'Not classified'. */
+  label:              string
+  awarded:            boolean
+  /** Why no class was awarded — set only when `awarded` is false. */
+  reason:             string | null
+  /** What the record could not confirm (e.g. no Project module found). */
+  caveats:            string[]
+  /** Levels of study the assessment covered. */
+  levels:             number[]
+  modules:            number
+  credits:            number
+  /** Credits sitting at or above the awarded class's threshold. */
+  qualifying_credits: number
+  weighted_average:   number | null
+  lowest_mark:        number | null
+  project: {
+    code:    string
+    name:    string
+    mark:    number
+    credits: number
+  } | null
+}
+
 export interface MyMarksTotals {
   modules:               number
   total_credits:         number
@@ -203,6 +237,7 @@ export interface MyMarksTotals {
   decision:              'Promoted' | 'Repeat' | null
   passed:                number
   failed:                number
+  classification?:       HonoursClassification | null
 }
 
 export interface MyMarksResponse {
