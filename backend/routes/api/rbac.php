@@ -16,14 +16,25 @@ use App\Constants\Permissions;
 
 $router->group('/api', function ($router) {
     
-    // Role management
+    // Read-only role list — needed to populate the role dropdown on the User
+    // Management screen. Users with MANAGE_USERS (admin, hr_manager) can create
+    // accounts but do NOT have MANAGE_ROLES, so allow either permission here or
+    // their role dropdown comes back empty.
     $router->group('/roles', function ($router) {
         $router->get('', [RoleController::class, 'index']);
+    }, [new MaybePermissionMiddleware([
+        Permissions::MANAGE_ROLES,
+        Permissions::MANAGE_USERS,
+    ])]);
+
+    // Role management — all mutations (and single-role detail) stay locked to
+    // MANAGE_ROLES.
+    $router->group('/roles', function ($router) {
         $router->post('', [RoleController::class, 'create']);
         $router->get('/:id', [RoleController::class, 'show']);
         $router->post('/:id', [RoleController::class, 'update']);
         $router->delete('/:id', [RoleController::class, 'destroy']);
-        
+
         // Assign permissions to a role
         $router->post('/:id/permissions', [RoleController::class, 'assignPermissions']);
     }, [new PermissionMiddleware(Permissions::MANAGE_ROLES)]);

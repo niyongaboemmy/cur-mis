@@ -66,15 +66,15 @@ class GateManagementController extends BaseController
         // ── Student lookup ────────────────────────────────────────────────────
         $student = $this->db->fetchOne(
             "SELECT s.regnumber, s.fname, s.lname, s.email, s.phone,
-                    s.photo, s.status AS student_status,
+                    s.photo, s.student_state AS student_status,
                     o.name   AS program_name,
                     l.name   AS level_name,
                     ay.label AS academic_year_label, ay.id AS academic_year_id,
-                    t.id     AS term_id, t.name AS term_name
+                    t.id     AS term_id, t.label AS term_name
              FROM `student` s
-             LEFT JOIN `options`        o  ON o.id = s.option_id
-             LEFT JOIN `levels`         l  ON l.id = s.level_id
-             LEFT JOIN `academic_years` ay ON ay.id = (SELECT id FROM academic_years ORDER BY id DESC LIMIT 1)
+             LEFT JOIN `options`        o  ON o.id = s.std_option
+             LEFT JOIN `levels`         l  ON l.id = s.current_level
+             LEFT JOIN `academic_years` ay ON ay.id = (SELECT id FROM academic_years WHERE is_current = 1 LIMIT 1)
              LEFT JOIN `academic_terms` t  ON t.academic_year_id = ay.id AND t.is_current = 1
              WHERE s.regnumber = ?
                 OR s.regnumber LIKE ?
@@ -120,19 +120,17 @@ class GateManagementController extends BaseController
         if ($academicYearId) {
             $registration = $this->db->fetchOne(
                 "SELECT mr.id, mr.status, mr.registered_at,
-                        COUNT(mr2.id) AS modules_registered
+                        (SELECT COUNT(*) FROM `module_registrations` mr2
+                          WHERE mr2.student_regnumber = mr.student_regnumber
+                            AND mr2.academic_term_id IN (SELECT id FROM `academic_terms` WHERE academic_year_id = ?)
+                            AND mr2.status = 'registered') AS modules_registered
                  FROM `module_registrations` mr
-                 LEFT JOIN `module_registrations` mr2
-                       ON mr2.student_id = mr.student_id
-                      AND mr2.academic_year_id = mr.academic_year_id
-                      AND mr2.status IN ('registered', 'confirmed')
-                 WHERE mr.student_id        = ?
-                   AND mr.academic_year_id  = ?
-                   AND mr.status IN ('registered', 'confirmed')
-                 GROUP BY mr.id
+                 WHERE mr.student_regnumber = ?
+                   AND mr.academic_term_id IN (SELECT id FROM `academic_terms` WHERE academic_year_id = ?)
+                   AND mr.status = 'registered'
                  ORDER BY mr.registered_at DESC
                  LIMIT 1",
-                [$regNumber, $academicYearId]
+                [$academicYearId, $regNumber, $academicYearId]
             );
         }
 
@@ -290,14 +288,14 @@ class GateManagementController extends BaseController
         $regNumber = trim((string)$request->param('regnumber'));
 
         $student = $this->db->fetchOne(
-            "SELECT s.regnumber, s.fname, s.lname, s.email, s.photo, s.status AS student_status,
+            "SELECT s.regnumber, s.fname, s.lname, s.email, s.photo, s.student_state AS student_status,
                     o.name AS program_name, l.name AS level_name,
                     ay.label AS academic_year_label, ay.id AS academic_year_id,
                     t.id AS term_id
              FROM `student` s
-             LEFT JOIN `options`        o  ON o.id = s.option_id
-             LEFT JOIN `levels`         l  ON l.id = s.level_id
-             LEFT JOIN `academic_years` ay ON ay.id = (SELECT id FROM academic_years ORDER BY id DESC LIMIT 1)
+             LEFT JOIN `options`        o  ON o.id = s.std_option
+             LEFT JOIN `levels`         l  ON l.id = s.current_level
+             LEFT JOIN `academic_years` ay ON ay.id = (SELECT id FROM academic_years WHERE is_current = 1 LIMIT 1)
              LEFT JOIN `academic_terms` t  ON t.academic_year_id = ay.id AND t.is_current = 1
              WHERE s.regnumber = ?
              LIMIT 1",
@@ -320,8 +318,9 @@ class GateManagementController extends BaseController
 
         $registration = $academicYearId ? $this->db->fetchOne(
             "SELECT status, registered_at FROM `module_registrations`
-             WHERE student_id = ? AND academic_year_id = ?
-               AND status IN ('registered', 'confirmed')
+             WHERE student_regnumber = ?
+               AND academic_term_id IN (SELECT id FROM `academic_terms` WHERE academic_year_id = ?)
+               AND status = 'registered'
              ORDER BY registered_at DESC LIMIT 1",
             [$regNumber, $academicYearId]
         ) : null;

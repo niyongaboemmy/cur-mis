@@ -138,21 +138,31 @@ export default function UsersManagementPage() {
   const fetchData = useCallback(
     async (signal?: AbortSignal) => {
       setLoading(true);
-      try {
-        const [userRes, roleRes] = await Promise.all([
-          userService.getUsers(page, search, 15, signal, filters),
-          rbacService.getRoles(signal),
-        ]);
-        setUsers(userRes.data?.data || []);
-        setTotalPages(userRes.data?.last_page || 1);
-        setTotalUsers(userRes.data?.total || 0);
-        setRoles(roleRes.data || []);
-      } catch (error: any) {
-        if (error.name === "CanceledError" || error.name === "AbortError") return;
-        toast.error("Failed to load user management data");
-      } finally {
-        setLoading(false);
+      // Load users and roles independently so a failure in one never blanks the
+      // other. (A failed role fetch used to leave the "Assign role" dropdown
+      // empty and block user creation entirely.)
+      const [userRes, roleRes] = await Promise.allSettled([
+        userService.getUsers(page, search, 15, signal, filters),
+        rbacService.getRoles(signal),
+      ]);
+
+      const isCanceled = (e: any) => e?.name === "CanceledError" || e?.name === "AbortError";
+
+      if (userRes.status === "fulfilled") {
+        setUsers(userRes.value.data?.data || []);
+        setTotalPages(userRes.value.data?.last_page || 1);
+        setTotalUsers(userRes.value.data?.total || 0);
+      } else if (!isCanceled(userRes.reason)) {
+        toast.error("Failed to load users");
       }
+
+      if (roleRes.status === "fulfilled") {
+        setRoles(roleRes.value.data || []);
+      } else if (!isCanceled(roleRes.reason)) {
+        toast.error("Failed to load roles");
+      }
+
+      setLoading(false);
     },
     [page, search, filters],
   );

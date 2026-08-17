@@ -94,6 +94,7 @@ class AdmissionLetterPdf
             'dep_name'      => $data['department_name'] ?? '',
             'current_level' => $data['level_name']      ?? '',
             'intake'        => $data['intake']          ?? '',
+            'application_date' => $data['application_date'] ?? '',
             'program'       => $data['mode_of_study']   ?? 'Day',
             'acc_year'      => $data['academic_year']   ?? date('Y'),
             'regnumber'     => $data['application_number'] ?? '',
