@@ -35,6 +35,10 @@ class HrEmployeeController extends BaseController
             e.employee_status                                AS contract_type,
             e.account_status                                 AS status,
             e.employee_phone                                 AS phone,
+            -- Same alias the directory listing uses. Omitting it here meant a
+            -- single-employee fetch never returned an email, so the staff
+            -- detail view showed none even when one was stored.
+            e.employee_username                              AS email,
             e.employee_reg_date                              AS start_date,
             e.salary,
             e.employee_bank                                  AS bank,
@@ -218,11 +222,10 @@ class HrEmployeeController extends BaseController
             'employee_account'  => $data['bank_account']      ?? '',
             'employee_address'  => $data['address']           ?? '',
             'employee_age'      => $data['age']               ?? '',
-            'employee_username' => $data['username']          ?? '',
-            'employee_password' => '',
-            'employee_author'   => '',
-            'employee_photo'    => '',
-            'employe_qr'        => '',
+            // The staff directory reads this column as `email` and every client
+            // sends it under that name. Reading only `username` here meant the
+            // submitted address was thrown away before it ever reached the DB.
+            'employee_username' => trim((string)($data['email'] ?? $data['username'] ?? '')),
             'faculty'           => (int)($data['faculty']    ?? 0),
             'school_id'         => (int)($data['school_id']  ?? 0),
         ]);
@@ -256,6 +259,8 @@ class HrEmployeeController extends BaseController
             $this->error($response, 'Validation failed', 422, $errors);
         }
 
+        // find() returns the row through selectClause() aliases in show(), but
+        // here $row comes from the model, so it carries raw column names.
         $this->employeeModel->update($id, [
             'employee_fname'    => trim((string)($data['first_name']    ?? $row['employee_fname'])),
             'employee_lname'    => trim((string)($data['last_name']     ?? $row['employee_lname'])),
@@ -271,6 +276,13 @@ class HrEmployeeController extends BaseController
             'employee_bank'     => $data['bank']               ?? $row['employee_bank'],
             'employee_account'  => $data['bank_account']       ?? $row['employee_account'],
             'employee_address'  => $data['address']            ?? $row['employee_address'],
+            // Was omitted entirely, so re-entering a lost email and saving
+            // appeared to "delete it again" — the write simply never included
+            // the column. Keeps the stored value when the key isn't sent, so
+            // partial updates from other callers don't blank it.
+            'employee_username' => array_key_exists('email', $data)
+                ? trim((string)($data['email'] ?? ''))
+                : ($row['employee_username'] ?? null),
         ]);
 
         $this->success($response, null, 'Employee updated successfully.');

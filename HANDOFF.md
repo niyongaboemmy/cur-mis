@@ -74,5 +74,31 @@ Nothing outstanding for the 9 reported issues. If continuing: obtain the officia
 sector/cell/village dataset and populate `rwandaLocations.ts` to complete #2, and
 have an operator work through the environment list above.
 
+## Follow-up work (after the FIX.pdf batch)
+- **Profile picture removal** — no DELETE endpoint existed anywhere. Added four
+  (`/api/auth/me/photo`, `/api/students/me/photo`, `/api/students/:id/photo`,
+  `/api/applicant/profile/photo`) plus a Remove control beside every Change
+  control. Shared rules in `App\Helpers\PhotoRemover`.
+- **Staff email erased on create and edit** — three separate defects, all fixed:
+  1. `HrEmployeeModel::$fillable` omitted `employee_username` (the email column),
+     so `filterFillable()` silently discarded it on every write. It also dropped
+     `employee_idcard`, `employee_address`, `employee_age`, `school_id` and more.
+  2. `HrEmployeeController::create()` read `$data['username']`, but every client
+     sends the field as `email` — so the value was lost before the DB call.
+  3. `update()` never referenced the email column at all, which is why
+     re-entering a lost address and saving appeared to delete it again.
+  Also fixed `selectClause()` (used by `GET /api/employees/:id`), which omitted
+  the email, so the staff detail view showed none even when one was stored.
+  Credential columns (`employee_password`, `otp_code`, …) were deliberately left
+  out of `fillable` — they must never be mass-assignable.
+
+  **Not fixed / needs a decision:** staff created from the HR "Add Staff" form
+  still get no `users` row, so they cannot log in — that form collects no role or
+  password. The path that provisions a login is Users management
+  (`UserController::create`), which creates the account *and* the linked employee
+  via `createLinkedEmployee()`. 7 existing employees have a blank email and none
+  have a linked user account, so their addresses must be re-entered by hand
+  (they will now persist).
+
 ## Recently Completed
 - Fixed all 9 issues from `FIX.pdf` (student portal QA report).
