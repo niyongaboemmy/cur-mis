@@ -692,6 +692,14 @@ class LeaveApprovalService
                 // as when.
                 'actor_role'     => $decisions[$key]['actor_role'] ?? null,
                 'comment'        => $decisions[$key]['comment'] ?? null,
+                // The office ASSIGNED to this step, whether or not it has signed
+                // yet — so a step that has not been reached can still say who
+                // will sign it. `assigned_roles` is empty when nobody holds the
+                // permission, which is a step nobody can sign.
+                'assigned_roles' => array_column(
+                    NotificationService::rolesWithPermission((string) $stage['required_permission_slug']),
+                    'name'
+                ),
                 // Only the awaiting step has a running clock.
                 'hours_waiting'  => $isAwaiting ? (int) ($row['hours_at_stage'] ?? 0) : null,
                 'is_overdue'     => $isAwaiting && !empty($row['is_overdue']),

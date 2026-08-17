@@ -114,9 +114,10 @@ class LeaveApprovalController extends BaseController
         // needs to be able to say so rather than letting requests queue at an
         // empty office.
         $stages = array_map(function (array $stage): array {
-            $stage['holder_count'] = count(NotificationService::usersWithPermission(
-                (string) $stage['required_permission_slug']
-            ));
+            $slug = (string) $stage['required_permission_slug'];
+            // Which offices sign this step, and whether anyone is in them.
+            $stage['roles']        = NotificationService::rolesWithPermission($slug);
+            $stage['holder_count'] = count(NotificationService::usersWithPermission($slug));
             return $stage;
         }, $this->service->chainFor($typeId));
 
@@ -129,6 +130,15 @@ class LeaveApprovalController extends BaseController
                 LeaveApprovalService::STAGE_PERMISSIONS,
                 array_map(
                     static fn(string $slug): int => count(NotificationService::usersWithPermission($slug)),
+                    LeaveApprovalService::STAGE_PERMISSIONS
+                )
+            ),
+            // slug => the roles holding it, so the picker can name the office
+            // rather than only counting heads.
+            'permission_roles'            => array_combine(
+                LeaveApprovalService::STAGE_PERMISSIONS,
+                array_map(
+                    static fn(string $slug): array => NotificationService::rolesWithPermission($slug),
                     LeaveApprovalService::STAGE_PERMISSIONS
                 )
             ),

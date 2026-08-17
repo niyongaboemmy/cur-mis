@@ -97,6 +97,45 @@ class NotificationService
     }
 
     /**
+     * The roles that hold $permissionSlug, with how many active accounts each
+     * has.
+     *
+     * This is the link that binds a chain stage to an office: a stage names a
+     * permission, and these are the roles that can therefore sign it. Superadmin
+     * is excluded — it holds everything implicitly and naming it here would make
+     * every step look staffed.
+     *
+     * @return array<int,array{name:string,users:int}>
+     */
+    public static function rolesWithPermission(string $permissionSlug): array
+    {
+        try {
+            $rows = Database::getInstance()->fetchAll(
+                "SELECT r.name,
+                        (SELECT COUNT(*) FROM users u
+                          WHERE u.role_id = r.id AND u.is_active = 1) AS users
+                 FROM roles r
+                 JOIN role_permissions rp ON rp.role_id = r.id
+                 JOIN permissions p       ON p.id = rp.permission_id
+                 WHERE p.slug = ? AND r.name <> 'superadmin'
+                 ORDER BY r.name ASC",
+                [$permissionSlug]
+            );
+        } catch (\Throwable $e) {
+            error_log('[NotificationService] role lookup failed: ' . $e->getMessage());
+            return [];
+        }
+
+        return array_map(
+            static fn(array $r): array => [
+                'name'  => (string) $r['name'],
+                'users' => (int) $r['users'],
+            ],
+            $rows
+        );
+    }
+
+    /**
      * Active user ids holding $permissionSlug. Permissions come from the role —
      * there is no per-user override table.
      *

@@ -46,6 +46,21 @@ class LeaveRequestModel extends BaseModel
           stg.is_final_approval AS current_stage_is_final,
           stg.sla_hours        AS current_stage_sla_hours,
           (SELECT COUNT(*) FROM leave_approval_stages s2 WHERE s2.leave_type_id = lr.leave_type_id) AS total_stages,
+          -- Where the request goes next if the current stage is approved, and
+          -- which office signs there. A reviewer about to approve should be able
+          -- to see who they are handing it to, not merely that there is one.
+          nxt.stage_label      AS next_stage_label,
+          (SELECT GROUP_CONCAT(DISTINCT r2.name ORDER BY r2.name SEPARATOR ', ')
+             FROM permissions p2
+             JOIN role_permissions rp2 ON rp2.permission_id = p2.id
+             JOIN roles r2             ON r2.id = rp2.role_id AND r2.name <> 'superadmin'
+            WHERE p2.slug = nxt.required_permission_slug) AS next_stage_roles,
+          -- The office signing the CURRENT stage, for the same reason.
+          (SELECT GROUP_CONCAT(DISTINCT r3.name ORDER BY r3.name SEPARATOR ', ')
+             FROM permissions p3
+             JOIN role_permissions rp3 ON rp3.permission_id = p3.id
+             JOIN roles r3             ON r3.id = rp3.role_id AND r3.name <> 'superadmin'
+            WHERE p3.slug = stg.required_permission_slug) AS current_stage_roles,
           -- When the request arrived at the stage it is sitting at: the most
           -- recent audit event (submitted / approved-onward / resubmitted), or
           -- creation time for a row that predates the audit trail.
@@ -79,6 +94,12 @@ class LeaveRequestModel extends BaseModel
         LEFT JOIN leave_approval_stages stg
                ON stg.leave_type_id = lr.leave_type_id
               AND stg.stage_order   = lr.current_stage_order
+        -- The next stage in the chain. LEFT JOIN, so it is simply NULL when the
+        -- current stage is the last one — which is exactly what a final
+        -- approval should report.
+        LEFT JOIN leave_approval_stages nxt
+               ON nxt.leave_type_id = lr.leave_type_id
+              AND nxt.stage_order   = lr.current_stage_order + 1
     ";
 
     /** The shared projection with a caller-supplied WHERE/ORDER/LIMIT tail. */

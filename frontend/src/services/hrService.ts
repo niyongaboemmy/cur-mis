@@ -672,6 +672,11 @@ export interface LeaveProgressStep {
   actor:         string | null
   /** The office that signed, e.g. "VC" / "HR" / "DAF". */
   actor_role:    string | null
+  /**
+   * The role(s) assigned to sign this step, whether or not it has been reached.
+   * Empty means nobody holds the step's permission — a step nobody can sign.
+   */
+  assigned_roles?: string[]
   comment?:      string | null
   /** Set only on the step currently awaiting a decision. */
   hours_waiting?: number | null
@@ -720,6 +725,13 @@ interface LeaveStageFields {
   current_stage_is_final:   number | boolean | null
   /** Hours this stage is allowed to take, or null when it has no clock. */
   current_stage_sla_hours:  number | null
+  /**
+   * The stage this request moves to if the current one is approved, and the
+   * role(s) that sign it — null when the current stage is the final approval.
+   * Lets a reviewer see who they are handing the request to before signing.
+   */
+  next_stage_label:         string | null
+  next_stage_roles:         string | null
   total_stages:             number
   /** When the request arrived at the stage it is sitting at. */
   stage_entered_at:         string
