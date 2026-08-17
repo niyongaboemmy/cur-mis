@@ -36,6 +36,31 @@ class NotificationController extends BaseController
     }
 
     /**
+     * An empty feed for a caller we can't address notifications to.
+     *
+     * AuthMiddleware has already proven the token is valid, so the request IS
+     * authenticated — answering 401 here would be factually wrong, and because
+     * the frontend treats any 401 as an expired session, it logged the user
+     * straight back out. That is exactly what happened to accounts carrying
+     * id 0 (a row created while the users table was missing AUTO_INCREMENT):
+     * a valid session was destroyed by a background poll.
+     *
+     * There is nothing to show and nothing to leak, so return an empty feed and
+     * record the anomaly server-side where it can actually be acted on.
+     */
+    private function emptyFeed(Request $request, Response $response): never
+    {
+        $user = (array)($request->param('_auth_user') ?? []);
+        error_log(sprintf(
+            '[Notifications] authenticated token carries a non-positive user id (%s, email=%s) — returning an empty feed.',
+            var_export($user['id'] ?? null, true),
+            (string)($user['email'] ?? 'unknown')
+        ));
+
+        $this->success($response, ['total' => 0, 'recent' => []], 'Notifications retrieved.');
+    }
+
+    /**
      * GET /api/notifications
      * Recent notifications for the current user plus the unread count.
      *
@@ -47,7 +72,7 @@ class NotificationController extends BaseController
     {
         $userId = $this->authUserId($request);
         if ($userId <= 0) {
-            $this->error($response, 'Unauthorized.', 401);
+            $this->emptyFeed($request, $response);
         }
 
         $limit = (int)($request->query('limit') ?? 10);
@@ -89,7 +114,9 @@ class NotificationController extends BaseController
     {
         $userId = $this->authUserId($request);
         if ($userId <= 0) {
-            $this->error($response, 'Unauthorized.', 401);
+            // Nothing is addressable to this caller, so nothing can be marked
+            // read. Not a 401 — see emptyFeed().
+            $this->success($response, null, 'No change.');
         }
 
         $id = (int)$request->param('id');
@@ -118,7 +145,7 @@ class NotificationController extends BaseController
     {
         $userId = $this->authUserId($request);
         if ($userId <= 0) {
-            $this->error($response, 'Unauthorized.', 401);
+            $this->success($response, ['updated' => 0], 'No change.');
         }
 
         $affected = $this->db->execute(

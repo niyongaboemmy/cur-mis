@@ -29,12 +29,21 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
-    const isAuthPath = error.config?.url?.includes('/auth/login') || 
+    const isAuthPath = error.config?.url?.includes('/auth/login') ||
                        error.config?.url?.includes('/auth/verify-otp') ||
                        error.config?.url?.includes('/auth/verify-reset-otp') ||
                        error.config?.url?.includes('/auth/me'); // Don't reload on first /me failure
 
-    if (error.response?.status === 401 && !isAuthPath) {
+    // Background pollers must never be able to end a session. They fire on
+    // their own schedule, including during the render right after login, so a
+    // single unlucky 401 from one of them would sign the user out of a session
+    // that is otherwise perfectly valid — which is exactly what the header
+    // notification poll did. A real 401 on anything the user actually asked
+    // for still logs out normally.
+    const isBackgroundPoll = error.config?.url?.includes('/api/notifications') ||
+                             error.config?.url?.includes('/messages/unread-count');
+
+    if (error.response?.status === 401 && !isAuthPath && !isBackgroundPoll) {
       useAuthStore.getState().logout()
       const base      = (import.meta.env.VITE_BASE_PATH ?? '').replace(/\/$/, '')
       const loginPath = `${base}/login`
