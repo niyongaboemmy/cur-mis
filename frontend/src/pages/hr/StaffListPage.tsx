@@ -42,6 +42,31 @@ const PER_PAGE = 15
 
 type Tab = 'active' | 'all'
 
+/**
+ * Report the outcome of saving a staff member, including what happened to
+ * their login account.
+ *
+ * Saving the staff record and provisioning the login are two different things,
+ * and the second can legitimately not happen (no email given) or fail. A flat
+ * success toast made every case look identical, so an admin had no way to tell
+ * that the person they just added still could not sign in.
+ */
+function notifyAccountOutcome(res: any, fallback: string) {
+  const status  = res?.data?.account?.status
+  const message = res?.message || fallback
+
+  if (status === 'failed') {
+    // Saved, but the account did not happen — that needs attention, not a tick.
+    toast.error(message, { duration: 8000 })
+    return
+  }
+  if (status === 'created' || status === 'skipped') {
+    toast.success(message, { duration: 7000 })
+    return
+  }
+  toast.success(message)
+}
+
 export default function StaffListPage() {
   const [sp, setSp] = useSearchParams()
   const tab = (sp.get('tab') as Tab) || 'active'
@@ -643,8 +668,8 @@ function EditStaffModal({ employee, onClose, onSaved }: { employee: HrEmployee; 
       phone:    form.phone   || null,
       email:    form.email   || null,
     } as any),
-    onSuccess: () => {
-      toast.success('Staff updated.')
+    onSuccess: (res: any) => {
+      notifyAccountOutcome(res, 'Staff updated.')
       qc.invalidateQueries({ queryKey: ['hr-employees'] })
       qc.invalidateQueries({ queryKey: ['hr-stats'] })
       onSaved()
@@ -754,8 +779,11 @@ function AddStaffModal({ onClose, onSaved }: { onClose: () => void; onSaved: () 
 
   const mutation = useMutation({
     mutationFn: (payload: HrEmployeePayload) => hrService.createEmployee(payload),
-    onSuccess: () => {
-      toast.success('Staff member added')
+    onSuccess: (res: any) => {
+      // Show what the server actually reported. It says whether a login
+      // account was created, linked, or skipped — a flat "Staff member added"
+      // hid the fact that the person still could not sign in.
+      notifyAccountOutcome(res, 'Staff member added')
       qc.invalidateQueries({ queryKey: ['hr-employees'] })
       qc.invalidateQueries({ queryKey: ['hr-stats'] })
       onSaved()

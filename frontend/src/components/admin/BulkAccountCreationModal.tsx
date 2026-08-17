@@ -43,6 +43,10 @@ type Step = "select" | "preview" | "done";
 
 const TABLE_OPTIONS = [
   { value: "student", label: "Students", description: "Active enrolled students" },
+  // The HR staff directory (/hr/staff). This is where staff added through
+  // "Add new staff" live; the two options below read different, much smaller
+  // legacy tables, so neither could give those staff a login.
+  { value: "employees", label: "HR Staff Directory", description: "Staff with an email but no login account — created as Guest, raise the role afterwards" },
   { value: "staff", label: "Staff / Lecturers", description: "Active staff members" },
   { value: "hr_employees", label: "HR Employees", description: "Active employees with staff link" },
 ];
