@@ -1143,8 +1143,8 @@ class ModuleMarksController extends BaseController
         if ($reg === '') $this->error($response, 'regnumber required', 422);
         $this->ensureCanReadStudent($request, $response, $reg);
 
-        [$rows, $totals, $student] = $this->loadTranscriptRows($reg, $request);
-        $html = TranscriptPdf::buildHtml($student, $rows, $totals);
+        [$rows, , $student] = $this->loadTranscriptRows($reg, $request);
+        $html = TranscriptPdf::buildHtml($student, $rows);
         TranscriptPdf::stream($html, "transcript-{$reg}.pdf");
     }
 
@@ -1180,8 +1180,8 @@ class ModuleMarksController extends BaseController
         $reg = $this->authStudentRegnumber($request);
         if (!$reg) $this->error($response, 'No student profile linked to this account.', 404);
 
-        [$rows, $totals, $student] = $this->loadTranscriptRows($reg, $request);
-        $html = TranscriptPdf::buildHtml($student, $rows, $totals);
+        [$rows, , $student] = $this->loadTranscriptRows($reg, $request);
+        $html = TranscriptPdf::buildHtml($student, $rows);
         TranscriptPdf::stream($html, "transcript-{$reg}.pdf");
     }
 
@@ -1197,10 +1197,12 @@ class ModuleMarksController extends BaseController
         $student = $this->db->fetchOne(
             "SELECT s.regnumber, s.fname, s.lname, s.email, s.current_level, s.faculty, s.department, s.std_option,
                     f.fac_name, f.fac_code,
-                    d.dep_name, d.dep_acronym
+                    d.dep_name, d.dep_acronym,
+                    o.name AS option_name, o.acro AS option_acro
              FROM `student` s
              LEFT JOIN `faculty`      f ON CAST(f.fac_id AS CHAR) COLLATE utf8mb4_unicode_ci = s.faculty COLLATE utf8mb4_unicode_ci
              LEFT JOIN `departements` d ON CAST(d.dep_id AS CHAR) COLLATE utf8mb4_unicode_ci = s.department COLLATE utf8mb4_unicode_ci
+             LEFT JOIN `options`      o ON CAST(o.id AS CHAR) COLLATE utf8mb4_unicode_ci = s.std_option COLLATE utf8mb4_unicode_ci
              WHERE s.regnumber = ? LIMIT 1",
             [$reg]
         ) ?: ['regnumber' => $reg];
@@ -1224,7 +1226,14 @@ class ModuleMarksController extends BaseController
                     mm.cat_max, mm.assignment_max, mm.exam_max,
                     mm.total, mm.percentage, mm.grade, mm.remarks, mm.updated_at,
                     mm.is_exempted, mm.exemption_reason,
-                    m.module_code, m.module_name, m.module_credits, m.level,
+                    -- A mark can outlive its module (deleted, or never imported).
+                    -- Labelling the orphan puts it in front of the registry to
+                    -- fix; a blank row on a signed transcript just looks broken,
+                    -- and dropping it would quietly shorten the record. Same
+                    -- treatment as the coverage view.
+                    COALESCE(m.module_code, CONCAT('MODULE-', mm.module_id)) AS module_code,
+                    COALESCE(m.module_name, 'Unknown module (not in catalogue)') AS module_name,
+                    m.module_credits, m.level,
                     t.id AS academic_term_id, t.label AS term_label, t.academic_year_id,
                     y.label AS year_label
              FROM module_marks mm
@@ -1235,6 +1244,11 @@ class ModuleMarksController extends BaseController
              ORDER BY y.start_date ASC, t.start_date ASC, m.module_code ASC",
             $args
         );
+
+        // Collapse the catalogue's duplicate module rows before anything is
+        // counted — otherwise the same module is both listed twice and counted
+        // twice in the totals below.
+        $rows = $this->dedupeTranscriptRows($rows);
 
         // Compute per-module credit_point = credits × marks/100 weighted equivalent.
         // The transcript model uses MARKS/100 directly (so percentage is the mark).
@@ -1255,7 +1269,7 @@ class ModuleMarksController extends BaseController
             if ($pct !== null) {
                 $totalCredits      += $credits;
                 $totalCreditPoints += $credits * $pct;
-                if ($pct >= 50) $passed++; else $failed++;
+                if ($pct >= GradingScale::PASS_MARK) $passed++; else $failed++;
             }
         }
         unset($r);
@@ -1263,7 +1277,7 @@ class ModuleMarksController extends BaseController
         $weightedAvg = $totalCredits > 0 ? round($totalCreditPoints / $totalCredits, 2) : null;
         $overallGrade = $weightedAvg !== null ? $this->gradeFor($weightedAvg) : null;
         $decision = $weightedAvg === null ? null
-            : (($failed === 0 && $weightedAvg >= 50) ? 'Promoted' : 'Repeat');
+            : (($failed === 0 && $weightedAvg >= GradingScale::PASS_MARK) ? 'Promoted' : 'Repeat');
 
         $totals = [
             'modules'              => count($rows),
@@ -1279,6 +1293,71 @@ class ModuleMarksController extends BaseController
         ];
 
         return [$rows, $totals, $student];
+    }
+
+    /**
+     * Collapse catalogue twins so a module appears once per level.
+     *
+     * `modules.module_code` is dirty from the legacy import: the same module
+     * exists several times under codes that differ only by a trailing tab or
+     * stray space ("CCU8113\t" vs "CCU8113 "), each with its own `module_id`.
+     * `mm.superseded` only resolves rows that share a module_id, so both twins
+     * reach the transcript and the student reads "Social Doctirne of the
+     * Church" directly above "Social Doctrine of the Church" — and, worse, is
+     * credited twice for one module in `total_credits` and the weighted
+     * average.
+     *
+     * The key is the whitespace-stripped code AND the level, because a code
+     * genuinely can cover two different modules across levels: EDU8123 is
+     * "Theories and practices of teaching and learning" at level 1 and
+     * "Guidance, Counseling and Inclusive Education" at level 2. Keying on the
+     * code alone would silently drop one of them.
+     *
+     * @param  array<int,array<string,mixed>> $rows
+     * @return array<int,array<string,mixed>>
+     */
+    private function dedupeTranscriptRows(array $rows): array
+    {
+        $best = [];
+        foreach ($rows as $r) {
+            $raw = (string)($r['module_code'] ?? '');
+            // Codes reach the UI with the import's tabs and double spaces still
+            // in them ("ENGS  1321"); tidy them once, here, so every consumer
+            // shows the same string.
+            $r['module_code'] = trim((string)preg_replace('/\s+/', ' ', $raw));
+
+            $key = strtoupper((string)preg_replace('/\s+/', '', $raw))
+                 . '|' . (string)($r['level'] ?? '');
+            // A row with no code is not a duplicate of the next codeless row —
+            // keep those apart by module_id rather than merging them all.
+            if ($r['module_code'] === '') {
+                $key .= '|' . (string)($r['module_id'] ?? $r['id'] ?? '');
+            }
+
+            if (!isset($best[$key]) || $this->transcriptRowWins($r, $best[$key])) {
+                $best[$key] = $r;
+            }
+        }
+        return array_values($best);
+    }
+
+    /**
+     * Which of two rows for the same module survives: a marked row always beats
+     * an unmarked one, then the newest wins — the same rule the mark sheet uses
+     * for this collision.
+     */
+    private function transcriptRowWins(array $candidate, array $incumbent): bool
+    {
+        $hasMark = static fn(array $r): bool => ($r['percentage'] ?? null) !== null;
+        if ($hasMark($candidate) !== $hasMark($incumbent)) {
+            return $hasMark($candidate);
+        }
+
+        $stamp = static fn(array $r): string => (string)($r['updated_at'] ?? '');
+        if ($stamp($candidate) !== $stamp($incumbent)) {
+            return $stamp($candidate) > $stamp($incumbent);
+        }
+        return (int)($candidate['id'] ?? 0) > (int)($incumbent['id'] ?? 0);
     }
 
     /** The band's own description ('Distinction', 'Credit', …) — no longer a

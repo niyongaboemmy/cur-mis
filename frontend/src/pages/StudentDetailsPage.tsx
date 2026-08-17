@@ -5081,12 +5081,22 @@ function TranscriptTab({ student }: { student: any }) {
     );
   }
 
-  const byYear = new Map<string, MyMarksRow[]>();
+  // Grouped by level of study, the way the printed transcript is issued — one
+  // sheet per level, each with its own totals. Grouping by academic year put
+  // every legacy-imported mark under a single "Legacy" heading, which told the
+  // reader nothing and matched no document the registry hands out.
+  const byLevel = new Map<string, MyMarksRow[]>();
   for (const r of rows) {
-    const k = r.year_label ?? "—";
-    if (!byYear.has(k)) byYear.set(k, []);
-    byYear.get(k)!.push(r);
+    const k =
+      r.level === null || r.level === undefined || r.level === ""
+        ? "unclassified"
+        : String(Number(r.level));
+    if (!byLevel.has(k)) byLevel.set(k, []);
+    byLevel.get(k)!.push(r);
   }
+  const levels = Array.from(byLevel.entries()).sort(([a], [b]) =>
+    a === "unclassified" ? 1 : b === "unclassified" ? -1 : Number(a) - Number(b),
+  );
 
   return (
     <div className="space-y-4">
@@ -5172,11 +5182,16 @@ function TranscriptTab({ student }: { student: any }) {
         </div>
       )}
 
-      {/* Per-year tables */}
-      {Array.from(byYear.entries()).map(([year, list]) => (
-        <div key={year} className="card overflow-hidden">
-          <div className="px-4 py-2 border-b border-ink-100 dark:border-ink-700 bg-ink-50 dark:bg-ink-800/40 text-[12px] font-semibold text-ink-700 dark:text-ink-200">
-            Academic year: <span className="font-mono">{year}</span>
+      {/* One block per level — the same split the PDF prints as separate sheets */}
+      {levels.map(([level, list]) => (
+        <div key={level} className="card overflow-hidden">
+          <div className="px-4 py-2 border-b border-ink-100 dark:border-ink-700 bg-ink-50 dark:bg-ink-800/40 flex items-center justify-between gap-3">
+            <span className="text-[12px] font-semibold text-ink-700 dark:text-ink-200">
+              {tLevelLabel(level)}
+            </span>
+            <span className="text-[11px] text-ink-500 dark:text-ink-400">
+              {tLevelSummary(list)}
+            </span>
           </div>
           <table className="w-full text-left text-[13px]">
             <thead>
@@ -5255,6 +5270,29 @@ function TranscriptTab({ student }: { student: any }) {
       ))}
     </div>
   );
+}
+
+/** "Level 2 — Semesters 3 & 4"; level 1 is semesters 1 & 2, level 2 is 3 & 4, … */
+function tLevelLabel(level: string): string {
+  if (level === "unclassified") return "Level not recorded";
+  const n = Number(level);
+  return `Level ${n} — Semesters ${n * 2 - 1} & ${n * 2}`;
+}
+
+/** Credits and weighted average for one level, matching the PDF's TOTAL row. */
+function tLevelSummary(list: MyMarksRow[]): string {
+  let credits = 0;
+  let points = 0;
+  for (const r of list) {
+    if (r.percentage === null || r.percentage === undefined) continue;
+    const c = Number(r.module_credits) || 0;
+    credits += c;
+    points += c * Number(r.percentage);
+  }
+  const avg = credits > 0 ? (points / credits).toFixed(2) : null;
+  return `${list.length} module${list.length === 1 ? "" : "s"} · ${credits} credits${
+    avg !== null ? ` · ${avg}%` : ""
+  }`;
 }
 
 function TStat({
