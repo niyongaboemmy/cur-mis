@@ -803,6 +803,14 @@ export interface MobilePaymentRecord {
   created_at:         string
   invoice_number:     string | null
   fee_type:           string | null
+  /** UrubutoPay service the payer selected, e.g. "retake-5953" (migration 133). */
+  service_code:       string | null
+  /** Human-readable name of that service, e.g. "Retake". Null for pre-catalogue records. */
+  service_name:       string | null
+  /** The published fee structure this payment was priced against. */
+  fee_structure_id:    number | null
+  /** That structure's label, e.g. "CURSU Fee 2025/2026". Null when not centrally priced. */
+  fee_structure_label: string | null
 }
 
 // ─── Payment Calendar ─────────────────────────────────────────────────────────

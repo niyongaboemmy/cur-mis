@@ -393,20 +393,25 @@ class FinesController extends BaseController
                 if ($emailSent) $emailsSent++;
             }
 
-            // Push system notification (look up user by student email/regnumber)
+            // Push system notification (look up user by student email/regnumber).
+            // Routed through NotificationService so it carries the title,
+            // severity and deep-link target the notification centre renders.
             if (in_array($channel, ['system', 'both'], true)) {
                 $user = $this->db->fetchOne(
                     "SELECT id FROM `users` WHERE email = ? LIMIT 1",
                     [$invoice['student_email'] ?? '']
                 );
                 if ($user) {
-                    $this->db->execute(
-                        "INSERT INTO `notifications` (user_id, type, message, link, is_read, created_at)
-                         VALUES (?, 'FEE_OVERDUE', ?, '/my-finance', 0, NOW())",
-                        [
-                            (int)$user['id'],
-                            "Fee overdue: Invoice {$invoice['invoice_number']} — balance " . number_format($balance, 0) . " RWF",
-                        ]
+                    \App\Services\NotificationService::push(
+                        (int) $user['id'],
+                        'FEE_OVERDUE',
+                        'Fee payment overdue',
+                        "Invoice {$invoice['invoice_number']} — outstanding balance "
+                            . number_format($balance, 0) . ' RWF.',
+                        '/my-finance',
+                        'fee_invoice',
+                        (int) $invoice['id'],
+                        $alertLevel === 'final' ? 'danger' : 'warning'
                     );
                 }
             }

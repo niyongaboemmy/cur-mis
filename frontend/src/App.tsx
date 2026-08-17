@@ -38,6 +38,8 @@ import PaymentsPage from "@/pages/hr/PaymentsPage";
 import HrSettingsPage from "@/pages/hr/HrSettingsPage";
 import LeavePage from "@/pages/hr/LeavePage";
 import MyLeavePage from "@/pages/hr/MyLeavePage";
+import LeaveApprovalQueuePage from "@/pages/hr/LeaveApprovalQueuePage";
+import NotificationsPage from "@/pages/NotificationsPage";
 import AppraisalPage from "@/pages/hr/AppraisalPage";
 
 // Academic
@@ -342,6 +344,28 @@ function App() {
                 <Route path="/hr/leave" element={<LeavePage />} />
               </Route>
 
+              {/* ── Leave approvals — the reviewer's own stage queue. Gated on
+                  holding ANY leave stage permission, so a HOD who cannot see
+                  the whole HR leave register can still decide what is parked
+                  with them. ── */}
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={[
+                      PERMISSIONS.APPROVE_LEAVE_L1,
+                      PERMISSIONS.APPROVE_LEAVE_L2,
+                      PERMISSIONS.APPROVE_LEAVE_FINAL,
+                      PERMISSIONS.MANAGE_LEAVE_REQUESTS,
+                    ]}
+                  />
+                }
+              >
+                <Route
+                  path="/hr/leave/approvals"
+                  element={<LeaveApprovalQueuePage />}
+                />
+              </Route>
+
               {/* ── HR Management — manage only ── */}
               <Route
                 element={
@@ -352,6 +376,10 @@ function App() {
               >
                 <Route path="/hr/settings" element={<HrSettingsPage />} />
               </Route>
+
+              {/* ── Notification centre — self-scoped, so authentication is
+                  the only gate; no permission grants access to anyone else's. ── */}
+              <Route path="/notifications" element={<NotificationsPage />} />
 
               {/* ── Staff self-service: leave ── */}
               <Route

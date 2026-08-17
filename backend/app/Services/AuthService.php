@@ -32,7 +32,11 @@ class AuthService
         $model = new UserModel();
         $user  = $model->findBy('email', $email);
 
-        if (!$user || !password_verify($password, $user['password'])) {
+        // A row can carry a NULL/empty password (imported or invite-pending
+        // accounts) — password_verify() would fatal on a null hash, so treat
+        // those as simply not having a usable credential.
+        $hash = $user['password'] ?? null;
+        if (!$user || !is_string($hash) || $hash === '' || !password_verify($password, $hash)) {
             return ['success' => false, 'message' => 'Invalid credentials.', 'data' => null];
         }
 
@@ -521,11 +525,16 @@ class AuthService
             return ['success' => false, 'message' => 'User not found.', 'code' => 404];
         }
 
-        if (!password_verify($currentPassword, $user['password'])) {
+        $hash = $user['password'] ?? null;
+        if (!is_string($hash) || $hash === '') {
+            return ['success' => false, 'message' => 'This account has no password set. Use the password reset flow instead.', 'code' => 400];
+        }
+
+        if (!password_verify($currentPassword, $hash)) {
             return ['success' => false, 'message' => 'Current password is incorrect.', 'code' => 400];
         }
 
-        if (password_verify($newPassword, $user['password'])) {
+        if (password_verify($newPassword, $hash)) {
             return ['success' => false, 'message' => 'New password must be different from the current one.', 'code' => 400];
         }
 

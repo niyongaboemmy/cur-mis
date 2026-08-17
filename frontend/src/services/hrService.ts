@@ -497,11 +497,24 @@ export const hrService = {
   createLeaveType: (data: LeaveTypePayload) =>
     api.post<LeaveType>('/api/hr/leave/types', data),
 
+  // POST, not PUT — the backend registers this route as POST /types/:id.
   updateLeaveType: (id: number, data: LeaveTypePayload) =>
-    api.put<LeaveType>(`/api/hr/leave/types/${id}`, data),
+    api.post<LeaveType>(`/api/hr/leave/types/${id}`, data),
 
   deleteLeaveType: (id: number) =>
     api.delete<void>(`/api/hr/leave/types/${id}`),
+
+  /* ── Approval chain configuration (per leave type) ─────────────────── */
+
+  leaveApprovalChain: (leaveTypeId: number, signal?: AbortSignal) =>
+    api.get<LeaveApprovalChain>(`/api/hr/leave/types/${leaveTypeId}/stages`, {}, signal),
+
+  /** Every leave type with its chain, for the chain editor's type picker. */
+  leaveTypesWithChains: (signal?: AbortSignal) =>
+    api.get<LeaveType[]>('/api/hr/leave/types', {}, signal),
+
+  saveLeaveApprovalChain: (leaveTypeId: number, stages: LeaveApprovalStagePayload[]) =>
+    api.post<LeaveApprovalStage[]>(`/api/hr/leave/types/${leaveTypeId}/stages`, { stages }),
 
   leaveRequests: (params: LeaveRequestParams = {}, signal?: AbortSignal) =>
     api.get<PaginatedResponse<LeaveRequest>>('/api/hr/leave/requests', params as Record<string, unknown>, signal),
@@ -512,14 +525,35 @@ export const hrService = {
   submitLeaveRequest: (data: LeaveRequestPayload) =>
     api.post<LeaveRequest>('/api/hr/leave/requests', data),
 
+  /* ── Stage decisions ────────────────────────────────────────────────
+     Every one of these advances the request through its configured approval
+     chain — an approval at a non-final stage hands it to the next reviewer
+     rather than granting the leave. */
+
   approveLeave: (id: number, comment?: string) =>
-    api.patch<void>(`/api/hr/leave/requests/${id}/approve`, { comment: comment ?? '' }),
+    api.post<LeaveRequest>(`/api/hr/leave/requests/${id}/approve`, { comment: comment ?? '' }),
 
   rejectLeave: (id: number, comment: string) =>
-    api.patch<void>(`/api/hr/leave/requests/${id}/reject`, { comment }),
+    api.post<LeaveRequest>(`/api/hr/leave/requests/${id}/reject`, { comment }),
 
+  requestLeaveChanges: (id: number, comment: string) =>
+    api.post<LeaveRequest>(`/api/hr/leave/requests/${id}/request-changes`, { comment }),
+
+  // DELETE carries no body, so the audit trail records who cancelled and when
+  // but no free-text reason. An API client can POST one; the UI does not.
   cancelLeave: (id: number) =>
-    api.delete<void>(`/api/hr/leave/requests/${id}`),
+    api.delete<LeaveRequest>(`/api/hr/leave/requests/${id}`),
+
+  leaveRequestProgress: (id: number, signal?: AbortSignal) =>
+    api.get<LeaveProgress>(`/api/hr/leave/requests/${id}/progress`, {}, signal),
+
+  /* ── Reviewer queue — only what is parked at a stage you can decide ── */
+
+  leaveApprovalQueue: (signal?: AbortSignal) =>
+    api.get<LeaveRequest[]>('/api/hr/leave/approvals/queue', {}, signal),
+
+  decideLeave: (id: number, decision: LeaveDecision, comment?: string) =>
+    api.post<LeaveRequest>(`/api/hr/leave/approvals/${id}/decide`, { decision, comment: comment ?? '' }),
 
   leaveBalances: (params: LeaveBalanceParams = {}, signal?: AbortSignal) =>
     api.get<LeaveBalance[]>('/api/hr/leave/balances', params as Record<string, unknown>, signal),
@@ -535,8 +569,14 @@ export const hrService = {
   submitMyLeaveRequest: (data: MyLeaveRequestPayload) =>
     api.post<MyLeaveRequest>('/api/hr/leave/my-requests', data),
 
+  resubmitMyLeaveRequest: (id: number, data: MyLeaveRequestResubmitPayload) =>
+    api.post<MyLeaveRequest>(`/api/hr/leave/my-requests/${id}/resubmit`, data),
+
   cancelMyLeaveRequest: (id: number) =>
     api.delete<void>(`/api/hr/leave/my-requests/${id}`),
+
+  myLeaveRequestProgress: (id: number, signal?: AbortSignal) =>
+    api.get<LeaveProgress>(`/api/hr/leave/my-requests/${id}/progress`, {}, signal),
 }
 
 /* ── Leave types ────────────────────────────────────────────────────────── */
@@ -550,6 +590,45 @@ export interface LeaveType {
   color:        string
   is_active:    number | boolean
   created_at?:  string
+  /** How many approval stages this type's chain has. 0 ⇒ the implicit fallback. */
+  stage_count?: number
+}
+
+/* ── Approval chain ─────────────────────────────────────────────────────────
+   The chain is configuration, not code: each stage names the permission slug
+   an approver must hold, and exactly one stage — the last — grants the leave.
+   Mirrors the service-request platform's `service_catalog_stages`. */
+
+export interface LeaveApprovalStage {
+  id?:                       number
+  leave_type_id:             number
+  stage_order:               number
+  stage_key:                 string
+  stage_label:               string
+  required_permission_slug:  string
+  is_final_approval:         number | boolean
+  sla_hours:                 number | null
+  /**
+   * Active accounts that can actually sign this stage. 0 means the chain cannot
+   * complete — requests will queue at an office with nobody in it.
+   */
+  holder_count?:             number
+}
+
+export interface LeaveApprovalStagePayload {
+  stage_key:                string
+  stage_label:              string
+  required_permission_slug: string
+  is_final_approval:        boolean
+  sla_hours?:               number | null
+}
+
+export interface LeaveApprovalChain {
+  leave_type_id:                 number
+  stages:                        LeaveApprovalStage[]
+  available_stage_permissions:   string[]
+  /** slug → how many active accounts hold it, for the approver picker. */
+  permission_holder_counts?:     Record<string, number>
 }
 
 export interface LeaveTypePayload {
@@ -563,9 +642,93 @@ export interface LeaveTypePayload {
 
 /* ── Leave requests ──────────────────────────────────────────────────────── */
 
-export type LeaveStatus = 'Pending' | 'Approved' | 'Rejected' | 'Cancelled'
+export type LeaveStatus =
+  | 'Pending'
+  | 'ChangesRequested'
+  | 'Approved'
+  | 'Rejected'
+  | 'Cancelled'
 
-export interface LeaveRequest {
+export type LeaveDecision = 'approved' | 'rejected' | 'changes_requested'
+
+/** Per-step state in the progress stepper. */
+export type LeaveStepState =
+  | 'completed'
+  | 'current'
+  | 'pending'
+  | 'rejected'
+  | 'changes_requested'
+  | 'cancelled'
+  | 'skipped'
+
+export interface LeaveProgressStep {
+  key:   string
+  label: string
+  state: LeaveStepState
+  /** Hours this stage is allowed to take; null for a step with no clock. */
+  sla_hours:     number | null
+  /** When this step was cleared/decided, or null if it has not been. */
+  decided_at:    string | null
+  actor:         string | null
+  /** The office that signed, e.g. "VC" / "HR" / "DAF". */
+  actor_role:    string | null
+  comment?:      string | null
+  /** Set only on the step currently awaiting a decision. */
+  hours_waiting?: number | null
+  is_overdue?:    boolean
+}
+
+export interface LeaveApprovalEvent {
+  id:                 number
+  stage_order:        number
+  stage_key:          string
+  stage_label:        string | null
+  actor_id:           number | null
+  actor_name:         string | null
+  actor_display_name: string | null
+  actor_role:         string | null
+  decision:           'submitted' | 'approved' | 'rejected' | 'changes_requested' | 'resubmitted' | 'cancelled'
+  comment:            string | null
+  decided_at:         string
+}
+
+export interface LeaveProgress {
+  id:                number
+  status:            LeaveStatus
+  /** Request context, so the progress view can caption what it is showing. */
+  employee_name:     string | null
+  leave_type_name:   string | null
+  leave_type_color:  string | null
+  start_date:        string | null
+  end_date:          string | null
+  days_requested:    number | string | null
+  reason:            string | null
+  steps:             LeaveProgressStep[]
+  current_step:      number
+  total_steps:       number
+  /** Signed vs total approval stages — excludes submission and outcome. */
+  signatures_done:   number
+  signatures_total:  number
+  history:           LeaveApprovalEvent[]
+}
+
+/** Columns every leave-request read shares — where it sits in its chain. */
+interface LeaveStageFields {
+  current_stage_order:      number
+  current_stage_key:        string | null
+  current_stage_label:      string | null
+  current_stage_is_final:   number | boolean | null
+  /** Hours this stage is allowed to take, or null when it has no clock. */
+  current_stage_sla_hours:  number | null
+  total_stages:             number
+  /** When the request arrived at the stage it is sitting at. */
+  stage_entered_at:         string
+  hours_at_stage:           number
+  /** 1 when an in-flight request has exceeded its current stage's SLA. */
+  is_overdue:               number | boolean
+}
+
+export interface LeaveRequest extends LeaveStageFields {
   id:               number
   employee_id:      number
   employee_name:    string
@@ -601,11 +764,12 @@ export interface LeaveRequestParams {
   employee_id?:    number
   leave_type_id?:  number
   year?:           number
+  stage_order?:    number
 }
 
 /* ── Self-service leave (current user's own requests) ─────────────────────── */
 
-export interface MyLeaveRequest {
+export interface MyLeaveRequest extends LeaveStageFields {
   id:               number
   leave_type_id:    number
   leave_type_name:  string
@@ -626,6 +790,13 @@ export interface MyLeaveRequestPayload {
   start_date:    string
   end_date:      string
   reason?:       string
+}
+
+/** Answering a reviewer's "changes requested" — all fields optional. */
+export interface MyLeaveRequestResubmitPayload {
+  start_date?: string
+  end_date?:   string
+  reason?:     string
 }
 
 /* ── Leave balances ──────────────────────────────────────────────────────── */
@@ -792,11 +963,16 @@ export interface HrReviewPayload {
 
 export interface LeaveStats {
   pending:             number
+  changes_requested:   number
   approved:            number
   rejected:            number
   total:               number
   on_leave_today:      number
   approved_this_month: number
   by_type:             { name: string; color: string; total: number; total_days: number }[]
+  /** In-flight requests waiting at each chain stage, and how many are late. */
+  by_stage:            { stage_order: number; stage_label: string; total: number; overdue: number }[]
+  /** Total in-flight requests past their current stage's SLA. */
+  overdue:             number
   monthly_trend:       { month: number; count: number }[]
 }

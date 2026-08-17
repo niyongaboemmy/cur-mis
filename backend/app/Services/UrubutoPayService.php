@@ -7,6 +7,8 @@ namespace App\Services;
 use Core\Database;
 use App\Models\FeeInvoiceModel;
 use App\Models\FeePaymentModel;
+use App\Models\UrubutoServiceModel;
+use App\Models\FeeStructureModel;
 use App\Services\ClearanceService;
 use App\Services\SystemLogService;
 
@@ -32,20 +34,28 @@ class UrubutoPayService
     private FeeInvoiceModel  $invoiceModel;
     private FeePaymentModel  $paymentModel;
     private ClearanceService $clearanceService;
+    private UrubutoServiceModel $serviceCatalog;
+    private FeeStructureModel   $feeStructures;
 
     private const MERCHANT_CODE   = '';  // always resolved from DB or .env — never hardcode
     private const CHECKOUT_BASE   = 'https://urubutopay.rw/pay-now';
     private const LEGACY_BANK_ID  = 1;      // tbl_bank.bank_id for BK
     private const FEE_CATEGORY_BK = '147';  // legacy fee_category for bank payments
-    // UrubutoPay-registered service codes — these are fixed by the gateway, never change
-    private const SERVICE_MAP = [
-        'TUITION'      => ['service_code' => 'tuition-fees-1258', 'service_name' => 'TUITION FEES'],
-        'REGISTRATION' => ['service_code' => 'cursu-fees-8249',   'service_name' => 'CURSU FEES'],
-        'ADMISSION'    => ['service_code' => 'cursu-fees-8249',   'service_name' => 'CURSU FEES'],
-        'HOSTEL'       => ['service_code' => 'cursu-fees-8249',   'service_name' => 'CURSU FEES'],
-        'FINE'         => ['service_code' => 'cursu-fees-8249',   'service_name' => 'CURSU FEES'],
-        'ARREARS'      => ['service_code' => 'tuition-fees-1258', 'service_name' => 'TUITION FEES'],
-        'MODULE_FEE'   => ['service_code' => 'tuition-fees-1258', 'service_name' => 'TUITION FEES'],
+    // Every published fee_structures row is registered against 'local'; the
+    // `student` table has no category column to distinguish otherwise.
+    private const DEFAULT_STUDENT_CATEGORY = 'local';
+    // Service codes live in the `urubuto_services` catalogue (migration 134) so
+    // finance can add or retire a gateway service without a deploy. This map is
+    // only the last-resort fallback for when that table is unreachable — it must
+    // stay limited to the two services that existed before the catalogue.
+    private const FALLBACK_SERVICE_MAP = [
+        'TUITION'      => ['service_code' => 'tuition-fees-4679', 'service_name' => 'TUITION FEES'],
+        'REGISTRATION' => ['service_code' => 'cursu-fees-5227',   'service_name' => 'CURSU fees'],
+        'ADMISSION'    => ['service_code' => 'cursu-fees-5227',   'service_name' => 'CURSU fees'],
+        'HOSTEL'       => ['service_code' => 'cursu-fees-5227',   'service_name' => 'CURSU fees'],
+        'FINE'         => ['service_code' => 'cursu-fees-5227',   'service_name' => 'CURSU fees'],
+        'ARREARS'      => ['service_code' => 'tuition-fees-4679', 'service_name' => 'TUITION FEES'],
+        'MODULE_FEE'   => ['service_code' => 'tuition-fees-4679', 'service_name' => 'TUITION FEES'],
     ];
 
     public function __construct()
@@ -54,6 +64,8 @@ class UrubutoPayService
         $this->invoiceModel     = new FeeInvoiceModel();
         $this->paymentModel     = new FeePaymentModel();
         $this->clearanceService = new ClearanceService();
+        $this->serviceCatalog   = new UrubutoServiceModel();
+        $this->feeStructures    = new FeeStructureModel();
     }
 
     // ── Authentication ────────────────────────────────────────────────────────
@@ -104,6 +116,11 @@ class UrubutoPayService
         if ($student) {
             $payer_names     = trim(strtoupper($student['fname'] ?? '') . ' ' . strtoupper($student['lname'] ?? ''));
             $totalOutstanding = (int) round($this->getOutstandingBalance($student['regnumber']));
+            // The service menu is what lets the payer TELL us what they are
+            // paying for. Without it UrubutoPay only collects a lump sum and
+            // every callback arrives with a blank service_code, which is the
+            // state this integration was in before the catalogue existed.
+            $services         = $this->buildServices((string)$student['regnumber'], $student);
 
             return [
                 'merchant_code'               => $merchantCode,
@@ -113,6 +130,8 @@ class UrubutoPayService
                 'payer_must_pay_total_amount' => 'NO',
                 'amount'                      => $totalOutstanding,
                 'comment'                     => 'school fees',
+                'commission_rate'             => 0,
+                'services'                    => $services,
             ];
         }
 
@@ -151,7 +170,7 @@ class UrubutoPayService
         if ($serviceRequest) {
             $fee         = (float)($serviceRequest['fee_amount'] ?? 0);
             $currency    = (string)($serviceRequest['fee_currency'] ?? 'RWF');
-            $serviceCode = $this->serviceRequestServiceCode();
+            $serviceCode = $this->serviceRequestServiceCode((string)($serviceRequest['service_name'] ?? ''));
             $payerNames  = trim(strtoupper((string)($serviceRequest['full_name'] ?? '')));
 
             return [
@@ -179,16 +198,21 @@ class UrubutoPayService
 
     /**
      * Build the UrubutoPay services list dynamically from the student's outstanding
-     * fee_invoices balances. Each fee_type maps to a UrubutoPay service_code registered
-     * on the gateway. Amounts reflect actual outstanding balance so the student sees
-     * what they owe on the USSD screen instead of always 0.
+     * fee_invoices balances.
      *
-     * service_codes are fixed by UrubutoPay (pre-registered) — only amounts are dynamic.
-     * If the student has no open invoices, returns the full service list with amount=0
-     * so the USSD session can still proceed (student pays a custom amount).
+     * Every gateway service is registered in the `urubuto_services` catalogue
+     * (migration 134) with the internal fee_type it settles, so the menu the
+     * student sees on USSD is the real list of things they can pay for, each
+     * carrying its own outstanding balance — instead of the two hardcoded
+     * buckets this used before.
+     *
+     * Services with no outstanding balance are still listed with amount = 0 so
+     * the payer can make an ad-hoc payment (e.g. a graduation fee never invoiced).
      */
-    private function buildServices(string $studentId): array
+    private function buildServices(string $studentId, ?array $student = null): array
     {
+        $student ??= $this->lookupStudent($studentId) ?? [];
+
         // Sum outstanding balance per fee_type from open invoices
         $rows = $this->db->fetchAll(
             "SELECT fee_type,
@@ -202,11 +226,70 @@ class UrubutoPayService
             [$studentId]
         );
 
-        // Accumulate amounts per gateway service_code (multiple fee_types can map to one)
-        $buckets = [];
+        $outstandingByType = [];
         foreach ($rows as $row) {
-            $type = strtoupper((string)$row['fee_type']);
-            $map  = self::SERVICE_MAP[$type] ?? null;
+            $outstandingByType[strtoupper((string)$row['fee_type'])] = (float)$row['outstanding'];
+        }
+
+        $menu = $this->serviceCatalog->menuFor('STUDENT');
+        if (empty($menu)) {
+            return $this->buildServicesFallback($outstandingByType);
+        }
+
+        // Each fee_type's balance is claimed by the FIRST menu service mapped to
+        // it (catalogue sort_order decides). Without this, a student owing
+        // 300,000 REGISTRATION would see that same 300,000 repeated against
+        // registration-fees, CURSU fees and technology fees, and think they owe
+        // three times what they do.
+        $academicYearId  = $this->resolveAcademicYearId($studentId);
+        // Loaded in ONE query rather than per menu entry: this runs inside the
+        // gateway's validate-payer call, which the payer waits on at a USSD
+        // prompt, and the menu has ~16 entries.
+        $publishedPrices = $this->publishedPricesFor($student, $academicYearId);
+
+        $claimed  = [];
+        $services = [];
+        foreach ($menu as $row) {
+            $code    = (string)$row['service_code'];
+            $feeType = strtoupper(trim((string)($row['fee_type'] ?? '')));
+            $amount  = 0.0;
+
+            if ($feeType !== '' && !isset($claimed[$feeType]) && isset($outstandingByType[$feeType])) {
+                $amount            = $outstandingByType[$feeType];
+                $claimed[$feeType] = true;
+            }
+
+            // Nothing invoiced for this service yet — quote the published fee
+            // structure instead of 0, so a student paying a graduation or CURSU
+            // fee that finance has not billed yet still sees the real price on
+            // the USSD screen rather than being asked to invent an amount.
+            if ($amount <= 0.0) {
+                $structureType = trim((string)($row['fee_structure_type'] ?? ''));
+                $amount        = (float)($publishedPrices[$structureType] ?? 0.0);
+            }
+
+            $services[] = [
+                'service_code' => $code,
+                'service_name' => (string)$row['service_name'],
+                'amount'       => (int)round($amount),
+                'currency'     => 'RWF',
+            ];
+        }
+
+        return $services;
+    }
+
+    /**
+     * Pre-catalogue behaviour, used only when `urubuto_services` is unreachable
+     * (migration 134 not applied): two buckets built from FALLBACK_SERVICE_MAP.
+     *
+     * @param array<string,float> $outstandingByType
+     */
+    private function buildServicesFallback(array $outstandingByType): array
+    {
+        $buckets = [];
+        foreach ($outstandingByType as $type => $outstanding) {
+            $map = self::FALLBACK_SERVICE_MAP[$type] ?? null;
             if (!$map) {
                 continue;
             }
@@ -214,20 +297,17 @@ class UrubutoPayService
             if (!isset($buckets[$code])) {
                 $buckets[$code] = ['service_code' => $code, 'service_name' => $map['service_name'], 'amount' => 0.0, 'currency' => 'RWF'];
             }
-            $buckets[$code]['amount'] += (float)$row['outstanding'];
+            $buckets[$code]['amount'] += $outstanding;
         }
 
-        // Round final amounts to nearest integer (RWF has no cents)
         foreach ($buckets as &$b) {
             $b['amount'] = (int)round($b['amount']);
         }
         unset($b);
 
-        // Always include both registered service codes so UrubutoPay can display the menu.
-        // Services with no outstanding balance get amount=0 (student can still pay ad-hoc).
         $defaults = [
-            'tuition-fees-1258' => ['service_code' => 'tuition-fees-1258', 'service_name' => 'TUITION FEES', 'amount' => 0, 'currency' => 'RWF'],
-            'cursu-fees-8249'   => ['service_code' => 'cursu-fees-8249',   'service_name' => 'CURSU FEES',   'amount' => 0, 'currency' => 'RWF'],
+            'tuition-fees-4679' => ['service_code' => 'tuition-fees-4679', 'service_name' => 'TUITION FEES', 'amount' => 0, 'currency' => 'RWF'],
+            'cursu-fees-5227'   => ['service_code' => 'cursu-fees-5227',   'service_name' => 'CURSU fees',   'amount' => 0, 'currency' => 'RWF'],
         ];
 
         foreach ($buckets as $code => $service) {
@@ -316,26 +396,72 @@ class UrubutoPayService
 
         // ── Load or auto-create fee_invoices ──────────────────────────────────
         $invoices = $this->db->fetchAll(
-            "SELECT id, fee_type, semester, amount_due, amount_paid, IFNULL(bursary_applied, 0) AS bursary_applied
+            "SELECT id, fee_type, semester, fee_structure_id,
+                    amount_due, amount_paid, IFNULL(bursary_applied, 0) AS bursary_applied
              FROM fee_invoices
              WHERE student_id = ? AND status NOT IN ('paid','waived','cancelled')
              ORDER BY created_at ASC",
             [$studentId]
         );
 
+        // Which internal fee type did the payer actually pick on the gateway menu?
+        // NULL means the service maps to no specific type (e.g. `other-fees`) or
+        // the code is unknown — both fall through to the plain FIFO waterfall.
+        $paidFeeType = $this->serviceCatalog->feeTypeForCode($serviceCode);
+
+        // Which published fee structure prices this service for this student? This
+        // is what turns "someone paid 50,000" into "someone paid the 2025/2026
+        // CURSU fee for Department 27", and it is recorded on every payment row.
+        $structure   = $this->resolveFeeStructure($student, $serviceCode, $academicYearId);
+        $structureId = $structure ? (int)$structure['id'] : null;
+
         if (empty($invoices)) {
-            // No invoices yet — auto-create a placeholder TUITION invoice
+            // No invoices yet — auto-create one for whatever the payer said they
+            // were paying (TUITION when the service is unmapped), so the money
+            // lands under the right heading from the start.
+            //
+            // amount_due comes from the published fee structure when one covers
+            // this student, NOT from the amount they happened to send: billing
+            // the payer's own transfer would make every payment look like a
+            // fully-settled invoice and quietly erase the real debt. A part
+            // payment must leave the invoice 'partial'. Only when no structure
+            // covers the student does the paid amount stand in as the amount due.
+            $autoFeeType   = $paidFeeType ?? 'TUITION';
+            $amountDue     = $structure ? (float)$structure['amount'] : $amount;
+            $description   = $structure
+                ? 'UrubutoPay ' . (string)($structure['label'] ?? $autoFeeType)
+                : 'Auto-created from UrubutoPay payment';
             $invoiceNumber = 'AUTO-' . substr(md5($studentId . $txCode), 0, 24);
+
             $this->db->execute(
                 "INSERT INTO fee_invoices
-                 (invoice_number, student_id, academic_year_id, semester, fee_type, description,
+                 (invoice_number, student_id, fee_structure_id, academic_year_id, semester, fee_type, description,
                   amount_due, amount_paid, bursary_applied, status, is_system_generated, created_at)
-                 VALUES (?, ?, ?, NULL, 'TUITION', 'Auto-created from UrubutoPay payment', ?, 0.00, 0.00, 'unpaid', 1, NOW())",
-                [$invoiceNumber, $studentId, $academicYearId, $amount]
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0.00, 0.00, 'unpaid', 1, NOW())",
+                [
+                    $invoiceNumber, $studentId, $structureId, $academicYearId,
+                    $structure['semester'] ?? null, $autoFeeType, $description, $amountDue,
+                ]
             );
             $newRow   = $this->db->fetchOne("SELECT LAST_INSERT_ID() AS id", []);
             $newId    = (int)($newRow['id'] ?? 0);
-            $invoices = [['id' => $newId, 'fee_type' => 'TUITION', 'amount_due' => $amount, 'amount_paid' => 0.0, 'bursary_applied' => 0.0]];
+            $invoices = [[
+                'id'               => $newId,
+                'fee_type'         => $autoFeeType,
+                'semester'         => $structure['semester'] ?? null,
+                'fee_structure_id' => $structureId,
+                'amount_due'       => $amountDue,
+                'amount_paid'      => 0.0,
+                'bursary_applied'  => 0.0,
+            ]];
+        }
+
+        // Settle invoices of the paid-for fee type first (oldest first), then let
+        // any remainder spill over onto the rest of the FIFO queue. Before the
+        // service catalogue every payment went straight down the FIFO queue, so a
+        // student paying "Retake" could silently clear last year's tuition.
+        if ($paidFeeType !== null) {
+            $invoices = $this->prioritiseByFeeType($invoices, $paidFeeType);
         }
 
         // ── Waterfall application ─────────────────────────────────────────────
@@ -358,7 +484,7 @@ class UrubutoPayService
             $invoiceId     = (int)$invoice['id'];
             $feeType       = (string)($invoice['fee_type'] ?? 'TUITION');
 
-            $paymentId = (int)$this->paymentModel->create([
+            $paymentRow = [
                 'invoice_id'       => $invoiceId,
                 'student_id'       => $studentId,
                 'amount'           => $apply,
@@ -372,7 +498,24 @@ class UrubutoPayService
                 'source'           => 'GATEWAY',
                 'notes'            => 'UrubutoPay — service: ' . $serviceCode . ', tx: ' . $txCode,
                 'paid_at'          => $paymentDate,
-            ]);
+            ];
+            // Guarded: migration 134 adds the column. Including it before that
+            // migration lands would fail the whole INSERT with "Unknown column",
+            // i.e. silently drop live payments — the exact failure migration 061
+            // was written to fix.
+            if ($this->hasServiceCodeColumn()) {
+                if ($serviceCode !== '') {
+                    $paymentRow['urubuto_service_code'] = $serviceCode;
+                }
+                // Prefer the invoice's own structure — a spillover row settles a
+                // different invoice than the one the payer selected, and must be
+                // reported against the structure it actually paid down.
+                $paymentRow['fee_structure_id'] = !empty($invoice['fee_structure_id'])
+                    ? (int)$invoice['fee_structure_id']
+                    : $structureId;
+            }
+
+            $paymentId = (int)$this->paymentModel->create($paymentRow);
 
             // Update the invoice's amount_paid and recompute its status
             $this->invoiceModel->applyPayment($invoiceId, $apply);
@@ -403,7 +546,7 @@ class UrubutoPayService
             "UrubutoPay payment: tx={$txCode}, student={$studentId}, amount={$amount} RWF, invoices_applied={$appliedCount}.",
             $firstPaymentId,
             'fee_payment',
-            ['transaction_code' => $txCode, 'amount' => $amount, 'service_code' => $serviceCode]
+            ['transaction_code' => $txCode, 'amount' => $amount, 'service_code' => $serviceCode, 'fee_type' => $paidFeeType]
         );
 
         $receiptNo = '';
@@ -420,6 +563,171 @@ class UrubutoPayService
             'external_tx_id'       => $txCode,
             'payer_phone_number'   => (string)($student['phone'] ?? ''),
         ];
+    }
+
+    /**
+     * Reorder the open-invoice queue so invoices of $feeType come first, each
+     * group keeping its original oldest-first order. Nothing is dropped — the
+     * caller's waterfall still consumes the whole list, so an overpayment on one
+     * service spills onto the remaining debts instead of sitting unapplied.
+     *
+     * @param  list<array<string,mixed>> $invoices
+     * @return list<array<string,mixed>>
+     */
+    private function prioritiseByFeeType(array $invoices, string $feeType): array
+    {
+        $matching = [];
+        $rest     = [];
+        foreach ($invoices as $invoice) {
+            if (strtoupper((string)($invoice['fee_type'] ?? '')) === strtoupper($feeType)) {
+                $matching[] = $invoice;
+            } else {
+                $rest[] = $invoice;
+            }
+        }
+        return array_merge($matching, $rest);
+    }
+
+    /**
+     * Whether migration 134's two fee_payments columns both exist. Checked once
+     * per request.
+     *
+     * BOTH are required, not either: the callback writes them together, so a
+     * half-applied migration would fail the INSERT on the missing one and drop
+     * a live payment. Requiring both means a partial migration degrades to
+     * pre-134 behaviour instead of erroring.
+     */
+    private function hasServiceCodeColumn(): bool
+    {
+        static $exists = null;
+        if ($exists !== null) {
+            return $exists;
+        }
+
+        try {
+            $row = $this->db->fetchOne(
+                "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.COLUMNS
+                  WHERE TABLE_SCHEMA = DATABASE()
+                    AND TABLE_NAME   = 'fee_payments'
+                    AND COLUMN_NAME IN ('urubuto_service_code', 'fee_structure_id')",
+                []
+            );
+            return $exists = ((int)($row['n'] ?? 0) === 2);
+        } catch (\Throwable $e) {
+            return $exists = false;
+        }
+    }
+
+    /**
+     * Resolve the fee structure that PRICES a gateway service for this student.
+     *
+     * This is the "which fee structure is being paid" half of the mapping: the
+     * service code names a `fee_structures.fee_type` (pricing vocabulary), and
+     * the student's own academic year / department / level pick the exact row
+     * out of that type's published schedule — the same FeeStructureModel::
+     * findBestMatch() the invoice generator uses, so a gateway payment and a
+     * finance-issued invoice always agree on the price.
+     *
+     * Returns null when the service is not centrally priced (`fee_structure_type`
+     * IS NULL) or the schedule has no row covering this student. Both are normal
+     * — scripts/urubuto_mapping_audit.php reports them so finance can fill the
+     * gaps — and every caller must degrade gracefully rather than reject the
+     * payment: money already left the payer's account.
+     *
+     * @return array<string,mixed>|null
+     */
+    private function resolveFeeStructure(
+        array $student,
+        string $serviceCode,
+        ?int $academicYearId,
+        ?int $semester = null
+    ): ?array {
+        $structureType = $this->serviceCatalog->feeStructureTypeForCode($serviceCode);
+        if ($structureType === null || $academicYearId === null) {
+            return null;
+        }
+
+        $departmentId = ctype_digit(trim((string)($student['department'] ?? '')))
+            ? (int)$student['department']
+            : null;
+        $levelId = ctype_digit(trim((string)($student['current_level'] ?? '')))
+            ? (int)$student['current_level']
+            : null;
+
+        try {
+            // student_category: the `student` table carries no category column,
+            // and every published structure is registered as 'local', so that is
+            // the only value that can match. findBestMatch() still ranks an exact
+            // category above a category-agnostic (NULL) row.
+            $match = $this->feeStructures->findBestMatch(
+                $academicYearId,
+                $structureType,
+                $departmentId,
+                $levelId,
+                $semester,
+                self::DEFAULT_STUDENT_CATEGORY
+            );
+        } catch (\Throwable $e) {
+            error_log('[UrubutoPayService] fee structure lookup failed: ' . $e->getMessage());
+            return null;
+        }
+
+        return $match ?: null;
+    }
+
+    /**
+     * Published amount per `fee_structures.fee_type` for one student, in a single
+     * query — the batch form of resolveFeeStructure() for the menu path.
+     *
+     * Applies the same precedence as FeeStructureModel::findBestMatch(): an exact
+     * department beats a universal (NULL) row, likewise level and student
+     * category. Only the winning row per fee type is kept.
+     *
+     * @param  array<string,mixed> $student
+     * @return array<string,float> fee_structures.fee_type => amount
+     */
+    private function publishedPricesFor(array $student, ?int $academicYearId): array
+    {
+        if ($academicYearId === null || $student === []) {
+            return [];
+        }
+
+        $departmentId = ctype_digit(trim((string)($student['department'] ?? '')))
+            ? (int)$student['department']
+            : null;
+        $levelId = ctype_digit(trim((string)($student['current_level'] ?? '')))
+            ? (int)$student['current_level']
+            : null;
+
+        try {
+            $rows = $this->db->fetchAll(
+                "SELECT fs.fee_type, fs.amount
+                   FROM `fee_structures` fs
+                  WHERE fs.academic_year_id = ?
+                    AND fs.is_active = 1
+                    AND (fs.department_id = ? OR fs.department_id IS NULL)
+                    AND (fs.level_id = ? OR fs.level_id IS NULL)
+                    AND (fs.student_category = ? OR fs.student_category IS NULL)
+                  ORDER BY fs.fee_type ASC,
+                           (fs.department_id = ?) DESC,
+                           (fs.level_id = ?) DESC,
+                           (fs.student_category = ?) DESC",
+                [
+                    $academicYearId, $departmentId, $levelId, self::DEFAULT_STUDENT_CATEGORY,
+                    $departmentId, $levelId, self::DEFAULT_STUDENT_CATEGORY,
+                ]
+            );
+        } catch (\Throwable $e) {
+            error_log('[UrubutoPayService] published price lookup failed: ' . $e->getMessage());
+            return [];
+        }
+
+        $prices = [];
+        foreach ($rows as $row) {
+            // ORDER BY already ranks the best row per type first.
+            $prices[(string)$row['fee_type']] ??= (float)$row['amount'];
+        }
+        return $prices;
     }
 
     // ── Payment Reversal ──────────────────────────────────────────────────────
@@ -713,14 +1021,37 @@ class UrubutoPayService
         return (int)($_ENV['URUBUTOPAY_APPLICATION_FEE'] ?? 5000);
     }
 
+    /**
+     * Gateway service code for the application processing fee.
+     *
+     * Env override wins (so a single deploy can be re-pointed), then the
+     * catalogue's APPLICANT entry, then the code UrubutoPay registered for it.
+     */
     private function applicationServiceCode(): string
     {
-        return (string)($_ENV['URUBUTOPAY_APPLICATION_SERVICE_CODE'] ?? 'cursu-fees-8249');
+        $env = trim((string)($_ENV['URUBUTOPAY_APPLICATION_SERVICE_CODE'] ?? ''));
+        if ($env !== '') {
+            return $env;
+        }
+
+        foreach ($this->serviceCatalog->catalogue() as $row) {
+            if (strtoupper((string)$row['payer_target']) === 'APPLICANT' && empty($row['alias_of'])) {
+                return (string)$row['service_code'];
+            }
+        }
+
+        return 'application-fees-6590';
     }
 
     private function applicationServiceName(): string
     {
-        return (string)($_ENV['URUBUTOPAY_APPLICATION_SERVICE_NAME'] ?? 'APPLICATION FEE');
+        $env = trim((string)($_ENV['URUBUTOPAY_APPLICATION_SERVICE_NAME'] ?? ''));
+        if ($env !== '') {
+            return $env;
+        }
+
+        $row = $this->serviceCatalog->findByCode($this->applicationServiceCode());
+        return $row ? (string)$row['service_name'] : 'APPLICATION FEE';
     }
 
     /** Look up an applicant by application number (used as the UrubutoPay payer code). */
@@ -762,7 +1093,7 @@ class UrubutoPayService
         }
 
         $merchantCode = $this->merchantCode();
-        $serviceCode  = $this->serviceRequestServiceCode();
+        $serviceCode  = $this->serviceRequestServiceCode((string)($request['service_name'] ?? ''));
         $checkoutBase = $_ENV['URUBUTOPAY_CHECKOUT_URL'] ?? self::CHECKOUT_BASE;
 
         $checkoutUrl = rtrim($checkoutBase, '/') . '/initiate'
@@ -782,15 +1113,57 @@ class UrubutoPayService
     }
 
     /**
-     * UrubutoPay-registered service code for service-request fees. No
-     * dedicated code has been issued for this feature yet, so this falls
-     * back to the same generic CUR-SU code already reused for HOSTEL/FINE/
-     * ADMISSION — see SERVICE_MAP. Request a dedicated code from UrubutoPay
-     * if the university wants service-request revenue reported separately.
+     * UrubutoPay-registered service code for a service-request fee.
+     *
+     * UrubutoPay now registers one code per document type (transcript,
+     * to-whom, English certificate, covered module report, recommendation
+     * letter), so match the requested catalogue service to its gateway code
+     * instead of billing everything to the generic CUR-SU code. Anything
+     * without a dedicated code — and the whole path when the catalogue is
+     * unavailable — falls back to the generic one.
      */
-    private function serviceRequestServiceCode(): string
+    private function serviceRequestServiceCode(?string $serviceName = null): string
     {
-        return (string)($_ENV['URUBUTOPAY_SERVICE_REQUEST_SERVICE_CODE'] ?? 'cursu-fees-8249');
+        $env = trim((string)($_ENV['URUBUTOPAY_SERVICE_REQUEST_SERVICE_CODE'] ?? ''));
+        if ($env !== '') {
+            return $env;
+        }
+
+        if ($serviceName !== null && trim($serviceName) !== '') {
+            $match = $this->matchServiceRequestCode($serviceName);
+            if ($match !== null) {
+                return $match;
+            }
+        }
+
+        return 'other-fees-8272';
+    }
+
+    /**
+     * Best-effort match of a service_catalog service name to a SERVICE_REQUEST
+     * entry in the UrubutoPay catalogue. Names differ between the two systems
+     * ("Academic Transcript" vs "Transcript"), so compare on alphanumerics and
+     * accept a containment match in either direction.
+     */
+    private function matchServiceRequestCode(string $serviceName): ?string
+    {
+        $normalise = static fn (string $v): string => preg_replace('/[^a-z0-9]+/', '', strtolower($v)) ?? '';
+        $needle    = $normalise($serviceName);
+        if ($needle === '') {
+            return null;
+        }
+
+        foreach ($this->serviceCatalog->forTarget('SERVICE_REQUEST') as $row) {
+            $candidate = $normalise((string)$row['service_name']);
+            if ($candidate === '') {
+                continue;
+            }
+            if ($candidate === $needle || str_contains($needle, $candidate) || str_contains($candidate, $needle)) {
+                return (string)$row['service_code'];
+            }
+        }
+
+        return null;
     }
 
     /** Look up a service request by its public request_code (used as the UrubutoPay payer code). */
@@ -865,6 +1238,24 @@ class UrubutoPayService
      */
     public function getMobilePaymentHistory(string $regNumber, int $limit = 20): array
     {
+        // Name the paid-for service only once migration 134 has landed; before
+        // that the columns/table are absent and the joins would 500 the page.
+        $hasCatalogue = $this->hasServiceCodeColumn();
+        $modernSvc    = $hasCatalogue
+            ? "fp.urubuto_service_code AS service_code,
+                COALESCE(us.service_name, alias.service_name) AS service_name,
+                fp.fee_structure_id,
+                fs.label AS fee_structure_label,"
+            : "NULL AS service_code, NULL AS service_name,
+                NULL AS fee_structure_id, NULL AS fee_structure_label,";
+        $modernJoin   = $hasCatalogue
+            ? "LEFT JOIN urubuto_services us    ON us.service_code = fp.urubuto_service_code
+             LEFT JOIN urubuto_services alias ON alias.service_code = us.alias_of
+             LEFT JOIN fee_structures   fs    ON fs.id = fp.fee_structure_id"
+            : '';
+        $legacySvc    = $hasCatalogue ? "us.service_name AS service_name," : "NULL AS service_name,";
+        $legacyJoin   = $hasCatalogue ? "LEFT JOIN urubuto_services us ON us.service_code = p.fee_category" : '';
+
         // Modern records
         $modern = $this->db->fetchAll(
             "SELECT
@@ -875,9 +1266,11 @@ class UrubutoPayService
                 fp.status,
                 fp.paid_at            AS payment_date,
                 fi.fee_type,
+                {$modernSvc}
                 'mobile_money'        AS source
              FROM fee_payments fp
              LEFT JOIN fee_invoices fi ON fi.id = fp.invoice_id
+             {$modernJoin}
              WHERE fp.student_id = ?
                AND fp.payment_method = 'MOBILE_MONEY'
                AND fp.status IN ('confirmed','reversed')
@@ -898,8 +1291,13 @@ class UrubutoPayService
                 CASE WHEN p.status = 1 THEN 'confirmed' ELSE 'pending' END AS status,
                 p.date                    AS payment_date,
                 p.fee_category            AS fee_type,
+                p.fee_category            AS service_code,
+                NULL                      AS fee_structure_id,
+                NULL                      AS fee_structure_label,
+                {$legacySvc}
                 'bank_legacy'             AS source
              FROM payment p
+             {$legacyJoin}
              WHERE p.student = ?
                AND p.user = 'UrubutoPay'
                AND p.payment_notifi = 'Debit'
@@ -1060,7 +1458,7 @@ class UrubutoPayService
         $clean = ltrim($payerCode, '0');
         if ($clean !== $payerCode) {
             $row = $this->db->fetchOne(
-                "SELECT regnumber, fname, lname, acc_year, current_level,
+                "SELECT regnumber, fname, lname, acc_year, current_level, department, faculty,
                         COALESCE(phone, '') AS phone
                  FROM student WHERE regnumber = ? LIMIT 1",
                 [$clean]
@@ -1069,7 +1467,7 @@ class UrubutoPayService
         }
 
         $row = $this->db->fetchOne(
-            "SELECT regnumber, fname, lname, acc_year, current_level,
+            "SELECT regnumber, fname, lname, acc_year, current_level, department, faculty,
                     COALESCE(phone, '') AS phone
              FROM student WHERE regnumber = ? LIMIT 1",
             [$payerCode]

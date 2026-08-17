@@ -1170,15 +1170,17 @@ class TeacherController extends BaseController
             );
         }
 
-        // The lecturer's own approved/pending leave, so the calendar shows why
-        // they are away. Keyed on users.id, matching LeaveController::myRequests.
+        // The lecturer's own in-flight or granted leave, so the calendar shows
+        // why they are away. Keyed on users.id, matching
+        // LeaveController::myRequests. 'ChangesRequested' counts as in-flight —
+        // it is still an intended absence the lecturer is working through.
         $leave = $this->db->fetchAll(
             "SELECT lr.id, lr.start_date, lr.end_date, lr.status, lr.days_requested,
                     COALESCE(lt.name, lr.leave_type) AS leave_type
              FROM `leave_requests` lr
              LEFT JOIN `leave_types` lt ON lt.id = lr.leave_type_id
              WHERE lr.user_id = ?
-               AND lr.status IN ('Pending','Approved')
+               AND lr.status IN ('Pending','ChangesRequested','Approved')
                AND lr.end_date >= ? AND lr.start_date <= ?
              ORDER BY lr.start_date ASC",
             [$uid, $from, $to]
@@ -1371,8 +1373,10 @@ class TeacherController extends BaseController
             )['n'] ?? 0);
         }
 
+        // Anything not yet settled — under review OR sent back for changes.
         $stats['pending_leave'] = (int)($this->db->fetchOne(
-            "SELECT COUNT(*) AS n FROM `leave_requests` WHERE user_id = ? AND status = 'Pending'",
+            "SELECT COUNT(*) AS n FROM `leave_requests`
+             WHERE user_id = ? AND status IN ('Pending','ChangesRequested')",
             [$uid]
         )['n'] ?? 0);
 

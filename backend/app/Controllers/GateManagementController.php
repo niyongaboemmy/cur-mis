@@ -66,7 +66,7 @@ class GateManagementController extends BaseController
         // ── Student lookup ────────────────────────────────────────────────────
         $student = $this->db->fetchOne(
             "SELECT s.regnumber, s.fname, s.lname, s.email, s.phone,
-                    s.photo_url, s.status AS student_status,
+                    s.photo, s.status AS student_status,
                     o.name   AS program_name,
                     l.name   AS level_name,
                     ay.label AS academic_year_label, ay.id AS academic_year_id,
@@ -184,7 +184,7 @@ class GateManagementController extends BaseController
                 'name'         => "{$student['fname']} {$student['lname']}",
                 'email'        => $student['email'],
                 'phone'        => $student['phone'],
-                'photo_url'    => $student['photo_url'],
+                'photo_url'    => $this->photoUri($student['photo'] ?? null),
                 'status'       => $student['student_status'],
                 'program'      => $student['program_name'],
                 'level'        => $student['level_name'],
@@ -290,7 +290,7 @@ class GateManagementController extends BaseController
         $regNumber = trim((string)$request->param('regnumber'));
 
         $student = $this->db->fetchOne(
-            "SELECT s.regnumber, s.fname, s.lname, s.email, s.photo_url, s.status AS student_status,
+            "SELECT s.regnumber, s.fname, s.lname, s.email, s.photo, s.status AS student_status,
                     o.name AS program_name, l.name AS level_name,
                     ay.label AS academic_year_label, ay.id AS academic_year_id,
                     t.id AS term_id
@@ -332,7 +332,7 @@ class GateManagementController extends BaseController
                 'name'      => "{$student['fname']} {$student['lname']}",
                 'program'   => $student['program_name'],
                 'level'     => $student['level_name'],
-                'photo_url' => $student['photo_url'],
+                'photo_url' => $this->photoUri($student['photo'] ?? null),
                 'status'    => $student['student_status'],
             ],
             'payment_cleared' => $clearance['status'] === 'cleared',
@@ -340,5 +340,21 @@ class GateManagementController extends BaseController
             'registered'      => !empty($registration),
             'academic_year'   => $student['academic_year_label'],
         ]);
+    }
+
+    /**
+     * The `student` table stores a photo *reference* (file-server id or legacy
+     * filename), not a URL. The gate UI drops the value straight into an
+     * <img src>, so resolve it to an inline data URI; never let a photo
+     * lookup fail a gate scan.
+     */
+    private function photoUri(?string $photoRef): ?string
+    {
+        if (!$photoRef) return null;
+        try {
+            return \App\Helpers\StudentIdCardHelper::resolvePhotoDataUri($photoRef);
+        } catch (\Throwable) {
+            return null;
+        }
     }
 }

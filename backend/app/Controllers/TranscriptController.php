@@ -159,7 +159,7 @@ class TranscriptController extends BaseController
             [$studentId, $yearId, $type, $purpose ?: null, $copies]
         );
 
-        $id = $this->db->lastInsertId();
+        $id = (int) $this->db->lastInsertId();
 
         SystemLogService::log(
             'GENERATE', 'STUDENTS',

@@ -812,7 +812,7 @@ class DeliberationController extends BaseController
             ]
         );
 
-        $id = $this->db->lastInsertId();
+        $id = (int) $this->db->lastInsertId();
         SystemLogService::log('CREATE','STUDENTS',"Deliberation session #{$id} created",$id,'deliberation');
         $this->success($response, ['id' => $id], 'Deliberation session created.', 201);
     }

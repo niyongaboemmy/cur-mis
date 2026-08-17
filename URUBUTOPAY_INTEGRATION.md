@@ -85,11 +85,12 @@ Success response (HTTP 200):
     "payer_names": "MUGISHA John",
     "merchant_code": "TH90989816",
     "payer_code": "CUR/BBA/001/2022",
-    "service_code": "tuition-fees-1258",
+    "service_code": "tuition-fees-4679",
     "commission_rate": 0,
     "services": [
-      { "service_code": "tuition-fees-1258", "service_name": "TUITION FEES", "amount": 0, "currency": "RWF" },
-      { "service_code": "cursu-fees-8249",   "service_name": "CURSU FEES",   "amount": 0, "currency": "RWF" }
+      { "service_code": "tuition-fees-4679",      "service_name": "TUITION FEES",      "amount": 450000, "currency": "RWF" },
+      { "service_code": "registration-fees-9493", "service_name": "Registration fees", "amount": 30000,  "currency": "RWF" },
+      { "service_code": "retake-5953",            "service_name": "Retake",            "amount": 0,      "currency": "RWF" }
     ]
   }
 }
@@ -113,7 +114,7 @@ Request body:
   "amount": 450000,
   "currency": "RWF",
   "payment_date": "2024-01-01T10:00:00Z",
-  "service_code": "tuition-fees-1258",
+  "service_code": "tuition-fees-4679",
   "status": "SUCCESSFUL"
 }
 ```
@@ -125,10 +126,83 @@ Expected response (HTTP 200):
 
 ### 2.4 Service Codes
 
-| Code | Description |
-|------|-------------|
-| `tuition-fees-1258` | Tuition fees (primary service) |
-| `cursu-fees-8249` | CURSU (student union) fees |
+UrubutoPay registers 22 services on the CUR merchant account. The authoritative
+mapping — gateway `service_code` → internal `fee_invoices.fee_type` — lives in the
+`urubuto_services` table (migration 134), not in code, so finance can add or
+retire a service without a deploy. `App\Models\UrubutoServiceModel` reads it.
+
+Each service carries **two** mappings, because live data uses two different
+vocabularies for the same idea:
+
+- **`fee_type`** — the *billing* vocabulary (`fee_invoices.fee_type`). Decides
+  which invoice a payment pays down.
+- **`fee_structure_type`** — the *pricing* vocabulary (`fee_structures.fee_type`).
+  Decides which published fee structure quotes the price. `NULL` means finance
+  has not published a price for that service yet.
+
+| Code | Service | Settles (`fee_type`) | Priced by (`fee_structure_type`) | Payer |
+|------|---------|----------------------|----------------------------------|-------|
+| `tuition-fees-4679` | TUITION FEES | `TUITION` | `TUITION` | Student |
+| `registration-fees-9493` | Registration fees | `REGISTRATION` | `REGISTRATION` | Student |
+| `cursu-fees-5227` | CURSU fees | `REGISTRATION` | `CURSU` | Student |
+| `technology-fees-9754` | Technology fees | `REGISTRATION` | *(unpriced)* | Student |
+| `fines-1062` | Fines | `FINE` | *(unpriced)* | Student |
+| `retake-5953` | Retake | `REPEAT_MODULE` | *(unpriced)* | Student |
+| `reintegration-fees-2417` | Re-integration fees | `REGISTRATION` | *(unpriced)* | Student |
+| `1st-internship-fees-7088` | 1st Internship fees | `MODULE_FEE` | `INTERNSHIP` | Student |
+| `2nd-internship-fees-3365` | 2nd Internship fees | `MODULE_FEE` | `INTERNSHIP` | Student |
+| `final-project-fees-9014` | Final project fees | `MODULE_FEE` | *(unpriced)* | Student |
+| `cpa-foundation1-6821` | CPA foundation1 | `TUITION` | *(unpriced)* | Student |
+| `cpa-foundation2-7872` | CPA foundation2 | `TUITION` | *(unpriced)* | Student |
+| `cpa-advanced-8607` | CPA Advanced | `TUITION` | *(unpriced)* | Student |
+| `cpa-registration-fee-2199` | CPA registration fee | `REGISTRATION` | *(unpriced)* | Student |
+| `graduation-fees-8196` | Graduation fees | `ACADEMIC_DOCUMENT` | `GRADUATION` | Student |
+| `other-fees-8272` | Other fees | *(none — FIFO)* | *(unpriced)* | Student |
+| `transcript-1712` | Transcript | `service_request` | `TRANSCRIPT` | Service request |
+| `to-whom-1604` | To whom | `service_request` | `TO_WHOM` | Service request |
+| `english-certificate-4298` | English certificate | `service_request` | `ENGLISH_CERTIFICATE` | Service request |
+| `covered-module-report-8800` | Covered module report | `service_request` | *(unpriced)* | Service request |
+| `recommendation-letter-6660` | Recommendation letter | `service_request` | *(unpriced)* | Service request |
+| `application-fees-6590` | Application fees | `ADMISSION` | `APPLICATION` | Applicant |
+
+**Retired codes.** The previous merchant registration used `tuition-fees-1258`
+and `cursu-fees-8249`. Both are seeded as *aliases* (`alias_of`) of their
+replacements, so an in-flight callback or a historic row still resolves to the
+right fee type. They are excluded from the payer menu — no new payment is ever
+offered a retired code.
+
+**How a payment finds its invoice.** On callback, the incoming `service_code`
+resolves to a `fee_type`; open invoices of that type are settled first (oldest
+first) and any remainder spills onto the rest of the FIFO queue. A code that
+maps to no type — `other-fees`, or one the catalogue doesn't know — falls
+straight through to plain FIFO, exactly as before. The selected code is stored
+on `fee_payments.urubuto_service_code` for per-service revenue reporting.
+
+**How a payment finds its price.** The service's `fee_structure_type` plus the
+student's academic year, department and level select one row out of the
+published schedule, via the same `FeeStructureModel::findBestMatch()` the
+invoice generator uses — so a gateway payment and a finance-issued invoice can
+never disagree on the price. The resolved `fee_structures.id` is written to
+`fee_payments.fee_structure_id`.
+
+Two places rely on this:
+
+1. **The payer's menu.** A service with no invoice yet is quoted its published
+   price instead of 0, so a student paying a graduation or CURSU fee that
+   finance has not billed sees the real amount rather than inventing one. Each
+   fee type's outstanding balance is claimed by exactly one service, so a single
+   debt is never displayed three times.
+2. **Auto-created invoices.** When a payment arrives for a student with no open
+   invoice, the new invoice is billed at the *published* amount and linked to
+   the structure — not at whatever the payer happened to send. Billing the
+   transfer itself would make every part payment look like a settled invoice and
+   quietly erase the remaining debt.
+
+**Keeping it honest.** `php backend/scripts/urubuto_mapping_audit.php` reports
+every gap: services with no fee type or no published price, fee structures no
+service can pay, service codes appearing on payments that nobody registered, and
+broken alias chains. It exits non-zero when it finds something. Run it after
+UrubutoPay registers a service and after finance edits the fee schedule.
 
 ### 2.5 Bulk Disbursement API (Outbound Payments)
 
@@ -288,7 +362,7 @@ POST http://localhost:8888/cur-mis/payment_api/callback.php
 Authorization: Bearer TOKEN
 Body: { "callback_type":"PAYMENT","transaction_code":"TEST-001",
         "payer_code":"REGNUMBER","amount":100000,"currency":"RWF",
-        "payment_date":"2026-05-16T10:00:00Z","service_code":"tuition-fees-1258","status":"SUCCESSFUL" }
+        "payment_date":"2026-05-16T10:00:00Z","service_code":"tuition-fees-4679","status":"SUCCESSFUL" }
 Expected: { "status": 200, "message": "Payment recorded" }
 → Verify: SELECT * FROM payment WHERE external_transaction_id='TEST-001';
 → Verify: SELECT * FROM payment_reconciliation_log ORDER BY id DESC LIMIT 5;

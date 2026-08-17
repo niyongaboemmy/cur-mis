@@ -57,6 +57,16 @@ export const PERMISSIONS = {
   VIEW_LEAVE_REQUESTS:    'VIEW_LEAVE_REQUESTS',
   MANAGE_LEAVE_REQUESTS:  'MANAGE_LEAVE_REQUESTS',
   REQUEST_LEAVE:          'REQUEST_LEAVE',
+  // Per-stage leave approval — each stage of a leave type's approval chain
+  // requires one of these, so who signs off at which level is configuration.
+  // VC → HR → DAF → VC-final is the institution's own signature sequence;
+  // L1/L2 remain for a leave type given a shorter generic chain.
+  APPROVE_LEAVE_VC:       'APPROVE_LEAVE_VC',
+  APPROVE_LEAVE_HR:       'APPROVE_LEAVE_HR',
+  APPROVE_LEAVE_DAF:      'APPROVE_LEAVE_DAF',
+  APPROVE_LEAVE_L1:       'APPROVE_LEAVE_L1',
+  APPROVE_LEAVE_L2:       'APPROVE_LEAVE_L2',
+  APPROVE_LEAVE_FINAL:    'APPROVE_LEAVE_FINAL',
   VIEW_PAYROLL:        'VIEW_PAYROLL',
   MANAGE_PAYROLL:      'MANAGE_PAYROLL',
 

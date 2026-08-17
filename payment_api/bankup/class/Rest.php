@@ -3,9 +3,9 @@
  * CUR Payment API - Main REST Class
  * Organisation: Catholic University of Rwanda (CUR)
  * Merchant Code: TH90989816
- * Services:
- *   - TUITION FEES  (service code: tuition-fees-1258)
- *   - CURSU FEES    (service code: cursu-fees-8249)
+ * Services: the 22 services registered on the merchant account — see
+ * CUR_SERVICES below, and the `urubuto_services` catalogue (migration 134)
+ * which is the authoritative mapping used by the main backend.
  *
  * Database: curac_save  |  Table: payment
  */
@@ -53,9 +53,37 @@ if ($_tokResult->num_rows === 0) {
 
 // ── CUR Constants ──────────────────────────────────────────────────────────
 define('CUR_MERCHANT_CODE', 'TH90989816');
+// UrubutoPay-registered services, mirrored from the `urubuto_services`
+// catalogue (migration 134). This endpoint runs standalone against curac_save,
+// so the list is duplicated here rather than queried — keep the two in step
+// when UrubutoPay registers or retires a service.
 define('CUR_SERVICES', [
-    'tuition-fees-1258' => 'TUITION FEES',
-    'cursu-fees-8249'   => 'CURSU FEES',
+    'tuition-fees-4679'          => 'TUITION FEES',
+    'registration-fees-9493'     => 'Registration fees',
+    'cursu-fees-5227'            => 'CURSU fees',
+    'technology-fees-9754'       => 'Technology fees',
+    'fines-1062'                 => 'Fines',
+    'retake-5953'                => 'Retake',
+    'reintegration-fees-2417'    => 'Re-integration fees',
+    '1st-internship-fees-7088'   => '1st Internship fees',
+    '2nd-internship-fees-3365'   => '2nd Internship fees',
+    'final-project-fees-9014'    => 'Final project fees',
+    'cpa-foundation1-6821'       => 'CPA foundation1',
+    'cpa-foundation2-7872'       => 'CPA foundation2',
+    'cpa-advanced-8607'          => 'CPA Advanced',
+    'cpa-registration-fee-2199'  => 'CPA registration fee',
+    'graduation-fees-8196'       => 'Graduation fees',
+    'other-fees-8272'            => 'Other fees',
+    'transcript-1712'            => 'Transcript',
+    'to-whom-1604'               => 'To whom',
+    'english-certificate-4298'   => 'English certificate',
+    'covered-module-report-8800' => 'Covered module report',
+    'recommendation-letter-6660' => 'Recommendation letter',
+    'application-fees-6590'      => 'Application fees',
+    // Retired codes from the previous merchant registration — still accepted so
+    // in-flight payments do not bounce with a 400.
+    'tuition-fees-1258'          => 'TUITION FEES',
+    'cursu-fees-8249'            => 'CURSU FEES',
 ]);
 
 // ── REST Class ─────────────────────────────────────────────────────────────
@@ -163,7 +191,7 @@ class Rest {
         }
         if ($serviceCode !== '' && !$this->serviceExists($serviceCode)) {
             http_response_code(400);
-            echo json_encode(['timestamp'=>$d,'message'=>'Invalid service_code. Valid: tuition-fees-1258, cursu-fees-8249','status'=>400]);
+            echo json_encode(['timestamp'=>$d,'message'=>'Invalid service_code: '.$serviceCode.'. Valid: '.implode(', ', array_keys(CUR_SERVICES)),'status'=>400]);
             return;
         }
 
@@ -371,7 +399,7 @@ class Rest {
         $payerCode    = trim($data['payer_code']       ?? '');
         $amount       = (float)($data['amount']        ?? 0);
         $payDate      = trim($data['payment_date']     ?? $d);
-        $serviceCode  = trim($data['service_code']     ?? 'tuition-fees-1258');
+        $serviceCode  = trim($data['service_code']     ?? 'tuition-fees-4679');
         $cbStatus     = trim($data['status']           ?? '');
 
         if ($type !== 'PAYMENT') {

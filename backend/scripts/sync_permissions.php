@@ -62,6 +62,11 @@ $mappings = [
         Permissions::MANAGE_PAYROLL,
         Permissions::VIEW_LEAVE_REQUESTS,
         Permissions::MANAGE_LEAVE_REQUESTS,
+        Permissions::REQUEST_LEAVE,
+        // Per-stage leave approval — see leave_approval_stages.
+        Permissions::APPROVE_LEAVE_L1,
+        Permissions::APPROVE_LEAVE_L2,
+        Permissions::APPROVE_LEAVE_FINAL,
     ],
     'Finance' => [
         Permissions::VIEW_FINANCE,

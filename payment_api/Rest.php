@@ -129,6 +129,9 @@ class Rest
 {
     private mysqli $db;
 
+    /** @var list<array<string,mixed>>|null Memoised `urubuto_services` rows. */
+    private ?array $urubutoServicesCache = null;
+
     private string $host;
     private string $user;
     private string $password;
@@ -264,7 +267,15 @@ class Rest
      */
     private function appFeeConfig(): array
     {
-        $cfg  = ['fee' => 5000, 'service_code' => 'cursu-fees-8249', 'service_name' => 'APPLICATION FEE'];
+        $cfg  = ['fee' => 5000, 'service_code' => 'application-fees-6590', 'service_name' => 'Application fees'];
+        // Catalogue wins over the hardcoded default; backend/.env still overrides both.
+        foreach ($this->urubutoServices() as $svc) {
+            if (strtoupper((string)$svc['payer_target']) === 'APPLICANT' && empty($svc['alias_of'])) {
+                $cfg['service_code'] = (string)$svc['service_code'];
+                $cfg['service_name'] = (string)$svc['service_name'];
+                break;
+            }
+        }
         $path = __DIR__ . '/../backend/.env';
         if (is_file($path)) {
             foreach (file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
@@ -308,7 +319,7 @@ class Rest
     }
 
     /** Service code registered for service-request fees — same fallback as the modern backend. */
-    private function serviceRequestServiceCode(): string
+    private function serviceRequestServiceCode(?string $serviceName = null): string
     {
         $path = __DIR__ . '/../backend/.env';
         if (is_file($path)) {
@@ -321,7 +332,92 @@ class Rest
                 }
             }
         }
-        return 'cursu-fees-8249';
+        // UrubutoPay now registers one code per document type, so match the
+        // requested catalogue service to its own code rather than billing every
+        // service request to one generic bucket.
+        if ($serviceName !== null && trim($serviceName) !== '') {
+            $needle = preg_replace('/[^a-z0-9]+/', '', strtolower($serviceName)) ?? '';
+            if ($needle !== '') {
+                foreach ($this->urubutoServices() as $svc) {
+                    if (strtoupper((string)$svc['payer_target']) !== 'SERVICE_REQUEST' || !empty($svc['alias_of'])) {
+                        continue;
+                    }
+                    $candidate = preg_replace('/[^a-z0-9]+/', '', strtolower((string)$svc['service_name'])) ?? '';
+                    if ($candidate !== ''
+                        && ($candidate === $needle || str_contains($needle, $candidate) || str_contains($candidate, $needle))) {
+                        return (string)$svc['service_code'];
+                    }
+                }
+            }
+        }
+
+        return 'other-fees-8272';
+    }
+
+    /**
+     * The UrubutoPay service catalogue (`urubuto_services`, migration 134):
+     * every gateway service_code mapped to the internal fee_type it settles.
+     * Memoised per request; an empty array when the table is absent, which
+     * leaves every caller on its hardcoded default.
+     *
+     * @return list<array<string,mixed>>
+     */
+    private function urubutoServices(): array
+    {
+        if ($this->urubutoServicesCache !== null) {
+            return $this->urubutoServicesCache;
+        }
+
+        $rows = [];
+        try {
+            $res = $this->db->query(
+                'SELECT * FROM `urubuto_services` WHERE `is_active` = 1 ORDER BY `sort_order` ASC, `id` ASC'
+            );
+            if ($res) {
+                while ($row = $res->fetch_assoc()) {
+                    $rows[] = $row;
+                }
+                $res->free();
+            }
+        } catch (\Throwable $e) {
+            error_log('[payment_api] urubuto_services unavailable: ' . $e->getMessage());
+            $rows = [];
+        }
+
+        return $this->urubutoServicesCache = $rows;
+    }
+
+    /**
+     * Internal fee_invoices.fee_type a gateway service settles, following
+     * `alias_of` one hop so codes from the retired merchant registration still
+     * resolve. NULL when the code is unknown or maps to no specific type.
+     */
+    private function feeTypeForServiceCode(string $serviceCode): ?string
+    {
+        $code = trim($serviceCode);
+        if ($code === '') {
+            return null;
+        }
+
+        $byCode = [];
+        foreach ($this->urubutoServices() as $svc) {
+            $byCode[(string)$svc['service_code']] = $svc;
+        }
+
+        $row = $byCode[$code] ?? null;
+        if (!$row) {
+            return null;
+        }
+
+        $alias = trim((string)($row['alias_of'] ?? ''));
+        if ($alias !== '' && isset($byCode[$alias])) {
+            $row = $byCode[$alias];
+        }
+
+        // Returned verbatim: live fee_invoices rows use both 'TUITION' and
+        // lowercase 'service_request', and callers compare case-insensitively.
+        $type = trim((string)($row['fee_type'] ?? ''));
+        return $type !== '' ? $type : null;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -465,7 +561,7 @@ class Rest
             if ($serviceRequest) {
                 $fee         = (float)($serviceRequest['fee_amount'] ?? 0);
                 $currency    = (string)($serviceRequest['fee_currency'] ?? 'RWF');
-                $serviceCode = $this->serviceRequestServiceCode();
+                $serviceCode = $this->serviceRequestServiceCode((string)($serviceRequest['service_name'] ?? ''));
                 $payerNames  = strtoupper(trim((string)($serviceRequest['full_name'] ?? '')));
 
                 http_response_code(200);
@@ -512,8 +608,154 @@ class Rest
                 'payer_must_pay_total_amount' => 'NO',
                 'amount'                      => 0,
                 'comment'                     => 'school fees',
+                'commission_rate'             => 0,
+                // Without this list the payer can only send a lump sum and the
+                // callback arrives with a blank service_code — i.e. we never
+                // learn what they were paying for. Mirrors
+                // UrubutoPayService::buildServices().
+                'services'                    => $this->buildStudentServices($student),
             ],
         ]);
+    }
+
+    /**
+     * The service menu a student sees, one entry per student-facing service in
+     * the `urubuto_services` catalogue (migration 134).
+     *
+     * Amount precedence, per service:
+     *   1. outstanding balance on open invoices of the service's billing fee_type
+     *   2. the published `fee_structures` amount for its pricing fee_structure_type
+     *   3. 0 — the payer names their own amount
+     *
+     * Each fee_type's balance is claimed by the first service mapped to it, so a
+     * single debt is never shown against three services at once.
+     *
+     * @param  array<string,mixed> $student
+     * @return list<array<string,mixed>>
+     */
+    private function buildStudentServices(array $student): array
+    {
+        $menu = [];
+        foreach ($this->urubutoServices() as $svc) {
+            if (strtoupper((string)$svc['payer_target']) === 'STUDENT'
+                && empty($svc['alias_of'])
+                && (int)($svc['show_in_menu'] ?? 0) === 1) {
+                $menu[] = $svc;
+            }
+        }
+        if (empty($menu)) {
+            return [];
+        }
+
+        $regnumber = (string)$student['regnumber'];
+
+        // Outstanding per billing fee_type
+        $outstanding = [];
+        $stmt = $this->db->prepare(
+            "SELECT fee_type,
+                    GREATEST(0, ROUND(SUM(amount_due - amount_paid - IFNULL(bursary_applied, 0)), 2)) AS outstanding
+               FROM fee_invoices
+              WHERE student_id = ?
+                AND status NOT IN ('paid', 'waived', 'cancelled')
+              GROUP BY fee_type
+             HAVING outstanding > 0"
+        );
+        $stmt->bind_param('s', $regnumber);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        while ($row = $res->fetch_assoc()) {
+            $outstanding[strtoupper((string)$row['fee_type'])] = (float)$row['outstanding'];
+        }
+        $stmt->close();
+
+        $academicYearId = $this->resolveAcademicYearId($student);
+        $departmentId   = ctype_digit(trim((string)($student['department'] ?? ''))) ? (int)$student['department'] : null;
+        $levelId        = ctype_digit(trim((string)($student['current_level'] ?? ''))) ? (int)$student['current_level'] : null;
+
+        $claimed  = [];
+        $services = [];
+        foreach ($menu as $svc) {
+            $feeType = strtoupper(trim((string)($svc['fee_type'] ?? '')));
+            $amount  = 0.0;
+
+            if ($feeType !== '' && !isset($claimed[$feeType]) && isset($outstanding[$feeType])) {
+                $amount          = $outstanding[$feeType];
+                $claimed[$feeType] = true;
+            }
+
+            if ($amount <= 0.0) {
+                $amount = (float)$this->publishedFeeAmount(
+                    (string)($svc['fee_structure_type'] ?? ''), $academicYearId, $departmentId, $levelId
+                );
+            }
+
+            $services[] = [
+                'service_code' => (string)$svc['service_code'],
+                'service_name' => (string)$svc['service_name'],
+                'amount'       => (int)round($amount),
+                'currency'     => 'RWF',
+            ];
+        }
+
+        return $services;
+    }
+
+    /**
+     * Published amount for a fee_structures.fee_type, narrowed to the student's
+     * department/level. Ranks an exact department match above a universal
+     * (NULL) row, mirroring FeeStructureModel::findBestMatch(). Returns 0 when
+     * the service is not centrally priced or no row covers this student.
+     */
+    private function publishedFeeAmount(string $structureType, ?int $academicYearId, ?int $departmentId, ?int $levelId): float
+    {
+        if (trim($structureType) === '' || $academicYearId === null) {
+            return 0.0;
+        }
+
+        $stmt = $this->db->prepare(
+            "SELECT amount
+               FROM fee_structures
+              WHERE academic_year_id = ?
+                AND fee_type = ?
+                AND is_active = 1
+                AND (department_id = ? OR department_id IS NULL)
+                AND (level_id = ? OR level_id IS NULL)
+              ORDER BY (department_id = ?) DESC, (level_id = ?) DESC
+              LIMIT 1"
+        );
+        $stmt->bind_param('isiiii', $academicYearId, $structureType, $departmentId, $levelId, $departmentId, $levelId);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+
+        return $row ? (float)$row['amount'] : 0.0;
+    }
+
+    /** Academic year id for a student row: their own acc_year, else the current year. */
+    private function resolveAcademicYearId(array $student): ?int
+    {
+        $accYear = trim((string)($student['acc_year'] ?? ''));
+        if ($accYear !== '') {
+            $stmt = $this->db->prepare(
+                "SELECT id FROM academic_years
+                  WHERE label = ? OR label = REPLACE(?, '-', '/') OR label = REPLACE(?, '/', '-')
+                  LIMIT 1"
+            );
+            $stmt->bind_param('sss', $accYear, $accYear, $accYear);
+            $stmt->execute();
+            $row = $stmt->get_result()->fetch_assoc();
+            $stmt->close();
+            if ($row) {
+                return (int)$row['id'];
+            }
+        }
+
+        $res = $this->db->query('SELECT id FROM academic_years WHERE is_current = 1 LIMIT 1');
+        $row = $res ? $res->fetch_assoc() : null;
+        if ($res) {
+            $res->free();
+        }
+        return $row ? (int)$row['id'] : null;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1014,7 +1256,7 @@ class Rest
     //      { "callback_type":"PAYMENT", "transaction_code":"TXN123",
     //        "payer_code":"CUR/BBA/001/2022", "amount":450000,
     //        "currency":"RWF", "payment_date":"2024-01-01T10:00:00Z",
-    //        "service_code":"tuition-fees-1258", "status":"SUCCESSFUL" }
+    //        "service_code":"tuition-fees-4679", "status":"SUCCESSFUL" }
     // ─────────────────────────────────────────────────────────────────────────
     public function claimCallback(array $data): void
     {
@@ -1024,7 +1266,7 @@ class Rest
         $payerCode    = trim($data['payer_code']                                             ?? '');
         $amount       = (float)($data['amount']                                              ?? 0);
         $paymentDate  = trim($data['payment_date_time']    ?? $data['payment_date']          ?? $date);
-        $serviceCode  = trim($data['payment_purpose_code'] ?? $data['service_code']          ?? 'tuition-fees-1258');
+        $serviceCode  = trim($data['payment_purpose_code'] ?? $data['service_code']          ?? 'tuition-fees-4679');
         $cbStatus     = strtoupper(trim($data['transaction_status'] ?? $data['status']       ?? ''));
 
         // Only PAYMENT callbacks touch the ledger; acknowledge others silently

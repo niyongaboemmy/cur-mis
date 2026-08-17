@@ -41,6 +41,7 @@ import {
 } from "react";
 import UserDropdown from "@/components/layout/UserDropdown";
 import MessageNotificationBell from "@/components/layout/MessageNotificationBell";
+import NotificationBell from "@/components/layout/NotificationBell";
 import CampusFilterSwitcher from "@/components/layout/CampusFilterSwitcher";
 import CategoryFilterSwitcher from "@/components/layout/CategoryFilterSwitcher";
 
@@ -244,6 +245,9 @@ const NAV_TREE: NavNode[] = [
       PERMISSIONS.VIEW_HR_EMPLOYEES,
       PERMISSIONS.VIEW_LEAVE_REQUESTS,
       PERMISSIONS.MANAGE_LEAVE_REQUESTS,
+      PERMISSIONS.APPROVE_LEAVE_L1,
+      PERMISSIONS.APPROVE_LEAVE_L2,
+      PERMISSIONS.APPROVE_LEAVE_FINAL,
     ],
     children: [
       {
@@ -267,6 +271,16 @@ const NAV_TREE: NavNode[] = [
         permissions: [
           PERMISSIONS.VIEW_HR_EMPLOYEES,
           PERMISSIONS.VIEW_LEAVE_REQUESTS,
+          PERMISSIONS.MANAGE_LEAVE_REQUESTS,
+        ],
+      },
+      {
+        to: "/hr/leave/approvals",
+        label: "Leave Approvals",
+        permissions: [
+          PERMISSIONS.APPROVE_LEAVE_L1,
+          PERMISSIONS.APPROVE_LEAVE_L2,
+          PERMISSIONS.APPROVE_LEAVE_FINAL,
           PERMISSIONS.MANAGE_LEAVE_REQUESTS,
         ],
       },
@@ -916,6 +930,10 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
     title: "My Leave",
     sub: "Request leave and track your own requests",
   },
+  "/notifications": {
+    title: "Notifications",
+    sub: "Approval outcomes, action-required prompts and system alerts",
+  },
   "/teacher": {
     title: "My Teaching",
     sub: "Your courses, students, timetable and records",
@@ -943,6 +961,10 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
   "/hr/leave": {
     title: "Leave Management",
     sub: "Leave requests, approvals and balances",
+  },
+  "/hr/leave/approvals": {
+    title: "Leave Approvals",
+    sub: "Requests waiting at a stage you are authorised to decide",
   },
   "/hr/appraisals": {
     title: "Employee Appraisals",
@@ -1484,6 +1506,7 @@ export default function MainLayout() {
             <RoundIconBtn label="Notifications" dot>
               <Bell className="w-[18px] h-[18px]" />
             </RoundIconBtn>
+            <NotificationBell />
             <MessageNotificationBell />
             <UserDropdown />
           </div>
