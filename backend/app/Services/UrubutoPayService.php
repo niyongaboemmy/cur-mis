@@ -24,7 +24,8 @@ use App\Services\SystemLogService;
  *
  * The `payment` and `bank_payment` writes use:
  *   bank_id = 1     (BK / UrubutoPay channel, from tbl_bank)
- *   fee_category = '147'  (bank payment category)
+ *   fee_category = the gateway service_code the payer chose, falling back to
+ *                  '147' (generic bank category) when the callback named none
  *   payment_chanel = 'BK'
  *   status = 1 (confirmed by gateway callback)
  */
@@ -345,7 +346,7 @@ class UrubutoPayService
         $payerCode   = trim((string)($cb['payer_code'] ?? ''));
         $amount      = (float)($cb['amount'] ?? 0);
         $currency    = strtoupper(trim((string)($cb['currency'] ?? 'RWF'))) ?: 'RWF';
-        $serviceCode = trim((string)($cb['service_code'] ?? $cb['payment_purpose_code'] ?? ''));
+        $serviceCode = $this->extractServiceCode($cb);
         $rawDate     = trim((string)($cb['payment_date_time'] ?? $cb['payment_date'] ?? ''));
         $paymentDate = $rawDate !== '' ? date('Y-m-d H:i:s', strtotime($rawDate)) : date('Y-m-d H:i:s');
 
@@ -353,21 +354,45 @@ class UrubutoPayService
             return ['status' => 'error', 'payment_id' => null, 'message' => 'Invalid callback data: transaction_code, payer_code and amount are required'];
         }
 
+        // A payment whose service cannot be identified still gets recorded, but
+        // it is logged with the whole payload: that log is the only way to
+        // learn a key name extractServiceCode() does not handle yet.
+        if ($serviceCode === '') {
+            error_log('[UrubutoPay] PAYMENT callback named no known service — tx ' . $txCode
+                . ', payload: ' . json_encode($cb));
+        }
+
         // ── Idempotency: check both modern and legacy tables ──────────────────
         $existingModern = $this->db->fetchOne(
-            "SELECT id FROM fee_payments WHERE reference_number = ? OR reference_number LIKE ? LIMIT 1",
+            "SELECT id, receipt_number FROM fee_payments WHERE reference_number = ? OR reference_number LIKE ? LIMIT 1",
             [$txCode, $txCode . '-%']
         );
         if ($existingModern) {
-            return ['status' => 'duplicate', 'payment_id' => (int)$existingModern['id'], 'message' => 'Payment already recorded'];
+            // Carry the ids on the duplicate too: the controller echoes them
+            // back to the gateway, and an acknowledgement without them can read
+            // as a failed delivery — which is how a retried notification turns
+            // into an auto-reversal.
+            return [
+                'status'         => 'duplicate',
+                'payment_id'     => (int)$existingModern['id'],
+                'message'        => 'Payment recorded',
+                'internal_tx_id' => (string)($existingModern['receipt_number'] ?? $txCode),
+                'external_tx_id' => $txCode,
+            ];
         }
 
         $existingLegacy = $this->db->fetchOne(
-            "SELECT id FROM payment WHERE external_transaction_id = ? AND payment_notifi = 'Debit' LIMIT 1",
+            "SELECT id, trans_code FROM payment WHERE external_transaction_id = ? AND payment_notifi = 'Debit' LIMIT 1",
             [$txCode]
         );
         if ($existingLegacy) {
-            return ['status' => 'duplicate', 'payment_id' => null, 'message' => 'Payment already recorded'];
+            return [
+                'status'         => 'duplicate',
+                'payment_id'     => null,
+                'message'        => 'Payment recorded',
+                'internal_tx_id' => (string)($existingLegacy['trans_code'] ?? $txCode),
+                'external_tx_id' => $txCode,
+            ];
         }
 
         // ── Student lookup ────────────────────────────────────────────────────
@@ -1328,6 +1353,72 @@ class UrubutoPayService
         return array_slice($merged, 0, $limit);
     }
 
+    /**
+     * Which service did the payer select, given whatever the gateway sent?
+     *
+     * The callback used to be read as `service_code ?? payment_purpose_code`
+     * only, so a payload naming the service any other way — by the numeric
+     * `service_id`, by display name, or nested inside `data` / `services[]` —
+     * left the service blank and the payment fell through to the plain FIFO
+     * waterfall, i.e. onto tuition. Every known shape is tried here, most
+     * specific first, and each candidate is canonicalised through the
+     * `urubuto_services` catalogue so the value stored is always a live
+     * service_code.
+     *
+     * @param array<string,mixed> $cb
+     */
+    private function extractServiceCode(array $cb): string
+    {
+        $codeKeys = ['service_code', 'serviceCode', 'payment_purpose_code', 'paymentPurposeCode',
+                     'purpose_code', 'purposeCode', 'payment_purpose', 'paymentPurpose'];
+        $idKeys   = ['service_id', 'serviceId', 'urubuto_service_id'];
+        $nameKeys = ['service_name', 'serviceName', 'service', 'paid_service', 'payment_purpose_name'];
+
+        $scopes = [$cb];
+        foreach (['data', 'payment', 'transaction', 'details', 'payment_details', 'service', 'selected_service'] as $key) {
+            if (isset($cb[$key]) && is_array($cb[$key])) {
+                $scopes[] = $cb[$key];
+            }
+        }
+        foreach (['services', 'service_list', 'items'] as $key) {
+            if (!empty($cb[$key]) && is_array($cb[$key])) {
+                foreach ($cb[$key] as $entry) {
+                    if (is_array($entry)) {
+                        $scopes[] = $entry;
+                    }
+                }
+            }
+        }
+
+        $rawCode = '';
+        foreach ([$codeKeys, $idKeys, $nameKeys] as $keys) {
+            foreach ($scopes as $scope) {
+                foreach ($keys as $key) {
+                    if (!isset($scope[$key]) || is_array($scope[$key])) {
+                        continue;
+                    }
+                    $value = trim((string)$scope[$key]);
+                    if ($value === '') {
+                        continue;
+                    }
+                    $row = $this->serviceCatalog->resolveAny($value);
+                    if ($row) {
+                        return (string)$row['service_code'];
+                    }
+                    // Code-shaped but unknown — a service registered in the
+                    // merchant portal that the catalogue has not been told
+                    // about. Keep it rather than lose it, but prefer a known
+                    // service if a later candidate resolves.
+                    if ($rawCode === '' && preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)+$/i', $value)) {
+                        $rawCode = $value;
+                    }
+                }
+            }
+        }
+
+        return $rawCode;
+    }
+
     // ── Private: Legacy Table Sync ────────────────────────────────────────────
 
     /**
@@ -1338,7 +1429,7 @@ class UrubutoPayService
      *   payment.student  → student regnumber
      *   bank_payment.reg_no → student regnumber
      *   bank_id = 1 (BK, from tbl_bank)
-     *   fee_category = '147' (bank payment category)
+     *   fee_category = the chosen gateway service_code, '147' when unknown
      *   payment_chanel = 'BK'
      *   status = 1 (confirmed by payment gateway callback)
      */
@@ -1355,7 +1446,12 @@ class UrubutoPayService
         $accYear     = (string)($student['acc_year']      ?? '');
         $levelId     = (string)($student['current_level'] ?? '');
         $bankId      = self::LEGACY_BANK_ID;
-        $feeCategory = self::FEE_CATEGORY_BK;
+        // `payment.fee_category` is where the legacy ledger, PaymentReconciler
+        // and the online-payments report all read the gateway service from
+        // (they join `urubuto_services` on it). Writing the constant here made
+        // every gateway payment show up with no service at all; '147' is only
+        // the fallback for a callback that named none.
+        $feeCategory = $serviceCode !== '' ? $serviceCode : self::FEE_CATEGORY_BK;
         $description = 'UrubutoPay — ' . ($serviceCode ?: 'mobile/USSD payment');
         $user        = 'UrubutoPay';
         $channel     = 'BK';

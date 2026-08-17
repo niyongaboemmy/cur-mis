@@ -143,6 +143,13 @@ export interface FeePayment {
   created_at:           string
   fee_type?:            FeeType
   academic_year_id?:    number
+  /** fee_types.label for `fee_type` — set by the API, and the only label that
+   *  covers categories added after FEE_TYPE_LABELS was written. */
+  fee_type_label?:      string | null
+  /** The UrubutoPay service the payer selected, when the payment came from the
+   *  gateway: the code as sent, and its catalogue name ("Fines", "Transcript"). */
+  urubuto_service_code?: string | null
+  urubuto_service_name?: string | null
 }
 
 export interface RecordPaymentPayload {

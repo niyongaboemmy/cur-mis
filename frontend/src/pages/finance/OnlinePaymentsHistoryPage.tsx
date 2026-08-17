@@ -11,6 +11,23 @@ const dtFmt = new Intl.DateTimeFormat("en-GB", {
 });
 const fmtDate = (v: string | null | undefined) =>
   v ? dtFmt.format(new Date(v)) : "-";
+
+// What the payer actually paid for. `payment.fee_category` holds the UrubutoPay
+// service_code (resolved to a name server-side); the two legacy numeric values
+// pre-date the service catalogue and name no service at all.
+const LEGACY_CATEGORY_LABELS: Record<string, string> = {
+  "147": "Bank payment",
+  "146": "Payment reversal",
+};
+
+const serviceOf = (p: any): { name: string; category: string | null } => {
+  if (p.service_name) {
+    return { name: p.service_name, category: p.fee_category_label ?? null };
+  }
+  const raw = String(p.fee_category ?? "").trim();
+  if (raw === "") return { name: "-", category: null };
+  return { name: LEGACY_CATEGORY_LABELS[raw] ?? raw, category: null };
+};
 import {
   Search,
   Activity,
@@ -80,6 +97,8 @@ export default function OnlinePaymentsHistoryPage() {
         "Student Name",
         "Slip No",
         "Trans Code",
+        "Service Paid For",
+        "Fee Category",
         "Amount (RWF)",
         "Channel",
         "Status",
@@ -107,6 +126,8 @@ export default function OnlinePaymentsHistoryPage() {
           fullName,
           p.slip_no || "",
           p.trans_code || "",
+          serviceOf(p).name,
+          serviceOf(p).category ?? "",
           parseFloat(p.amount || "0"),
           p.payment_chanel || p.mode || "",
           statusLabel,
@@ -114,7 +135,7 @@ export default function OnlinePaymentsHistoryPage() {
       });
 
       const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
-      ws["!cols"] = [20, 18, 22, 22, 22, 14, 10, 10].map((w) => ({ wch: w }));
+      ws["!cols"] = [20, 18, 22, 22, 22, 24, 20, 14, 10, 10].map((w) => ({ wch: w }));
 
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Online Payments");
@@ -258,6 +279,7 @@ export default function OnlinePaymentsHistoryPage() {
                 <th className="px-4 py-3">Student Name</th>
                 <th className="px-4 py-3">Slip No</th>
                 <th className="px-4 py-3">Trans Code</th>
+                <th className="px-4 py-3">Service Paid For</th>
                 <th className="px-4 py-3 text-right">Amount (RWF)</th>
                 <th className="px-4 py-3">Channel</th>
                 <th className="px-4 py-3 text-center">Status</th>
@@ -267,14 +289,14 @@ export default function OnlinePaymentsHistoryPage() {
             <tbody className="divide-y divide-ink-200 dark:divide-ink-800">
               {isLoading ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center text-ink-500">
+                  <td colSpan={10} className="px-4 py-12 text-center text-ink-500">
                     <RefreshCcw className="w-6 h-6 animate-spin mx-auto mb-2 text-brand" />
                     <p>Loading payments...</p>
                   </td>
                 </tr>
               ) : payments.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center text-ink-500">
+                  <td colSpan={10} className="px-4 py-12 text-center text-ink-500">
                     No online payments found.
                   </td>
                 </tr>
@@ -315,6 +337,23 @@ export default function OnlinePaymentsHistoryPage() {
                       </td>
                       <td className="px-4 py-3 font-mono text-[13px] text-brand">
                         {p.trans_code || "-"}
+                      </td>
+                      <td className="px-4 py-3">
+                        {(() => {
+                          const svc = serviceOf(p);
+                          return (
+                            <div className="leading-tight">
+                              <div className="font-medium text-ink-900 dark:text-ink-100">
+                                {svc.name}
+                              </div>
+                              {svc.category && (
+                                <div className="text-[11px] text-ink-500 dark:text-ink-400">
+                                  {svc.category}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="px-4 py-3 text-right font-semibold">
                         {parseFloat(p.amount || "0").toLocaleString()}

@@ -11,6 +11,25 @@ import ModalPortal from '@/components/ui/ModalPortal'
 
 const PER_PAGE = 20
 
+// What was this payment for? The UrubutoPay service the payer picked is the
+// most specific answer ("Fines", "Graduation fees"); the billing fee type is
+// the fallback, preferring the label the API resolved from `fee_types` so
+// categories added after FEE_TYPE_LABELS was written still read properly.
+function paidFor(p: FeePayment): { main: string; sub?: string } {
+  const typeLabel =
+    (p.fee_type ? FEE_TYPE_LABELS[p.fee_type] : undefined) ??
+    p.fee_type_label ??
+    p.fee_type ??
+    undefined
+
+  if (p.urubuto_service_name) {
+    return { main: p.urubuto_service_name, sub: typeLabel }
+  }
+  return {
+    main: typeLabel ?? p.invoice_description ?? p.invoice_number ?? '—',
+  }
+}
+
 // ─── Shared payment detail block used in both modals ─────────────────────────
 
 function PaymentDetailGrid({ p }: { p: FeePayment }) {
@@ -18,7 +37,7 @@ function PaymentDetailGrid({ p }: { p: FeePayment }) {
     { label: 'Student',       value: `${p.student_fname ?? ''} ${p.student_lname ?? ''}`.trim(), sub: p.student_id },
     { label: 'Amount',        value: formatRWF(p.amount),       mono: true, highlight: true },
     { label: 'Receipt #',     value: p.receipt_number,          mono: true },
-    { label: 'Fee Type',      value: p.fee_type ? FEE_TYPE_LABELS[p.fee_type] : (p.invoice_description ?? p.invoice_number ?? '—') },
+    { label: 'Paid For',      value: paidFor(p).main, sub: paidFor(p).sub },
     { label: 'Invoice #',     value: p.invoice_number ?? '—',   mono: true },
     { label: 'Payment Method',value: PAYMENT_METHOD_LABELS[p.payment_method] ?? p.payment_method,
                                sub: p.reference_number ? `Ref: ${p.reference_number}` : undefined },
@@ -165,7 +184,7 @@ export default function PaymentApprovalsPage() {
                 <tr>
                   <th className="px-4 py-2.5 text-left">Receipt #</th>
                   <th className="px-4 py-2.5 text-left">Student</th>
-                  <th className="px-4 py-2.5 text-left">Fee Type</th>
+                  <th className="px-4 py-2.5 text-left">Paid For</th>
                   <th className="px-4 py-2.5 text-left">Method</th>
                   <th className="px-4 py-2.5 text-right">Amount</th>
                   <th className="px-4 py-2.5 text-left">Date</th>
@@ -182,7 +201,10 @@ export default function PaymentApprovalsPage() {
                       <p className="text-xs text-ink-400 font-mono">{p.student_id}</p>
                     </td>
                     <td className="px-4 py-3 text-ink-500 text-xs">
-                      {p.fee_type ? FEE_TYPE_LABELS[p.fee_type] : (p.invoice_description ?? p.invoice_number ?? '—')}
+                      <p className="text-ink-900 dark:text-ink-100">{paidFor(p).main}</p>
+                      {paidFor(p).sub && (
+                        <p className="text-[10px] text-ink-400">{paidFor(p).sub}</p>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <p>{PAYMENT_METHOD_LABELS[p.payment_method] ?? p.payment_method}</p>
