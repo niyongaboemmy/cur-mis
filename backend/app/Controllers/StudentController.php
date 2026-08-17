@@ -1345,8 +1345,11 @@ class StudentController extends BaseController
             $this->error($response, 'No photo file provided.', 422);
         }
 
-        $allowedMimes = ['image/jpeg', 'image/png', 'image/webp'];
-        if (!in_array($file['type'] ?? '', $allowedMimes, true)) {
+        // Browser-supplied type is a hint only (some send 'image/jpg' or ''),
+        // FileServerClient does the authoritative content-based check.
+        $allowedMimes = ['image/jpeg', 'image/jpg', 'image/pjpeg', 'image/png', 'image/webp'];
+        $claimed      = strtolower(trim((string)($file['type'] ?? '')));
+        if ($claimed !== '' && !in_array($claimed, $allowedMimes, true)) {
             $this->error($response, 'Invalid file type. Only JPEG, PNG and WebP are allowed.', 422);
         }
 
@@ -1354,7 +1357,7 @@ class StudentController extends BaseController
             $client   = new FileServerClient();
             $uploaded = $client->upload($file);
         } catch (\RuntimeException $e) {
-            $this->error($response, $e->getMessage(), 422);
+            $this->failFromFileServer($response, $e);
         }
 
         $previous = $student['photo'] ?? null;

@@ -428,8 +428,12 @@ class AuthController extends BaseController
             $this->error($response, 'No photo file provided.', 422);
         }
 
-        $allowedMimes = ['image/jpeg', 'image/png', 'image/webp'];
-        if (!in_array($file['type'] ?? '', $allowedMimes, true)) {
+        // $_FILES['type'] is whatever the browser claimed, and some send
+        // 'image/jpg' or an empty string. Treat it as a hint only — the
+        // authoritative content-based check runs inside FileServerClient.
+        $allowedMimes = ['image/jpeg', 'image/jpg', 'image/pjpeg', 'image/png', 'image/webp'];
+        $claimed      = strtolower(trim((string)($file['type'] ?? '')));
+        if ($claimed !== '' && !in_array($claimed, $allowedMimes, true)) {
             $this->error($response, 'Invalid file type. Only JPEG, PNG and WebP are allowed.', 422);
         }
 
@@ -437,7 +441,7 @@ class AuthController extends BaseController
             $client   = new \App\Helpers\FileServerClient();
             $uploaded = $client->upload($file);
         } catch (\RuntimeException $e) {
-            $this->error($response, $e->getMessage(), 422);
+            $this->failFromFileServer($response, $e);
         }
 
         $model   = new \App\Models\UserModel();

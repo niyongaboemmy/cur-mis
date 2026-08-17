@@ -93,8 +93,14 @@ class FinesController extends BaseController
 
         // Create FINE invoice automatically
         $invoiceNumber = 'FINE-' . strtoupper(substr(md5(uniqid()), 0, 8));
-        $currentYear   = $this->db->fetchOne(
-            "SELECT id FROM `academic_years` ORDER BY id DESC LIMIT 1"
+        // Must be the year flagged is_current, not the highest id. Rows like the
+        // catch-all "Legacy" year sort last by id, so `ORDER BY id DESC` filed
+        // every fine invoice under a year the student's My Finance page never
+        // queries — the fine raised their balance but was invisible and unpayable.
+        $currentYear = $this->db->fetchOne(
+            "SELECT id FROM `academic_years` WHERE is_current = 1 ORDER BY id DESC LIMIT 1"
+        ) ?: $this->db->fetchOne(
+            "SELECT id FROM `academic_years` ORDER BY start_date DESC LIMIT 1"
         );
         $academicYearId = $currentYear ? (int)$currentYear['id'] : null;
 

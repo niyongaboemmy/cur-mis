@@ -25,6 +25,8 @@ import {
   FEE_TYPE_LABELS,
   CLEARANCE_STATUS_LABELS,
   CLEARANCE_STATUS_COLORS,
+  PAYMENT_CALENDAR_EVENT_TYPE_LABELS,
+  FINE_TYPE_LABELS,
 } from "@/types/finance";
 import { formatRWF } from "@/utils/formatCurrency";
 import type {
@@ -33,6 +35,7 @@ import type {
   ClearanceResult,
   MobilePaymentRecord,
   PaymentCalendarDocument,
+  MyFine,
 } from "@/types/finance";
 
 type Semester = "" | "1" | "2";
@@ -541,6 +544,9 @@ export default function MyFinancePage() {
             )}
           </div>
 
+          {/* Fines — outside the year filter on purpose (see MyFinesWidget). */}
+          <MyFinesWidget onPay={handlePayNow} payLoading={payLoading} />
+
           {/* Payment Calendar */}
           <MyPaymentCalendarWidget yearId={Number(yearId)} />
         </>
@@ -587,7 +593,174 @@ function StatCard({
   );
 }
 
+/**
+ * Fines raised against the student, with the invoice each one is billed on.
+ *
+ * Fines were previously invisible here: every /api/fines route is staff-only,
+ * and the fine's own FINE invoice was filed under the wrong academic year, so a
+ * fined student saw their balance rise with no explanation and no way to settle
+ * it. This section is deliberately NOT filtered by the year selector — an
+ * unpaid fine is owed regardless of which year the student is browsing.
+ */
+function MyFinesWidget({
+  onPay,
+  payLoading,
+}: {
+  onPay: () => void;
+  payLoading: boolean;
+}) {
+  const finesQ = useQuery({
+    queryKey: ["my-finance", "fines"],
+    queryFn: (ctx) => myLedgerService.getMyFines(ctx.signal),
+  });
+
+  const fines: MyFine[] = finesQ.data?.data?.fines ?? [];
+  const summary = finesQ.data?.data?.summary;
+
+  // Nothing to show, and nothing to explain — stay out of the way.
+  if (!finesQ.isLoading && fines.length === 0) return null;
+
+  const outstandingAmount = summary?.outstanding_amount ?? 0;
+
+  return (
+    <div className="card p-5 md:p-6">
+      <div className="flex items-center justify-between gap-3 mb-1 flex-wrap">
+        <div className="flex items-center gap-2">
+          <AlertCircle size={16} className="text-ink-400" />
+          <p className="text-[13px] font-bold text-ink-900 dark:text-white">
+            Fines
+          </p>
+          {(summary?.outstanding_count ?? 0) > 0 && (
+            <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded text-red-600 bg-red-50 dark:text-red-400 dark:bg-red-900/20">
+              {summary?.outstanding_count} unpaid
+            </span>
+          )}
+        </div>
+        {outstandingAmount > 0 && (
+          <button
+            type="button"
+            onClick={onPay}
+            disabled={payLoading}
+            className="btn-primary btn-sm h-8 px-3 text-[12px]"
+          >
+            {payLoading ? (
+              <>
+                <Loader2 size={13} className="animate-spin" /> Preparing…
+              </>
+            ) : (
+              <>
+                <Smartphone size={13} /> Pay {formatRWF(outstandingAmount)}
+              </>
+            )}
+          </button>
+        )}
+      </div>
+      <p className="text-[11px] text-ink-400 mb-3">
+        Fines are billed on their own invoice and are included in your balance.
+      </p>
+
+      {finesQ.isLoading ? (
+        <Loader2 size={16} className="animate-spin text-ink-300" />
+      ) : (
+        <div className="divide-y divide-ink-50 dark:divide-ink-800">
+          {fines.map((f) => {
+            const settled = f.status === "paid" || f.status === "waived";
+            return (
+              <div
+                key={f.id}
+                className="flex items-start justify-between gap-3 py-2.5 text-[13px]"
+              >
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p
+                      className={`font-medium truncate ${
+                        settled
+                          ? "text-ink-500 dark:text-ink-400"
+                          : "text-ink-900 dark:text-white"
+                      }`}
+                    >
+                      {FINE_TYPE_LABELS[f.fine_type] ?? f.fine_type}
+                    </p>
+                    <span
+                      className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                        f.status === "paid"
+                          ? "text-green-600 bg-green-50 dark:text-green-400 dark:bg-green-900/20"
+                          : f.status === "waived"
+                            ? "text-blue-600 bg-blue-50 dark:text-blue-400 dark:bg-blue-900/20"
+                            : "text-red-600 bg-red-50 dark:text-red-400 dark:bg-red-900/20"
+                      }`}
+                    >
+                      {f.status}
+                    </span>
+                  </div>
+                  {/* The reason is the whole point — without it a student can
+                      see a charge but not why it was raised. */}
+                  <p className="text-[12px] text-ink-500 dark:text-ink-400 mt-0.5">
+                    {f.reason}
+                  </p>
+                  <p className="text-[11px] text-ink-400 mt-0.5">
+                    {f.invoice_number
+                      ? `Invoice ${f.invoice_number}`
+                      : "Not yet invoiced"}
+                    {f.academic_year_label ? ` · ${f.academic_year_label}` : ""}
+                    {f.due_date
+                      ? ` · due ${new Date(f.due_date).toLocaleDateString("en-GB")}`
+                      : ""}
+                  </p>
+                </div>
+                <div className="text-right whitespace-nowrap">
+                  <p
+                    className={`font-semibold ${
+                      settled
+                        ? "text-ink-400 line-through"
+                        : "text-ink-900 dark:text-white"
+                    }`}
+                  >
+                    {formatRWF(f.amount)}
+                  </p>
+                  {!settled && f.balance > 0 && f.balance !== f.amount && (
+                    <p className="text-[11px] text-red-500">
+                      {formatRWF(f.balance)} left
+                    </p>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Midnight today — deadlines are dates, so compare at day resolution. */
+function startOfToday(): Date {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+type CalendarStatus = "overdue" | "due-soon" | "upcoming" | "past";
+
+const CALENDAR_STATUS_STYLES: Record<CalendarStatus, { label: string; className: string }> = {
+  overdue:  { label: "Overdue",  className: "text-red-600 bg-red-50 dark:text-red-400 dark:bg-red-900/20" },
+  "due-soon": { label: "Due soon", className: "text-amber-600 bg-amber-50 dark:text-amber-400 dark:bg-amber-900/20" },
+  upcoming: { label: "Upcoming", className: "text-blue-600 bg-blue-50 dark:text-blue-400 dark:bg-blue-900/20" },
+  past:     { label: "Passed",   className: "text-ink-400 bg-ink-50 dark:text-ink-500 dark:bg-ink-800" },
+};
+
+/**
+ * Payment calendar for the selected academic year.
+ *
+ * Deadlines that look "outdated" usually aren't — academic year 2025/2026
+ * legitimately opens with September 2025 dates. The confusion came from showing
+ * a bare list of dates with no year context and no indication of which entries
+ * still need action, so this splits upcoming from past, states the academic
+ * year explicitly, and marks each row's status.
+ */
 function MyPaymentCalendarWidget({ yearId }: { yearId: number }) {
+  const [showPast, setShowPast] = useState(false);
+
   const calendarQ = useQuery({
     queryKey: ["my-finance", "payment-calendar", yearId],
     queryFn: (ctx) =>
@@ -596,48 +769,133 @@ function MyPaymentCalendarWidget({ yearId }: { yearId: number }) {
   });
 
   const documents: PaymentCalendarDocument[] = calendarQ.data?.data ?? [];
+
+  const today = startOfToday();
+  const soonCutoff = new Date(today);
+  soonCutoff.setDate(soonCutoff.getDate() + 14);
+
   const rows = documents
     .flatMap((d) =>
       d.items
         .filter((it) => it.is_active === 1)
-        .map((it) => ({ ...it, documentTitle: d.faculty_name ?? d.title })),
+        .map((it) => {
+          const deadline = new Date(it.deadline_date);
+          const status: CalendarStatus =
+            deadline < today
+              ? "past"
+              : deadline <= soonCutoff
+                ? "due-soon"
+                : "upcoming";
+          return {
+            ...it,
+            deadline,
+            status,
+            documentTitle: d.faculty_name ?? d.title,
+            yearLabel: d.academic_year_label,
+            scope: [d.intake_label, d.level_label].filter(Boolean).join(" · "),
+          };
+        }),
     )
     .sort((a, b) => a.deadline_date.localeCompare(b.deadline_date));
 
   if (!calendarQ.isLoading && rows.length === 0) return null;
 
+  const upcoming = rows.filter((r) => r.status !== "past");
+  const past = rows.filter((r) => r.status === "past");
+
+  // Every document in a single-year query carries the same label; take the first.
+  const yearLabel = rows.find((r) => r.yearLabel)?.yearLabel ?? null;
+
+  const renderRow = (it: (typeof rows)[number]) => {
+    const badge = CALENDAR_STATUS_STYLES[it.status];
+    return (
+      <div
+        key={it.id}
+        className="flex items-center justify-between gap-3 py-2.5 text-[13px]"
+      >
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p
+              className={`font-medium truncate ${
+                it.status === "past"
+                  ? "text-ink-500 dark:text-ink-400"
+                  : "text-ink-900 dark:text-white"
+              }`}
+            >
+              {it.item_label}
+            </p>
+            <span
+              className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${badge.className}`}
+            >
+              {badge.label}
+            </span>
+          </div>
+          <p className="text-[11px] text-ink-400">
+            {/* Payment type spelled out, so "Registration" is identifiable
+                without having to infer it from the label. */}
+            {PAYMENT_CALENDAR_EVENT_TYPE_LABELS[it.event_type] ?? it.event_type}
+            {it.group_label ? ` · ${it.group_label}` : ""}
+            {it.scope ? ` · ${it.scope}` : ""}
+            {it.amount !== null && it.amount !== undefined
+              ? ` · ${Number(it.amount).toLocaleString("en-US")} RWF`
+              : ""}
+          </p>
+        </div>
+        <p className="text-ink-500 dark:text-ink-400 whitespace-nowrap">
+          {it.deadline.toLocaleDateString("en-GB")}
+        </p>
+      </div>
+    );
+  };
+
   return (
     <div className="card p-5 md:p-6">
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex items-center gap-2 mb-1">
         <CalendarDays size={16} className="text-ink-400" />
         <p className="text-[13px] font-bold text-ink-900 dark:text-white">
           Payment Calendar
         </p>
       </div>
+      {/* Naming the academic year is the fix for "why does 2026 show 2025
+          dates?" — those dates belong to academic year 2025/2026. */}
+      {yearLabel && (
+        <p className="text-[11px] text-ink-400 mb-3">
+          Academic year {yearLabel}
+        </p>
+      )}
+
       {calendarQ.isLoading ? (
         <Loader2 size={16} className="animate-spin text-ink-300" />
       ) : (
-        <div className="divide-y divide-ink-50 dark:divide-ink-800">
-          {rows.map((it) => (
-            <div
-              key={it.id}
-              className="flex items-center justify-between gap-3 py-2.5 text-[13px]"
-            >
-              <div className="min-w-0">
-                <p className="font-medium text-ink-900 dark:text-white truncate">
-                  {it.item_label}
-                </p>
-                <p className="text-[11px] text-ink-400">
-                  {it.documentTitle}
-                  {it.amount !== null ? ` · ${Number(it.amount).toLocaleString("en-US")} RWF` : ""}
-                </p>
-              </div>
-              <p className="text-ink-500 dark:text-ink-400 whitespace-nowrap">
-                {new Date(it.deadline_date).toLocaleDateString("en-GB")}
-              </p>
+        <>
+          {upcoming.length > 0 ? (
+            <div className="divide-y divide-ink-50 dark:divide-ink-800">
+              {upcoming.map(renderRow)}
             </div>
-          ))}
-        </div>
+          ) : (
+            <p className="text-[12px] text-ink-400 py-2">
+              No upcoming payment deadlines for this academic year.
+            </p>
+          )}
+
+          {past.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-ink-100 dark:border-ink-800">
+              <button
+                type="button"
+                onClick={() => setShowPast((v) => !v)}
+                className="flex items-center gap-1.5 text-[12px] font-medium text-ink-500 hover:text-ink-800 dark:text-ink-400 dark:hover:text-white transition-colors"
+              >
+                {showPast ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                Payment history ({past.length} passed)
+              </button>
+              {showPast && (
+                <div className="divide-y divide-ink-50 dark:divide-ink-800 mt-1">
+                  {past.map(renderRow)}
+                </div>
+              )}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

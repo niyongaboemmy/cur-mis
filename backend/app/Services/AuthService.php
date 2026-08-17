@@ -515,17 +515,24 @@ class AuthService
     public function changePassword(int $userId, string $currentPassword, string $newPassword): array
     {
         $model = new UserModel();
-        $user  = $model->find($userId);
+        // findBy() — not find(). find() runs the row through hideFields(), which
+        // strips `password`, so the verify below would receive null and fatal.
+        $user  = $model->findBy('id', $userId);
 
         if (!$user) {
             return ['success' => false, 'message' => 'User not found.', 'code' => 404];
         }
 
-        if (!password_verify($currentPassword, $user['password'])) {
+        $currentHash = (string)($user['password'] ?? '');
+        if ($currentHash === '') {
+            return ['success' => false, 'message' => 'This account has no password set. Please use "Forgot password" instead.', 'code' => 409];
+        }
+
+        if (!password_verify($currentPassword, $currentHash)) {
             return ['success' => false, 'message' => 'Current password is incorrect.', 'code' => 400];
         }
 
-        if (password_verify($newPassword, $user['password'])) {
+        if (password_verify($newPassword, $currentHash)) {
             return ['success' => false, 'message' => 'New password must be different from the current one.', 'code' => 400];
         }
 

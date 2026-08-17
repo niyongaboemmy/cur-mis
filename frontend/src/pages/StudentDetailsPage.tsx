@@ -90,6 +90,7 @@ import { FEE_TYPE_LABELS, PAYMENT_METHOD_LABELS } from "@/types/finance";
 import InvoiceStatusBadge from "@/components/finance/InvoiceStatusBadge";
 import { formatRWF } from "@/utils/formatCurrency";
 import CountrySelect from "@/components/ui/CountrySelect";
+import LocationSelect from "@/components/ui/LocationSelect";
 import {
   COUNTRY_BY_NAME,
   COUNTRY_BY_NATIONALITY,
@@ -1386,10 +1387,6 @@ function ResidencySection({
   ]);
 
   const save = useSectionSave(student, selfMode, "Residency");
-  const set =
-    (k: keyof ReturnType<typeof buildInitial>) =>
-    (e: React.ChangeEvent<HTMLInputElement>) =>
-      setForm((f) => ({ ...f, [k]: e.target.value }));
 
   const handleSave = () =>
     save.mutate({
@@ -1426,41 +1423,32 @@ function ResidencySection({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5 mt-6">
         {editing ? (
           <>
-            <FieldGroup label="Province">
-              <TextInput
-                value={form.province}
-                onChange={set("province")}
-                placeholder="e.g. Kigali City"
-              />
-            </FieldGroup>
-            <FieldGroup label="District">
-              <TextInput
-                value={form.district}
-                onChange={set("district")}
-                placeholder="e.g. Gasabo"
-              />
-            </FieldGroup>
-            <FieldGroup label="Sector">
-              <TextInput
-                value={form.sector}
-                onChange={set("sector")}
-                placeholder="e.g. Remera"
-              />
-            </FieldGroup>
-            <FieldGroup label="Cell">
-              <TextInput
-                value={form.cell}
-                onChange={set("cell")}
-                placeholder="e.g. Rukiri I"
-              />
-            </FieldGroup>
-            <FieldGroup label="Village">
-              <TextInput
-                value={form.village}
-                onChange={set("village")}
-                placeholder="e.g. Amahoro"
-              />
-            </FieldGroup>
+            {/* Cascading picker — district options are scoped to the chosen
+                province, and changing a level clears the ones below it so a
+                stale district/sector pairing can't be saved. Levels without
+                bundled reference data stay free text. */}
+            <LocationSelect
+              value={{
+                province: form.province,
+                district: form.district,
+                sector:   form.sector,
+                cell:     form.cell,
+                village:  form.village,
+              }}
+              onChange={(next) =>
+                setForm((f) => ({
+                  ...f,
+                  province: next.province ?? "",
+                  district: next.district ?? "",
+                  sector:   next.sector   ?? "",
+                  cell:     next.cell     ?? "",
+                  village:  next.village  ?? "",
+                }))
+              }
+              renderField={({ label, control }) => (
+                <FieldGroup label={label}>{control}</FieldGroup>
+              )}
+            />
           </>
         ) : (
           <>

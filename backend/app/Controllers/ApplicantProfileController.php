@@ -319,23 +319,34 @@ class ApplicantProfileController extends BaseController
             $this->error($response, 'Invoice file must be 5 MB or smaller.', 422);
         }
 
-        $invoiceFileId = null;
+        // The proof-of-payment document is the ONLY evidence an admissions
+        // officer has for a manually-declared payment, so a failed upload must
+        // fail the request. Silently recording the payment without it left
+        // admins approving/rejecting blind (they could see the claim but never
+        // the document).
         try {
-            $client       = new FileServerClient();
-            $uploaded     = $client->upload($invoiceFile);
+            $client        = new FileServerClient();
+            $uploaded      = $client->upload($invoiceFile);
             $invoiceFileId = $uploaded['id'];
         } catch (\RuntimeException $e) {
-            // Log the error but don't fail the payment — invoice is optional
             error_log('[Invoice Upload Error] ' . $e->getMessage());
+            $this->error(
+                $response,
+                'We could not store your proof of payment. Please try again, or contact the admissions office if the problem persists.',
+                502
+            );
         }
 
-        // Update application with payment details
-        // The invoice file is optional; payment status is what matters
+        // Persist the slip alongside the payment details. `payment_slip_file_id`
+        // is what ApplicationAdminController::downloadPaymentSlip() streams and
+        // what the Admin Admission page keys its "View proof" button on.
         $this->appModel->update($appId, [
-            'transaction_id'     => $transactionId,
-            'payment_amount'     => $app['payment_amount'] ?? 5000,
-            'payment_currency'   => 'RWF',
-            'paid_at'            => date('Y-m-d H:i:s'),
+            'transaction_id'       => $transactionId,
+            'payment_amount'       => $app['payment_amount'] ?? 5000,
+            'payment_currency'     => 'RWF',
+            'paid_at'              => date('Y-m-d H:i:s'),
+            'payment_slip_file_id' => $invoiceFileId,
+            'payment_slip_mime'    => (string)($invoiceFile['type'] ?? ''),
         ]);
 
         $this->success($response, [
@@ -532,6 +543,45 @@ class ApplicantProfileController extends BaseController
     /**
      * POST /api/applicant/application/submit
      */
+    /**
+     * Names of the documents this application's faculty requires but which have
+     * not been uploaded yet. Empty array = nothing outstanding.
+     *
+     * Returns [] when the faculty has no requirements configured — an
+     * unconfigured checklist must not become an unpassable gate.
+     *
+     * @param array $application Row from student_applications.
+     * @return string[]
+     */
+    private function missingRequiredDocuments(array $application): array
+    {
+        $facultyId = (int)($application['faculty_id'] ?? 0);
+        if ($facultyId <= 0) {
+            return [];
+        }
+
+        $required = array_filter(
+            $this->requirementModel->getForFaculty($facultyId),
+            static fn (array $r): bool => (int)($r['is_required'] ?? 0) === 1
+        );
+        if ($required === []) {
+            return [];
+        }
+
+        $uploadedTypeIds = array_map(
+            static fn (array $d): int => (int)$d['document_type_id'],
+            $this->docModel->getForApplication((int)$application['id'])
+        );
+
+        $missing = [];
+        foreach ($required as $r) {
+            if (!in_array((int)$r['document_type_id'], $uploadedTypeIds, true)) {
+                $missing[] = (string)($r['document_type_name'] ?? $r['document_name'] ?? 'Required document');
+            }
+        }
+        return $missing;
+    }
+
     public function submitApplication(Request $request, Response $response): never
     {
         $profile = $request->param('_applicant_profile');
@@ -555,6 +605,19 @@ class ApplicantProfileController extends BaseController
                 $response,
                 'Payment required. Please complete the application fee with Urubuto Pay before submitting.',
                 402
+            );
+        }
+
+        // Gate: every document the applicant's faculty marks as required must
+        // actually be attached. The wizard enforces this too, but a client-side
+        // check is a courtesy, not a control — without this an applicant could
+        // POST straight to this endpoint and submit with nothing uploaded.
+        $missing = $this->missingRequiredDocuments($application);
+        if ($missing !== []) {
+            $this->error(
+                $response,
+                'Please upload all required documents before submitting: ' . implode(', ', $missing) . '.',
+                422
             );
         }
 
