@@ -406,6 +406,40 @@ class ApplicantProfileController extends BaseController
         ], 'Profile photo uploaded successfully.');
     }
 
+    /**
+     * DELETE /api/applicant/profile/photo
+     * Remove the applicant's profile photo. Idempotent — see PhotoRemover.
+     */
+    public function deletePhoto(Request $request, Response $response): never
+    {
+        $profile   = $request->param('_applicant_profile');
+        $profileId = (int)$profile['id'];
+
+        $previous = $profile['profile_photo_id'] ?? null;
+
+        $this->profileModel->update($profileId, ['profile_photo_id' => null]);
+
+        // Clear the mirror on the linked user account written by uploadPhoto(),
+        // otherwise the admin Users list keeps showing a picture the applicant
+        // has already removed. Only clear it when it still points at the same
+        // file, so a photo set through another route isn't wiped.
+        $userId = (int)($profile['user_id'] ?? 0);
+        if ($userId > 0 && $previous) {
+            try {
+                $this->db->execute(
+                    "UPDATE `users` SET photo = NULL, updated_at = NOW() WHERE id = ? AND photo = ?",
+                    [$userId, (string)$previous]
+                );
+            } catch (\Throwable $e) {
+                // Non-blocking, exactly as in uploadPhoto().
+            }
+        }
+
+        \App\Helpers\PhotoRemover::discard($previous !== null ? (string)$previous : null);
+
+        $this->success($response, ['profile_photo_id' => null], 'Profile photo removed.');
+    }
+
 
     // ── Application creation & verification ──────────────────────────────────
 

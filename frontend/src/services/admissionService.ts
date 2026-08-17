@@ -415,6 +415,10 @@ export const applicantService = {
     return api.upload<{ profile_photo_id: string; url: string | null }>('/api/applicant/profile/photo', form)
   },
 
+  /** Remove the applicant's profile photo. */
+  deletePhoto: () =>
+    api.delete<{ profile_photo_id: null }>('/api/applicant/profile/photo'),
+
   uploadPaymentSlip: (data: {
     transaction_id: string
     payment_slip?: File | null

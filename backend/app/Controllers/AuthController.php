@@ -472,6 +472,46 @@ class AuthController extends BaseController
     }
 
     /**
+     * DELETE /api/auth/me/photo
+     * Remove the authenticated user's profile photo. Idempotent — see
+     * PhotoRemover for why clearing an already-empty photo succeeds.
+     */
+    public function deleteMyPhoto(Request $request, Response $response): never
+    {
+        $authUser = (array)($request->param('_auth_user') ?? []);
+        $userId   = (int)($authUser['id'] ?? 0);
+        if ($userId <= 0) {
+            $this->error($response, 'Unauthorized.', 401);
+        }
+
+        $model   = new \App\Models\UserModel();
+        $current = $model->find($userId);
+        if (!$current) {
+            $this->error($response, 'User not found.', 404);
+        }
+
+        $previous = $current['photo'] ?? null;
+        $model->update($userId, ['photo' => null]);
+        \App\Helpers\PhotoRemover::discard($previous);
+
+        // Same payload shape as uploadMyPhoto() so the frontend auth store can
+        // be refreshed from either response without special-casing.
+        $this->success($response, [
+            'photo'        => null,
+            'id'           => $userId,
+            'email'        => $current['email']     ?? '',
+            'username'     => $current['username']  ?? '',
+            'full_name'    => $current['full_name'] ?? '',
+            'phone'        => $current['phone']     ?? null,
+            'role_id'      => $current['role_id']   ?? null,
+            'role'         => $authUser['role']         ?? null,
+            'role_name'    => $authUser['role_name']    ?? null,
+            'permissions'  => $authUser['permissions']  ?? [],
+            'is_applicant' => $authUser['is_applicant'] ?? false,
+        ], 'Profile photo removed.');
+    }
+
+    /**
      * GET /api/auth/me/photo
      * Stream the authenticated user's profile photo inline.
      */

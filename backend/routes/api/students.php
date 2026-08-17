@@ -20,6 +20,7 @@ $router->group('/api/students', function ($router) {
     $router->post('/me',                                 [StudentController::class, 'updateMe']);
     $router->get('/me/photo',                           [StudentController::class, 'downloadMyPhoto']);
     $router->post('/me/photo',                          [StudentController::class, 'uploadMyPhoto']);
+    $router->delete('/me/photo',                        [StudentController::class, 'deleteMyPhoto']);
     $router->get('/me/documents',                       [StudentController::class, 'meDocuments']);
     $router->post('/me/documents',                      [StudentController::class, 'meUploadDocument']);
     $router->get('/me/documents/:document_id/download', [StudentController::class, 'meDownloadDocument']);
@@ -72,6 +73,7 @@ $router->group('/api/students', function ($router) {
     $router->post('/:id',           [StudentController::class, 'update']);
     $router->delete('/:id',        [StudentController::class, 'delete']);
     $router->post('/:id/photo',    [StudentController::class, 'uploadPhoto']);
+    $router->delete('/:id/photo',  [StudentController::class, 'deletePhoto']);
     // Task 1.13 — visa record write + registry officer assignment.
     $router->post('/:id/visa',           [StudentController::class, 'addVisaRecord']);
     $router->post('/:id/assign-registry', [StudentController::class, 'assignRegistryOfficer']);

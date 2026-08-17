@@ -71,6 +71,7 @@ import {
   Users as UsersIcon,
   CalendarClock,
   Camera,
+  Trash2,
   PlusCircle,
   MinusCircle,
   Lock,
@@ -91,6 +92,7 @@ import InvoiceStatusBadge from "@/components/finance/InvoiceStatusBadge";
 import { formatRWF } from "@/utils/formatCurrency";
 import CountrySelect from "@/components/ui/CountrySelect";
 import LocationSelect from "@/components/ui/LocationSelect";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import {
   COUNTRY_BY_NAME,
   COUNTRY_BY_NATIONALITY,
@@ -2076,6 +2078,13 @@ function ProfileHeroPhoto({
     [preview],
   );
 
+  const [confirmRemove, setConfirmRemove] = useState(false);
+
+  const invalidate = () =>
+    qc.invalidateQueries({
+      queryKey: selfMode ? ["student", "me"] : ["student", String(student.id)],
+    });
+
   const upload = useMutation({
     mutationFn: (f: File) =>
       selfMode
@@ -2084,11 +2093,7 @@ function ProfileHeroPhoto({
     onSuccess: () => {
       toast.success("Profile photo updated.");
       setV((n) => n + 1);
-      qc.invalidateQueries({
-        queryKey: selfMode
-          ? ["student", "me"]
-          : ["student", String(student.id)],
-      });
+      invalidate();
     },
     onError: (e: any) => {
       // Drop the optimistic preview on failure so the old photo comes back.
@@ -2106,6 +2111,29 @@ function ProfileHeroPhoto({
           return null;
         });
       }, 1500);
+    },
+  });
+
+  const remove = useMutation({
+    mutationFn: () =>
+      selfMode
+        ? studentService.deleteMyPhoto()
+        : studentService.deletePhoto(student.id),
+    onSuccess: () => {
+      toast.success("Profile photo removed.");
+      // Clear any lingering local preview, otherwise the just-deleted image
+      // would keep showing until the refetch lands.
+      setPreview((p) => {
+        if (p) URL.revokeObjectURL(p);
+        return null;
+      });
+      setV((n) => n + 1);
+      setConfirmRemove(false);
+      invalidate();
+    },
+    onError: (e: any) => {
+      setConfirmRemove(false);
+      toast.error(e?.response?.data?.message ?? "Failed to remove photo");
     },
   });
 
@@ -2130,6 +2158,9 @@ function ProfileHeroPhoto({
         : studentService.photoUrl(student.id, `${student.photo}-${v}`)
       : null);
 
+  const busy     = upload.isPending || remove.isPending;
+  const hasPhoto = !!student.photo || !!preview;
+
   return (
     <div className="shrink-0 w-full sm:w-auto flex flex-col items-center sm:items-start gap-3">
       <div className="relative group">
@@ -2149,7 +2180,7 @@ function ProfileHeroPhoto({
             />
           )}
 
-          {upload.isPending && (
+          {(upload.isPending || remove.isPending) && (
             <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
               <Loader2 className="w-8 h-8 text-white animate-spin" />
             </div>
@@ -2158,8 +2189,8 @@ function ProfileHeroPhoto({
 
         <button
           type="button"
-          onClick={() => !upload.isPending && fileRef.current?.click()}
-          disabled={upload.isPending}
+          onClick={() => !busy && fileRef.current?.click()}
+          disabled={busy}
           className="absolute bottom-2 right-2 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-brand text-white text-xs font-semibold shadow-md hover:bg-brand/90 transition-colors disabled:opacity-60 outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 ring-offset-white dark:ring-offset-ink-900"
           aria-label="Change profile photo"
         >
@@ -2167,6 +2198,19 @@ function ProfileHeroPhoto({
           <span>Change</span>
         </button>
       </div>
+
+      {/* Only offered when there is actually a photo to remove. */}
+      {hasPhoto && (
+        <button
+          type="button"
+          onClick={() => setConfirmRemove(true)}
+          disabled={busy}
+          className="inline-flex items-center gap-1.5 text-[12px] font-medium text-red-600 hover:text-red-700 hover:underline disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-red-500 rounded"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+          {remove.isPending ? "Removing…" : "Remove photo"}
+        </button>
+      )}
 
       <p className="text-[11px] text-ink-400 text-center sm:text-left">
         JPEG, PNG or WebP · max 5 MB
@@ -2178,6 +2222,17 @@ function ProfileHeroPhoto({
         accept="image/jpeg,image/png,image/webp"
         className="hidden"
         onChange={onPick}
+      />
+
+      <ConfirmDialog
+        open={confirmRemove}
+        onClose={() => setConfirmRemove(false)}
+        onConfirm={() => remove.mutate()}
+        title="Remove profile photo?"
+        message="The photo will be deleted permanently. You can upload a new one at any time."
+        confirmLabel="Remove"
+        variant="danger"
+        loading={remove.isPending}
       />
     </div>
   );
@@ -2263,6 +2318,13 @@ function StudentAvatar({
   // the file_server_id stays in transit before the student query refetches.
   const [v, setV] = useState(0);
 
+  const [confirmRemove, setConfirmRemove] = useState(false);
+
+  const invalidate = () =>
+    qc.invalidateQueries({
+      queryKey: selfMode ? ["student", "me"] : ["student", String(student.id)],
+    });
+
   const upload = useMutation({
     mutationFn: (f: File) =>
       selfMode
@@ -2271,14 +2333,27 @@ function StudentAvatar({
     onSuccess: () => {
       toast.success("Profile photo updated.");
       setV((n) => n + 1);
-      qc.invalidateQueries({
-        queryKey: selfMode
-          ? ["student", "me"]
-          : ["student", String(student.id)],
-      });
+      invalidate();
     },
     onError: (e: any) =>
       toast.error(e?.response?.data?.message ?? "Failed to upload photo"),
+  });
+
+  const remove = useMutation({
+    mutationFn: () =>
+      selfMode
+        ? studentService.deleteMyPhoto()
+        : studentService.deletePhoto(student.id),
+    onSuccess: () => {
+      toast.success("Profile photo removed.");
+      setV((n) => n + 1);
+      setConfirmRemove(false);
+      invalidate();
+    },
+    onError: (e: any) => {
+      setConfirmRemove(false);
+      toast.error(e?.response?.data?.message ?? "Failed to remove photo");
+    },
   });
 
   const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2298,36 +2373,68 @@ function StudentAvatar({
       : studentService.photoUrl(student.id, `${student.photo}-${v}`)
     : null;
 
-  return (
-    <button
-      type="button"
-      onClick={() => !upload.isPending && fileRef.current?.click()}
-      className="group relative w-16 h-16 rounded-xl overflow-hidden bg-brand/10 text-brand flex items-center justify-center text-xl font-bold shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-brand"
-      title="Change profile photo"
-      disabled={upload.isPending}
-    >
-      <span>{initials}</span>
-      {photoSrc && (
-        <img
-          src={photoSrc}
-          alt={
-            `${student.fname ?? ""} ${student.lname ?? ""}`.trim() ||
-            "Student photo"
-          }
-          className="w-full h-full object-cover absolute inset-0"
-          onError={(e) => {
-            (e.currentTarget as HTMLImageElement).style.display = "none";
-          }}
-        />
-      )}
+  const busy = upload.isPending || remove.isPending;
 
-      <span className="absolute inset-0 bg-black/45 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-        {upload.isPending ? (
-          <Loader2 className="w-5 h-5 animate-spin" />
-        ) : (
-          <Camera className="w-5 h-5" />
+  return (
+    // Not a <button>: the remove control is nested inside, and a button inside
+    // a button is invalid HTML that browsers silently restructure.
+    // `group` lives here so both the camera overlay and the remove badge
+    // reveal together on hover.
+    <div className="group relative shrink-0">
+      <div
+        role="button"
+        tabIndex={busy ? -1 : 0}
+        aria-label="Change profile photo"
+        title="Change profile photo"
+        onClick={() => !busy && fileRef.current?.click()}
+        onKeyDown={(e) => {
+          if (busy) return;
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            fileRef.current?.click();
+          }
+        }}
+        className={`relative w-16 h-16 rounded-xl overflow-hidden bg-brand/10 text-brand flex items-center justify-center text-xl font-bold outline-none focus-visible:ring-2 focus-visible:ring-brand ${busy ? "opacity-60" : "cursor-pointer"}`}
+      >
+        <span>{initials}</span>
+        {photoSrc && (
+          <img
+            src={photoSrc}
+            alt={
+              `${student.fname ?? ""} ${student.lname ?? ""}`.trim() ||
+              "Student photo"
+            }
+            className="w-full h-full object-cover absolute inset-0"
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).style.display = "none";
+            }}
+          />
         )}
-      </span>
+
+        <span className="absolute inset-0 bg-black/45 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+          {busy ? (
+            <Loader2 className="w-5 h-5 animate-spin" />
+          ) : (
+            <Camera className="w-5 h-5" />
+          )}
+        </span>
+      </div>
+
+      {student.photo && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setConfirmRemove(true);
+          }}
+          disabled={busy}
+          title="Remove profile photo"
+          aria-label="Remove profile photo"
+          className="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-white dark:bg-ink-800 border border-ink-200 dark:border-ink-600 text-red-600 shadow-sm flex items-center justify-center opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-red-50 dark:hover:bg-red-900/20 transition-opacity disabled:opacity-40"
+        >
+          <Trash2 className="w-3 h-3" />
+        </button>
+      )}
 
       <input
         ref={fileRef}
@@ -2336,7 +2443,18 @@ function StudentAvatar({
         className="hidden"
         onChange={onPick}
       />
-    </button>
+
+      <ConfirmDialog
+        open={confirmRemove}
+        onClose={() => setConfirmRemove(false)}
+        onConfirm={() => remove.mutate()}
+        title="Remove profile photo?"
+        message="The photo will be deleted permanently. You can upload a new one at any time."
+        confirmLabel="Remove"
+        variant="danger"
+        loading={remove.isPending}
+      />
+    </div>
   );
 }
 

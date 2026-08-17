@@ -784,4 +784,12 @@ export const studentService = {
     form.append('photo', file)
     return api.upload<{ photo: string }>(`/api/students/me/photo`, form)
   },
+
+  /** Remove a student's profile photo (requires MANAGE_STUDENTS). */
+  deletePhoto: (id: number | string) =>
+    api.delete<{ photo: null }>(`/api/students/${id}/photo`),
+
+  /** Self-service removal — a student clearing their own picture. */
+  deleteMyPhoto: () =>
+    api.delete<{ photo: null }>(`/api/students/me/photo`),
 }

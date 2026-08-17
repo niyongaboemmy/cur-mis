@@ -1376,6 +1376,37 @@ class StudentController extends BaseController
     }
 
     /**
+     * DELETE /api/students/:id/photo
+     * Remove a student's profile photo. Idempotent — see PhotoRemover.
+     */
+    public function deletePhoto(Request $request, Response $response): never
+    {
+        $id      = (int)$request->param('id');
+        $student = $this->studentModel->find($id);
+        if (!$student) {
+            $this->error($response, 'Student not found', 404);
+        }
+
+        $previous = $student['photo'] ?? null;
+        $this->studentModel->update($id, ['photo' => null]);
+        \App\Helpers\PhotoRemover::discard($previous);
+
+        $this->success($response, ['photo' => null], 'Profile photo removed.');
+    }
+
+    /**
+     * DELETE /api/students/me/photo
+     * Self-service removal — resolves the student from the auth context so
+     * MANAGE_STUDENTS isn't required to clear your own picture.
+     */
+    public function deleteMyPhoto(Request $request, Response $response): never
+    {
+        $student = $this->resolveAuthStudent($request, $response);
+        $request->setRouteParams(['id' => (string)$student['id']]);
+        $this->deletePhoto($request, $response);
+    }
+
+    /**
      * GET /api/students/:id/photo
      * Stream the student profile photo from the file server, inline so it can
      * be used directly as an <img src=…>. 404s when the student has no photo.
