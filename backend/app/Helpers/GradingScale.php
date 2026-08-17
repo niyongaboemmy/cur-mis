@@ -27,6 +27,15 @@ use App\Models\GradingScaleModel;
  */
 final class GradingScale
 {
+    /**
+     * The mark at or above which a module counts as passed.
+     *
+     * Kept here rather than repeated as a bare `50` beside every decision, so
+     * the roll-up in ModuleMarksController and the per-level decision printed
+     * on the transcript can never drift apart.
+     */
+    public const PASS_MARK = 50.0;
+
     /** Bands ordered by min_marks DESC, resolved once per request. */
     private static ?array $bands = null;
 

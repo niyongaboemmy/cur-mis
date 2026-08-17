@@ -61,10 +61,15 @@ final class PdfLayout
      * `@page` margins for a document. The top margin reserves space for the letterhead
      * header to display without overlapping content. All documents now use a standardized
      * width of 6.5 inches to match the degree certificate format.
+     *
+     * `$top` overrides the reserved band for documents that need every point of
+     * height they can get. {@see HEADER_SPACE} leaves generous air below the
+     * letterhead; the image itself only reaches ~137px down the page, so a
+     * denser document may reserve less without the two colliding.
      */
-    public static function pageCss(int $side = 40, int $bottom = 40): string
+    public static function pageCss(int $side = 40, int $bottom = 40, ?int $top = null): string
     {
-        $top = self::HEADER_SPACE;
+        $top ??= self::HEADER_SPACE;
         return "@page { margin: {$top}px {$side}px {$bottom}px {$side}px; size: 8.5in 11in; }
                 body { width: 6.5in; margin: 0 auto; }";
     }
