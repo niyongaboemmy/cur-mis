@@ -23,7 +23,7 @@ class AuthService
     public function __construct()
     {
         $this->jwtSecret = $_ENV['JWT_SECRET'];
-        $this->jwtExpiry = (int)($_ENV['JWT_EXPIRY'] ?? 86400);
+        $this->jwtExpiry = (int)($_ENV['JWT_EXPIRY'] ?? 604800);
         $this->mailService = new MailService();
     }
 
