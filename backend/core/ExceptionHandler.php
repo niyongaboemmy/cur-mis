@@ -82,6 +82,16 @@ class ExceptionHandler
             if (!(error_reporting() & $severity)) {
                 return false; // Respect error_reporting() level
             }
+            // A deprecation is a warning about a *future* PHP release, not a
+            // failure of this request — it must never become a 500. PHP 8.5
+            // deprecated the PDO::MYSQL_ATTR_* constants, which are read while
+            // building the connection options, so promoting deprecations to
+            // exceptions took down every endpoint in the app the moment the
+            // runtime was upgraded. Log and carry on.
+            if ($severity === E_DEPRECATED || $severity === E_USER_DEPRECATED) {
+                error_log("Deprecated: {$message} in {$file}:{$line}");
+                return true;
+            }
             throw new \ErrorException($message, 0, $severity, $file, $line);
         });
 
