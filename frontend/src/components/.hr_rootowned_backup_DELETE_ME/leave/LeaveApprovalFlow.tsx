@@ -7,7 +7,6 @@ import {
   Flag,
   Minus,
   Undo2,
-  Users,
   X,
 } from "lucide-react";
 import type { LeaveProgressStep, LeaveStepState } from "@/services/hrService";
@@ -289,31 +288,6 @@ export default function LeaveApprovalFlow({
                           <span className="text-ink-400">
                             {" "}
                             · {fmtDateTime(step.decided_at)}
-                          </span>
-                        )}
-                      </p>
-                    )}
-
-                  {/* Which office is assigned to sign this step — shown on any
-                      step not yet signed, so the road ahead names the offices
-                      rather than only their stage titles. An empty assignment is
-                      a step nobody can sign, which has to be said out loud. */}
-                  {!isOutcome &&
-                    step.state !== "completed" &&
-                    step.state !== "skipped" &&
-                    step.assigned_roles !== undefined && (
-                      <p className="text-[11px] mt-1 flex items-start gap-1">
-                        <Users className="w-3 h-3 mt-0.5 shrink-0 text-ink-400" />
-                        {step.assigned_roles.length > 0 ? (
-                          <span className="text-ink-500 dark:text-ink-400">
-                            Assigned to{" "}
-                            <strong className="text-ink-700 dark:text-ink-200">
-                              {step.assigned_roles.join(", ")}
-                            </strong>
-                          </span>
-                        ) : (
-                          <span className="text-amber-700 dark:text-amber-400 font-semibold">
-                            No role assigned — nobody can sign this step
                           </span>
                         )}
                       </p>

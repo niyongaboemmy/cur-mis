@@ -11,7 +11,6 @@ import {
   Loader2,
   Plus,
   Trash2,
-  Users,
   X,
 } from "lucide-react";
 import {
@@ -84,7 +83,6 @@ export default function LeaveChainEditorModal({
   });
 
   const holderCounts = chainRes?.data?.permission_holder_counts ?? {};
-  const permissionRoles = chainRes?.data?.permission_roles ?? {};
   const available = chainRes?.data?.available_stage_permissions ?? [
     "APPROVE_LEAVE_VC",
     "APPROVE_LEAVE_HR",
@@ -333,55 +331,22 @@ export default function LeaveChainEditorModal({
                         >
                           {available.map((slug) => {
                             const held = holderCounts[slug];
-                            const roles = permissionRoles[slug] ?? [];
-                            // Name the office, not just the head count: the
-                            // permission is the contract, but the role is what an
-                            // administrator actually assigns people to.
-                            const who = roles.length
-                              ? roles.map((r) => r.name).join(", ")
-                              : "no role assigned";
                             return (
                               <option key={slug} value={slug}>
-                                {PERMISSION_LABELS[slug] ?? slug} — {who}
-                                {held !== undefined && ` (${held})`}
+                                {PERMISSION_LABELS[slug] ?? slug}
+                                {held !== undefined &&
+                                  ` — ${held} ${held === 1 ? "person" : "people"}`}
                               </option>
                             );
                           })}
                         </select>
-                        {(() => {
-                          const roles =
-                            permissionRoles[s.required_permission_slug] ?? [];
-                          const held =
-                            holderCounts[s.required_permission_slug] ?? 0;
-                          if (roles.length === 0) {
-                            return (
-                              <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5 flex items-start gap-1">
-                                <AlertTriangle className="w-3 h-3 shrink-0 mt-px" />
-                                No role holds this permission — create or grant one
-                                or requests will wait at this step.
-                              </p>
-                            );
-                          }
-                          return (
-                            <p
-                              className={`text-[10px] mt-0.5 flex items-start gap-1 ${
-                                held === 0
-                                  ? "text-amber-600 dark:text-amber-400"
-                                  : "text-ink-400"
-                              }`}
-                            >
-                              {held === 0 ? (
-                                <AlertTriangle className="w-3 h-3 shrink-0 mt-px" />
-                              ) : (
-                                <Users className="w-3 h-3 shrink-0 mt-px" />
-                              )}
-                              Role: <strong>{roles.map((r) => r.name).join(", ")}</strong>
-                              {held === 0
-                                ? " — but no account is assigned to it yet"
-                                : ` · ${held} ${held === 1 ? "signatory" : "signatories"}`}
-                            </p>
-                          );
-                        })()}
+                        {holderCounts[s.required_permission_slug] === 0 && (
+                          <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5 flex items-start gap-1">
+                            <AlertTriangle className="w-3 h-3 shrink-0 mt-px" />
+                            Nobody holds this yet — assign an account to the
+                            matching role or requests will wait here.
+                          </p>
+                        )}
                       </div>
                       <div>
                         <label className="text-[10px] font-bold text-ink-400 uppercase tracking-wider">

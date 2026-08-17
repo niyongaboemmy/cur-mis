@@ -613,6 +613,8 @@ export interface LeaveApprovalStage {
    * complete — requests will queue at an office with nobody in it.
    */
   holder_count?:             number
+  /** The offices assigned to this stage, and how many accounts each has. */
+  roles?:                    { name: string; users: number }[]
 }
 
 export interface LeaveApprovalStagePayload {
@@ -629,6 +631,8 @@ export interface LeaveApprovalChain {
   available_stage_permissions:   string[]
   /** slug → how many active accounts hold it, for the approver picker. */
   permission_holder_counts?:     Record<string, number>
+  /** slug → the offices holding it, so the picker can name the role. */
+  permission_roles?:             Record<string, { name: string; users: number }[]>
 }
 
 export interface LeaveTypePayload {
@@ -732,6 +736,8 @@ interface LeaveStageFields {
    */
   next_stage_label:         string | null
   next_stage_roles:         string | null
+  /** The role(s) that sign the CURRENT stage, comma-separated. */
+  current_stage_roles:      string | null
   total_stages:             number
   /** When the request arrived at the stage it is sitting at. */
   stage_entered_at:         string

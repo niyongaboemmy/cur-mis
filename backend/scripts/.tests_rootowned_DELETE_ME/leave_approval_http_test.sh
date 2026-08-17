@@ -121,12 +121,6 @@ check "the editor is told which permissions it may choose" "True" \
   "$(jq_ "len(d['data']['available_stage_permissions']) >= 6")"
 check "each stage reports how many people can sign it" "True" \
   "$(jq_ "all('holder_count' in s for s in d['data']['stages'])")"
-check "each stage names the role assigned to sign it" "True" \
-  "$(jq_ "all(s.get('roles') is not None for s in d['data']['stages'])")"
-check "the VC stage is assigned to vice_chancellor" "True" \
-  "$(jq_ "any('vice_chancellor' in [r['name'] for r in s['roles']] for s in d['data']['stages'] if s['required_permission_slug']=='APPROVE_LEAVE_VC')")"
-check "the approver picker names the offices per permission" "True" \
-  "$(jq_ "set(d['data']['permission_roles']) == set(d['data']['available_stage_permissions'])")"
 check "the approver picker reports holder counts per permission" "True" \
   "$(jq_ "set(d['data']['permission_holder_counts']) == set(d['data']['available_stage_permissions'])")"
 
@@ -181,11 +175,6 @@ check "a staff member can file their own leave" 201 "$CODE" "$BODY"
 RID=$(jq_ "d['data']['id']")
 check "the new request enters at stage 1" "1" "$(jq_ "d['data']['current_stage_order']")"
 check "stage 1 is the Vice Chancellor" "Vice Chancellor" "$(jq_ "d['data']['current_stage_label']")"
-check "the request names the office signing now" "True" \
-  "$(jq_ "'vice_chancellor' in (d['data']['current_stage_roles'] or '')")"
-check "and names the NEXT step" "HR — Recommendation" "$(jq_ "d['data']['next_stage_label']")"
-check "and the role assigned to that next step" "True" \
-  "$(jq_ "'hr_manager' in (d['data']['next_stage_roles'] or '')")"
 check "the chain has four stages" "4" "$(jq_ "d['data']['total_stages']")"
 check "the new request is Pending" "Pending" "$(jq_ "d['data']['status']")"
 
@@ -223,8 +212,6 @@ call POST "/api/hr/leave/approvals/$RID/decide" "$HRREC" '{"decision":"approved"
 check "HR signs its recommendation" 200 "$CODE" "$BODY"
 check "it advances to the DAF" "DAF — Director of Administration & Finance" \
   "$(jq_ "d['data']['current_stage_label']")"
-check "the next step is now the final authorisation" "Vice Chancellor — Final Authorization" \
-  "$(jq_ "d['data']['next_stage_label']")"
 check "HR only recommends — it cannot grant" "Pending" "$(jq_ "d['data']['status']")"
 
 call GET "/api/hr/leave/my-requests/$RID/progress" "$REQ"
@@ -244,10 +231,6 @@ check "the awaiting step reports how long it has waited" "True" \
   "$(jq_ "any(s['state']=='current' and s.get('hours_waiting') is not None for s in d['data']['steps'])")"
 check "each signed stage names the office that signed it" "True" \
   "$(jq_ "all(s['actor_role'] for s in d['data']['steps'][1:3])")"
-check "every stage step carries its assigned role" "True" \
-  "$(jq_ "all(s.get('assigned_roles') is not None for s in d['data']['steps'][1:5])")"
-check "an unreached step already names who will sign it" "True" \
-  "$(jq_ "len(d['data']['steps'][4]['assigned_roles']) > 0")"
 check "progress lists the recorded decisions" "3" "$(jq_ "len(d['data']['history'])")"
 
 call GET "/api/hr/leave/requests/$RID/progress" "$HR"

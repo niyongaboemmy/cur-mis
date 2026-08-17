@@ -18,7 +18,6 @@ import {
   DECISION_STYLES,
   fmtDate,
   fmtDateTime,
-  prettyDays,
 } from "./leaveStatus";
 
 /**
@@ -139,7 +138,7 @@ export default function LeaveProgressModal({
                 )}
                 {p.days_requested != null && (
                   <span className="chip-soft text-[10.5px]">
-                    {prettyDays(p.days_requested)} working day
+                    {p.days_requested} working day
                     {Number(p.days_requested) === 1 ? "" : "s"}
                   </span>
                 )}

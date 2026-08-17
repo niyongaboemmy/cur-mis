@@ -8,7 +8,6 @@ import {
   Flag,
   Loader2,
   Undo2,
-  Users,
   X,
   XCircle,
 } from "lucide-react";
@@ -144,39 +143,15 @@ export default function LeaveDecisionConfirm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canSend, submit.isPending]);
 
-  /**
-   * Where the request goes if this decision is taken — named, not merely
-   * "the next office". A reviewer handing work on should see whose desk it lands
-   * on and which role signs there.
-   */
+  /** Where the request goes if this decision is taken. */
   const destination =
     decision === "approved"
       ? isFinal
-        ? {
-            label: "Leave granted",
-            role: null,
-            tone: "text-emerald-700 dark:text-emerald-300",
-            icon: Flag,
-          }
-        : {
-            label: request.next_stage_label ?? "Next stage",
-            role: request.next_stage_roles,
-            tone: "text-ink-800 dark:text-ink-100",
-            icon: ArrowRight,
-          }
+        ? { label: "Leave granted", tone: "text-emerald-700 dark:text-emerald-300", icon: Flag }
+        : { label: "Next office", tone: "text-ink-600 dark:text-ink-300", icon: ArrowRight }
       : decision === "changes_requested"
-        ? {
-            label: "Back to requester",
-            role: request.employee_name,
-            tone: "text-amber-700 dark:text-amber-300",
-            icon: CornerUpLeft,
-          }
-        : {
-            label: "Request closed",
-            role: null,
-            tone: "text-red-700 dark:text-red-300",
-            icon: XCircle,
-          };
+        ? { label: "Back to requester", tone: "text-amber-700 dark:text-amber-300", icon: CornerUpLeft }
+        : { label: "Request closed", tone: "text-red-700 dark:text-red-300", icon: XCircle };
   const DestIcon = destination.icon;
 
   return (
@@ -251,12 +226,6 @@ export default function LeaveDecisionConfirm({
                   <p className="text-[12.5px] font-bold text-ink-900 dark:text-white leading-tight mt-0.5 truncate">
                     {request.current_stage_label ?? "Leave Approval"}
                   </p>
-                  {request.current_stage_roles && (
-                    <p className="text-[10px] text-ink-500 dark:text-ink-400 mt-0.5 truncate flex items-center gap-1">
-                      <Users className="w-2.5 h-2.5 shrink-0" />
-                      {request.current_stage_roles}
-                    </p>
-                  )}
                   <p className="text-[10px] text-ink-400 mt-0.5">
                     Stage {request.current_stage_order} of {stages}
                     {isFinal && " · final"}
@@ -275,26 +244,6 @@ export default function LeaveDecisionConfirm({
                     <DestIcon className="w-3.5 h-3.5 shrink-0" />
                     <span className="truncate">{destination.label}</span>
                   </p>
-                  {/* The office that signs next — or, when nobody holds that
-                      step, a warning that it will simply sit there. */}
-                  {decision === "approved" && !isFinal && (
-                    <p
-                      className={`text-[10px] mt-0.5 truncate flex items-center gap-1 ${
-                        destination.role
-                          ? "text-ink-500 dark:text-ink-400"
-                          : "text-amber-700 dark:text-amber-400 font-semibold"
-                      }`}
-                    >
-                      <Users className="w-2.5 h-2.5 shrink-0" />
-                      {destination.role ?? "No role assigned to that step"}
-                    </p>
-                  )}
-                  {decision === "changes_requested" && destination.role && (
-                    <p className="text-[10px] text-ink-500 dark:text-ink-400 mt-0.5 truncate flex items-center gap-1">
-                      <Users className="w-2.5 h-2.5 shrink-0" />
-                      {destination.role}
-                    </p>
-                  )}
                   <p className="text-[10px] text-ink-400 mt-0.5">
                     {decision === "approved"
                       ? isFinal
