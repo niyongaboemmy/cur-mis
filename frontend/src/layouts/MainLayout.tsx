@@ -62,7 +62,7 @@ import {
 } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { useAuthStore } from "@/store/authStore";
-import { PERMISSIONS } from "@/constants/permissions";
+import { PERMISSIONS, LEAVE_STAGE_PERMISSIONS } from "@/constants/permissions";
 import { isSuperadmin } from "@/utils/permissions";
 
 /* ------------------------------------------------------------------
@@ -247,9 +247,7 @@ const NAV_TREE: NavNode[] = [
       PERMISSIONS.VIEW_HR_EMPLOYEES,
       PERMISSIONS.VIEW_LEAVE_REQUESTS,
       PERMISSIONS.MANAGE_LEAVE_REQUESTS,
-      PERMISSIONS.APPROVE_LEAVE_L1,
-      PERMISSIONS.APPROVE_LEAVE_L2,
-      PERMISSIONS.APPROVE_LEAVE_FINAL,
+      ...LEAVE_STAGE_PERMISSIONS,
     ],
     children: [
       {
@@ -280,9 +278,7 @@ const NAV_TREE: NavNode[] = [
         to: "/hr/leave/approvals",
         label: "Leave Approvals",
         permissions: [
-          PERMISSIONS.APPROVE_LEAVE_L1,
-          PERMISSIONS.APPROVE_LEAVE_L2,
-          PERMISSIONS.APPROVE_LEAVE_FINAL,
+          ...LEAVE_STAGE_PERMISSIONS,
           PERMISSIONS.MANAGE_LEAVE_REQUESTS,
         ],
       },

@@ -4,7 +4,7 @@ import MainLayout from "@/layouts/MainLayout";
 import ProtectedRoute from "@/components/layout/ProtectedRoute";
 import ErrorBoundary from "@/components/layout/ErrorBoundary";
 import { useThemeStore } from "@/store/themeStore";
-import { PERMISSIONS } from "@/constants/permissions";
+import { PERMISSIONS, LEAVE_STAGE_PERMISSIONS } from "@/constants/permissions";
 
 // ── Pages (direct imports — no lazy() to avoid chunk-load failures on cPanel) ──
 import WelcomePage from "@/pages/WelcomePage";
@@ -369,9 +369,7 @@ function App() {
                 element={
                   <ProtectedRoute
                     requiredPermissions={[
-                      PERMISSIONS.APPROVE_LEAVE_L1,
-                      PERMISSIONS.APPROVE_LEAVE_L2,
-                      PERMISSIONS.APPROVE_LEAVE_FINAL,
+                      ...LEAVE_STAGE_PERMISSIONS,
                       PERMISSIONS.MANAGE_LEAVE_REQUESTS,
                     ]}
                   />

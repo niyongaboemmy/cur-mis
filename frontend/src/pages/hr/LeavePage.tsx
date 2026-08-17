@@ -27,7 +27,7 @@ import {
   type LeaveStatus,
   type LeaveType,
 } from "@/services/hrService";
-import { PERMISSIONS } from "@/constants";
+import { PERMISSIONS, LEAVE_STAGE_PERMISSIONS } from "@/constants";
 import { useAnyPermission, usePermission } from "@/utils/permissions";
 import ModalPortal from "@/components/ui/ModalPortal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -58,9 +58,7 @@ export default function LeavePage() {
   // still refuses a decision on a stage the actor does not own.
   const canDecide = useAnyPermission([
     PERMISSIONS.MANAGE_LEAVE_REQUESTS,
-    PERMISSIONS.APPROVE_LEAVE_L1,
-    PERMISSIONS.APPROVE_LEAVE_L2,
-    PERMISSIONS.APPROVE_LEAVE_FINAL,
+    ...LEAVE_STAGE_PERMISSIONS,
   ]);
   const canCancel = usePermission(PERMISSIONS.MANAGE_LEAVE_REQUESTS);
   // Editing the chain is a leave-type concern, not a per-request one.
