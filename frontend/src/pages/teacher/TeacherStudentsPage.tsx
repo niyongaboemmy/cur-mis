@@ -2,8 +2,10 @@ import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Loader2, Search, Users, Download } from 'lucide-react'
 import { teacherService } from '@/services/teacherService'
+import { useLevels } from '@/hooks/useLevels'
 
 export default function TeacherStudentsPage() {
+  const { levelName } = useLevels()
   const [q, setQ] = useState('')
 
   const query = useQuery({
@@ -25,7 +27,7 @@ export default function TeacherStudentsPage() {
   const exportCsv = () => {
     const head = ['Reg number', 'Student', 'Gender', 'Level', 'Email', 'Phone', 'Courses', 'Modules']
     const body = rows.map((s) => [
-      s.regnumber, s.full_name, s.gender ?? '', s.level ?? '',
+      s.regnumber, s.full_name, s.gender ?? '', s.level_name ?? levelName(s.level, ''),
       s.email ?? '', s.phone ?? '', s.modules, s.module_codes,
     ])
     const csv = [head, ...body]
@@ -99,7 +101,7 @@ export default function TeacherStudentsPage() {
                   <span className="font-medium text-ink-900 dark:text-white">{s.full_name}</span>
                   {s.gender && <span className="text-ink-400 text-[11px] ml-1.5">({s.gender})</span>}
                 </td>
-                <td className="px-4 py-2.5">{s.level ?? '—'}</td>
+                <td className="px-4 py-2.5">{s.level_name ?? levelName(s.level)}</td>
                 <td className="px-4 py-2.5 text-[12px] text-ink-500">
                   <div className="truncate max-w-[200px]">{s.email ?? '—'}</div>
                   <div className="text-ink-400">{s.phone ?? ''}</div>

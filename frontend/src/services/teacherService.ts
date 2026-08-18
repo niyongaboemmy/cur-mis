@@ -44,6 +44,8 @@ export interface TeacherCourse {
   module_name:         string
   module_credits:      number | null
   level:               number | null
+  /** Resolved `levels.name` — displayed instead of the raw `levels.id`. */
+  level_name:          string | null
   department_id:       number | null
   role:                'primary' | 'assistant'
   hours_per_week:      number | null
@@ -65,6 +67,7 @@ export interface TeacherClassStudent {
   phone:           string | null
   photo:           string | null
   level:           number | null
+  level_name:      string | null
   student_state:   string | null
   total:           number | null
   percentage:      number | null
@@ -146,6 +149,7 @@ export interface TeacherStudent {
   phone:        string | null
   photo:        string | null
   level:        number | null
+  level_name:   string | null
   modules:      number
   module_codes: string
 }
@@ -281,6 +285,7 @@ export interface ExamAttendanceSheet {
     gender:        string | null
     photo:         string | null
     level:         number | null
+    level_name:    string | null
     status:        ExamAttendanceStatus | null
     seat_no:       string | null
     signed_in_at:  string | null

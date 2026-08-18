@@ -18,12 +18,12 @@ use App\Helpers\StudentIdCardHelper;
 class PublicController extends BaseController
 {
     private StudentIdModel $cards;
-    private Database       $db;
+    private Database $db;
 
     public function __construct()
     {
         $this->cards = new StudentIdModel();
-        $this->db    = Database::getInstance();
+        $this->db = Database::getInstance();
     }
 
     // ── GET /api/public/student-verify?code=<barcode> ────────────────────────
@@ -55,22 +55,24 @@ class PublicController extends BaseController
         }
 
         $expired = !empty($card['expiry_date']) && strtotime((string) $card['expiry_date']) < strtotime(date('Y-m-d'));
-        $valid   = (int) ($card['is_active'] ?? 0) === 1 && !$expired;
+        $valid = (int) ($card['is_active'] ?? 0) === 1 && !$expired;
 
         $this->success($response, [
-            'found'       => true,
-            'valid'       => $valid,
-            'status'      => $valid ? 'valid' : ((int) ($card['is_active'] ?? 0) !== 1 ? 'revoked' : 'expired'),
-            'full_name'   => trim(((string) $student['fname']) . ' ' . ((string) $student['lname'])),
-            'regnumber'   => $student['regnumber'],
-            'faculty'     => $student['fac_name'] ?: null,
-            'department'  => $student['dep_name'] ?: null,
-            'program'     => $student['program'] ?: null,
-            'level'       => \App\Helpers\LevelHelper::name($student['level_name'] ?? $student['current_level'] ?? null) ?: null,
-            'issued_at'   => $card['issue_date'] ?? null,
-            'expires_at'  => $card['expiry_date'] ?? null,
-            'has_photo'   => !empty($student['photo']),
-            'photo_url'   => !empty($student['photo'])
+            'found' => true,
+            'valid' => $valid,
+            'status' => $valid ? 'valid' : ((int) ($card['is_active'] ?? 0) !== 1 ? 'revoked' : 'expired'),
+            'full_name' => trim(((string) $student['fname']) . ' ' . ((string) $student['lname'])),
+            'regnumber' => $student['regnumber'],
+            'faculty' => $student['fac_name'] ?: null,
+            'department' => $student['dep_name'] ?: null,
+            'program' => $student['program'] ?: null,
+            // `current_level` stores a `levels.id` — the printed card and this
+            // page both show the catalogue name.
+            'level' => \App\Helpers\LevelHelper::name($student['level_name'] ?? $student['current_level'] ?? null) ?: null,
+            'issued_at' => $card['issue_date'] ?? null,
+            'expires_at' => $card['expiry_date'] ?? null,
+            'has_photo' => !empty($student['photo']),
+            'photo_url' => !empty($student['photo'])
                 ? '/api/public/student-photo?code=' . rawurlencode($code)
                 : null,
         ], 'Verification result.');

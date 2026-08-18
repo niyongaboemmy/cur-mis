@@ -6,6 +6,7 @@ import {
   CalendarRange, MapPin, Clock, CalendarX, LayoutGrid, List, BookOpen,
 } from 'lucide-react'
 import { teacherService, type TeacherCourse } from '@/services/teacherService'
+import { useLevels } from '@/hooks/useLevels'
 
 const DAY_ABBR = ['', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
@@ -72,6 +73,7 @@ function scheduleSummary(c: TeacherCourse): string {
  * ═══════════════════════════════════════════════════════════════════════ */
 
 function CourseCard({ c }: { c: TeacherCourse }) {
+  const { levelName } = useLevels()
   const left     = weeksLeft(c.end_date)
   const marksPct = c.students > 0 ? Math.round((c.marks_scored / c.students) * 100) : 0
   const block    = c.schedules[0]
@@ -100,7 +102,7 @@ function CourseCard({ c }: { c: TeacherCourse }) {
 
           <div className="flex flex-wrap gap-1.5 mt-1.5">
             {c.module_credits != null && <span className="chip-soft">{c.module_credits} cr</span>}
-            {c.level != null && <span className="chip-soft">Level {c.level}</span>}
+            {c.level != null && <span className="chip-soft">{c.level_name ?? levelName(c.level)}</span>}
             {c.role === 'assistant' && <span className="chip-warning">Assistant</span>}
             {c.status === 'ongoing' && left != null && left <= 4 && (
               <span className="chip-warning">{left} wk{left === 1 ? '' : 's'} left</span>
