@@ -56,7 +56,15 @@ jobs:
       - name: Create file-server/.env from secret
         env:
           FILE_SERVER_ENV: ${{ secrets.FILE_SERVER_ENV }}
-        run: printf '%s' "$FILE_SERVER_ENV" > file-server/.env
+        run: |
+          printf '%s' "$FILE_SERVER_ENV" > file-server/.env
+          # A blank/incomplete secret would deploy an empty .env and the server
+          # would reject every backend upload with "Invalid API Key".
+          grep -qE '^FILE_SERVER_KEY=.+' file-server/.env || {
+            echo "::error::secrets.FILE_SERVER_ENV is empty or has no FILE_SERVER_KEY."
+            echo "Set it to the contents of file-server/.env.production (must match FILE_SERVER_KEY in the backend's .env)."
+            exit 1
+          }
 
       - name: Ensure storage/uploads placeholder exists
         run: mkdir -p file-server/storage/uploads && touch file-server/storage/uploads/.gitkeep

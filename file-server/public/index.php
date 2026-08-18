@@ -42,7 +42,20 @@ $dotenv = Dotenv::createImmutable($_FS_ROOT);
 $dotenv->safeLoad();
 
 define('STORAGE_PATH', $_FS_ROOT . '/storage/uploads/');
-define('API_KEY', $_ENV['FILE_SERVER_KEY'] ?? 'development_key_change_me');
+
+// The key MUST come from .env. Falling back to a hard-coded default would leave
+// the server publicly writable with a key that is committed to the repo, so a
+// missing/unreadable .env is a fatal misconfiguration rather than a silent default.
+$fsKey = trim((string)($_ENV['FILE_SERVER_KEY'] ?? ''));
+if ($fsKey === '' || ($fsKey === 'development_key_change_me' && ($_ENV['APP_ENV'] ?? 'local') !== 'local')) {
+    header('HTTP/1.1 500 Internal Server Error');
+    header('Content-Type: application/json');
+    die(json_encode([
+        'success' => false,
+        'message' => 'File server misconfigured: FILE_SERVER_KEY is not set. Check ' . $_FS_ROOT . '/.env',
+    ]));
+}
+define('API_KEY', $fsKey);
 
 $request = new Request();
 $response = new Response();
