@@ -27,7 +27,7 @@
  *     "amount":           100000,
  *     "currency":         "RWF",
  *     "payment_date":     "2026-06-16T10:00:00Z",
- *     "service_code":     "tuition-fees-1258",
+ *     "service_code":     "tuition-fees-4679",
  *     "status":           "SUCCESSFUL"
  *   }
  */

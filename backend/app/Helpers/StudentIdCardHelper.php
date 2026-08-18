@@ -33,7 +33,7 @@ class StudentIdCardHelper
         $reg     = htmlspecialchars((string) ($student['regnumber'] ?? '—'));
         $faculty = htmlspecialchars((string) ($student['fac_name'] ?? ($student['faculty'] ?? '—')));
         $dept    = htmlspecialchars((string) ($student['dep_name'] ?? ($student['department'] ?? '—')));
-        $level   = htmlspecialchars((string) ($student['current_level'] ?? '—'));
+        $level   = htmlspecialchars(LevelHelper::name($student['level_name'] ?? $student['current_level'] ?? null, '—'));
         $mode    = htmlspecialchars(self::normalizeMode((string) ($student['program'] ?? '')));
 
         $barcode = (string) ($card['barcode'] ?? $reg);
@@ -118,7 +118,7 @@ class StudentIdCardHelper
                                 <table cellpadding="0" cellspacing="0" style="margin-top:1.5mm;">
                                     <tr><td class="lbl">Faculty:&nbsp;</td><td class="val">{$faculty}</td></tr>
                                     <tr><td class="lbl">Dep:&nbsp;</td><td class="val">{$dept}</td></tr>
-                                    <tr><td class="lbl">Class:&nbsp;</td><td class="val">Level {$level}</td></tr>
+                                    <tr><td class="lbl">Class:&nbsp;</td><td class="val">{$level}</td></tr>
                                     <tr><td class="lbl">Mode:&nbsp;</td><td class="val">{$mode}</td></tr>
                                 </table>
                             </td>

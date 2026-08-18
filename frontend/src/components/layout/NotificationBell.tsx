@@ -1,89 +1,128 @@
-import { useRef, useState, useEffect, useCallback } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Bell, X, CheckCheck, AlertTriangle, Info, Wallet, FileText } from 'lucide-react'
+import {
+  AlertTriangle,
+  Bell,
+  CheckCheck,
+  CheckCircle2,
+  Info,
+  Loader2,
+  X,
+  XCircle,
+} from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { notificationService, type AppNotification } from '@/services/notificationService'
+import {
+  notificationService,
+  type AppNotification,
+  type NotificationSeverity,
+} from '@/services/notificationService'
+import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import { cn } from '@/utils/helpers'
 
 function timeAgo(iso: string): string {
   const diff = (Date.now() - new Date(iso).getTime()) / 1000
-  if (diff < 60)    return 'just now'
-  if (diff < 3600)  return `${Math.floor(diff / 60)}m ago`
+  if (diff < 60) return 'just now'
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
-  return `${Math.floor(diff / 86400)}d ago`
+  if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`
+  return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
 }
 
-/** Icon per notification category, with a neutral fallback for unknown types. */
-function iconFor(type: string | null) {
-  switch (type) {
-    case 'FEE_OVERDUE':  return { Icon: Wallet,        tone: 'text-red-500    bg-red-50    dark:bg-red-900/20'    }
-    case 'FINE_ISSUED':  return { Icon: AlertTriangle, tone: 'text-amber-500  bg-amber-50  dark:bg-amber-900/20'  }
-    case 'DOCUMENT':     return { Icon: FileText,      tone: 'text-blue-500   bg-blue-50   dark:bg-blue-900/20'   }
-    default:             return { Icon: Info,          tone: 'text-ink-400    bg-ink-50    dark:bg-ink-800'       }
-  }
+const SEVERITY: Record<
+  NotificationSeverity,
+  { icon: typeof Info; dot: string; tint: string }
+> = {
+  info: {
+    icon: Info,
+    dot: 'bg-primary-500',
+    tint: 'text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/30',
+  },
+  success: {
+    icon: CheckCircle2,
+    dot: 'bg-emerald-500',
+    tint: 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30',
+  },
+  warning: {
+    icon: AlertTriangle,
+    dot: 'bg-amber-500',
+    tint: 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30',
+  },
+  danger: {
+    icon: XCircle,
+    dot: 'bg-red-500',
+    tint: 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30',
+  },
 }
 
 /**
- * Header notification bell.
+ * System notification bell — approval outcomes, action-required prompts and
+ * anything else a module pushes through NotificationService.
  *
- * Replaces the previous decorative button, which rendered a permanent unread
- * dot and had no click handler at all — clicking Notifications did nothing
- * while the neighbouring Messages bell opened a dropdown.
+ * Distinct from MessageNotificationBell, which is person-to-person messaging.
+ * Polls the deliberately cheap /unread-count endpoint; opening an item marks it
+ * read and follows its deep link.
  */
 export default function NotificationBell() {
   const [open, setOpen] = useState(false)
-  const ref      = useRef<HTMLDivElement>(null)
+  const [confirmingAll, setConfirmingAll] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
-  const qc       = useQueryClient()
+  const qc = useQueryClient()
 
   const { data, isLoading } = useQuery({
-    queryKey: ['notifications', 'feed'],
-    queryFn:  ({ signal }) => notificationService.getFeed(10, signal).then(r => r.data),
-    refetchInterval: 60_000,
-    staleTime:       30_000,
+    queryKey: ['notifications', 'unread-count'],
+    queryFn: ({ signal }) => notificationService.unreadCount(signal).then(r => r.data),
+    refetchInterval: 30_000,
+    staleTime: 15_000,
   })
 
-  const total  = data?.total  ?? 0
-  const recent: AppNotification[] = data?.recent ?? []
+  const total = data?.total ?? 0
+  const recent = data?.recent ?? []
 
-  const invalidate = () => qc.invalidateQueries({ queryKey: ['notifications', 'feed'] })
+  const refresh = useCallback(() => {
+    qc.invalidateQueries({ queryKey: ['notifications'] })
+  }, [qc])
 
-  const markRead    = useMutation({ mutationFn: (id: number) => notificationService.markRead(id), onSuccess: invalidate })
-  const markAllRead = useMutation({ mutationFn: () => notificationService.markAllRead(),          onSuccess: invalidate })
+  const markRead = useMutation({
+    mutationFn: (id: number) => notificationService.markRead(id),
+    onSuccess: refresh,
+  })
+
+  const markAll = useMutation({
+    mutationFn: () => notificationService.markAllRead(),
+    onSuccess: () => { setConfirmingAll(false); refresh() },
+  })
 
   const close = useCallback(() => setOpen(false), [])
 
   useEffect(() => {
     if (!open) return
-    function handler(e: MouseEvent) {
+    function onClick(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) close()
     }
-    function onEsc(e: KeyboardEvent) {
+    function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') close()
     }
-    document.addEventListener('mousedown', handler)
-    document.addEventListener('keydown', onEsc)
+    document.addEventListener('mousedown', onClick)
+    document.addEventListener('keydown', onKey)
     return () => {
-      document.removeEventListener('mousedown', handler)
-      document.removeEventListener('keydown', onEsc)
+      document.removeEventListener('mousedown', onClick)
+      document.removeEventListener('keydown', onKey)
     }
   }, [open, close])
 
-  const openNotification = (n: AppNotification) => {
-    if (!n.is_read) markRead.mutate(n.id)
+  /** Open the thing the notification is about, and stop nagging about it. */
+  function openItem(item: AppNotification) {
+    markRead.mutate(item.id)
     close()
-    if (n.link) navigate(n.link)
+    if (item.link) navigate(item.link)
   }
 
   return (
     <div ref={ref} className="relative">
-      {/* Trigger */}
       <button
-        type="button"
-        aria-label="Notifications"
-        aria-haspopup="menu"
-        aria-expanded={open}
+        aria-label={total > 0 ? `Notifications (${total} unread)` : 'Notifications'}
         onClick={() => setOpen(v => !v)}
         className={cn(
           'relative w-10 h-10 rounded-full border bg-white dark:bg-ink-800 text-ink-600 dark:text-ink-300',
@@ -95,8 +134,6 @@ export default function NotificationBell() {
         )}
       >
         <Bell className="w-[18px] h-[18px]" />
-        {/* Badge reflects the real unread count — the old button showed a
-            hardcoded dot whether or not anything was waiting. */}
         {total > 0 && (
           <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center ring-2 ring-white dark:ring-ink-900 leading-none">
             {total > 99 ? '99+' : total}
@@ -104,18 +141,16 @@ export default function NotificationBell() {
         )}
       </button>
 
-      {/* Popover */}
       <AnimatePresence>
         {open && (
           <motion.div
             key="notif-popover"
-            role="menu"
             initial={{ opacity: 0, scale: 0.95, y: -6 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: -6 }}
             transition={{ duration: 0.15, ease: 'easeOut' }}
             className={cn(
-              'absolute right-0 top-12 z-50 w-80 rounded-xl shadow-xl border',
+              'absolute right-0 top-12 z-50 w-[22rem] rounded-xl shadow-xl border',
               'bg-white dark:bg-ink-800 border-ink-100 dark:border-ink-700',
               'flex flex-col overflow-hidden',
             )}
@@ -133,19 +168,18 @@ export default function NotificationBell() {
               <div className="flex items-center gap-1">
                 {total > 0 && (
                   <button
-                    type="button"
-                    onClick={() => markAllRead.mutate()}
-                    disabled={markAllRead.isPending}
+                    onClick={() => setConfirmingAll(true)}
+                    disabled={markAll.isPending}
                     title="Mark all as read"
                     className="p-1 rounded-md text-ink-400 hover:text-primary-600 hover:bg-ink-100 dark:hover:bg-ink-700 transition-colors disabled:opacity-50"
                   >
-                    <CheckCheck className="w-4 h-4" />
+                    {markAll.isPending
+                      ? <Loader2 className="w-4 h-4 animate-spin" />
+                      : <CheckCheck className="w-4 h-4" />}
                   </button>
                 )}
                 <button
-                  type="button"
                   onClick={close}
-                  aria-label="Close notifications"
                   className="p-1 rounded-md text-ink-400 hover:text-ink-700 dark:hover:text-white hover:bg-ink-100 dark:hover:bg-ink-700 transition-colors"
                 >
                   <X className="w-4 h-4" />
@@ -156,61 +190,86 @@ export default function NotificationBell() {
             {/* Items */}
             <div className="flex-1 overflow-y-auto max-h-80 divide-y divide-ink-50 dark:divide-ink-700/50">
               {isLoading ? (
-                <p className="px-4 py-6 text-sm text-center text-ink-400 dark:text-ink-500">
-                  Loading…
-                </p>
+                <div className="px-4 py-8 text-center">
+                  <Loader2 className="w-5 h-5 animate-spin mx-auto text-primary-500" />
+                </div>
               ) : recent.length === 0 ? (
-                /* The reported bug was "no visible response" — an explicit empty
-                   state is what tells the user the feature actually works. */
-                <p className="px-4 py-6 text-sm text-center text-ink-400 dark:text-ink-500">
-                  You have no notifications
-                </p>
+                <div className="px-4 py-8 text-center">
+                  <Bell className="w-8 h-8 mx-auto text-ink-200 dark:text-ink-700 mb-2" />
+                  <p className="text-sm text-ink-400 dark:text-ink-500">You're all caught up</p>
+                </div>
               ) : (
-                recent.map(n => {
-                  const { Icon, tone } = iconFor(n.type)
+                recent.map(item => {
+                  const look = SEVERITY[item.severity] ?? SEVERITY.info
+                  const Icon = look.icon
                   return (
                     <button
-                      key={n.id}
-                      type="button"
-                      role="menuitem"
-                      onClick={() => openNotification(n)}
-                      className={cn(
-                        'w-full text-left flex items-start gap-3 px-4 py-3 transition-colors',
-                        'hover:bg-ink-50 dark:hover:bg-ink-700/40',
-                        !n.is_read && 'bg-primary-50/40 dark:bg-primary-900/10',
-                      )}
+                      key={item.id}
+                      onClick={() => openItem(item)}
+                      className="w-full text-left flex items-start gap-3 px-4 py-3 hover:bg-ink-50 dark:hover:bg-ink-700/40 transition-colors"
                     >
-                      <span className={cn('inline-flex items-center justify-center w-8 h-8 rounded-full flex-shrink-0', tone)}>
+                      <span
+                        className={cn(
+                          'w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0',
+                          look.tint,
+                        )}
+                      >
                         <Icon className="w-4 h-4" />
                       </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="flex items-baseline justify-between gap-2">
-                          <span
-                            className={cn(
-                              'text-xs truncate',
-                              n.is_read
-                                ? 'text-ink-600 dark:text-ink-300'
-                                : 'font-semibold text-ink-900 dark:text-white',
-                            )}
-                          >
-                            {n.message}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="text-xs font-semibold text-ink-900 dark:text-white truncate">
+                            {item.title ?? 'Notification'}
                           </span>
                           <span className="text-[10px] text-ink-400 dark:text-ink-500 flex-shrink-0">
-                            {timeAgo(n.created_at)}
+                            {timeAgo(item.created_at)}
                           </span>
-                        </span>
-                      </span>
-                      {!n.is_read && (
-                        <span className="w-2 h-2 rounded-full bg-primary-500 flex-shrink-0 mt-1.5" aria-label="Unread" />
-                      )}
+                        </div>
+                        <p className="text-xs text-ink-500 dark:text-ink-400 mt-0.5 line-clamp-2">
+                          {item.message}
+                        </p>
+                      </div>
+                      <span
+                        className={cn('w-2 h-2 rounded-full flex-shrink-0 mt-1.5', look.dot)}
+                        aria-hidden
+                      />
                     </button>
                   )
                 })
               )}
             </div>
+
+            {/* Footer */}
+            <div className="px-4 py-3 border-t border-ink-100 dark:border-ink-700 bg-ink-50/50 dark:bg-ink-900/30">
+              <button
+                onClick={() => { close(); navigate('/notifications') }}
+                className="block w-full text-center text-sm font-medium text-primary-600 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-300 transition-colors"
+              >
+                View all notifications →
+              </button>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
+
+      {confirmingAll && (
+        <ConfirmDialog
+          open
+          variant="warning"
+          onClose={() => setConfirmingAll(false)}
+          onConfirm={() => markAll.mutate()}
+          loading={markAll.isPending}
+          title="Mark everything as read?"
+          confirmLabel="Yes, mark all read"
+          message={`This clears all ${total} unread notification${total === 1 ? '' : 's'}.`}
+          details={
+            <p className="text-[12px] text-ink-500 dark:text-ink-400 rounded-lg bg-ink-50 dark:bg-ink-900/30 px-3 py-2">
+              Anything asking for a decision stops being flagged — the requests
+              themselves stay in your approval queue.
+            </p>
+          }
+        />
+      )}
     </div>
   )
 }

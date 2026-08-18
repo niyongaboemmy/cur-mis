@@ -1,0 +1,173 @@
+import type { HelpModule } from "../types";
+
+export const serviceRequests: HelpModule = {
+  id: "service-requests",
+  title: "Service Requests",
+  icon: "Package",
+  accent: "indigo",
+  summary: "The digital front desk: a published catalogue of services with multi-stage approval.",
+  intro:
+    "Instead of queueing at different offices for different things, the university publishes a [[service catalogue]]. Each service says who may ask, what must be attached, what it costs, and which offices approve it in what order. A request then moves through those stages by itself, visibly, and members of the public can submit and track one without an account.",
+  audience: ["Student", "Public", "Registry", "Administrator"],
+  routes: [
+    "/services",
+    "/services/track",
+    "/my/service-requests",
+    "/service-requests/queue",
+    "/service-requests/reports",
+    "/admin/service-catalog",
+  ],
+  articles: [
+    {
+      id: "how-it-works",
+      title: "How a service request travels",
+      kind: "concept",
+      summary: "The statuses, the stages, and what moves a request between them.",
+      minutes: 4,
+      audience: ["Everyone"],
+      keywords: ["service request", "workflow", "status", "stages", "approval", "how it works"],
+      blocks: [
+        {
+          type: "paragraph",
+          text: "Every service defines its own ordered [[approval chain]]. A request sits at one stage at a time, and each approver sees only what is parked with them — their [[approval queue]].",
+        },
+        {
+          type: "table",
+          title: "Statuses you will see",
+          head: ["Status", "Meaning"],
+          rows: [
+            ["draft", "Started but not submitted. Nobody is looking at it yet."],
+            ["awaiting_payment", "Submitted, but the fee has not been paid; it will not move until it is."],
+            ["submitted", "Received and queued for the first approval stage."],
+            ["in_review", "An approver at the current stage is working on it."],
+            ["approved", "Cleared the current stage; moving on."],
+            ["paid", "Fee settled — where a fee applies at the end rather than the start."],
+            ["completed", "Finished. Any document produced is now downloadable."],
+            ["rejected", "Declined at a stage, with a reason recorded."],
+            ["cancelled", "Withdrawn by the requester."],
+            ["expired", "Left too long without the action it needed."],
+          ],
+        },
+        {
+          type: "callout",
+          tone: "tip",
+          text: "The progress bar on a request shows every stage, which one it is at, and which are done. If it looks stuck, it is sitting in somebody's queue — and the screen names which.",
+        },
+      ],
+    },
+    {
+      id: "submit",
+      title: "Submit a request",
+      kind: "howto",
+      summary: "As a student, or as a member of the public with no account.",
+      minutes: 3,
+      audience: ["Student", "Public"],
+      route: "/services",
+      keywords: ["request service", "submit request", "apply", "public service", "transcript request", "letter request"],
+      blocks: [
+        {
+          type: "steps",
+          title: "Students",
+          steps: [
+            { title: "Open **My service requests**", route: "/my/service-requests" },
+            { title: "Choose the service and read what it needs", detail: "Required attachments, fee, and which offices approve it — all shown before you start." },
+            { title: "Fill in the form and attach the documents" },
+            { title: "Submit and pay any fee", detail: "A request at **awaiting payment** does not move until the fee is settled." },
+            { title: "Track it and download the result when complete" },
+          ],
+        },
+        {
+          type: "steps",
+          title: "Members of the public",
+          steps: [
+            { title: "Open the public **Services** catalogue", detail: "No account needed.", route: "/services" },
+            { title: "Open the service and submit the form" },
+            { title: "Keep the [[tracking code]] you are given" },
+            { title: "Check progress on the **Track request** page", route: "/services/track" },
+          ],
+        },
+      ],
+    },
+    {
+      id: "approve",
+      title: "Work your approval queue",
+      kind: "howto",
+      summary: "Decide the requests parked at your stage.",
+      minutes: 3,
+      audience: ["Registry", "Administrator", "Finance"],
+      access: "Needs: an approval right for the stage",
+      route: "/service-requests/queue",
+      keywords: ["approve request", "approval queue", "reject request", "service approval", "pending requests", "my queue"],
+      blocks: [
+        {
+          type: "steps",
+          steps: [
+            { title: "Open **Services → Service Requests Approval**", route: "/service-requests/queue" },
+            { title: "Open a request", detail: "You see the form, the attachments, and every decision taken at earlier stages." },
+            { title: "Check what your stage exists to check", detail: "Your stage has a purpose — eligibility, payment, or authorisation. Do not re-do the stage before you." },
+            { title: "Approve, and it moves on", detail: "Approving the last stage completes the request and releases any document." },
+            { title: "Or reject with a reason", detail: "The requester sees the reason. Write it so they know what to do next." },
+          ],
+        },
+        {
+          type: "callout",
+          tone: "warning",
+          text: "You cannot approve a stage you do not hold the right for, and you will not see other stages' queues. That is what keeps the chain meaningful.",
+        },
+      ],
+    },
+    {
+      id: "catalog",
+      title: "Configure the service catalogue",
+      kind: "walkthrough",
+      summary: "Publish a service: its form, attachments, fee and approval chain.",
+      minutes: 5,
+      audience: ["Administrator"],
+      access: "Needs: Manage service catalog",
+      route: "/admin/service-catalog",
+      keywords: ["service catalog", "add service", "configure service", "approval stages", "service fee", "publish service"],
+      blocks: [
+        {
+          type: "steps",
+          steps: [
+            { title: "Open **Services → Service Catalog**", route: "/admin/service-catalog" },
+            { title: "Create the service with a name people will recognise", detail: "“Official transcript” beats “ATR-01”. The name is public." },
+            { title: "Say who may request it", detail: "Students only, the public, or both." },
+            { title: "List the required attachments" },
+            { title: "Set the fee, if any, and when it falls due", detail: "Before the chain starts, or on completion." },
+            { title: "Define the [[approval chain]]", detail: "Each stage names the [[permission]] its approver must hold, and stages run in order.", tip: "Two well-chosen stages beat five ceremonial ones. Every stage is another place a request can wait." },
+            { title: "Publish and test it end to end yourself", detail: "Submit one, approve it through every stage, and download the result before announcing it." },
+          ],
+        },
+      ],
+    },
+    {
+      id: "reports",
+      title: "Service request reporting",
+      kind: "reference",
+      summary: "Volumes, bottlenecks, turnaround and revenue.",
+      minutes: 2,
+      audience: ["Administrator", "Registry"],
+      access: "Needs: View service requests",
+      route: "/service-requests/reports",
+      keywords: ["service reports", "turnaround", "bottleneck", "volumes", "dashboard", "sla"],
+      blocks: [
+        {
+          type: "list",
+          items: [
+            "**Volume by service** — what people actually ask for, as opposed to what you expected.",
+            "**Turnaround time** — how long requests take end to end.",
+            "**Bottleneck by stage** — which office is holding requests longest. This is the number that changes how the front desk feels.",
+            "**Revenue** — what fee-bearing services brought in.",
+          ],
+        },
+        {
+          type: "callout",
+          tone: "tip",
+          text: "If one stage dominates the bottleneck report, the fix is usually staffing or a redundant stage — rarely the requesters.",
+        },
+        { type: "terms", ids: ["service-catalogue", "service-request", "leave-chain", "approval-queue", "tracking-code"] },
+      ],
+    },
+  ],
+};

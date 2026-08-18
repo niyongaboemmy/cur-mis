@@ -99,11 +99,15 @@ class DocumentHelper
         $header     = self::headerHtml();
         $pageCss    = PdfLayout::pageCss(44, 28);
         $fullName   = strtoupper(trim(($s['fname'] ?? '') . ' ' . ($s['lname'] ?? '')));
-        $today      = date('m-d-Y');
+        $today      = date('d-m-Y');
+        // "Application received on" must be the applicant's submission date, not the
+        // day the letter is generated. Fall back to today only if it's unknown.
+        $appDateRaw = (string) ($s['application_date'] ?? '');
+        $appDate    = $appDateRaw !== '' ? date('d-m-Y', strtotime($appDateRaw)) : $today;
         $facultyRaw = (string) ($s['fac_name'] ?? $s['faculty'] ?? '');
         $faculty    = htmlspecialchars(self::normalizeFacultyName($facultyRaw), ENT_QUOTES);
         $department = htmlspecialchars((string) ($s['dep_name']   ?? $s['department'] ?? ''), ENT_QUOTES);
-        $level      = htmlspecialchars((string) ($s['current_level'] ?? ''), ENT_QUOTES);
+        $level      = htmlspecialchars(LevelHelper::name($s['level_name'] ?? $s['current_level'] ?? null), ENT_QUOTES);
         $intake     = htmlspecialchars(self::formatSemester((string) ($s['intake'] ?? '')), ENT_QUOTES);
         $program    = htmlspecialchars(ucfirst(strtolower((string) ($s['program'] ?? 'Day'))), ENT_QUOTES);
         $accYear    = htmlspecialchars((string) ($s['acc_year'] ?? date('Y')), ENT_QUOTES);
@@ -164,11 +168,11 @@ class DocumentHelper
           <br>
 
           <p class="para">
-            Referring to your application received on <strong>{$today}</strong> to study at the
+            Referring to your application received on <strong>{$appDate}</strong> to study at the
             Catholic University of Rwanda, with the recommendations of the Faculty, I am pleased
             to inform you that your request was accepted. You are hence admitted as a Full-Time
             student in the <strong>Faculty of {$faculty}</strong>, Department of
-            <strong>{$department}</strong> . Level <strong>{$level} {$intake}</strong>,
+            <strong>{$department}</strong>, <strong>{$level}</strong>, {$intake},
             Program: <strong>{$program}</strong>, Academic Year: <strong>{$accYear}</strong>.
           </p>
 
@@ -343,7 +347,7 @@ class DocumentHelper
         $faculty    = htmlspecialchars((string) ($s['fac_name']    ?? $s['faculty']    ?? ''), ENT_QUOTES);
         $department = htmlspecialchars((string) ($s['dep_name']    ?? $s['department'] ?? ''), ENT_QUOTES);
         $option     = htmlspecialchars((string) ($s['option_name'] ?? ''),                ENT_QUOTES);
-        $level      = htmlspecialchars((string) ($s['current_level'] ?? ''),              ENT_QUOTES);
+        $level      = htmlspecialchars(LevelHelper::name($s['level_name'] ?? $s['current_level'] ?? null), ENT_QUOTES);
         $intake     = htmlspecialchars((string) ($s['intake']      ?? ''),                ENT_QUOTES);
         $program    = htmlspecialchars(strtoupper((string) ($s['program'] ?? 'DAY')),     ENT_QUOTES);
         $accYear    = htmlspecialchars((string) ($s['acc_year']    ?? date('Y')),         ENT_QUOTES);
@@ -355,7 +359,9 @@ class DocumentHelper
         $reference  = htmlspecialchars((string) ($s['reference']   ?? $s['phone'] ?? ''), ENT_QUOTES);
         $today      = date('d/m/Y');
 
-        $classLabel  = $level ? "Level {$level} {$intake}" : $intake;
+        // $level is already the catalogue name ("Year 2"), so it carries its own
+        // wording — prefixing "Level" here would read "Level Year 2".
+        $classLabel  = $level ? "{$level} {$intake}" : $intake;
         $sponsorHtml = $sponsor
             ? ' | <strong>SPONSOR:</strong> ' . $sponsor
             : '';
@@ -639,7 +645,7 @@ class DocumentHelper
             foreach ($modules as $r) {
                 $code     = htmlspecialchars((string) ($r['module_code'] ?? ''), ENT_QUOTES);
                 $name     = htmlspecialchars((string) ($r['module_name'] ?? ''), ENT_QUOTES);
-                $level    = htmlspecialchars((string) ($r['level'] ?? ''), ENT_QUOTES);
+                $level    = htmlspecialchars(LevelHelper::name($r['level_name'] ?? $r['level'] ?? null), ENT_QUOTES);
                 $credits  = (int) ($r['module_credits'] ?? 0);
                 $pct      = $r['percentage'] !== null ? (float) $r['percentage'] : null;
                 $grade    = htmlspecialchars((string) ($r['grade'] ?? '—'), ENT_QUOTES);
@@ -667,7 +673,7 @@ class DocumentHelper
                 $totalModules++;
                 if (!$exempt) $totalCredits += $credits;
 
-                $lvl = $r['level'] ?? 'N/A';
+                $lvl = LevelHelper::name($r['level_name'] ?? $r['level'] ?? null, 'N/A');
                 if (!isset($levelGroups[$lvl])) {
                     $levelGroups[$lvl] = ['credits' => 0, 'passed' => 0, 'failed' => 0, 'exempted' => 0];
                 }
@@ -687,7 +693,7 @@ class DocumentHelper
             foreach ($levelGroups as $lvl => $data) {
                 $lvlEsc   = htmlspecialchars((string) $lvl, ENT_QUOTES);
                 $levelRows .= "<tr>
-                    <td style=\"padding:3px 8px;\">Level {$lvlEsc}</td>
+                    <td style=\"padding:3px 8px;\">{$lvlEsc}</td>
                     <td style=\"padding:3px 8px;text-align:center;\">{$data['credits']} credits</td>
                     <td style=\"padding:3px 8px;text-align:center;color:#1a7a1a;\">{$data['passed']} passed</td>
                     <td style=\"padding:3px 8px;text-align:center;color:#cc0000;\">{$data['failed']} failed</td>
@@ -825,7 +831,7 @@ class DocumentHelper
         // Extract from letter data, with sensible defaults
         $sourceInstitution = htmlspecialchars(trim((string)($letter['source_institution'] ?? '')), ENT_QUOTES);
         $sourceFaculty     = htmlspecialchars(trim((string)($letter['source_faculty'] ?? '')), ENT_QUOTES);
-        $targetLevel       = htmlspecialchars(trim((string)($letter['target_level'] ?? '')), ENT_QUOTES);
+        $targetLevel       = htmlspecialchars(LevelHelper::name($letter['target_level'] ?? null), ENT_QUOTES);
         $academicYear      = htmlspecialchars(trim((string)($letter['academic_year'] ?? '')), ENT_QUOTES);
         $issueLoc          = htmlspecialchars(trim((string)($letter['issue_location'] ?? 'TABA')), ENT_QUOTES);
         $deanName          = htmlspecialchars(trim((string)($letter['dean_name'] ?? '')), ENT_QUOTES);
@@ -847,7 +853,7 @@ class DocumentHelper
                 $rowNo              = (int)$rowNum;
                 $curModuleLabel     = htmlspecialchars(trim((string)($row['cur_module_label'] ?? '')), ENT_QUOTES);
                 $otherModuleTitle   = htmlspecialchars(trim((string)($row['other_module_title'] ?? '')), ENT_QUOTES);
-                $level              = htmlspecialchars(trim((string)($row['level'] ?? '')), ENT_QUOTES);
+                $level              = htmlspecialchars(LevelHelper::name($row['level_name'] ?? $row['level'] ?? null), ENT_QUOTES);
                 $credits            = (int)($row['credits'] ?? 0);
                 $marks              = htmlspecialchars(trim((string)($row['marks'] ?? '')), ENT_QUOTES);
 
@@ -1095,6 +1101,7 @@ class DocumentHelper
             $totalPaid += (float)($line['amount_paid'] ?? 0);
         }
         $totalBalance = $totalDue - $totalPaid;
+        $levelLabel   = LevelHelper::name($student['level_name'] ?? $student['current_level'] ?? null, '—');
 
         // Format numbers
         $fmtNum = fn ($n) => number_format((float)$n, 0, '', ',');
@@ -1166,7 +1173,7 @@ class DocumentHelper
                     </div>
                     <div class="info-block">
                         <label>Level:</label>
-                        <value>{$student['current_level']}</value>
+                        <value>{$levelLabel}</value>
                         <label>Academic Year:</label>
                         <value>{$acYear}</value>
                         {$semesterBlock}

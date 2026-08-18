@@ -442,6 +442,20 @@ export default function ApplyPage() {
       toast.error(e?.response?.data?.message || e?.message || "Submission failed"),
   });
 
+  // Payment IS the last step. The moment Urubuto Pay confirms it, the
+  // application goes in — the applicant does not have to notice a button
+  // appearing and press it, and does not lose their place by closing the tab
+  // (the payment callback submits it server-side either way; this call is what
+  // carries their final typed values up with it).
+  const [autoSubmitted, setAutoSubmitted] = useState(false);
+  useEffect(() => {
+    if (!paid || autoSubmitted || !confirmAccurate) return;
+    if (submitWithPaymentM.isPending) return;
+    setAutoSubmitted(true);
+    toast.success("Payment confirmed — submitting your application…");
+    submitWithPaymentM.mutate();
+  }, [paid, confirmAccurate, autoSubmitted, submitWithPaymentM]);
+
   // Per-step save: persist the current step's data on the draft so the user can resume.
   const saveStepM = useMutation({
     mutationFn: (payload: { id: number; data: Partial<FormValues> }) =>
@@ -476,6 +490,50 @@ export default function ApplyPage() {
     );
   };
 
+  // ── Uniqueness of phone / email / national ID ────────────────────────────
+  // None of the three may already belong to an enrolled student. Checked
+  // inline as each field is left, and again (blocking) before leaving step 1
+  // so a value pasted without ever blurring can't slip through.
+  type IdentityField = "phone" | "email" | "national_id";
+  const IDENTITY_FIELDS: readonly IdentityField[] = ["phone", "email", "national_id"];
+  const [identityChecking, setIdentityChecking] = useState(false);
+
+  const checkIdentity = async (fields: readonly IdentityField[]): Promise<boolean> => {
+    const values = form.getValues();
+    const payload: Partial<Record<IdentityField, string>> = {};
+    for (const f of fields) {
+      const v = String(values[f] ?? "").trim();
+      if (v) payload[f] = v;
+    }
+    if (Object.keys(payload).length === 0) return true;
+
+    setIdentityChecking(true);
+    try {
+      const res = await portalService.checkIdentity(payload);
+      const checked = res.data?.fields ?? {};
+      let ok = true;
+      for (const f of fields) {
+        const outcome = checked[f];
+        if (outcome?.taken) {
+          ok = false;
+          form.setError(f, {
+            type: "duplicate",
+            message: outcome.message || "Already registered to a student.",
+          });
+        } else if (outcome && form.formState.errors[f]?.type === "duplicate") {
+          form.clearErrors(f);
+        }
+      }
+      return ok;
+    } catch {
+      // The check is a courtesy — a network/server hiccup must not trap the
+      // applicant on step 1. Duplicates are still caught at admission time.
+      return true;
+    } finally {
+      setIdentityChecking(false);
+    }
+  };
+
   const goNext = async () => {
     // Validate the current step's fields
     const keys = STEP_FIELDS[step];
@@ -493,6 +551,16 @@ export default function ApplyPage() {
         `Please upload: ${docs.missingRequired.join(", ")}`,
       );
       return;
+    }
+
+    // Personal step: phone / email / national ID must not already be on file
+    // for an existing student.
+    if (step === 1) {
+      const unique = await checkIdentity(IDENTITY_FIELDS);
+      if (!unique) {
+        toast.error("Please correct the highlighted details before continuing.");
+        return;
+      }
     }
 
     // Step 1 (Personal) requires the applicant to be authenticated before
@@ -667,6 +735,8 @@ export default function ApplyPage() {
           <PersonalInfoStep
             form={form}
             isAuthenticated={isAuthenticated}
+            onCheckIdentity={(field) => { void checkIdentity([field]); }}
+            identityChecking={identityChecking}
             photoFile={photoFile}
             photoPreview={photoPreview}
             onPickPhoto={(file) => {
@@ -745,8 +815,10 @@ export default function ApplyPage() {
             >
               {submitWithPaymentM.isPending ? (
                 <><Loader2 className="w-4 h-4 animate-spin" /> Submitting…</>
-              ) : (
+              ) : paid ? (
                 <>Submit Application <ArrowRight className="w-4 h-4" /></>
+              ) : (
+                <>Awaiting payment confirmation…</>
               )}
             </button>
           ) : (
@@ -757,6 +829,7 @@ export default function ApplyPage() {
               disabled={
                 (step === 3 && (intakes.length === 0 || programs.length === 0)) ||
                 (step === 4 && (docs.isLoading || !docs.canProceed)) ||
+                identityChecking ||
                 saveStepM.isPending ||
                 draftM.isPending
               }
@@ -766,7 +839,9 @@ export default function ApplyPage() {
                   : undefined
               }
             >
-              {saveStepM.isPending || draftM.isPending ? (
+              {identityChecking ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Verifying…</>
+              ) : saveStepM.isPending || draftM.isPending ? (
                 <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>
               ) : step === 4 ? (
                 <>Proceed to Payment <ArrowRight className="w-4 h-4" /></>
@@ -880,21 +955,26 @@ function SectionTitle({ title, sub }: { title: string; sub?: string }) {
 function Field({
   label,
   error,
+  hint,
   children,
 }: {
   label: string;
   error?: string;
+  /** Secondary note under the control — shown only when there's no error. */
+  hint?: string;
   children: React.ReactNode;
 }) {
   return (
     <div className="space-y-1.5">
       <label className="text-[13px] font-medium text-ink-700 dark:text-ink-200">{label}</label>
       {children}
-      {error && (
+      {error ? (
         <p className="text-[12px] text-red-500 animate-in fade-in slide-in-from-top-1">
           {error}
         </p>
-      )}
+      ) : hint ? (
+        <p className="text-[12px] text-ink-500 dark:text-ink-400">{hint}</p>
+      ) : null}
     </div>
   );
 }
@@ -993,15 +1073,33 @@ function DocumentsStep({
 
 function PersonalInfoStep({
   form, isAuthenticated, photoFile, photoPreview, onPickPhoto,
+  onCheckIdentity, identityChecking,
 }: {
   form: ReturnType<typeof useForm<FormValues>>;
   isAuthenticated: boolean;
   photoFile: File | null;
   photoPreview: string | null;
   onPickPhoto: (file: File | null) => void;
+  onCheckIdentity: (field: "phone" | "email" | "national_id") => void;
+  identityChecking: boolean;
 }) {
   const sponsorship = form.watch("sponsorship");
   const errors = form.formState.errors;
+
+  // Registers a uniqueness-checked field: the value is verified against the
+  // student records as soon as the applicant leaves it.
+  const registerUnique = (name: "phone" | "email" | "national_id") => {
+    const reg = form.register(name);
+    return {
+      ...reg,
+      onBlur: async (e: React.FocusEvent<HTMLInputElement>) => {
+        await reg.onBlur(e);
+        onCheckIdentity(name);
+      },
+    };
+  };
+
+  const checkingHint = identityChecking ? "Checking…" : undefined;
 
   return (
     <div className="space-y-8 animate-fade-up">
@@ -1075,8 +1173,12 @@ function PersonalInfoStep({
             <Field label="Date of Birth *" error={errors.birthdate?.message}>
               <input type="date" className="input" {...form.register("birthdate")} />
             </Field>
-            <Field label="National ID / Passport Number *" error={errors.national_id?.message}>
-              <input className="input" placeholder="National ID or Passport No." {...form.register("national_id")} />
+            <Field
+              label="National ID / Passport Number *"
+              error={errors.national_id?.message}
+              hint={checkingHint}
+            >
+              <input className="input" placeholder="National ID or Passport No." {...registerUnique("national_id")} />
             </Field>
             <Field label="Nationality *" error={errors.nationality?.message}>
               <CountrySelect
@@ -1093,18 +1195,18 @@ function PersonalInfoStep({
       {/* ── Contact ──────────────────────────────────────────────── */}
       <FieldGroup title="Contact">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <Field label="Phone Number *" error={errors.phone?.message}>
-            <input className="input" placeholder="0781234567" {...form.register("phone")} />
+          <Field label="Phone Number *" error={errors.phone?.message} hint={checkingHint}>
+            <input className="input" placeholder="0781234567" {...registerUnique("phone")} />
           </Field>
           <Field label="Reference Person Phone *" error={errors.reference_phone?.message}>
             <input className="input" placeholder="0721234567" {...form.register("reference_phone")} />
           </Field>
-          <Field label="Email Address *" error={errors.email?.message}>
+          <Field label="Email Address *" error={errors.email?.message} hint={checkingHint}>
             <input
               className="input"
               type="email"
               placeholder="example@domain.com"
-              {...form.register("email")}
+              {...registerUnique("email")}
               readOnly={isAuthenticated}
             />
           </Field>
@@ -1488,9 +1590,6 @@ function PaymentStep({
   const formatFee = new Intl.NumberFormat('en-US').format(fee);
 
   const [opened, setOpened] = useState(false);
-  const [showAlreadyPaid, setShowAlreadyPaid] = useState(false);
-  const [transactionId, setTransactionId] = useState('');
-  const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
 
   // Load checkout details once when the step opens: merchant code, payer code
   // (= application number), the fixed fee, and the hosted-checkout URL.
@@ -1540,29 +1639,6 @@ function PaymentStep({
     statusQuery.refetch();
   };
 
-  const submitAlreadyPaid = async () => {
-    if (!transactionId.trim()) {
-      toast.error('Please enter your transaction ID');
-      return;
-    }
-    if (!invoiceFile) {
-      toast.error('Please upload an invoice or proof of payment');
-      return;
-    }
-
-    try {
-      await applicantService.submitInvoicePayment(transactionId, invoiceFile);
-      onPaidChange(true);
-      setShowAlreadyPaid(false);
-      setTransactionId('');
-      setInvoiceFile(null);
-      toast.success('Payment verified successfully!');
-      statusQuery.refetch();
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || 'Failed to verify payment. Please check your details.');
-    }
-  };
-
   return (
     <div className="space-y-6 animate-fade-up">
       <SectionTitle
@@ -1584,157 +1660,79 @@ function PaymentStep({
 
       {/* Urubuto Pay */}
       <FieldGroup title="Payment">
-        {/* Tab selector for new vs already-paid */}
-        {!paid && (
-          <div className="flex gap-2 mb-4 pb-4 border-b border-ink-100 dark:border-ink-700">
-            <button
-              type="button"
-              onClick={() => setShowAlreadyPaid(false)}
-              className={`px-3 py-1.5 text-[13px] font-medium rounded transition-colors ${
-                !showAlreadyPaid
-                  ? 'bg-brand text-white'
-                  : 'bg-ink-100 dark:bg-ink-800 text-ink-700 dark:text-ink-300'
-              }`}
-            >
-              Pay Now
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowAlreadyPaid(true)}
-              className={`px-3 py-1.5 text-[13px] font-medium rounded transition-colors ${
-                showAlreadyPaid
-                  ? 'bg-brand text-white'
-                  : 'bg-ink-100 dark:bg-ink-800 text-ink-700 dark:text-ink-300'
-              }`}
-            >
-              Already Paid
-            </button>
+        {(checkoutQuery.isLoading || (!paid && statusQuery.isLoading)) ? (
+          /* While checking server-side payment status, show a neutral skeleton
+             so we never flash the "Pay Now" form to someone who already paid. */
+          <div className="flex items-center gap-3 py-4 text-ink-400 dark:text-ink-500 text-[13px]">
+            <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+            Checking payment status…
           </div>
-        )}
-
-        {showAlreadyPaid ? (
-          /* Already paid — invoice upload form */
-          <div className="space-y-4">
-            <div className="rounded-lg border border-amber-200 dark:border-amber-900/40 bg-amber-50/60 dark:bg-amber-900/10 px-4 py-3">
-              <p className="text-[13px] text-amber-800 dark:text-amber-200">
-                If you've already paid via bank transfer or another method, please provide your transaction ID and upload proof of payment.
-              </p>
-            </div>
-
-            <Field label="Transaction ID / Reference Number *" error={undefined}>
-              <input
-                type="text"
-                className="input"
-                placeholder="e.g., TXN-12345, Receipt #001"
-                value={transactionId}
-                onChange={(e) => setTransactionId(e.target.value)}
-              />
-            </Field>
-
-            <Field label="Invoice / Proof of Payment *" error={undefined}>
-              <label className="flex items-center justify-center w-full px-4 py-6 border-2 border-dashed border-ink-300 dark:border-ink-600 rounded-lg cursor-pointer hover:bg-ink-50 dark:hover:bg-ink-900/20 transition">
-                <div className="text-center">
-                  <FileUp className="w-6 h-6 mx-auto text-ink-400 dark:text-ink-500 mb-2" />
-                  <p className="text-[13px] font-medium text-ink-700 dark:text-ink-200">
-                    {invoiceFile ? invoiceFile.name : 'Click to upload or drag and drop'}
-                  </p>
-                  <p className="text-[12px] text-ink-500 dark:text-ink-400">PDF, JPG, or PNG (max 5 MB)</p>
-                </div>
-                <input
-                  type="file"
-                  className="hidden"
-                  accept=".pdf,.jpg,.jpeg,.png"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      if (file.size > 5 * 1024 * 1024) {
-                        toast.error('File must be 5 MB or smaller');
-                        return;
-                      }
-                      setInvoiceFile(file);
-                    }
-                  }}
-                />
-              </label>
-            </Field>
-
-            <button
-              type="button"
-              onClick={submitAlreadyPaid}
-              className="btn-primary w-full"
-            >
-              <FileUp className="w-4 h-4" /> Verify Payment
-            </button>
-          </div>
-        ) : (
-          /* Pay Now flow */
-          <>
-            {(checkoutQuery.isLoading || (!paid && statusQuery.isLoading)) ? (
-              /* While checking server-side payment status, show a neutral skeleton
-                 so we never flash the "Pay Now" form to someone who already paid. */
-              <div className="flex items-center gap-3 py-4 text-ink-400 dark:text-ink-500 text-[13px]">
-                <Loader2 className="w-4 h-4 animate-spin shrink-0" />
-                Checking payment status…
-              </div>
-            ) : paid ? (
-          <div className="rounded-lg border border-emerald-300 bg-emerald-50/60 dark:bg-emerald-900/10 px-4 py-4 flex items-start gap-3">
-            <CheckCircle2 className="w-6 h-6 text-emerald-600 mt-0.5 shrink-0" />
-            <div>
-              <p className="text-[14px] font-semibold text-emerald-800 dark:text-emerald-200">Payment confirmed</p>
-              <p className="text-[12.5px] text-emerald-700 dark:text-emerald-300/90 mt-0.5">
-                Your {formatFee} RWF application fee was received{txId ? <> · Ref <span className="font-mono">{txId}</span></> : null}.
-                You can now submit your application.
-              </p>
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {/* Payment details — already filled for you. On the Urubuto Pay page
-                these are pre-filled; if not, tap to copy. The amount is fixed. */}
-            <div className="rounded-lg border border-ink-100 dark:border-ink-800 bg-ink-50/60 dark:bg-ink-900/40 divide-y divide-ink-100 dark:divide-ink-800">
-              <PayDetailRow label="Amount" value={`${formatFee} RWF`} hint="Fixed — cannot be changed" />
-              <PayDetailRow label="Merchant code" value={checkout?.merchant_code ?? '…'} onCopy={() => copy('Merchant code', checkout?.merchant_code)} />
-              <PayDetailRow label="Payer code" value={checkout?.payer_code ?? '…'} hint="Your application number" onCopy={() => copy('Payer code', checkout?.payer_code)} />
-            </div>
-
-            <button
-              type="button"
-              onClick={payNow}
-              disabled={checkoutQuery.isLoading}
-              className="btn-primary w-full sm:w-auto"
-            >
-              {checkoutQuery.isLoading ? (
-                <><Loader2 className="w-4 h-4 animate-spin" /> Preparing payment…</>
-              ) : (
-                <><CreditCard className="w-4 h-4" /> Pay {formatFee} RWF with Urubuto Pay</>
-              )}
-            </button>
-
-            {opened && (
-              <div className="rounded-lg border border-amber-200 dark:border-amber-900/40 bg-amber-50/60 dark:bg-amber-900/10 px-4 py-3 flex items-center gap-3">
-                <Loader2 className="w-4 h-4 animate-spin text-amber-600 shrink-0" />
-                <p className="text-[12.5px] text-amber-800 dark:text-amber-200">
-                  Waiting for Urubuto Pay to confirm your payment…
-                </p>
-                <button
-                  type="button"
-                  onClick={() => statusQuery.refetch()}
-                  className="ml-auto text-[12px] font-medium text-brand hover:underline shrink-0"
-                >
-                  Check now
-                </button>
-              </div>
-            )}
-
-            <p className="text-[11.5px] text-ink-400 dark:text-ink-500">
-              A secure Urubuto Pay window opens in a new tab — just enter your MoMo number or card and
-              confirm. The {formatFee} RWF amount is fixed. Keep this page open; it unlocks automatically
-              once your payment is confirmed.
+        ) : paid ? (
+        <div className="rounded-lg border border-emerald-300 bg-emerald-50/60 dark:bg-emerald-900/10 px-4 py-4 flex items-start gap-3">
+          <CheckCircle2 className="w-6 h-6 text-emerald-600 mt-0.5 shrink-0" />
+          <div>
+            <p className="text-[14px] font-semibold text-emerald-800 dark:text-emerald-200">Payment confirmed</p>
+            <p className="text-[12.5px] text-emerald-700 dark:text-emerald-300/90 mt-0.5">
+              Your {formatFee} RWF application fee was received{txId ? <> · Ref <span className="font-mono">{txId}</span></> : null}.
+              Your application is being submitted automatically — no further action needed.
             </p>
           </div>
-        )}
-          </>
-        )}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {/* Payment details — already filled for you. On the Urubuto Pay page
+              these are pre-filled; if not, tap to copy. The amount is fixed. */}
+          <div className="rounded-lg border border-ink-100 dark:border-ink-800 bg-ink-50/60 dark:bg-ink-900/40 divide-y divide-ink-100 dark:divide-ink-800">
+            <PayDetailRow label="Amount" value={`${formatFee} RWF`} hint="Fixed — cannot be changed" />
+            <PayDetailRow label="Merchant code" value={checkout?.merchant_code ?? '…'} onCopy={() => copy('Merchant code', checkout?.merchant_code)} />
+            <PayDetailRow label="Payer code" value={checkout?.payer_code ?? '…'} hint="Your application number" onCopy={() => copy('Payer code', checkout?.payer_code)} />
+          </div>
+
+          <button
+            type="button"
+            onClick={payNow}
+            disabled={checkoutQuery.isLoading || !confirmAccurate}
+            className="btn-primary w-full sm:w-auto"
+            title={!confirmAccurate ? 'Confirm your information is accurate first' : undefined}
+          >
+            {checkoutQuery.isLoading ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /> Preparing payment…</>
+            ) : (
+              <><CreditCard className="w-4 h-4" /> Pay {formatFee} RWF with Urubuto Pay</>
+            )}
+          </button>
+
+          {!confirmAccurate && (
+            <p className="text-[12.5px] text-amber-700 dark:text-amber-300">
+              Review your details below and tick “I confirm that all information provided is
+              accurate” to enable payment. Paying submits your application, so this is your last
+              chance to correct anything.
+            </p>
+          )}
+
+          {opened && (
+            <div className="rounded-lg border border-amber-200 dark:border-amber-900/40 bg-amber-50/60 dark:bg-amber-900/10 px-4 py-3 flex items-center gap-3">
+              <Loader2 className="w-4 h-4 animate-spin text-amber-600 shrink-0" />
+              <p className="text-[12.5px] text-amber-800 dark:text-amber-200">
+                Waiting for Urubuto Pay to confirm your payment…
+              </p>
+              <button
+                type="button"
+                onClick={() => statusQuery.refetch()}
+                className="ml-auto text-[12px] font-medium text-brand hover:underline shrink-0"
+              >
+                Check now
+              </button>
+            </div>
+          )}
+
+          <p className="text-[11.5px] text-ink-400 dark:text-ink-500">
+            A secure Urubuto Pay window opens in a new tab — just enter your MoMo number or card and
+            confirm. The {formatFee} RWF amount is fixed. Keep this page open; it unlocks automatically
+            once your payment is confirmed.
+          </p>
+        </div>
+      )}
       </FieldGroup>
 
       {/* Application review */}
@@ -1800,7 +1798,8 @@ function PaymentStep({
             className="mt-1 rounded border-ink-300 dark:border-ink-600 text-brand focus:ring-brand/30"
           />
           <span className="text-[13px] text-ink-700 dark:text-ink-200">
-            I confirm that all information provided is accurate.
+            I confirm that all information provided is accurate, and I understand that my
+            application is submitted as soon as my payment is confirmed.
           </span>
         </label>
       </div>

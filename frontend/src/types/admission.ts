@@ -153,7 +153,8 @@ export interface StudentApplication {
 }
 
 export interface ApplicationDocument {
-  id:                    number
+  /** null for a faculty requirement the applicant has not uploaded yet */
+  id:                    number | null
   applicant_profile_id:  number
   application_id?:       number | null
   document_type_id:      number
@@ -173,6 +174,13 @@ export interface ApplicationDocument {
   type_slug?:            string
   verifier_name?:       string
   usage?:                string[]
+  /* Requirement checklist fields (admin application detail) */
+  is_requirement?:       boolean
+  is_required?:          number
+  is_uploaded?:          boolean
+  requirement_notes?:    string | null
+  type_description?:     string | null
+  allowed_extensions?:   string | null
 }
 
 export interface ApplicationStatusLog {

@@ -185,7 +185,10 @@ class ApplicationAdminController extends BaseController
             $this->error($response, 'Application not found.', 404);
         }
 
-        $documents = $this->docModel->getForApplication($id);
+        $documents = $this->docModel->getChecklistForApplication(
+            $id,
+            isset($application['faculty_id']) ? (int)$application['faculty_id'] : null
+        );
         $statusLog = $this->logModel->getForApplication($id);
 
         // Fetch merit criteria for this application's context

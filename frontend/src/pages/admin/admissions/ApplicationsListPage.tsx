@@ -238,10 +238,9 @@ export default function ApplicationsListPage() {
               <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
               <div className="text-[12.5px] leading-snug">
                 <strong>{(statsQ.data?.data as any).desynced_pending_count}</strong>
-                {' '}application(s) are pending but may already have a student record.
-                Ask the system administrator to run
-                {' '}<code className="bg-amber-100 dark:bg-amber-900/50 px-1 rounded">scripts/diagnose_pending_enrolled.php --fix</code>
-                {' '}to repair.
+                {' '}application(s) appear to already have a student record but are not
+                marked as enrolled. Please contact IT support so the records can be
+                reconciled.
               </div>
             </div>
           )}

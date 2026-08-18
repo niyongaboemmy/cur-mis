@@ -18,10 +18,12 @@ import SearchableSelect from '@/components/ui/SearchableSelect'
 import type { ModuleRegistration, Module } from '@/types/modules'
 import { PERMISSIONS } from '@/constants'
 import { usePermission } from '@/utils/permissions'
+import { useLevels } from '@/hooks/useLevels'
 
 export default function ModulesRegistrationAdminPage() {
   const canManage = usePermission(PERMISSIONS.MANAGE_MODULE_REGISTRATIONS)
   const qc = useQueryClient()
+  const { levelName } = useLevels()
 
   /* ── Term picker (same as scheduling) ── */
   const termsQ = useQuery({ queryKey: ['academic', 'terms'], queryFn: () => academicService.listTerms() })
@@ -321,7 +323,7 @@ export default function ModulesRegistrationAdminPage() {
                           </span>
                         </div>
                         <div className="text-[12px] text-ink-600 dark:text-ink-300 truncate">{m.module_name}</div>
-                        <div className="text-[10.5px] text-ink-400 mt-0.5">{dept?.dep_name ?? '—'} · L{m.level} · {m.module_credits} cr</div>
+                        <div className="text-[10.5px] text-ink-400 mt-0.5">{dept?.dep_name ?? '—'} · {(m as any).level_name ?? levelName(m.level)} · {m.module_credits} cr</div>
                       </div>
                       {isSelected && <Check className="w-4 h-4 text-brand shrink-0" />}
                     </div>
@@ -515,6 +517,7 @@ function StudentPreviewModal({
   facName?: string
   canManage: boolean
 }) {
+  const { levelName } = useLevels()
   const reg = student.regnumber || student.student_regnumber
   const fullName = [student.fname, student.lname].filter(Boolean).join(' ') || '—'
   const initials = fullName.split(' ').map((p: string) => p[0]).slice(0, 2).join('').toUpperCase()
@@ -574,7 +577,7 @@ function StudentPreviewModal({
         <div className="grid grid-cols-2 gap-3 text-[12.5px]">
           <Field icon={Building2} label="Faculty" value={facName || (student.faculty ? `#${student.faculty}` : '—')} />
           <Field icon={Building2} label="Department" value={deptName || (student.department ? `#${student.department}` : '—')} />
-          <Field icon={GraduationCap} label="Level" value={student.current_level ? `Year ${student.current_level}` : '—'} />
+          <Field icon={GraduationCap} label="Level" value={student.level_name ?? levelName(student.current_level)} />
           <Field icon={BadgeCheck} label="Program" value={student.program || '—'} />
           <Field icon={Mail} label="Email" value={student.email || '—'} />
           <Field icon={Phone} label="Phone" value={student.phone || '—'} />

@@ -46,6 +46,10 @@ import { ApplicationStatus, VerificationStatus } from "@/types/admission";
 import DocumentPreviewModal from "./DocumentPreviewModal";
 import RequestChangesModal from "./RequestChangesModal";
 import ModalPortal from "@/components/ui/ModalPortal";
+import AdmissionFeesPanel from "@/components/admission/AdmissionFeesPanel";
+import { PERMISSIONS } from "@/constants";
+import { usePermission } from "@/utils/permissions";
+import { useLevels } from "@/hooks/useLevels";
 
 const STATUS_OPTIONS: ApplicationStatus[] = [
   ApplicationStatus.SUBMITTED,
@@ -103,8 +107,8 @@ function MultiStepBar({
     },
     {
       id: 3,
-      label: "Fee paid",
-      sublabel: "Ready to enroll",
+      label: "Admission fees",
+      sublabel: "Billed & paid",
       icon: CreditCard,
     },
     {
@@ -225,6 +229,7 @@ export default function ApplicationDetailPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
 
+  const canManage = usePermission(PERMISSIONS.MANAGE_ADMISSIONS);
   const [noteInput, setNoteInput] = useState("");
 
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
@@ -320,18 +325,6 @@ export default function ApplicationDetailPage() {
       toast.error(e?.response?.data?.message ?? "Failed to issue offer"),
   });
 
-  const confirmPayment = useMutation({
-    mutationFn: () => applicationAdminService.acceptOfferByAppId(appId),
-    onSuccess: () => {
-      toast.success(
-        "Fee payment confirmed — application is ready for enrollment.",
-      );
-      qc.invalidateQueries({ queryKey: ["admin", "applications", appId] });
-      qc.invalidateQueries({ queryKey: ["admin", "applications"] });
-    },
-    onError: (e: any) => toast.error(e?.response?.data?.message ?? "Failed"),
-  });
-
   const addNote = useMutation({
     mutationFn: (n: string) =>
       applicationAdminService.addNote(appId, { notes: n }),
@@ -357,12 +350,19 @@ export default function ApplicationDetailPage() {
     (app?.status as ApplicationStatus) || ApplicationStatus.SUBMITTED;
   const maxStep = getStepForStatus(status);
 
+  const { levelName: levelNameOf } = useLevels();
+
   // Queries for levels and modules
   const levelsQ = useQuery({
     queryKey: ["acmgmt", "levels"],
     queryFn: () => academicsMgmtService.list("levels", { per_page: 100 }),
   });
   const levels = levelsQ.data?.data?.data || [];
+  // Confirmation prompts name the level the registrar picked — "level ID 3"
+  // told them nothing about which year of study they were finalising.
+  const selectedLevelLabel =
+    (levels as any[]).find((l: any) => Number(l.id) === Number(selectedLevelId))?.name
+    ?? `level #${selectedLevelId}`;
 
   // Selected program (option) the applicant chose. Falls back to department
   // when older applications didn't capture program_id, so the screen still
@@ -399,7 +399,12 @@ export default function ApplicationDetailPage() {
       <p className="text-ink-500 text-[13px] p-4">Application not found.</p>
     );
 
-  const docs = appData.documents ?? [];
+  // The API returns the full requirement checklist: every document required for
+  // the applicant's faculty, including the ones with nothing attached yet
+  // (id === null). `docs` keeps only real uploads for preview/validation flows.
+  const checklist = (appData.documents ?? []) as any[];
+  const docs = checklist.filter((d: any) => d.id != null);
+  const missingDocs = checklist.filter((d: any) => d.id == null);
   const statusLog = appData.status_log ?? [];
 
   return (
@@ -642,7 +647,7 @@ export default function ApplicationDetailPage() {
                     <InfoGroup label="Department" value={app.department_name ?? '—'} />
                     <InfoGroup label="Campus" value={(app as any).campus_name ?? '—'} icon={Building2} />
                     <InfoGroup label="Mode of Study" value={(app as any).mode_of_study ?? '—'} />
-                    <InfoGroup label="Level" value={(app as any).level_name ?? ((app as any).level_id ? `Level #${(app as any).level_id}` : '—')} />
+                    <InfoGroup label="Level" value={(app as any).level_name ?? levelNameOf((app as any).level_id)} />
                     <InfoGroup label="Intake" value={app.intake ?? '—'} />
                     <InfoGroup label="Academic Year" value={(app as any).academic_year_label ?? '—'} />
                   </div>
@@ -855,13 +860,13 @@ export default function ApplicationDetailPage() {
                                 VerificationStatus.VERIFIED,
                             ).length
                           }{" "}
-                          / {docs.length}{" "}
+                          / {checklist.length}{" "}
                           <span className="text-[12px] font-normal text-ink-500 ml-1">
                             Verified
                           </span>
                         </p>
                       </div>
-                      {docs.length > 0 && (
+                      {checklist.length > 0 && (
                         <div className="w-12 h-12 rounded-full border-4 border-emerald-100 dark:border-emerald-900/30 flex items-center justify-center">
                           <span className="text-[12px] font-black text-emerald-600">
                             {Math.round(
@@ -870,7 +875,7 @@ export default function ApplicationDetailPage() {
                                   d.verification_status ===
                                   VerificationStatus.VERIFIED,
                               ).length /
-                                docs.length) *
+                                Math.max(checklist.length, 1)) *
                                 100,
                             )}
                             %
@@ -903,10 +908,11 @@ export default function ApplicationDetailPage() {
                           <ChevronRight className="w-4 h-4 ml-1" />
                         </Link>
                       )}
-                      {docs.some(
+                      {(docs.some(
                         (d: any) =>
                           d.verification_status === VerificationStatus.REJECTED,
-                      ) &&
+                      ) ||
+                        missingDocs.length > 0) &&
                         app.status !== ApplicationStatus.DOCUMENTS_REJECTED && (
                           <button
                             className="btn-secondary ml-2 border-red-200 text-red-600 hover:bg-red-50"
@@ -919,18 +925,21 @@ export default function ApplicationDetailPage() {
                     </div>
                   </div>
 
-                  {docs.length === 0 ? (
+                  {checklist.length === 0 ? (
                     <div className="p-12 text-center">
                       <FileText className="w-12 h-12 text-ink-200 mx-auto mb-4" />
                       <p className="text-[14px] text-ink-500">
-                        No documents uploaded yet.
+                        No document requirements configured for this faculty.
                       </p>
                     </div>
                   ) : (
                     <div className="divide-y divide-ink-100 dark:divide-ink-800">
-                      {docs.map((d: any, idx: number) => (
+                      {checklist.map((d: any) => {
+                        const idx = docs.findIndex((u: any) => u.id === d.id);
+                        const isMissing = d.id == null;
+                        return (
                         <div
-                          key={d.id}
+                          key={d.id ?? `type-${d.document_type_id}`}
                           className={`p-5 transition-all duration-300 ${
                             d.verification_status ===
                             VerificationStatus.VERIFIED
@@ -944,7 +953,7 @@ export default function ApplicationDetailPage() {
                           <div className="flex items-start justify-between gap-4">
                             <div className="flex items-start gap-4 min-w-0">
                               <div
-                                className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${d.verification_status === VerificationStatus.VERIFIED ? "bg-emerald-50 text-emerald-600" : d.verification_status === VerificationStatus.REJECTED ? "bg-red-50 text-red-600" : "bg-ink-100 text-ink-500"}`}
+                                className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${isMissing ? "bg-amber-50 text-amber-600" : d.verification_status === VerificationStatus.VERIFIED ? "bg-emerald-50 text-emerald-600" : d.verification_status === VerificationStatus.REJECTED ? "bg-red-50 text-red-600" : "bg-ink-100 text-ink-500"}`}
                               >
                                 <FileText className="w-5 h-5" />
                               </div>
@@ -958,24 +967,39 @@ export default function ApplicationDetailPage() {
                                   )}
                                 </p>
                                 <div className="flex items-center gap-2 mt-1 flex-wrap">
-                                  <span className="text-[12px] text-ink-500 truncate max-w-[200px]">
-                                    {d.file_original_name}
-                                  </span>
-                                  <span className="text-ink-300">·</span>
-                                  <span className="text-[11px] text-ink-400 font-medium uppercase">
-                                    {Math.ceil((d.file_size || 0) / 1024)} KB
-                                  </span>
-                                  <DocStatusPill
-                                    status={d.verification_status}
-                                  />
+                                  {isMissing ? (
+                                    <>
+                                      <span className="text-[12px] text-ink-500 italic">
+                                        Nothing attached
+                                      </span>
+                                      <span className="px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 text-[11px] font-black uppercase tracking-wide">
+                                        {d.is_required ? "Required" : "Optional"} · Not uploaded
+                                      </span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <span className="text-[12px] text-ink-500 truncate max-w-[200px]">
+                                        {d.file_original_name}
+                                      </span>
+                                      <span className="text-ink-300">·</span>
+                                      <span className="text-[11px] text-ink-400 font-medium uppercase">
+                                        {Math.ceil((d.file_size || 0) / 1024)} KB
+                                      </span>
+                                      <DocStatusPill
+                                        status={d.verification_status}
+                                      />
+                                    </>
+                                  )}
                                 </div>
                               </div>
                             </div>
 
                             <div className="flex items-center gap-2 shrink-0">
+                              {isMissing ? null : (
+                              <>
                               <button
                                 onClick={() => {
-                                  setPreviewIndex(idx);
+                                  setPreviewIndex(Math.max(idx, 0));
                                   setIsPreviewOpen(true);
                                 }}
                                 className="p-2 rounded-lg hover:bg-ink-100 dark:hover:bg-ink-800 text-ink-500 transition-colors"
@@ -1002,6 +1026,8 @@ export default function ApplicationDetailPage() {
                               >
                                 <Download className="w-4 h-4" />
                               </a>
+                              </>
+                              )}
                             </div>
                           </div>
 
@@ -1048,11 +1074,13 @@ export default function ApplicationDetailPage() {
                             </div>
                           )}
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
 
                   {docs.length > 0 &&
+                    missingDocs.length === 0 &&
                     docs.filter((d: any) => d.verification_status === "pending")
                       .length === 0 &&
                     nextApp && (
@@ -1202,46 +1230,27 @@ export default function ApplicationDetailPage() {
 
           {activeStep === 3 && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <section className="card p-8 text-center">
-                <CreditCard className="w-16 h-16 text-emerald-500/20 mx-auto mb-4" />
-                <h3 className="text-xl font-black text-ink-900 dark:text-white mb-2">
-                  Registration Fee
-                </h3>
-                <p className="text-ink-500 text-[14px] mb-8 max-w-sm mx-auto">
-                  Applicant has received the offer. Confirm fee payment to
-                  proceed.
-                </p>
-                {status === ApplicationStatus.OFFERED ? (
+              {/* The real thing: the applicant's Registration and CURSU bills,
+                  priced from the published fee structures and settled through
+                  Urubuto Pay. This replaced a "Simulate registration fee
+                  payment?" button that moved the application forward without any
+                  money changing hands. */}
+              <AdmissionFeesPanel
+                mode="validator"
+                applicationId={appId}
+                canManage={canManage}
+              />
+
+              {maxStep >= 4 && (
+                <div className="flex justify-center">
                   <button
-                    className="btn-primary py-3 px-8 text-[14px] flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 shadow-xl shadow-emerald-500/20 mx-auto"
-                    onClick={() => {
-                      if (
-                        window.confirm("Simulate registration fee payment?")
-                      ) {
-                        confirmPayment.mutate();
-                      }
-                    }}
-                    disabled={confirmPayment.isPending}
+                    className="btn-secondary"
+                    onClick={() => setActiveStep(4)}
                   >
-                    <CreditCard className="w-5 h-5" /> Confirm Fee Payment
+                    Proceed to Step 4 <ChevronRight className="w-4 h-4 ml-2" />
                   </button>
-                ) : (
-                  <div className="flex flex-col items-center">
-                    <p className="text-emerald-600 font-bold flex items-center gap-2 mb-4">
-                      <CheckCircle2 className="w-5 h-5" /> Fee Payment Confirmed
-                    </p>
-                    {maxStep >= 4 && (
-                      <button
-                        className="btn-secondary"
-                        onClick={() => setActiveStep(4)}
-                      >
-                        Proceed to Step 4{" "}
-                        <ChevronRight className="w-4 h-4 ml-2" />
-                      </button>
-                    )}
-                  </div>
-                )}
-              </section>
+                </div>
+              )}
             </div>
           )}
 
@@ -1419,7 +1428,7 @@ export default function ApplicationDetailPage() {
                             if (!ok) return;
                           } else if (
                             !window.confirm(
-                              `Finalize registration at level ID ${selectedLevelId} and generate Registration Number?`,
+                              `Finalize registration at ${selectedLevelLabel} and generate Registration Number?`,
                             )
                           ) {
                             return;
@@ -1430,7 +1439,7 @@ export default function ApplicationDetailPage() {
                           // blocked by a network blip.
                           if (
                             !window.confirm(
-                              `Finalize registration at level ID ${selectedLevelId} and generate Registration Number?`,
+                              `Finalize registration at ${selectedLevelLabel} and generate Registration Number?`,
                             )
                           ) return;
                         }
@@ -1653,7 +1662,7 @@ export default function ApplicationDetailPage() {
         isOpen={isRequestChangesOpen}
         onClose={() => setIsRequestChangesOpen(false)}
         applicationId={appId}
-        documents={docs}
+        documents={checklist}
         onSuccess={requestChangesSuccess}
       />
 

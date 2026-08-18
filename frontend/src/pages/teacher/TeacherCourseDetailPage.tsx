@@ -15,6 +15,7 @@ import Modal from '@/components/ui/Modal'
 import { RecordTab, DateStrip, mostRecentAllowedDate } from '@/pages/AttendancePage'
 import { attendanceService } from '@/services/attendanceService'
 import { studentService } from '@/services/studentService'
+import { useLevels } from '@/hooks/useLevels'
 import toast from 'react-hot-toast'
 // The real CUR mark sheet, embedded so marks are entered without leaving the course.
 import { MarksEditor } from '@/pages/modules/ModulesMarksPage'
@@ -305,6 +306,7 @@ function EnrollPanel({
   search:     string
   onDone:     () => void
 }) {
+  const { levelName } = useLevels()
   const [picked, setPicked] = useState<Set<string>>(new Set())
   /** Which student the removal dialog is open for, if any. */
   const [removing, setRemoving] = useState<TeacherClassStudent | null>(null)
@@ -395,7 +397,7 @@ function EnrollPanel({
             <tr key={s.regnumber} className="hover:bg-ink-50/50 dark:hover:bg-ink-700/20">
               <td className="px-4 py-2 font-mono text-[12px]">{s.regnumber}</td>
               <td className="px-4 py-2 font-medium text-ink-900 dark:text-white">{s.full_name}</td>
-              <td className="px-4 py-2">{s.level ?? '—'}</td>
+              <td className="px-4 py-2">{s.level_name ?? levelName(s.level)}</td>
               {isSuperadmin && (
                 <td className="px-4 py-2 text-right">
                   <button
@@ -493,6 +495,7 @@ function EnrollPanel({
 }
 
 export default function TeacherCourseDetailPage() {
+  const { levelName } = useLevels()
   const { moduleId } = useParams<{ moduleId: string }>()
   const id = Number(moduleId)
   const qc = useQueryClient()
@@ -621,7 +624,8 @@ export default function TeacherCourseDetailPage() {
     } else {
       head = ['Reg number', 'Student', 'Gender', 'Level', 'Email', 'Phone', 'Attendance %']
       body = students.map((s: TeacherClassStudent) => [
-        s.regnumber, s.full_name, s.gender ?? '', s.level ?? '', s.email ?? '', s.phone ?? '', s.attendance_rate ?? '',
+        s.regnumber, s.full_name, s.gender ?? '', s.level_name ?? levelName(s.level, ''),
+        s.email ?? '', s.phone ?? '', s.attendance_rate ?? '',
       ])
     }
     const csv = [head, ...body]
@@ -761,7 +765,7 @@ export default function TeacherCourseDetailPage() {
                 {STATUS_LABEL[c.status] ?? c.status}
               </span>
               {c.module_credits != null && <span className="chip-soft">{c.module_credits} cr</span>}
-              {c.level != null && <span className="chip-soft">Level {c.level}</span>}
+              {c.level != null && <span className="chip-soft">{c.level_name ?? levelName(c.level)}</span>}
             </div>
             <h2 className="text-[17px] font-bold text-ink-900 dark:text-white leading-tight mt-0.5">
               {c.module_name}
@@ -872,7 +876,7 @@ export default function TeacherCourseDetailPage() {
                 <span className="font-medium text-ink-900 dark:text-white">{s.full_name}</span>
                 {s.gender && <span className="text-ink-400 text-[11px] ml-1.5">({s.gender})</span>}
               </td>
-              <td className="px-4 py-2.5">{s.level ?? '—'}</td>
+              <td className="px-4 py-2.5">{s.level_name ?? levelName(s.level)}</td>
               <td className="px-4 py-2.5 text-[12px] text-ink-500">
                 <div className="truncate max-w-[220px]">{s.email ?? '—'}</div>
                 <div className="text-ink-400">{s.phone ?? ''}</div>

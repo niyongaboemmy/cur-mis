@@ -6,136 +6,87 @@ namespace App\Controllers;
 
 use Core\Request;
 use Core\Response;
-use Core\Database;
+use App\Models\NotificationModel;
 
 /**
- * Self-service notification feed.
- *
- * Rows have been written to `notifications` for a while (FinesController raises
- * FEE_OVERDUE entries, for example) but nothing ever read them back, which is
- * why the header bell had no data to open onto. Every endpoint here is scoped
- * to the authenticated user — a notification is addressed to exactly one
- * user_id and must never be readable or dismissable by anyone else.
+ * The signed-in user's own notifications. Every query is scoped to
+ * $_auth_user['id'] — there is no permission to read anyone else's, by design,
+ * so these routes need authentication only.
  */
 class NotificationController extends BaseController
 {
-    /** Hard cap so a long-lived account can't ask for an unbounded feed. */
-    private const MAX_LIMIT = 50;
-
-    private Database $db;
+    private NotificationModel $model;
 
     public function __construct()
     {
-        $this->db = Database::getInstance();
-    }
-
-    private function authUserId(Request $request): int
-    {
-        $user = (array)($request->param('_auth_user') ?? []);
-        return (int)($user['id'] ?? 0);
+        $this->model = new NotificationModel();
     }
 
     /**
-     * An empty feed for a caller we can't address notifications to.
-     *
-     * AuthMiddleware has already proven the token is valid, so the request IS
-     * authenticated — answering 401 here would be factually wrong, and because
-     * the frontend treats any 401 as an expired session, it logged the user
-     * straight back out. That is exactly what happened to accounts carrying
-     * id 0 (a row created while the users table was missing AUTO_INCREMENT):
-     * a valid session was destroyed by a background poll.
-     *
-     * There is nothing to show and nothing to leak, so return an empty feed and
-     * record the anomaly server-side where it can actually be acted on.
-     */
-    private function emptyFeed(Request $request, Response $response): never
-    {
-        $user = (array)($request->param('_auth_user') ?? []);
-        error_log(sprintf(
-            '[Notifications] authenticated token carries a non-positive user id (%s, email=%s) — returning an empty feed.',
-            var_export($user['id'] ?? null, true),
-            (string)($user['email'] ?? 'unknown')
-        ));
-
-        $this->success($response, ['total' => 0, 'recent' => []], 'Notifications retrieved.');
-    }
-
-    /**
-     * GET /api/notifications
-     * Recent notifications for the current user plus the unread count.
-     *
-     * The unread count is computed over the whole table, not just the returned
-     * page, so the badge stays accurate once a user has more than `limit`
-     * unread items.
+     * GET /api/notifications?page=&per_page=&unread=1
      */
     public function index(Request $request, Response $response): never
     {
-        $userId = $this->authUserId($request);
-        if ($userId <= 0) {
-            $this->emptyFeed($request, $response);
+        $userId  = $this->userId($request, $response);
+        if ($userId === 0) {
+            $this->success($response, [
+                'data' => [], 'total' => 0, 'unread_total' => 0,
+                'per_page' => 20, 'current_page' => 1, 'last_page' => 1,
+            ], 'Notifications fetched.');
         }
+        $page    = max(1, (int) ($request->query('page') ?? 1));
+        $perPage = min(50, max(1, (int) ($request->query('per_page') ?? 20)));
+        $unread  = in_array((string) ($request->query('unread') ?? ''), ['1', 'true'], true);
 
-        $limit = (int)($request->query('limit') ?? 10);
-        $limit = max(1, min(self::MAX_LIMIT, $limit));
-
-        $rows = $this->db->fetchAll(
-            "SELECT id, type, message, link, is_read, created_at
-               FROM `notifications`
-              WHERE user_id = ?
-              ORDER BY is_read ASC, created_at DESC
-              LIMIT {$limit}",
-            [$userId]
-        );
-
-        $unread = (int)($this->db->fetchOne(
-            "SELECT COUNT(*) AS c FROM `notifications` WHERE user_id = ? AND is_read = 0",
-            [$userId]
-        )['c'] ?? 0);
+        $total = $this->model->countForUser($userId, $unread);
+        $rows  = $this->model->listForUser($userId, $perPage, ($page - 1) * $perPage, $unread);
 
         $this->success($response, [
-            'total'  => $unread,
-            'recent' => array_map(static fn (array $r): array => [
-                'id'         => (int)$r['id'],
-                'type'       => $r['type'],
-                'message'    => (string)$r['message'],
-                'link'       => $r['link'],
-                'is_read'    => (int)$r['is_read'] === 1,
-                'created_at' => $r['created_at'],
-            ], $rows),
-        ], 'Notifications retrieved.');
+            'data'         => $rows,
+            'total'        => $total,
+            'unread_total' => $this->model->countForUser($userId, true),
+            'per_page'     => $perPage,
+            'current_page' => $page,
+            'last_page'    => (int) ceil($total / max(1, $perPage)),
+        ], 'Notifications fetched.');
+    }
+
+    /**
+     * GET /api/notifications/unread-count
+     * The bell polls this, so it stays deliberately cheap: a count plus the few
+     * most recent unread rows for the dropdown preview.
+     */
+    public function unreadCount(Request $request, Response $response): never
+    {
+        $userId = $this->userId($request, $response);
+        if ($userId === 0) {
+            $this->success($response, ['total' => 0, 'recent' => []], 'Unread notification count fetched.');
+        }
+
+        $this->success($response, [
+            'total'  => $this->model->countForUser($userId, true),
+            'recent' => $this->model->listForUser($userId, 8, 0, true),
+        ], 'Unread notification count fetched.');
     }
 
     /**
      * POST /api/notifications/:id/read
-     * Mark one notification read. Scoped by user_id in the WHERE clause so a
-     * guessed id belonging to someone else affects nothing.
      */
     public function markRead(Request $request, Response $response): never
     {
-        $userId = $this->authUserId($request);
-        if ($userId <= 0) {
-            // Nothing is addressable to this caller, so nothing can be marked
-            // read. Not a 401 — see emptyFeed().
+        $userId = $this->userId($request, $response);
+        if ($userId === 0) {
             $this->success($response, null, 'No change.');
         }
+        $id     = (int) $request->param('id');
 
-        $id = (int)$request->param('id');
-        if ($id <= 0) {
-            $this->error($response, 'Invalid notification id.', 422);
+        $row = $this->model->find($id);
+        if (!$row || (int) $row['user_id'] !== $userId) {
+            $this->error($response, 'Notification not found.', 404);
         }
 
-        $affected = $this->db->execute(
-            "UPDATE `notifications` SET is_read = 1 WHERE id = ? AND user_id = ?",
-            [$id, $userId]
-        );
-
-        if ($affected === 0) {
-            // Covers both "not yours" and "already read" — deliberately does not
-            // distinguish the two, so ids can't be probed for existence.
-            $this->success($response, ['id' => $id], 'No change.');
-        }
-
-        $this->success($response, ['id' => $id], 'Notification marked as read.');
+        $this->model->markRead($id, $userId);
+        $this->success($response, null, 'Notification marked as read.');
     }
 
     /**
@@ -143,16 +94,65 @@ class NotificationController extends BaseController
      */
     public function markAllRead(Request $request, Response $response): never
     {
-        $userId = $this->authUserId($request);
-        if ($userId <= 0) {
-            $this->success($response, ['updated' => 0], 'No change.');
+        $userId  = $this->userId($request, $response);
+        if ($userId === 0) {
+            $this->success($response, ['marked' => 0], 'All notifications marked as read.');
+        }
+        $changed = $this->model->markAllRead($userId);
+
+        $this->success($response, ['marked' => $changed], 'All notifications marked as read.');
+    }
+
+    /**
+     * POST /api/notifications/read-entity
+     * Body: { entity_type: string, entity_id: number }
+     * Clears the badges about one record once the user has actually opened it.
+     */
+    public function markEntityRead(Request $request, Response $response): never
+    {
+        $userId = $this->userId($request, $response);
+        if ($userId === 0) {
+            $this->success($response, ['marked' => 0], 'Notifications marked as read.');
+        }
+        $body   = $request->body();
+
+        $entityType = trim((string) ($body['entity_type'] ?? ''));
+        $entityId   = (int) ($body['entity_id'] ?? 0);
+
+        if ($entityType === '' || $entityId <= 0) {
+            $this->error($response, 'entity_type and entity_id are required.', 422);
         }
 
-        $affected = $this->db->execute(
-            "UPDATE `notifications` SET is_read = 1 WHERE user_id = ? AND is_read = 0",
-            [$userId]
-        );
+        $changed = $this->model->markEntityRead($userId, $entityType, $entityId);
+        $this->success($response, ['marked' => $changed], 'Notifications marked as read.');
+    }
 
-        $this->success($response, ['updated' => $affected], 'All notifications marked as read.');
+    /**
+     * Id of the signed-in user, or 0 when the token carries no usable id.
+     *
+     * Deliberately does NOT answer 401. AuthMiddleware has already validated
+     * the token, so the request IS authenticated — and the frontend treats any
+     * 401 as an expired session, so answering 401 here signed the user out of a
+     * perfectly good session. Accounts carrying id 0 (rows created while the
+     * users table was missing AUTO_INCREMENT) could not stay logged in at all,
+     * because the bell polls this on every page.
+     *
+     * Callers return an empty result for 0 instead: there is nothing to show
+     * and nothing to leak.
+     */
+    private function userId(Request $request, Response $response): int
+    {
+        $actor = (array) $request->param('_auth_user');
+        $id    = (int) ($actor['id'] ?? 0);
+
+        if ($id <= 0) {
+            error_log(sprintf(
+                '[Notifications] authenticated token carries a non-positive user id (%s, email=%s).',
+                var_export($actor['id'] ?? null, true),
+                (string) ($actor['email'] ?? 'unknown')
+            ));
+        }
+
+        return max(0, $id);
     }
 }

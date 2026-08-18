@@ -167,22 +167,27 @@ class StudentController extends BaseController
      *
      * @return array{0:string, 1:array}
      */
-    private function buildListFilters(Request $request): array
+    private function buildListFilters(Request $request, string $alias = ''): array
     {
         $search  = $request->query('search') ?? $request->query('q') ?? '';
+        // Callers that run these filters against a JOINed query must pass the
+        // student table's alias — several joined tables share column names
+        // with `student` (e.g. `departements`.`program`), so an unqualified
+        // reference raises "Column 'program' in WHERE is ambiguous".
+        $p = $alias !== '' ? rtrim($alias, '.') . '.' : '';
 
         $clauses  = [];
         $bindings = [];
 
         if ($search !== '') {
-            $clauses[]  = "(fname LIKE ? OR lname LIKE ? OR regnumber LIKE ? OR email LIKE ?)";
+            $clauses[]  = "({$p}fname LIKE ? OR {$p}lname LIKE ? OR {$p}regnumber LIKE ? OR {$p}email LIKE ?)";
             $bindings[] = "%$search%";
             $bindings[] = "%$search%";
             $bindings[] = "%$search%";
             $bindings[] = "%$search%";
         }
 
-        $this->applyFilterableClauses($request, $clauses, $bindings);
+        $this->applyFilterableClauses($request, $clauses, $bindings, $alias);
 
         $where = $clauses ? implode(' AND ', $clauses) : '';
         return [$where, $bindings];
@@ -243,7 +248,7 @@ class StudentController extends BaseController
                 $r['campus_code'] = $c !== '' && isset($nameById[$c]) ? $nameById[$c]['code'] : null;
             }
             unset($r);
-            $paginated['data'] = $rows;
+            $paginated['data'] = \App\Helpers\LevelHelper::decorate($rows, 'current_level', 'level_name');
         }
 
         $this->success($response, $paginated, 'Students fetched successfully.');
@@ -380,6 +385,8 @@ class StudentController extends BaseController
         $student['faculty_name'] = null;
         $student['department_name'] = null;
         $student['program_name'] = null;
+        // `current_level` stores a `levels.id`; every screen shows the name.
+        $student['level_name'] = \App\Helpers\LevelHelper::name($student['current_level'] ?? null) ?: null;
 
         if (!empty($student['faculty'])) {
             $facultyModel = new FacultyModel();
@@ -443,6 +450,8 @@ class StudentController extends BaseController
         $student['faculty_name'] = null;
         $student['department_name'] = null;
         $student['program_name'] = null;
+        // `current_level` stores a `levels.id`; every screen shows the name.
+        $student['level_name'] = \App\Helpers\LevelHelper::name($student['current_level'] ?? null) ?: null;
 
         if (!empty($student['faculty'])) {
             $facultyModel = new FacultyModel();
@@ -2389,8 +2398,12 @@ class StudentController extends BaseController
         return $cache[$table];
     }
 
-    private function applyFilterableClauses(Request $request, array &$clauses, array &$bindings): void
+    private function applyFilterableClauses(Request $request, array &$clauses, array &$bindings, string $alias = ''): void
     {
+        // See buildListFilters(): non-empty when the WHERE gets spliced into a
+        // JOINed query, so every column below stays unambiguous.
+        $p = $alias !== '' ? rtrim($alias, '.') . '.' : '';
+
         $filterable = [
             'student_state', 'gender', 'faculty', 'department',
             'current_level', 'nationality', 'acc_year', 'program',
@@ -2409,35 +2422,35 @@ class StudentController extends BaseController
 
             if ($col === 'learning_mode') {
                 // Maps to the legacy `program` column on `student`.
-                $clauses[]  = 'LOWER(TRIM(program)) = LOWER(?)';
+                $clauses[]  = "LOWER(TRIM({$p}program)) = LOWER(?)";
                 $bindings[] = trim((string)$val);
                 continue;
             }
 
             if ($col === 'nationality' && $lower === 'rwandan') {
-                $clauses[] = "LOWER(nationality) IN ('rwandan','rwandana','rwandese')";
+                $clauses[] = "LOWER({$p}nationality) IN ('rwandan','rwandana','rwandese')";
             } elseif ($col === 'nationality' && $lower === 'foreign') {
-                $clauses[] = "(nationality IS NOT NULL AND nationality <> '' AND LOWER(nationality) NOT IN ('rwandan','rwandana','rwandese'))";
+                $clauses[] = "({$p}nationality IS NOT NULL AND {$p}nationality <> '' AND LOWER({$p}nationality) NOT IN ('rwandan','rwandana','rwandese'))";
             } elseif ($col === 'nationality' && $lower === 'unknown') {
-                $clauses[] = "(nationality IS NULL OR nationality = '')";
+                $clauses[] = "({$p}nationality IS NULL OR {$p}nationality = '')";
             } elseif ($col === 'gender') {
                 if (in_array($lower, ['m', 'male'], true)) {
-                    $clauses[] = "LOWER(gender) IN ('m','male')";
+                    $clauses[] = "LOWER({$p}gender) IN ('m','male')";
                 } elseif (in_array($lower, ['f', 'female'], true)) {
-                    $clauses[] = "LOWER(gender) IN ('f','female')";
+                    $clauses[] = "LOWER({$p}gender) IN ('f','female')";
                 } elseif ($lower === 'unknown') {
-                    $clauses[] = "(gender IS NULL OR gender = '' OR LOWER(gender) NOT IN ('m','male','f','female'))";
+                    $clauses[] = "({$p}gender IS NULL OR {$p}gender = '' OR LOWER({$p}gender) NOT IN ('m','male','f','female'))";
                 }
             } elseif ($col === 'acc_year') {
                 $variants = self::accYearVariants((string)$val);
                 $ph = implode(',', array_fill(0, count($variants), '?'));
-                $clauses[] = "acc_year IN ($ph)";
+                $clauses[] = "{$p}acc_year IN ($ph)";
                 foreach ($variants as $v) { $bindings[] = $v; }
             } elseif ($col === 'category') {
                 $variants = self::categoryVariants($lower);
                 if (!empty($variants)) {
                     $ph = implode(',', array_fill(0, count($variants), '?'));
-                    $clauses[] = "LOWER(TRIM(category)) IN ($ph)";
+                    $clauses[] = "LOWER(TRIM({$p}category)) IN ($ph)";
                     foreach ($variants as $v) { $bindings[] = $v; }
                 }
             } elseif ($col === 'std_option') {
@@ -2460,9 +2473,9 @@ class StudentController extends BaseController
 
                 $sub = [];
                 foreach ($aliases as $a) {
-                    $sub[] = 'LOWER(TRIM(std_option)) = LOWER(?)';
+                    $sub[] = "LOWER(TRIM({$p}std_option)) = LOWER(?)";
                     $bindings[] = $a;
-                    $sub[] = 'LOWER(TRIM(program)) = LOWER(?)';
+                    $sub[] = "LOWER(TRIM({$p}program)) = LOWER(?)";
                     $bindings[] = $a;
                 }
                 if ($optionId > 0) {
@@ -2474,30 +2487,30 @@ class StudentController extends BaseController
                     // "Server error." Guard each one so the filter gracefully
                     // degrades to the std_option/program name match instead.
                     if ($this->tableExists('admission_offers') && $this->tableExists('student_applications')) {
-                        $sub[] = 'id IN (
+                        $sub[] = "{$p}id IN (
                             SELECT ao.student_id
                             FROM `admission_offers` ao
                             JOIN `student_applications` sa ON sa.id = ao.application_id
                             WHERE sa.program_id = ?
-                        )';
+                        )";
                         $bindings[] = $optionId;
                     }
 
                     if ($this->columnExists('student', 'user_id')
                         && $this->tableExists('applicant_profiles')
                         && $this->tableExists('student_applications')) {
-                        $sub[] = 'user_id IN (
+                        $sub[] = "{$p}user_id IN (
                             SELECT ap.user_id
                             FROM `applicant_profiles` ap
                             JOIN `student_applications` sa2 ON sa2.id = ap.application_id
                             WHERE sa2.program_id = ? AND ap.user_id IS NOT NULL
-                        )';
+                        )";
                         $bindings[] = $optionId;
                     }
                 }
                 $clauses[] = '(' . implode(' OR ', $sub) . ')';
             } else {
-                $clauses[]  = "`$col` = ?";
+                $clauses[]  = "{$p}`$col` = ?";
                 $bindings[] = $val;
             }
         }
@@ -3236,7 +3249,9 @@ class StudentController extends BaseController
         }
 
         // ── Build the WHERE from the live list filters ─────────────────
-        [$where, $bindings] = $this->buildListFilters($request);
+        // Qualified with the `s` alias — this query JOINs tables that share
+        // column names with `student` (e.g. `departements`.`program`).
+        [$where, $bindings] = $this->buildListFilters($request, 's');
 
         // Every column key we may need to read (registry + the few
         // synthetic keys consumed by `resolveTemplateCell`).

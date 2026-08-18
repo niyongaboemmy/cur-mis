@@ -60,6 +60,28 @@ class Permissions
     public const VIEW_LEAVE_REQUESTS = 'VIEW_LEAVE_REQUESTS';
     public const MANAGE_LEAVE_REQUESTS = 'MANAGE_LEAVE_REQUESTS';
     public const REQUEST_LEAVE = 'REQUEST_LEAVE';
+    /**
+     * Per-stage leave approval. Each stage of a leave type's approval chain
+     * (`leave_approval_stages.required_permission_slug`) names one of these, so
+     * who signs off at which level is configuration, not code.
+     *
+     * The institution's own signature blocks — the same sequence the mission
+     * authorisation form uses — are the role-named slugs: Vice Chancellor, then
+     * HR's recommendation, then the Director of Administration & Finance, then
+     * the Vice Chancellor's final authorisation. The Vice Chancellor signs twice
+     * in that flow, which is why the first review and the final authorisation
+     * are separate slugs rather than one.
+     *
+     * L1/L2 remain available for a leave type that wants a shorter, generic
+     * chain instead (see LeaveApprovalService::STAGE_PERMISSIONS).
+     */
+    public const APPROVE_LEAVE_VC = 'APPROVE_LEAVE_VC';
+    public const APPROVE_LEAVE_HR = 'APPROVE_LEAVE_HR';
+    public const APPROVE_LEAVE_DAF = 'APPROVE_LEAVE_DAF';
+    public const APPROVE_LEAVE_L1 = 'APPROVE_LEAVE_L1';
+    public const APPROVE_LEAVE_L2 = 'APPROVE_LEAVE_L2';
+    /** Final authorisation — the stage that grants the leave. */
+    public const APPROVE_LEAVE_FINAL = 'APPROVE_LEAVE_FINAL';
 
     // Finance
     public const VIEW_FINANCE         = 'VIEW_FINANCE';
@@ -244,6 +266,12 @@ class Permissions
             self::VIEW_LEAVE_REQUESTS,
             self::MANAGE_LEAVE_REQUESTS,
             self::REQUEST_LEAVE,
+            self::APPROVE_LEAVE_VC,
+            self::APPROVE_LEAVE_HR,
+            self::APPROVE_LEAVE_DAF,
+            self::APPROVE_LEAVE_L1,
+            self::APPROVE_LEAVE_L2,
+            self::APPROVE_LEAVE_FINAL,
             self::MANAGE_FINANCE,
             self::VIEW_MOBILE_PAYMENTS,
             self::VIEW_ONLINE_PAYMENTS_HISTORY,

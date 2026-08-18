@@ -2774,7 +2774,7 @@ function badge(string $method, array $colors): string
         <strong>Authentication:</strong> Protected routes require an <code>Authorization</code> header:<br>
         <code>Authorization: Bearer &lt;your-jwt-token&gt;</code><br><br>
         Obtain a token from <strong>POST /api/auth/login</strong>. Tokens expire after
-        <strong><?= (int) ($_ENV['JWT_EXPIRY'] ?? 3600) ?> seconds</strong>.
+        <strong><?= (int) ($_ENV['JWT_EXPIRY'] ?? 604800) ?> seconds</strong>.
       </div>
 
       <!-- ── Endpoint groups ───────────────────────────────── -->

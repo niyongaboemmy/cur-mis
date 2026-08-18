@@ -57,6 +57,16 @@ export const PERMISSIONS = {
   VIEW_LEAVE_REQUESTS:    'VIEW_LEAVE_REQUESTS',
   MANAGE_LEAVE_REQUESTS:  'MANAGE_LEAVE_REQUESTS',
   REQUEST_LEAVE:          'REQUEST_LEAVE',
+  // Per-stage leave approval — each stage of a leave type's approval chain
+  // requires one of these, so who signs off at which level is configuration.
+  // VC → HR → DAF → VC-final is the institution's own signature sequence;
+  // L1/L2 remain for a leave type given a shorter generic chain.
+  APPROVE_LEAVE_VC:       'APPROVE_LEAVE_VC',
+  APPROVE_LEAVE_HR:       'APPROVE_LEAVE_HR',
+  APPROVE_LEAVE_DAF:      'APPROVE_LEAVE_DAF',
+  APPROVE_LEAVE_L1:       'APPROVE_LEAVE_L1',
+  APPROVE_LEAVE_L2:       'APPROVE_LEAVE_L2',
+  APPROVE_LEAVE_FINAL:    'APPROVE_LEAVE_FINAL',
   VIEW_PAYROLL:        'VIEW_PAYROLL',
   MANAGE_PAYROLL:      'MANAGE_PAYROLL',
 
@@ -168,3 +178,25 @@ export const PERMISSIONS = {
 } as const;
 
 export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];
+
+/**
+ * Every permission that can put a leave request in someone's approval queue.
+ *
+ * The mirror of `LeaveApprovalService::STAGE_PERMISSIONS` on the server, and
+ * it exists for the same reason the backend derives its route guard from that
+ * constant instead of restating it: the institutional chain (VC → HR → DAF →
+ * VC-final) was added after the generic L1/L2/FINAL one, and every frontend
+ * gate that had hardcoded its own copy of the list kept guarding only the
+ * three original slugs. A DAF, whose sole grant is APPROVE_LEAVE_DAF, was
+ * therefore hidden from the Leave Approvals menu, bounced off its route and
+ * shown a read-only register — while the API behind all three was perfectly
+ * willing to serve them. Add a stage permission here and every gate follows.
+ */
+export const LEAVE_STAGE_PERMISSIONS: Permission[] = [
+  PERMISSIONS.APPROVE_LEAVE_VC,
+  PERMISSIONS.APPROVE_LEAVE_HR,
+  PERMISSIONS.APPROVE_LEAVE_DAF,
+  PERMISSIONS.APPROVE_LEAVE_L1,
+  PERMISSIONS.APPROVE_LEAVE_L2,
+  PERMISSIONS.APPROVE_LEAVE_FINAL,
+];

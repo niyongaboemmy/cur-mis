@@ -33,6 +33,7 @@ import {
 import StatCard from '@/components/dashboard/StatCard'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import { useDebounce } from '@/hooks/useDebounce'
+import { useLevels } from '@/hooks/useLevels'
 import {
   attendanceService,
   type AttendanceStatus,
@@ -263,6 +264,7 @@ function ModuleHeaderBar({
   const [exporting, setExporting] = useState(false)
   const [pickerLevel, setPickerLevel] = useState<number | 0>(0)
   const [pickerSearch, setPickerSearch] = useState('')
+  const { levelName } = useLevels()
   const moduleId = pickedModule.module_id
 
   const availableLevels = useMemo(() => {
@@ -354,7 +356,7 @@ function ModuleHeaderBar({
                 >
                   <option value={0}>All levels</option>
                   {availableLevels.map((l) => (
-                    <option key={l} value={l}>Level {l}</option>
+                    <option key={l} value={l}>{levelName(l)}</option>
                   ))}
                 </select>
               )}
@@ -393,7 +395,7 @@ function ModuleHeaderBar({
                       <p className="text-[11.5px] text-ink-500 truncate">{m.module_name}</p>
                     </div>
                     {m.level ? (
-                      <span className="text-[10px] text-ink-400 whitespace-nowrap">L{m.level}</span>
+                      <span className="text-[10px] text-ink-400 whitespace-nowrap">{(m as any).level_name ?? levelName(m.level)}</span>
                     ) : null}
                     {isActive && <Check className="w-3.5 h-3.5 text-brand shrink-0" />}
                   </button>

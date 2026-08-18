@@ -104,6 +104,7 @@ class ServiceCatalogService
     {
         $stages = $data['stages'] ?? [];
         $this->assertValidStages($stages);
+        $this->assertUniqueCodeAndSlug($data['code'] ?? null, $data['slug'] ?? null);
 
         $id = (int)$this->catalogModel->create([
             'code'                    => $data['code'],
@@ -133,6 +134,12 @@ class ServiceCatalogService
 
     public function update(int $id, array $data, int $actorId): void
     {
+        $this->assertUniqueCodeAndSlug(
+            array_key_exists('code', $data) ? $data['code'] : null,
+            array_key_exists('slug', $data) ? $data['slug'] : null,
+            $id
+        );
+
         $update = ['updated_by' => $actorId];
 
         foreach ([
@@ -214,6 +221,23 @@ class ServiceCatalogService
                 'is_final_approval'        => !empty($stage['is_final_approval']) ? 1 : 0,
                 'sla_hours'                => $stage['sla_hours'] ?? null,
             ]);
+        }
+    }
+
+    /**
+     * `service_catalog.code` and `.slug` are both UNIQUE. Check them up front
+     * so a clash comes back as a readable validation error instead of a 500
+     * from the duplicate-key PDOException.
+     */
+    private function assertUniqueCodeAndSlug(?string $code, ?string $slug, ?int $ignoreId = null): void
+    {
+        foreach (['code' => $code, 'slug' => $slug] as $field => $value) {
+            $value = trim((string) $value);
+            if ($value === '') continue;
+
+            if ($this->catalogModel->findConflict($field, $value, $ignoreId)) {
+                throw new \RuntimeException("A service with this {$field} already exists.");
+            }
         }
     }
 }

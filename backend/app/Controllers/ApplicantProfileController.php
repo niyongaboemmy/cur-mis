@@ -14,6 +14,7 @@ use App\Models\ApplicationDocumentModel;
 use App\Models\AdmissionRequirementModel;
 use App\Services\ApplicationService;
 use App\Services\UrubutoPayService;
+use App\Services\AdmissionBillingService;
 use App\Helpers\ValidationHelper;
 use App\Helpers\FileServerClient;
 
@@ -62,6 +63,8 @@ class ApplicantProfileController extends BaseController
     // ─────────────────────────────────────────────────────────────────────────
     // Profile endpoints
     // ─────────────────────────────────────────────────────────────────────────
+
+
 
     /**
      * GET /api/applicant/profile
@@ -148,17 +151,21 @@ class ApplicantProfileController extends BaseController
         $this->success($response, null, 'Profile updated successfully.');
     }
 
+
+    // ── Admission fees (Registration, CURSU …) ───────────────────────────────
+    //
+    // The stage between "you have been admitted" and "here is your registration
+    // number". The applicant sees exactly what they owe, pays each bill on the
+    // gateway, and the portal reflects the confirmation the moment the callback
+    // lands — the same shape as the application fee one step earlier.
+
     /**
-     * POST /api/applicant/profile/photo
-     * Upload or replace the profile photo.
+     * GET /api/applicant/application/bills
+     *
+     * Every admission bill on the applicant's application, with its balance and
+     * its own pre-filled Urubuto Pay checkout link.
      */
-    /**
-     * POST /api/applicant/application/payment
-     * Multipart: payment_slip (PDF/JPG/PNG) + transaction_id + amount?
-     * Stores the slip on the file server and writes the transaction id /
-     * amount onto the active draft application.
-     */
-    public function uploadPaymentSlip(Request $request, Response $response): never
+    public function getAdmissionBills(Request $request, Response $response): never
     {
         $profile = $request->param('_applicant_profile');
         $appId   = (int)($profile['application_id'] ?? 0);
@@ -279,13 +286,15 @@ class ApplicantProfileController extends BaseController
         ], 'Payment status fetched.');
     }
 
+
     /**
-     * POST /api/applicant/application/payment/invoice
+     * GET /api/applicant/application/bills/checkout?fee_type=REGISTRATION
      *
-     * For applicants who have already paid via bank transfer or other methods,
-     * accept their transaction ID and invoice proof. Mark the application as paid.
+     * The checkout link for one bill (or for the whole balance when no fee type
+     * is named). Separate from the listing so the "Pay now" button always opens
+     * a freshly-built link rather than one cached in the page.
      */
-    public function submitInvoicePayment(Request $request, Response $response): never
+    public function getAdmissionBillCheckout(Request $request, Response $response): never
     {
         $profile = $request->param('_applicant_profile');
         $appId   = (int)($profile['application_id'] ?? 0);
@@ -293,68 +302,33 @@ class ApplicantProfileController extends BaseController
             $this->error($response, 'No active application.', 404);
         }
 
-        $app = $this->appModel->find($appId);
-        if (!$app) {
+        $application = $this->appModel->find($appId);
+        if (!$application) {
             $this->error($response, 'Application not found.', 404);
         }
 
-        $transactionId = trim((string)($request->input('transaction_id') ?? ''));
-        if ($transactionId === '') {
-            $this->error($response, 'Transaction ID is required.', 422);
-        }
+        $feeType = strtoupper(trim((string)($request->query('fee_type') ?? '')));
+        $billing = new AdmissionBillingService();
 
-        $invoiceFile = $request->file('invoice');
-        if (!$invoiceFile) {
-            $this->error($response, 'Invoice file is required.', 422);
+        $serviceCode = null;
+        $amount      = null;
+        if ($feeType !== '') {
+            $bill = (new \App\Models\ApplicationInvoiceModel())->findByFeeType($appId, $feeType);
+            if (!$bill) {
+                $this->error($response, 'You have not been billed for ' . $feeType . '.', 404);
+            }
+            $serviceCode = $bill['service_code'] ?: null;
+            $amount      = round((float)$bill['amount_due'] - (float)$bill['amount_paid'], 2);
         }
-
-        // Validate file type
-        $allowedMimes = ['application/pdf', 'image/jpeg', 'image/png'];
-        if (!in_array($invoiceFile['type'] ?? '', $allowedMimes, true)) {
-            $this->error($response, 'Invoice must be PDF, JPG, or PNG.', 422);
-        }
-
-        // Validate file size (max 5MB)
-        if (($invoiceFile['size'] ?? 0) > 5 * 1024 * 1024) {
-            $this->error($response, 'Invoice file must be 5 MB or smaller.', 422);
-        }
-
-        // The proof-of-payment document is the ONLY evidence an admissions
-        // officer has for a manually-declared payment, so a failed upload must
-        // fail the request. Silently recording the payment without it left
-        // admins approving/rejecting blind (they could see the claim but never
-        // the document).
-        try {
-            $client        = new FileServerClient();
-            $uploaded      = $client->upload($invoiceFile);
-            $invoiceFileId = $uploaded['id'];
-        } catch (\RuntimeException $e) {
-            error_log('[Invoice Upload Error] ' . $e->getMessage());
-            $this->error(
-                $response,
-                'We could not store your proof of payment. Please try again, or contact the admissions office if the problem persists.',
-                502
-            );
-        }
-
-        // Persist the slip alongside the payment details. `payment_slip_file_id`
-        // is what ApplicationAdminController::downloadPaymentSlip() streams and
-        // what the Admin Admission page keys its "View proof" button on.
-        $this->appModel->update($appId, [
-            'transaction_id'       => $transactionId,
-            'payment_amount'       => $app['payment_amount'] ?? 5000,
-            'payment_currency'     => 'RWF',
-            'paid_at'              => date('Y-m-d H:i:s'),
-            'payment_slip_file_id' => $invoiceFileId,
-            'payment_slip_mime'    => (string)($invoiceFile['type'] ?? ''),
-        ]);
 
         $this->success($response, [
-            'transaction_id'  => $transactionId,
-            'invoice_file_id' => $invoiceFileId,
-            'verified'        => true,
-            'message'         => 'Payment verified successfully. Your application fee has been recorded.',
-        ], 'Invoice payment submitted successfully.');
+            'checkout_url'       => $billing->checkoutUrl((string)$application['application_number'], $serviceCode),
+            'payer_code'         => (string)$application['application_number'],
+            'service_code'       => $serviceCode,
+            'amount'             => $amount,
+            'currency'           => 'RWF',
+            'application_number' => (string)$application['application_number'],
+        ], 'Checkout link generated.');
     }
 
     public function uploadPhoto(Request $request, Response $response): never
@@ -626,7 +600,16 @@ class ApplicantProfileController extends BaseController
         }
 
         $application = $this->appModel->find($appId);
-        if ($application['status'] !== 'draft') {
+
+        // The application fee callback submits the application itself, so an
+        // applicant who returns to the still-open wizard tab and presses Submit
+        // is not making a second submission — they are syncing the last field
+        // values they typed. Rejecting that with "already submitted" is how a
+        // paid applicant ends up staring at an error on a flow that worked.
+        $alreadyAutoSubmitted = ($application['status'] ?? '') === 'submitted'
+            && (int)($application['auto_submitted'] ?? 0) === 1;
+
+        if ($application['status'] !== 'draft' && !$alreadyAutoSubmitted) {
             $this->error($response, 'Application is already submitted.', 422);
         }
 
@@ -680,8 +663,15 @@ class ApplicantProfileController extends BaseController
             'sponsorship'        => $data['sponsorship'] ?? $application['sponsorship'],
             'sponsor_name'       => $data['sponsor_name'] ?? $application['sponsor_name'] ?? null,
             'status'             => 'submitted',
-            'submitted_at'       => date('Y-m-d H:i:s'),
         ];
+        if (!$alreadyAutoSubmitted) {
+            $updateData['submitted_at'] = date('Y-m-d H:i:s');
+        } else {
+            // The sync is the applicant catching up with the callback, not a
+            // fresh submission: keep the original timestamp and clear the flag
+            // so a later edit is judged on its own merits.
+            $updateData['auto_submitted'] = 0;
+        }
         foreach ($extendedKeys as $k) {
             if (array_key_exists($k, $data) && $data[$k] !== null && $data[$k] !== '') {
                 $updateData[$k] = $data[$k];
@@ -698,7 +688,9 @@ class ApplicantProfileController extends BaseController
 
         $this->appModel->update($appId, $updateData);
 
-        $this->service->logStatusChange($appId, 'draft', 'submitted', null, 'applicant', 'Application submitted.');
+        if (!$alreadyAutoSubmitted) {
+            $this->service->logStatusChange($appId, 'draft', 'submitted', null, 'applicant', 'Application submitted.');
+        }
 
         // Send a "thank you / submitted successfully" confirmation email,
         // including CUR contact info so the applicant has a clear next step.
@@ -722,13 +714,20 @@ class ApplicantProfileController extends BaseController
         $subject  = 'Application Submitted — Catholic University of Rwanda';
         $textBody = "Dear {$updateData['first_name']}, your application to the Catholic University of Rwanda has been submitted successfully. Application number: " . ($appRow['application_number'] ?? '') . ". For queries, contact admissions@cur.ac.rw or +250 788 351 906.";
 
-        $mailService = new \App\Services\MailService();
-        $mailService->send($updateData['email'], $subject, $htmlBody, $textBody);
+        // The callback already sent this confirmation when it auto-submitted;
+        // sending it again would tell the applicant twice that they submitted once.
+        if (!$alreadyAutoSubmitted) {
+            $mailService = new \App\Services\MailService();
+            $mailService->send($updateData['email'], $subject, $htmlBody, $textBody);
+        }
 
         $this->success($response, [
             'status'             => 'submitted',
             'application_number' => $appRow['application_number'] ?? null,
-        ], 'Application submitted successfully. A confirmation email has been sent.');
+            'auto_submitted'     => $alreadyAutoSubmitted,
+        ], $alreadyAutoSubmitted
+            ? 'Your application was already submitted when your payment was confirmed. Your details have been saved.'
+            : 'Application submitted successfully. A confirmation email has been sent.');
     }
 
     /**

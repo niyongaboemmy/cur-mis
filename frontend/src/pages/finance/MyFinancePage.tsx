@@ -31,6 +31,7 @@ import {
 import { formatRWF } from "@/utils/formatCurrency";
 import type {
   FeeInvoice,
+  FeeType,
   LedgerTotals,
   ClearanceResult,
   MobilePaymentRecord,
@@ -494,6 +495,7 @@ export default function MyFinancePage() {
                           {[
                             "Date",
                             "Transaction Code",
+                            "Paid For",
                             "Channel",
                             "Amount",
                             "Receipt #",
@@ -521,6 +523,18 @@ export default function MyFinancePage() {
                             </td>
                             <td className="px-4 py-2.5 font-mono text-[12px] text-ink-600 dark:text-ink-300 whitespace-nowrap">
                               {p.transaction_code}
+                            </td>
+                            <td className="px-4 py-2.5 text-ink-600 dark:text-ink-300 whitespace-nowrap">
+                              {p.service_name ??
+                                (p.fee_type
+                                  ? (FEE_TYPE_LABELS[p.fee_type as FeeType] ??
+                                    p.fee_type)
+                                  : "—")}
+                              {p.fee_structure_label && (
+                                <span className="block text-[11px] text-ink-400 dark:text-ink-500">
+                                  {p.fee_structure_label}
+                                </span>
+                              )}
                             </td>
                             <td className="px-4 py-2.5 text-ink-500 dark:text-ink-400 whitespace-nowrap">
                               {p.payment_sub_method ?? "Mobile Money"}

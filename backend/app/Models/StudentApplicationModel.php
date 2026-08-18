@@ -32,7 +32,7 @@ class StudentApplicationModel extends BaseModel
         // State machine
         'status', 'document_status', 'merit_score', 'merit_rank',
         // Tracking
-        'submitted_at', 'reviewed_by', 'reviewed_at',
+        'submitted_at', 'auto_submitted', 'reviewed_by', 'reviewed_at',
         'internal_notes', 'rejection_reason', 'ip_address',
         'email_verified', 'verification_code',
         // Task 1.11 — credit-transfer workflow
@@ -229,6 +229,7 @@ class StudentApplicationModel extends BaseModel
                     ay.label   AS academic_year_label,
                     o.name     AS program_name,
                     c.name     AS campus_name, c.code AS campus_code, c.location AS campus_location,
+                    l.name     AS level_name,
                     COALESCE(ap.profile_photo_id, u.photo) AS applicant_photo_id,
                     (SELECT COUNT(*) FROM application_documents WHERE application_id = sa.id AND verification_status = 'pending') AS pending_docs_count,
                     (SELECT COUNT(*) FROM application_documents WHERE application_id = sa.id AND verification_status = 'verified') AS verified_docs_count,
@@ -239,6 +240,7 @@ class StudentApplicationModel extends BaseModel
              LEFT JOIN `academic_years` ay ON ay.id      = sa.academic_year_id
              LEFT JOIN `options`        o  ON o.id       = sa.program_id
              LEFT JOIN `campuses`       c  ON c.id       = sa.campus_id
+             LEFT JOIN `levels`         l  ON l.id       = sa.level_id
              LEFT JOIN `applicant_profiles` ap ON ap.application_id = sa.id
              LEFT JOIN `users`              u  ON u.id = ap.user_id
              {$where}

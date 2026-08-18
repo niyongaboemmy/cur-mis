@@ -808,6 +808,30 @@ class FeeController extends BaseController
      * GET /api/finance/online-payments
      * List all legacy online payments from the `payment` table.
      */
+    /**
+     * Does this database have the UrubutoPay service catalogue (migration 134)?
+     * Memoised per request; false makes the online-payments listing behave as it
+     * did before the catalogue existed instead of erroring on a missing table.
+     */
+    private function hasUrubutoCatalogue(): bool
+    {
+        static $ready = null;
+        if ($ready !== null) {
+            return $ready;
+        }
+
+        try {
+            $row = $this->db->fetchOne(
+                "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.TABLES
+                  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'urubuto_services'",
+                []
+            );
+            return $ready = ((int)($row['c'] ?? 0) > 0);
+        } catch (\Throwable $e) {
+            return $ready = false;
+        }
+    }
+
     public function listOnlinePaymentsHistory(Request $request, Response $response): never
     {
         $page    = max(1, (int)($request->query('page') ?? 1));
@@ -829,7 +853,25 @@ class FeeController extends BaseController
         $totalRow = $this->db->fetchOne($countQuery, $params);
         $total = (int)($totalRow['total'] ?? 0);
 
-        $query = "SELECT p.*, s.regnumber as student_regnumber, s.fname as student_fname, s.lname as student_lname, s.id as student_db_id FROM `payment` p LEFT JOIN `student` s ON CONVERT(p.student USING utf8mb4) COLLATE utf8mb4_unicode_ci = CONVERT(s.regnumber USING utf8mb4) COLLATE utf8mb4_unicode_ci WHERE $whereClause ORDER BY p.`date` DESC LIMIT $perPage OFFSET $offset";
+        // `payment.fee_category` carries the UrubutoPay service_code the payer
+        // chose (see UrubutoPayService::writeLegacyDebit). Resolve it to the
+        // service name and its fee category so the listing can say WHAT was
+        // paid for instead of showing a raw code — or nothing at all for the
+        // legacy numeric categories ('147' bank, '146' reversal).
+        // Guarded on migration 134 having run.
+        $hasCatalogue = $this->hasUrubutoCatalogue();
+        $svcSelect = $hasCatalogue
+            ? "COALESCE(live.`service_name`, us.`service_name`)                       AS service_name,
+               COALESCE(live.`service_code`, us.`service_code`)                       AS service_code,
+               COALESCE(ft.`label`, live.`fee_structure_type`, us.`fee_structure_type`) AS fee_category_label,"
+            : "NULL AS service_name, NULL AS service_code, NULL AS fee_category_label,";
+        $svcJoin = $hasCatalogue
+            ? "LEFT JOIN `urubuto_services` us   ON us.`service_code` = p.`fee_category`
+               LEFT JOIN `urubuto_services` live ON live.`service_code` = us.`alias_of`
+               LEFT JOIN `fee_types` ft          ON ft.`code` = COALESCE(live.`fee_structure_type`, us.`fee_structure_type`)"
+            : '';
+
+        $query = "SELECT p.*, {$svcSelect} s.regnumber as student_regnumber, s.fname as student_fname, s.lname as student_lname, s.id as student_db_id FROM `payment` p LEFT JOIN `student` s ON CONVERT(p.student USING utf8mb4) COLLATE utf8mb4_unicode_ci = CONVERT(s.regnumber USING utf8mb4) COLLATE utf8mb4_unicode_ci {$svcJoin} WHERE $whereClause ORDER BY p.`date` DESC LIMIT $perPage OFFSET $offset";
         $data = $this->db->fetchAll($query, $params);
 
         // Fetch basic dashboard metrics for online payments

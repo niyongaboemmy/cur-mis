@@ -187,6 +187,8 @@ export const academicsMgmtService = {
         module_name:          string
         module_credits:       number | null
         level:                number | null
+        /** Resolved `levels.name` — the export prints this, not the id. */
+        level_name:           string | null
         option_acro:          string | null
         option_code:          string | null
         option_name:          string | null

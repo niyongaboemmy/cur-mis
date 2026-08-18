@@ -43,7 +43,10 @@ class DegreePdf
         $regNo = htmlspecialchars($student['regnumber'] ?? '', ENT_QUOTES);
         $faculty = htmlspecialchars($student['fac_name'] ?? $student['faculty'] ?? '', ENT_QUOTES);
         $programme = htmlspecialchars(strtoupper($programme ?: ($student['dep_name'] ?? '')), ENT_QUOTES);
-        $gradeText = $grade ? " | Grade: {$grade}" : '';
+        // A degree carries a *classification*, not a grade — "Grade: Second
+        // Class Honours, Upper Division (2i)" reads as a marking error on a
+        // document that is checked by employers and foreign registries.
+        $gradeText = $grade ? " | Class: {$grade}" : '';
         $date = htmlspecialchars($graduationDate ?: 'to be determined', ENT_QUOTES);
         $programmeText = $programme ? "BACHELOR'S DEGREE IN {$programme}" : 'BACHELOR\'S DEGREE';
 
@@ -204,7 +207,10 @@ HTML;
         $name = htmlspecialchars(strtoupper(trim(($student['fname'] ?? '') . ' ' . ($student['lname'] ?? ''))), ENT_QUOTES);
         $regNo = htmlspecialchars($student['regnumber'] ?? '', ENT_QUOTES);
         $programme = htmlspecialchars(strtoupper($programme ?: ($student['dep_name'] ?? '')), ENT_QUOTES);
-        $gradeText = $grade ? " | Grade: {$grade}" : '';
+        // A degree carries a *classification*, not a grade — "Grade: Second
+        // Class Honours, Upper Division (2i)" reads as a marking error on a
+        // document that is checked by employers and foreign registries.
+        $gradeText = $grade ? " | Class: {$grade}" : '';
         $date = htmlspecialchars($graduationDate ?: 'to be determined', ENT_QUOTES);
         $programmeText = $programme ? "BACHELOR WITH HONOURS IN {$programme}" : 'BACHELOR WITH HONOURS';
 

@@ -2,8 +2,11 @@
 
 **Institution:** Catholic University of Rwanda (CUR)  
 **Merchant Code:** `TH90989816`  
-**Service Codes:** `tuition-fees-1258` (Tuition Fees) · `cursu-fees-8249` (CURSU Fees)  
-**Last Updated:** 2026-05-16
+**Service Codes:** 22 services registered on the merchant account — see the
+`urubuto_services` table (migration 134) and the mapping table in
+`URUBUTOPAY_INTEGRATION.md` §2.4. `tuition-fees-1258` and `cursu-fees-8249` are
+retired and kept only as aliases.  
+**Last Updated:** 2026-08-17
 
 ---
 
@@ -96,11 +99,12 @@ UrubutoPay calls this to confirm that a student registration number is valid bef
     "payer_names": "JEAN BAPTISTE NKURUNZIZA",
     "merchant_code": "TH90989816",
     "payer_code": "CUR/BBA/001/2022",
-    "service_code": "tuition-fees-1258",
+    "service_code": "tuition-fees-4679",
     "commission_rate": 0,
     "services": [
-      { "service_code": "tuition-fees-1258", "service_name": "TUITION FEES", "amount": 0, "currency": "RWF" },
-      { "service_code": "cursu-fees-8249",   "service_name": "CURSU FEES",   "amount": 0, "currency": "RWF" }
+      { "service_code": "tuition-fees-4679",      "service_name": "TUITION FEES",      "amount": 450000, "currency": "RWF" },
+      { "service_code": "registration-fees-9493", "service_name": "Registration fees", "amount": 30000,  "currency": "RWF" },
+      { "service_code": "retake-5953",            "service_name": "Retake",            "amount": 0,      "currency": "RWF" }
     ]
   }
 }
@@ -144,7 +148,7 @@ UrubutoPay calls this endpoint when a payment has been processed. The system aut
   "amount": 450000,
   "currency": "RWF",
   "payment_date": "2026-05-16T10:05:00Z",
-  "service_code": "tuition-fees-1258",
+  "service_code": "tuition-fees-4679",
   "status": "SUCCESSFUL"
 }
 ```
@@ -353,7 +357,7 @@ curl -s -X POST https://cur.ac.rw/payment_api/callback.php \
     "amount": 450000,
     "currency": "RWF",
     "payment_date": "2026-05-16T10:00:00Z",
-    "service_code": "tuition-fees-1258",
+    "service_code": "tuition-fees-4679",
     "status": "SUCCESSFUL"
   }'
 ```
@@ -381,7 +385,7 @@ curl -s -X POST https://cur.ac.rw/payment_api/callback.php \
     "amount": 450000,
     "currency": "RWF",
     "payment_date": "2026-05-16T10:00:00Z",
-    "service_code": "tuition-fees-1258",
+    "service_code": "tuition-fees-4679",
     "status": "SUCCESSFUL"
   }'
 ```

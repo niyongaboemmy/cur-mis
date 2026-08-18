@@ -388,6 +388,7 @@ export default function StudentLedgerPage() {
                       <th className="px-4 py-2.5 text-left">Receipt #</th>
                       <th className="px-4 py-2.5 text-left">Method</th>
                       <th className="px-4 py-2.5 text-left">Reference</th>
+                      <th className="px-4 py-2.5 text-left">Paid For</th>
                       <th className="px-4 py-2.5 text-left">Date</th>
                       <th className="px-4 py-2.5 text-right">Amount</th>
                       <th className="px-4 py-2.5" />
@@ -418,6 +419,30 @@ export default function StudentLedgerPage() {
                         {/* reference_number is student-facing info (bank slip ref) — safe to show */}
                         <td className="px-4 py-2.5 text-ink-500 text-xs">
                           {p.reference_number ?? "—"}
+                        </td>
+                        {/* The UrubutoPay service the payer chose is the most
+                            specific answer; the billing fee type is the
+                            fallback, preferring the label the API resolved
+                            from `fee_types`. */}
+                        <td className="px-4 py-2.5 text-xs">
+                          <p className="text-ink-900 dark:text-ink-100">
+                            {p.urubuto_service_name ??
+                              (p.fee_type
+                                ? ((FEE_TYPE_LABELS as any)[p.fee_type] ??
+                                   p.fee_type_label ??
+                                   p.fee_type)
+                                : (p.fee_type_label ??
+                                   p.invoice_description ??
+                                   p.invoice_number ??
+                                   "—"))}
+                          </p>
+                          {p.urubuto_service_name && p.fee_type && (
+                            <p className="text-[10px] text-ink-400">
+                              {(FEE_TYPE_LABELS as any)[p.fee_type] ??
+                                p.fee_type_label ??
+                                p.fee_type}
+                            </p>
+                          )}
                         </td>
                         <td className="px-4 py-2.5 text-ink-500 text-xs">
                           {p.paid_at

@@ -27,10 +27,11 @@ use App\Constants\Permissions;
  *   2. GET  /api/portal/faculties                         → pick faculty
  *   3. GET  /api/portal/faculties/:id/departments          → pick department
  *   4. GET  /api/portal/faculties/:id/requirements        → see what docs are needed
- *   5. POST /api/portal/applications                      → submit application
- *   6. POST /api/portal/applications/:num/documents       → upload each document
- *   7. GET  /api/portal/applications/:num                 → track status / checklist
- *   8. POST /api/portal/applications/:num/respond         → accept or decline offer
+ *   5. POST /api/portal/check-identity                     → phone/email/ID uniqueness
+ *   6. POST /api/portal/applications                      → submit application
+ *   7. POST /api/portal/applications/:num/documents       → upload each document
+ *   8. GET  /api/portal/applications/:num                 → track status / checklist
+ *   9. POST /api/portal/applications/:num/respond         → accept or decline offer
  */
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -48,6 +49,9 @@ $router->get('/api/portal/faculties/:faculty_id/requirements',   [ApplicationPor
 $router->get('/api/portal/programs',                             [ApplicationPortalController::class, 'getPrograms']);
 $router->get('/api/portal/levels',                               [ApplicationPortalController::class, 'getLevels']);
 $router->get('/api/portal/document-types',                       [ApplicationPortalController::class, 'getDocumentTypes']);
+
+// Uniqueness pre-check for the apply wizard's personal step
+$router->post('/api/portal/check-identity',                      [ApplicationPortalController::class, 'checkIdentity']);
 
 // Application lifecycle
 $router->post('/api/portal/applications',                                          [ApplicationPortalController::class, 'submitApplication']);
@@ -118,6 +122,12 @@ $router->group('/api/admin', function ($router) {
         $router->post('/:id/restore', [ApplicationAdminController::class, 'restoreApplication']);
         // Credit-transfer exemption-letter status (Task 1.11)
         $router->post('/:id/exemption-status', [ApplicationAdminController::class, 'setExemptionStatus']);
+        // Admission billing — the Registration / CURSU fees that stand between
+        // the offer and the registration number.
+        $router->get('/:id/bills',                   [AdmissionController::class, 'listBills']);
+        $router->post('/:id/bills',                  [AdmissionController::class, 'createBills']);
+        $router->get('/:id/bills/checkout',          [AdmissionController::class, 'billCheckout']);
+        $router->post('/:id/bills/:bill_id/confirm', [AdmissionController::class, 'confirmBillPayment']);
         $router->post('/:id/enroll',  [AdmissionController::class, 'initiateEnrollmentByAppId']);
         $router->post('/:id/accept-offer', [AdmissionController::class, 'acceptOfferByAppId']);
     }, [new PermissionMiddleware(Permissions::MANAGE_STUDENT_APPLICATIONS)]);

@@ -19,6 +19,7 @@ import { attendanceService, type ScheduledBlock } from '@/services/attendanceSer
 import { portalService } from '@/services/admissionService'
 import { academicsMgmtService } from '@/services/academicsMgmtService'
 import SearchableSelect from '@/components/ui/SearchableSelect'
+import { useLevels } from '@/hooks/useLevels'
 import {
   marksService,
   type MarkableModule,
@@ -183,6 +184,7 @@ function AllModulesPicker({
   onPickModule: (moduleId: number, code: string, name: string) => void
 }) {
   const [search, setSearch] = useState('')
+  const { levelName } = useLevels()
 
   const modulesQ = useQuery({
     queryKey: ['marks', 'markable-modules', termId],
@@ -263,7 +265,7 @@ function AllModulesPicker({
                   >
                     <td className="px-4 py-2.5 font-mono font-bold text-brand">{m.module_code}</td>
                     <td className="px-4 py-2.5 text-ink-800 dark:text-ink-100">{m.module_name}</td>
-                    <td className="px-4 py-2.5 text-ink-500">{m.level ? `Level ${m.level}` : '—'}</td>
+                    <td className="px-4 py-2.5 text-ink-500">{(m as any).level_name ?? levelName(m.level)}</td>
                     <td className="px-4 py-2.5 text-right">
                       <span className="btn-primary btn-sm inline-flex">View marks</span>
                     </td>
@@ -287,6 +289,7 @@ function AllModulesPicker({
  * path-segment routing.
  */
 function StudentMarksExplorer() {
+  const { levelName } = useLevels()
   const [query, setQuery]     = useState('')
   const [debounced, setDeb]   = useState('')
   const [picked, setPicked]   = useState<{ id: number; label: string } | null>(null)
@@ -467,7 +470,7 @@ function StudentMarksExplorer() {
                           <tr key={r.module_id} className="hover:bg-ink-50/50 dark:hover:bg-ink-700/20">
                             <td className="px-3 py-2 font-mono font-semibold text-amber-700 dark:text-amber-400">{r.module_code}</td>
                             <td className="px-3 py-2 text-ink-800 dark:text-ink-100">{r.module_name}</td>
-                            <td className="px-3 py-2 text-center text-ink-500">{r.level ?? '—'}</td>
+                            <td className="px-3 py-2 text-center text-ink-500">{(r as any).level_name ?? levelName(r.level)}</td>
                             <td className="px-3 py-2 text-center text-ink-500">{r.module_credits ?? '—'}</td>
                           </tr>
                         ))}
@@ -1717,6 +1720,7 @@ function ModuleHeaderCard({
   // by default so they stop eating a full row above the roster.
   const [maxesOpen, setMaxesOpen] = useState(false)
   const scale = useGradingScale()
+  const { levelName } = useLevels()
 
   const statusLabel: Record<MarksWorkflowStatus, string> = {
     draft:        'Draft',
@@ -1743,7 +1747,7 @@ function ModuleHeaderCard({
       `${moduleH.dep_name}${meaningful(moduleH.dep_acronym) ? ` (${moduleH.dep_acronym})` : ''}`,
     meaningful(moduleH.fac_name) &&
       `${moduleH.fac_name}${meaningful(moduleH.fac_code) ? ` (${moduleH.fac_code})` : ''}`,
-    meaningful(moduleH.level) && `Level ${moduleH.level}`,
+    meaningful((moduleH as any).level_name ?? levelName(moduleH.level, '')),
     meaningful(moduleH.program),
     meaningful(moduleH.option_acronym),
   ].filter(Boolean) as string[]
@@ -2185,6 +2189,7 @@ function ModuleCombobox({
   const [open, setOpen]       = useState(false)
   const [query, setQuery]     = useState('')
   const [highlight, setHighlight] = useState(0)
+  const { levelName } = useLevels()
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
 
@@ -2303,7 +2308,7 @@ function ModuleCombobox({
                   <span className="flex-1 min-w-0 truncate">{m.module_name}</span>
                   {m.level !== null && m.level !== undefined && (
                     <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-ink-100 text-ink-600 dark:bg-ink-700/60 dark:text-ink-300 shrink-0">
-                      L{m.level}
+                      {(m as any).level_name ?? levelName(m.level)}
                     </span>
                   )}
                   {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-primary-600 shrink-0" />}

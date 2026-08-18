@@ -92,6 +92,111 @@ class ApplicationPortalController extends BaseController
     }
 
     /**
+     * POST /api/portal/check-identity
+     *
+     * Uniqueness pre-check for the apply wizard's personal step. Each of
+     * phone / email / national_id must not already belong to an enrolled
+     * student, so the wizard can block the applicant before they proceed
+     * instead of failing much later at admission time.
+     *
+     * Body: any subset of { phone, email, national_id }.
+     * Returns per-field { taken: bool, message: ?string } for the supplied
+     * fields only — never any student's identity, so it can stay public.
+     */
+    public function checkIdentity(Request $request, Response $response): never
+    {
+        $body = $request->body();
+        $db   = Database::getInstance();
+
+        $results = [];
+
+        $phone = trim((string)($body['phone'] ?? ''));
+        if ($phone !== '') {
+            $results['phone'] = $this->identityResult(
+                $this->phoneBelongsToStudent($db, $phone),
+                'This phone number is already registered to a student.'
+            );
+        }
+
+        $email = strtolower(trim((string)($body['email'] ?? '')));
+        if ($email !== '') {
+            $taken = (bool)$db->fetchOne(
+                "SELECT 1 FROM `student` WHERE LOWER(TRIM(email)) = ? LIMIT 1",
+                [$email]
+            );
+            $results['email'] = $this->identityResult(
+                $taken,
+                'This email address is already registered to a student.'
+            );
+        }
+
+        $nid = self::normaliseIdNumber((string)($body['national_id'] ?? ''));
+        if ($nid !== '') {
+            $taken = (bool)$db->fetchOne(
+                "SELECT 1 FROM `student`
+                  WHERE UPPER(REPLACE(REPLACE(REPLACE(TRIM(id_card), ' ', ''), '-', ''), '/', '')) = ?
+                  LIMIT 1",
+                [$nid]
+            );
+            $results['national_id'] = $this->identityResult(
+                $taken,
+                'This National ID / Passport number is already registered to a student.'
+            );
+        }
+
+        $available = true;
+        foreach ($results as $r) {
+            if ($r['taken']) { $available = false; }
+        }
+
+        $this->success($response, [
+            'available' => $available,
+            'fields'    => $results,
+        ], 'Identity check completed.');
+    }
+
+    /** @return array{taken: bool, message: ?string} */
+    private function identityResult(bool $taken, string $message): array
+    {
+        return ['taken' => $taken, 'message' => $taken ? $message : null];
+    }
+
+    /**
+     * Student phone numbers are stored unnormalised — "(078) 540-4943",
+     * "+250788…", "0788…" all occur — so both sides are reduced to digits
+     * and compared on the last 9 (the subscriber part of a Rwandan number),
+     * which makes the check independent of separators and country prefix.
+     */
+    private function phoneBelongsToStudent(Database $db, string $phone): bool
+    {
+        $digits = preg_replace('/\D+/', '', $phone) ?? '';
+        if ($digits === '') {
+            return false;
+        }
+
+        $stripped = "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(IFNULL(phone, ''), ' ', ''), '(', ''), ')', ''), '-', ''), '+', ''), '.', ''), '/', '')";
+
+        if (strlen($digits) >= 9) {
+            $tail = substr($digits, -9);
+            return (bool)$db->fetchOne(
+                "SELECT 1 FROM `student` WHERE RIGHT($stripped, 9) = ? LIMIT 1",
+                [$tail]
+            );
+        }
+
+        return (bool)$db->fetchOne(
+            "SELECT 1 FROM `student` WHERE $stripped = ? LIMIT 1",
+            [$digits]
+        );
+    }
+
+    /** Uppercased, separator-free form of an ID / passport number. */
+    private static function normaliseIdNumber(string $value): string
+    {
+        return strtoupper(str_replace([' ', '-', '/'], '', trim($value)));
+    }
+
+    /**
      * GET /api/portal/faculties/:faculty_id/departments
      * Lists departments offered by a specific faculty for the application form.
      */

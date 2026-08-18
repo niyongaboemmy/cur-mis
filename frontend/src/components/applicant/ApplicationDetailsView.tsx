@@ -35,6 +35,7 @@ import {
   countryFlag,
 } from "@/data/countries";
 import DocumentPreviewModal from "../ui/DocumentPreviewModal";
+import { useLevels } from "@/hooks/useLevels";
 
 interface ApplicationDetailsViewProps {
   application: StudentApplication;
@@ -47,6 +48,7 @@ export default function ApplicationDetailsView({
   onBack,
 }: ApplicationDetailsViewProps) {
   const [previewDoc, setPreviewDoc] = useState<any>(null);
+  const { levelName } = useLevels();
   const detailsQ = useQuery({
     queryKey: ["applicant", "application", application.id],
     queryFn: () => applicantService.getApplicationDetails(application.id),
@@ -318,10 +320,7 @@ export default function ApplicationDetailsView({
               />
               <InfoGroup
                 label="Level"
-                value={
-                  app.level_name ??
-                  (app.level_id ? `Level #${app.level_id}` : "—")
-                }
+                value={app.level_name ?? levelName(app.level_id)}
               />
               <InfoGroup label="Intake" value={app.intake ?? "—"} />
               <InfoGroup

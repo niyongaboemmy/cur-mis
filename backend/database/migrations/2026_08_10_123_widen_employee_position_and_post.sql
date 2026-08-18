@@ -10,14 +10,17 @@
 --
 -- DESIGN: Additive, idempotent (guarded by INFORMATION_SCHEMA on current
 -- length so re-running is a no-op once widened).
+--
+-- NOTE: MODIFY COLUMN rewrites the whole table, which under strict mode
+-- re-validates every column on every row — not just the one being altered.
+-- `employees` carries pre-existing '0000-00-00' zero-dates in
+-- `employee_reg_date` (49 rows as of 2026-08-10) that predate this migration
+-- and are otherwise untouched by it; NO_ZERO_DATE/STRICT_TRANS_TABLES turns
+-- those into a hard failure on an ALTER that has nothing to do with dates.
+-- Relaxed the same way as 116's collation sweep, for the duration of the
+-- ALTERs only.
 -- ══════════════════════════════════════════════════════════════════════════════
 
--- `ALTER TABLE ... MODIFY` rebuilds every row, which re-validates existing
--- values against the CURRENT session sql_mode. `employees.employee_reg_date`
--- holds legacy `0000-00-00` values (49 of them locally), so under a strict
--- server the rebuild fails with "1292 Incorrect date value" even though this
--- migration only widens two character columns. Relax just the zero-date modes
--- for this session; restored at the end. Same idiom as migration 092.
 SET @_orig_sql_mode := @@SESSION.sql_mode;
 SET SESSION sql_mode = (
   SELECT REPLACE(REPLACE(REPLACE(@@SESSION.sql_mode,

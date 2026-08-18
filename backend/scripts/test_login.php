@@ -49,7 +49,7 @@ try {
     echo "─────────────────────────────────────────────────────────\n";
     $jwt_secret = $_ENV['JWT_SECRET'] ?? '';
     echo "✓ JWT_SECRET: " . (strlen($jwt_secret) > 0 ? "SET (" . strlen($jwt_secret) . " chars)" : "NOT SET") . "\n";
-    $jwt_expiry = $_ENV['JWT_EXPIRY'] ?? 28800;
+    $jwt_expiry = $_ENV['JWT_EXPIRY'] ?? 604800;
     echo "✓ JWT_EXPIRY: " . $jwt_expiry . " seconds (" . ($jwt_expiry / 3600) . " hours)\n";
 
     // 5. Check CORS

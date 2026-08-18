@@ -13,6 +13,7 @@ use App\Services\ApplicationService;
 use App\Helpers\ValidationHelper;
 use App\Helpers\AdmissionLetterPdf;
 use Core\Database;
+use App\Services\AdmissionBillingService;
 
 class AdmissionController extends BaseController
 {
@@ -172,11 +173,18 @@ class AdmissionController extends BaseController
             'portal_url'         => $portalUrl,
         ]);
 
+        // Raise the admission fees straight away (unless finance has switched
+        // auto-billing off). Doing it here means the offer email and the bill
+        // land together, instead of the applicant accepting a place and then
+        // waiting for somebody to remember to charge them.
+        $billing = (new AdmissionBillingService())->autoBillForOffer($applicationId, $actorId);
+
         $this->success($response, [
             'id'                     => $offerId,
             'offer_letter_reference' => $offerRef,
             'application_id'         => $applicationId,
             'expires_at'             => $data['expires_at'],
+            'billing'                => $billing,
         ], 'Admission offer created successfully.', 201);
     }
 
@@ -256,6 +264,8 @@ class AdmissionController extends BaseController
                 'portal_url'         => $portalBase . $app['application_number'],
             ]);
 
+            (new AdmissionBillingService())->autoBillForOffer((int)$app['application_id'], $actorId);
+
             $created++;
         }
 
@@ -325,9 +335,16 @@ class AdmissionController extends BaseController
 
     /**
      * POST /api/admin/applications/:id/accept-offer
-     * Simulates registration fee payment — marks the offer record as 'accepted'
-     * and sets the application status to 'offer_accepted'.
-     * Required before initiateEnrollment can proceed.
+     *
+     * Administrative override that records the offer as accepted on the
+     * applicant's behalf — for an acceptance that arrived by phone or in person
+     * rather than through the portal.
+     *
+     * It does NOT settle anything: the admission fees are real bills paid
+     * through Urubuto Pay (see AdmissionBillingService), and enrollment stays
+     * blocked until they are. This endpoint used to be labelled "simulates
+     * registration fee payment", which is exactly what it must never be
+     * mistaken for now that the fee is actually collected.
      */
     public function acceptOfferByAppId(Request $request, Response $response): never
     {
@@ -354,9 +371,151 @@ class AdmissionController extends BaseController
             [$appId]
         );
 
-        $this->service->logStatusChange($appId, 'offered', 'offer_accepted', $actorId, 'admin', 'Registration fee payment confirmed (simulated).');
+        $this->service->logStatusChange($appId, 'offered', 'offer_accepted', $actorId, 'admin', 'Offer accepted on the applicant\'s behalf by an administrator.');
 
-        $this->success($response, ['offer_id' => (int)$offer['id']], 'Fee payment confirmed and offer accepted.');
+        $this->success($response, ['offer_id' => (int)$offer['id']], 'Offer accepted. The admission fees still have to be paid before a registration number is issued.');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Admission billing — the fees between the offer and the registration number
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * GET /api/admin/applications/:id/bills
+     *
+     * What the applicant has been billed, what they have paid, and — when
+     * nothing has been billed yet — what the published fee structures say they
+     * WOULD be billed, so the validator commits to a price they can see first.
+     */
+    public function listBills(Request $request, Response $response): never
+    {
+        $appId = (int)$request->param('id');
+
+        try {
+            $overview = (new AdmissionBillingService())->overview($appId);
+        } catch (\RuntimeException $e) {
+            $this->error($response, $e->getMessage(), 404);
+        }
+
+        $this->success($response, $overview, 'Admission bills fetched.');
+    }
+
+    /**
+     * POST /api/admin/applications/:id/bills
+     * Body: { fee_types?: ["REGISTRATION", "CURSU"] }
+     *
+     * Raise the bills. Idempotent — re-running re-prices untouched bills from
+     * the current structures and leaves anything already paid alone.
+     */
+    public function createBills(Request $request, Response $response): never
+    {
+        $appId    = (int)$request->param('id');
+        $authUser = $request->param('_auth_user');
+        $actorId  = (int)($authUser['id'] ?? 0);
+
+        $body     = $request->body();
+        $feeTypes = null;
+        if (!empty($body['fee_types']) && is_array($body['fee_types'])) {
+            $feeTypes = array_values(array_filter(array_map('strval', $body['fee_types'])));
+        }
+
+        try {
+            $result = (new AdmissionBillingService())->bill($appId, $actorId ?: null, $feeTypes);
+        } catch (\RuntimeException $e) {
+            $this->error($response, $e->getMessage(), 422);
+        }
+
+        if (empty($result['billed'])) {
+            $reasons = array_column($result['skipped'], 'reason');
+            $this->error(
+                $response,
+                'Nothing could be billed. ' . ($reasons ? implode(' ', array_unique($reasons)) : ''),
+                422,
+                ['skipped' => $result['skipped']]
+            );
+        }
+
+        $count = count($result['billed']);
+        $this->success(
+            $response,
+            $result,
+            $count . ' admission ' . ($count === 1 ? 'fee has' : 'fees have') . ' been billed. The applicant has been notified.',
+            201
+        );
+    }
+
+    /**
+     * POST /api/admin/applications/:id/bills/:bill_id/confirm
+     * Body: { amount, reference, notes? }
+     *
+     * Record a settlement that reached the institution outside the gateway —
+     * a bank transfer or a cash payment at the finance desk. Attributed to the
+     * validator who confirms it, and refused if the reference has already been
+     * booked, so the gateway ledger and this one cannot drift apart.
+     */
+    public function confirmBillPayment(Request $request, Response $response): never
+    {
+        $appId    = (int)$request->param('id');
+        $billId   = (int)$request->param('bill_id');
+        $authUser = $request->param('_auth_user');
+        $actorId  = (int)($authUser['id'] ?? 0);
+
+        $body      = $request->body();
+        $amount    = (float)($body['amount'] ?? 0);
+        $reference = trim((string)($body['reference'] ?? ''));
+        $notes     = isset($body['notes']) ? (string)$body['notes'] : null;
+
+        try {
+            $result = (new AdmissionBillingService())->recordManualPayment(
+                $appId, $billId, $amount, $reference, $actorId, $notes
+            );
+        } catch (\RuntimeException $e) {
+            $this->error($response, $e->getMessage(), 422);
+        }
+
+        $this->success(
+            $response,
+            $result,
+            $result['summary']['fully_paid']
+                ? 'Payment recorded. All admission fees are settled — the registration number is being issued.'
+                : 'Payment recorded. The applicant has been notified.',
+            201
+        );
+    }
+
+    /**
+     * GET /api/admin/applications/:id/bills/checkout
+     *
+     * The applicant's own Urubuto Pay link, so a validator sitting with them at
+     * the desk can open, print or send exactly what the applicant would see.
+     */
+    public function billCheckout(Request $request, Response $response): never
+    {
+        $appId = (int)$request->param('id');
+
+        $application = (new \App\Models\StudentApplicationModel())->find($appId);
+        if (!$application) {
+            $this->error($response, 'Application not found.', 404);
+        }
+
+        $feeType     = strtoupper(trim((string)($request->query('fee_type') ?? '')));
+        $serviceCode = null;
+        if ($feeType !== '') {
+            $bill = (new \App\Models\ApplicationInvoiceModel())->findByFeeType($appId, $feeType);
+            if (!$bill) {
+                $this->error($response, 'This applicant has not been billed for ' . $feeType . '.', 404);
+            }
+            $serviceCode = $bill['service_code'] ?: null;
+        }
+
+        $billing = new AdmissionBillingService();
+
+        $this->success($response, [
+            'checkout_url'       => $billing->checkoutUrl((string)$application['application_number'], $serviceCode),
+            'payer_code'         => (string)$application['application_number'],
+            'service_code'       => $serviceCode,
+            'application_number' => (string)$application['application_number'],
+        ], 'Checkout link generated.');
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -391,6 +550,14 @@ class AdmissionController extends BaseController
         } catch (\RuntimeException $e) {
             $this->error($response, $e->getMessage(), 422);
         }
+
+        // Manual admission is the path the admissions desk actually uses to
+        // issue an offer, so it must raise the admission bills too — otherwise
+        // the applicant reaches the fees stage with nothing billed.
+        $result['billing'] = (new AdmissionBillingService())->autoBillForOffer(
+            (int)$data['application_id'],
+            $actorId
+        );
 
         $this->success($response, $result, 'Application manually admitted.', 201);
     }

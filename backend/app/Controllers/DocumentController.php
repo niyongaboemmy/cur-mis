@@ -8,6 +8,7 @@ use Core\Request;
 use Core\Response;
 use App\Helpers\DocumentHelper;
 use App\Helpers\DegreePdf;
+use App\Services\DegreeClassificationService;
 
 class DocumentController extends BaseController
 {
@@ -46,15 +47,19 @@ class DocumentController extends BaseController
             ? DocumentHelper::fetchStudentModules($student['regnumber'] ?? '')
             : [];
 
+        $class = str_starts_with($documentType, 'degree_')
+            ? $this->degreeClassFor($student)
+            : '';
+
         $html = match ($documentType) {
             'to_whom_visa'         => DocumentHelper::buildVisaLetter($student, preview: true),
             'admission_letter'     => DocumentHelper::buildAdmissionLetter($student, preview: true),
             'registration_form'    => DocumentHelper::buildRegistrationForm($student, preview: true),
             'english_proficiency'  => DocumentHelper::buildEnglishProficiencyCertificate($student, preview: true),
             'completed_modules'    => DocumentHelper::buildCompletedModulesReport($student, $modules, preview: true),
-            'degree_bachelor'      => DegreePdf::buildHtml($student, DegreePdf::TYPE_BACHELOR),
-            'degree_pgde'          => DegreePdf::buildHtml($student, DegreePdf::TYPE_PGDE),
-            'degree_undergraduate' => DegreePdf::buildHtml($student, DegreePdf::TYPE_MASTERS),
+            'degree_bachelor'      => DegreePdf::buildHtml($student, DegreePdf::TYPE_BACHELOR, '', $class),
+            'degree_pgde'          => DegreePdf::buildHtml($student, DegreePdf::TYPE_PGDE, '', $class),
+            'degree_undergraduate' => DegreePdf::buildHtml($student, DegreePdf::TYPE_MASTERS, '', $class),
         };
 
         $this->success($response, ['html' => $html], 'Preview generated.');
@@ -88,7 +93,9 @@ class DocumentController extends BaseController
                 'degree_pgde' => DegreePdf::TYPE_PGDE,
                 'degree_undergraduate' => DegreePdf::TYPE_MASTERS,
             };
-            DegreePdf::streamPdf($student, $type, '', '', '', "degree-{$reg}.pdf");
+            DegreePdf::streamPdf(
+                $student, $type, '', $this->degreeClassFor($student), '', "degree-{$reg}.pdf"
+            );
             exit;
         }
 
@@ -239,6 +246,38 @@ class DocumentController extends BaseController
             'undergraduate', 'bachelor'         => DegreePdf::TYPE_BACHELOR,
             default                             => DegreePdf::TYPE_BACHELOR,
         };
+    }
+
+    /**
+     * The classification to print on a degree certificate, or '' for none.
+     *
+     * A committed `graduands.degree_class` wins: a registrar has signed off on
+     * it, and a certificate must say what the graduation list says even if the
+     * marks have since been corrected. Only when there is no committed class
+     * does the certificate fall back to the class the regulations award, so a
+     * preview taken before the ceremony list is built still shows something
+     * true. Neither available — the certificate prints without a class rather
+     * than guessing one.
+     */
+    private function degreeClassFor(array $student): string
+    {
+        $reg = trim((string)($student['regnumber'] ?? ''));
+        if ($reg === '') return '';
+
+        $stored = \Core\Database::getInstance()->fetchOne(
+            "SELECT g.degree_class
+             FROM `graduands` g
+             JOIN `student`   s ON s.id = g.student_id
+             WHERE s.regnumber = ? AND g.degree_class IS NOT NULL AND g.degree_class <> ''
+             ORDER BY g.id DESC LIMIT 1",
+            [$reg]
+        );
+        if ($stored && $stored['degree_class'] !== null) {
+            return (string)$stored['degree_class'];
+        }
+
+        $honours = DegreeClassificationService::honoursFor($reg);
+        return $honours['awarded'] ? (string)$honours['label'] : '';
     }
 
     /** Validate common query params; exits with 422 on failure. */

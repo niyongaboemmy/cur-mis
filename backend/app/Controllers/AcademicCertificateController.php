@@ -141,7 +141,7 @@ class AcademicCertificateController extends BaseController
             ]
         );
 
-        $id = $this->db->lastInsertId();
+        $id = (int) $this->db->lastInsertId();
         SystemLogService::log(
             'GENERATE', 'STUDENTS',
             "Certificate {$certNumber} issued to student #{$studentId}",

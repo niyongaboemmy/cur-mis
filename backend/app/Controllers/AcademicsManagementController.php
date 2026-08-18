@@ -2231,6 +2231,9 @@ class AcademicsManagementController extends BaseController
                     mo.`mode`,
 
                     m.module_code, m.module_name, m.module_credits, m.level,
+                    -- `modules.level` is a `levels.id`; the exported sheet must
+                    -- show the catalogue name, not the foreign key.
+                    lv.name AS level_name,
 
                     o.acro AS option_acro, o.code AS option_code, o.name AS option_name,
 
@@ -2246,6 +2249,7 @@ class AcademicsManagementController extends BaseController
                 LEFT JOIN `departements` d ON d.dep_id = o.department_id
                 LEFT JOIN `hr_employees` e ON e.id     = mo.instructor_id
                 LEFT JOIN `campuses`     c ON c.id     = mo.campus_id
+                LEFT JOIN `levels`       lv ON lv.id   = m.level
                 ORDER BY mo.start_date ASC, mo.start_time ASC, m.module_code ASC, o.acro ASC";
         $rows = $this->models['module_offerings']->db()->fetchAll($sql);
         $this->success($response, ['rows' => $rows, 'count' => count($rows)], 'Timetable exported.');

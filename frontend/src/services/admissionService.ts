@@ -54,6 +54,19 @@ export const portalService = {
   getDocumentTypes: (signal?: AbortSignal) =>
     api.get<DocumentType[]>('/api/portal/document-types', {}, signal),
 
+  /**
+   * Pre-flight uniqueness check for the apply wizard's personal step —
+   * phone / email / national ID must not already belong to a student.
+   */
+  checkIdentity: (
+    data: { phone?: string; email?: string; national_id?: string },
+    signal?: AbortSignal,
+  ) =>
+    api.post<{
+      available: boolean
+      fields: Partial<Record<'phone' | 'email' | 'national_id', { taken: boolean; message: string | null }>>
+    }>('/api/portal/check-identity', data, signal),
+
   submitApplication: (data: Record<string, unknown>) =>
     api.post<{ id: number; application_number: string }>('/api/portal/applications', data),
 
@@ -311,7 +324,10 @@ export const verificationService = {
     api.patch<null>(`/api/admin/verifications/${applicationId}/documents/${documentId}`, data),
 
   /** Request document changes (sends email for all rejected documents) */
-  requestDocumentChanges: (applicationId: number, data: { message?: string; document_ids?: number[] } = {}) =>
+  requestDocumentChanges: (
+    applicationId: number,
+    data: { message?: string; document_ids?: number[]; document_type_ids?: number[] } = {},
+  ) =>
     api.post<null>(`/api/admin/verifications/${applicationId}/request-changes`, data),
 
   /** Returns the raw file server URL/redirect */
@@ -373,7 +389,18 @@ export const offerService = {
     api.post<{ total: number; sent: number; errors: string[] }>('/api/admin/admissions/letters/bulk-send', d),
 
   /** Returns absolute URL for PDF download (admin, JWT-authenticated). */
-  letterPdfUrl: (offerId: number) => {
+  letterPdfUrl: (offerId: number, studentId?: number | null) => {
+    const legacyUrl = (() => {
+      if (studentId == null || Number.isNaN(Number(studentId))) return ''
+      const url = new URL('https://cur.ac.rw/umis/documents/all_certificate/generate_document.php')
+      url.searchParams.set('type', 'admission_letter')
+      url.searchParams.set('student_id', String(studentId))
+      url.searchParams.set('file_name', 'Admission_Letter_FORMAT.pdf')
+      return url.toString()
+    })()
+
+    if (legacyUrl) return legacyUrl
+
     const token = useAuthStore.getState().token
     const base  = import.meta.env.VITE_API_URL ?? ''
     return `${base}/api/admin/admissions/offers/${offerId}/letter?token=${token}`
@@ -393,6 +420,111 @@ export const offerService = {
 export const manualAdmissionService = {
   admit: (d: { application_id: number; reason?: string; notes?: string; expires_at?: string }) =>
     api.post<{ offer_id: number; offer_letter_reference: string; expires_at: string }>('/api/admin/admissions/manual-admit', d),
+}
+
+/* ───────────────────────────────────────────────────────────────
+ * Admission billing — the Registration / CURSU fees an admitted
+ * applicant settles between the offer and the registration number.
+ * Same shape on both ends: the applicant reads their own bills from
+ * /api/applicant/*, a validator reads anyone's from /api/admin/*.
+ * ─────────────────────────────────────────────────────────────── */
+
+export interface AdmissionBill {
+  id:             number
+  fee_type:       string
+  label:          string
+  amount_due:     number
+  amount_paid:    number
+  balance:        number
+  currency:       string
+  status:         'unpaid' | 'partial' | 'paid' | 'cancelled'
+  service_code:   string | null
+  transaction_id: string | null
+  paid_at:        string | null
+  billed_at:      string | null
+  /** Pre-filled Urubuto Pay deep link; null once the bill is settled. */
+  checkout_url:   string | null
+  merchant_code:  string
+  payer_code:     string
+}
+
+export interface AdmissionBillPayment {
+  id:               number
+  amount:           number
+  currency:         string
+  payment_method:   string
+  reference_number: string
+  receipt_number:   string
+  source:           'GATEWAY' | 'MANUAL'
+  notes:            string | null
+  paid_at:          string
+  fee_type:         string
+  label:            string
+}
+
+/** One line of what the applicant WOULD be billed. `amount: null` = no published price. */
+export interface AdmissionBillable {
+  fee_type:         string
+  label:            string
+  amount:           number | null
+  currency:         string
+  fee_structure_id: number | null
+  service_code:     string | null
+  reason:           string | null
+}
+
+export interface AdmissionBillingOverview {
+  application_id:       number
+  application_number:   string
+  status:               string
+  bills:                AdmissionBill[]
+  payments:             AdmissionBillPayment[]
+  summary: {
+    total_due:  number
+    total_paid: number
+    balance:    number
+    count:      number
+    paid_count: number
+    fully_paid: boolean
+  }
+  /** Validator-only pricing preview; absent on the applicant endpoint. */
+  billable?:            AdmissionBillable[]
+  is_billed:            boolean
+  fully_paid:           boolean
+  merchant_code:        string
+  payer_code:           string
+  checkout_url:         string | null
+  offer_status:         string | null
+  enrollment_initiated: boolean
+  registration_number:  string | null
+  auto_enroll:          boolean
+}
+
+/** Validator side — permission: MANAGE_STUDENT_APPLICATIONS */
+export const admissionBillingService = {
+  list: (appId: number, signal?: AbortSignal) =>
+    api.get<AdmissionBillingOverview>(`/api/admin/applications/${appId}/bills`, {}, signal),
+
+  /** Raise the bills. Omit fee_types to bill everything configured. */
+  bill: (appId: number, feeTypes?: string[]) =>
+    api.post<{ billed: AdmissionBill[]; skipped: Array<{ fee_type: string; reason: string }>; summary: AdmissionBillingOverview['summary'] }>(
+      `/api/admin/applications/${appId}/bills`,
+      feeTypes?.length ? { fee_types: feeTypes } : {},
+    ),
+
+  /** Record a payment that arrived outside the gateway (bank transfer, cash). */
+  confirmPayment: (appId: number, billId: number, data: { amount: number; reference: string; notes?: string }) =>
+    api.post<{ payment_id: number; receipt_number: string; summary: AdmissionBillingOverview['summary'] }>(
+      `/api/admin/applications/${appId}/bills/${billId}/confirm`,
+      data,
+    ),
+
+  checkout: (appId: number, feeType?: string, signal?: AbortSignal) =>
+    api.get<{ checkout_url: string; payer_code: string; service_code: string | null; application_number: string }>(
+      `/api/admin/applications/${appId}/bills/checkout`,
+      feeType ? { fee_type: feeType } : {},
+      signal,
+    ),
 }
 
 /* ───────────────────────────────────────────────────────────────
@@ -419,24 +551,10 @@ export const applicantService = {
   deletePhoto: () =>
     api.delete<{ profile_photo_id: null }>('/api/applicant/profile/photo'),
 
-  uploadPaymentSlip: (data: {
-    transaction_id: string
-    payment_slip?: File | null
-    payment_amount?: number
-    payment_currency?: string
-  }) => {
-    const form = new FormData()
-    form.append('transaction_id', data.transaction_id)
-    if (data.payment_slip) form.append('payment_slip', data.payment_slip)
-    if (data.payment_amount != null) form.append('payment_amount', String(data.payment_amount))
-    if (data.payment_currency) form.append('payment_currency', data.payment_currency)
-    return api.upload<{
-      transaction_id:       string
-      payment_slip_file_id: string | null
-      payment_amount:       number | null
-      payment_currency:     string
-    }>('/api/applicant/application/payment', form)
-  },
+  // Note: there is deliberately no "I already paid" call here. UrubutoPay is
+  // the only accepted channel for the application fee, so the only thing that
+  // marks it paid is the gateway's own callback — the endpoints that accepted a
+  // self-declared transaction id were removed along with the UI tab for them.
 
   /** Urubuto Pay — get the hosted-checkout URL for the application fee. */
   getPaymentCheckout: (signal?: AbortSignal) =>
@@ -463,19 +581,6 @@ export const applicantService = {
       application_number: string | null
       status:             string | null
     }>('/api/applicant/application/payment/status', {}, signal),
-
-  /** Submit invoice/proof of payment for already-paid applications. */
-  submitInvoicePayment: (transactionId: string, invoiceFile: File) => {
-    const form = new FormData()
-    form.append('transaction_id', transactionId)
-    form.append('invoice', invoiceFile)
-    return api.upload<{
-      transaction_id: string
-      invoice_file_id: string | null
-      verified: boolean
-      message: string
-    }>('/api/applicant/application/payment/invoice', form)
-  },
 
   listApplications: (signal?: AbortSignal) =>
     api.get<StudentApplication[]>('/api/applicant/application', {}, signal),
@@ -564,6 +669,21 @@ export const applicantService = {
 
   respondToOffer: (id: number, data: { response: 'accepted' | 'declined'; notes?: string }) =>
     api.post<{ status: string }>(`/api/applicant/application/${id}/respond`, data),
+
+  /** Admission fees (Registration, CURSU …) raised after the offer. */
+  getAdmissionBills: (signal?: AbortSignal) =>
+    api.get<AdmissionBillingOverview>('/api/applicant/application/bills', {}, signal),
+
+  /** Fresh checkout link for one bill, or for the whole balance when omitted. */
+  getAdmissionBillCheckout: (feeType?: string, signal?: AbortSignal) =>
+    api.get<{
+      checkout_url:       string
+      payer_code:         string
+      service_code:       string | null
+      amount:             number | null
+      currency:           string
+      application_number: string
+    }>('/api/applicant/application/bills/checkout', feeType ? { fee_type: feeType } : {}, signal),
 }
 
 /* ───────────────────────────────────────────────────────────────

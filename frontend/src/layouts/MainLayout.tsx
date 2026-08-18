@@ -28,6 +28,7 @@ import {
   CalendarDays,
   Package,
   Presentation,
+  LifeBuoy,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -45,6 +46,7 @@ import CategoryFilterSwitcher from "@/components/layout/CategoryFilterSwitcher";
 
 import Logo from "@/components/brand/Logo";
 import GlobalSearch from "@/components/layout/GlobalSearch";
+import HelpLauncher from "@/components/help/HelpLauncher";
 // import AiChatWidget from "@/components/layout/AiChatWidget"; // re-enable when ANTHROPIC_API_KEY is set
 import { useCurrentUser } from "@/hooks/useAuth";
 import { useSystemBasics } from "@/hooks/useSystemBasics";
@@ -58,7 +60,7 @@ import {
 } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { useAuthStore } from "@/store/authStore";
-import { PERMISSIONS } from "@/constants/permissions";
+import { PERMISSIONS, LEAVE_STAGE_PERMISSIONS } from "@/constants/permissions";
 import { isSuperadmin } from "@/utils/permissions";
 
 /* ------------------------------------------------------------------
@@ -243,6 +245,7 @@ const NAV_TREE: NavNode[] = [
       PERMISSIONS.VIEW_HR_EMPLOYEES,
       PERMISSIONS.VIEW_LEAVE_REQUESTS,
       PERMISSIONS.MANAGE_LEAVE_REQUESTS,
+      ...LEAVE_STAGE_PERMISSIONS,
     ],
     children: [
       {
@@ -266,6 +269,14 @@ const NAV_TREE: NavNode[] = [
         permissions: [
           PERMISSIONS.VIEW_HR_EMPLOYEES,
           PERMISSIONS.VIEW_LEAVE_REQUESTS,
+          PERMISSIONS.MANAGE_LEAVE_REQUESTS,
+        ],
+      },
+      {
+        to: "/hr/leave/approvals",
+        label: "Leave Approvals",
+        permissions: [
+          ...LEAVE_STAGE_PERMISSIONS,
           PERMISSIONS.MANAGE_LEAVE_REQUESTS,
         ],
       },
@@ -788,6 +799,14 @@ const ADMIN_TREE: NavNode[] = [
     to: "/logs",
     permissions: [PERMISSIONS.VIEW_SYSTEM_LOGS],
   },
+  // Help Centre — no `permissions`, so it survives every role filter. A user
+  // who cannot reach the guides is exactly the user who needs them.
+  {
+    id: "help",
+    label: "Help & Guides",
+    icon: LifeBuoy,
+    to: "/help",
+  },
 ];
 
 const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
@@ -823,6 +842,15 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
     sub: "Track your submitted service requests",
   },
   "/logs": { title: "System logs", sub: "Audit trail across the platform" },
+  "/help": {
+    title: "Help Centre",
+    sub: "Step-by-step guides for every module",
+  },
+  "/help/search": { title: "Help Centre", sub: "Search the guides" },
+  "/help/glossary": {
+    title: "Glossary",
+    sub: "Every word the system uses, explained",
+  },
   "/gate": { title: "Gate Management", sub: "Student access verification — payment & registration" },
   "/students": {
     title: "Students",
@@ -915,6 +943,10 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
     title: "My Leave",
     sub: "Request leave and track your own requests",
   },
+  "/notifications": {
+    title: "Notifications",
+    sub: "Approval outcomes, action-required prompts and system alerts",
+  },
   "/teacher": {
     title: "My Teaching",
     sub: "Your courses, students, timetable and records",
@@ -942,6 +974,10 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
   "/hr/leave": {
     title: "Leave Management",
     sub: "Leave requests, approvals and balances",
+  },
+  "/hr/leave/approvals": {
+    title: "Leave Approvals",
+    sub: "Requests waiting at a stage you are authorised to decide",
   },
   "/hr/appraisals": {
     title: "Employee Appraisals",
@@ -1482,6 +1518,7 @@ export default function MainLayout() {
             {user?.role !== "applicant" && <CategoryFilterSwitcher />}
             <NotificationBell />
             <MessageNotificationBell />
+            <HelpLauncher />
             <UserDropdown />
           </div>
         </header>
@@ -1619,4 +1656,3 @@ const NavNodeItem = memo(function NavNodeItem({
     </div>
   );
 });
-

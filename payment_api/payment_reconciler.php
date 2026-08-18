@@ -39,6 +39,9 @@ class PaymentReconciler
 {
     private mysqli $db;
 
+    /** @var array<string,array<string,mixed>>|null Memoised `urubuto_services` rows, keyed by service_code. */
+    private ?array $serviceCatalog = null;
+
     public function __construct(mysqli $db)
     {
         $this->db = $db;
@@ -53,7 +56,7 @@ class PaymentReconciler
     {
         // 1. Load the payment row
         $stmt = $this->db->prepare(
-            "SELECT id, student, amount, SESSION, acad_cycle_id
+            "SELECT id, student, amount, SESSION, acad_cycle_id, fee_category
              FROM payment
              WHERE trans_code = ? AND payment_notifi = 'Debit'
              LIMIT 1"
@@ -72,10 +75,15 @@ class PaymentReconciler
         $studentId = trim((string)$pay['student']);
         if ($studentId === '') return [];
 
+        // For UrubutoPay/bank rows, payment.fee_category carries the gateway
+        // service_code the payer selected. Resolve it to the internal fee type
+        // so the money settles what they said they were paying for.
+        $paidFeeType = $this->feeTypeForServiceCode((string)($pay['fee_category'] ?? ''));
+
         // 2. Load all open invoices for this student, oldest-first
         //    Exclude: waived, cancelled  (both are "closed" — don't touch)
         $stmt = $this->db->prepare(
-            "SELECT id, amount_due, amount_paid, bursary_applied, status, due_date
+            "SELECT id, fee_type, amount_due, amount_paid, bursary_applied, status, due_date
              FROM fee_invoices
              WHERE student_id = ?
                AND status NOT IN ('waived', 'cancelled', 'paid')
@@ -86,9 +94,24 @@ class PaymentReconciler
         $invoices = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
         $stmt->close();
 
+        // Invoices of the paid-for type first, each group still oldest-first.
+        // Nothing is dropped, so an overpayment still spills onto the rest.
+        if ($paidFeeType !== null && !empty($invoices)) {
+            $matching = [];
+            $rest     = [];
+            foreach ($invoices as $inv) {
+                if (strcasecmp((string)($inv['fee_type'] ?? ''), $paidFeeType) === 0) {
+                    $matching[] = $inv;
+                } else {
+                    $rest[] = $inv;
+                }
+            }
+            $invoices = array_merge($matching, $rest);
+        }
+
         // 3. No invoice → auto-create one, then apply full amount
         if (empty($invoices)) {
-            $newInvId = $this->createInvoice($studentId, $payAmount, $pay, $transCode);
+            $newInvId = $this->createInvoice($studentId, $payAmount, $pay, $transCode, $paidFeeType);
             if (!$newInvId) return [];
 
             $this->applyToInvoice(
@@ -316,6 +339,53 @@ class PaymentReconciler
     /**
      * Write amount_paid and status to one fee_invoices row.
      */
+    /**
+     * Resolve a `payment.fee_category` value to the internal fee_invoices.fee_type
+     * it settles, via the `urubuto_services` catalogue (migration 134).
+     *
+     * fee_category holds the gateway service_code for UrubutoPay/bank rows and a
+     * plain legacy category ('147') otherwise — the latter simply misses the
+     * catalogue and returns null, leaving the caller on plain FIFO. Retired codes
+     * follow `alias_of` one hop. Returns null if the table does not exist yet.
+     */
+    private function feeTypeForServiceCode(string $feeCategory): ?string
+    {
+        $code = trim($feeCategory);
+        if ($code === '' || ctype_digit($code)) {
+            return null;   // legacy numeric category, not a gateway service code
+        }
+
+        if ($this->serviceCatalog === null) {
+            $this->serviceCatalog = [];
+            try {
+                $res = $this->db->query('SELECT service_code, fee_type, alias_of FROM `urubuto_services` WHERE `is_active` = 1');
+                if ($res) {
+                    while ($row = $res->fetch_assoc()) {
+                        $this->serviceCatalog[(string)$row['service_code']] = $row;
+                    }
+                    $res->free();
+                }
+            } catch (\Throwable $e) {
+                error_log('[PaymentReconciler] urubuto_services unavailable: ' . $e->getMessage());
+            }
+        }
+
+        $row = $this->serviceCatalog[$code] ?? null;
+        if (!$row) {
+            return null;
+        }
+
+        $alias = trim((string)($row['alias_of'] ?? ''));
+        if ($alias !== '' && isset($this->serviceCatalog[$alias])) {
+            $row = $this->serviceCatalog[$alias];
+        }
+
+        // Returned verbatim: live fee_invoices rows use both 'TUITION' and
+        // lowercase 'service_request', and the caller compares case-insensitively.
+        $type = trim((string)($row['fee_type'] ?? ''));
+        return $type !== '' ? $type : null;
+    }
+
     private function applyToInvoice(
         int     $paymentId,
         int     $invoiceId,
@@ -346,10 +416,10 @@ class PaymentReconciler
      * This avoids unique-key collisions on repeated auto-creations (e.g. fullSync).
      *
      * student_id is VARCHAR — stored as the regnumber string directly.
-     * fee_type defaults to 'TUITION' (valid ENUM value).
+     * fee_type follows the paid-for UrubutoPay service when known, else 'TUITION'.
      * is_system_generated = 1 flags it as auto-created.
      */
-    private function createInvoice(string $studentId, float $amount, array $pay, string $transCode = ''): ?int
+    private function createInvoice(string $studentId, float $amount, array $pay, string $transCode = '', ?string $feeTypeOverride = null): ?int
     {
         // Resolve academic_year_id if possible
         $acadYearId = null;
@@ -368,7 +438,7 @@ class PaymentReconciler
         }
 
         $invoiceNumber = 'AUTO-' . ($transCode ?: substr(md5($studentId . time()), 0, 24));
-        $feeType       = 'TUITION';
+        $feeType       = $feeTypeOverride ?? 'TUITION';
         $description   = 'Auto-created from bank/mobile payment';
         $semester      = max(1, (int)($pay['SESSION'] ?? 1));
 

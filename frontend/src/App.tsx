@@ -4,7 +4,7 @@ import MainLayout from "@/layouts/MainLayout";
 import ProtectedRoute from "@/components/layout/ProtectedRoute";
 import ErrorBoundary from "@/components/layout/ErrorBoundary";
 import { useThemeStore } from "@/store/themeStore";
-import { PERMISSIONS } from "@/constants/permissions";
+import { PERMISSIONS, LEAVE_STAGE_PERMISSIONS } from "@/constants/permissions";
 
 // ── Pages (direct imports — no lazy() to avoid chunk-load failures on cPanel) ──
 import WelcomePage from "@/pages/WelcomePage";
@@ -38,6 +38,8 @@ import PaymentsPage from "@/pages/hr/PaymentsPage";
 import HrSettingsPage from "@/pages/hr/HrSettingsPage";
 import LeavePage from "@/pages/hr/LeavePage";
 import MyLeavePage from "@/pages/hr/MyLeavePage";
+import LeaveApprovalQueuePage from "@/pages/hr/LeaveApprovalQueuePage";
+import NotificationsPage from "@/pages/NotificationsPage";
 import AppraisalPage from "@/pages/hr/AppraisalPage";
 
 // Academic
@@ -92,6 +94,13 @@ import AnnouncementsPage from "@/pages/announcements/AnnouncementsPage";
 import ForumsPage from "@/pages/forums/ForumsPage";
 import ForumThreadPage from "@/pages/forums/ForumThreadPage";
 import VerifyStudentPage from "@/pages/public/VerifyStudentPage";
+// Help Centre — end-user documentation. Deliberately ungated: every role
+// needs to be able to read every guide, including one written for another role.
+import HelpCenterPage from "@/pages/help/HelpCenterPage";
+import HelpModulePage from "@/pages/help/HelpModulePage";
+import HelpArticlePage from "@/pages/help/HelpArticlePage";
+import HelpSearchPage from "@/pages/help/HelpSearchPage";
+import HelpGlossaryPage from "@/pages/help/HelpGlossaryPage";
 // Placeholders still in use for modules not yet wired up
 import ExamSchedulesPage from "@/pages/exam/ExamSchedulesPage";
 import ExamResultsPage from "@/pages/exam/ExamResultsPage";
@@ -182,6 +191,16 @@ function App() {
               <Route path="/home" element={<HomePage />} />
               <Route path="/profile" element={<UserProfilePage />} />
               <Route path="/my/service-requests" element={<MyServiceRequestsPage />} />
+
+              {/* ── Help Centre ── */}
+              <Route path="/help" element={<HelpCenterPage />} />
+              <Route path="/help/search" element={<HelpSearchPage />} />
+              <Route path="/help/glossary" element={<HelpGlossaryPage />} />
+              <Route path="/help/m/:moduleId" element={<HelpModulePage />} />
+              <Route
+                path="/help/m/:moduleId/:articleId"
+                element={<HelpArticlePage />}
+              />
 
               <Route
                 element={
@@ -342,6 +361,26 @@ function App() {
                 <Route path="/hr/leave" element={<LeavePage />} />
               </Route>
 
+              {/* ── Leave approvals — the reviewer's own stage queue. Gated on
+                  holding ANY leave stage permission, so a HOD who cannot see
+                  the whole HR leave register can still decide what is parked
+                  with them. ── */}
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={[
+                      ...LEAVE_STAGE_PERMISSIONS,
+                      PERMISSIONS.MANAGE_LEAVE_REQUESTS,
+                    ]}
+                  />
+                }
+              >
+                <Route
+                  path="/hr/leave/approvals"
+                  element={<LeaveApprovalQueuePage />}
+                />
+              </Route>
+
               {/* ── HR Management — manage only ── */}
               <Route
                 element={
@@ -352,6 +391,10 @@ function App() {
               >
                 <Route path="/hr/settings" element={<HrSettingsPage />} />
               </Route>
+
+              {/* ── Notification centre — self-scoped, so authentication is
+                  the only gate; no permission grants access to anyone else's. ── */}
+              <Route path="/notifications" element={<NotificationsPage />} />
 
               {/* ── Staff self-service: leave ── */}
               <Route

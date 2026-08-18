@@ -26,6 +26,24 @@ const DEGREE_CLASSES: DegreeClass[] = [
  *  record at all — the API normalises the two to one value. */
 const STATUSES: GraduandStatus[] = ['waiting', 'pending', 'approved', 'graduated']
 
+/**
+ * How a suggested class was arrived at, for the cell's tooltip: the levels
+ * assessed, the credit majority that carried it, and anything the record could
+ * not confirm. A registrar committing a class needs to be able to see the
+ * working without leaving the roster.
+ */
+function rosterClassWorking(r: ReadyRow): string | undefined {
+  const c = r.classification
+  if (!c || c.modules === 0) return undefined
+
+  const levels = c.levels.join(' & ')
+  const head = c.awarded
+    ? `${c.label} — levels ${levels}: ${c.qualifying_credits} of ${c.credits} credits at or above the class threshold`
+      + (c.lowest_mark !== null ? `, lowest mark ${c.lowest_mark}%` : '')
+    : `${c.label} — levels ${levels}. ${c.reason ?? ''}`
+  return [head, ...c.caveats].join('\n')
+}
+
 const STATUS_CHIP: Record<GraduandStatus, string> = {
   waiting:   'bg-gray-100 text-gray-700 dark:bg-ink-700 dark:text-ink-300',
   pending:   'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-300',
@@ -596,9 +614,13 @@ export default function GraduationRosterPanel() {
                 </td>
                 <td className="px-4 py-3 text-xs text-gray-700 dark:text-ink-200">
                   {/* Stored class if the student has one, otherwise the class
-                      their weighted average earns. Both read the same — the
-                      status column already says whether it has been committed. */}
-                  {r.degree_class ?? r.suggested_class ?? '—'}
+                      the regulations award on their final-level modules. Both
+                      read the same — the status column already says whether it
+                      has been committed. The title carries the working, since
+                      the class is not something the average alone explains. */}
+                  <span title={rosterClassWorking(r)}>
+                    {r.degree_class ?? r.suggested_class ?? '—'}
+                  </span>
                 </td>
                 <td className="px-4 py-3 text-center">
                   <span className={cn(

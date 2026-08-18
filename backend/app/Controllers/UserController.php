@@ -448,6 +448,10 @@ class UserController extends BaseController
                  WHERE regnumber IS NOT NULL
                    AND student_state = 'active'
                    AND regnumber NOT IN (SELECT username FROM `users`)
+                   -- Also exclude anyone whose email already has an account —
+                   -- their login may use a different username than their regnumber,
+                   -- so the username check alone misses them. Mirrors bulkCreate().
+                   AND (email IS NULL OR email = '' OR email NOT IN (SELECT email FROM `users`))
                  ORDER BY fname, lname"
             );
             foreach ($raw as $r) {
@@ -467,6 +471,7 @@ class UserController extends BaseController
                  WHERE staff_number IS NOT NULL
                    AND is_active = 1
                    AND staff_number NOT IN (SELECT username FROM `users`)
+                   AND (email IS NULL OR email = '' OR email NOT IN (SELECT email FROM `users`))
                  ORDER BY first_name, last_name"
             );
             foreach ($raw as $r) {
@@ -510,6 +515,7 @@ class UserController extends BaseController
                    AND e.emp_code IS NOT NULL
                    AND e.status = 'Active'
                    AND e.emp_code NOT IN (SELECT username FROM `users`)
+                   AND (e.email IS NULL OR e.email = '' OR e.email NOT IN (SELECT email FROM `users`))
                  ORDER BY e.full_name"
             );
             foreach ($raw as $r) {

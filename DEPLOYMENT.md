@@ -137,7 +137,7 @@ DB_PASSWORD=your_strong_db_password
 DB_CHARSET=utf8mb4
 
 JWT_SECRET=generate_a_long_random_string_here_min_32_chars
-JWT_EXPIRY=3600
+JWT_EXPIRY=604800   # 7 days, in seconds
 
 CORS_ALLOWED_ORIGINS=https://yourdomain.com
 

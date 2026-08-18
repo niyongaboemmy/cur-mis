@@ -34,6 +34,26 @@ class ServiceCatalogModel extends BaseModel
         );
     }
 
+    /**
+     * Find another row already holding this value in a UNIQUE column
+     * (`code` or `slug`), optionally ignoring the row being updated.
+     */
+    public function findConflict(string $field, string $value, ?int $ignoreId = null): array|false
+    {
+        if (!in_array($field, ['code', 'slug'], true)) {
+            throw new \InvalidArgumentException("Unsupported unique field '{$field}'.");
+        }
+
+        $sql    = "SELECT `id` FROM `service_catalog` WHERE `{$field}` = ?";
+        $params = [$value];
+        if ($ignoreId !== null) {
+            $sql     .= ' AND `id` <> ?';
+            $params[] = $ignoreId;
+        }
+
+        return $this->db->fetchOne($sql . ' LIMIT 1', $params);
+    }
+
     public function findBySlug(string $slug): array|false
     {
         return $this->db->fetchOne(

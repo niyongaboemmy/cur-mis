@@ -72,8 +72,22 @@ export const api = {
   patch: <T>(url: string, body?: unknown, signal?: AbortSignal) =>
     apiClient.post<ApiResponse<T>>(url, body, { signal }).then((r) => r.data),
 
+  // The production WAF blocks the raw HTTP DELETE method before it reaches the
+  // app, so tunnel deletes through POST with a method-override header. The
+  // backend's Core\Request::method() maps X-HTTP-Method-Override back to DELETE,
+  // so existing $router->delete() routes still match. (Same reason PUT/PATCH
+  // above are sent as POST.)
   delete: <T>(url: string, signal?: AbortSignal) =>
-    apiClient.delete<ApiResponse<T>>(url, { signal }).then((r) => r.data),
+    apiClient
+      .post<ApiResponse<T>>(
+        url,
+        { _method: 'DELETE' }, // body fallback in case the WAF also strips the header
+        {
+          signal,
+          headers: { 'X-HTTP-Method-Override': 'DELETE' },
+        },
+      )
+      .then((r) => r.data),
 
   /** Multipart POST — pass a FormData body. Axios sets the correct
    *  `multipart/form-data; boundary=...` automatically when Content-Type is omitted. */
