@@ -276,8 +276,10 @@ class FeeService
     {
         $student = $this->db->fetchOne(
             "SELECT s.regnumber AS student_id, s.fname, s.lname, s.gender, s.current_level AS level,
+                    lv.name AS level_name,
                     f.fac_name AS faculty_name, d.dep_name AS department_name, p.program_name
              FROM `student` s
+             LEFT JOIN `levels` lv ON lv.id = CAST(NULLIF(s.current_level, '') AS UNSIGNED)
              LEFT JOIN `faculty` f ON f.fac_id = COALESCE(NULLIF(CAST(s.faculty AS UNSIGNED), 0), (SELECT fac_id FROM `faculty` WHERE fac_name = s.faculty LIMIT 1))
              LEFT JOIN `departements` d ON d.dep_id = COALESCE(NULLIF(CAST(s.department AS UNSIGNED), 0), (SELECT dep_id FROM `departements` WHERE dep_acronym = s.department LIMIT 1))
              LEFT JOIN `programs` p ON p.program_id = s.program
@@ -1510,6 +1512,164 @@ class FeeService
     // ──────────────────────────────────────────────────────────────────────────
     // Sequential number generators (year-scoped, padded to 6 digits)
     // ──────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Carry the fees an applicant paid BEFORE enrollment onto their student
+     * ledger, now that they have a regnumber.
+     *
+     * Without this the newly-enrolled student is invoiced the Registration fee
+     * a second time, having already paid it as an applicant — the invoice
+     * autoGenerateInvoices() has just created has no idea that money exists,
+     * because it was collected against an application, not a regnumber.
+     *
+     * For each fully or partly paid `application_invoices` row:
+     *   - the matching system invoice is reused if one exists (REGISTRATION),
+     *     or one is opened at exactly what was paid if none does (CURSU, which
+     *     autoGenerateInvoices does not raise),
+     *   - a `fee_payments` row is written against it carrying the ORIGINAL
+     *     gateway reference, so the payment reconciles to the same transaction
+     *     on both sides of enrollment.
+     *
+     * Idempotent on that reference — running enrollment twice cannot credit the
+     * same money twice.
+     *
+     * @return array{credited:int,amount:float,skipped:int}
+     */
+    public function creditAdmissionBills(
+        string $studentId,
+        int    $academicYearId,
+        int    $applicationId,
+        int    $actorId
+    ): array {
+        $credited = 0;
+        $skipped  = 0;
+        $total    = 0.0;
+
+        try {
+            $payments = $this->db->fetchAll(
+                "SELECT aip.*, ai.fee_type, ai.label, ai.fee_structure_id
+                   FROM `application_invoice_payments` aip
+                   JOIN `application_invoices` ai ON ai.id = aip.application_invoice_id
+                  WHERE aip.application_id = ?
+                  ORDER BY aip.id ASC",
+                [$applicationId]
+            );
+        } catch (\Throwable $e) {
+            // Migration 140 not applied — nothing was ever collected this way.
+            return ['credited' => 0, 'amount' => 0.0, 'skipped' => 0];
+        }
+
+        foreach ($payments as $payment) {
+            $reference = (string)$payment['reference_number'];
+            $amount    = (float)$payment['amount'];
+            if ($amount <= 0) {
+                continue;
+            }
+
+            $already = $this->db->fetchOne(
+                "SELECT id FROM `fee_payments` WHERE reference_number = ? LIMIT 1",
+                [$reference]
+            );
+            if ($already) {
+                $skipped++;
+                continue;
+            }
+
+            $feeType = strtoupper((string)$payment['fee_type']);
+
+            // Prefer the invoice cut from the very structure the applicant was
+            // billed on; fall back to any invoice of the same fee type.
+            $invoice = false;
+            if (!empty($payment['fee_structure_id'])) {
+                $invoice = $this->db->fetchOne(
+                    "SELECT id, amount_due, amount_paid, is_system_generated FROM `fee_invoices`
+                      WHERE student_id = ? AND academic_year_id = ? AND fee_structure_id = ?
+                        AND status NOT IN ('cancelled', 'waived')
+                      ORDER BY id ASC LIMIT 1",
+                    [$studentId, $academicYearId, (int)$payment['fee_structure_id']]
+                );
+            }
+            if (!$invoice) {
+                $invoice = $this->db->fetchOne(
+                    "SELECT id, amount_due, amount_paid, is_system_generated FROM `fee_invoices`
+                      WHERE student_id = ? AND academic_year_id = ? AND fee_type = ?
+                        AND status NOT IN ('cancelled', 'waived')
+                      ORDER BY id ASC LIMIT 1",
+                    [$studentId, $academicYearId, $feeType]
+                );
+            }
+
+            if (!$invoice) {
+                // Nothing on the ledger charges for this yet (CURSU is billed at
+                // admission only). Open it at exactly what was paid, so the
+                // ledger shows the charge AND its settlement rather than money
+                // with no invoice behind it.
+                $invoiceId = (int)$this->invoiceModel->create([
+                    'invoice_number'      => $this->generateInvoiceNumber(),
+                    'student_id'          => $studentId,
+                    'fee_structure_id'    => !empty($payment['fee_structure_id']) ? (int)$payment['fee_structure_id'] : null,
+                    'academic_year_id'    => $academicYearId,
+                    'fee_type'            => $feeType,
+                    'description'         => trim((string)$payment['label']) !== ''
+                        ? (string)$payment['label'] . ' (paid at admission)'
+                        : $feeType . ' (paid at admission)',
+                    'amount_due'          => $amount,
+                    'is_system_generated' => 1,
+                    'created_by'          => $actorId,
+                ]);
+            } else {
+                $invoiceId = (int)$invoice['id'];
+
+                // The applicant was billed against the fee structure that matched
+                // their APPLICATION (department, level, category); the invoice was
+                // cut against the one that matched their new STUDENT row. When
+                // those resolve differently the invoice can be for less than the
+                // applicant actually paid, and crediting the payment straight in
+                // would leave the ledger showing a credit balance the institution
+                // never granted. The published price they were charged and paid is
+                // the real charge, so the system-generated invoice is raised to it.
+                $newTotal = (float)$invoice['amount_paid'] + $amount;
+                if ((int)($invoice['is_system_generated'] ?? 0) === 1
+                    && $newTotal - (float)$invoice['amount_due'] > 0.009) {
+                    $this->db->execute(
+                        "UPDATE `fee_invoices`
+                            SET amount_due       = ?,
+                                fee_structure_id = COALESCE(?, fee_structure_id),
+                                description      = CONCAT(description, ' — repriced to the amount billed at admission'),
+                                updated_at       = NOW()
+                          WHERE id = ?",
+                        [
+                            $newTotal,
+                            !empty($payment['fee_structure_id']) ? (int)$payment['fee_structure_id'] : null,
+                            $invoiceId,
+                        ]
+                    );
+                }
+            }
+
+            $this->paymentModel->create([
+                'invoice_id'       => $invoiceId,
+                'student_id'       => $studentId,
+                'amount'           => $amount,
+                'fee_type'         => $feeType,
+                'academic_year_id' => $academicYearId,
+                'payment_method'   => (string)$payment['payment_method'],
+                'reference_number' => $reference,
+                'receipt_number'   => (string)($payment['receipt_number'] ?: $this->generateReceiptNumber()),
+                'status'           => 'confirmed',
+                'source'           => (string)$payment['source'],
+                'notes'            => 'Paid at admission against application #' . $applicationId,
+                'paid_at'          => (string)$payment['paid_at'],
+            ]);
+
+            $this->invoiceModel->applyPayment($invoiceId, $amount);
+
+            $credited++;
+            $total += $amount;
+        }
+
+        return ['credited' => $credited, 'amount' => round($total, 2), 'skipped' => $skipped];
+    }
 
     public function generateInvoiceNumber(): string
     {

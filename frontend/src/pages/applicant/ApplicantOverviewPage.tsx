@@ -29,6 +29,7 @@ import { Field } from "@/components/applicant/ApplicantPortalShared";
 import ApplicationDetailsView from "@/components/applicant/ApplicationDetailsView";
 import DocumentsUploader from "@/components/ui/DocumentsUploader";
 import AdmissionLetter from "@/components/admission/AdmissionLetter";
+import AdmissionFeesPanel from "@/components/admission/AdmissionFeesPanel";
 
 export default function ApplicantOverviewPage() {
   const q = useQuery({
@@ -566,6 +567,16 @@ function ApplicationView({ app, onBack }: { app: any; onBack?: () => void }) {
             qc.invalidateQueries({ queryKey: ["applicant", "applications"] })
           }
         />
+      )}
+
+      {/* Admission fees — the step between the offer and the registration
+          number. Shown from the moment the offer lands (so the applicant sees
+          the cost before deciding) and kept visible after enrollment as the
+          receipt trail for what they paid. */}
+      {(app.status === "offered" ||
+        app.status === "offer_accepted" ||
+        app.status === "enrolled") && (
+        <AdmissionFeesPanel mode="applicant" />
       )}
 
       {/* Accepted Confirmation */}

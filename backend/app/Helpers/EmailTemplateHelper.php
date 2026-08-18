@@ -387,6 +387,146 @@ class EmailTemplateHelper
     /**
      * Template for Password Reset.
      */
+    /**
+     * Template: the admission fees an admitted applicant must settle before a
+     * registration number can be issued.
+     *
+     * @param list<array{0:string,1:string}> $lines [label, formatted amount] per bill
+     */
+    public static function admissionFeeBilledTemplate(
+        string $name,
+        string $appNumber,
+        array  $lines,
+        string $total
+    ): string {
+        $safeName = htmlspecialchars($name);
+        $safeApp  = htmlspecialchars($appNumber);
+
+        $rows = '';
+        foreach ($lines as $line) {
+            $label  = htmlspecialchars((string)($line[0] ?? ''));
+            $amount = htmlspecialchars((string)($line[1] ?? ''));
+            $rows  .= "<tr>
+                <td style='padding:10px 0;border-bottom:1px solid #e2e8f0;color:#334155;'>{$label}</td>
+                <td style='padding:10px 0;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:700;color:#0f172a;'>{$amount}</td>
+            </tr>";
+        }
+
+        $safeTotal = htmlspecialchars($total);
+
+        $content = "
+            Dear $safeName,<br><br>
+            Congratulations on your admission. Before your <strong>registration number</strong> can be issued,
+            the following fees must be settled:
+            <table style='width:100%;border-collapse:collapse;margin:24px 0;font-size:15px;'>
+                $rows
+                <tr>
+                    <td style='padding:14px 0;font-weight:800;color:#0f172a;'>Total due</td>
+                    <td style='padding:14px 0;text-align:right;font-weight:800;color:#1e40af;font-size:18px;'>$safeTotal</td>
+                </tr>
+            </table>
+            <strong>How to pay</strong><br>
+            Sign in to the applicant portal and press <strong>Pay now</strong> on each fee, or pay directly through
+            Urubuto Pay using <strong>$safeApp</strong> as your payer code.<br><br>
+            Your registration number is issued automatically as soon as the last payment is confirmed &mdash;
+            you do not need to contact anyone or press anything else.
+        ";
+
+        return self::wrap('Admission Fees Due', $content, "Admission fees for application {$appNumber}");
+    }
+
+    /**
+     * Template: a confirmed payment against the admission fees. Sent for every
+     * payment, gateway or offline, so the applicant always has a written trail.
+     */
+    public static function admissionFeePaymentTemplate(
+        string $name,
+        string $appNumber,
+        string $amount,
+        string $what,
+        string $reference,
+        string $receipt,
+        string $balance,
+        bool   $fullyPaid
+    ): string {
+        $safeName = htmlspecialchars($name);
+        $safeApp  = htmlspecialchars($appNumber);
+        $safeAmt  = htmlspecialchars($amount);
+        $safeWhat = htmlspecialchars($what);
+        $safeRef  = htmlspecialchars($reference);
+        $safeRcpt = htmlspecialchars($receipt);
+        $safeBal  = htmlspecialchars($balance);
+
+        $receiptRow = $safeRcpt !== ''
+            ? "<tr><td style='padding:6px 0;color:#64748b;'>Receipt</td><td style='padding:6px 0;text-align:right;font-weight:700;'>{$safeRcpt}</td></tr>"
+            : '';
+
+        $closing = $fullyPaid
+            ? "<div style='background:#ecfdf5;border:1.5px solid #a7f3d0;border-radius:12px;padding:18px;margin-top:24px;color:#065f46;'>
+                 <strong>All admission fees are now settled.</strong><br>
+                 Your registration number is being issued and will appear in your applicant portal shortly.
+               </div>"
+            : "<div style='background:#fffbeb;border:1.5px solid #fde68a;border-radius:12px;padding:18px;margin-top:24px;color:#92400e;'>
+                 <strong>Outstanding balance: {$safeBal}</strong><br>
+                 Your registration number is issued once the remaining admission fees are paid.
+               </div>";
+
+        $content = "
+            Dear $safeName,<br><br>
+            We have received your payment. Here are the details:
+            <table style='width:100%;border-collapse:collapse;margin:24px 0;font-size:15px;'>
+                <tr><td style='padding:6px 0;color:#64748b;'>Application</td><td style='padding:6px 0;text-align:right;font-weight:700;'>$safeApp</td></tr>
+                <tr><td style='padding:6px 0;color:#64748b;'>Paid for</td><td style='padding:6px 0;text-align:right;font-weight:700;'>$safeWhat</td></tr>
+                <tr><td style='padding:6px 0;color:#64748b;'>Amount</td><td style='padding:6px 0;text-align:right;font-weight:800;color:#1e40af;'>$safeAmt</td></tr>
+                <tr><td style='padding:6px 0;color:#64748b;'>Reference</td><td style='padding:6px 0;text-align:right;font-weight:700;'>$safeRef</td></tr>
+                $receiptRow
+            </table>
+            $closing
+        ";
+
+        return self::wrap('Payment Received', $content, "Payment of {$amount} received");
+    }
+
+    /**
+     * Template: the application processing fee was confirmed by the gateway and
+     * the application was submitted on the applicant's behalf as a result.
+     */
+    public static function applicationFeeReceivedTemplate(
+        string $name,
+        string $appNumber,
+        string $amount,
+        string $reference,
+        bool   $autoSubmitted
+    ): string {
+        $safeName = htmlspecialchars($name);
+        $safeApp  = htmlspecialchars($appNumber);
+        $safeAmt  = htmlspecialchars($amount);
+        $safeRef  = htmlspecialchars($reference);
+
+        $next = $autoSubmitted
+            ? "<div style='background:#eef2ff;border:1.5px solid #c7d2fe;border-radius:12px;padding:18px;margin-top:24px;color:#3730a3;'>
+                 <strong>Your application has been submitted.</strong><br>
+                 You did not need to press anything &mdash; the payment moved it forward for you. You can follow its
+                 progress at any time in the applicant portal.
+               </div>"
+            : "<div style='background:#eef2ff;border:1.5px solid #c7d2fe;border-radius:12px;padding:18px;margin-top:24px;color:#3730a3;'>
+                 Your application is now free to move to the next stage.
+               </div>";
+
+        $content = "
+            Dear $safeName,<br><br>
+            Your application processing fee has been confirmed.
+            <table style='width:100%;border-collapse:collapse;margin:24px 0;font-size:15px;'>
+                <tr><td style='padding:6px 0;color:#64748b;'>Application</td><td style='padding:6px 0;text-align:right;font-weight:700;'>$safeApp</td></tr>
+                <tr><td style='padding:6px 0;color:#64748b;'>Amount</td><td style='padding:6px 0;text-align:right;font-weight:800;color:#1e40af;'>$safeAmt</td></tr>
+                <tr><td style='padding:6px 0;color:#64748b;'>Reference</td><td style='padding:6px 0;text-align:right;font-weight:700;'>$safeRef</td></tr>
+            </table>
+            $next
+        ";
+
+        return self::wrap('Application Fee Received', $content, "Application fee received for {$appNumber}");
+    }
+
     public static function passwordResetTemplate(string $name, string $link): string
     {
         $safeName = htmlspecialchars($name);

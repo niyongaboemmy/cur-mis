@@ -360,7 +360,7 @@ export const ENTITIES: EntityCfg[] = [
         }
       },
       { key: 'level',          label: 'Level',
-        render: (r, ctx) => ctx?.lookups.levels?.get(Number(r.level)) ?? (r.level ? `#${r.level}` : '—') },
+        render: (r, ctx) => ctx?.lookups.levels?.get(Number(r.level)) ?? r.level_name ?? (r.level ? `Level ${r.level}` : '—') },
       { key: 'programs',       label: 'Programs',
         render: (r) => <ProgramPills programs={r.programs ?? []} /> },
       { key: 'programs_count', label: 'Programs',
@@ -417,10 +417,13 @@ export const ENTITIES: EntityCfg[] = [
         return price
       }},
       { header: 'Level',           key: 'level', compute: (r: any) => {
-        // Try to display level name if available, otherwise just the ID
+        // `modules.level` is a `levels.id`, so the export must carry the
+        // catalogue name — an exported "Level 3" that means "Year 2" is worse
+        // than useless to whoever opens the spreadsheet.
         if (r.levels && Array.isArray(r.levels) && r.levels.length > 0) {
           return r.levels[0].name
         }
+        if (r.level_name) return r.level_name
         return r.level ? `Level ${r.level}` : ''
       }},
       { header: 'Programs',        key: 'programs', compute: (r: any) => {

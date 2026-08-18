@@ -46,6 +46,10 @@ import { ApplicationStatus, VerificationStatus } from "@/types/admission";
 import DocumentPreviewModal from "./DocumentPreviewModal";
 import RequestChangesModal from "./RequestChangesModal";
 import ModalPortal from "@/components/ui/ModalPortal";
+import AdmissionFeesPanel from "@/components/admission/AdmissionFeesPanel";
+import { PERMISSIONS } from "@/constants";
+import { usePermission } from "@/utils/permissions";
+import { useLevels } from "@/hooks/useLevels";
 
 const STATUS_OPTIONS: ApplicationStatus[] = [
   ApplicationStatus.SUBMITTED,
@@ -103,8 +107,8 @@ function MultiStepBar({
     },
     {
       id: 3,
-      label: "Fee paid",
-      sublabel: "Ready to enroll",
+      label: "Admission fees",
+      sublabel: "Billed & paid",
       icon: CreditCard,
     },
     {
@@ -225,6 +229,7 @@ export default function ApplicationDetailPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
 
+  const canManage = usePermission(PERMISSIONS.MANAGE_ADMISSIONS);
   const [noteInput, setNoteInput] = useState("");
 
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
@@ -320,18 +325,6 @@ export default function ApplicationDetailPage() {
       toast.error(e?.response?.data?.message ?? "Failed to issue offer"),
   });
 
-  const confirmPayment = useMutation({
-    mutationFn: () => applicationAdminService.acceptOfferByAppId(appId),
-    onSuccess: () => {
-      toast.success(
-        "Fee payment confirmed — application is ready for enrollment.",
-      );
-      qc.invalidateQueries({ queryKey: ["admin", "applications", appId] });
-      qc.invalidateQueries({ queryKey: ["admin", "applications"] });
-    },
-    onError: (e: any) => toast.error(e?.response?.data?.message ?? "Failed"),
-  });
-
   const addNote = useMutation({
     mutationFn: (n: string) =>
       applicationAdminService.addNote(appId, { notes: n }),
@@ -357,12 +350,19 @@ export default function ApplicationDetailPage() {
     (app?.status as ApplicationStatus) || ApplicationStatus.SUBMITTED;
   const maxStep = getStepForStatus(status);
 
+  const { levelName: levelNameOf } = useLevels();
+
   // Queries for levels and modules
   const levelsQ = useQuery({
     queryKey: ["acmgmt", "levels"],
     queryFn: () => academicsMgmtService.list("levels", { per_page: 100 }),
   });
   const levels = levelsQ.data?.data?.data || [];
+  // Confirmation prompts name the level the registrar picked — "level ID 3"
+  // told them nothing about which year of study they were finalising.
+  const selectedLevelLabel =
+    (levels as any[]).find((l: any) => Number(l.id) === Number(selectedLevelId))?.name
+    ?? `level #${selectedLevelId}`;
 
   // Selected program (option) the applicant chose. Falls back to department
   // when older applications didn't capture program_id, so the screen still
@@ -647,7 +647,7 @@ export default function ApplicationDetailPage() {
                     <InfoGroup label="Department" value={app.department_name ?? '—'} />
                     <InfoGroup label="Campus" value={(app as any).campus_name ?? '—'} icon={Building2} />
                     <InfoGroup label="Mode of Study" value={(app as any).mode_of_study ?? '—'} />
-                    <InfoGroup label="Level" value={(app as any).level_name ?? ((app as any).level_id ? `Level #${(app as any).level_id}` : '—')} />
+                    <InfoGroup label="Level" value={(app as any).level_name ?? levelNameOf((app as any).level_id)} />
                     <InfoGroup label="Intake" value={app.intake ?? '—'} />
                     <InfoGroup label="Academic Year" value={(app as any).academic_year_label ?? '—'} />
                   </div>
@@ -1230,46 +1230,27 @@ export default function ApplicationDetailPage() {
 
           {activeStep === 3 && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <section className="card p-8 text-center">
-                <CreditCard className="w-16 h-16 text-emerald-500/20 mx-auto mb-4" />
-                <h3 className="text-xl font-black text-ink-900 dark:text-white mb-2">
-                  Registration Fee
-                </h3>
-                <p className="text-ink-500 text-[14px] mb-8 max-w-sm mx-auto">
-                  Applicant has received the offer. Confirm fee payment to
-                  proceed.
-                </p>
-                {status === ApplicationStatus.OFFERED ? (
+              {/* The real thing: the applicant's Registration and CURSU bills,
+                  priced from the published fee structures and settled through
+                  Urubuto Pay. This replaced a "Simulate registration fee
+                  payment?" button that moved the application forward without any
+                  money changing hands. */}
+              <AdmissionFeesPanel
+                mode="validator"
+                applicationId={appId}
+                canManage={canManage}
+              />
+
+              {maxStep >= 4 && (
+                <div className="flex justify-center">
                   <button
-                    className="btn-primary py-3 px-8 text-[14px] flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 shadow-xl shadow-emerald-500/20 mx-auto"
-                    onClick={() => {
-                      if (
-                        window.confirm("Simulate registration fee payment?")
-                      ) {
-                        confirmPayment.mutate();
-                      }
-                    }}
-                    disabled={confirmPayment.isPending}
+                    className="btn-secondary"
+                    onClick={() => setActiveStep(4)}
                   >
-                    <CreditCard className="w-5 h-5" /> Confirm Fee Payment
+                    Proceed to Step 4 <ChevronRight className="w-4 h-4 ml-2" />
                   </button>
-                ) : (
-                  <div className="flex flex-col items-center">
-                    <p className="text-emerald-600 font-bold flex items-center gap-2 mb-4">
-                      <CheckCircle2 className="w-5 h-5" /> Fee Payment Confirmed
-                    </p>
-                    {maxStep >= 4 && (
-                      <button
-                        className="btn-secondary"
-                        onClick={() => setActiveStep(4)}
-                      >
-                        Proceed to Step 4{" "}
-                        <ChevronRight className="w-4 h-4 ml-2" />
-                      </button>
-                    )}
-                  </div>
-                )}
-              </section>
+                </div>
+              )}
             </div>
           )}
 
@@ -1447,7 +1428,7 @@ export default function ApplicationDetailPage() {
                             if (!ok) return;
                           } else if (
                             !window.confirm(
-                              `Finalize registration at level ID ${selectedLevelId} and generate Registration Number?`,
+                              `Finalize registration at ${selectedLevelLabel} and generate Registration Number?`,
                             )
                           ) {
                             return;
@@ -1458,7 +1439,7 @@ export default function ApplicationDetailPage() {
                           // blocked by a network blip.
                           if (
                             !window.confirm(
-                              `Finalize registration at level ID ${selectedLevelId} and generate Registration Number?`,
+                              `Finalize registration at ${selectedLevelLabel} and generate Registration Number?`,
                             )
                           ) return;
                         }

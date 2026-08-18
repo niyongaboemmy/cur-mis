@@ -28,6 +28,7 @@ import {
 import DeliberationMarksView from "./DeliberationMarksView";
 import { useAuthStore } from "@/store/authStore";
 import { PERMISSIONS } from "@/constants/permissions";
+import { useLevels } from "@/hooks/useLevels";
 
 type DeliberationMode = "grid" | "marks";
 
@@ -78,6 +79,7 @@ const cellFor = (
 ): DeliberationCell | null => s.marks?.[mid] ?? null;
 
 export default function DeliberationPage() {
+  const { levels } = useLevels()
   const authUser  = useAuthStore((s) => s.user)
   const canManage = authUser?.permissions?.includes(PERMISSIONS.MANAGE_DELIBERATIONS)
                  || authUser?.role === 'superadmin'
@@ -435,9 +437,10 @@ export default function DeliberationPage() {
             onChange={(e) => setLevel(e.target.value)}
           >
             <option value="">All levels</option>
-            {[1, 2, 3, 4, 5, 6, 7, 8].map((l) => (
-              <option key={l} value={l}>
-                Level {l}
+            {/* Named from the catalogue; the value stays the id the API filters on. */}
+            {levels.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name}
               </option>
             ))}
           </select>

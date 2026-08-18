@@ -26,6 +26,7 @@ import {
 import { usePermission } from "@/utils/permissions";
 import { PERMISSIONS } from "@/constants/permissions";
 import ModalPortal from "@/components/ui/ModalPortal";
+import { useLevels } from "@/hooks/useLevels";
 
 const n = (v: unknown): number => {
   const x = Number(v);
@@ -40,6 +41,8 @@ const nameOf = (s: { lname?: string | null; fname?: string | null }) =>
   `${(s.lname ?? "").trim()} ${(s.fname ?? "").trim()}`.trim() || "—";
 
 export default function DeliberationMarksView() {
+  const { levels, levelName: levelNameOf } = useLevels();
+
   /* ── filters / hierarchy ─────────────────────────────────────── */
   const filtersQ = useQuery({
     queryKey: ["deliberation", "mark-filters"],
@@ -146,7 +149,8 @@ export default function DeliberationMarksView() {
       const aoa: any[][] = [headers];
       rows.forEach((r) => aoa.push([
         r.regnumber, r.fname ?? "", r.lname ?? "", r.sex ?? "",
-        r.current_level ?? "", r.intake ?? "", r.student_state ?? "",
+        (r as any).current_level_name ?? levelNameOf(r.current_level, ""),
+        r.intake ?? "", r.student_state ?? "",
         r.declared_program ?? "", r.department ?? "",
         r.module_code, r.module_name, r.module_credits ?? "",
         r.term_label ?? "", r.cat_marks ?? "", r.exam_marks ?? "",
@@ -286,9 +290,10 @@ export default function DeliberationMarksView() {
           onChange={(e) => setLevel(e.target.value)}
         >
           <option value="">All levels</option>
-          {[1, 2, 3, 4, 5, 6, 7, 8].map((l) => (
-            <option key={l} value={l}>
-              Level {l}
+          {/* Named from the catalogue; the value stays the id the API filters on. */}
+          {levels.map((l) => (
+            <option key={l.id} value={l.id}>
+              {l.name}
             </option>
           ))}
         </select>
@@ -424,7 +429,7 @@ export default function DeliberationMarksView() {
                     </td>
                     <td className="px-2 py-1.5 text-center">{s.sex ?? "—"}</td>
                     <td className="px-2 py-1.5 text-center">
-                      {s.current_level || "—"}
+                      {(s as any).current_level_name ?? levelNameOf(s.current_level)}
                     </td>
                     <td className="px-2 py-1.5 text-ink-600 dark:text-ink-300">
                       <span className="line-clamp-1">
@@ -558,6 +563,7 @@ function StudentMarksModal({
   passMark: number;
   onClose: () => void;
 }) {
+  const { levelName } = useLevels();
   const detailQ = useQuery({
     queryKey: ["deliberation", "student-marks", regnumber],
     queryFn: () => deliberationService.studentMarks(regnumber),
@@ -595,7 +601,10 @@ function StudentMarksModal({
               <p className="text-[12px] text-ink-500 flex flex-wrap gap-x-3">
                 <span className="font-mono">{regnumber}</span>
                 {student?.current_level && (
-                  <span>Level {student.current_level}</span>
+                  <span>
+                    {(student as any).current_level_name ??
+                      levelName(student.current_level)}
+                  </span>
                 )}
                 {student?.declared_program && (
                   <span>{student.declared_program}</span>

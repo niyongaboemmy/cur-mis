@@ -92,6 +92,7 @@ import { FEE_TYPE_LABELS, PAYMENT_METHOD_LABELS } from "@/types/finance";
 import InvoiceStatusBadge from "@/components/finance/InvoiceStatusBadge";
 import { formatRWF } from "@/utils/formatCurrency";
 import CountrySelect from "@/components/ui/CountrySelect";
+import { useLevels } from "@/hooks/useLevels";
 import {
   COUNTRY_BY_NAME,
   COUNTRY_BY_NATIONALITY,
@@ -1532,6 +1533,7 @@ function ProgrammeSection({
   stats: any;
   selfMode: boolean;
 }) {
+  const { levelName: resolveLevelName } = useLevels();
   const [editing, setEditing] = useState(false);
 
   const pick = (...vals: any[]) =>
@@ -1567,10 +1569,13 @@ function ProgrammeSection({
     app?.department_name ??
     student.department ??
     null;
+  // Never fall through to the raw `current_level` — it stores a `levels.id`,
+  // so the hero card would read "3" where the catalogue says "Year 2".
   const levelName =
     levelFacets.find((f) => String(f.value) === String(student.current_level))
       ?.label ??
-    student.current_level ??
+    student.level_name ??
+    resolveLevelName(student.current_level, "") ??
     null;
 
   const buildInitial = () => ({
@@ -5001,6 +5006,8 @@ const TR_STATUS_BADGE: Record<string, string> = {
 }
 
 function TranscriptTab({ student }: { student: any }) {
+  const { levelName } = useLevels();
+
   // Use the numeric student id — regnumbers may contain slashes that break
   // the regnumber-segmented route. The backend resolves id → regnumber.
   const studentId = student?.id as number | string | undefined;
@@ -5193,7 +5200,7 @@ function TranscriptTab({ student }: { student: any }) {
         <div key={level} className="card overflow-hidden">
           <div className="px-4 py-2 border-b border-ink-100 dark:border-ink-700 bg-ink-50 dark:bg-ink-800/40 flex items-center justify-between gap-3">
             <span className="text-[12px] font-semibold text-ink-700 dark:text-ink-200">
-              {tLevelLabel(level)}
+              {tLevelLabel(level, levelName(level, ""))}
             </span>
             <span className="text-[11px] text-ink-500 dark:text-ink-400">
               {tLevelSummary(list)}
@@ -5350,10 +5357,12 @@ function TClassificationCard({
 }
 
 /** "Level 2 — Semesters 3 & 4"; level 1 is semesters 1 & 2, level 2 is 3 & 4, … */
-function tLevelLabel(level: string): string {
+function tLevelLabel(level: string, name?: string): string {
   if (level === "unclassified") return "Level not recorded";
   const n = Number(level);
-  return `Level ${n} — Semesters ${n * 2 - 1} & ${n * 2}`;
+  // `level` is a `levels.id`; the heading reads the catalogue name, and the
+  // semester pair is still derived from the numeric level of study.
+  return `${name || `Level ${n}`} — Semesters ${n * 2 - 1} & ${n * 2}`;
 }
 
 /** Credits and weighted average for one level, matching the PDF's TOTAL row. */

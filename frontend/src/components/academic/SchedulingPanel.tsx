@@ -15,6 +15,7 @@ import ModalPortal from '@/components/ui/ModalPortal'
 import { academicService } from '@/services/academicService'
 import { academicsMgmtService } from '@/services/academicsMgmtService'
 import { useSessionStorage } from '@/hooks/useSessionStorage'
+import { useLevels } from '@/hooks/useLevels'
 import type { AcademicTerm } from '@/types/academic'
 
 /* ============================================================
@@ -282,7 +283,7 @@ async function downloadTimetable() {
         weeks,
         r.activity ?? '',
         r.instructor_full_name ?? r.instructor_name_raw ?? '',
-        r.level ?? '',
+        r.level_name ?? r.level ?? '',
         r.year_of_study ?? '',
         r.semesters ?? '',
         r.campus_name ?? '',
@@ -778,9 +779,13 @@ function ModuleScheduleRow({
   instructorById: Map<number, { full_name: string; position: string | null }>
   onManage: () => void
 }) {
+  const { levelName } = useLevels()
   const n = blocks.length
   const invalid = blocks.filter((b) => issuesByKey.has(b._key)).length
-  const subBits = [m.level != null ? `L${m.level}` : null, m.module_credits != null ? `${m.module_credits}cr` : null].filter(Boolean).join(' · ')
+  const subBits = [
+    m.level != null ? ((m as any).level_name ?? levelName(m.level)) : null,
+    m.module_credits != null ? `${m.module_credits}cr` : null,
+  ].filter(Boolean).join(' · ')
 
   return (
     <tr

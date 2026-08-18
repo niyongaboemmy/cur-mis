@@ -2,8 +2,10 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { BarChart3, FileSpreadsheet } from 'lucide-react'
 import { applicationAdminService } from '@/services/admissionService'
+import { useLevels } from '@/hooks/useLevels'
 
 export default function ApplicationStatisticsPage() {
+  const { levels } = useLevels()
   const [filters, setFilters] = useState({
     faculty_id:    '',
     department_id: '',
@@ -59,7 +61,14 @@ export default function ApplicationStatisticsPage() {
         <NumberFilter label="Department ID" value={filters.department_id} onChange={(v) => setFilters({ ...filters, department_id: v })} />
         <NumberFilter label="Program ID"    value={filters.option_id}     onChange={(v) => setFilters({ ...filters, option_id: v })} />
         <NumberFilter label="Campus ID"     value={filters.campus_id}     onChange={(v) => setFilters({ ...filters, campus_id: v })} />
-        <NumberFilter label="Level ID"      value={filters.level_id}      onChange={(v) => setFilters({ ...filters, level_id: v })} />
+        {/* Chosen by name, still sent as the `levels.id` the API filters on. */}
+        <SelectFilter
+          label="Level"
+          value={filters.level_id}
+          onChange={(v) => setFilters({ ...filters, level_id: v })}
+          options={levels.map((l) => ({ value: String(l.id), label: l.name }))}
+          allLabel="All levels"
+        />
         <TextFilter   label="Attendance mode" value={filters.mode}        onChange={(v) => setFilters({ ...filters, mode: v })} placeholder="e.g. Day" />
         <DateFilter   label="Date from"     value={filters.date_from}     onChange={(v) => setFilters({ ...filters, date_from: v })} />
         <DateFilter   label="Date to"       value={filters.date_to}       onChange={(v) => setFilters({ ...filters, date_to: v })} />
@@ -141,6 +150,24 @@ function NumberFilter({ label, value, onChange }: { label: string; value: string
     <div>
       <label className="label">{label}</label>
       <input type="number" className="input" value={value} onChange={(e) => onChange(e.target.value)} />
+    </div>
+  )
+}
+
+function SelectFilter({ label, value, onChange, options, allLabel }: {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  options: Array<{ value: string; label: string }>
+  allLabel: string
+}) {
+  return (
+    <div>
+      <label className="label">{label}</label>
+      <select className="input" value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="">{allLabel}</option>
+        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
     </div>
   )
 }

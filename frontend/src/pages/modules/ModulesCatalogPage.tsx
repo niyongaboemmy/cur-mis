@@ -8,6 +8,7 @@ import type { Module } from '@/types/modules'
 import ModuleFormModal from './ModuleFormModal'
 import { PERMISSIONS } from '@/constants'
 import { usePermission } from '@/utils/permissions'
+import { useLevels } from '@/hooks/useLevels'
 
 type Status = '' | 'draft' | 'active' | 'archived'
 
@@ -19,6 +20,7 @@ export default function ModulesCatalogPage() {
   })
   const [page, setPage] = useState(1)
   const perPage = 20
+  const { levels, levelName } = useLevels()
 
   // Load departments for the filter dropdown and for mapping dep_id → dep_name
   const deptsQ = useQuery({
@@ -86,13 +88,17 @@ export default function ModulesCatalogPage() {
             onChange={(e) => { setFilters({ ...filters, q: e.target.value }); setPage(1) }}
           />
         </div>
-        <input
-          type="number"
-          placeholder="Level"
-          className="input input-sm w-24"
+        {/* Picks by name, still filters by `levels.id` — the backend compares ids. */}
+        <select
+          className="input input-sm w-40"
           value={filters.level}
           onChange={(e) => { setFilters({ ...filters, level: e.target.value }); setPage(1) }}
-        />
+        >
+          <option value="">All levels</option>
+          {levels.map((l) => (
+            <option key={l.id} value={String(l.id)}>{l.name}</option>
+          ))}
+        </select>
         <select
           className="input input-sm w-48"
           value={filters.department}
@@ -141,7 +147,7 @@ export default function ModulesCatalogPage() {
                 <td className="px-4 py-3 font-mono text-ink-900 dark:text-white">{m.module_code}</td>
                 <td className="px-4 py-3 font-semibold">{m.module_name}</td>
                 <td className="px-4 py-3">{String(m.module_credits)}</td>
-                <td className="px-4 py-3">{m.level}</td>
+                <td className="px-4 py-3">{(m as any).level_name ?? levelName(m.level)}</td>
                 <td className="px-4 py-3 text-ink-500">
                   {deptMap.get(Number(m.department)) ?? `#${m.department}`}
                 </td>

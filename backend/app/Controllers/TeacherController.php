@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Controllers;
 
 use App\Helpers\LecturerScope;
+use App\Helpers\LevelHelper;
 use App\Services\AuthService;
 use App\Services\SystemLogService;
 use Core\Database;
@@ -235,6 +236,7 @@ class TeacherController extends BaseController
             'module_name'     => trim((string)$a['module_name']),
             'module_credits'  => $a['module_credits'] !== null ? (int)$a['module_credits'] : null,
             'level'           => $a['level'] !== null ? (int)$a['level'] : null,
+            'level_name'      => LevelHelper::name($a['level'] ?? null) ?: null,
             'department_id'   => $a['department_id'] !== null ? (int)$a['department_id'] : null,
             'role'            => (string)$a['role'],
             'hours_per_week'  => $a['hours_per_week'] !== null ? (float)$a['hours_per_week'] : null,
@@ -1018,6 +1020,7 @@ class TeacherController extends BaseController
                 'phone'           => $r['phone'] ?: null,
                 'photo'           => $r['photo'] ?: null,
                 'level'           => $r['level'] !== null ? (int)$r['level'] : null,
+                'level_name'      => LevelHelper::name($r['level'] ?? null) ?: null,
                 'student_state'   => $r['student_state'] ?: null,
                 'total'           => $r['total'] !== null ? (float)$r['total'] : null,
                 'percentage'      => $r['percentage'] !== null ? (float)$r['percentage'] : null,
@@ -1089,6 +1092,7 @@ class TeacherController extends BaseController
                 'phone'        => $r['phone'] ?: null,
                 'photo'        => $r['photo'] ?: null,
                 'level'        => $r['level'] !== null ? (int)$r['level'] : null,
+                'level_name'   => LevelHelper::name($r['level'] ?? null) ?: null,
                 'modules'      => (int)$r['modules'],
                 'module_codes' => $r['module_codes'] ?: '',
             ];
@@ -1541,6 +1545,7 @@ class TeacherController extends BaseController
                 'gender'        => $r['gender'] ?: null,
                 'photo'         => $r['photo'] ?: null,
                 'level'         => $r['level'] !== null ? (int)$r['level'] : null,
+                'level_name'    => LevelHelper::name($r['level'] ?? null) ?: null,
                 'status'        => $r['status'] ?: null,
                 'seat_no'       => $r['seat_no'] ?: null,
                 'signed_in_at'  => $r['signed_in_at'],

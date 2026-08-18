@@ -277,7 +277,7 @@ class ModuleMarksController extends BaseController
             );
         }
 
-        $this->success($response, $rows, 'Markable modules fetched.');
+        $this->success($response, \App\Helpers\LevelHelper::decorate($rows), 'Markable modules fetched.');
     }
 
     /* ── List marks for module + term (full roster) ────────────────────── */
@@ -618,6 +618,8 @@ class ModuleMarksController extends BaseController
             }
         }
         $summary['avg_pct'] = $countedPct > 0 ? (int)round($sumPct / $countedPct) : 0;
+
+        $module['level_name'] = \App\Helpers\LevelHelper::name($module['level'] ?? null) ?: null;
 
         $this->success($response, [
             'module'   => $module,
@@ -1035,7 +1037,8 @@ class ModuleMarksController extends BaseController
             [$optionId, $reg]
         ) : [];
 
-        $completed = $this->withGrades($completed);
+        $completed = \App\Helpers\LevelHelper::decorate($this->withGrades($completed));
+        $remaining = \App\Helpers\LevelHelper::decorate($remaining);
 
         $creditsDone = 0.0;
         $passed = 0; $failed = 0;
@@ -1260,7 +1263,7 @@ class ModuleMarksController extends BaseController
         // Grade the rows from the configured scale first — imported marks carry
         // a NULL `grade`, which is why a transcript of 44 legacy modules showed
         // a dash in every Grade cell.
-        $rows = $this->withGrades($rows);
+        $rows = \App\Helpers\LevelHelper::decorate($this->withGrades($rows));
 
         foreach ($rows as &$r) {
             $credits = (int)($r['module_credits'] ?? 0);

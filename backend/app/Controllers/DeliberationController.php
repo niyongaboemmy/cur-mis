@@ -296,8 +296,8 @@ class DeliberationController extends BaseController
         $lastPage = $total > 0 ? (int)ceil($total / $perPage) : 1;
 
         $this->success($response, [
-            'modules'       => $modules,
-            'students'      => $students,
+            'modules'       => \App\Helpers\LevelHelper::decorate($modules),
+            'students'      => \App\Helpers\LevelHelper::decorate($students, 'current_level', 'current_level_name'),
             'academic_year' => $year,
             'counts'        => [
                 'students' => $total,
@@ -521,6 +521,7 @@ class DeliberationController extends BaseController
             $o = $progById[trim((string)($r['std_option'] ?? ''))] ?? null;
             $r['declared_program']      = $o['name'] ?? null;
             $r['declared_program_acro'] = $o['acro'] ?? null;
+            $r['current_level_name']    = \App\Helpers\LevelHelper::name($r['current_level'] ?? null) ?: null;
         }
         unset($r);
 
@@ -589,6 +590,11 @@ class DeliberationController extends BaseController
 
         $truncated = count($rows) > $cap;
         if ($truncated) $rows = array_slice($rows, 0, $cap);
+
+        // Both level columns are `levels.id` values; the export must read as
+        // the catalogue does, not as raw foreign keys.
+        $rows = \App\Helpers\LevelHelper::decorate($rows, 'module_level', 'module_level_name');
+        $rows = \App\Helpers\LevelHelper::decorate($rows, 'current_level', 'current_level_name');
 
         $this->success($response, [
             'rows'      => $rows,
@@ -732,9 +738,13 @@ class DeliberationController extends BaseController
             }
         }
 
+        if ($student) {
+            $student['current_level_name'] = \App\Helpers\LevelHelper::name($student['current_level'] ?? null) ?: null;
+        }
+
         $this->success($response, [
             'student'   => $student ?: ['regnumber' => $reg],
-            'marks'     => $marks,
+            'marks'     => \App\Helpers\LevelHelper::decorate($marks),
             'pass_mark' => self::PASS_MARK,
             'summary'   => [
                 'modules' => count($marks),

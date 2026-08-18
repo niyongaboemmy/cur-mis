@@ -14,6 +14,7 @@ use App\Models\ApplicationDocumentModel;
 use App\Models\AdmissionRequirementModel;
 use App\Services\ApplicationService;
 use App\Services\UrubutoPayService;
+use App\Services\AdmissionBillingService;
 use App\Helpers\ValidationHelper;
 use App\Helpers\FileServerClient;
 
@@ -63,102 +64,22 @@ class ApplicantProfileController extends BaseController
     // Profile endpoints
     // ─────────────────────────────────────────────────────────────────────────
 
-    /**
-     * GET /api/applicant/profile
-     * Returns the full enriched profile of the authenticated applicant.
-     */
-    public function getProfile(Request $request, Response $response): never
-    {
-        $authUser = $request->param('_auth_user');
-        $userId   = (int)($authUser['id'] ?? 0);
 
-        $profile = $this->profileModel->getFullProfile($userId);
 
-        if (!$profile) {
-            $this->error($response, 'Profile not found.', 404);
-        }
-
-        $this->success($response, $this->formatProfile($profile), 'Profile fetched successfully.');
-    }
+    // ── Admission fees (Registration, CURSU …) ───────────────────────────────
+    //
+    // The stage between "you have been admitted" and "here is your registration
+    // number". The applicant sees exactly what they owe, pays each bill on the
+    // gateway, and the portal reflects the confirmation the moment the callback
+    // lands — the same shape as the application fee one step earlier.
 
     /**
-     * PUT /api/applicant/profile
-     * Update personal / contact / address details.
-     * Fields on student_applications (first_name, last_name, phone, etc.) are also
-     * updatable here as long as the application is still in an editable state.
+     * GET /api/applicant/application/bills
+     *
+     * Every admission bill on the applicant's application, with its balance and
+     * its own pre-filled Urubuto Pay checkout link.
      */
-    public function updateProfile(Request $request, Response $response): never
-    {
-        $profile   = $request->param('_applicant_profile');
-        $profileId = (int)$profile['id'];
-        $appId     = (int)$profile['application_id'];
-
-        $data   = $request->body();
-        $errors = ValidationHelper::validate($data, [
-            'middle_name'             => 'string|max:100',
-            'id_type'                 => 'in:national_id,passport,birth_certificate',
-            'id_number'               => 'string|max:50',
-            'province'                => 'string|max:100',
-            'district'                => 'string|max:100',
-            'sector'                  => 'string|max:100',
-            'emergency_contact_name'  => 'string|max:150',
-            'emergency_contact_phone' => 'string|max:30',
-            // Application-level fields (personal info)
-            'phone'                   => 'string|min:7|max:30',
-            'address'                 => 'string|max:500',
-            'nationality'             => 'string|max:100',
-        ]);
-
-        if (!empty($errors)) {
-            $this->error($response, 'Validation failed.', 422, $errors);
-        }
-
-        // Update profile-specific fields
-        $profileFields = array_filter([
-            'middle_name'             => $data['middle_name']             ?? null,
-            'id_type'                 => $data['id_type']                 ?? null,
-            'id_number'               => $data['id_number']               ?? null,
-            'province'                => $data['province']                ?? null,
-            'district'                => $data['district']                ?? null,
-            'sector'                  => $data['sector']                  ?? null,
-            'emergency_contact_name'  => $data['emergency_contact_name']  ?? null,
-            'emergency_contact_phone' => $data['emergency_contact_phone'] ?? null,
-        ], fn($v) => $v !== null);
-
-        if (!empty($profileFields)) {
-            $this->profileModel->update($profileId, $profileFields);
-        }
-
-        // Update application personal info (allowed in early statuses)
-        $application = $this->appModel->find($appId);
-        $editableStatuses = ['submitted', 'documents_under_review', 'documents_rejected', 'requested_changes'];
-
-        if ($application && in_array($application['status'], $editableStatuses, true)) {
-            $appFields = array_filter([
-                'phone'       => $data['phone']       ?? null,
-                'address'     => $data['address']     ?? null,
-                'nationality' => $data['nationality'] ?? null,
-            ], fn($v) => $v !== null);
-
-            if (!empty($appFields)) {
-                $this->appModel->update($appId, $appFields);
-            }
-        }
-
-        $this->success($response, null, 'Profile updated successfully.');
-    }
-
-    /**
-     * POST /api/applicant/profile/photo
-     * Upload or replace the profile photo.
-     */
-    /**
-     * POST /api/applicant/application/payment
-     * Multipart: payment_slip (PDF/JPG/PNG) + transaction_id + amount?
-     * Stores the slip on the file server and writes the transaction id /
-     * amount onto the active draft application.
-     */
-    public function uploadPaymentSlip(Request $request, Response $response): never
+    public function getAdmissionBills(Request $request, Response $response): never
     {
         $profile = $request->param('_applicant_profile');
         $appId   = (int)($profile['application_id'] ?? 0);
@@ -166,184 +87,62 @@ class ApplicantProfileController extends BaseController
             $this->error($response, 'No active application.', 404);
         }
 
-        $body          = $request->body();
-        $transactionId = trim((string)($body['transaction_id'] ?? ''));
-        $amount        = isset($body['payment_amount']) ? (float)$body['payment_amount'] : null;
-        $currency      = (string)($body['payment_currency'] ?? 'RWF');
-
-        if ($transactionId === '') {
-            $this->error($response, 'Transaction ID is required.', 422);
-        }
-
-        $update = [
-            'transaction_id'    => $transactionId,
-            'payment_currency'  => $currency,
-            'paid_at'           => date('Y-m-d H:i:s'),
-        ];
-        if ($amount !== null) $update['payment_amount'] = $amount;
-
-        // The slip itself is optional on this endpoint — applicants can also
-        // submit it later via re-uploading; but the wizard sends it together.
-        $file = $request->file('payment_slip');
-        if ($file) {
-            $allowedMimes = ['application/pdf', 'image/jpeg', 'image/png'];
-            if (!in_array($file['type'] ?? '', $allowedMimes, true)) {
-                $this->error($response, 'Invalid file type. Only PDF, JPEG and PNG are allowed.', 422);
-            }
-            try {
-                $client   = new FileServerClient();
-                $uploaded = $client->upload($file);
-            } catch (\RuntimeException $e) {
-                $this->error($response, $e->getMessage(), 422);
-            }
-            $update['payment_slip_file_id'] = $uploaded['id'];
-            $update['payment_slip_mime']    = (string)($file['type'] ?? '');
-        }
-
-        $this->appModel->update($appId, $update);
-
-        $this->success($response, [
-            'transaction_id'       => $transactionId,
-            'payment_slip_file_id' => $update['payment_slip_file_id'] ?? null,
-            'payment_amount'       => $amount,
-            'payment_currency'     => $currency,
-        ], 'Payment recorded.');
-    }
-
-    /**
-     * GET /api/applicant/application/payment/checkout
-     *
-     * Returns the UrubutoPay hosted-checkout URL the "Pay Now" button opens.
-     * The payer_code is the application number; once the applicant pays,
-     * UrubutoPay calls our verify + callback webhooks, which mark this
-     * application as paid (transaction_id + paid_at). The frontend polls
-     * getPaymentStatus() until that happens.
-     */
-    public function getPaymentCheckout(Request $request, Response $response): never
-    {
-        $profile = $request->param('_applicant_profile');
-        $appId   = (int)($profile['application_id'] ?? 0);
-        if (!$appId) {
-            $this->error($response, 'No active application. Complete the earlier steps before paying.', 404);
-        }
-
-        $app = $this->appModel->find($appId);
-        if (!$app) {
-            $this->error($response, 'Application not found.', 404);
-        }
-
-        $appNumber = trim((string)($app['application_number'] ?? ''));
-        if ($appNumber === '') {
-            $this->error($response, 'Application number is missing — cannot start payment.', 422);
-        }
-
-        $data = (new UrubutoPayService())->generateApplicationCheckoutUrl($appNumber);
-
-        // Reflect any payment already recorded so the UI can short-circuit polling.
-        $data['paid']               = !empty($app['paid_at']) && !empty($app['transaction_id']);
-        $data['transaction_id']     = $app['transaction_id'] ?? null;
-        $data['application_number'] = $appNumber;
-
-        $this->success($response, $data, 'Checkout link generated.');
-    }
-
-    /**
-     * GET /api/applicant/application/payment/status
-     *
-     * Lightweight polling endpoint. Reports whether the application fee has
-     * been confirmed by UrubutoPay (transaction_id + paid_at both set).
-     */
-    public function getPaymentStatus(Request $request, Response $response): never
-    {
-        $profile = $request->param('_applicant_profile');
-        $appId   = (int)($profile['application_id'] ?? 0);
-        if (!$appId) {
-            $this->error($response, 'No active application.', 404);
-        }
-
-        $app = $this->appModel->find($appId);
-        if (!$app) {
-            $this->error($response, 'Application not found.', 404);
-        }
-
-        $paid = !empty($app['paid_at']) && !empty($app['transaction_id']);
-
-        $this->success($response, [
-            'paid'               => $paid,
-            'transaction_id'     => $app['transaction_id'] ?? null,
-            'paid_at'            => $app['paid_at'] ?? null,
-            'amount'             => isset($app['payment_amount']) && $app['payment_amount'] !== null ? (float)$app['payment_amount'] : null,
-            'currency'           => $app['payment_currency'] ?? 'RWF',
-            'application_number' => $app['application_number'] ?? null,
-            'status'             => $app['status'] ?? null,
-        ], 'Payment status fetched.');
-    }
-
-    /**
-     * POST /api/applicant/application/payment/invoice
-     *
-     * For applicants who have already paid via bank transfer or other methods,
-     * accept their transaction ID and invoice proof. Mark the application as paid.
-     */
-    public function submitInvoicePayment(Request $request, Response $response): never
-    {
-        $profile = $request->param('_applicant_profile');
-        $appId   = (int)($profile['application_id'] ?? 0);
-        if (!$appId) {
-            $this->error($response, 'No active application.', 404);
-        }
-
-        $app = $this->appModel->find($appId);
-        if (!$app) {
-            $this->error($response, 'Application not found.', 404);
-        }
-
-        $transactionId = trim((string)($request->input('transaction_id') ?? ''));
-        if ($transactionId === '') {
-            $this->error($response, 'Transaction ID is required.', 422);
-        }
-
-        $invoiceFile = $request->file('invoice');
-        if (!$invoiceFile) {
-            $this->error($response, 'Invoice file is required.', 422);
-        }
-
-        // Validate file type
-        $allowedMimes = ['application/pdf', 'image/jpeg', 'image/png'];
-        if (!in_array($invoiceFile['type'] ?? '', $allowedMimes, true)) {
-            $this->error($response, 'Invoice must be PDF, JPG, or PNG.', 422);
-        }
-
-        // Validate file size (max 5MB)
-        if (($invoiceFile['size'] ?? 0) > 5 * 1024 * 1024) {
-            $this->error($response, 'Invoice file must be 5 MB or smaller.', 422);
-        }
-
-        $invoiceFileId = null;
         try {
-            $client       = new FileServerClient();
-            $uploaded     = $client->upload($invoiceFile);
-            $invoiceFileId = $uploaded['id'];
+            $overview = (new AdmissionBillingService())->overview($appId);
         } catch (\RuntimeException $e) {
-            // Log the error but don't fail the payment — invoice is optional
-            error_log('[Invoice Upload Error] ' . $e->getMessage());
+            $this->error($response, $e->getMessage(), 404);
         }
 
-        // Update application with payment details
-        // The invoice file is optional; payment status is what matters
-        $this->appModel->update($appId, [
-            'transaction_id'     => $transactionId,
-            'payment_amount'     => $app['payment_amount'] ?? 5000,
-            'payment_currency'   => 'RWF',
-            'paid_at'            => date('Y-m-d H:i:s'),
-        ]);
+        // `billable` is the validator's pricing preview — an applicant has no
+        // use for prices on fees nobody has billed them, and showing them reads
+        // as a demand for money that has not been raised.
+        unset($overview['billable']);
+
+        $this->success($response, $overview, 'Admission fees fetched.');
+    }
+
+    /**
+     * GET /api/applicant/application/bills/checkout?fee_type=REGISTRATION
+     *
+     * The checkout link for one bill (or for the whole balance when no fee type
+     * is named). Separate from the listing so the "Pay now" button always opens
+     * a freshly-built link rather than one cached in the page.
+     */
+    public function getAdmissionBillCheckout(Request $request, Response $response): never
+    {
+        $profile = $request->param('_applicant_profile');
+        $appId   = (int)($profile['application_id'] ?? 0);
+        if (!$appId) {
+            $this->error($response, 'No active application.', 404);
+        }
+
+        $application = $this->appModel->find($appId);
+        if (!$application) {
+            $this->error($response, 'Application not found.', 404);
+        }
+
+        $feeType = strtoupper(trim((string)($request->query('fee_type') ?? '')));
+        $billing = new AdmissionBillingService();
+
+        $serviceCode = null;
+        $amount      = null;
+        if ($feeType !== '') {
+            $bill = (new \App\Models\ApplicationInvoiceModel())->findByFeeType($appId, $feeType);
+            if (!$bill) {
+                $this->error($response, 'You have not been billed for ' . $feeType . '.', 404);
+            }
+            $serviceCode = $bill['service_code'] ?: null;
+            $amount      = round((float)$bill['amount_due'] - (float)$bill['amount_paid'], 2);
+        }
 
         $this->success($response, [
-            'transaction_id'  => $transactionId,
-            'invoice_file_id' => $invoiceFileId,
-            'verified'        => true,
-            'message'         => 'Payment verified successfully. Your application fee has been recorded.',
-        ], 'Invoice payment submitted successfully.');
+            'checkout_url'       => $billing->checkoutUrl((string)$application['application_number'], $serviceCode),
+            'payer_code'         => (string)$application['application_number'],
+            'service_code'       => $serviceCode,
+            'amount'             => $amount,
+            'currency'           => 'RWF',
+            'application_number' => (string)$application['application_number'],
+        ], 'Checkout link generated.');
     }
 
     public function uploadPhoto(Request $request, Response $response): never
@@ -542,7 +341,16 @@ class ApplicantProfileController extends BaseController
         }
 
         $application = $this->appModel->find($appId);
-        if ($application['status'] !== 'draft') {
+
+        // The application fee callback submits the application itself, so an
+        // applicant who returns to the still-open wizard tab and presses Submit
+        // is not making a second submission — they are syncing the last field
+        // values they typed. Rejecting that with "already submitted" is how a
+        // paid applicant ends up staring at an error on a flow that worked.
+        $alreadyAutoSubmitted = ($application['status'] ?? '') === 'submitted'
+            && (int)($application['auto_submitted'] ?? 0) === 1;
+
+        if ($application['status'] !== 'draft' && !$alreadyAutoSubmitted) {
             $this->error($response, 'Application is already submitted.', 422);
         }
 
@@ -583,8 +391,15 @@ class ApplicantProfileController extends BaseController
             'sponsorship'        => $data['sponsorship'] ?? $application['sponsorship'],
             'sponsor_name'       => $data['sponsor_name'] ?? $application['sponsor_name'] ?? null,
             'status'             => 'submitted',
-            'submitted_at'       => date('Y-m-d H:i:s'),
         ];
+        if (!$alreadyAutoSubmitted) {
+            $updateData['submitted_at'] = date('Y-m-d H:i:s');
+        } else {
+            // The sync is the applicant catching up with the callback, not a
+            // fresh submission: keep the original timestamp and clear the flag
+            // so a later edit is judged on its own merits.
+            $updateData['auto_submitted'] = 0;
+        }
         foreach ($extendedKeys as $k) {
             if (array_key_exists($k, $data) && $data[$k] !== null && $data[$k] !== '') {
                 $updateData[$k] = $data[$k];
@@ -601,7 +416,9 @@ class ApplicantProfileController extends BaseController
 
         $this->appModel->update($appId, $updateData);
 
-        $this->service->logStatusChange($appId, 'draft', 'submitted', null, 'applicant', 'Application submitted.');
+        if (!$alreadyAutoSubmitted) {
+            $this->service->logStatusChange($appId, 'draft', 'submitted', null, 'applicant', 'Application submitted.');
+        }
 
         // Send a "thank you / submitted successfully" confirmation email,
         // including CUR contact info so the applicant has a clear next step.
@@ -625,13 +442,20 @@ class ApplicantProfileController extends BaseController
         $subject  = 'Application Submitted — Catholic University of Rwanda';
         $textBody = "Dear {$updateData['first_name']}, your application to the Catholic University of Rwanda has been submitted successfully. Application number: " . ($appRow['application_number'] ?? '') . ". For queries, contact admissions@cur.ac.rw or +250 788 351 906.";
 
-        $mailService = new \App\Services\MailService();
-        $mailService->send($updateData['email'], $subject, $htmlBody, $textBody);
+        // The callback already sent this confirmation when it auto-submitted;
+        // sending it again would tell the applicant twice that they submitted once.
+        if (!$alreadyAutoSubmitted) {
+            $mailService = new \App\Services\MailService();
+            $mailService->send($updateData['email'], $subject, $htmlBody, $textBody);
+        }
 
         $this->success($response, [
             'status'             => 'submitted',
             'application_number' => $appRow['application_number'] ?? null,
-        ], 'Application submitted successfully. A confirmation email has been sent.');
+            'auto_submitted'     => $alreadyAutoSubmitted,
+        ], $alreadyAutoSubmitted
+            ? 'Your application was already submitted when your payment was confirmed. Your details have been saved.'
+            : 'Application submitted successfully. A confirmation email has been sent.');
     }
 
     /**

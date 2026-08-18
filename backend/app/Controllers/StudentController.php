@@ -248,7 +248,7 @@ class StudentController extends BaseController
                 $r['campus_code'] = $c !== '' && isset($nameById[$c]) ? $nameById[$c]['code'] : null;
             }
             unset($r);
-            $paginated['data'] = $rows;
+            $paginated['data'] = \App\Helpers\LevelHelper::decorate($rows, 'current_level', 'level_name');
         }
 
         $this->success($response, $paginated, 'Students fetched successfully.');
@@ -385,6 +385,8 @@ class StudentController extends BaseController
         $student['faculty_name'] = null;
         $student['department_name'] = null;
         $student['program_name'] = null;
+        // `current_level` stores a `levels.id`; every screen shows the name.
+        $student['level_name'] = \App\Helpers\LevelHelper::name($student['current_level'] ?? null) ?: null;
 
         if (!empty($student['faculty'])) {
             $facultyModel = new FacultyModel();
@@ -448,6 +450,8 @@ class StudentController extends BaseController
         $student['faculty_name'] = null;
         $student['department_name'] = null;
         $student['program_name'] = null;
+        // `current_level` stores a `levels.id`; every screen shows the name.
+        $student['level_name'] = \App\Helpers\LevelHelper::name($student['current_level'] ?? null) ?: null;
 
         if (!empty($student['faculty'])) {
             $facultyModel = new FacultyModel();

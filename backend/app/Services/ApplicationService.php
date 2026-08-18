@@ -109,7 +109,11 @@ class ApplicationService
             'application_id' => $applicationId,
             'from_status'    => $from,
             'to_status'      => $to,
-            'actor_id'       => $actorId,
+            // 0 is never a real users.id — it is what callers pass for "no signed-in
+            // actor" (an automated transition). Writing it violates the FK to
+            // `users` and takes the whole transition down with it, so it is
+            // normalised to NULL, which is exactly what the column means.
+            'actor_id'       => ($actorId !== null && $actorId > 0) ? $actorId : null,
             'actor_type'     => $actorType,
             'notes'          => $notes,
         ]);
@@ -423,6 +427,20 @@ class ApplicationService
 
         $applicationId = (int)$offer['application_id'];
 
+        // A registration number is what the admission fees BUY. Minting one for
+        // an applicant with an open Registration or CURSU bill would hand over
+        // the thing being paid for and leave the debt behind, with nothing left
+        // to withhold. Applicants who were never billed (manual admissions, or
+        // fee types finance has published no price for) are unaffected: there is
+        // nothing outstanding, so there is nothing to gate on.
+        $billSummary = (new \App\Models\ApplicationInvoiceModel())->summaryFor($applicationId);
+        if ($billSummary['count'] > 0 && !$billSummary['fully_paid']) {
+            throw new \RuntimeException(
+                'This applicant still owes ' . number_format($billSummary['balance'], 0)
+                . ' RWF in admission fees. The registration number is issued automatically once they are paid in full.'
+            );
+        }
+
         // Detect returning students. A "returning" applicant already has a
         // `student` row (typically because they completed an undergraduate
         // programme here and are now enrolling in a Masters/PGDE). We DO NOT
@@ -600,6 +618,7 @@ class ApplicationService
 
         // Auto-generate fee invoices and credit the application fee against the mapped type
         $feeTransferResult = null;
+        $admissionCredit   = null;
         try {
             $academicYearId = (int)($offer['academic_year_id'] ?? 0);
             if ($academicYearId > 0) {
@@ -607,6 +626,14 @@ class ApplicationService
 
                 // Generate all standard invoices (TUITION, REGISTRATION, etc.)
                 $feeService->autoGenerateInvoices($regNumber, $academicYearId, null, $actorId);
+
+                // Carry across the Registration / CURSU fees this applicant
+                // already paid before enrollment. Without this the REGISTRATION
+                // invoice just generated would bill them a second time for money
+                // the institution has already banked.
+                $admissionCredit = $feeService->creditAdmissionBills(
+                    $regNumber, $academicYearId, $applicationId, $actorId
+                );
 
                 // Credit the application fee into the mapped invoice type when:
                 //  - admin has enabled auto-credit (setting = 1)
@@ -617,6 +644,19 @@ class ApplicationService
                     []
                 );
                 $shouldCredit = (int)($creditSetting['value'] ?? 1) === 1;
+
+                // …but never when the applicant already settled those same fees
+                // as admission bills. That credit exists to knock the application
+                // fee off a registration invoice the new student still owes;
+                // applying it to one they paid in full before enrolling turns the
+                // discount into a credit balance the institution never granted.
+                if (!empty($admissionCredit['credited'])) {
+                    $shouldCredit      = false;
+                    $feeTransferResult = [
+                        'status' => 'skipped',
+                        'reason' => 'Admission fees were paid before enrollment and credited directly.',
+                    ];
+                }
 
                 $paidAmount = (float)($offer['payment_amount'] ?? 0);
                 $txRef      = trim((string)($offer['transaction_id'] ?? ''));
@@ -647,6 +687,7 @@ class ApplicationService
             'letter_sent'        => !isset($letterResult['error']),
             'letter_error'       => $letterResult['error'] ?? null,
             'fee_transfer'       => $feeTransferResult,
+            'admission_credit'   => $admissionCredit ?? null,
         ];
     }
 
