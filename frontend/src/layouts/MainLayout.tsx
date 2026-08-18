@@ -12,7 +12,6 @@ import {
   Files,
   Activity,
   Search,
-  Bell,
   MessageSquare,
   Megaphone,
   MessagesSquare,
@@ -38,7 +37,6 @@ import {
   useEffect,
   useMemo,
   useState,
-  type ReactNode,
 } from "react";
 import UserDropdown from "@/components/layout/UserDropdown";
 import MessageNotificationBell from "@/components/layout/MessageNotificationBell";
@@ -1518,9 +1516,6 @@ export default function MainLayout() {
                 page's data. */}
             {user?.role !== "applicant" && <CampusFilterSwitcher />}
             {user?.role !== "applicant" && <CategoryFilterSwitcher />}
-            <RoundIconBtn label="Notifications" dot>
-              <Bell className="w-[18px] h-[18px]" />
-            </RoundIconBtn>
             <NotificationBell />
             <MessageNotificationBell />
             <HelpLauncher />
@@ -1659,27 +1654,5 @@ const NavNodeItem = memo(function NavNodeItem({
         )}
       </AnimatePresence>
     </div>
-  );
-});
-
-const RoundIconBtn = memo(function RoundIconBtn({
-  children,
-  label,
-  dot = false,
-}: {
-  children: ReactNode;
-  label: string;
-  dot?: boolean;
-}) {
-  return (
-    <button
-      aria-label={label}
-      className="relative w-10 h-10 rounded-full border border-ink-100 dark:border-ink-700 bg-white dark:bg-ink-800 text-ink-600 dark:text-ink-300 hover:text-primary-700 hover:border-primary-200 dark:hover:bg-ink-700 transition-colors flex items-center justify-center"
-    >
-      {children}
-      {dot && (
-        <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-primary-700 ring-2 ring-white dark:ring-ink-800" />
-      )}
-    </button>
   );
 });
