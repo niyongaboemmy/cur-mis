@@ -15,6 +15,7 @@ use App\Models\DepartmentModel;
 use App\Models\OptionModel;
 use App\Helpers\ValidationHelper;
 use App\Helpers\FileServerClient;
+use App\Helpers\StreamingXlsx;
 use App\Services\SystemLogService;
 
 class StudentController extends BaseController
@@ -3042,10 +3043,10 @@ class StudentController extends BaseController
     }
 
     // ─────────────────────────────────────────────────────────────────────
-    // Student CSV export — template-driven column picker.
+    // Student export (Excel / CSV) — template-driven column picker.
     //
     // The Students page lets registry staff export the filtered cohort
-    // to CSV with either a saved/system template or a hand-picked set of
+    // with either a saved/system template or a hand-picked set of
     // columns. Built around three pieces:
     //
     //   • exportColumns()       — describes every available column so the
@@ -3053,9 +3054,10 @@ class StudentController extends BaseController
     //                             entry carries a stable `key`, a
     //                             human-readable `label` (used as the CSV
     //                             header) and a `group` for UI grouping.
-    //   • exportCsv()           — streams the CSV. Re-uses buildListFilters
-    //                             so the export always matches the list
-    //                             page exactly (including topbar campus +
+    //   • exportCsv()           — streams the file (xlsx or CSV, see
+    //                             `?format=`). Re-uses buildListFilters so
+    //                             the export always matches the list page
+    //                             exactly (including topbar campus +
     //                             category scopes).
     //   • list/save/delete      — CRUD over `student_export_templates`.
     //     ExportTemplate()        System templates (HLIs → Mifotra) are
@@ -3385,13 +3387,17 @@ class StudentController extends BaseController
     /**
      * GET /api/students/export
      *
-     * Streams a CSV of every student that matches the same filters used
-     * by the list page. Columns are driven by `?columns=` (comma-separated
-     * column keys) OR by `?template_id=` (numeric for a saved template,
-     * or the literal `sys:hli_mifotra` for the in-code Mifotra template).
+     * Streams every student that matches the same filters used by the list
+     * page. Columns are driven by `?columns=` (comma-separated column keys)
+     * OR by `?template_id=` (numeric for a saved template, or the literal
+     * `sys:hli_mifotra` for the in-code Mifotra template).
      *
      * Templates win when both are provided so the user gets the exact
      * column ORDER and HEADER LABELS the template specified.
+     *
+     * `?format=xlsx` returns a real Excel workbook; anything else (default)
+     * returns CSV. Prefer xlsx whenever the export carries phone numbers or
+     * national IDs — see streamExportXlsx() for why CSV corrupts them.
      */
     public function exportCsv(Request $request, Response $response): never
     {
@@ -3472,10 +3478,20 @@ class StudentController extends BaseController
             ORDER BY s.id DESC
         ";
 
-        $rows = $this->studentModel->db()->fetchAll($sql, $bindings);
+        // Iterated with fetch() rather than fetchAll() so a 25k-row cohort is
+        // never materialised as one PHP array — both writers below consume the
+        // rows one at a time.
+        $stmt = $this->studentModel->db()->query($sql, $bindings);
+
+        // Header row — uses the template's label overrides where present.
+        $headers = array_map(static fn(array $p) => $p['label'], $picked);
+        $stamp   = date('Y-m-d_His');
+
+        if (strtolower(trim((string)($request->query('format') ?? 'csv'))) === 'xlsx') {
+            $this->streamExportXlsx($stmt, $picked, $registry, $headers, "students_{$stamp}.xlsx");
+        }
 
         // ── Stream the CSV ─────────────────────────────────────────────
-        $stamp    = date('Y-m-d_His');
         $filename = "students_{$stamp}.csv";
 
         if (!headers_sent()) {
@@ -3490,11 +3506,9 @@ class StudentController extends BaseController
         // mojibake when the file is opened in Excel on Windows.
         fwrite($out, "\xEF\xBB\xBF");
 
-        // Header row — uses the template's label overrides where present.
-        $headers = array_map(static fn(array $p) => $p['label'], $picked);
         fputcsv($out, $headers);
 
-        foreach ($rows as $row) {
+        while ($row = $stmt->fetch()) {
             $line = [];
             foreach ($picked as $p) {
                 $line[] = $this->resolveTemplateCell($p['key'], $row, $registry);
@@ -3503,6 +3517,42 @@ class StudentController extends BaseController
         }
         fclose($out);
         exit;
+    }
+
+    /**
+     * Stream the same rows as a real .xlsx workbook.
+     *
+     * CSV is lossy for this dataset in a way that matters: opening one, Excel
+     * infers each column's type and quietly rewrites the identifiers a
+     * registry submission is keyed on — 11,000 student phone numbers begin
+     * with '0' (dropped), and 18,012 national ID numbers are 16 digits
+     * (rendered 1.19958E+15, trailing digits unrecoverable). Both columns sit
+     * in the HLIs → MIFOTRA template. StreamingXlsx writes every cell as an
+     * inline string, which Excel never re-interprets.
+     *
+     * @param \PDOStatement                                        $stmt
+     * @param list<array{key:string, label:string}>                $picked
+     * @param array<string, array{label:string, group:string, sql:string, alias:string}> $registry
+     * @param list<string>                                         $headers
+     */
+    private function streamExportXlsx(
+        \PDOStatement $stmt,
+        array $picked,
+        array $registry,
+        array $headers,
+        string $filename
+    ): never {
+        $book = new StreamingXlsx($headers);
+
+        while ($row = $stmt->fetch()) {
+            $line = [];
+            foreach ($picked as $p) {
+                $line[] = $this->resolveTemplateCell($p['key'], $row, $registry);
+            }
+            $book->addRow($line);
+        }
+
+        $book->download($filename);
     }
 
     /**

@@ -1,104 +1,112 @@
 # HANDOFF
 
 ## Current Task
-Fix the 9 defects reported in `FIX.pdf` (QA test report, 14 Aug 2026) — all in the
-Student / Applicant portal.
+Filter the Students list by faculty, department, option (Education only), age,
+country, province, district, sector, status and academic year — and be able to
+download any filtered cohort to Excel.
 
 ## Status
-**Solved** — all 9 addressed. 5 root causes were reproduced empirically against the
-live local stack; the rest were traced in code and verified by targeted harnesses,
-`tsc --noEmit`, and a production `vite build`.
+**Solved.** The filter set landed in commit `b8a5955`; this session finished it —
+fixed two defects that made the filter bar contradict itself, and replaced the
+CSV-only download with a real `.xlsx` export. Verified against live data: for 25
+filter combinations the list total and the exported row count match exactly.
 
 ## Progress
-- [x] #1 Profile picture upload → "File storage service error (401)" surfaced as 422
-- [x] #2 Cascading location dropdowns (Province → District verified; lower levels pending data)
-- [x] #3 Notification bell in header did nothing
-- [x] #4 Applicants could skip required documents
-- [x] #5 Change password → 500 Internal Server Error
-- [x] #6 National ID / Passport upload rejected as "invalid file type"
-- [x] #7 Fines invisible and unpayable in My Finance
-- [x] #8 Payment calendar dates unclear / looked outdated
-- [x] #9 Admin could not view the proof-of-payment document
+- [x] Faculty, Department, Option (Education-only), Age, Country, Province,
+      District, Sector, Status, Academic year — plus the pre-existing Level,
+      Gender, Nationality, Learning mode, Campus (commit `b8a5955`)
+- [x] Status had **two** controls fighting over `student_state`
+- [x] Option filter silently discarded every other filter
+- [x] Real Excel (`.xlsx`) download, per filter, replacing CSV-only
+- [ ] Nothing outstanding
 
 ## Working Notes
 
-### Root causes (all confirmed)
-| # | Root cause | Fix |
+### What was wrong when this session picked the task up
+
+**1 · Two controls owned `student_state`.** A legacy 3-option `<select>`
+(Active / Inactive / All) sat next to the new Status picker; both wrote the same
+URL param. Choosing "Graduated" in Status left the legacy select with a value
+matching none of its `<option>`s, so it rendered **blank**. Worse, the Status
+picker's own "All statuses" entry was unreachable: `update({student_state: v ||
+"active"})` turned the cleared value straight back into Active, so the only way
+to see all statuses was the legacy select that had just gone blank.
+Fixed by deleting the legacy select and making Status the sole owner. "All" is
+carried as the explicit value `"all"` (an *absent* `student_state` means Active
+on this page) and mapped back to `""` for display so the picker highlights it.
+
+**2 · Option was an exclusive filter.** Picking one sent *only* `std_option`,
+dropping the nine other filters the user had set — and the export inherited it,
+so "Education option X, graduated" exported every X student regardless of
+status. The original reason (an auto-derived department could AND with
+`std_option` and zero the result) no longer holds: department is now picked by
+hand and the Option list is scoped to it. Measured across the Education options,
+**99.4%** of students matched by an option also carry that option's department,
+so the pair agrees. Option now composes like every other filter.
+
+### Excel export — why the format changed
+CSV is lossy for this dataset in a way that matters. Opened in Excel it
+type-guesses per column and rewrites the identifiers a registry submission is
+keyed on. Against the live table:
+
+| Column | Rows affected | What Excel does to the CSV |
 |---|---|---|
-| 1 | File server rejected the backend's `X-API-Key`; the upstream 401 was rethrown to the browser as a **422**, blaming the user's file | New `FileServerException` splits client (422) vs upstream (502); config validated up front; real cause logged |
-| 5 | `AuthService::changePassword()` used `UserModel::find()`, which runs `hideFields()` and **strips `password`** → `password_verify(..., null)` → `TypeError` → 500 | Use `findBy('id', …)` (returns the raw row) |
-| 6 | `service_catalog.mime_types` stores **extensions** (`["pdf","jpg"]`) but the check compared a **MIME type** (`application/pdf`) — could never match, so every upload 422'd | Normalise both sides to canonical extensions |
-| 7 | `FinesController::createFine()` resolved the academic year with `ORDER BY id DESC` → picked the **"Legacy"** year (id 4), not `is_current` (id 2, 2025/2026). The fine's invoice was filed under a year My Finance never queries | Use `WHERE is_current = 1` with a `start_date DESC` fallback; added `GET /api/finance/my/fines` |
-| 9 | `submitInvoicePayment()` uploaded the proof file but **never persisted `payment_slip_file_id`** — the id was returned to the client and discarded | Persist `payment_slip_file_id` + `payment_slip_mime`; the admin viewer already existed and now works |
-| 3 | Rows were written to `notifications` but **no endpoint ever read them**; the header button was a decorative `RoundIconBtn` with a hardcoded dot and no `onClick` | New `NotificationController` + `/api/notifications` routes + `NotificationBell` |
-| 4 | `STEP_FIELDS` has no entry for step 4, so `goNext()` waved the Documents step through | Gate `goNext()` + the step rail + the button; server-side gate in `submitApplication()` |
-| 8 | Dates were *correct* (AY 2025/2026 legitimately starts 01/09/2025) but unlabelled and undifferentiated | Show academic year, split Upcoming vs Payment history, status chips |
-| 2 | No structured location data anywhere — all free text | `rwandaLocations.ts` (5 provinces, 30 districts) + cascading `LocationSelect` |
+| `phone` (leading `0`) | 11,000 | `0786891397` → `786891397` |
+| `id_card` (16 digits) | 18,012 | `1199580062508028` → `1.19958E+15`, digits gone for good |
 
-### Deliberate scope decision on #2
-Only Province + District ship as verified dropdowns (user-approved). Sector / Cell /
-Village remain free text because bundling an approximated list of 416 sectors /
-2,148 cells / ~14,837 villages would be worse than free text — a dropdown missing a
-user's real sector *prevents* correct entry. `LocationSelect` flips a level to a
-dropdown automatically once `SECTORS` / `CELLS` / `VILLAGES` in
-`frontend/src/data/rwandaLocations.ts` are populated from the official RGB/NISR
-dataset. **No code change needed to enable them.**
+Both sit in the **HLIs → MIFOTRA** system template. New
+`App\Helpers\StreamingXlsx` writes every cell as an inline string, which Excel
+never re-interprets — verified byte-for-byte on student `1CUR19AK05764`.
 
-### Environment issues found — NOT fixed (need an operator decision)
-1. **Storage URL — fixed locally, still to verify in production.** After the code
-   fixes, photo upload still returned the new 502. Cause: `backend/.env` had
-   `FILE_SERVER_URL=http://localhost:8888/...` (nothing listening) while the file
-   server runs on **`:9001`** (`start-fileserver.bat`); the chain is
-   frontend `:5180` → Vite proxy → backend `:9000` → storage `:9001`. Keys matched;
-   only the URL was wrong. Corrected to `http://127.0.0.1:9001` and upload verified
-   end to end (POST 200, GET returns a byte-identical PNG).
-   `.env` is gitignored, so **production must be checked separately**:
-   `GET /api/health?deep=1` must report `{"configured":true,"reachable":true}`.
-   Added `backend/.env.example` documenting the correct URL for each serving mode
-   (php -S `:9001`, Apache, cPanel).
-2. **The local `curac_save` DB has no PRIMARY KEYs and no AUTO_INCREMENT** on
-   `users`, `notifications`, `fee_fines`, `fee_invoices`, … Consequences seen live:
-   duplicate `users.id` values, and a real applicant who registered on 17 Aug got
-   `id = 0`. New registrations will keep colliding until the constraints are restored.
-3. **`fee_invoices.created_by` is `NOT NULL`**, but `FinesController::createFine()`
-   passes `$actor['id'] ?? null` — a fine issued without a resolvable actor fatals.
-4. **3 pre-existing TypeScript errors** in `frontend/src/pages/admin/admissions/OffersPage.tsx`
-   (lines 206, 215, 274 — `Expected 1 arguments, but got 2`), from commit `33ffdab`.
-   Untouched by this work.
-5. `GateManagementController.php:77,300` and `DeliberationController.php:60` use the
-   same `academic_years ORDER BY id DESC` anti-pattern fixed in #7. Left alone —
-   outside the student-portal scope of this report.
+**Why not PhpSpreadsheet** (already a dependency, used by `BudgetPlanExcel`):
+benchmarked on the full export (24,905 × 28 = 697,340 cells) it peaked at
+**468 MB / 84 s** — past the memory_limit and max_execution_time of the cPanel
+hosts this deploys to. `StreamingXlsx` does the same job at **2 MB / 4.7 s** by
+streaming the sheet XML to a temp file and letting ZipArchive compress from
+disk. It stays the wrong tool for the styled budget workbooks; it is the right
+one for a bulk dump.
 
-### Next step on resume
-Nothing outstanding for the 9 reported issues. If continuing: obtain the official
-sector/cell/village dataset and populate `rwandaLocations.ts` to complete #2, and
-have an operator work through the environment list above.
+API: `GET /api/students/export?format=xlsx` (CSV remains the default for any
+other value, so existing links keep working). The modal has an Excel / CSV
+toggle, defaulting to Excel.
 
-## Follow-up work (after the FIX.pdf batch)
-- **Profile picture removal** — no DELETE endpoint existed anywhere. Added four
-  (`/api/auth/me/photo`, `/api/students/me/photo`, `/api/students/:id/photo`,
-  `/api/applicant/profile/photo`) plus a Remove control beside every Change
-  control. Shared rules in `App\Helpers\PhotoRemover`.
-- **Staff email erased on create and edit** — three separate defects, all fixed:
-  1. `HrEmployeeModel::$fillable` omitted `employee_username` (the email column),
-     so `filterFillable()` silently discarded it on every write. It also dropped
-     `employee_idcard`, `employee_address`, `employee_age`, `school_id` and more.
-  2. `HrEmployeeController::create()` read `$data['username']`, but every client
-     sends the field as `email` — so the value was lost before the DB call.
-  3. `update()` never referenced the email column at all, which is why
-     re-entering a lost address and saving appeared to delete it again.
-  Also fixed `selectClause()` (used by `GET /api/employees/:id`), which omitted
-  the email, so the staff detail view showed none even when one was stored.
-  Credential columns (`employee_password`, `otp_code`, …) were deliberately left
-  out of `fillable` — they must never be mass-assignable.
+### Verification performed
+Driven through the real controller against the live `curac_save` database
+(`scratchpad/matrix.sh`) — list total vs exported row count, 25/25 exact:
 
-  **Not fixed / needs a decision:** staff created from the HR "Add Staff" form
-  still get no `users` row, so they cannot log in — that form collects no role or
-  password. The path that provisions a login is Users management
-  (`UserController::create`), which creates the account *and* the linked employee
-  via `createLinkedEmployee()`. 7 existing employees have a blank email and none
-  have a linked user account, so their addresses must be re-entered by hand
-  (they will now persist).
+- statuses: active 9,014 · inactive 10,426 · graduated 5,445 · graduands 4 ·
+  suspended 14 · rejected 0
+- faculty 6 (Education) 7,728 · faculty 8 5,011 · department 15 2,381 ·
+  option 62 (PGDE) 1,104 · option 12 (MCS) 892
+- Rwanda 19,177 · SOUTHERN 5,834 · Huye 2,385 · TUMBA 650
+- age 18–25 4,943 · age 26–40 4,946 · 2025-2026 8,601 · 2021-2022 15,754
+- combinations: Education+graduated 781 · SOUTHERN+Huye+active 1,429 ·
+  **PGDE+graduated 328** (proves Option now composes) · PGDE+dept13+2021-2022 974 ·
+  Education+Rwanda+age20-30 3,225
+
+Full 24,905 × 44 export: 5.4 s, 14 MB peak, 3.8 MB file; ZIP integrity, all six
+parts present, every XML part well-formed, 24,906 rows / 739,443 cells.
+`tsc --noEmit` clean, production build succeeds, existing 57 vitest tests pass.
+
+### Not fixed — reported, out of scope
+1. **The 7 "Academic Progress" export columns are slow.** Selecting them for the
+   whole cohort takes **67 s** (vs 5.4 s without) — they are correlated
+   sub-queries over `module_marks` run per student. Pre-existing and identical
+   in CSV, but it will hit a gateway timeout on shared hosting. Fix would be to
+   join once and aggregate rather than sub-query per row.
+2. **Status "Rejected" returns 0** — no student row holds that state. The option
+   is kept because the registry asked for it; it is not a bug.
+3. `student_state` holds 2 rows spelled `xxx`, matched by no status filter.
+4. Browser verification could not be done — the Chrome extension has no site
+   permission for the local dev server, so the filter bar was checked by
+   typecheck, build and backend parity rather than visually. Worth a quick
+   look-over on the Students page.
+5. Carried over and still open from the previous batch: local `curac_save` has
+   no PRIMARY KEYs / AUTO_INCREMENT on several tables; `fee_invoices.created_by`
+   is NOT NULL while `FinesController::createFine()` may pass null; HR "Add
+   Staff" creates no `users` row so those staff cannot log in.
 
 ## Recently Completed
+- Students page: full filter set + Excel export (this task).
 - Fixed all 9 issues from `FIX.pdf` (student portal QA report).
+- Profile-picture removal endpoints; staff-email persistence fixes on create/edit.

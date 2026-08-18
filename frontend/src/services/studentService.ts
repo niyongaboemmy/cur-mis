@@ -206,7 +206,10 @@ export interface BulkPatchedRow {
   data:   Record<string, string>
 }
 
-/* ── CSV export modal ────────────────────────────────────────── */
+/* ── Export modal ────────────────────────────────────────────── */
+
+/** File the export endpoint should produce. */
+export type ExportFormat = 'xlsx' | 'csv'
 
 export interface ExportColumn {
   key:   string
@@ -466,10 +469,15 @@ export const studentService = {
     template_id?: string | number
     columns?:     string[]
     filters?:     Record<string, string | number | undefined>
+    /** `xlsx` for a real Excel workbook, `csv` for plain text. Defaults to
+     *  xlsx: opening a CSV, Excel strips the leading 0 from Rwandan phone
+     *  numbers and rounds 16-digit national IDs to 1.19958E+15. */
+    format?:      ExportFormat
   }) => {
     const token = useAuthStore.getState().token
     const base  = import.meta.env.VITE_API_URL ?? ''
     const search = new URLSearchParams()
+    search.set('format', params.format ?? 'xlsx')
     if (params.template_id != null && params.template_id !== '') {
       search.set('template_id', String(params.template_id))
     }

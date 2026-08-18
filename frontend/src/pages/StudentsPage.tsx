@@ -613,27 +613,19 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
     }
   };
 
-  // When a programme is picked we send ONLY the programme filter (plus the
-  // search box if the user is typing). Implicit filters like the topnav's
-  // academic year and the auto-derived department would AND together with
-  // `std_option` and silently zero out the result set, so we drop them.
-  // To filter further on top of a programme, the admin can clear the
-  // programme picker first or we'll add explicit filter combinators later.
+  // Every filter composes — Option included. It used to be exclusive (picking
+  // one dropped all the others) because an auto-derived department could AND
+  // with `std_option` and zero the result set. Department is now chosen by
+  // hand and the Option list is scoped to it, so the pair always agrees:
+  // measured across the Education options, 99.4% of students matched by an
+  // option also carry that option's department. Exclusivity only survived as
+  // a way to silently discard the nine other filters the user had set.
   const listParams: StudentListParams = useMemo(() => {
-    if (program) {
-      return {
-        page,
-        per_page: PER_PAGE,
-        q: debouncedQ || undefined,
-        std_option: program,
-        sort_by: sort_by || undefined,
-        sort_dir: sort_dir || undefined,
-      };
-    }
     return {
       page,
       per_page: PER_PAGE,
       q: debouncedQ || undefined,
+      std_option: program || undefined,
       gender: gender || undefined,
       student_state: state === "all" ? undefined : state,
       nationality: nationality || undefined,
@@ -739,6 +731,11 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
     [filterOpts],
   );
 
+  const statusFacets: FacetOption[] = useMemo(
+    () => (filterOpts?.statuses ?? []).map((st) => ({ value: st.value, label: st.label })),
+    [filterOpts],
+  );
+
   /**
    * The Option picker is specific to Education, per the registry's request:
    * only that faculty's intake is tracked at option level, so showing it for
@@ -832,21 +829,8 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
     update({ department: v || undefined, program: undefined });
   };
 
-  /** Picking a programme is an exclusive query (the backend sends only
-   *  `std_option`). Keep the department selected — it scopes the programme
-   *  list and keeps this picker visible — but clear the filters the programme
-   *  query ignores so the visible chips stay accurate. */
   const onProgramChange = (v: string | undefined) => {
-    if (!v) {
-      update({ program: undefined });
-      return;
-    }
-    update({
-      program: v,
-      current_level: undefined,
-      gender: undefined,
-      nationality: undefined,
-    });
+    update({ program: v || undefined });
   };
 
   const clearAll = () =>
@@ -866,20 +850,6 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
                 placeholder="Search by name, email, reg #…"
                 className="input pl-9"
               />
-            </div>
-            <div className="flex items-center gap-2 w-full md:w-40 shrink-0">
-              <span className="text-[11px] uppercase tracking-wider text-ink-400 whitespace-nowrap">
-                State
-              </span>
-              <select
-                value={state}
-                onChange={(e) => update({ student_state: e.target.value })}
-                className="input input-sm w-full bg-white dark:bg-ink-900 cursor-pointer text-ink-900 dark:text-white"
-              >
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-                <option value="all">All</option>
-              </select>
             </div>
           </div>
 
@@ -928,7 +898,7 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
               onClick={() => setExportOpen(true)}
               disabled={total === 0}
               className="btn-primary btn-sm flex items-center gap-1.5"
-              title="Export the current student list to CSV"
+              title="Download the filtered student list as Excel or CSV"
             >
               <Download className="w-3.5 h-3.5" /> Export
             </button>
@@ -936,13 +906,17 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
         </div>
 
         <div className="mt-3 flex flex-wrap items-end gap-2">
+          {/* Sole owner of `student_state`. The picker's own "All" entry
+              reports the empty string, but an ABSENT student_state means
+              Active on this page — so clearing has to say "all" out loud, and
+              "all" maps back to empty here to keep that entry highlighted. */}
           <FilterSelect
             label="Status"
-            value={state === "active" ? "active" : state}
-            onChange={(v) => update({ student_state: v || "active" })}
-            options={(filterOpts?.statuses ?? []).map((st) => ({ value: st.value, label: st.label }))}
+            value={state === "all" ? "" : state}
+            onChange={(v) => update({ student_state: v || "all" })}
+            options={statusFacets}
             placeholder="All statuses"
-            className="w-full sm:w-40"
+            className="w-full sm:w-44"
           />
           <FilterSelect
             label="Academic year"
