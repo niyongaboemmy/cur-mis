@@ -540,11 +540,17 @@ class ApplicationService
             [$applicationId]
         );
         if (!$check || ($check['status'] ?? '') !== 'enrolled') {
+            // Full diagnostic detail goes to the server log only — this message is
+            // surfaced verbatim to the admin in a toast, so it must stay free of
+            // row ids and internal maintenance instructions.
+            error_log(
+                "[ApplicationService] Enrollment desync: student row {$studentId} was created " .
+                "but application {$applicationId} did not advance to 'enrolled' (current status: " .
+                ($check['status'] ?? 'unknown') . ")."
+            );
             throw new \RuntimeException(
-                "Enrollment desync: student row {$studentId} was created but application " .
-                "{$applicationId} did not advance to 'enrolled' (current status: " .
-                ($check['status'] ?? 'unknown') . "). " .
-                "Run scripts/diagnose_pending_enrolled.php --fix to repair."
+                'The student record was created but this application could not be marked as ' .
+                'enrolled. Please contact IT support before retrying.'
             );
         }
 

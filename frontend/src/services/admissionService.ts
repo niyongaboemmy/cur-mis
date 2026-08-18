@@ -311,7 +311,10 @@ export const verificationService = {
     api.patch<null>(`/api/admin/verifications/${applicationId}/documents/${documentId}`, data),
 
   /** Request document changes (sends email for all rejected documents) */
-  requestDocumentChanges: (applicationId: number, data: { message?: string; document_ids?: number[] } = {}) =>
+  requestDocumentChanges: (
+    applicationId: number,
+    data: { message?: string; document_ids?: number[]; document_type_ids?: number[] } = {},
+  ) =>
     api.post<null>(`/api/admin/verifications/${applicationId}/request-changes`, data),
 
   /** Returns the raw file server URL/redirect */

@@ -399,7 +399,12 @@ export default function ApplicationDetailPage() {
       <p className="text-ink-500 text-[13px] p-4">Application not found.</p>
     );
 
-  const docs = appData.documents ?? [];
+  // The API returns the full requirement checklist: every document required for
+  // the applicant's faculty, including the ones with nothing attached yet
+  // (id === null). `docs` keeps only real uploads for preview/validation flows.
+  const checklist = (appData.documents ?? []) as any[];
+  const docs = checklist.filter((d: any) => d.id != null);
+  const missingDocs = checklist.filter((d: any) => d.id == null);
   const statusLog = appData.status_log ?? [];
 
   return (
@@ -855,13 +860,13 @@ export default function ApplicationDetailPage() {
                                 VerificationStatus.VERIFIED,
                             ).length
                           }{" "}
-                          / {docs.length}{" "}
+                          / {checklist.length}{" "}
                           <span className="text-[12px] font-normal text-ink-500 ml-1">
                             Verified
                           </span>
                         </p>
                       </div>
-                      {docs.length > 0 && (
+                      {checklist.length > 0 && (
                         <div className="w-12 h-12 rounded-full border-4 border-emerald-100 dark:border-emerald-900/30 flex items-center justify-center">
                           <span className="text-[12px] font-black text-emerald-600">
                             {Math.round(
@@ -870,7 +875,7 @@ export default function ApplicationDetailPage() {
                                   d.verification_status ===
                                   VerificationStatus.VERIFIED,
                               ).length /
-                                docs.length) *
+                                Math.max(checklist.length, 1)) *
                                 100,
                             )}
                             %
@@ -903,10 +908,11 @@ export default function ApplicationDetailPage() {
                           <ChevronRight className="w-4 h-4 ml-1" />
                         </Link>
                       )}
-                      {docs.some(
+                      {(docs.some(
                         (d: any) =>
                           d.verification_status === VerificationStatus.REJECTED,
-                      ) &&
+                      ) ||
+                        missingDocs.length > 0) &&
                         app.status !== ApplicationStatus.DOCUMENTS_REJECTED && (
                           <button
                             className="btn-secondary ml-2 border-red-200 text-red-600 hover:bg-red-50"
@@ -919,18 +925,21 @@ export default function ApplicationDetailPage() {
                     </div>
                   </div>
 
-                  {docs.length === 0 ? (
+                  {checklist.length === 0 ? (
                     <div className="p-12 text-center">
                       <FileText className="w-12 h-12 text-ink-200 mx-auto mb-4" />
                       <p className="text-[14px] text-ink-500">
-                        No documents uploaded yet.
+                        No document requirements configured for this faculty.
                       </p>
                     </div>
                   ) : (
                     <div className="divide-y divide-ink-100 dark:divide-ink-800">
-                      {docs.map((d: any, idx: number) => (
+                      {checklist.map((d: any) => {
+                        const idx = docs.findIndex((u: any) => u.id === d.id);
+                        const isMissing = d.id == null;
+                        return (
                         <div
-                          key={d.id}
+                          key={d.id ?? `type-${d.document_type_id}`}
                           className={`p-5 transition-all duration-300 ${
                             d.verification_status ===
                             VerificationStatus.VERIFIED
@@ -944,7 +953,7 @@ export default function ApplicationDetailPage() {
                           <div className="flex items-start justify-between gap-4">
                             <div className="flex items-start gap-4 min-w-0">
                               <div
-                                className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${d.verification_status === VerificationStatus.VERIFIED ? "bg-emerald-50 text-emerald-600" : d.verification_status === VerificationStatus.REJECTED ? "bg-red-50 text-red-600" : "bg-ink-100 text-ink-500"}`}
+                                className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${isMissing ? "bg-amber-50 text-amber-600" : d.verification_status === VerificationStatus.VERIFIED ? "bg-emerald-50 text-emerald-600" : d.verification_status === VerificationStatus.REJECTED ? "bg-red-50 text-red-600" : "bg-ink-100 text-ink-500"}`}
                               >
                                 <FileText className="w-5 h-5" />
                               </div>
@@ -958,24 +967,39 @@ export default function ApplicationDetailPage() {
                                   )}
                                 </p>
                                 <div className="flex items-center gap-2 mt-1 flex-wrap">
-                                  <span className="text-[12px] text-ink-500 truncate max-w-[200px]">
-                                    {d.file_original_name}
-                                  </span>
-                                  <span className="text-ink-300">·</span>
-                                  <span className="text-[11px] text-ink-400 font-medium uppercase">
-                                    {Math.ceil((d.file_size || 0) / 1024)} KB
-                                  </span>
-                                  <DocStatusPill
-                                    status={d.verification_status}
-                                  />
+                                  {isMissing ? (
+                                    <>
+                                      <span className="text-[12px] text-ink-500 italic">
+                                        Nothing attached
+                                      </span>
+                                      <span className="px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 text-[11px] font-black uppercase tracking-wide">
+                                        {d.is_required ? "Required" : "Optional"} · Not uploaded
+                                      </span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <span className="text-[12px] text-ink-500 truncate max-w-[200px]">
+                                        {d.file_original_name}
+                                      </span>
+                                      <span className="text-ink-300">·</span>
+                                      <span className="text-[11px] text-ink-400 font-medium uppercase">
+                                        {Math.ceil((d.file_size || 0) / 1024)} KB
+                                      </span>
+                                      <DocStatusPill
+                                        status={d.verification_status}
+                                      />
+                                    </>
+                                  )}
                                 </div>
                               </div>
                             </div>
 
                             <div className="flex items-center gap-2 shrink-0">
+                              {isMissing ? null : (
+                              <>
                               <button
                                 onClick={() => {
-                                  setPreviewIndex(idx);
+                                  setPreviewIndex(Math.max(idx, 0));
                                   setIsPreviewOpen(true);
                                 }}
                                 className="p-2 rounded-lg hover:bg-ink-100 dark:hover:bg-ink-800 text-ink-500 transition-colors"
@@ -1002,6 +1026,8 @@ export default function ApplicationDetailPage() {
                               >
                                 <Download className="w-4 h-4" />
                               </a>
+                              </>
+                              )}
                             </div>
                           </div>
 
@@ -1048,11 +1074,13 @@ export default function ApplicationDetailPage() {
                             </div>
                           )}
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
 
                   {docs.length > 0 &&
+                    missingDocs.length === 0 &&
                     docs.filter((d: any) => d.verification_status === "pending")
                       .length === 0 &&
                     nextApp && (
@@ -1653,7 +1681,7 @@ export default function ApplicationDetailPage() {
         isOpen={isRequestChangesOpen}
         onClose={() => setIsRequestChangesOpen(false)}
         applicationId={appId}
-        documents={docs}
+        documents={checklist}
         onSuccess={requestChangesSuccess}
       />
 

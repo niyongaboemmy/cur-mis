@@ -28,6 +28,87 @@ class ApplicationDocumentModel extends BaseModel
         );
     }
 
+    /**
+     * Full requirement checklist for an application: every admission requirement
+     * configured for the application's faculty, merged with whatever the applicant
+     * has actually uploaded. Requirements with no upload come back with a null `id`
+     * and verification_status = 'missing', so the admin UI can still list them
+     * (e.g. when requesting changes before anything was attached).
+     *
+     * Uploaded documents whose type is not part of the faculty checklist are
+     * appended at the end so nothing is hidden.
+     */
+    public function getChecklistForApplication(int $applicationId, ?int $facultyId): array
+    {
+        $uploaded = $this->getForApplication($applicationId);
+        $byType   = [];
+        foreach ($uploaded as $doc) {
+            $byType[(int)$doc['document_type_id']] = $doc;
+        }
+
+        $requirements = [];
+        if ($facultyId) {
+            $requirements = $this->db->fetchAll(
+                "SELECT ar.document_type_id, ar.is_required, ar.notes, ar.sort_order,
+                        dt.name AS type_name, dt.slug AS type_slug,
+                        dt.description AS type_description, dt.allowed_extensions
+                 FROM `admission_requirements` ar
+                 JOIN `document_types` dt ON dt.id = ar.document_type_id
+                 WHERE ar.faculty_id = ?
+                 ORDER BY ar.sort_order ASC, ar.id ASC",
+                [$facultyId]
+            );
+        }
+
+        $checklist = [];
+        $seen      = [];
+
+        foreach ($requirements as $req) {
+            $typeId  = (int)$req['document_type_id'];
+            $seen[$typeId] = true;
+            $doc     = $byType[$typeId] ?? null;
+
+            $checklist[] = array_merge($doc ?? [
+                'id'                   => null,
+                'application_id'       => $applicationId,
+                'applicant_profile_id' => null,
+                'document_type_id'     => $typeId,
+                'file_server_id'       => null,
+                'file_original_name'   => null,
+                'file_size'            => null,
+                'file_mime'            => null,
+                'verification_status'  => 'missing',
+                'verified_by'          => null,
+                'verified_at'          => null,
+                'verification_comment' => null,
+                'verifier_name'        => null,
+                'uploaded_at'          => null,
+                'type_name'            => $req['type_name'],
+                'type_slug'            => $req['type_slug'],
+            ], [
+                'is_requirement'    => true,
+                'is_required'       => (int)$req['is_required'],
+                'requirement_notes' => $req['notes'],
+                'type_description'  => $req['type_description'],
+                'allowed_extensions' => $req['allowed_extensions'],
+                'is_uploaded'       => $doc !== null,
+            ]);
+        }
+
+        foreach ($uploaded as $doc) {
+            if (isset($seen[(int)$doc['document_type_id']])) {
+                continue;
+            }
+            $checklist[] = array_merge($doc, [
+                'is_requirement' => false,
+                'is_required'    => 0,
+                'is_uploaded'    => true,
+            ]);
+        }
+
+        return $checklist;
+    }
+
     public function countVerified(int $applicationId): int
     {
         $row = $this->db->fetchOne(

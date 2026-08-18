@@ -121,7 +121,7 @@ export default function ApplicantDocumentsPage() {
                 <DocumentListItem
                   key={doc.id}
                   doc={doc}
-                  onDelete={() => removeDoc.mutate(doc.id)}
+                  onDelete={() => removeDoc.mutate(doc.id as number)}
                   onPreview={setPreviewDoc}
                 />
               ))}
@@ -160,7 +160,7 @@ export default function ApplicantDocumentsPage() {
           open={!!previewDoc}
           onClose={() => setPreviewDoc(null)}
           title={previewDoc.document_type_name || "Document Preview"}
-          url={applicantService.downloadUrl(previewDoc.id)}
+          url={applicantService.downloadUrl(previewDoc.id as number)}
           mimeType={previewDoc.file_mime ?? undefined}
         />
       )}
@@ -270,7 +270,7 @@ function DocumentListItem({
             <Eye className="w-4 h-4" />
           </button>
           <a
-            href={applicantService.downloadUrl(doc.id)}
+            href={applicantService.downloadUrl(doc.id as number)}
             target="_blank"
             className="p-2 rounded-xl hover:bg-ink-100 dark:hover:bg-ink-700 text-ink-500 transition-colors"
           >
