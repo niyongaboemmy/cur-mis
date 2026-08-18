@@ -38,6 +38,8 @@ $router->group('/api/students', function ($router) {
     // Bulk CSV export (literal segments must come before /:id).
     $router->get('/export',                               [StudentController::class, 'exportCsv']);
     $router->get('/export-columns',                       [StudentController::class, 'exportColumnsList']);
+    // Dropdown values for the list's filter bar (literal — before /:id).
+    $router->get('/filter-options',                       [StudentController::class, 'filterOptions']);
     $router->get('/export-templates',                     [StudentController::class, 'listExportTemplates']);
     $router->post('/export-templates',                    [StudentController::class, 'saveExportTemplate']);
     $router->delete('/export-templates/:id',              [StudentController::class, 'deleteExportTemplate']);

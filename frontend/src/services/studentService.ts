@@ -97,8 +97,41 @@ export interface StudentListParams {
   intake?:        string
   /** Student category bucket — matches student.category (undergraduate | postgraduate). */
   category?:      string
+  /* ── Residence. Free text on the student record, so the values come from
+     GET /api/students/filter-options rather than a canonical list. ── */
+  country?:       string
+  province?:      string
+  district?:      string
+  sector?:        string
+  /* ── Age, derived server-side from `birthdate`. Students whose date of
+     birth is missing or unparseable are excluded from an age filter — their
+     age is unknown, not zero. ── */
+  age_min?:       string | number
+  age_max?:       string | number
   sort_by?:       string
   sort_dir?:      'asc' | 'desc'
+}
+
+/** One selectable value, with how many students carry it. */
+export interface StudentFilterFacet {
+  value:   string
+  /** Parent value for cascading levels (district→province, sector→district). */
+  parent?: string
+  count:   number
+}
+
+export interface StudentFilterOptions {
+  faculties:      { id: number; name: string; acronym: string }[]
+  departments:    { id: number; name: string; faculty_id: number }[]
+  options:        { id: number; name: string; department_id: number }[]
+  countries:      StudentFilterFacet[]
+  provinces:      StudentFilterFacet[]
+  districts:      StudentFilterFacet[]
+  sectors:        StudentFilterFacet[]
+  academic_years: StudentFilterFacet[]
+  statuses:       { value: string; label: string }[]
+  /** `with_dob` of `total` students have a usable date of birth. */
+  age:            { min: number; max: number; with_dob: number; total: number }
 }
 
 export interface StudentPayload {
@@ -321,6 +354,16 @@ export const studentService = {
     }
     return api.get<PaginatedResponse<Student>>('/api/students', merged, signal)
   },
+
+  /**
+   * Values for the Students filter bar.
+   *
+   * Location and academic-year options are the values actually present on
+   * student rows, so every choice returns at least one result — the columns
+   * are free text and hold many spellings of the same place.
+   */
+  filterOptions: (signal?: AbortSignal) =>
+    api.get<StudentFilterOptions>('/api/students/filter-options', {}, signal),
 
   stats: (params: { acc_year?: string; campus?: string | number; category?: string } = {}, signal?: AbortSignal) => {
     // Mirror the topbar campus + category scope onto the stats endpoint so

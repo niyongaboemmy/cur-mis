@@ -2382,6 +2382,106 @@ class StudentController extends BaseController
     }
 
     /**
+     * GET /api/students/filter-options
+     *
+     * Everything the Students filter bar needs to populate its dropdowns.
+     *
+     * Location and academic-year options are read back from the student rows
+     * themselves rather than from a reference list, because these columns are
+     * free text filled in by hand over many years: the data holds "SOUTHERN",
+     * "NOTHERN" and 71 distinct spellings for what are really five provinces.
+     * Offering a clean canonical list would mean most choices matched nothing,
+     * so the rule here is that every option shown returns at least one student.
+     *
+     * Province → district → sector are returned with their parent so the UI can
+     * cascade; the parent comes from the data too, so the pairs are real.
+     */
+    public function filterOptions(Request $request, Response $response): never
+    {
+        $db = $this->studentModel->db();
+
+        /** Distinct non-empty values of a free-text column, commonest first. */
+        $distinct = static function (string $col, ?string $parent = null) use ($db): array {
+            $parentSel = $parent ? ", TRIM(`{$parent}`) AS parent" : '';
+            $parentGrp = $parent ? ", LOWER(TRIM(`{$parent}`))" : '';
+            $rows = $db->fetchAll(
+                "SELECT TRIM(`{$col}`) AS value {$parentSel}, COUNT(*) AS count
+                 FROM `student`
+                 WHERE `{$col}` IS NOT NULL AND TRIM(`{$col}`) <> ''
+                 GROUP BY LOWER(TRIM(`{$col}`)){$parentGrp}
+                 ORDER BY count DESC, value ASC"
+            );
+            return array_map(static fn(array $r): array => array_filter([
+                'value'  => (string)$r['value'],
+                'parent' => isset($r['parent']) && trim((string)$r['parent']) !== '' ? (string)$r['parent'] : null,
+                'count'  => (int)$r['count'],
+            ], static fn($v) => $v !== null), $rows);
+        };
+
+        // Faculty / department / option come from their own tables — those ARE
+        // curated, and `student.faculty` / `student.department` store their ids.
+        $faculties = $db->fetchAll(
+            "SELECT fac_id AS id, TRIM(fac_name) AS name, TRIM(fac_acronym) AS acronym
+             FROM `faculty` ORDER BY fac_name"
+        );
+        $departments = $db->fetchAll(
+            "SELECT dep_id AS id, TRIM(dep_name) AS name, fac_id AS faculty_id
+             FROM `departements` ORDER BY dep_name"
+        );
+        $options = $this->tableExists('options')
+            ? $db->fetchAll(
+                "SELECT id, TRIM(name) AS name, department_id
+                 FROM `options` WHERE is_active = 1 OR is_active IS NULL ORDER BY name"
+              )
+            : [];
+
+        // Age is only knowable for rows whose birthdate parses — see the
+        // age_min/age_max filter. Report the coverage so the UI can say so
+        // rather than leaving an admin wondering why the count dropped.
+        $ageRow = $db->fetchOne(
+            "SELECT
+               MIN(TIMESTAMPDIFF(YEAR, STR_TO_DATE(birthdate, '%Y-%m-%d'), CURDATE())) AS min_age,
+               MAX(TIMESTAMPDIFF(YEAR, STR_TO_DATE(birthdate, '%Y-%m-%d'), CURDATE())) AS max_age,
+               COUNT(*) AS with_dob
+             FROM `student`
+             WHERE birthdate REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+               AND TIMESTAMPDIFF(YEAR, STR_TO_DATE(birthdate, '%Y-%m-%d'), CURDATE()) BETWEEN 10 AND 100"
+        ) ?: [];
+        $totalStudents = (int)($db->fetchOne("SELECT COUNT(*) c FROM `student`")['c'] ?? 0);
+
+        $this->success($response, [
+            'faculties'   => array_map(static fn($r) => [
+                'id' => (int)$r['id'], 'name' => (string)$r['name'], 'acronym' => (string)($r['acronym'] ?? ''),
+            ], $faculties),
+            'departments' => array_map(static fn($r) => [
+                'id' => (int)$r['id'], 'name' => (string)$r['name'], 'faculty_id' => (int)$r['faculty_id'],
+            ], $departments),
+            'options'     => array_map(static fn($r) => [
+                'id' => (int)$r['id'], 'name' => (string)$r['name'], 'department_id' => (int)$r['department_id'],
+            ], $options),
+            'countries'      => $distinct('country'),
+            'provinces'      => $distinct('province'),
+            'districts'      => $distinct('district', 'province'),
+            'sectors'        => $distinct('sector', 'district'),
+            'academic_years' => $distinct('acc_year'),
+            'statuses'       => [
+                ['value' => 'active',    'label' => 'Active'],
+                ['value' => 'inactive',  'label' => 'Inactive'],
+                ['value' => 'graduated', 'label' => 'Graduated'],
+                ['value' => 'graduands', 'label' => 'Graduands'],
+                ['value' => 'suspended', 'label' => 'Suspended'],
+                ['value' => 'rejected',  'label' => 'Rejected'],
+            ],
+            'age' => [
+                'min'          => isset($ageRow['min_age']) ? (int)$ageRow['min_age'] : 15,
+                'max'          => isset($ageRow['max_age']) ? (int)$ageRow['max_age'] : 80,
+                'with_dob'     => (int)($ageRow['with_dob'] ?? 0),
+                'total'        => $totalStudents,
+            ],
+        ], 'Filter options fetched.');
+    }
+
+    /**
      * Whether `$table` exists in the current schema. Cached per request.
      * Companion to columnExists() for the same legacy-schema guards.
      */
@@ -2408,6 +2508,10 @@ class StudentController extends BaseController
             'student_state', 'gender', 'faculty', 'department',
             'current_level', 'nationality', 'acc_year', 'program',
             'std_option', 'campus', 'intake', 'category',
+            // Residence, straight off the student record.
+            'country', 'province', 'district', 'sector',
+            // Age is derived from `birthdate` — see the age_min/age_max block.
+            'age_min', 'age_max',
             // Alias for the legacy `program` column which actually stores the
             // learning mode (Day / Evening / Weekend). Adding it under its
             // semantic name keeps the API honest while we live with the
@@ -2419,6 +2523,46 @@ class StudentController extends BaseController
             $val = $request->query($col);
             if ($val === null || $val === '') continue;
             $lower = strtolower((string)$val);
+
+            if ($col === 'age_min' || $col === 'age_max') {
+                // `birthdate` is a varchar holding a mix of ISO dates, blanks
+                // and junk ('1/1/1990', '51985-01-01'). Only well-formed ISO
+                // values can yield an age, so the REGEXP guard keeps
+                // STR_TO_DATE from producing NULLs that would other­wise make
+                // the comparison behave unpredictably. Students with no usable
+                // date of birth are excluded from an age filter by design —
+                // their age is unknown, not zero.
+                $age = (int)$val;
+                if ($age <= 0 || $age > 150) continue;
+                $op = $col === 'age_min' ? '>=' : '<=';
+                $clauses[] = "({$p}birthdate REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'"
+                           . " AND TIMESTAMPDIFF(YEAR, STR_TO_DATE({$p}birthdate, '%Y-%m-%d'), CURDATE()) {$op} ?)";
+                $bindings[] = $age;
+                continue;
+            }
+
+            if (in_array($col, ['country', 'province', 'district', 'sector'], true)) {
+                // Free-text columns filled in by hand over many years, so match
+                // case- and whitespace-insensitively rather than on equality.
+                if ($lower === 'unknown') {
+                    $clauses[] = "({$p}`$col` IS NULL OR TRIM({$p}`$col`) = '')";
+                } else {
+                    $clauses[]  = "LOWER(TRIM({$p}`$col`)) = LOWER(TRIM(?))";
+                    $bindings[] = (string)$val;
+                }
+                continue;
+            }
+
+            if ($col === 'student_state') {
+                // The column holds hand-entered variants of the same state
+                // ('graduated' and 'Graduates', 'graduands' and 'Graduands'),
+                // so a plain equality check silently drops rows.
+                $variants = self::studentStateVariants($lower);
+                $ph = implode(',', array_fill(0, count($variants), '?'));
+                $clauses[] = "LOWER(TRIM({$p}student_state)) IN ($ph)";
+                foreach ($variants as $v) { $bindings[] = $v; }
+                continue;
+            }
 
             if ($col === 'learning_mode') {
                 // Maps to the legacy `program` column on `student`.
@@ -2538,6 +2682,41 @@ class StudentController extends BaseController
             if (!in_array($v, $variants, true)) $variants[] = $v;
         }
         return $variants;
+    }
+
+    /**
+     * Spellings of a student status that all mean the same thing.
+     *
+     * `student.student_state` was filled in by hand for years, so the same
+     * state appears as 'graduated' and 'Graduates', 'graduands' and
+     * 'Graduands'. Matching on one spelling silently drops the rest, which is
+     * how a status filter can return fewer students than actually hold it.
+     *
+     * An unrecognised value falls back to itself, so a status this list has
+     * never seen still filters on exactly what was asked for.
+     *
+     * @return array<int, string>
+     */
+    private static function studentStateVariants(string $value): array
+    {
+        $value = strtolower(trim($value));
+
+        $groups = [
+            'active'    => ['active', 'resume'],
+            'inactive'  => ['inactive', 'in-active', 'in active'],
+            'graduated' => ['graduated', 'graduate', 'graduates'],
+            'graduands' => ['graduands', 'graduand', 'graduants', 'graduant'],
+            'suspended' => ['suspended', 'suspend'],
+            'rejected'  => ['rejected', 'reject'],
+        ];
+
+        foreach ($groups as $variants) {
+            if (in_array($value, $variants, true)) {
+                return $variants;
+            }
+        }
+
+        return [$value];
     }
 
     /**
