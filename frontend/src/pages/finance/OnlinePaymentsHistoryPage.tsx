@@ -48,20 +48,32 @@ export default function OnlinePaymentsHistoryPage() {
   const [page, setPage] = useState(1);
   const [keyword, setKeyword] = useState("");
   const [searchInput, setSearchInput] = useState("");
+  // Channel / service narrowing — this listing is what VIEW_MOBILE_PAYMENTS
+  // opens, so it has to be able to show the mobile-money slice on its own.
+  const [channel, setChannel] = useState("");
+  const [serviceCode, setServiceCode] = useState("");
   const [exporting, setExporting] = useState(false);
 
   const { data, isLoading, isFetching, refetch } = useQuery({
-    queryKey: ["finance", "online-payments", page, keyword],
+    queryKey: ["finance", "online-payments", page, keyword, channel, serviceCode],
     queryFn: () =>
       paymentService.getOnlinePaymentsHistory({
         page,
         per_page: 20,
         keyword,
+        channel,
+        service_code: serviceCode,
       }),
     placeholderData: keepPreviousData,
   });
 
   const payments = data?.data?.data || [];
+  // Options come back with the page so the pickers can never drift from what
+  // the gateway is actually writing.
+  const filterOptions = {
+    channels: data?.data?.filters?.channels ?? [],
+    services: data?.data?.filters?.services ?? [],
+  };
   const pagination = data?.data?.pagination;
   const metrics = data?.data?.metrics;
 
@@ -253,16 +265,44 @@ export default function OnlinePaymentsHistoryPage() {
 
       <div className="card overflow-hidden border border-ink-200 dark:border-ink-800">
         <div className="p-3 border-b border-ink-200 dark:border-ink-800 bg-ink-50 dark:bg-ink-900/50 flex flex-col sm:flex-row gap-3 items-center justify-between">
-          <form onSubmit={handleSearch} className="relative w-full max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-400" />
-            <input
-              type="text"
-              placeholder="Search by student ID, slip no, or trans code..."
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              className="input pl-9 w-full"
-            />
-          </form>
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto sm:items-center">
+            <form onSubmit={handleSearch} className="relative w-full sm:max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-400" />
+              <input
+                type="text"
+                placeholder="Search by student ID, slip no, or trans code..."
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                className="input pl-9 w-full"
+              />
+            </form>
+
+            <label className="sr-only" htmlFor="op-channel">Payment channel</label>
+            <select
+              id="op-channel"
+              className="input w-full sm:w-44"
+              value={channel}
+              onChange={(e) => { setChannel(e.target.value); setPage(1); }}
+            >
+              <option value="">All channels</option>
+              {filterOptions.channels.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+
+            <label className="sr-only" htmlFor="op-service">Service paid for</label>
+            <select
+              id="op-service"
+              className="input w-full sm:w-56"
+              value={serviceCode}
+              onChange={(e) => { setServiceCode(e.target.value); setPage(1); }}
+            >
+              <option value="">All services</option>
+              {filterOptions.services.map((s) => (
+                <option key={s.service_code} value={s.service_code}>{s.service_name}</option>
+              ))}
+            </select>
+          </div>
           {keyword && (
             <div className="text-sm text-ink-500 dark:text-ink-400">
               Showing results for "<span className="font-semibold text-ink-900 dark:text-ink-100">{keyword}</span>"

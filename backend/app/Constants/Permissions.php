@@ -125,8 +125,6 @@ class Permissions
     public const MANAGE_ATTENDANCE = 'MANAGE_ATTENDANCE';
 
     // Student Clearance
-    public const VIEW_CLEARANCE = 'VIEW_CLEARANCE';
-    public const MANAGE_CLEARANCE = 'MANAGE_CLEARANCE';
 
     // External portals (role-bound permissions assigned via RBAC seed)
     public const ACCESS_APPLICANT_PORTAL = 'ACCESS_APPLICANT_PORTAL';
@@ -144,7 +142,6 @@ class Permissions
     // identity check instead, which is stricter than any RBAC grant could be
     // (it ties the row to the JWT's own user ID). Reserved in case a staff-
     // facing "manage own profile" screen is added later.
-    public const MANAGE_OWN_PROFILE = 'MANAGE_OWN_PROFILE';
 
     // Messaging
     public const SEND_MESSAGES      = 'SEND_MESSAGES';
@@ -288,13 +285,10 @@ class Permissions
             self::VIEW_ATTENDANCE,
             self::RECORD_ATTENDANCE,
             self::MANAGE_ATTENDANCE,
-            self::VIEW_CLEARANCE,
-            self::MANAGE_CLEARANCE,
             self::ACCESS_APPLICANT_PORTAL,
             self::ACCESS_STUDENT_PORTAL,
             self::ACCESS_TEACHER_PORTAL,
             self::GENERATE_DOCUMENTS,
-            self::MANAGE_OWN_PROFILE,
             self::SEND_MESSAGES,
             self::MANAGE_MESSAGES,
             self::BROADCAST_MESSAGES,

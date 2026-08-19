@@ -15,7 +15,47 @@ export interface StudentIdHistory {
   history: StudentIdCard[]
 }
 
+/** One row of the ID-card workspace roster. */
+export interface StudentIdRosterRow {
+  student_id:    number
+  regnumber:     string
+  fname:         string | null
+  lname:         string | null
+  photo:         string | null
+  campus:        string | null
+  student_state: string | null
+  option_name:   string | null
+  card_id:       number | null
+  issue_date:    string | null
+  expiry_date:   string | null
+  barcode:       string | null
+  card_state:    'none' | 'active' | 'expired' | 'revoked'
+}
+
+export interface StudentIdRosterFilters {
+  page?:      number
+  per_page?:  number
+  keyword?:   string
+  state?:     string
+  campus?:    string
+  option_id?: number
+}
+
 export const studentIdService = {
+  /** Students plus their current card state — powers the ID-card workspace. */
+  roster: (filters: StudentIdRosterFilters = {}, signal?: AbortSignal) =>
+    api.get<{
+      data: StudentIdRosterRow[]
+      pagination: { current_page: number; per_page: number; total: number; last_page: number }
+    }>('/api/student-ids', filters as Record<string, unknown>, signal),
+
+  /** Issue cards for a selection. Partial failures come back in `failed`. */
+  batchIssue: (studentIds: number[], validityYears = 4) =>
+    api.post<{
+      issued: { student_id: number; card_id: number; barcode: string }[]
+      failed: { student_id: number; reason: string }[]
+    }>('/api/student-ids/batch-issue', { student_ids: studentIds, validity_years: validityYears }),
+
   history: (studentId: number | string) =>
     api.get<StudentIdHistory>(`/api/student-ids/by-student/${studentId}`),
 
@@ -32,6 +72,21 @@ export const studentIdService = {
     const params: Record<string, unknown> = { preview: 1 }
     if (photoValue) params.photo = photoValue
     return api.get<{ html: string }>(`/api/student-ids/by-student/${studentId}/card`, params)
+  },
+
+  /** Download one PDF holding every selected student's active card. */
+  batchPrint: async (studentIds: number[]) => {
+    const res = await apiClient.post(
+      '/api/student-ids/batch-print',
+      { student_ids: studentIds },
+      { responseType: 'blob' },
+    )
+    const blob = res.data instanceof Blob ? res.data : new Blob([res.data])
+    const url  = window.URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href = url; a.download = `id-cards-${studentIds.length}.pdf`
+    document.body.appendChild(a); a.click(); a.remove()
+    window.URL.revokeObjectURL(url)
   },
 
   /** Download the card as a PDF (carries the auth header). */

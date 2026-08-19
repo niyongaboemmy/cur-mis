@@ -146,6 +146,10 @@ export const paymentService = {
       keyword?: string;
       page?: number;
       per_page?: number;
+      /** `payment.payment_chanel` — USSD, mobile money, bank. */
+      channel?: string;
+      /** UrubutoPay `service_code` the payer selected. */
+      service_code?: string;
     },
     signal?: AbortSignal,
   ) =>
@@ -160,6 +164,10 @@ export const paymentService = {
       metrics: {
         total_transactions: number;
         total_amount: number;
+      };
+      filters?: {
+        channels: string[];
+        services: { service_code: string; service_name: string }[];
       };
     }>("/api/finance/online-payments", params ?? {}, signal),
 

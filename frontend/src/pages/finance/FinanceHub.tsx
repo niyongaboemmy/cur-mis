@@ -135,7 +135,10 @@ const TABS = [
     label: "Online Payments",
     icon: Receipt,
     end: false,
-    permissions: [PERMISSIONS.VIEW_ONLINE_PAYMENTS_HISTORY],
+    permissions: [
+      PERMISSIONS.VIEW_ONLINE_PAYMENTS_HISTORY,
+      PERMISSIONS.VIEW_MOBILE_PAYMENTS,
+    ],
   },
   {
     to: "/finance/app-fee-reconciliation",

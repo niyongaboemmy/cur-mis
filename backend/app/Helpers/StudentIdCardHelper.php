@@ -162,18 +162,79 @@ class StudentIdCardHelper
         HTML;
     }
 
+    /**
+     * One document holding many cards, each starting on a fresh page.
+     *
+     * Built by reusing buildHtml() per card and keeping only the first
+     * document's shell, so the stylesheet is defined exactly once and the
+     * batch can never drift from the single-card layout.
+     *
+     * @param array<int, array{student: array, card: array, opts?: array}> $items
+     */
+    public static function buildBatchHtml(array $items): string
+    {
+        if ($items === []) {
+            return '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body></body></html>';
+        }
+
+        $shellOpen  = '';
+        $shellClose = '</body></html>';
+        $bodies     = [];
+
+        foreach ($items as $item) {
+            $html = self::buildHtml($item['student'], $item['card'], $item['opts'] ?? []);
+
+            $openAt = strpos($html, '<body>');
+            $endAt  = strrpos($html, '</body>');
+            if ($openAt === false || $endAt === false) {
+                // Shape changed unexpectedly — fall back to the whole document
+                // rather than emitting a half-parsed card.
+                $bodies[] = $html;
+                continue;
+            }
+
+            if ($shellOpen === '') {
+                $shellOpen = substr($html, 0, $openAt + strlen('<body>'));
+            }
+
+            $bodies[] = substr($html, $openAt + strlen('<body>'), $endAt - $openAt - strlen('<body>'));
+        }
+
+        $break = '<div style="page-break-after: always;"></div>';
+
+        return $shellOpen . implode($break, $bodies) . $shellClose;
+    }
+
     /** Stream as a landscape PDF (front + back stacked). Falls back to HTML. */
     public static function stream(string $html, string $filename, bool $download = true): never
     {
         if (class_exists('\\Dompdf\\Dompdf')) {
-            $opts = new \Dompdf\Options();
-            $opts->set('isHtml5ParserEnabled', true);
-            $opts->set('isRemoteEnabled', true);
-            $pdf = new \Dompdf\Dompdf($opts);
-            $pdf->loadHtml($html);
-            $pdf->setPaper('A4', 'portrait');
-            $pdf->render();
-            $pdf->stream($filename, ['Attachment' => $download ? 1 : 0]);
+            // Dompdf trips a pile of PHP 8.4 "implicitly nullable parameter"
+            // deprecations. With display_errors on (any dev box) they are
+            // echoed BEFORE the PDF body, so the download arrives starting
+            // with `<br /><b>Deprecated</b>…` and no reader will open it.
+            // Buffer everything Dompdf emits and discard it, so only the
+            // rendered document reaches the client.
+            ob_start();
+            try {
+                $opts = new \Dompdf\Options();
+                $opts->set('isHtml5ParserEnabled', true);
+                $opts->set('isRemoteEnabled', true);
+                $pdf = new \Dompdf\Dompdf($opts);
+                $pdf->loadHtml($html);
+                $pdf->setPaper('A4', 'portrait');
+                $pdf->render();
+                $output = $pdf->output();
+            } finally {
+                // Drop the notices; never let them prepend the body.
+                ob_end_clean();
+            }
+
+            header('Content-Type: application/pdf');
+            header('Content-Disposition: ' . ($download ? 'attachment' : 'inline')
+                . '; filename="' . addslashes($filename) . '"');
+            header('Content-Length: ' . strlen((string) $output));
+            echo $output;
             exit;
         }
 

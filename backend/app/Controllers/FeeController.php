@@ -837,16 +837,35 @@ class FeeController extends BaseController
         $page    = max(1, (int)($request->query('page') ?? 1));
         $perPage = max(1, min(100, (int)($request->query('per_page') ?? 20)));
         $keyword = $request->query('keyword') ?? '';
+        // VIEW_MOBILE_PAYMENTS opens this listing, so it has to be able to
+        // narrow to the mobile-money side of it: `payment_chanel` is the
+        // channel the payer used (USSD, mobile money, bank) and
+        // `fee_category` is the UrubutoPay service code they picked.
+        $channel     = trim((string)($request->query('channel') ?? ''));
+        $serviceCode = trim((string)($request->query('service_code') ?? ''));
 
         $offset = ($page - 1) * $perPage;
 
         $whereClause = "1=1";
         $params = [];
 
+        if ($channel !== '') {
+            $whereClause .= " AND p.`payment_chanel` = ?";
+            $params[] = $channel;
+        }
+
+        if ($serviceCode !== '') {
+            $whereClause .= " AND p.`fee_category` = ?";
+            $params[] = $serviceCode;
+        }
+
         if ($keyword) {
             $whereClause .= " AND (p.student LIKE ? OR p.slip_no LIKE ? OR p.trans_code LIKE ? OR s.regnumber LIKE ? OR CONCAT(s.fname, ' ', s.lname) LIKE ?)";
             $search = "%{$keyword}%";
-            $params = [$search, $search, $search, $search, $search];
+            // Append — the channel/service filters above already put their
+            // bindings in $params, and reassigning here would drop them while
+            // leaving their placeholders in the WHERE clause.
+            array_push($params, $search, $search, $search, $search, $search);
         }
 
         $countQuery = "SELECT COUNT(*) as total FROM `payment` p LEFT JOIN `student` s ON CONVERT(p.student USING utf8mb4) COLLATE utf8mb4_unicode_ci = CONVERT(s.regnumber USING utf8mb4) COLLATE utf8mb4_unicode_ci WHERE $whereClause";
@@ -878,8 +897,30 @@ class FeeController extends BaseController
         $metricsQuery = "SELECT COUNT(*) as total_tx, SUM(amount) as total_amount FROM `payment`";
         $metrics = $this->db->fetchOne($metricsQuery);
 
+        // Options for the channel / service pickers. Channels come from the
+        // data itself because the gateway adds new ones without a migration.
+        $channels = array_values(array_filter(array_column(
+            $this->db->fetchAll(
+                "SELECT DISTINCT `payment_chanel` FROM `payment`
+                  WHERE `payment_chanel` IS NOT NULL AND `payment_chanel` <> ''
+                  ORDER BY `payment_chanel` ASC"
+            ),
+            'payment_chanel'
+        )));
+
+        $services = $hasCatalogue
+            ? $this->db->fetchAll(
+                "SELECT `service_code`, `service_name` FROM `urubuto_services`
+                  WHERE `is_active` = 1 ORDER BY `sort_order` ASC, `service_name` ASC"
+              )
+            : [];
+
         $this->success($response, [
             'data' => $data,
+            'filters' => [
+                'channels' => $channels,
+                'services' => $services,
+            ],
             'pagination' => [
                 'current_page' => $page,
                 'per_page'     => $perPage,

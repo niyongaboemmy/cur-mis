@@ -141,7 +141,7 @@ const SEARCH_INDEX: SearchEntry[] = [
     keywords: ["payroll", "salary", "salaries", "payslip", "pay slip", "monthly pay", "pay breakdown", "compensation", "remuneration"],
     icon: Briefcase,
     group: "HR Management",
-    permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES],
+    permissions: [PERMISSIONS.VIEW_PAYROLL, PERMISSIONS.MANAGE_PAYROLL],
   },
   {
     to: "/hr/payments",
@@ -150,7 +150,7 @@ const SEARCH_INDEX: SearchEntry[] = [
     keywords: ["salary payments", "disbursement", "payment history", "pay records", "payroll history", "paid salaries", "payment records"],
     icon: Briefcase,
     group: "HR Management",
-    permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES],
+    permissions: [PERMISSIONS.VIEW_PAYROLL, PERMISSIONS.MANAGE_PAYROLL],
   },
   {
     to: "/hr/leave",
@@ -159,7 +159,11 @@ const SEARCH_INDEX: SearchEntry[] = [
     keywords: ["leave", "leave requests", "leave management", "vacation", "time off", "annual leave", "sick leave", "leave approvals", "leave balance", "days off", "absence"],
     icon: Briefcase,
     group: "HR Management",
-    permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES],
+    permissions: [
+      PERMISSIONS.VIEW_HR_EMPLOYEES,
+      PERMISSIONS.VIEW_LEAVE_REQUESTS,
+      PERMISSIONS.MANAGE_LEAVE_REQUESTS,
+    ],
   },
   {
     to: "/hr/settings",
@@ -291,7 +295,11 @@ const SEARCH_INDEX: SearchEntry[] = [
     keywords: ["finance", "financial", "overview", "fees", "payments", "billing summary", "money", "revenue", "income", "finance overview"],
     icon: CreditCard,
     group: "Finance",
-    permissions: [PERMISSIONS.VIEW_FINANCE, PERMISSIONS.MANAGE_FINANCE],
+    permissions: [
+      PERMISSIONS.VIEW_FINANCE,
+      PERMISSIONS.MANAGE_FINANCE,
+      PERMISSIONS.VIEW_FINANCE_OVERVIEW,
+    ],
   },
   {
     to: "/finance/billing",
@@ -300,7 +308,11 @@ const SEARCH_INDEX: SearchEntry[] = [
     keywords: ["billing", "invoices", "student billing", "fee payment", "ledger", "invoice management", "student ledger", "tuition payment", "payment records", "receipt"],
     icon: CreditCard,
     group: "Finance",
-    permissions: [PERMISSIONS.VIEW_FINANCE, PERMISSIONS.MANAGE_FINANCE],
+    permissions: [
+      PERMISSIONS.VIEW_FINANCE,
+      PERMISSIONS.MANAGE_FINANCE,
+      PERMISSIONS.VIEW_FINANCE_BILLING,
+    ],
   },
   {
     to: "/finance/approvals",
@@ -381,7 +393,11 @@ const SEARCH_INDEX: SearchEntry[] = [
     keywords: ["revenue reports", "finance reports", "fee collection", "revenue", "collection report", "financial report", "income report", "payment summary"],
     icon: CreditCard,
     group: "Finance",
-    permissions: [PERMISSIONS.VIEW_FINANCE, PERMISSIONS.MANAGE_FINANCE],
+    permissions: [
+      PERMISSIONS.VIEW_FINANCE,
+      PERMISSIONS.MANAGE_FINANCE,
+      PERMISSIONS.VIEW_FINANCE_REPORTS,
+    ],
   },
   {
     to: "/my-finance",
@@ -464,7 +480,6 @@ const SEARCH_INDEX: SearchEntry[] = [
     ],
     icon: Layers,
     group: "Administration",
-    hideForRoles: ["hr_manager"],
     permissions: [
       PERMISSIONS.MANAGE_ACADEMICS,
       PERMISSIONS.MANAGE_DEGREES,
@@ -473,6 +488,42 @@ const SEARCH_INDEX: SearchEntry[] = [
       PERMISSIONS.MANAGE_OPTIONS,
       PERMISSIONS.MANAGE_LEVELS,
       PERMISSIONS.MANAGE_SCHOOLS,
+      PERMISSIONS.MANAGE_LEAVE_TYPES,
+      PERMISSIONS.MANAGE_CAMPUSES,
+      PERMISSIONS.MANAGE_ADMISSIONS,
+    ],
+  },
+  {
+    to: "/timetable",
+    label: "Timetable",
+    sub: "Weekly session grid by programme, room and lecturer",
+    keywords: ["timetable", "schedule", "weekly schedule", "class schedule", "sessions", "lectures", "rooms", "time table", "calendar"],
+    icon: Layers,
+    group: "Academics",
+    permissions: [
+      PERMISSIONS.VIEW_TIMETABLE,
+      PERMISSIONS.MANAGE_TIMETABLE,
+    ],
+  },
+  {
+    to: "/settings",
+    label: "System Settings",
+    sub: "Guidance videos and application fee mapping",
+    keywords: ["settings", "system settings", "configuration", "guidance videos", "fee mapping", "application fee", "institution settings", "preferences"],
+    icon: Settings,
+    group: "Administration",
+    permissions: [PERMISSIONS.VIEW_SETTINGS, PERMISSIONS.MANAGE_SETTINGS],
+  },
+  {
+    to: "/academic/system-documents",
+    label: "System Documents",
+    sub: "Fee structures, policies and institutional files",
+    keywords: ["system documents", "documents", "policies", "fee structure", "institutional documents", "downloads", "forms", "templates"],
+    icon: Layers,
+    group: "Administration",
+    permissions: [
+      PERMISSIONS.MANAGE_ACADEMIC_SETTINGS,
+      PERMISSIONS.VIEW_SYSTEM_BASICS,
     ],
   },
   {

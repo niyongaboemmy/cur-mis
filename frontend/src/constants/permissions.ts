@@ -107,8 +107,6 @@ export const PERMISSIONS = {
   MANAGE_ATTENDANCE: 'MANAGE_ATTENDANCE',
 
   // Student Clearance
-  VIEW_CLEARANCE:   'VIEW_CLEARANCE',
-  MANAGE_CLEARANCE: 'MANAGE_CLEARANCE',
 
   // External portals (assigned to `applicant` / `student` roles via DB seed)
   ACCESS_APPLICANT_PORTAL: 'ACCESS_APPLICANT_PORTAL',
@@ -118,7 +116,6 @@ export const PERMISSIONS = {
   ACCESS_TEACHER_PORTAL:   'ACCESS_TEACHER_PORTAL',
 
   // Applicant self-service
-  MANAGE_OWN_PROFILE: 'MANAGE_OWN_PROFILE',
 
   // Document Generation
   GENERATE_DOCUMENTS: 'GENERATE_DOCUMENTS',

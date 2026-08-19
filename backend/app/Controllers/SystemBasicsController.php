@@ -9,21 +9,18 @@ use Core\Response;
 use App\Models\AcademicYearModel;
 use App\Models\AcademicTermModel;
 use App\Models\SettingModel;
-use App\Models\TimetableModel;
 
 class SystemBasicsController extends BaseController
 {
     private AcademicYearModel $yearModel;
     private AcademicTermModel $termModel;
     private SettingModel $settingModel;
-    private TimetableModel $timetableModel;
 
     public function __construct()
     {
         $this->yearModel      = new AcademicYearModel();
         $this->termModel      = new AcademicTermModel();
         $this->settingModel   = new SettingModel();
-        $this->timetableModel = new TimetableModel();
     }
 
     /**
@@ -44,35 +41,18 @@ class SystemBasicsController extends BaseController
             $indexedSettings[$s['key_name']] = $s['value'];
         }
 
-        // Get relevant timetable entries for the active year.
-        // Wrapped in try/catch: if the timetable or rooms table doesn't exist
-        // on this environment the rest of the response should still succeed.
-        $timetable = [];
-        try {
-            $sql = "SELECT t.*, m.module_name as course_name, m.module_code as course_code, r.name as room_name
-                    FROM timetable t
-                    LEFT JOIN modules m ON t.course_id = m.module_id
-                    LEFT JOIN rooms r ON t.room_id = r.id";
-
-            $bindings = [];
-            if ($activeYear) {
-                $sql .= " WHERE t.academic_year_id = ?";
-                $bindings[] = (int)$activeYear['id'];
-            }
-
-            $sql .= " ORDER BY t.day_of_week, t.start_time LIMIT 100";
-            $timetable = $this->timetableModel->db()->fetchAll($sql, $bindings);
-        } catch (\Throwable $e) {
-            // Non-fatal: timetable table may not exist in all environments
-        }
-
+        // The legacy `timetable` table used to be joined in here and attached
+        // to every response — up to 100 rows on a call the app makes on load.
+        // No client ever read the field (it is not even in the SystemBasics
+        // type), and the live schedule lives in `module_schedules`, which
+        // /api/timetable serves. The join is gone; the table is left in place
+        // for archival (migration 142 explains why).
         $this->success($response, [
             'active_year' => $activeYear,
             'active_term' => $activeTerm,
             'years'       => $years,
             'terms'       => $terms,
             'settings'    => $indexedSettings,
-            'timetable'   => $timetable
         ], 'System basics fetched.');
     }
 

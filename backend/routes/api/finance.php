@@ -124,8 +124,6 @@ $router->group('/api/finance', function ($router) {
         Permissions::VIEW_FINANCE,
         Permissions::MANAGE_FINANCE,
         Permissions::VIEW_FINANCE_CLEARANCE,
-        Permissions::VIEW_CLEARANCE,
-        Permissions::MANAGE_CLEARANCE,
     ])]);
 
     // ── Read-only: reports ───────────────────────────────────────────────────

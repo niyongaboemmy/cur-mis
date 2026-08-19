@@ -21,7 +21,10 @@ $router->group('/api/system', function ($router) {
 
 // Guidance videos — admins set the two public help-video URLs.
 $router->group('/api/system', function ($router) {
+    // Registered for both verbs: systemService.saveGuidanceVideos() issues a
+    // PUT, and only POST was declared here, so every save 404'd.
     $router->post('/guidance-videos', [SystemBasicsController::class, 'saveGuidanceVideos']);
+    $router->put('/guidance-videos',  [SystemBasicsController::class, 'saveGuidanceVideos']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_SETTINGS)]);
 
 // Public read for the apply / login pages (no auth required).

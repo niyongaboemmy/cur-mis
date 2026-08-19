@@ -89,16 +89,9 @@ $mappings = [
         Permissions::RECORD_ATTENDANCE,
         Permissions::MANAGE_ATTENDANCE,
     ],
-    'Student Clearance' => [
-        Permissions::VIEW_CLEARANCE,
-        Permissions::MANAGE_CLEARANCE,
-    ],
     'External Portals' => [
         Permissions::ACCESS_APPLICANT_PORTAL,
         Permissions::ACCESS_STUDENT_PORTAL,
-    ],
-    'Applicant Self-Service' => [
-        Permissions::MANAGE_OWN_PROFILE,
     ],
 ];
 

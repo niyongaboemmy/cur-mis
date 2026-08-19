@@ -212,13 +212,16 @@ const NAV_TREE: NavNode[] = [
     id: "students-group",
     label: "Students",
     icon: GraduationCap,
-    // Hidden for teaching roles: everything a lecturer needs from this area is
-    // in "My Teaching", scoped to their own courses. Presentational only — the
-    // underlying permissions must stay granted (the embedded roster and mark
-    // sheet check RECORD_ATTENDANCE / RECORD_MODULE_MARKS), so this hides the
-    // duplicate entry point without disabling the feature.
-    hideForRoles: ["lecturer", "HOD"],
-    permissions: [PERMISSIONS.VIEW_STUDENTS, PERMISSIONS.GENERATE_DOCUMENTS],
+    // Visibility follows the PERMISSIONS below, never the role name. Teaching
+    // staff reach their own courses through "My Teaching"; when they are also
+    // granted the management permissions here — as a HOD normally is — this
+    // section has to stay reachable. Hiding it by role name locked HODs out of
+    // grants the Roles screen listed as assigned.
+    permissions: [
+      PERMISSIONS.VIEW_STUDENTS,
+      PERMISSIONS.GENERATE_DOCUMENTS,
+      PERMISSIONS.MANAGE_STUDENT_IDS,
+    ],
     children: [
       {
         to: "/students",
@@ -229,6 +232,14 @@ const NAV_TREE: NavNode[] = [
         to: "/admin/international-students",
         label: "International students",
         permissions: [PERMISSIONS.VIEW_STUDENTS],
+      },
+      {
+        to: "/students/id-cards",
+        label: "ID cards",
+        permissions: [
+          PERMISSIONS.MANAGE_STUDENT_IDS,
+          PERMISSIONS.VIEW_STUDENTS,
+        ],
       },
       {
         to: "/documents/generate",
@@ -243,6 +254,10 @@ const NAV_TREE: NavNode[] = [
     icon: Briefcase,
     permissions: [
       PERMISSIONS.VIEW_HR_EMPLOYEES,
+      PERMISSIONS.MANAGE_HR_EMPLOYEES,
+      PERMISSIONS.VIEW_PAYROLL,
+      PERMISSIONS.MANAGE_PAYROLL,
+      PERMISSIONS.VIEW_APPRAISALS,
       PERMISSIONS.VIEW_LEAVE_REQUESTS,
       PERMISSIONS.MANAGE_LEAVE_REQUESTS,
       ...LEAVE_STAGE_PERMISSIONS,
@@ -256,12 +271,12 @@ const NAV_TREE: NavNode[] = [
       {
         to: "/hr/payroll",
         label: "Payroll",
-        permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES],
+        permissions: [PERMISSIONS.VIEW_PAYROLL, PERMISSIONS.MANAGE_PAYROLL],
       },
       {
         to: "/hr/payments",
         label: "Salary",
-        permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES],
+        permissions: [PERMISSIONS.VIEW_PAYROLL, PERMISSIONS.MANAGE_PAYROLL],
       },
       {
         to: "/hr/leave",
@@ -319,7 +334,13 @@ const NAV_TREE: NavNode[] = [
       {
         to: "/admin/admissions/merit",
         label: "Merit lists",
-        permissions: [PERMISSIONS.MANAGE_ADMISSIONS],
+        // /api/applications/merit is gated on the merit slugs, not on
+        // MANAGE_ADMISSIONS — a merit officer needs this link.
+        permissions: [
+          PERMISSIONS.VIEW_MERIT_LIST,
+          PERMISSIONS.MANAGE_MERIT_LIST,
+          PERMISSIONS.MANAGE_ADMISSIONS,
+        ],
       },
       {
         to: "/admin/admissions/offers",
@@ -348,12 +369,11 @@ const NAV_TREE: NavNode[] = [
     id: "modules",
     label: "Academics",
     icon: BookOpen,
-    // Hidden for teaching roles: everything a lecturer needs from this area is
-    // in "My Teaching", scoped to their own courses. Presentational only — the
-    // underlying permissions must stay granted (the embedded roster and mark
-    // sheet check RECORD_ATTENDANCE / RECORD_MODULE_MARKS), so this hides the
-    // duplicate entry point without disabling the feature.
-    hideForRoles: ["lecturer", "HOD"],
+    // Visibility follows the PERMISSIONS below, never the role name. Teaching
+    // staff reach their own courses through "My Teaching"; when they are also
+    // granted the management permissions here — as a HOD normally is — this
+    // section has to stay reachable. Hiding it by role name locked HODs out of
+    // grants the Roles screen listed as assigned.
     permissions: [
       PERMISSIONS.MANAGE_MODULES,
       PERMISSIONS.MANAGE_MODULE_SCHEDULES,
@@ -365,6 +385,8 @@ const NAV_TREE: NavNode[] = [
       PERMISSIONS.MANAGE_MODULE_MARKS,
       PERMISSIONS.MANAGE_ACADEMIC_YEARS,
       PERMISSIONS.MANAGE_ACADEMIC_TERMS,
+      PERMISSIONS.VIEW_TIMETABLE,
+      PERMISSIONS.MANAGE_TIMETABLE,
     ],
     children: [
       // Student self-service — opens the same Program & Marks view that
@@ -390,8 +412,7 @@ const NAV_TREE: NavNode[] = [
         to: "/academic/settings?tab=faculties",
         label: "Faculties",
         permissions: [
-          PERMISSIONS.MANAGE_ACADEMIC_YEARS,
-          PERMISSIONS.MANAGE_ACADEMIC_TERMS,
+          PERMISSIONS.MANAGE_ACADEMICS,
         ],
         hideForRoles: ["student", "applicant"],
       },
@@ -399,8 +420,7 @@ const NAV_TREE: NavNode[] = [
         to: "/academic/settings?tab=departments",
         label: "Departments",
         permissions: [
-          PERMISSIONS.MANAGE_ACADEMIC_YEARS,
-          PERMISSIONS.MANAGE_ACADEMIC_TERMS,
+          PERMISSIONS.MANAGE_DEPARTMENTS,
         ],
         hideForRoles: ["student", "applicant"],
       },
@@ -408,8 +428,7 @@ const NAV_TREE: NavNode[] = [
         to: "/academic/settings?tab=options",
         label: "Programs",
         permissions: [
-          PERMISSIONS.MANAGE_ACADEMIC_YEARS,
-          PERMISSIONS.MANAGE_ACADEMIC_TERMS,
+          PERMISSIONS.MANAGE_OPTIONS,
         ],
         hideForRoles: ["student", "applicant"],
       },
@@ -417,8 +436,7 @@ const NAV_TREE: NavNode[] = [
         to: "/academic/settings?tab=modules",
         label: "Modules / Courses",
         permissions: [
-          PERMISSIONS.MANAGE_ACADEMIC_YEARS,
-          PERMISSIONS.MANAGE_ACADEMIC_TERMS,
+          PERMISSIONS.MANAGE_MODULES,
         ],
         hideForRoles: ["student", "applicant"],
       },
@@ -426,17 +444,24 @@ const NAV_TREE: NavNode[] = [
         to: "/academic/settings?tab=scheduling",
         label: "Scheduling",
         permissions: [
-          PERMISSIONS.MANAGE_ACADEMIC_YEARS,
-          PERMISSIONS.MANAGE_ACADEMIC_TERMS,
+          PERMISSIONS.MANAGE_MODULE_SCHEDULES,
         ],
         hideForRoles: ["student", "applicant"],
+      },
+      {
+        to: "/timetable",
+        label: "Timetable",
+        permissions: [
+          PERMISSIONS.VIEW_TIMETABLE,
+          PERMISSIONS.MANAGE_TIMETABLE,
+        ],
+        hideForRoles: ["applicant"],
       },
       {
         to: "/academic/settings?tab=registrations",
         label: "Registrations",
         permissions: [
-          PERMISSIONS.MANAGE_ACADEMIC_YEARS,
-          PERMISSIONS.MANAGE_ACADEMIC_TERMS,
+          PERMISSIONS.MANAGE_MODULE_REGISTRATIONS,
         ],
         hideForRoles: ["student", "applicant"],
       },
@@ -467,7 +492,7 @@ const NAV_TREE: NavNode[] = [
     id: "academic-records",
     label: "Academic Records",
     icon: ScrollText,
-    hideForRoles: ["student", "applicant", "lecturer", "HOD"],
+    hideForRoles: ["student", "applicant"],
     permissions: [
       PERMISSIONS.RECORD_MODULE_MARKS,
       PERMISSIONS.MANAGE_MODULE_MARKS,
@@ -480,6 +505,7 @@ const NAV_TREE: NavNode[] = [
       PERMISSIONS.MANAGE_ACADEMIC_CERTIFICATES,
       PERMISSIONS.MANAGE_GRADING_SCALES,
       PERMISSIONS.VIEW_ACADEMIC_ANALYTICS,
+      PERMISSIONS.MANAGE_ACADEMIC_SETTINGS,
     ],
     children: [
       {
@@ -498,10 +524,13 @@ const NAV_TREE: NavNode[] = [
       {
         to: "/exams/deliberation",
         label: "Deliberation",
-        // Still gated on MANAGE_EXAMS, exactly as it was under the Exam menu.
-        // A MANAGE_DELIBERATIONS permission exists and is arguably the right
-        // gate, but switching it changes who can see the page.
-        permissions: [PERMISSIONS.MANAGE_EXAMS],
+        // routes/api/deliberation.php accepts MANAGE_DELIBERATIONS for reads
+        // and requires it for session writes; MANAGE_EXAMS stays alongside it
+        // so nobody who could reach this page before loses it.
+        permissions: [
+          PERMISSIONS.MANAGE_DELIBERATIONS,
+          PERMISSIONS.MANAGE_EXAMS,
+        ],
       },
       {
         to: "/exams/revaluations",
@@ -543,6 +572,17 @@ const NAV_TREE: NavNode[] = [
         label: "Reports & analytics",
         permissions: [PERMISSIONS.VIEW_ACADEMIC_ANALYTICS],
       },
+      {
+        // Institutional documents (fee structures, policies). Uploading and
+        // deleting is what MANAGE_ACADEMIC_SETTINGS guards; before this the
+        // page had no entry point anywhere outside the Finance hub.
+        to: "/academic/system-documents",
+        label: "System documents",
+        permissions: [
+          PERMISSIONS.MANAGE_ACADEMIC_SETTINGS,
+          PERMISSIONS.VIEW_SYSTEM_BASICS,
+        ],
+      },
     ],
   },
   {
@@ -550,11 +590,28 @@ const NAV_TREE: NavNode[] = [
     label: "Finance",
     icon: CreditCard,
     permissions: [
+      PERMISSIONS.VIEW_FINANCE,
+      PERMISSIONS.MANAGE_FINANCE,
       PERMISSIONS.VIEW_FINANCE_OVERVIEW,
       PERMISSIONS.VIEW_FINANCE_BILLING,
       PERMISSIONS.VIEW_FINANCE_REPORTS,
       PERMISSIONS.VIEW_FINANCE_STRUCTURES,
       PERMISSIONS.VIEW_FINANCE_BURSARIES,
+      PERMISSIONS.VIEW_FINANCE_APPROVALS,
+      PERMISSIONS.VIEW_FINANCE_SPONSORS,
+      PERMISSIONS.VIEW_FINANCE_EXPENSES,
+      PERMISSIONS.VIEW_FINANCE_REFUNDS,
+      PERMISSIONS.VIEW_FINANCE_BALANCE,
+      PERMISSIONS.VIEW_FINANCE_CLEARANCE,
+      PERMISSIONS.VIEW_STUDENT_DIRECTORY_FINANCE,
+      PERMISSIONS.VIEW_ONLINE_PAYMENTS_HISTORY,
+      PERMISSIONS.VIEW_MOBILE_PAYMENTS,
+      PERMISSIONS.VIEW_PAYMENT_CALENDAR,
+      PERMISSIONS.MANAGE_PAYMENT_CALENDAR,
+      PERMISSIONS.VIEW_BUDGET_EXECUTION,
+      PERMISSIONS.MANAGE_BUDGET_EXECUTION,
+      PERMISSIONS.VIEW_FINES,
+      PERMISSIONS.MANAGE_FINES,
     ],
     hideForRoles: ["student", "applicant"],
     children: [
@@ -604,8 +661,9 @@ const NAV_TREE: NavNode[] = [
     label: "Attendance",
     icon: ClipboardCheck,
     to: "/attendance",
-    // Lecturers reach attendance through My Teaching → their own course.
-    hideForRoles: ["student", "lecturer", "HOD"],
+    // Lecturers reach their own course attendance through My Teaching; the
+    // full workspace stays open to whoever actually holds these permissions.
+    hideForRoles: ["student"],
     permissions: [
       PERMISSIONS.VIEW_ATTENDANCE,
       PERMISSIONS.RECORD_ATTENDANCE,
@@ -645,22 +703,30 @@ const NAV_TREE: NavNode[] = [
     id: "exam",
     label: "Exam",
     icon: ClipboardList,
-    // Hidden for teaching roles: everything a lecturer needs from this area is
-    // in "My Teaching", scoped to their own courses. Presentational only — the
-    // underlying permissions must stay granted (the embedded roster and mark
-    // sheet check RECORD_ATTENDANCE / RECORD_MODULE_MARKS), so this hides the
-    // duplicate entry point without disabling the feature.
-    hideForRoles: ["lecturer", "HOD"],
+    // Visibility follows the PERMISSIONS below, never the role name. Teaching
+    // staff reach their own courses through "My Teaching"; when they are also
+    // granted the management permissions here — as a HOD normally is — this
+    // section has to stay reachable. Hiding it by role name locked HODs out of
+    // grants the Roles screen listed as assigned.
 
     // Visible to admins/staff with MANAGE_EXAMS *or* to students who hold
     // VIEW_MY_MODULES (so they can see their personal exams + results).
-    permissions: [PERMISSIONS.MANAGE_EXAMS, PERMISSIONS.VIEW_MY_MODULES],
+    permissions: [
+      PERMISSIONS.VIEW_EXAMS,
+      PERMISSIONS.MANAGE_EXAMS,
+      PERMISSIONS.VIEW_MY_MODULES,
+    ],
     children: [
       // Admin / staff items — gated by MANAGE_EXAMS.
       {
         to: "/exams",
         label: "Exam schedules",
-        permissions: [PERMISSIONS.MANAGE_EXAMS],
+        // VIEW_EXAMS is the read tier the exam GET endpoints now accept.
+        permissions: [
+          PERMISSIONS.VIEW_EXAMS,
+          PERMISSIONS.MANAGE_EXAMS,
+          PERMISSIONS.MANAGE_MODULE_SCHEDULES,
+        ],
       },
       // Results, Deliberation, Revaluations and the grading scale moved to the
       // Academic Records menu — this one now covers exam sittings only.
@@ -738,11 +804,18 @@ const ADMIN_TREE: NavNode[] = [
     ],
   },
   {
+    id: "system-settings",
+    label: "System settings",
+    icon: Settings,
+    to: "/settings",
+    hideForRoles: ["student", "applicant"],
+    permissions: [PERMISSIONS.VIEW_SETTINGS, PERMISSIONS.MANAGE_SETTINGS],
+  },
+  {
     id: "academics-management",
     label: "Settings",
     icon: Layers,
     to: "/academic/management",
-    hideForRoles: ["hr_manager"],
     permissions: [
       PERMISSIONS.MANAGE_ACADEMICS,
       PERMISSIONS.MANAGE_DEGREES,
@@ -752,6 +825,8 @@ const ADMIN_TREE: NavNode[] = [
       PERMISSIONS.MANAGE_LEVELS,
       PERMISSIONS.MANAGE_SCHOOLS,
       PERMISSIONS.MANAGE_LEAVE_TYPES,
+      PERMISSIONS.MANAGE_CAMPUSES,
+      PERMISSIONS.MANAGE_ADMISSIONS,
       PERMISSIONS.MANAGE_ACADEMIC_YEARS,
       PERMISSIONS.MANAGE_ACADEMIC_TERMS,
     ],

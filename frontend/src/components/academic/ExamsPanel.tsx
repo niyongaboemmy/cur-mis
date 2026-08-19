@@ -13,6 +13,8 @@ import {
   AlertCircle,
 } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
+import { PERMISSIONS } from '@/constants/permissions'
+import { usePermission } from '@/utils/permissions'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import RoleGroupedSelect, { type GroupedOption } from '@/components/ui/RoleGroupedSelect'
 import { academicsMgmtService } from '@/services/academicsMgmtService'
@@ -63,6 +65,10 @@ const blankForm = (): ExamFormState => ({
 
 export default function ExamsPanel() {
   const qc = useQueryClient()
+
+  // VIEW_EXAMS opens this panel read-only; editing the calendar stays with
+  // MANAGE_MODULE_SCHEDULES, which is what the write endpoints enforce.
+  const canWrite = usePermission(PERMISSIONS.MANAGE_MODULE_SCHEDULES)
 
   /* Filters are persisted in sessionStorage so navigating to another
      Academic-Settings tab and back keeps the admin's working view. */
@@ -330,9 +336,11 @@ export default function ExamsPanel() {
             exam to view or print its attendance sheet.
           </p>
         </div>
-        <button className="btn-primary" onClick={openCreate}>
-          <CalendarPlus className="w-4 h-4" /> Schedule exam
-        </button>
+        {canWrite && (
+          <button className="btn-primary" onClick={openCreate}>
+            <CalendarPlus className="w-4 h-4" /> Schedule exam
+          </button>
+        )}
       </div>
 
       {/* Filter toolbar */}
@@ -505,33 +513,39 @@ export default function ExamsPanel() {
                             <Users className="w-3.5 h-3.5" />
                             {row.registered_count}
                           </button>
-                          <button
-                            className="btn-ghost btn-xs"
-                            title="Edit exam"
-                            onClick={(e) => { e.stopPropagation(); openEdit(row.id!) }}
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            className="btn-ghost btn-xs text-red-600 hover:text-red-700"
-                            title="Delete exam"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              if (confirm(`Delete the exam for ${row.module_code}?`)) {
-                                deleteM.mutate(row.id!)
-                              }
-                            }}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {canWrite && (
+                            <>
+                              <button
+                                className="btn-ghost btn-xs"
+                                title="Edit exam"
+                                onClick={(e) => { e.stopPropagation(); openEdit(row.id!) }}
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                className="btn-ghost btn-xs text-red-600 hover:text-red-700"
+                                title="Delete exam"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  if (confirm(`Delete the exam for ${row.module_code}?`)) {
+                                    deleteM.mutate(row.id!)
+                                  }
+                                }}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </>
+                          )}
                         </div>
-                      ) : (
+                      ) : canWrite ? (
                         <button
                           className="btn-primary btn-xs"
                           onClick={(e) => { e.stopPropagation(); openScheduleFor(row.module_id) }}
                         >
                           <CalendarPlus className="w-3.5 h-3.5" /> Schedule
                         </button>
+                      ) : (
+                        <span className="text-[11.5px] text-ink-400">Not scheduled</span>
                       )}
                     </td>
                   </tr>

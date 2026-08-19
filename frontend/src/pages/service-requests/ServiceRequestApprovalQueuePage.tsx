@@ -4,6 +4,7 @@ import toast from "react-hot-toast";
 import { ClipboardCheck, Check, X, MessageSquareWarning } from "lucide-react";
 import { serviceRequestApprovalService } from "@/services/serviceRequestApprovalService";
 import ModalPortal from "@/components/ui/ModalPortal";
+import VoidRequestButton from "@/components/service-requests/VoidRequestButton";
 
 export default function ServiceRequestApprovalQueuePage() {
   const queryClient = useQueryClient();
@@ -87,6 +88,16 @@ export default function ServiceRequestApprovalQueuePage() {
               >
                 <X className="w-3.5 h-3.5" /> Reject
               </button>
+              {/* Supervisory override — only rendered for holders of
+                  VOID_SERVICE_REQUEST, and only while the request is still
+                  live. Rejecting decides the stage; voiding pulls the request
+                  out of the chain entirely. */}
+              <VoidRequestButton
+                requestId={r.id}
+                requestCode={r.request_code}
+                status={r.status}
+                invalidateKeys={[["service-requests", "approvals", "queue"]]}
+              />
             </div>
           </div>
         ))}

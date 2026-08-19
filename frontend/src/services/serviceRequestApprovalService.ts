@@ -12,4 +12,12 @@ export const serviceRequestApprovalService = {
 
   decide: (id: number, decision: 'approved' | 'rejected' | 'changes_requested', comment?: string) =>
     api.post<ServiceRequestSummary>(`/api/service-requests/approvals/${id}/decide`, { decision, comment }),
+
+  /**
+   * Supervisory void — cancels a request outside the per-stage chain.
+   * Gated server-side on VOID_SERVICE_REQUEST; the reason is written to the
+   * audit trail and included in the notification sent to the requester.
+   */
+  voidRequest: (id: number, reason: string) =>
+    api.post<ServiceRequestSummary>(`/api/admin/service-requests/${id}/void`, { reason }),
 }
