@@ -167,9 +167,15 @@ class StudentController extends BaseController
      *
      * @return array{0:string, 1:array}
      */
-    private function buildListFilters(Request $request, string $alias = ''): array
+    private function buildListFilters(Request $request, string $alias = '', array $except = []): array
     {
-        $search  = $request->query('search') ?? $request->query('q') ?? '';
+        // `$except` lists parameter names the caller wants ignored. The
+        // faceted-count endpoint uses it to compute "how many rows would this
+        // option yield" for one dimension while every OTHER active filter
+        // still applies.
+        $search  = in_array('q', $except, true)
+            ? ''
+            : ($request->query('search') ?? $request->query('q') ?? '');
         // Callers that run these filters against a JOINed query must pass the
         // student table's alias — several joined tables share column names
         // with `student` (e.g. `departements`.`program`), so an unqualified
@@ -187,7 +193,7 @@ class StudentController extends BaseController
             $bindings[] = "%$search%";
         }
 
-        $this->applyFilterableClauses($request, $clauses, $bindings, $alias);
+        $this->applyFilterableClauses($request, $clauses, $bindings, $alias, $except);
 
         $where = $clauses ? implode(' AND ', $clauses) : '';
         return [$where, $bindings];
@@ -2364,7 +2370,7 @@ class StudentController extends BaseController
         return $cache[$table];
     }
 
-    private function applyFilterableClauses(Request $request, array &$clauses, array &$bindings, string $alias = ''): void
+    private function applyFilterableClauses(Request $request, array &$clauses, array &$bindings, string $alias = '', array $except = []): void
     {
         // See buildListFilters(): non-empty when the WHERE gets spliced into a
         // JOINed query, so every column below stays unambiguous.
@@ -2374,6 +2380,12 @@ class StudentController extends BaseController
             'student_state', 'gender', 'faculty', 'department',
             'current_level', 'nationality', 'acc_year', 'program',
             'std_option', 'campus', 'intake', 'category',
+            // Residency columns. All four are free-text on `student` and
+            // carry a decade of inconsistent casing/whitespace ("Ruhango "
+            // vs "Ruhango", "SOUTHERN" vs "South "), so every one of them
+            // matches case- and whitespace-insensitively, and `province`
+            // additionally folds the known spelling variants together.
+            'country', 'province', 'district', 'sector',
             // Alias for the legacy `program` column which actually stores the
             // learning mode (Day / Evening / Weekend). Adding it under its
             // semantic name keeps the API honest while we live with the
@@ -2381,7 +2393,22 @@ class StudentController extends BaseController
             'learning_mode',
         ];
 
+        // ── Age range ────────────────────────────────────────────────
+        // `student.birthdate` is a varchar holding two live formats
+        // (`YYYY-MM-DD` and `D/M/YYYY`) plus junk like "XXX". dobSql()
+        // normalises it to a DATE (NULL for anything unparseable), so rows
+        // with no usable birthdate simply drop out of an age-filtered
+        // cohort rather than being silently counted as age 0.
+        foreach (['age_min' => '>=', 'age_max' => '<='] as $param => $op) {
+            if (in_array($param, $except, true)) continue;
+            $raw = $request->query($param);
+            if ($raw === null || $raw === '' || !is_numeric($raw)) continue;
+            $clauses[]  = "TIMESTAMPDIFF(YEAR, " . self::dobSql($p) . ", CURDATE()) {$op} ?";
+            $bindings[] = (int)$raw;
+        }
+
         foreach ($filterable as $col) {
+            if (in_array($col, $except, true)) continue;
             $val = $request->query($col);
             if ($val === null || $val === '') continue;
             $lower = strtolower((string)$val);
@@ -2393,7 +2420,22 @@ class StudentController extends BaseController
                 continue;
             }
 
-            if ($col === 'nationality' && $lower === 'rwandan') {
+            if ($col === 'student_state') {
+                $variants = self::stateVariants((string)$val);
+                if (empty($variants)) continue;
+                $ph = implode(',', array_fill(0, count($variants), '?'));
+                $clauses[] = "LOWER(TRIM({$p}student_state)) IN ($ph)";
+                foreach ($variants as $v) { $bindings[] = $v; }
+            } elseif ($col === 'province') {
+                $variants = self::provinceVariants((string)$val);
+                if (empty($variants)) continue;
+                $ph = implode(',', array_fill(0, count($variants), '?'));
+                $clauses[] = "LOWER(TRIM({$p}province)) IN ($ph)";
+                foreach ($variants as $v) { $bindings[] = $v; }
+            } elseif (in_array($col, ['country', 'district', 'sector'], true)) {
+                $clauses[]  = "LOWER(TRIM({$p}`$col`)) = LOWER(TRIM(?))";
+                $bindings[] = (string)$val;
+            } elseif ($col === 'nationality' && $lower === 'rwandan') {
                 $clauses[] = "LOWER({$p}nationality) IN ('rwandan','rwandana','rwandese')";
             } elseif ($col === 'nationality' && $lower === 'foreign') {
                 $clauses[] = "({$p}nationality IS NOT NULL AND {$p}nationality <> '' AND LOWER({$p}nationality) NOT IN ('rwandan','rwandana','rwandese'))";
@@ -2517,6 +2559,124 @@ class StudentController extends BaseController
      *
      * @return array<int, string>
      */
+    /**
+     * SQL expression normalising the free-text `student.birthdate` varchar
+     * into a real DATE. Two formats are live in the column — `YYYY-MM-DD`
+     * (the modern writes) and `D/M/YYYY` (the legacy import) — and a tail of
+     * unparseable junk ("XXX", "xx", blanks). STR_TO_DATE yields NULL for
+     * anything it can't read, so the COALESCE returns NULL for those rows and
+     * every age comparison built on it evaluates to NULL → excluded.
+     *
+     * @param string $p Table prefix ("" or "s."), see applyFilterableClauses().
+     */
+    private static function dobSql(string $p): string
+    {
+        return "COALESCE("
+             . "STR_TO_DATE(NULLIF(TRIM({$p}birthdate), ''), '%Y-%m-%d'), "
+             . "STR_TO_DATE(NULLIF(TRIM({$p}birthdate), ''), '%d/%m/%Y')"
+             . ")";
+    }
+
+    /**
+     * The status buckets the Students page offers, in display order, mapped
+     * to every spelling `student.student_state` actually holds. Callers match
+     * with `LOWER(TRIM(student_state)) IN (...)`.
+     *
+     * "Graduands" (students who have finished but not yet been conferred) is
+     * spelled several ways across the legacy imports, so all four are folded
+     * into one bucket. "Rejected" has no live rows today but is offered
+     * because the column is free-text and registry staff do write it.
+     *
+     * @return array<string, array{label:string, variants:array<int,string>}>
+     */
+    public static function statusBuckets(): array
+    {
+        return [
+            'active'    => ['label' => 'Active',    'variants' => ['active']],
+            'inactive'  => ['label' => 'Inactive',  'variants' => ['inactive']],
+            'graduated' => ['label' => 'Graduated', 'variants' => ['graduated']],
+            'graduands' => ['label' => 'Graduands', 'variants' => ['graduands', 'graduand', 'graduants', 'graduant']],
+            'suspended' => ['label' => 'Suspended', 'variants' => ['suspended']],
+            'rejected'  => ['label' => 'Rejected',  'variants' => ['rejected', 'refused', 'declined']],
+        ];
+    }
+
+    /**
+     * Expand a status filter value to its spelling variants. An unknown value
+     * matches itself so a hand-crafted `?student_state=resume` still works.
+     *
+     * @return array<int, string>
+     */
+    private static function stateVariants(string $value): array
+    {
+        $value = strtolower(trim($value));
+        if ($value === '' || $value === 'all') return [];
+
+        foreach (self::statusBuckets() as $bucket) {
+            if (in_array($value, $bucket['variants'], true)) {
+                return $bucket['variants'];
+            }
+        }
+        return [$value];
+    }
+
+    /**
+     * The five Rwandan provinces, each mapped to the spellings that occur in
+     * `student.province`. The column was populated by free-text entry over
+     * many years, so "SOUTHERN", "South " and "south province" all mean the
+     * same place, and "NOTHERN" is a misspelling frequent enough (654 rows)
+     * that dropping it would visibly under-count the Northern bucket.
+     *
+     * @return array<string, array{label:string, variants:array<int,string>}>
+     */
+    public static function provinceBuckets(): array
+    {
+        return [
+            'kigali'   => ['label' => 'Kigali City', 'variants' => ['kigali', 'kigali city', 'city of kigali', 'kigali province', 'mvk', 'umujyi wa kigali']],
+            'northern' => ['label' => 'Northern',    'variants' => ['northern', 'north', 'nothern', 'northen', 'northern province', 'amajyaruguru']],
+            'southern' => ['label' => 'Southern',    'variants' => ['southern', 'south', 'southen', 'southern province', 'amajyepfo']],
+            'eastern'  => ['label' => 'Eastern',     'variants' => ['eastern', 'east', 'easten', 'eastern province', 'iburasirazuba']],
+            'western'  => ['label' => 'Western',     'variants' => ['western', 'west', 'westen', 'western province', 'iburengerazuba']],
+        ];
+    }
+
+    /**
+     * Expand a province filter value to its spelling variants. Unknown values
+     * (foreign regions, junk rows) match themselves so the filter still works
+     * on whatever the facet list surfaced.
+     *
+     * @return array<int, string>
+     */
+    /**
+     * The canonical province bucket key a raw spelling belongs to, or the
+     * lowercased raw value when it belongs to none (foreign regions, junk).
+     * Matches the `value` the province facet publishes, so it is safe to use
+     * as a cascade parent.
+     */
+    private static function provinceKey(string $value): string
+    {
+        $value = strtolower(trim($value));
+        foreach (self::provinceBuckets() as $key => $bucket) {
+            if ($key === $value || in_array($value, $bucket['variants'], true)) {
+                return $key;
+            }
+        }
+        return $value;
+    }
+
+    private static function provinceVariants(string $value): array
+    {
+        $value = strtolower(trim($value));
+        if ($value === '') return [];
+
+        foreach (self::provinceBuckets() as $key => $bucket) {
+            if ($key === $value || in_array($value, $bucket['variants'], true)) {
+                return $bucket['variants'];
+            }
+        }
+        return [$value];
+    }
+
     private static function categoryVariants(string $value): array
     {
         $value = strtolower(trim($value));
@@ -2826,6 +2986,366 @@ class StudentController extends BaseController
                 }, $options)),
             ],
         ], 'Student stats fetched.');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Faceted filter options — powers the Students page filter panel.
+    // ─────────────────────────────────────────────────────────────────────
+
+    /**
+     * The JOINs every facet query needs so faculty / department / programme
+     * can be labelled from their catalogues in the same pass. Mirrors the
+     * export query's FROM clause, and the same `s` alias, so a WHERE built by
+     * buildListFilters($request, 's') splices straight in.
+     */
+    private const FACET_FROM = "
+        FROM `student` s
+        LEFT JOIN `faculty`      f ON CAST(f.fac_id AS CHAR) COLLATE utf8mb4_unicode_ci = s.faculty    COLLATE utf8mb4_unicode_ci
+        LEFT JOIN `departements` d ON CAST(d.dep_id AS CHAR) COLLATE utf8mb4_unicode_ci = s.department COLLATE utf8mb4_unicode_ci
+        LEFT JOIN `options`      o ON CAST(o.id     AS CHAR) COLLATE utf8mb4_unicode_ci = s.std_option COLLATE utf8mb4_unicode_ci
+    ";
+
+    /**
+     * GET /api/students/filter-options
+     *
+     * Every value the Students page filter panel can offer, each carrying the
+     * number of students it would yield — so the user sees "Huye (1,308)"
+     * before clicking rather than discovering an empty result set after.
+     *
+     * Counts are faceted, not global: each dimension is counted with every
+     * OTHER active filter applied but its own excluded. Cascading dimensions
+     * also exclude their descendants (picking a faculty recounts departments,
+     * not the other way round), which is what makes the panel usable —
+     * the department list narrows to the chosen faculty, but the faculty list
+     * keeps showing every faculty you could switch to.
+     *
+     * Faculties, departments and programmes are seeded from their catalogues
+     * so an entry with no students still appears (greyed out, count 0) rather
+     * than vanishing; the free-text residency columns can only be enumerated
+     * from the student rows themselves.
+     */
+    public function filterOptions(Request $request, Response $response): never
+    {
+        $db = $this->studentModel->db();
+
+        /**
+         * Run one facet aggregate. `$except` names the filter params to drop
+         * before building the WHERE — the dimension itself plus anything that
+         * cascades from it.
+         */
+        $facet = function (array $except, string $select, string $groupBy, string $extraWhere = '', int $limit = 2000) use ($request, $db): array {
+            [$where, $bind] = $this->buildListFilters($request, 's', $except);
+            $conds = array_values(array_filter([$where, $extraWhere], static fn ($c) => $c !== ''));
+            $sql = "SELECT {$select}, COUNT(*) AS total" . self::FACET_FROM
+                 . ($conds ? ' WHERE ' . implode(' AND ', $conds) : '')
+                 . " GROUP BY {$groupBy} ORDER BY total DESC LIMIT {$limit}";
+            return $db->fetchAll($sql, $bind);
+        };
+
+        // ── Academic structure ───────────────────────────────────────
+        // `student.faculty` / `.department` / `.std_option` hold catalogue ids
+        // as varchars, so counts come back keyed by the raw string.
+        $facCounts  = array_column($facet(['faculty', 'department', 'std_option'], 's.faculty AS value',    's.faculty',    "s.faculty IS NOT NULL AND s.faculty <> ''"),       'total', 'value');
+        $depCounts  = array_column($facet(['department', 'std_option'],            's.department AS value', 's.department', "s.department IS NOT NULL AND s.department <> ''"), 'total', 'value');
+        $optCounts  = array_column($facet(['std_option'],                          's.std_option AS value', 's.std_option', "s.std_option IS NOT NULL AND s.std_option <> ''"), 'total', 'value');
+
+        $faculties = [];
+        foreach ($db->fetchAll("SELECT fac_id, fac_name FROM `faculty` ORDER BY fac_name ASC") as $r) {
+            $id = (string)$r['fac_id'];
+            $faculties[] = [
+                'value'        => $id,
+                'label'        => trim((string)$r['fac_name']),
+                'total'        => (int)($facCounts[$id] ?? 0),
+                // Drives the "Option" filter, which the registry only uses for
+                // Education — matched on the name so it survives a re-seed
+                // that changes fac_id.
+                'is_education' => self::isEducationName((string)$r['fac_name']),
+            ];
+        }
+
+        $departments = [];
+        foreach ($db->fetchAll(
+            "SELECT d.dep_id, d.dep_name, d.fac_id, f.fac_name
+             FROM `departements` d
+             LEFT JOIN `faculty` f ON f.fac_id = d.fac_id
+             ORDER BY d.dep_name ASC"
+        ) as $r) {
+            $id = (string)$r['dep_id'];
+            $departments[] = [
+                'value'        => $id,
+                'label'        => trim((string)$r['dep_name']),
+                'faculty_id'   => $r['fac_id'] !== null ? (string)$r['fac_id'] : null,
+                'total'        => (int)($depCounts[$id] ?? 0),
+                'is_education' => self::isEducationName((string)($r['fac_name'] ?? ''))
+                               || self::isEducationName((string)$r['dep_name']),
+            ];
+        }
+
+        $options = [];
+        foreach ($db->fetchAll(
+            "SELECT o.id, o.name, o.department_id, d.fac_id, d.dep_name, f.fac_name
+             FROM `options` o
+             LEFT JOIN `departements` d ON d.dep_id = o.department_id
+             LEFT JOIN `faculty`      f ON f.fac_id = d.fac_id
+             WHERE COALESCE(o.is_active, 1) = 1
+             ORDER BY o.name ASC"
+        ) as $r) {
+            $id = (string)$r['id'];
+            $options[] = [
+                'value'         => $id,
+                'label'         => trim((string)$r['name']),
+                'department_id' => $r['department_id'] !== null ? (string)$r['department_id'] : null,
+                'faculty_id'    => $r['fac_id'] !== null ? (string)$r['fac_id'] : null,
+                'total'         => (int)($optCounts[$id] ?? 0),
+                'is_education'  => self::isEducationName((string)($r['fac_name'] ?? ''))
+                                || self::isEducationName((string)($r['dep_name'] ?? '')),
+            ];
+        }
+
+        // ── Residency ────────────────────────────────────────────────
+        // All four columns are free text with a decade of inconsistent
+        // casing and trailing spaces, so every one is folded on its
+        // trimmed-lowercase form and given back a single tidy label.
+        $countries = self::foldFreeText(
+            $facet(['country', 'province', 'district', 'sector'], "TRIM(s.country) AS value", 'value', "s.country IS NOT NULL AND TRIM(s.country) <> ''")
+        );
+
+        $provinces = self::foldProvinces(
+            $facet(['province', 'district', 'sector'], "TRIM(s.province) AS value", 'value', "s.province IS NOT NULL AND TRIM(s.province) <> ''")
+        );
+
+        $districts = self::foldFreeText(
+            $facet(['district', 'sector'], "TRIM(s.district) AS value, TRIM(s.province) AS parent_raw", 'value, parent_raw', "s.district IS NOT NULL AND TRIM(s.district) <> ''"),
+            'province',
+            static fn (string $raw): string => self::provinceKey($raw)
+        );
+
+        $sectors = self::foldFreeText(
+            $facet(['sector'], "TRIM(s.sector) AS value, TRIM(s.district) AS parent_raw", 'value, parent_raw', "s.sector IS NOT NULL AND TRIM(s.sector) <> ''"),
+            'district'
+        );
+
+        // ── Enrolment ────────────────────────────────────────────────
+        $yearRows = $facet(['acc_year'], "TRIM(s.acc_year) AS value", 'value', "s.acc_year IS NOT NULL AND TRIM(s.acc_year) NOT IN ('', '-')");
+        $years    = [];
+        foreach ($yearRows as $r) {
+            $years[] = ['value' => (string)$r['value'], 'label' => (string)$r['value'], 'total' => (int)$r['total']];
+        }
+        usort($years, static fn ($a, $b) => strcmp($b['label'], $a['label']));
+
+        // Statuses fold their spelling variants into the six display buckets.
+        $stateRows  = $facet(['student_state'], "LOWER(TRIM(s.student_state)) AS value", 'value', "s.student_state IS NOT NULL AND TRIM(s.student_state) <> ''");
+        $stateCount = array_column($stateRows, 'total', 'value');
+        $statuses   = [];
+        foreach (self::statusBuckets() as $key => $bucket) {
+            $total = 0;
+            foreach ($bucket['variants'] as $v) {
+                $total += (int)($stateCount[$v] ?? 0);
+            }
+            $statuses[] = ['value' => $key, 'label' => $bucket['label'], 'total' => $total];
+        }
+
+        // ── Age ──────────────────────────────────────────────────────
+        // Bounds are clamped to a plausible student range: the birthdate
+        // column contains typos that parse into ages of 3 or 120, and letting
+        // those set the slider's ends would make it useless.
+        [$ageWhere, $ageBind] = $this->buildListFilters($request, 's', ['age_min', 'age_max']);
+        $dob = self::dobSql('s.');
+        $ageRow = $db->fetchOne(
+            "SELECT MIN(TIMESTAMPDIFF(YEAR, {$dob}, CURDATE())) AS min_age,
+                    MAX(TIMESTAMPDIFF(YEAR, {$dob}, CURDATE())) AS max_age,
+                    COUNT(TIMESTAMPDIFF(YEAR, {$dob}, CURDATE())) AS known
+             " . self::FACET_FROM
+             . ($ageWhere !== '' ? " WHERE {$ageWhere} AND " : ' WHERE ')
+             . "TIMESTAMPDIFF(YEAR, {$dob}, CURDATE()) BETWEEN " . self::AGE_FLOOR . " AND " . self::AGE_CEILING,
+            $ageBind
+        ) ?: [];
+
+        $bandRows = $db->fetchAll(
+            "SELECT " . self::ageBandSql($dob) . " AS value, COUNT(*) AS total
+             " . self::FACET_FROM
+             . ($ageWhere !== '' ? " WHERE {$ageWhere} AND " : ' WHERE ')
+             . "TIMESTAMPDIFF(YEAR, {$dob}, CURDATE()) BETWEEN " . self::AGE_FLOOR . " AND " . self::AGE_CEILING
+             . " GROUP BY value",
+            $ageBind
+        );
+        $bandCount = array_column($bandRows, 'total', 'value');
+        $ageBands  = [];
+        foreach (self::AGE_BANDS as $key => $band) {
+            $ageBands[] = [
+                'value' => $key,
+                'label' => $band['label'],
+                'min'   => $band['min'],
+                'max'   => $band['max'],
+                'total' => (int)($bandCount[$key] ?? 0),
+            ];
+        }
+
+        // ── Matching total ───────────────────────────────────────────
+        [$allWhere, $allBind] = $this->buildListFilters($request, 's');
+        $totalRow = $db->fetchOne(
+            "SELECT COUNT(*) AS total" . self::FACET_FROM . ($allWhere !== '' ? " WHERE {$allWhere}" : ''),
+            $allBind
+        ) ?: [];
+
+        $this->success($response, [
+            'total'          => (int)($totalRow['total'] ?? 0),
+            'faculties'      => $faculties,
+            'departments'    => $departments,
+            'options'        => $options,
+            'countries'      => $countries,
+            'provinces'      => $provinces,
+            'districts'      => $districts,
+            'sectors'        => $sectors,
+            'academic_years' => $years,
+            'statuses'       => $statuses,
+            'age'            => [
+                'min'   => $ageRow['min_age'] !== null ? (int)$ageRow['min_age'] : self::AGE_FLOOR,
+                'max'   => $ageRow['max_age'] !== null ? (int)$ageRow['max_age'] : self::AGE_CEILING,
+                'known' => (int)($ageRow['known'] ?? 0),
+                'bands' => $ageBands,
+            ],
+        ], 'Filter options fetched.');
+    }
+
+    /** Ages outside this range are typos, not students — see filterOptions(). */
+    private const AGE_FLOOR   = 14;
+    private const AGE_CEILING = 90;
+
+    /** Age bands offered as one-click ranges on the filter panel. */
+    private const AGE_BANDS = [
+        'under_20' => ['label' => 'Under 20', 'min' => null, 'max' => 19],
+        '20_24'    => ['label' => '20 – 24',  'min' => 20,   'max' => 24],
+        '25_29'    => ['label' => '25 – 29',  'min' => 25,   'max' => 29],
+        '30_39'    => ['label' => '30 – 39',  'min' => 30,   'max' => 39],
+        '40_49'    => ['label' => '40 – 49',  'min' => 40,   'max' => 49],
+        '50_plus'  => ['label' => '50+',      'min' => 50,   'max' => null],
+    ];
+
+    /** CASE expression bucketing a normalised DOB into an AGE_BANDS key. */
+    private static function ageBandSql(string $dob): string
+    {
+        $age = "TIMESTAMPDIFF(YEAR, {$dob}, CURDATE())";
+        return "CASE
+                  WHEN {$age} < 20 THEN 'under_20'
+                  WHEN {$age} < 25 THEN '20_24'
+                  WHEN {$age} < 30 THEN '25_29'
+                  WHEN {$age} < 40 THEN '30_39'
+                  WHEN {$age} < 50 THEN '40_49'
+                  ELSE '50_plus'
+                END";
+    }
+
+    /** Whether a faculty/department name is the Education one. */
+    private static function isEducationName(string $name): bool
+    {
+        return str_contains(strtolower($name), 'education');
+    }
+
+    /**
+     * Collapse free-text facet rows that differ only by case or surrounding
+     * whitespace ("Ruhango " and "Ruhango") into one entry, summing their
+     * counts. The label kept is the most common spelling, so the panel shows
+     * what the data mostly says rather than an arbitrary first row.
+     *
+     * When `$parentKey` is given, each row's `parent_raw` column is folded the
+     * same way and the winning parent is attached under that key — that's how
+     * a district learns its province and a sector its district without a
+     * geography reference table. `$parentNorm` maps a raw parent onto the key
+     * the parent facet actually uses, which matters for provinces: the district
+     * list must say `southern`, not the raw `South ` that a few rows spell it,
+     * or the cascade would drop those districts when Southern is selected.
+     *
+     * @param array<int, array<string, mixed>> $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private static function foldFreeText(array $rows, ?string $parentKey = null, ?callable $parentNorm = null): array
+    {
+        $acc = [];
+        foreach ($rows as $r) {
+            $raw = trim((string)($r['value'] ?? ''));
+            if ($raw === '') continue;
+            $key   = strtolower($raw);
+            $total = (int)($r['total'] ?? 0);
+
+            $acc[$key] ??= ['value' => $key, 'label' => $raw, 'total' => 0, '_labels' => [], '_parents' => []];
+            $acc[$key]['total'] += $total;
+            $acc[$key]['_labels'][$raw] = ($acc[$key]['_labels'][$raw] ?? 0) + $total;
+
+            if ($parentKey !== null) {
+                $parent = trim((string)($r['parent_raw'] ?? ''));
+                if ($parent !== '') {
+                    $pk = $parentNorm ? $parentNorm($parent) : strtolower($parent);
+                    $acc[$key]['_parents'][$pk] = ($acc[$key]['_parents'][$pk] ?? 0) + $total;
+                }
+            }
+        }
+
+        $out = [];
+        foreach ($acc as $entry) {
+            arsort($entry['_labels']);
+            $label = (string)array_key_first($entry['_labels']);
+            // A chunk of the legacy rows were typed in caps ("RUHANGO"). The
+            // match is case-insensitive either way, so title-case the shouty
+            // ones to sit level with the rest of the list.
+            $entry['label'] = ($label === mb_strtoupper($label, 'UTF-8'))
+                ? mb_convert_case($label, MB_CASE_TITLE, 'UTF-8')
+                : $label;
+            if ($parentKey !== null) {
+                arsort($entry['_parents']);
+                $entry[$parentKey] = $entry['_parents'] ? (string)array_key_first($entry['_parents']) : null;
+            }
+            unset($entry['_labels'], $entry['_parents']);
+            $out[] = $entry;
+        }
+
+        usort($out, static fn ($a, $b) => $b['total'] <=> $a['total'] ?: strcmp($a['label'], $b['label']));
+        return $out;
+    }
+
+    /**
+     * Fold raw province rows into the five canonical provinces. Anything that
+     * matches none of them (foreign regions, junk) is kept as its own entry so
+     * those students remain reachable rather than silently unfilterable.
+     *
+     * @param array<int, array<string, mixed>> $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private static function foldProvinces(array $rows): array
+    {
+        $buckets = self::provinceBuckets();
+        $known   = [];
+        $lookup  = [];
+        foreach ($buckets as $key => $bucket) {
+            $known[$key] = ['value' => $key, 'label' => $bucket['label'], 'total' => 0, 'canonical' => true];
+            foreach ($bucket['variants'] as $v) {
+                $lookup[$v] = $key;
+            }
+        }
+
+        $other = [];
+        foreach ($rows as $r) {
+            $raw = trim((string)($r['value'] ?? ''));
+            if ($raw === '') continue;
+            $total = (int)($r['total'] ?? 0);
+            $key   = $lookup[strtolower($raw)] ?? null;
+
+            if ($key !== null) {
+                $known[$key]['total'] += $total;
+                continue;
+            }
+            $ok = strtolower($raw);
+            $other[$ok] ??= ['value' => $ok, 'label' => $raw, 'total' => 0, 'canonical' => false];
+            $other[$ok]['total'] += $total;
+        }
+
+        $out = array_values($known);
+        usort($out, static fn ($a, $b) => $b['total'] <=> $a['total']);
+
+        $rest = array_values($other);
+        usort($rest, static fn ($a, $b) => $b['total'] <=> $a['total']);
+
+        return array_merge($out, $rest);
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -3197,8 +3717,11 @@ class StudentController extends BaseController
 
         if (empty($picked)) {
             $rawCols = trim((string)($request->query('columns') ?? ''));
+            // The filter panel's per-value quick-download has no column
+            // picker behind it — it just wants "this cohort, sensible
+            // columns". Fall back to the standard set rather than 422ing.
             if ($rawCols === '') {
-                $this->error($response, 'No columns selected for export.', 422);
+                $rawCols = implode(',', self::DEFAULT_EXPORT_COLUMNS);
             }
             foreach (explode(',', $rawCols) as $k) {
                 $k = trim($k);
@@ -3261,8 +3784,26 @@ class StudentController extends BaseController
 
         $rows = $this->studentModel->db()->fetchAll($sql, $bindings);
 
-        // ── Stream the CSV ─────────────────────────────────────────────
+        // ── Materialise the table ──────────────────────────────────────
+        // Header row uses the template's label overrides where present.
+        $headers = array_map(static fn(array $p) => $p['label'], $picked);
+        $matrix  = [];
+        foreach ($rows as $row) {
+            $line = [];
+            foreach ($picked as $p) {
+                $line[] = $this->resolveTemplateCell($p['key'], $row, $registry);
+            }
+            $matrix[] = $line;
+        }
+
         $stamp    = date('Y-m-d_His');
+        $format   = strtolower(trim((string)($request->query('format') ?? 'csv')));
+
+        if (in_array($format, ['xlsx', 'excel'], true)) {
+            $this->streamXlsx($headers, $matrix, "students_{$stamp}.xlsx", $this->describeFilters($request));
+        }
+
+        // ── Stream the CSV ─────────────────────────────────────────────
         $filename = "students_{$stamp}.csv";
 
         if (!headers_sent()) {
@@ -3277,19 +3818,154 @@ class StudentController extends BaseController
         // mojibake when the file is opened in Excel on Windows.
         fwrite($out, "\xEF\xBB\xBF");
 
-        // Header row — uses the template's label overrides where present.
-        $headers = array_map(static fn(array $p) => $p['label'], $picked);
         fputcsv($out, $headers);
-
-        foreach ($rows as $row) {
-            $line = [];
-            foreach ($picked as $p) {
-                $line[] = $this->resolveTemplateCell($p['key'], $row, $registry);
-            }
+        foreach ($matrix as $line) {
             fputcsv($out, $line);
         }
         fclose($out);
         exit;
+    }
+
+    /**
+     * Columns used when the caller asked for an export without naming any —
+     * the filter panel's one-click "download this cohort" button. Enough to
+     * identify each student and see the cut the filter made.
+     */
+    private const DEFAULT_EXPORT_COLUMNS = [
+        'regnumber', 'full_name', 'gender', 'birthdate', 'email', 'phone',
+        'faculty_name', 'department_name', 'program_name', 'current_level',
+        'acc_year', 'student_state', 'country', 'province', 'district', 'sector',
+    ];
+
+    /**
+     * Stream `$rows` as a real .xlsx workbook. Beyond the data sheet it writes
+     * a "Filters" sheet recording exactly which filters produced the file —
+     * these exports get mailed around and detached from the screen that
+     * generated them, and a sheet of 400 students with no record of what
+     * cohort it represents is worse than useless.
+     *
+     * @param array<int, string>              $headers
+     * @param array<int, array<int, string>>  $rows
+     * @param array<int, array{0:string,1:string}> $filterSummary
+     */
+    private function streamXlsx(array $headers, array $rows, string $filename, array $filterSummary): never
+    {
+        $book  = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $sheet = $book->getActiveSheet();
+        $sheet->setTitle('Students');
+
+        $sheet->fromArray($headers, null, 'A1');
+        if (!empty($rows)) {
+            $sheet->fromArray($rows, null, 'A2', true);
+        }
+
+        $lastCol = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex(max(1, count($headers)));
+        $lastRow = count($rows) + 1;
+
+        $headerStyle = $sheet->getStyle("A1:{$lastCol}1");
+        $headerStyle->getFont()->setBold(true)->getColor()->setARGB('FFFFFFFF');
+        $headerStyle->getFill()
+            ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
+            ->getStartColor()->setARGB('FF1E3A8A');
+        $headerStyle->getAlignment()->setVertical(
+            \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER
+        );
+        $sheet->getRowDimension(1)->setRowHeight(22);
+
+        // Freeze + autofilter so a 5,000-row registry export is navigable.
+        $sheet->freezePane('A2');
+        if ($lastRow > 1) {
+            $sheet->setAutoFilter("A1:{$lastCol}{$lastRow}");
+        }
+        for ($i = 1; $i <= count($headers); $i++) {
+            $sheet->getColumnDimensionByColumn($i)->setAutoSize(true);
+        }
+
+        // Everything is written as text: registration numbers and phone
+        // numbers are digit strings with meaningful leading zeros, and Excel
+        // would happily eat those if the cells were typed as numbers.
+        if ($lastRow > 1) {
+            $sheet->getStyle("A2:{$lastCol}{$lastRow}")
+                ->getNumberFormat()
+                ->setFormatCode(\PhpOffice\PhpSpreadsheet\Style\NumberFormat::FORMAT_TEXT);
+        }
+
+        $meta = $book->createSheet();
+        $meta->setTitle('Filters');
+        $meta->fromArray(['Filter', 'Value'], null, 'A1');
+        $meta->getStyle('A1:B1')->getFont()->setBold(true);
+        $metaRows = array_merge(
+            [['Generated', date('Y-m-d H:i')], ['Students', (string)count($rows)]],
+            $filterSummary ?: [['(none)', 'All students']]
+        );
+        $meta->fromArray($metaRows, null, 'A2', true);
+        $meta->getColumnDimension('A')->setAutoSize(true);
+        $meta->getColumnDimension('B')->setAutoSize(true);
+
+        $book->setActiveSheetIndex(0);
+
+        if (!headers_sent()) {
+            header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            header('Content-Disposition: attachment; filename="' . $filename . '"');
+            header('Cache-Control: no-store, no-cache, must-revalidate');
+            header('X-Content-Type-Options: nosniff');
+        }
+
+        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($book);
+        $writer->save('php://output');
+        $book->disconnectWorksheets();
+        exit;
+    }
+
+    /**
+     * Human-readable "what was filtered" pairs for the workbook's Filters
+     * sheet. Ids are resolved to names — "Faculty of Education", not "6" —
+     * because the sheet exists to be read by a person.
+     *
+     * @return array<int, array{0:string, 1:string}>
+     */
+    private function describeFilters(Request $request): array
+    {
+        $db  = $this->studentModel->db();
+        $out = [];
+
+        $add = static function (string $label, mixed $value) use (&$out): void {
+            $value = is_string($value) ? trim($value) : $value;
+            if ($value === null || $value === '' ) return;
+            $out[] = [$label, (string)$value];
+        };
+
+        $lookup = static function (string $sql, mixed $id) use ($db): ?string {
+            if ($id === null || $id === '' || !is_numeric($id)) return null;
+            $row = $db->fetchOne($sql, [(int)$id]);
+            return $row ? (string)reset($row) : null;
+        };
+
+        $add('Search',        $request->query('q') ?? $request->query('search'));
+        $add('Faculty',       $lookup('SELECT fac_name FROM `faculty` WHERE fac_id = ? LIMIT 1', $request->query('faculty')) ?? $request->query('faculty'));
+        $add('Department',    $lookup('SELECT dep_name FROM `departements` WHERE dep_id = ? LIMIT 1', $request->query('department')) ?? $request->query('department'));
+        $add('Option',        $lookup('SELECT name FROM `options` WHERE id = ? LIMIT 1', $request->query('std_option')) ?? $request->query('std_option'));
+        $add('Level',         $lookup('SELECT name FROM `levels` WHERE id = ? LIMIT 1', $request->query('current_level')) ?? $request->query('current_level'));
+        $add('Campus',        $lookup('SELECT name FROM `campuses` WHERE id = ? LIMIT 1', $request->query('campus')) ?? $request->query('campus'));
+        $add('Academic year', $request->query('acc_year'));
+        $add('Status',        $request->query('student_state'));
+        $add('Category',      $request->query('category'));
+        $add('Intake',        $request->query('intake'));
+        $add('Learning mode', $request->query('learning_mode'));
+        $add('Gender',        $request->query('gender'));
+        $add('Nationality',   $request->query('nationality'));
+        $add('Country',       $request->query('country'));
+        $add('Province',      $request->query('province'));
+        $add('District',      $request->query('district'));
+        $add('Sector',        $request->query('sector'));
+
+        $ageMin = $request->query('age_min');
+        $ageMax = $request->query('age_max');
+        if (($ageMin !== null && $ageMin !== '') || ($ageMax !== null && $ageMax !== '')) {
+            $add('Age', ($ageMin !== null && $ageMin !== '' ? $ageMin : '…') . ' – ' . ($ageMax !== null && $ageMax !== '' ? $ageMax : '…'));
+        }
+
+        return $out;
     }
 
     /**

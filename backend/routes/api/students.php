@@ -34,6 +34,9 @@ $router->group('/api/students', function ($router) {
 // Read-only: any user with VIEW_STUDENTS
 $router->group('/api/students', function ($router) {
     $router->get('/stats',                                [StudentController::class, 'stats']);
+    // Faceted values + counts for the list page's filter panel. Literal
+    // segment, so it must stay ahead of the /:id matchers below.
+    $router->get('/filter-options',                       [StudentController::class, 'filterOptions']);
     // Bulk CSV export (literal segments must come before /:id).
     $router->get('/export',                               [StudentController::class, 'exportCsv']);
     $router->get('/export-columns',                       [StudentController::class, 'exportColumnsList']);

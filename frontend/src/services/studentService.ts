@@ -97,8 +97,85 @@ export interface StudentListParams {
   intake?:        string
   /** Student category bucket — matches student.category (undergraduate | postgraduate). */
   category?:      string
+  /** Residency filters — free-text columns on `student`, matched
+   *  case-insensitively server-side. `province` accepts a canonical bucket
+   *  key ("southern") which the backend expands to every live spelling. */
+  country?:       string
+  province?:      string
+  district?:      string
+  sector?:        string
+  /** Inclusive age bounds, derived from `student.birthdate`. Students whose
+   *  birthdate is missing or unparseable are excluded once either is set. */
+  age_min?:       string | number
+  age_max?:       string | number
   sort_by?:       string
   sort_dir?:      'asc' | 'desc'
+}
+
+/* ── Faceted filter options ──────────────────────────────────── */
+
+/** One selectable filter value plus how many students it would yield. */
+export interface FacetValue {
+  value: string
+  label: string
+  total: number
+}
+
+export interface FacultyFacet extends FacetValue {
+  /** Drives the Option filter, which the registry only uses for Education. */
+  is_education: boolean
+}
+
+export interface DepartmentFacet extends FacultyFacet {
+  faculty_id: string | null
+}
+
+export interface OptionFacet extends FacultyFacet {
+  department_id: string | null
+  faculty_id:    string | null
+}
+
+/** Province values carry `canonical: false` when they are unrecognised
+ *  free-text (foreign regions, junk rows) rather than one of the five
+ *  Rwandan provinces. */
+export interface ProvinceFacet extends FacetValue {
+  canonical: boolean
+}
+
+export interface DistrictFacet extends FacetValue {
+  /** Canonical province key this district mostly belongs to. */
+  province: string | null
+}
+
+export interface SectorFacet extends FacetValue {
+  /** District key this sector mostly belongs to. */
+  district: string | null
+}
+
+export interface AgeBand extends FacetValue {
+  min: number | null
+  max: number | null
+}
+
+export interface StudentFilterOptions {
+  /** Students matching the filters as sent — what an export would contain. */
+  total:          number
+  faculties:      FacultyFacet[]
+  departments:    DepartmentFacet[]
+  options:        OptionFacet[]
+  countries:      FacetValue[]
+  provinces:      ProvinceFacet[]
+  districts:      DistrictFacet[]
+  sectors:        SectorFacet[]
+  academic_years: FacetValue[]
+  statuses:       FacetValue[]
+  age: {
+    min:   number
+    max:   number
+    /** Students in scope with a usable birthdate — the rest can't be aged. */
+    known: number
+    bands: AgeBand[]
+  }
 }
 
 export interface StudentPayload {
@@ -173,7 +250,10 @@ export interface BulkPatchedRow {
   data:   Record<string, string>
 }
 
-/* ── CSV export modal ────────────────────────────────────────── */
+/* ── Export modal ────────────────────────────────────────────── */
+
+/** `xlsx` is a real workbook; `csv` is the flat UTF-8 (BOM'd) file. */
+export type ExportFormat = 'xlsx' | 'csv'
 
 export interface ExportColumn {
   key:   string
@@ -302,40 +382,54 @@ export interface StudentDocumentsResponse {
   can_upload?:      boolean
 }
 
+/**
+ * Mirror the topbar's global campus + category scope onto an outgoing query.
+ * The students endpoints use the legacy `campus` parameter (a varchar id), so
+ * we write onto that key — but only when the caller hasn't pinned one itself,
+ * so an explicit override still wins.
+ *
+ * Shared by list / stats / filterOptions / export so all four always describe
+ * the same cohort; a scope applied to the table but not to the facet counts
+ * would have the panel promising rows the list can't show.
+ */
+function withGlobalScopes<T extends object>(params: T): Record<string, unknown> {
+  const scopeId  = useCampusFilterStore.getState().selectedCampusId
+  const category = useCategoryFilterStore.getState().selectedCategory
+  const merged: Record<string, unknown> = { ...(params as Record<string, unknown>) }
+  if (scopeId != null && (merged.campus == null || merged.campus === '')) {
+    merged.campus = String(scopeId)
+  }
+  if (category != null && (merged.category == null || merged.category === '')) {
+    merged.category = category
+  }
+  return merged
+}
+
 export const studentService = {
   list: (
     params: StudentListParams = {},
     signal?: AbortSignal,
-  ) => {
-    // Inject the global topbar campus scope. The students endpoint uses
-    // the legacy `campus` parameter (varchar id), so we mirror onto that
-    // key when the caller hasn't already pinned one.
-    const scopeId = useCampusFilterStore.getState().selectedCampusId
-    const category = useCategoryFilterStore.getState().selectedCategory
-    const merged: Record<string, unknown> = { ...(params as Record<string, unknown>) }
-    if (scopeId != null && (merged.campus == null || merged.campus === '')) {
-      merged.campus = String(scopeId)
-    }
-    if (category != null && (merged.category == null || merged.category === '')) {
-      merged.category = category
-    }
-    return api.get<PaginatedResponse<Student>>('/api/students', merged, signal)
-  },
+  ) =>
+    api.get<PaginatedResponse<Student>>(
+      '/api/students',
+      withGlobalScopes(params),
+      signal,
+    ),
 
-  stats: (params: { acc_year?: string; campus?: string | number; category?: string } = {}, signal?: AbortSignal) => {
-    // Mirror the topbar campus + category scope onto the stats endpoint so
-    // the dashboard cards / charts always reflect just the user's chosen scope.
-    const scopeId = useCampusFilterStore.getState().selectedCampusId
-    const category = useCategoryFilterStore.getState().selectedCategory
-    const merged: Record<string, unknown> = { ...(params as Record<string, unknown>) }
-    if (scopeId != null && (merged.campus == null || merged.campus === '')) {
-      merged.campus = String(scopeId)
-    }
-    if (category != null && (merged.category == null || merged.category === '')) {
-      merged.category = category
-    }
-    return api.get<StudentStats>('/api/students/stats', merged, signal)
-  },
+  stats: (params: { acc_year?: string; campus?: string | number; category?: string } = {}, signal?: AbortSignal) =>
+    api.get<StudentStats>('/api/students/stats', withGlobalScopes(params), signal),
+
+  /** Every value the filter panel can offer, each with the number of
+   *  students it would yield. Counts are faceted: pass the filters that are
+   *  already active and each dimension comes back counted with the others
+   *  applied but its own excluded, so the panel can show what a click does
+   *  before the user makes it. */
+  filterOptions: (params: StudentListParams = {}, signal?: AbortSignal) =>
+    api.get<StudentFilterOptions>(
+      '/api/students/filter-options',
+      withGlobalScopes(params),
+      signal,
+    ),
 
   /** Bulk reassign students to a campus. Server applies the change in a
    *  single transaction and returns the affected row count. */
@@ -408,21 +502,27 @@ export const studentService = {
   deleteExportTemplate: (id: number | string) =>
     api.delete<void>(`/api/students/export-templates/${id}`),
 
-  /** Build a token-bearing CSV download URL. The browser navigates to
-   *  it directly (`window.location.href = url`) so the response is
-   *  saved as a file — much simpler than streaming an Axios blob.
+  /** Build a token-bearing download URL. The browser navigates to it
+   *  directly (see `downloadExport` below) so the response is saved as a
+   *  file — much simpler than streaming an Axios blob.
    *
-   *  Pass either `template_id` (id from listExportTemplates) or an
-   *  array of column keys; the backend prefers `template_id` when both
-   *  are present.
+   *  Pass either `template_id` (id from listExportTemplates) or an array of
+   *  column keys; the backend prefers `template_id` when both are present,
+   *  and falls back to a standard column set when neither is given — that's
+   *  what lets the filter panel offer a one-click download per value.
+   *
+   *  `format` picks the file type: `xlsx` produces a real workbook (styled
+   *  header, frozen pane, autofilter, and a sheet recording which filters
+   *  produced it); `csv` streams the flat file.
    *
    *  All current list filters (q, gender, faculty, department, campus,
    *  category, …) are forwarded so the export matches what the user
    *  sees on the table. */
-  exportCsvUrl: (params: {
+  exportUrl: (params: {
     template_id?: string | number
     columns?:     string[]
     filters?:     Record<string, string | number | undefined>
+    format?:      ExportFormat
   }) => {
     const token = useAuthStore.getState().token
     const base  = import.meta.env.VITE_API_URL ?? ''
@@ -433,26 +533,28 @@ export const studentService = {
     if (params.columns && params.columns.length > 0) {
       search.set('columns', params.columns.join(','))
     }
-    // Mirror the same global scopes the list endpoint reads — campus
-    // from the topbar pill and category from the topbar category
-    // switcher. The caller already passes paginated filters through
-    // `filters`; we only fill these when not already set so a
-    // power-user override (e.g. a hard-pinned filter) still wins.
-    const scopeCampus   = useCampusFilterStore.getState().selectedCampusId
-    const scopeCategory = useCategoryFilterStore.getState().selectedCategory
-    const filters = { ...(params.filters ?? {}) }
-    if (scopeCampus != null && (filters.campus == null || filters.campus === '')) {
-      filters.campus = String(scopeCampus)
-    }
-    if (scopeCategory != null && (filters.category == null || filters.category === '')) {
-      filters.category = scopeCategory
-    }
+    search.set('format', params.format ?? 'xlsx')
+    // Mirror the same global scopes the list endpoint reads — campus from
+    // the topbar pill and category from the topbar category switcher.
+    const filters = withGlobalScopes(params.filters ?? {})
     for (const [k, v] of Object.entries(filters)) {
       if (v == null || v === '') continue
       search.set(k, String(v))
     }
     if (token) search.set('token', token)
     return `${base}/api/students/export?${search.toString()}`
+  },
+
+  /** Trigger the browser's native download flow for an export URL. A plain
+   *  anchor click keeps the server's Content-Disposition filename, which a
+   *  fetch-and-blob round-trip would throw away. */
+  downloadExport: (url: string) => {
+    const a = document.createElement('a')
+    a.href = url
+    a.rel  = 'noopener'
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
   },
 
   show: (id: number | string, signal?: AbortSignal) =>

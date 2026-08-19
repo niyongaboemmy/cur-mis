@@ -169,8 +169,8 @@ export default function StudentExportModal({
     if (!canExport) return
     const url =
       tab === 'templates' && activeTemplateId != null
-        ? studentService.exportCsvUrl({ template_id: activeTemplateId, filters })
-        : studentService.exportCsvUrl({ columns: pickedOrder, filters })
+        ? studentService.exportUrl({ template_id: activeTemplateId, filters })
+        : studentService.exportUrl({ columns: pickedOrder, filters })
     // A plain anchor click triggers the browser's native download
     // flow, including the Content-Disposition filename from the
     // server — much cleaner than a fetch-and-blob round-trip.

@@ -64,6 +64,160 @@ class ApplicantProfileController extends BaseController
     // Profile endpoints
     // ─────────────────────────────────────────────────────────────────────────
 
+    /**
+     * GET /api/applicant/profile
+     * Returns the full enriched profile of the authenticated applicant.
+     */
+    public function getProfile(Request $request, Response $response): never
+    {
+        $authUser = $request->param('_auth_user');
+        $userId   = (int)($authUser['id'] ?? 0);
+
+        $profile = $this->profileModel->getFullProfile($userId);
+
+        if (!$profile) {
+            $this->error($response, 'Profile not found.', 404);
+        }
+
+        $this->success($response, $this->formatProfile($profile), 'Profile fetched successfully.');
+    }
+
+    /**
+     * PUT /api/applicant/profile
+     * Update personal / contact / address details.
+     * Fields on student_applications (first_name, last_name, phone, etc.) are also
+     * updatable here as long as the application is still in an editable state.
+     */
+    public function updateProfile(Request $request, Response $response): never
+    {
+        $profile   = $request->param('_applicant_profile');
+        $profileId = (int)$profile['id'];
+        $appId     = (int)$profile['application_id'];
+
+        $data   = $request->body();
+        $errors = ValidationHelper::validate($data, [
+            'middle_name'             => 'string|max:100',
+            'id_type'                 => 'in:national_id,passport,birth_certificate',
+            'id_number'               => 'string|max:50',
+            'province'                => 'string|max:100',
+            'district'                => 'string|max:100',
+            'sector'                  => 'string|max:100',
+            'emergency_contact_name'  => 'string|max:150',
+            'emergency_contact_phone' => 'string|max:30',
+            // Application-level fields (personal info)
+            'phone'                   => 'string|min:7|max:30',
+            'address'                 => 'string|max:500',
+            'nationality'             => 'string|max:100',
+        ]);
+
+        if (!empty($errors)) {
+            $this->error($response, 'Validation failed.', 422, $errors);
+        }
+
+        // Update profile-specific fields
+        $profileFields = array_filter([
+            'middle_name'             => $data['middle_name']             ?? null,
+            'id_type'                 => $data['id_type']                 ?? null,
+            'id_number'               => $data['id_number']               ?? null,
+            'province'                => $data['province']                ?? null,
+            'district'                => $data['district']                ?? null,
+            'sector'                  => $data['sector']                  ?? null,
+            'emergency_contact_name'  => $data['emergency_contact_name']  ?? null,
+            'emergency_contact_phone' => $data['emergency_contact_phone'] ?? null,
+        ], fn($v) => $v !== null);
+
+        if (!empty($profileFields)) {
+            $this->profileModel->update($profileId, $profileFields);
+        }
+
+        // Update application personal info (allowed in early statuses)
+        $application = $this->appModel->find($appId);
+        $editableStatuses = ['submitted', 'documents_under_review', 'documents_rejected', 'requested_changes'];
+
+        if ($application && in_array($application['status'], $editableStatuses, true)) {
+            $appFields = array_filter([
+                'phone'       => $data['phone']       ?? null,
+                'address'     => $data['address']     ?? null,
+                'nationality' => $data['nationality'] ?? null,
+            ], fn($v) => $v !== null);
+
+            if (!empty($appFields)) {
+                $this->appModel->update($appId, $appFields);
+            }
+        }
+
+        $this->success($response, null, 'Profile updated successfully.');
+    }
+
+    /**
+     * GET /api/applicant/application/payment/checkout
+     *
+     * Returns the UrubutoPay hosted-checkout URL the "Pay Now" button opens.
+     * The payer_code is the application number; once the applicant pays,
+     * UrubutoPay calls our verify + callback webhooks, which mark this
+     * application as paid (transaction_id + paid_at). The frontend polls
+     * getPaymentStatus() until that happens.
+     */
+    public function getPaymentCheckout(Request $request, Response $response): never
+    {
+        $profile = $request->param('_applicant_profile');
+        $appId   = (int)($profile['application_id'] ?? 0);
+        if (!$appId) {
+            $this->error($response, 'No active application. Complete the earlier steps before paying.', 404);
+        }
+
+        $app = $this->appModel->find($appId);
+        if (!$app) {
+            $this->error($response, 'Application not found.', 404);
+        }
+
+        $appNumber = trim((string)($app['application_number'] ?? ''));
+        if ($appNumber === '') {
+            $this->error($response, 'Application number is missing — cannot start payment.', 422);
+        }
+
+        $data = (new UrubutoPayService())->generateApplicationCheckoutUrl($appNumber);
+
+        // Reflect any payment already recorded so the UI can short-circuit polling.
+        $data['paid']               = !empty($app['paid_at']) && !empty($app['transaction_id']);
+        $data['transaction_id']     = $app['transaction_id'] ?? null;
+        $data['application_number'] = $appNumber;
+
+        $this->success($response, $data, 'Checkout link generated.');
+    }
+
+    /**
+     * GET /api/applicant/application/payment/status
+     *
+     * Lightweight polling endpoint. Reports whether the application fee has
+     * been confirmed by UrubutoPay (transaction_id + paid_at both set).
+     */
+    public function getPaymentStatus(Request $request, Response $response): never
+    {
+        $profile = $request->param('_applicant_profile');
+        $appId   = (int)($profile['application_id'] ?? 0);
+        if (!$appId) {
+            $this->error($response, 'No active application.', 404);
+        }
+
+        $app = $this->appModel->find($appId);
+        if (!$app) {
+            $this->error($response, 'Application not found.', 404);
+        }
+
+        $paid = !empty($app['paid_at']) && !empty($app['transaction_id']);
+
+        $this->success($response, [
+            'paid'               => $paid,
+            'transaction_id'     => $app['transaction_id'] ?? null,
+            'paid_at'            => $app['paid_at'] ?? null,
+            'amount'             => isset($app['payment_amount']) && $app['payment_amount'] !== null ? (float)$app['payment_amount'] : null,
+            'currency'           => $app['payment_currency'] ?? 'RWF',
+            'application_number' => $app['application_number'] ?? null,
+            'status'             => $app['status'] ?? null,
+        ], 'Payment status fetched.');
+    }
+
 
 
     // ── Admission fees (Registration, CURSU …) ───────────────────────────────

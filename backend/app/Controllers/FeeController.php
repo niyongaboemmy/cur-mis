@@ -2587,4 +2587,80 @@ class FeeController extends BaseController
     {
         $this->success($response, [], 'Application fee reconciliation report.');
     }
+
+    /**
+     * POST /api/finance/reports/application-fee-reconciliation/run-pending
+     *
+     * Batch-credit all enrolled students whose application fee has not yet
+     * been transferred. Useful for backfilling after the feature is deployed.
+     *
+     * Body: { academic_year_id: int }
+     */
+    public function runPendingApplicationFeeCredits(Request $request, Response $response): never
+    {
+        $data   = $request->body();
+        $actor  = $request->param('_auth_user');
+        $yearId = (int)($data['academic_year_id'] ?? 0);
+
+        if (!$yearId) {
+            $this->error($response, 'academic_year_id is required.', 422);
+        }
+
+        $tableExists = (bool)$this->db->fetchOne(
+            "SELECT COUNT(*) AS cnt FROM information_schema.TABLES
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'student_applications'",
+            []
+        )['cnt'];
+
+        if (!$tableExists) {
+            $this->error($response, 'student_applications table not found — admissions module not yet migrated.', 422);
+        }
+
+        // Fetch pending: enrolled but not yet transferred, scoped to the given year
+        $pending = $this->db->fetchAll(
+            "SELECT sa.id AS application_id,
+                    sa.enrolled_student_id,
+                    sa.payment_amount,
+                    sa.transaction_id
+             FROM `student_applications` sa
+             WHERE sa.enrolled_student_id IS NOT NULL
+               AND sa.paid_at IS NOT NULL
+               AND COALESCE(sa.payment_amount, 0) > 0
+               AND sa.transaction_id IS NOT NULL
+               AND sa.academic_year_id = ?
+               AND NOT EXISTS (
+                 SELECT 1 FROM `fee_payments` fp
+                 WHERE fp.source = 'APPLICATION_TRANSFER'
+                   AND fp.source_application_id = sa.id
+               )",
+            [$yearId]
+        );
+
+        $results  = ['credited' => 0, 'skipped' => 0, 'errors' => 0, 'details' => []];
+        $actorId  = (int)($actor['id'] ?? 0);
+
+        foreach ($pending as $row) {
+            try {
+                $result = $this->service->creditApplicationFee(
+                    studentId:      (string)$row['enrolled_student_id'],
+                    academicYearId: $yearId,
+                    amount:         (float)$row['payment_amount'],
+                    transactionRef: (string)$row['transaction_id'],
+                    applicationId:  (int)$row['application_id'],
+                    actorId:        $actorId
+                );
+                if ($result['status'] === 'credited') {
+                    $results['credited']++;
+                } else {
+                    $results['skipped']++;
+                }
+                $results['details'][] = ['id' => $row['application_id'], 'result' => $result['status']];
+            } catch (\Throwable $e) {
+                $results['errors']++;
+                $results['details'][] = ['id' => $row['application_id'], 'result' => 'error', 'message' => $e->getMessage()];
+            }
+        }
+
+        $this->success($response, $results, "Batch complete: {$results['credited']} credited, {$results['skipped']} skipped, {$results['errors']} errors.");
+    }
 }
