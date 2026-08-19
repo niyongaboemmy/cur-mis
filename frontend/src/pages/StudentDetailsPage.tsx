@@ -1507,6 +1507,77 @@ function ResidencySection({
 }
 
 /**
+ * The states a student can be put into, shared by both editors on this page
+ * (the Programme section and the Edit Student Details modal) so the two can
+ * never drift apart.
+ *
+ * Values are the canonical ones the Students list groups on — see
+ * StudentController::studentStateVariants(). "graduands" is stored plural
+ * because that is what the existing rows hold; the label is singular because
+ * it describes one student.
+ */
+const STUDENT_STATES: ReadonlyArray<{ value: string; label: string }> = [
+  { value: "active",    label: "Active" },
+  { value: "inactive",  label: "Inactive" },
+  { value: "graduated", label: "Graduated" },
+  { value: "graduands", label: "Graduand" },
+  { value: "suspended", label: "Suspended" },
+  { value: "rejected",  label: "Rejected" },
+  { value: "dropped",   label: "Dropped out" },
+  { value: "dismissed", label: "Dismissed" },
+];
+
+/**
+ * Map a stored state onto one of STUDENT_STATES.
+ *
+ * `student.student_state` is free text filled in by hand over years, so the
+ * column holds "Active" and "ACTIVE" as well as "active", plus one-off
+ * spellings like "Graduates" and "resume". A `<select>` whose value matches no
+ * option falls back to its FIRST option, so those students' status silently
+ * displayed as Active — and saving the form wrote that back, changing a state
+ * nobody meant to touch. Folding the value first keeps the box honest.
+ *
+ * Mirrors the server-side grouping so the form and the list agree.
+ */
+function normaliseStudentState(raw: string | null | undefined): string {
+  const value = String(raw ?? "").trim().toLowerCase();
+  if (value === "") return "active";
+
+  const groups: Record<string, string[]> = {
+    active:    ["active", "resume"],
+    inactive:  ["inactive", "in-active", "in active"],
+    graduated: ["graduated", "graduate", "graduates"],
+    graduands: ["graduands", "graduand", "graduants", "graduant"],
+    suspended: ["suspended", "suspend"],
+    rejected:  ["rejected", "reject"],
+    dropped:   ["dropped", "dropout", "drop out", "dropped out", "drop_out"],
+    dismissed: ["dismissed", "dismiss"],
+  };
+  for (const [canonical, spellings] of Object.entries(groups)) {
+    if (spellings.includes(value)) return canonical;
+  }
+  // An unrecognised state (e.g. the two "xxx" rows) is left alone rather than
+  // being rewritten to Active behind the user's back — StatusOptions renders
+  // it as an extra option so it stays visible and intact.
+  return value;
+}
+
+/** The state list, plus the student's own value when it is not one of ours. */
+function StatusOptions({ current }: { current: string }) {
+  const known = STUDENT_STATES.some((s) => s.value === current);
+  return (
+    <>
+      {STUDENT_STATES.map((s) => (
+        <option key={s.value} value={s.value}>{s.label}</option>
+      ))}
+      {!known && current !== "" && (
+        <option value={current}>{current} (current)</option>
+      )}
+    </>
+  );
+}
+
+/**
  * Programme Details — read-only for students, editable by admins. Changing
  * std_option triggers a server-side recompute of faculty/department to keep
  * the legacy columns in sync with the catalog. Options come from the stats
@@ -1575,7 +1646,7 @@ function ProgrammeSection({
     acc_year: (student.acc_year ?? "") as string,
     registration_date: (student.registration_date ?? "") as string,
     regnumber: (student.regnumber ?? "") as string,
-    student_state: (student.student_state ?? "active") as string,
+    student_state: normaliseStudentState(student.student_state),
     sponsor: (student.sponsor ?? "") as string,
   });
   const [form, setForm] = useState(buildInitial);
@@ -1728,12 +1799,7 @@ function ProgrammeSection({
                 onChange={set("student_state")}
                 className={selectInputClass}
               >
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-                <option value="graduated">Graduated</option>
-                <option value="suspended">Suspended</option>
-                <option value="dismissed">Dismissed</option>
-                <option value="dropped">Dropped</option>
+                <StatusOptions current={form.student_state} />
               </select>
             </FieldGroup>
           </>
@@ -4828,7 +4894,7 @@ function EditStudentModal({
       // Catalog program (options.id) — the new authoritative academic link.
       std_option: student.std_option ? String(student.std_option) : "",
       current_level: student.current_level || "",
-      student_state: student.student_state || "active",
+      student_state: normaliseStudentState(student.student_state),
       birthdate: student.birthdate || "",
       regnumber: student.regnumber || "",
       acc_year: student.acc_year || "",
@@ -4996,10 +5062,7 @@ function EditStudentModal({
                     {...register("student_state")}
                     className="input w-full cursor-pointer bg-white dark:bg-ink-900"
                   >
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                    <option value="graduated">Graduated</option>
-                    <option value="suspended">Suspended</option>
+                    <StatusOptions current={normaliseStudentState(student.student_state)} />
                   </select>
                 </div>
                 <div className="sm:col-span-2">

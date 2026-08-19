@@ -2472,6 +2472,11 @@ class StudentController extends BaseController
                 ['value' => 'graduands', 'label' => 'Graduands'],
                 ['value' => 'suspended', 'label' => 'Suspended'],
                 ['value' => 'rejected',  'label' => 'Rejected'],
+                // Settable from the student record, so it must be filterable
+                // too — otherwise a student put into one of these states can
+                // never be found again from the list.
+                ['value' => 'dropped',   'label' => 'Dropped out'],
+                ['value' => 'dismissed', 'label' => 'Dismissed'],
             ],
             'age' => [
                 'min'          => isset($ageRow['min_age']) ? (int)$ageRow['min_age'] : 15,
@@ -2709,6 +2714,8 @@ class StudentController extends BaseController
             'graduands' => ['graduands', 'graduand', 'graduants', 'graduant'],
             'suspended' => ['suspended', 'suspend'],
             'rejected'  => ['rejected', 'reject'],
+            'dropped'   => ['dropped', 'dropout', 'drop out', 'dropped out', 'drop_out'],
+            'dismissed' => ['dismissed', 'dismiss'],
         ];
 
         foreach ($groups as $variants) {
