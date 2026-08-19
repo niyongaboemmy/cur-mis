@@ -3895,7 +3895,26 @@ class StudentController extends BaseController
 
         $sheet->fromArray($headers, null, 'A1');
         if (!empty($rows)) {
-            $sheet->fromArray($rows, null, 'A2', true);
+            // Every cell is bound as a string, not just formatted as one.
+            // PhpSpreadsheet's default binder types a digit string as a
+            // number, and a double only carries ~15 significant digits: the
+            // 16-digit national IDs in the MIFOTRA template come back as
+            // 1.19927E+15 with the last digit gone, and a phone number's
+            // leading zero disappears. A FORMAT_TEXT number format can't undo
+            // that — by then the value is already a float — so the binder has
+            // to be swapped before the values are written. It also stops a
+            // name beginning '=' or '+' from being read as a formula.
+            $previousBinder = \PhpOffice\PhpSpreadsheet\Cell\Cell::getValueBinder();
+            \PhpOffice\PhpSpreadsheet\Cell\Cell::setValueBinder(
+                new \PhpOffice\PhpSpreadsheet\Cell\StringValueBinder()
+            );
+            try {
+                $sheet->fromArray($rows, null, 'A2', true);
+            } finally {
+                // Static global — leaving it swapped would silently change
+                // every other workbook this process goes on to write.
+                \PhpOffice\PhpSpreadsheet\Cell\Cell::setValueBinder($previousBinder);
+            }
         }
 
         $lastCol = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex(max(1, count($headers)));
@@ -3920,9 +3939,8 @@ class StudentController extends BaseController
             $sheet->getColumnDimensionByColumn($i)->setAutoSize(true);
         }
 
-        // Everything is written as text: registration numbers and phone
-        // numbers are digit strings with meaningful leading zeros, and Excel
-        // would happily eat those if the cells were typed as numbers.
+        // Text number format as well as text cell values, so Excel doesn't
+        // re-interpret a digit string the user later edits in place.
         if ($lastRow > 1) {
             $sheet->getStyle("A2:{$lastCol}{$lastRow}")
                 ->getNumberFormat()
