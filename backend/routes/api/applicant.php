@@ -21,6 +21,7 @@ use App\Middleware\RateLimitMiddleware;
  *   GET    /api/applicant/profile                          → getProfile
  *   PUT    /api/applicant/profile                          → updateProfile
  *   POST   /api/applicant/profile/photo                    → uploadPhoto
+ *   DELETE /api/applicant/profile/photo                    → deletePhoto
  *   GET    /api/applicant/application                      → getApplication
  *   GET    /api/applicant/academic-records                 → listAcademicRecords
  *   POST   /api/applicant/academic-records                 → addAcademicRecord
@@ -39,6 +40,7 @@ $router->group('/api/applicant', function ($router) {
     $router->get('/profile',       [ApplicantProfileController::class, 'getProfile']);
     $router->post('/profile',       [ApplicantProfileController::class, 'updateProfile']);
     $router->post('/profile/photo', [ApplicantProfileController::class, 'uploadPhoto']);
+    $router->delete('/profile/photo', [ApplicantProfileController::class, 'deletePhoto']);
 
     // ── Application creation & verification ──────────────────────────────────
     $router->post('/application/draft',  [ApplicantProfileController::class, 'draftApplication']);

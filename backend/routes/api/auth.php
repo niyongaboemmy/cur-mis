@@ -20,6 +20,7 @@ $router->get('/api/auth/me',                  [AuthController::class, 'me'],    
 $router->post('/api/auth/me',                  [AuthController::class, 'updateMe'],           [AuthMiddleware::class]);
 $router->get('/api/auth/me/photo',            [AuthController::class, 'downloadMyPhoto'],    [AuthMiddleware::class]);
 $router->post('/api/auth/me/photo',           [AuthController::class, 'uploadMyPhoto'],      [AuthMiddleware::class]);
+$router->delete('/api/auth/me/photo',         [AuthController::class, 'deleteMyPhoto'],      [AuthMiddleware::class]);
 $router->post('/api/auth/change-password',    [AuthController::class, 'changePassword'],     [AuthMiddleware::class, RateLimitMiddleware::class]);
 
 // Applicant self-registration — public endpoint, rate-limited

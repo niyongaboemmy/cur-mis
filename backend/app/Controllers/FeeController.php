@@ -361,6 +361,75 @@ class FeeController extends BaseController
     }
 
     /**
+     * GET /api/finance/my/fines
+     *
+     * Student self-service view of their own fines. Every /api/fines/* route is
+     * gated behind staff permissions, so before this endpoint a fined student
+     * could see their balance rise with no way to find out why or to pay it.
+     *
+     * Each fine is returned with the invoice it was billed on (fines are always
+     * invoiced with fee_type = 'FINE'), so the portal can link straight to the
+     * payable invoice instead of leaving the student at a dead end.
+     */
+    public function getMyFines(Request $request, Response $response): never
+    {
+        $reg = $this->authStudentRegnumber($request);
+        if (!$reg) $this->error($response, 'No student profile linked to this account.', 404);
+
+        $rows = $this->db->fetchAll(
+            "SELECT f.id, f.fine_type, f.reason, f.amount, f.status,
+                    f.invoice_id, f.created_at, f.waived_at,
+                    i.invoice_number, i.academic_year_id,
+                    i.amount_due, i.amount_paid, i.status AS invoice_status, i.due_date,
+                    ay.label AS academic_year_label
+             FROM `fee_fines` f
+             LEFT JOIN `fee_invoices`   i  ON i.id  = f.invoice_id
+             LEFT JOIN `academic_years` ay ON ay.id = i.academic_year_id
+             WHERE CONVERT(f.student_id USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                 = CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci
+             ORDER BY f.created_at DESC",
+            [$reg]
+        );
+
+        $fines = array_map(static function (array $r): array {
+            $due  = (float)($r['amount_due']  ?? 0);
+            $paid = (float)($r['amount_paid'] ?? 0);
+            return [
+                'id'                  => (int)$r['id'],
+                'fine_type'           => (string)$r['fine_type'],
+                'reason'              => (string)$r['reason'],
+                'amount'              => (float)$r['amount'],
+                'status'              => (string)$r['status'],
+                'created_at'          => $r['created_at'],
+                'waived_at'           => $r['waived_at'],
+                'invoice_id'          => $r['invoice_id'] !== null ? (int)$r['invoice_id'] : null,
+                'invoice_number'      => $r['invoice_number'],
+                'invoice_status'      => $r['invoice_status'],
+                'due_date'            => $r['due_date'],
+                'academic_year_id'    => $r['academic_year_id'] !== null ? (int)$r['academic_year_id'] : null,
+                'academic_year_label' => $r['academic_year_label'],
+                // What the student still has to pay on this fine's invoice.
+                'balance'             => max(0.0, round($due - $paid, 2)),
+            ];
+        }, $rows);
+
+        // 'waived' fines are settled and 'paid' ones are done — neither is owed.
+        $outstanding = array_values(array_filter(
+            $fines,
+            static fn(array $f): bool => in_array($f['status'], ['pending', 'invoiced'], true)
+        ));
+
+        $this->success($response, [
+            'fines'   => $fines,
+            'summary' => [
+                'total_fines'        => count($fines),
+                'outstanding_count'  => count($outstanding),
+                'outstanding_amount' => round(array_sum(array_column($outstanding, 'amount')), 2),
+            ],
+        ], 'Fines retrieved.');
+    }
+
+    /**
      * GET /api/finance/my/invoices
      * Student self-service: authenticated student's own ledger.
      */

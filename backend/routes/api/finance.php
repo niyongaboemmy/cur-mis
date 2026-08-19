@@ -185,6 +185,7 @@ $router->group('/api/finance', function ($router) {
     // ── Student self-service ──────────────────────────────────────────────────
     $router->group('/my', function ($r) {
         $r->get('/invoices',  [FeeController::class, 'getMyInvoices']);
+        $r->get('/fines',     [FeeController::class, 'getMyFines']);
         $r->get('/clearance', [FeeController::class, 'getMyClearance']);
         $r->get('/bill/pdf',  [FeeController::class, 'downloadMyBillPdf']);
         $r->get('/payment-calendar', [PaymentCalendarController::class, 'listMyDocuments']);

@@ -519,7 +519,9 @@ class AuthService
     public function changePassword(int $userId, string $currentPassword, string $newPassword): array
     {
         $model = new UserModel();
-        $user  = $model->find($userId);
+        // findBy() — not find(). find() runs the row through hideFields(), which
+        // strips `password`, so the verify below would receive null and fatal.
+        $user  = $model->findBy('id', $userId);
 
         if (!$user) {
             return ['success' => false, 'message' => 'User not found.', 'code' => 404];

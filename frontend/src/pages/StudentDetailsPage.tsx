@@ -73,6 +73,7 @@ import {
   Users as UsersIcon,
   CalendarClock,
   Camera,
+  Trash2,
   PlusCircle,
   MinusCircle,
   Lock,
@@ -92,6 +93,8 @@ import { FEE_TYPE_LABELS, PAYMENT_METHOD_LABELS } from "@/types/finance";
 import InvoiceStatusBadge from "@/components/finance/InvoiceStatusBadge";
 import { formatRWF } from "@/utils/formatCurrency";
 import CountrySelect from "@/components/ui/CountrySelect";
+import LocationSelect from "@/components/ui/LocationSelect";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { useLevels } from "@/hooks/useLevels";
 import {
   COUNTRY_BY_NAME,
@@ -1389,10 +1392,6 @@ function ResidencySection({
   ]);
 
   const save = useSectionSave(student, selfMode, "Residency");
-  const set =
-    (k: keyof ReturnType<typeof buildInitial>) =>
-    (e: React.ChangeEvent<HTMLInputElement>) =>
-      setForm((f) => ({ ...f, [k]: e.target.value }));
 
   const handleSave = () =>
     save.mutate({
@@ -1429,41 +1428,32 @@ function ResidencySection({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5 mt-6">
         {editing ? (
           <>
-            <FieldGroup label="Province">
-              <TextInput
-                value={form.province}
-                onChange={set("province")}
-                placeholder="e.g. Kigali City"
-              />
-            </FieldGroup>
-            <FieldGroup label="District">
-              <TextInput
-                value={form.district}
-                onChange={set("district")}
-                placeholder="e.g. Gasabo"
-              />
-            </FieldGroup>
-            <FieldGroup label="Sector">
-              <TextInput
-                value={form.sector}
-                onChange={set("sector")}
-                placeholder="e.g. Remera"
-              />
-            </FieldGroup>
-            <FieldGroup label="Cell">
-              <TextInput
-                value={form.cell}
-                onChange={set("cell")}
-                placeholder="e.g. Rukiri I"
-              />
-            </FieldGroup>
-            <FieldGroup label="Village">
-              <TextInput
-                value={form.village}
-                onChange={set("village")}
-                placeholder="e.g. Amahoro"
-              />
-            </FieldGroup>
+            {/* Cascading picker — district options are scoped to the chosen
+                province, and changing a level clears the ones below it so a
+                stale district/sector pairing can't be saved. Levels without
+                bundled reference data stay free text. */}
+            <LocationSelect
+              value={{
+                province: form.province,
+                district: form.district,
+                sector:   form.sector,
+                cell:     form.cell,
+                village:  form.village,
+              }}
+              onChange={(next) =>
+                setForm((f) => ({
+                  ...f,
+                  province: next.province ?? "",
+                  district: next.district ?? "",
+                  sector:   next.sector   ?? "",
+                  cell:     next.cell     ?? "",
+                  village:  next.village  ?? "",
+                }))
+              }
+              renderField={({ label, control }) => (
+                <FieldGroup label={label}>{control}</FieldGroup>
+              )}
+            />
           </>
         ) : (
           <>
@@ -1513,6 +1503,77 @@ function ResidencySection({
         />
       )}
     </section>
+  );
+}
+
+/**
+ * The states a student can be put into, shared by both editors on this page
+ * (the Programme section and the Edit Student Details modal) so the two can
+ * never drift apart.
+ *
+ * Values are the canonical ones the Students list groups on — see
+ * StudentController::studentStateVariants(). "graduands" is stored plural
+ * because that is what the existing rows hold; the label is singular because
+ * it describes one student.
+ */
+const STUDENT_STATES: ReadonlyArray<{ value: string; label: string }> = [
+  { value: "active",    label: "Active" },
+  { value: "inactive",  label: "Inactive" },
+  { value: "graduated", label: "Graduated" },
+  { value: "graduands", label: "Graduand" },
+  { value: "suspended", label: "Suspended" },
+  { value: "rejected",  label: "Rejected" },
+  { value: "dropped",   label: "Dropped out" },
+  { value: "dismissed", label: "Dismissed" },
+];
+
+/**
+ * Map a stored state onto one of STUDENT_STATES.
+ *
+ * `student.student_state` is free text filled in by hand over years, so the
+ * column holds "Active" and "ACTIVE" as well as "active", plus one-off
+ * spellings like "Graduates" and "resume". A `<select>` whose value matches no
+ * option falls back to its FIRST option, so those students' status silently
+ * displayed as Active — and saving the form wrote that back, changing a state
+ * nobody meant to touch. Folding the value first keeps the box honest.
+ *
+ * Mirrors the server-side grouping so the form and the list agree.
+ */
+function normaliseStudentState(raw: string | null | undefined): string {
+  const value = String(raw ?? "").trim().toLowerCase();
+  if (value === "") return "active";
+
+  const groups: Record<string, string[]> = {
+    active:    ["active", "resume"],
+    inactive:  ["inactive", "in-active", "in active"],
+    graduated: ["graduated", "graduate", "graduates"],
+    graduands: ["graduands", "graduand", "graduants", "graduant"],
+    suspended: ["suspended", "suspend"],
+    rejected:  ["rejected", "reject"],
+    dropped:   ["dropped", "dropout", "drop out", "dropped out", "drop_out"],
+    dismissed: ["dismissed", "dismiss"],
+  };
+  for (const [canonical, spellings] of Object.entries(groups)) {
+    if (spellings.includes(value)) return canonical;
+  }
+  // An unrecognised state (e.g. the two "xxx" rows) is left alone rather than
+  // being rewritten to Active behind the user's back — StatusOptions renders
+  // it as an extra option so it stays visible and intact.
+  return value;
+}
+
+/** The state list, plus the student's own value when it is not one of ours. */
+function StatusOptions({ current }: { current: string }) {
+  const known = STUDENT_STATES.some((s) => s.value === current);
+  return (
+    <>
+      {STUDENT_STATES.map((s) => (
+        <option key={s.value} value={s.value}>{s.label}</option>
+      ))}
+      {!known && current !== "" && (
+        <option value={current}>{current} (current)</option>
+      )}
+    </>
   );
 }
 
@@ -1585,7 +1646,7 @@ function ProgrammeSection({
     acc_year: (student.acc_year ?? "") as string,
     registration_date: (student.registration_date ?? "") as string,
     regnumber: (student.regnumber ?? "") as string,
-    student_state: (student.student_state ?? "active") as string,
+    student_state: normaliseStudentState(student.student_state),
     sponsor: (student.sponsor ?? "") as string,
   });
   const [form, setForm] = useState(buildInitial);
@@ -1738,12 +1799,7 @@ function ProgrammeSection({
                 onChange={set("student_state")}
                 className={selectInputClass}
               >
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-                <option value="graduated">Graduated</option>
-                <option value="suspended">Suspended</option>
-                <option value="dismissed">Dismissed</option>
-                <option value="dropped">Dropped</option>
+                <StatusOptions current={form.student_state} />
               </select>
             </FieldGroup>
           </>
@@ -2095,6 +2151,13 @@ function ProfileHeroPhoto({
     [preview],
   );
 
+  const [confirmRemove, setConfirmRemove] = useState(false);
+
+  const invalidate = () =>
+    qc.invalidateQueries({
+      queryKey: selfMode ? ["student", "me"] : ["student", String(student.id)],
+    });
+
   const upload = useMutation({
     mutationFn: (f: File) =>
       selfMode
@@ -2103,11 +2166,7 @@ function ProfileHeroPhoto({
     onSuccess: () => {
       toast.success("Profile photo updated.");
       setV((n) => n + 1);
-      qc.invalidateQueries({
-        queryKey: selfMode
-          ? ["student", "me"]
-          : ["student", String(student.id)],
-      });
+      invalidate();
     },
     onError: (e: any) => {
       // Drop the optimistic preview on failure so the old photo comes back.
@@ -2125,6 +2184,29 @@ function ProfileHeroPhoto({
           return null;
         });
       }, 1500);
+    },
+  });
+
+  const remove = useMutation({
+    mutationFn: () =>
+      selfMode
+        ? studentService.deleteMyPhoto()
+        : studentService.deletePhoto(student.id),
+    onSuccess: () => {
+      toast.success("Profile photo removed.");
+      // Clear any lingering local preview, otherwise the just-deleted image
+      // would keep showing until the refetch lands.
+      setPreview((p) => {
+        if (p) URL.revokeObjectURL(p);
+        return null;
+      });
+      setV((n) => n + 1);
+      setConfirmRemove(false);
+      invalidate();
+    },
+    onError: (e: any) => {
+      setConfirmRemove(false);
+      toast.error(e?.response?.data?.message ?? "Failed to remove photo");
     },
   });
 
@@ -2149,6 +2231,9 @@ function ProfileHeroPhoto({
         : studentService.photoUrl(student.id, `${student.photo}-${v}`)
       : null);
 
+  const busy     = upload.isPending || remove.isPending;
+  const hasPhoto = !!student.photo || !!preview;
+
   return (
     <div className="shrink-0 w-full sm:w-auto flex flex-col items-center sm:items-start gap-3">
       <div className="relative group">
@@ -2168,7 +2253,7 @@ function ProfileHeroPhoto({
             />
           )}
 
-          {upload.isPending && (
+          {(upload.isPending || remove.isPending) && (
             <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
               <Loader2 className="w-8 h-8 text-white animate-spin" />
             </div>
@@ -2177,8 +2262,8 @@ function ProfileHeroPhoto({
 
         <button
           type="button"
-          onClick={() => !upload.isPending && fileRef.current?.click()}
-          disabled={upload.isPending}
+          onClick={() => !busy && fileRef.current?.click()}
+          disabled={busy}
           className="absolute bottom-2 right-2 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-brand text-white text-xs font-semibold shadow-md hover:bg-brand/90 transition-colors disabled:opacity-60 outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 ring-offset-white dark:ring-offset-ink-900"
           aria-label="Change profile photo"
         >
@@ -2186,6 +2271,19 @@ function ProfileHeroPhoto({
           <span>Change</span>
         </button>
       </div>
+
+      {/* Only offered when there is actually a photo to remove. */}
+      {hasPhoto && (
+        <button
+          type="button"
+          onClick={() => setConfirmRemove(true)}
+          disabled={busy}
+          className="inline-flex items-center gap-1.5 text-[12px] font-medium text-red-600 hover:text-red-700 hover:underline disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-red-500 rounded"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+          {remove.isPending ? "Removing…" : "Remove photo"}
+        </button>
+      )}
 
       <p className="text-[11px] text-ink-400 text-center sm:text-left">
         JPEG, PNG or WebP · max 5 MB
@@ -2197,6 +2295,17 @@ function ProfileHeroPhoto({
         accept="image/jpeg,image/png,image/webp"
         className="hidden"
         onChange={onPick}
+      />
+
+      <ConfirmDialog
+        open={confirmRemove}
+        onClose={() => setConfirmRemove(false)}
+        onConfirm={() => remove.mutate()}
+        title="Remove profile photo?"
+        message="The photo will be deleted permanently. You can upload a new one at any time."
+        confirmLabel="Remove"
+        variant="danger"
+        loading={remove.isPending}
       />
     </div>
   );
@@ -2282,6 +2391,13 @@ function StudentAvatar({
   // the file_server_id stays in transit before the student query refetches.
   const [v, setV] = useState(0);
 
+  const [confirmRemove, setConfirmRemove] = useState(false);
+
+  const invalidate = () =>
+    qc.invalidateQueries({
+      queryKey: selfMode ? ["student", "me"] : ["student", String(student.id)],
+    });
+
   const upload = useMutation({
     mutationFn: (f: File) =>
       selfMode
@@ -2290,14 +2406,27 @@ function StudentAvatar({
     onSuccess: () => {
       toast.success("Profile photo updated.");
       setV((n) => n + 1);
-      qc.invalidateQueries({
-        queryKey: selfMode
-          ? ["student", "me"]
-          : ["student", String(student.id)],
-      });
+      invalidate();
     },
     onError: (e: any) =>
       toast.error(e?.response?.data?.message ?? "Failed to upload photo"),
+  });
+
+  const remove = useMutation({
+    mutationFn: () =>
+      selfMode
+        ? studentService.deleteMyPhoto()
+        : studentService.deletePhoto(student.id),
+    onSuccess: () => {
+      toast.success("Profile photo removed.");
+      setV((n) => n + 1);
+      setConfirmRemove(false);
+      invalidate();
+    },
+    onError: (e: any) => {
+      setConfirmRemove(false);
+      toast.error(e?.response?.data?.message ?? "Failed to remove photo");
+    },
   });
 
   const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2317,36 +2446,68 @@ function StudentAvatar({
       : studentService.photoUrl(student.id, `${student.photo}-${v}`)
     : null;
 
-  return (
-    <button
-      type="button"
-      onClick={() => !upload.isPending && fileRef.current?.click()}
-      className="group relative w-16 h-16 rounded-xl overflow-hidden bg-brand/10 text-brand flex items-center justify-center text-xl font-bold shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-brand"
-      title="Change profile photo"
-      disabled={upload.isPending}
-    >
-      <span>{initials}</span>
-      {photoSrc && (
-        <img
-          src={photoSrc}
-          alt={
-            `${student.fname ?? ""} ${student.lname ?? ""}`.trim() ||
-            "Student photo"
-          }
-          className="w-full h-full object-cover absolute inset-0"
-          onError={(e) => {
-            (e.currentTarget as HTMLImageElement).style.display = "none";
-          }}
-        />
-      )}
+  const busy = upload.isPending || remove.isPending;
 
-      <span className="absolute inset-0 bg-black/45 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-        {upload.isPending ? (
-          <Loader2 className="w-5 h-5 animate-spin" />
-        ) : (
-          <Camera className="w-5 h-5" />
+  return (
+    // Not a <button>: the remove control is nested inside, and a button inside
+    // a button is invalid HTML that browsers silently restructure.
+    // `group` lives here so both the camera overlay and the remove badge
+    // reveal together on hover.
+    <div className="group relative shrink-0">
+      <div
+        role="button"
+        tabIndex={busy ? -1 : 0}
+        aria-label="Change profile photo"
+        title="Change profile photo"
+        onClick={() => !busy && fileRef.current?.click()}
+        onKeyDown={(e) => {
+          if (busy) return;
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            fileRef.current?.click();
+          }
+        }}
+        className={`relative w-16 h-16 rounded-xl overflow-hidden bg-brand/10 text-brand flex items-center justify-center text-xl font-bold outline-none focus-visible:ring-2 focus-visible:ring-brand ${busy ? "opacity-60" : "cursor-pointer"}`}
+      >
+        <span>{initials}</span>
+        {photoSrc && (
+          <img
+            src={photoSrc}
+            alt={
+              `${student.fname ?? ""} ${student.lname ?? ""}`.trim() ||
+              "Student photo"
+            }
+            className="w-full h-full object-cover absolute inset-0"
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).style.display = "none";
+            }}
+          />
         )}
-      </span>
+
+        <span className="absolute inset-0 bg-black/45 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+          {busy ? (
+            <Loader2 className="w-5 h-5 animate-spin" />
+          ) : (
+            <Camera className="w-5 h-5" />
+          )}
+        </span>
+      </div>
+
+      {student.photo && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setConfirmRemove(true);
+          }}
+          disabled={busy}
+          title="Remove profile photo"
+          aria-label="Remove profile photo"
+          className="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-white dark:bg-ink-800 border border-ink-200 dark:border-ink-600 text-red-600 shadow-sm flex items-center justify-center opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-red-50 dark:hover:bg-red-900/20 transition-opacity disabled:opacity-40"
+        >
+          <Trash2 className="w-3 h-3" />
+        </button>
+      )}
 
       <input
         ref={fileRef}
@@ -2355,7 +2516,18 @@ function StudentAvatar({
         className="hidden"
         onChange={onPick}
       />
-    </button>
+
+      <ConfirmDialog
+        open={confirmRemove}
+        onClose={() => setConfirmRemove(false)}
+        onConfirm={() => remove.mutate()}
+        title="Remove profile photo?"
+        message="The photo will be deleted permanently. You can upload a new one at any time."
+        confirmLabel="Remove"
+        variant="danger"
+        loading={remove.isPending}
+      />
+    </div>
   );
 }
 
@@ -4722,7 +4894,7 @@ function EditStudentModal({
       // Catalog program (options.id) — the new authoritative academic link.
       std_option: student.std_option ? String(student.std_option) : "",
       current_level: student.current_level || "",
-      student_state: student.student_state || "active",
+      student_state: normaliseStudentState(student.student_state),
       birthdate: student.birthdate || "",
       regnumber: student.regnumber || "",
       acc_year: student.acc_year || "",
@@ -4890,10 +5062,7 @@ function EditStudentModal({
                     {...register("student_state")}
                     className="input w-full cursor-pointer bg-white dark:bg-ink-900"
                   >
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                    <option value="graduated">Graduated</option>
-                    <option value="suspended">Suspended</option>
+                    <StatusOptions current={normaliseStudentState(student.student_state)} />
                   </select>
                 </div>
                 <div className="sm:col-span-2">

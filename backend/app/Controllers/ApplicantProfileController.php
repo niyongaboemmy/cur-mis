@@ -219,7 +219,6 @@ class ApplicantProfileController extends BaseController
     }
 
 
-
     // ── Admission fees (Registration, CURSU …) ───────────────────────────────
     //
     // The stage between "you have been admitted" and "here is your registration
@@ -241,19 +240,50 @@ class ApplicantProfileController extends BaseController
             $this->error($response, 'No active application.', 404);
         }
 
-        try {
-            $overview = (new AdmissionBillingService())->overview($appId);
-        } catch (\RuntimeException $e) {
-            $this->error($response, $e->getMessage(), 404);
+        $body          = $request->body();
+        $transactionId = trim((string)($body['transaction_id'] ?? ''));
+        $amount        = isset($body['payment_amount']) ? (float)$body['payment_amount'] : null;
+        $currency      = (string)($body['payment_currency'] ?? 'RWF');
+
+        if ($transactionId === '') {
+            $this->error($response, 'Transaction ID is required.', 422);
         }
 
-        // `billable` is the validator's pricing preview — an applicant has no
-        // use for prices on fees nobody has billed them, and showing them reads
-        // as a demand for money that has not been raised.
-        unset($overview['billable']);
+        $update = [
+            'transaction_id'    => $transactionId,
+            'payment_currency'  => $currency,
+            'paid_at'           => date('Y-m-d H:i:s'),
+        ];
+        if ($amount !== null) $update['payment_amount'] = $amount;
 
-        $this->success($response, $overview, 'Admission fees fetched.');
+        // The slip itself is optional on this endpoint — applicants can also
+        // submit it later via re-uploading; but the wizard sends it together.
+        $file = $request->file('payment_slip');
+        if ($file) {
+            $allowedMimes = ['application/pdf', 'image/jpeg', 'image/png'];
+            if (!in_array($file['type'] ?? '', $allowedMimes, true)) {
+                $this->error($response, 'Invalid file type. Only PDF, JPEG and PNG are allowed.', 422);
+            }
+            try {
+                $client   = new FileServerClient();
+                $uploaded = $client->upload($file);
+            } catch (\RuntimeException $e) {
+                $this->error($response, $e->getMessage(), 422);
+            }
+            $update['payment_slip_file_id'] = $uploaded['id'];
+            $update['payment_slip_mime']    = (string)($file['type'] ?? '');
+        }
+
+        $this->appModel->update($appId, $update);
+
+        $this->success($response, [
+            'transaction_id'       => $transactionId,
+            'payment_slip_file_id' => $update['payment_slip_file_id'] ?? null,
+            'payment_amount'       => $amount,
+            'payment_currency'     => $currency,
+        ], 'Payment recorded.');
     }
+
 
     /**
      * GET /api/applicant/application/bills/checkout?fee_type=REGISTRATION
@@ -346,6 +376,40 @@ class ApplicantProfileController extends BaseController
             'profile_photo_id' => $uploaded['id'],
             'url'              => $uploaded['url'] ?? null,
         ], 'Profile photo uploaded successfully.');
+    }
+
+    /**
+     * DELETE /api/applicant/profile/photo
+     * Remove the applicant's profile photo. Idempotent — see PhotoRemover.
+     */
+    public function deletePhoto(Request $request, Response $response): never
+    {
+        $profile   = $request->param('_applicant_profile');
+        $profileId = (int)$profile['id'];
+
+        $previous = $profile['profile_photo_id'] ?? null;
+
+        $this->profileModel->update($profileId, ['profile_photo_id' => null]);
+
+        // Clear the mirror on the linked user account written by uploadPhoto(),
+        // otherwise the admin Users list keeps showing a picture the applicant
+        // has already removed. Only clear it when it still points at the same
+        // file, so a photo set through another route isn't wiped.
+        $userId = (int)($profile['user_id'] ?? 0);
+        if ($userId > 0 && $previous) {
+            try {
+                $this->db->execute(
+                    "UPDATE `users` SET photo = NULL, updated_at = NOW() WHERE id = ? AND photo = ?",
+                    [$userId, (string)$previous]
+                );
+            } catch (\Throwable $e) {
+                // Non-blocking, exactly as in uploadPhoto().
+            }
+        }
+
+        \App\Helpers\PhotoRemover::discard($previous !== null ? (string)$previous : null);
+
+        $this->success($response, ['profile_photo_id' => null], 'Profile photo removed.');
     }
 
 
@@ -485,6 +549,45 @@ class ApplicantProfileController extends BaseController
     /**
      * POST /api/applicant/application/submit
      */
+    /**
+     * Names of the documents this application's faculty requires but which have
+     * not been uploaded yet. Empty array = nothing outstanding.
+     *
+     * Returns [] when the faculty has no requirements configured — an
+     * unconfigured checklist must not become an unpassable gate.
+     *
+     * @param array $application Row from student_applications.
+     * @return string[]
+     */
+    private function missingRequiredDocuments(array $application): array
+    {
+        $facultyId = (int)($application['faculty_id'] ?? 0);
+        if ($facultyId <= 0) {
+            return [];
+        }
+
+        $required = array_filter(
+            $this->requirementModel->getForFaculty($facultyId),
+            static fn (array $r): bool => (int)($r['is_required'] ?? 0) === 1
+        );
+        if ($required === []) {
+            return [];
+        }
+
+        $uploadedTypeIds = array_map(
+            static fn (array $d): int => (int)$d['document_type_id'],
+            $this->docModel->getForApplication((int)$application['id'])
+        );
+
+        $missing = [];
+        foreach ($required as $r) {
+            if (!in_array((int)$r['document_type_id'], $uploadedTypeIds, true)) {
+                $missing[] = (string)($r['document_type_name'] ?? $r['document_name'] ?? 'Required document');
+            }
+        }
+        return $missing;
+    }
+
     public function submitApplication(Request $request, Response $response): never
     {
         $profile = $request->param('_applicant_profile');
@@ -517,6 +620,19 @@ class ApplicantProfileController extends BaseController
                 $response,
                 'Payment required. Please complete the application fee with Urubuto Pay before submitting.',
                 402
+            );
+        }
+
+        // Gate: every document the applicant's faculty marks as required must
+        // actually be attached. The wizard enforces this too, but a client-side
+        // check is a courtesy, not a control — without this an applicant could
+        // POST straight to this endpoint and submit with nothing uploaded.
+        $missing = $this->missingRequiredDocuments($application);
+        if ($missing !== []) {
+            $this->error(
+                $response,
+                'Please upload all required documents before submitting: ' . implode(', ', $missing) . '.',
+                422
             );
         }
 

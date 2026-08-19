@@ -547,6 +547,10 @@ export const applicantService = {
     return api.upload<{ profile_photo_id: string; url: string | null }>('/api/applicant/profile/photo', form)
   },
 
+  /** Remove the applicant's profile photo. */
+  deletePhoto: () =>
+    api.delete<{ profile_photo_id: null }>('/api/applicant/profile/photo'),
+
   // Note: there is deliberately no "I already paid" call here. UrubutoPay is
   // the only accepted channel for the application fee, so the only thing that
   // marks it paid is the gateway's own callback — the endpoints that accepted a

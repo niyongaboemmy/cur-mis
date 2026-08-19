@@ -243,6 +243,23 @@ class UserController extends BaseController
      * Pulls HR fields from the create-user form body and fills the legacy
      * NOT-NULL columns with sensible defaults. Returns the new employee_id.
      */
+    /**
+     * Login username derived from an email's local part, with a numeric suffix
+     * when that is already taken. `users.username` must be unique.
+     */
+    private function uniqueUsernameFromEmail(string $email): string
+    {
+        $base = strtolower(preg_replace('/[^a-z0-9._-]/i', '', strstr($email, '@', true) ?: $email));
+        $base = trim($base, '._-') ?: 'staff';
+        $base = substr($base, 0, 45);
+
+        $candidate = $base;
+        for ($i = 1; $this->userModel->exists('username', $candidate) && $i < 1000; $i++) {
+            $candidate = $base . $i;
+        }
+        return $candidate;
+    }
+
     private function createLinkedEmployee(int $userId, array $data, array $actor, string $roleName = ''): int
     {
         $db = $this->userModel->db();
@@ -414,11 +431,11 @@ class UserController extends BaseController
      */
     public function bulkPreview(Request $request, Response $response): never
     {
-        $allowedTables = ['student', 'staff', 'hr_employees'];
+        $allowedTables = ['student', 'staff', 'hr_employees', 'employees'];
         $targetTable   = $request->query('target_table') ?? '';
 
         if (!in_array($targetTable, $allowedTables, true)) {
-            $this->error($response, 'Invalid target_table. Must be one of: student, staff, hr_employees.', 422);
+            $this->error($response, 'Invalid target_table. Must be one of: student, staff, hr_employees, employees.', 422);
         }
 
         $db   = $this->userModel->db();
@@ -467,6 +484,29 @@ class UserController extends BaseController
                     'email'     => !empty($r['email']) ? trim($r['email']) : "{$username}@cur.ac.rw",
                 ];
             }
+        } elseif ($targetTable === 'employees') {
+            // The HR staff directory. Keyed on the email in employee_username,
+            // because that is what the person signs in with and what "Forgot
+            // password" looks up — emp_code is frequently blank here.
+            $raw = $db->fetchAll(
+                "SELECT e.employee_id, e.employee_username, e.employee_fname, e.employee_lname
+                 FROM `employees` e
+                 WHERE e.user_id IS NULL
+                   AND e.employee_username IS NOT NULL
+                   AND e.employee_username <> ''
+                   AND e.employee_username NOT IN (SELECT email FROM `users`)
+                 ORDER BY e.employee_fname, e.employee_lname"
+            );
+            foreach ($raw as $r) {
+                $email = trim((string)($r['employee_username'] ?? ''));
+                if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) continue;
+                $rows[] = [
+                    'id'        => $r['employee_id'],
+                    'username'  => $this->uniqueUsernameFromEmail($email),
+                    'full_name' => trim(($r['employee_fname'] ?? '') . ' ' . ($r['employee_lname'] ?? '')),
+                    'email'     => $email,
+                ];
+            }
         } else {
             $raw = $db->fetchAll(
                 "SELECT e.id, e.emp_code, e.full_name, e.email, e.staff_id
@@ -500,12 +540,12 @@ class UserController extends BaseController
     {
         $data = $request->body();
 
-        $allowedTables = ['student', 'staff', 'hr_employees'];
+        $allowedTables = ['student', 'staff', 'hr_employees', 'employees'];
         $targetTable   = $data['target_table'] ?? '';
         $password      = $data['default_password'] ?? '';
 
         if (!in_array($targetTable, $allowedTables, true)) {
-            $this->error($response, 'Invalid target_table. Must be one of: student, staff, hr_employees.', 422);
+            $this->error($response, 'Invalid target_table. Must be one of: student, staff, hr_employees, employees.', 422);
         }
 
         if (strlen($password) < 6) {
@@ -516,6 +556,11 @@ class UserController extends BaseController
             'student'      => 'student',
             'staff'        => 'lecturer',
             'hr_employees' => 'hr_manager',
+            // The HR directory holds every kind of staff — lecturers, finance,
+            // registry, cleaners. Granting one role to all of them in bulk
+            // would over-privilege most, so everyone starts at the lowest level
+            // and an admin raises individuals in Users management.
+            'employees'    => 'guest',
         ];
 
         $roleId = $this->roleModel->getIdByName($roleNameMap[$targetTable]);
@@ -605,6 +650,55 @@ class UserController extends BaseController
                     if ($staffHasUid) {
                         $db->execute("UPDATE `staff` SET user_id = ? WHERE id = ?", [$newId, $row['id']]);
                     }
+                    $created++;
+                }
+            } elseif ($targetTable === 'employees') {
+                // HR staff directory: link via employees.user_id, keyed on the
+                // email held in employee_username.
+                $rows = $db->fetchAll(
+                    "SELECT employee_id, employee_username, employee_fname, employee_lname
+                     FROM `employees`
+                     WHERE user_id IS NULL
+                       AND employee_username IS NOT NULL
+                       AND employee_username <> ''
+                       AND employee_username NOT IN (SELECT email FROM `users`)"
+                );
+                foreach ($rows as $row) {
+                    $email = trim((string)($row['employee_username'] ?? ''));
+                    if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)
+                        || $this->userModel->exists('email', $email)) {
+                        $skipped++;
+                        continue;
+                    }
+
+                    $fullName = trim(($row['employee_fname'] ?? '') . ' ' . ($row['employee_lname'] ?? ''));
+
+                    $this->userModel->create([
+                        'username'       => $this->uniqueUsernameFromEmail($email),
+                        'full_name'      => $fullName ?: $email,
+                        'email'          => $email,
+                        'password'       => $hashedPassword,
+                        'role_id'        => $roleId,
+                        'is_active'      => 1,
+                        'is_applicant'   => 0,
+                        'must_change_pw' => 1,
+                    ]);
+
+                    // Resolve the id from the row rather than lastInsertId, and
+                    // refuse to link a non-positive one — without AUTO_INCREMENT
+                    // every account lands on id 0 and staff would authenticate
+                    // as one another.
+                    $fresh = $this->userModel->findBy('email', $email);
+                    $newId = (int)($fresh['id'] ?? 0);
+                    if ($newId <= 0) {
+                        $db->execute('DELETE FROM `users` WHERE email = ? AND id = 0', [$email]);
+                        error_log('[BulkCreate] users.id came back as 0 for ' . $email
+                                . ' — restore PRIMARY KEY/AUTO_INCREMENT on users.id first.');
+                        $skipped++;
+                        continue;
+                    }
+
+                    $db->execute('UPDATE `employees` SET user_id = ? WHERE employee_id = ?', [$newId, $row['employee_id']]);
                     $created++;
                 }
             } else {

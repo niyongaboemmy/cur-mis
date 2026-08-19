@@ -43,17 +43,45 @@ class DocumentTypeController extends BaseController
     }
 
     /**
+     * The slug is a machine key (`id_card`, `passport_photo`) that other code
+     * looks documents up by, so it has a fixed shape. It used to be validated
+     * raw against `^[a-z_]+$`, which meant a perfectly reasonable entry was
+     * rejected with nothing but "Validation failed." to explain it: a capital
+     * letter ("Health_insurence"), a digit ("a2_certificate"), a hyphen
+     * ("o-level-result") or a pasted trailing space all failed the same way.
+     *
+     * Normalising first makes the endpoint liberal in what it accepts while
+     * keeping the stored value strict. Callers get back the canonical slug.
+     */
+    private static function normaliseSlug(mixed $value): string
+    {
+        $slug = strtolower(trim((string)$value));
+        // Anything that is not slug-safe becomes an underscore, then runs of
+        // separators collapse so "O-Level  result" lands as "o_level_result".
+        $slug = preg_replace('/[^a-z0-9_-]+/', '_', $slug) ?? '';
+        $slug = preg_replace('/_{2,}/', '_', $slug) ?? '';
+        return trim($slug, '_-');
+    }
+
+    /** Shared by create() and update() — one shape, defined once. */
+    private static function slugRules(): array
+    {
+        return [
+            'name'               => 'required|string|min:3|max:100',
+            'slug'               => 'required|regex:/^[a-z0-9_-]+$/|max:100',
+            'allowed_extensions' => 'required|string',
+        ];
+    }
+
+    /**
      * POST /api/admin/document-types
      */
     public function create(Request $request, Response $response): never
     {
-        $data   = $request->body();
-        $errors = ValidationHelper::validate($data, [
-            'name'        => 'required|string|min:3|max:100',
-            'slug'               => 'required|regex:/^[a-z_]+$/|max:100',
-            'allowed_extensions' => 'required|string',
+        $data         = $request->body();
+        $data['slug'] = self::normaliseSlug($data['slug'] ?? '');
 
-        ]);
+        $errors = ValidationHelper::validate($data, self::slugRules());
 
         if (!empty($errors)) {
             $this->error($response, 'Validation failed.', 422, $errors);
@@ -87,13 +115,10 @@ class DocumentTypeController extends BaseController
             $this->error($response, 'Document type not found.', 404);
         }
 
-        $data   = $request->body();
-        $errors = ValidationHelper::validate($data, [
-            'name'        => 'required|string|min:3|max:100',
-            'slug'               => 'required|regex:/^[a-z_]+$/|max:100',
-            'allowed_extensions' => 'required|string',
+        $data         = $request->body();
+        $data['slug'] = self::normaliseSlug($data['slug'] ?? '');
 
-        ]);
+        $errors = ValidationHelper::validate($data, self::slugRules());
 
         if (!empty($errors)) {
             $this->error($response, 'Validation failed.', 422, $errors);

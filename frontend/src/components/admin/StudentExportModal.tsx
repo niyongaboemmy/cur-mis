@@ -18,6 +18,7 @@ import {
   studentService,
   type ExportColumn,
   type ExportColumnGroup,
+  type ExportFormat,
   type ExportTemplate,
 } from '@/services/studentService'
 import toast from 'react-hot-toast'
@@ -28,7 +29,7 @@ interface StudentExportModalProps {
   /** Total students that will be in the export (matches the live list). */
   totalRecords: number
   /** All filter values currently driving the visible list — forwarded
-   *  to the export endpoint so the CSV matches exactly what the user
+   *  to the export endpoint so the file matches exactly what the user
    *  sees. */
   filters: Record<string, string | number | undefined>
 }
@@ -80,6 +81,11 @@ export default function StudentExportModal({
   const pickedSet = useMemo(() => new Set(pickedOrder), [pickedOrder])
   const [search, setSearch] = useState('')
   const [newTemplateName, setNewTemplateName] = useState('')
+  // Excel by default. A CSV opened in Excel loses the leading 0 on Rwandan
+  // phone numbers and rounds 16-digit national IDs to 1.19958E+15 — both are
+  // columns the MIFOTRA return is keyed on. CSV stays available for the
+  // systems that want plain text.
+  const [format, setFormat] = useState<ExportFormat>('xlsx')
 
   // Reset to a clean slate every time the modal opens so the next user
   // doesn't see stale picks from a previous session.
@@ -90,6 +96,7 @@ export default function StudentExportModal({
     setPickedOrder([])
     setSearch('')
     setNewTemplateName('')
+    setFormat('xlsx')
   }, [open])
 
   // Preselect the first system template (HLI → Mifotra) as soon as
@@ -169,8 +176,8 @@ export default function StudentExportModal({
     if (!canExport) return
     const url =
       tab === 'templates' && activeTemplateId != null
-        ? studentService.exportUrl({ template_id: activeTemplateId, filters })
-        : studentService.exportUrl({ columns: pickedOrder, filters })
+        ? studentService.exportUrl({ template_id: activeTemplateId, filters, format })
+        : studentService.exportUrl({ columns: pickedOrder, filters, format })
     // A plain anchor click triggers the browser's native download
     // flow, including the Content-Disposition filename from the
     // server — much cleaner than a fetch-and-blob round-trip.
@@ -209,7 +216,7 @@ export default function StudentExportModal({
       size="xl"
       title="Export students"
       footer={
-        <div className="flex items-center justify-between w-full">
+        <div className="flex flex-wrap items-center justify-between gap-3 w-full">
           <span className="text-[12.5px] text-ink-500">
             Exporting{' '}
             <strong className="text-ink-900 dark:text-ink-100">
@@ -218,6 +225,23 @@ export default function StudentExportModal({
             student{totalRecords === 1 ? '' : 's'} matching current filters
           </span>
           <div className="flex items-center gap-2">
+            <fieldset
+              className="flex items-center rounded-md border border-ink-200 dark:border-ink-700 p-0.5"
+              aria-label="File format"
+            >
+              <FormatButton
+                active={format === 'xlsx'}
+                onClick={() => setFormat('xlsx')}
+                label="Excel"
+                hint="Excel workbook (.xlsx). Keeps phone numbers and national IDs exactly as stored."
+              />
+              <FormatButton
+                active={format === 'csv'}
+                onClick={() => setFormat('csv')}
+                label="CSV"
+                hint="Plain text (.csv). Excel will strip the leading 0 from phone numbers and round long national IDs."
+              />
+            </fieldset>
             <button
               type="button"
               onClick={onClose}
@@ -231,7 +255,8 @@ export default function StudentExportModal({
               disabled={!canExport || totalRecords === 0}
               className="btn-primary flex items-center gap-2"
             >
-              <Download className="w-4 h-4" /> Download CSV
+              <Download className="w-4 h-4" />
+              Download {format === 'xlsx' ? 'Excel' : 'CSV'}
             </button>
           </div>
         </div>
@@ -513,6 +538,36 @@ export default function StudentExportModal({
         </div>
       )}
     </Modal>
+  )
+}
+
+/** One half of the Excel / CSV segmented control in the modal footer. */
+function FormatButton({
+  active,
+  onClick,
+  label,
+  hint,
+}: {
+  active: boolean
+  onClick: () => void
+  label: string
+  hint: string
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={hint}
+      aria-pressed={active}
+      className={
+        'px-2.5 py-1 text-[12px] font-medium rounded transition-colors ' +
+        (active
+          ? 'bg-primary-700 text-white dark:bg-primary-500'
+          : 'text-ink-500 hover:text-ink-800 dark:hover:text-ink-100')
+      }
+    >
+      {label}
+    </button>
   )
 }
 

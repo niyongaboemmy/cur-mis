@@ -29,6 +29,8 @@ import { useAuthStore } from "@/store/authStore";
 import { useLogout } from "@/hooks/useAuth";
 import DocumentsUploader from "@/components/ui/DocumentsUploader";
 import CountrySelect from "@/components/ui/CountrySelect";
+import LocationSelect from "@/components/ui/LocationSelect";
+import { ALL_DISTRICTS } from "@/data/rwandaLocations";
 import ApplicantAuthGate from "./ApplicantAuthGate";
 import Modal from "@/components/ui/Modal";
 
@@ -160,6 +162,11 @@ export default function ApplyPage() {
     },
     mode: "onTouched",
   });
+
+  // Required-documents checklist for the current draft. Shares its react-query
+  // cache with DocumentsStep, so the gate below and the list the applicant sees
+  // can never disagree.
+  const docs = useDocumentRequirements(draftApp?.application_number);
 
   // Local-only state for the passport photo (uploaded after the draft exists).
   const [photoFile, setPhotoFile] = useState<File | null>(null);
@@ -535,6 +542,17 @@ export default function ApplyPage() {
       if (!ok) return;
     }
 
+    // Step 4 (Documents) has no form fields, so STEP_FIELDS has no entry for it
+    // and the loop above waves it through — that let applicants click straight
+    // past the upload step without attaching anything. Gate it on the
+    // requirements checklist instead.
+    if (step === 4 && !docs.canProceed) {
+      toast.error(
+        `Please upload: ${docs.missingRequired.join(", ")}`,
+      );
+      return;
+    }
+
     // Personal step: phone / email / national ID must not already be on file
     // for an existing student.
     if (step === 1) {
@@ -607,6 +625,13 @@ export default function ApplyPage() {
         if (keys) {
           const ok = await form.trigger(keys as any);
           if (!ok) { setStep(s); return; }
+        }
+        // Same documents gate as goNext(), so the step rail can't be used to
+        // walk around it.
+        if (s === 4 && !docs.canProceed) {
+          toast.error(`Please upload: ${docs.missingRequired.join(", ")}`);
+          setStep(4);
+          return;
         }
       }
     }
@@ -803,9 +828,15 @@ export default function ApplyPage() {
               className="btn-primary"
               disabled={
                 (step === 3 && (intakes.length === 0 || programs.length === 0)) ||
+                (step === 4 && (docs.isLoading || !docs.canProceed)) ||
                 identityChecking ||
                 saveStepM.isPending ||
                 draftM.isPending
+              }
+              title={
+                step === 4 && !docs.canProceed
+                  ? `Upload ${docs.missingRequired.join(", ")} to continue`
+                  : undefined
               }
             >
               {identityChecking ? (
@@ -948,26 +979,69 @@ function Field({
   );
 }
 
-function DocumentsStep({
-  appNumber,
-}: {
-  appNumber: string;
-}) {
+/**
+ * Requirements checklist + upload state for a draft application.
+ *
+ * Shared by DocumentsStep (which renders it) and ApplyPage (which gates the
+ * "Proceed to Payment" button on it). Both call it with the same query keys, so
+ * react-query serves one cached result rather than fetching twice.
+ */
+function useDocumentRequirements(appNumber: string | undefined) {
   const trackQ = useQuery({
     queryKey: ["portal", "track", appNumber],
-    queryFn: () => portalService.trackApplication(appNumber),
+    queryFn: () => portalService.trackApplication(appNumber!),
+    enabled: !!appNumber,
   });
   const app = trackQ.data?.data;
+
   const reqQ = useQuery({
     queryKey: ["portal", "requirements", app?.faculty_id],
     queryFn: () => portalService.getFacultyRequirements(app!.faculty_id),
     enabled: !!app?.faculty_id,
   });
+
   const requirements = reqQ.data?.data?.requirements ?? [];
-  const uploaded = app?.documents ?? [];
+  const uploaded     = app?.documents ?? [];
+
+  const uploadedTypeIds = new Set(uploaded.map((d) => d.document_type_id));
+  const missingRequired = requirements
+    .filter((r) => r.is_required && !uploadedTypeIds.has(r.document_type_id))
+    .map((r) => r.document_type_name || r.document_name || "Required document");
+
+  return {
+    requirements,
+    uploaded,
+    missingRequired,
+    // Don't gate on data we haven't loaded yet — an applicant must never be
+    // blocked by a still-in-flight request.
+    isLoading: trackQ.isLoading || reqQ.isLoading,
+    canProceed: missingRequired.length === 0,
+  };
+}
+
+function DocumentsStep({
+  appNumber,
+}: {
+  appNumber: string;
+}) {
+  const { requirements, uploaded, missingRequired } = useDocumentRequirements(appNumber);
 
   return (
     <div className="space-y-6">
+      {missingRequired.length > 0 && (
+        <div className="p-4 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/40 rounded-lg flex items-start gap-3">
+          <Info className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
+          <div>
+            <p className="text-[13px] font-semibold text-amber-900 dark:text-amber-200">
+              {missingRequired.length} required document
+              {missingRequired.length > 1 ? "s" : ""} still missing
+            </p>
+            <p className="text-[12px] text-amber-800 dark:text-amber-300/90 mt-0.5">
+              Upload {missingRequired.join(", ")} to continue.
+            </p>
+          </div>
+        </div>
+      )}
       <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg flex items-start gap-3">
         <CheckCircle2 className="w-5 h-5 text-emerald-600 mt-0.5" />
         <div>
@@ -996,8 +1070,6 @@ function DocumentsStep({
  * Mirrors the layout shown in the design (passport photo upload + a
  * dense two-column grid of personal/contact/residency/sponsor fields).
  * ──────────────────────────────────────────────────────────────────── */
-
-const PROVINCES = ['Kigali City', 'Northern', 'Southern', 'Eastern', 'Western'] as const;
 
 function PersonalInfoStep({
   form, isAuthenticated, photoFile, photoPreview, onPickPhoto,
@@ -1184,20 +1256,37 @@ function PersonalInfoStep({
               placeholder="Select country"
             />
           </Field>
-          <Field label="Province" error={errors.province?.message}>
-            <select className="input" {...form.register("province")}>
-              <option value="">Select Province</option>
-              {PROVINCES.map((p) => <option key={p} value={p}>{p}</option>)}
-            </select>
-          </Field>
-          <Field label="District" error={errors.district?.message}>
-            <input className="input" placeholder="District" {...form.register("district")} />
-          </Field>
-          <Field label="Sector" error={errors.sector?.message}>
-            <input className="input" placeholder="Enter your sector" {...form.register("sector")} />
-          </Field>
+          {/* Cascading picker: choosing a province narrows the district list to
+              that province's districts, so an impossible pairing can't be
+              typed. Sector falls back to free text until the official sector
+              dataset is loaded — see @/data/rwandaLocations. */}
+          <LocationSelect
+            levels={["province", "district", "sector"]}
+            value={{
+              province: form.watch("province") ?? "",
+              district: form.watch("district") ?? "",
+              sector:   form.watch("sector")   ?? "",
+            }}
+            onChange={(next) => {
+              const opts = { shouldValidate: true, shouldDirty: true } as const;
+              form.setValue("province", next.province ?? "", opts);
+              form.setValue("district", next.district ?? "", opts);
+              form.setValue("sector",   next.sector   ?? "", opts);
+            }}
+            renderField={({ label, control, level }) => (
+              <Field
+                label={label}
+                error={errors[level as "province" | "district" | "sector"]?.message}
+              >
+                {control}
+              </Field>
+            )}
+          />
           <Field label="Residence District" error={errors.residence_district?.message}>
-            <input className="input" placeholder="District you currently live in" {...form.register("residence_district")} />
+            <select className="input" {...form.register("residence_district")}>
+              <option value="">District you currently live in</option>
+              {ALL_DISTRICTS.map((d) => <option key={d} value={d}>{d}</option>)}
+            </select>
           </Field>
         </div>
       </FieldGroup>

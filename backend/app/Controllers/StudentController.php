@@ -1360,8 +1360,11 @@ class StudentController extends BaseController
             $this->error($response, 'No photo file provided.', 422);
         }
 
-        $allowedMimes = ['image/jpeg', 'image/png', 'image/webp'];
-        if (!in_array($file['type'] ?? '', $allowedMimes, true)) {
+        // Browser-supplied type is a hint only (some send 'image/jpg' or ''),
+        // FileServerClient does the authoritative content-based check.
+        $allowedMimes = ['image/jpeg', 'image/jpg', 'image/pjpeg', 'image/png', 'image/webp'];
+        $claimed      = strtolower(trim((string)($file['type'] ?? '')));
+        if ($claimed !== '' && !in_array($claimed, $allowedMimes, true)) {
             $this->error($response, 'Invalid file type. Only JPEG, PNG and WebP are allowed.', 422);
         }
 
@@ -1369,7 +1372,7 @@ class StudentController extends BaseController
             $client   = new FileServerClient();
             $uploaded = $client->upload($file);
         } catch (\RuntimeException $e) {
-            $this->error($response, $e->getMessage(), 422);
+            $this->failFromFileServer($response, $e);
         }
 
         $previous = $student['photo'] ?? null;
@@ -1385,6 +1388,37 @@ class StudentController extends BaseController
         $this->success($response, [
             'photo' => $uploaded['id'],
         ], 'Profile photo updated.');
+    }
+
+    /**
+     * DELETE /api/students/:id/photo
+     * Remove a student's profile photo. Idempotent — see PhotoRemover.
+     */
+    public function deletePhoto(Request $request, Response $response): never
+    {
+        $id      = (int)$request->param('id');
+        $student = $this->studentModel->find($id);
+        if (!$student) {
+            $this->error($response, 'Student not found', 404);
+        }
+
+        $previous = $student['photo'] ?? null;
+        $this->studentModel->update($id, ['photo' => null]);
+        \App\Helpers\PhotoRemover::discard($previous);
+
+        $this->success($response, ['photo' => null], 'Profile photo removed.');
+    }
+
+    /**
+     * DELETE /api/students/me/photo
+     * Self-service removal — resolves the student from the auth context so
+     * MANAGE_STUDENTS isn't required to clear your own picture.
+     */
+    public function deleteMyPhoto(Request $request, Response $response): never
+    {
+        $student = $this->resolveAuthStudent($request, $response);
+        $request->setRouteParams(['id' => (string)$student['id']]);
+        $this->deletePhoto($request, $response);
     }
 
     /**
@@ -2592,12 +2626,17 @@ class StudentController extends BaseController
     public static function statusBuckets(): array
     {
         return [
-            'active'    => ['label' => 'Active',    'variants' => ['active']],
-            'inactive'  => ['label' => 'Inactive',  'variants' => ['inactive']],
-            'graduated' => ['label' => 'Graduated', 'variants' => ['graduated']],
+            'active'    => ['label' => 'Active',    'variants' => ['active', 'resume']],
+            'inactive'  => ['label' => 'Inactive',  'variants' => ['inactive', 'in-active', 'in active']],
+            'graduated' => ['label' => 'Graduated', 'variants' => ['graduated', 'graduate', 'graduates']],
             'graduands' => ['label' => 'Graduands', 'variants' => ['graduands', 'graduand', 'graduants', 'graduant']],
-            'suspended' => ['label' => 'Suspended', 'variants' => ['suspended']],
-            'rejected'  => ['label' => 'Rejected',  'variants' => ['rejected', 'refused', 'declined']],
+            'suspended' => ['label' => 'Suspended', 'variants' => ['suspended', 'suspend']],
+            'rejected'  => ['label' => 'Rejected',  'variants' => ['rejected', 'refused', 'declined', 'reject']],
+            // Both are settable from the student record's status picker, so
+            // they must be filterable too — otherwise a student put into one
+            // of these states can never be found again from the list.
+            'dropped'   => ['label' => 'Dropped out', 'variants' => ['dropped', 'dropout', 'drop out', 'dropped out', 'drop_out']],
+            'dismissed' => ['label' => 'Dismissed',   'variants' => ['dismissed', 'dismiss']],
         ];
     }
 

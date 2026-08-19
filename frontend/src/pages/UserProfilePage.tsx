@@ -14,8 +14,10 @@ import {
   EyeOff,
   Shield,
   Camera,
+  Trash2,
 } from "lucide-react";
 
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { authService } from "@/services/authService";
 import { useAuthStore } from "@/store/authStore";
 
@@ -58,6 +60,26 @@ export default function UserProfilePage() {
     onError: (err: any) =>
       toast.error(err?.response?.data?.message ?? err?.message ?? "Upload failed."),
   });
+
+  const [confirmRemovePhoto, setConfirmRemovePhoto] = useState(false);
+
+  const removePhotoM = useMutation({
+    mutationFn: () => authService.deleteMyPhoto(),
+    onSuccess: (res) => {
+      toast.success("Profile photo removed.");
+      // Same response shape as upload, so the store (and the header avatar)
+      // update from here without any special-casing.
+      if (res?.data) setUser(res.data as any);
+      setConfirmRemovePhoto(false);
+      queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
+    },
+    onError: (err: any) => {
+      setConfirmRemovePhoto(false);
+      toast.error(err?.response?.data?.message ?? err?.message ?? "Could not remove photo.");
+    },
+  });
+
+  const photoBusy = uploadPhotoM.isPending || removePhotoM.isPending;
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -182,11 +204,11 @@ export default function UserProfilePage() {
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
-            disabled={uploadPhotoM.isPending}
+            disabled={photoBusy}
             className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
             title="Upload profile photo"
           >
-            {uploadPhotoM.isPending
+            {photoBusy
               ? <Loader2 className="w-5 h-5 text-white animate-spin" />
               : <Camera className="w-5 h-5 text-white" />}
           </button>
@@ -202,17 +224,42 @@ export default function UserProfilePage() {
             <span className="text-ink-300">•</span>
             <span>{me?.email}</span>
           </div>
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            disabled={uploadPhotoM.isPending}
-            className="mt-2 inline-flex items-center gap-1.5 text-[12px] text-brand hover:underline disabled:opacity-50"
-          >
-            <Camera className="w-3.5 h-3.5" />
-            {uploadPhotoM.isPending ? "Uploading…" : "Change photo"}
-          </button>
+          <div className="mt-2 flex items-center gap-3 flex-wrap">
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              disabled={photoBusy}
+              className="inline-flex items-center gap-1.5 text-[12px] text-brand hover:underline disabled:opacity-50"
+            >
+              <Camera className="w-3.5 h-3.5" />
+              {uploadPhotoM.isPending ? "Uploading…" : "Change photo"}
+            </button>
+            {/* Only shown when there is a photo to remove. */}
+            {me?.photo && (
+              <button
+                type="button"
+                onClick={() => setConfirmRemovePhoto(true)}
+                disabled={photoBusy}
+                className="inline-flex items-center gap-1.5 text-[12px] text-red-600 hover:text-red-700 hover:underline disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                {removePhotoM.isPending ? "Removing…" : "Remove photo"}
+              </button>
+            )}
+          </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmRemovePhoto}
+        onClose={() => setConfirmRemovePhoto(false)}
+        onConfirm={() => removePhotoM.mutate()}
+        title="Remove profile photo?"
+        message="The photo will be deleted permanently. You can upload a new one at any time."
+        confirmLabel="Remove"
+        variant="danger"
+        loading={removePhotoM.isPending}
+      />
 
       {/* Profile form */}
       <form className="card p-5 space-y-4" onSubmit={onSubmitProfile}>

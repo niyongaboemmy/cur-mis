@@ -428,8 +428,12 @@ class AuthController extends BaseController
             $this->error($response, 'No photo file provided.', 422);
         }
 
-        $allowedMimes = ['image/jpeg', 'image/png', 'image/webp'];
-        if (!in_array($file['type'] ?? '', $allowedMimes, true)) {
+        // $_FILES['type'] is whatever the browser claimed, and some send
+        // 'image/jpg' or an empty string. Treat it as a hint only — the
+        // authoritative content-based check runs inside FileServerClient.
+        $allowedMimes = ['image/jpeg', 'image/jpg', 'image/pjpeg', 'image/png', 'image/webp'];
+        $claimed      = strtolower(trim((string)($file['type'] ?? '')));
+        if ($claimed !== '' && !in_array($claimed, $allowedMimes, true)) {
             $this->error($response, 'Invalid file type. Only JPEG, PNG and WebP are allowed.', 422);
         }
 
@@ -437,7 +441,7 @@ class AuthController extends BaseController
             $client   = new \App\Helpers\FileServerClient();
             $uploaded = $client->upload($file);
         } catch (\RuntimeException $e) {
-            $this->error($response, $e->getMessage(), 422);
+            $this->failFromFileServer($response, $e);
         }
 
         $model   = new \App\Models\UserModel();
@@ -465,6 +469,46 @@ class AuthController extends BaseController
             'permissions'  => $authUser['permissions']  ?? [],
             'is_applicant' => $authUser['is_applicant'] ?? false,
         ], 'Profile photo updated.');
+    }
+
+    /**
+     * DELETE /api/auth/me/photo
+     * Remove the authenticated user's profile photo. Idempotent — see
+     * PhotoRemover for why clearing an already-empty photo succeeds.
+     */
+    public function deleteMyPhoto(Request $request, Response $response): never
+    {
+        $authUser = (array)($request->param('_auth_user') ?? []);
+        $userId   = (int)($authUser['id'] ?? 0);
+        if ($userId <= 0) {
+            $this->error($response, 'Unauthorized.', 401);
+        }
+
+        $model   = new \App\Models\UserModel();
+        $current = $model->find($userId);
+        if (!$current) {
+            $this->error($response, 'User not found.', 404);
+        }
+
+        $previous = $current['photo'] ?? null;
+        $model->update($userId, ['photo' => null]);
+        \App\Helpers\PhotoRemover::discard($previous);
+
+        // Same payload shape as uploadMyPhoto() so the frontend auth store can
+        // be refreshed from either response without special-casing.
+        $this->success($response, [
+            'photo'        => null,
+            'id'           => $userId,
+            'email'        => $current['email']     ?? '',
+            'username'     => $current['username']  ?? '',
+            'full_name'    => $current['full_name'] ?? '',
+            'phone'        => $current['phone']     ?? null,
+            'role_id'      => $current['role_id']   ?? null,
+            'role'         => $authUser['role']         ?? null,
+            'role_name'    => $authUser['role_name']    ?? null,
+            'permissions'  => $authUser['permissions']  ?? [],
+            'is_applicant' => $authUser['is_applicant'] ?? false,
+        ], 'Profile photo removed.');
     }
 
     /**

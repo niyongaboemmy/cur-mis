@@ -1017,3 +1017,55 @@ export interface FinanceStudentDirectoryRow {
   fee_status:   FinanceStudentFeeSummary
 }
 
+
+/* ────────────────────────────────────────────────────────────────────
+ * Student self-service fines (GET /api/finance/my/fines)
+ * ──────────────────────────────────────────────────────────────────── */
+
+export type FineType =
+  | 'LATE_SUBMISSION'
+  | 'LOST_ID_CARD'
+  | 'LIBRARY_FINE'
+  | 'LATE_REGISTRATION'
+  | 'ACADEMIC_DOCUMENT'
+  | 'OTHER'
+
+export const FINE_TYPE_LABELS: Record<FineType, string> = {
+  LATE_SUBMISSION:   'Late Submission',
+  LOST_ID_CARD:      'Lost ID Card',
+  LIBRARY_FINE:      'Library Fine',
+  LATE_REGISTRATION: 'Late Registration',
+  ACADEMIC_DOCUMENT: 'Academic Document',
+  OTHER:             'Other',
+}
+
+/** pending/invoiced are owed; paid/waived are settled. */
+export type FineStatus = 'pending' | 'invoiced' | 'waived' | 'paid'
+
+export interface MyFine {
+  id:                  number
+  fine_type:           FineType
+  reason:              string
+  amount:              number
+  status:              FineStatus
+  created_at:          string
+  waived_at:           string | null
+  /** The FINE invoice this was billed on — the payable target. */
+  invoice_id:          number | null
+  invoice_number:      string | null
+  invoice_status:      InvoiceStatus | null
+  due_date:            string | null
+  academic_year_id:    number | null
+  academic_year_label: string | null
+  /** Amount still outstanding on the linked invoice. */
+  balance:             number
+}
+
+export interface MyFinesResponse {
+  fines: MyFine[]
+  summary: {
+    total_fines:        number
+    outstanding_count:  number
+    outstanding_amount: number
+  }
+}
