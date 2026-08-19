@@ -1,15 +1,50 @@
 # HANDOFF
 
 ## Current Task
-Filter the Students list by faculty, department, option (Education only), age,
-country, province, district, sector, status and academic year — and be able to
-download any filtered cohort to Excel.
+Nothing in flight. Three tasks finished and pushed to `Levi` this session — the
+Students filters + Excel export, the document-type "Validation failed." bug, and
+the student status picker.
+
+## Branch rule
+**Never push to `main`.** Push to `Levi`, always — the user was explicit about
+this. Restore points are tagged before each change and pushed:
+`backup/pre-doctype-fix-20260819` (→ `0978b3d`) and
+`backup/pre-status-options-20260819` (→ `18dee8a`).
 
 ## Status
-**Solved.** The filter set landed in commit `b8a5955`; this session finished it —
-fixed two defects that made the filter bar contradict itself, and replaced the
-CSV-only download with a real `.xlsx` export. Verified against live data: for 25
-filter combinations the list total and the exported row count match exactly.
+**All solved.**
+
+| Commit | What |
+|---|---|
+| `0978b3d` | Students filters finished + real `.xlsx` export |
+| `18dee8a` | Document type "Validation failed." fixed |
+| `c7f7e0d` | Graduand / Rejected / Dropped out statuses + silent-rewrite fix |
+
+### `18dee8a` — document type "Validation failed."
+Slug `Health_insurence` failed `regex:/^[a-z_]+$/` on the capital **H**, and the
+toast showed only the generic message, so nothing said which field was wrong.
+The same rule also rejected digits (`a2_certificate`), hyphens
+(`o-level-result`) and a pasted trailing space. `create()`/`update()` now
+normalise the slug (lowercase, trim, tidy separators) before validating against
+`^[a-z0-9_-]+$`, share one rule set, and the page derives the slug from the
+name, sanitises as typed, and surfaces the per-field `errors`. **No migration —
+validation only.** The test row was deleted; `document_types` is back to 9 rows.
+
+### `c7f7e0d` — student status picker
+Edit Student Details offered only Active/Inactive/Graduated/Suspended. Now
+Active, Inactive, Graduated, **Graduand**, Suspended, **Rejected**, **Dropped
+out**, Dismissed — driven by one `STUDENT_STATES` list shared with the Programme
+section (the two had drifted). `graduands` is stored plural to match the 4
+existing rows; the label is singular.
+
+Found and fixed a **silent status rewrite**: `student_state` is free text and
+holds `Active` (133), `ACTIVE` (29), `Graduates` (1), `resume` (2), `xxx` (2). A
+`<select>` whose value matches no option falls back to its *first* option, so all
+167 displayed as Active and saving wrote that back — a real state change for the
+`Graduates` student. Both forms now seed through `normaliseStudentState()`; the
+two unknown `xxx` rows are preserved and shown as "(current)".
+**No migration — `student_state` is varchar(40), already in the update
+whitelist.**
 
 ## Progress
 - [x] Faculty, Department, Option (Education-only), Age, Country, Province,
@@ -107,6 +142,8 @@ parts present, every XML part well-formed, 24,906 rows / 739,443 cells.
    Staff" creates no `users` row so those staff cannot log in.
 
 ## Recently Completed
-- Students page: full filter set + Excel export (this task).
+- Student status picker: Graduand / Rejected / Dropped out + silent-rewrite fix.
+- Document types: "Validation failed." on create/edit (slug rule was too strict).
+- Students page: full filter set + Excel export.
 - Fixed all 9 issues from `FIX.pdf` (student portal QA report).
 - Profile-picture removal endpoints; staff-email persistence fixes on create/edit.
