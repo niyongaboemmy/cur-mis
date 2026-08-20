@@ -112,7 +112,7 @@ export default function RolesManagementPage() {
     const matchedIds = slugs
       .map((slug) => allPerms.find((p) => p.slug === slug)?.id)
       .filter(Boolean) as number[];
-    setSelectedPerms(matchedIds);
+    setSelectedPerms(Array.from(new Set(matchedIds)));
     setIsPermsOpen(true);
   };
 
@@ -173,10 +173,13 @@ export default function RolesManagementPage() {
     // Find all permission IDs that match the role's current string slugs
     if (role.permissions && categories.length > 0) {
       const allPerms = categories.flatMap((c) => c.permissions || []);
+      // Two catalogue rows can share a slug, so distinct slugs can resolve to
+      // the same id — dedupe before seeding the grid, or the save posts that id
+      // twice and the second row collides with the primary key.
       const matchedIds = role.permissions
         .map((slug) => allPerms.find((p) => p.slug === slug)?.id)
         .filter(Boolean) as number[];
-      setSelectedPerms(matchedIds);
+      setSelectedPerms(Array.from(new Set(matchedIds)));
     } else {
       setSelectedPerms([]);
     }

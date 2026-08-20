@@ -151,18 +151,30 @@ class RoleController extends BaseController
             $this->error($response, 'Permissions array is required', 422);
         }
 
+        // The grid can hand back the same permission twice — two catalogue rows
+        // sharing a slug both resolve to the first matching id — and the same
+        // pair is written twice, which the (role_id, permission_id) primary key
+        // rejects. Deduplicate first, then INSERT IGNORE so a stale or unknown
+        // id is skipped instead of aborting the rest of the grant.
+        $permIds = array_values(array_unique(array_filter(
+            array_map('intval', $data['permissions']),
+            static fn (int $permId): bool => $permId > 0
+        )));
+
         $this->rolePermModel->clearForRole($id);
 
-        foreach ($data['permissions'] as $permId) {
-            try {
-                $this->rolePermModel->create([
-                    'role_id' => $id,
-                    'permission_id' => (int)$permId
-                ]);
-            } catch (\Exception $e) {
-                // Ignore foreign key constrain fail if perm ID doesn't exist
-                continue;
+        if ($permIds) {
+            $placeholders = implode(',', array_fill(0, count($permIds), '(?, ?)'));
+            $bindings     = [];
+            foreach ($permIds as $permId) {
+                $bindings[] = $id;
+                $bindings[] = $permId;
             }
+
+            $this->rolePermModel->db()->execute(
+                'INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`) VALUES ' . $placeholders,
+                $bindings
+            );
         }
 
         // The Permissions modal saves the campus-scope toggle alongside the
@@ -176,8 +188,8 @@ class RoleController extends BaseController
         $this->syncLeaveStageBindings($id);
 
         $actor = (array) $request->param('_auth_user');
-        $count = count($data['permissions']);
-        SystemLogService::log('ASSIGN', 'ROLES', "Assigned {$count} permission(s) to role ID {$id}.", $id, 'role', ['permission_ids' => $data['permissions']], $actor ?: null);
+        $count = count($permIds);
+        SystemLogService::log('ASSIGN', 'ROLES', "Assigned {$count} permission(s) to role ID {$id}.", $id, 'role', ['permission_ids' => $permIds], $actor ?: null);
         $this->success($response, null, 'Permissions assigned successfully.');
     }
 
