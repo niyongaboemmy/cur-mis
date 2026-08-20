@@ -30,13 +30,16 @@ export default function DocumentGenerationPage() {
         onClose={() => setOpen(false)}
         title="Generate Official Documents"
         size="full"
-        className="w-[65vw] max-w-[65vw] h-[85vh]"
+        className="w-[95vw] left-[2.5%] right-[2.5%] h-[100vh]"
       >
-        <iframe
-          src="https://cur.ac.rw/umis/documents/"
-          title="CUR Documents Portal"
-          className="w-full h-full min-h-[70vh] border-0"
-        />
+        <div className="w-full h-full flex flex-col">
+          <iframe
+            src="https://cur.ac.rw/umis/documents/"
+            title="CUR Documents Portal"
+            className="w-full h-full flex-1 border-0"
+            style={{ minHeight: "calc(100vh - 200px)" }}
+          />
+        </div>
       </Modal>
     </div>
   );
