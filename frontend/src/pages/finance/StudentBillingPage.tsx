@@ -149,8 +149,21 @@ export default function StudentBillingPage() {
       debouncedKeyword,
       page,
     ],
-    queryFn: () =>
-      api.get<any>('/api/finance/billing/all-students', {
+    queryFn: () => {
+      // If no year selected, fetch without yearId to show all active students
+      if (!yearId) {
+        return api.get<any>('/api/finance/billing/all-students', {
+          semester: semester ? Number(semester) : undefined,
+          faculty_id: facultyId ? Number(facultyId) : undefined,
+          department_id: deptId ? Number(deptId) : undefined,
+          option_id: optionId ? Number(optionId) : undefined,
+          keyword: debouncedKeyword,
+          page,
+          per_page: 50,
+        });
+      }
+      // If year selected, filter by that year
+      return api.get<any>('/api/finance/billing/all-students', {
         academic_year_id: Number(yearId),
         semester: semester ? Number(semester) : undefined,
         faculty_id: facultyId ? Number(facultyId) : undefined,
@@ -159,8 +172,9 @@ export default function StudentBillingPage() {
         keyword: debouncedKeyword,
         page,
         per_page: 50,
-      }),
-    enabled: !!yearId,
+      });
+    },
+    // Always enabled - load all students or filtered students
   });
 
   const paginated = summaryQ.data?.data as any;
@@ -502,14 +516,6 @@ export default function StudentBillingPage() {
               <Users className="w-4 h-4 absolute inset-0 m-auto text-brand" />
             </div>
             <p className="text-sm text-ink-400">Crunching financial data…</p>
-          </div>
-        ) : !yearId ? (
-          <div className="py-20 text-center space-y-2">
-            <div className="w-16 h-16 bg-ink-50 dark:bg-ink-800 rounded-2xl flex items-center justify-center mx-auto mb-3">
-              <TrendingUp className="w-8 h-8 text-ink-200" />
-            </div>
-            <p className="font-bold text-ink-800 dark:text-white">Ready to bill?</p>
-            <p className="text-ink-400 text-sm">Select an academic year to load student balances.</p>
           </div>
         ) : filteredStudents.length === 0 ? (
           <div className="py-20 text-center space-y-2">
