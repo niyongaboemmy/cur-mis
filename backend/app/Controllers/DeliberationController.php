@@ -8,6 +8,7 @@ use Core\Request;
 use Core\Response;
 use Core\Database;
 use App\Services\SystemLogService;
+use App\Models\StudentStatusChangeModel;
 
 /**
  * Deliberation grid: every active student in scope (program × level × intake)
@@ -32,10 +33,14 @@ use App\Services\SystemLogService;
 class DeliberationController extends BaseController
 {
     private Database $db;
+    private StudentStatusChangeModel $statusModel;
 
     public function __construct()
     {
         $this->db = Database::getInstance();
+        // A board-ordered exclusion writes through the same audit trail as a
+        // registrar's manual status change (migration 145).
+        $this->statusModel = new StudentStatusChangeModel();
     }
 
     public function grid(Request $request, Response $response): never
@@ -855,6 +860,192 @@ class DeliberationController extends BaseController
         $this->success($response, null, 'Session updated.');
     }
 
+
+    /** Outcomes the board may record — mirrors the ENUM in migration 148. */
+    private const OUTCOMES = ['promote', 'repeat_level', 'repeat_modules', 'discontinue', 'defer'];
+
+    /**
+     * GET /api/deliberation/sessions/:id/decisions
+     * Every decision recorded for a session, with the student's name and
+     * current level so the board can see what it is about to apply.
+     */
+    public function listDecisions(Request $request, Response $response): never
+    {
+        $id = (int) $request->param('id');
+
+        $rows = $this->db->fetchAll(
+            "SELECT d.*,
+                    TRIM(CONCAT(COALESCE(s.fname,''), ' ', COALESCE(s.lname,''))) AS student_name,
+                    s.current_level AS student_current_level,
+                    u.full_name AS decided_by_name
+               FROM `deliberation_decisions` d
+               LEFT JOIN `student` s ON s.regnumber = d.student_regnumber COLLATE utf8mb4_general_ci
+               LEFT JOIN `users`   u ON u.id = d.decided_by
+              WHERE d.deliberation_id = ?
+              ORDER BY student_name ASC, d.student_regnumber ASC",
+            [$id]
+        );
+
+        $this->success($response, $rows, 'Decisions fetched.');
+    }
+
+    /**
+     * POST /api/deliberation/sessions/:id/decisions
+     * Body: { decisions: [{ student_regnumber, outcome, level_from?, level_to?, carry_modules?, reason? }, …] }
+     *
+     * Recorded in bulk because a board works through a class in one sitting.
+     * Re-posting a student overwrites their decision (the unique key makes it
+     * an upsert), so the board can revise until the session is finalised.
+     */
+    public function saveDecisions(Request $request, Response $response): never
+    {
+        $id      = (int) $request->param('id');
+        $session = $this->db->fetchOne(
+            "SELECT id, finalized FROM deliberations WHERE id = ? LIMIT 1", [$id]
+        );
+        if (!$session)             $this->error($response, 'Session not found.', 404);
+        if ($session['finalized']) $this->error($response, 'This session is finalised — its decisions can no longer be changed.', 409);
+
+        $body      = $request->body();
+        $decisions = $body['decisions'] ?? null;
+        if (!is_array($decisions) || $decisions === []) {
+            $this->error($response, 'Validation failed', 422, ['decisions' => ['Send at least one decision.']]);
+        }
+
+        $userId = $this->authUserId($request) ?: null;
+        $errors = [];
+        $clean  = [];
+
+        foreach ($decisions as $i => $d) {
+            $reg = trim((string) ($d['student_regnumber'] ?? ''));
+            if ($reg === '') {
+                $errors["decisions.{$i}"] = ['A registration number is required.'];
+                continue;
+            }
+
+            $outcome = strtolower(trim((string) ($d['outcome'] ?? '')));
+            if (!in_array($outcome, self::OUTCOMES, true)) {
+                $errors["decisions.{$i}"] = ["\"{$outcome}\" is not a decision the board can record."];
+                continue;
+            }
+
+            $from = isset($d['level_from']) && $d['level_from'] !== '' ? (int) $d['level_from'] : null;
+            $to   = isset($d['level_to'])   && $d['level_to']   !== '' ? (int) $d['level_to']   : null;
+
+            // A promotion has to say where to. Without this the outcome is
+            // recorded and finalisation quietly moves nobody.
+            if ($outcome === 'promote' && ($to === null || $to <= 0)) {
+                $errors["decisions.{$i}"] = ['A promotion needs the level the student moves up to.'];
+                continue;
+            }
+            // The other outcomes leave the level alone; storing a level_to for
+            // them would be a lie the apply step would then act on.
+            if ($outcome !== 'promote') {
+                $to = null;
+            }
+
+            $clean[] = [$reg, $outcome, $from, $to,
+                        trim((string) ($d['carry_modules'] ?? '')) ?: null,
+                        trim((string) ($d['reason'] ?? '')) ?: null,
+                        $userId];
+        }
+
+        if ($errors !== []) {
+            $this->error($response, 'Some decisions could not be recorded. Nothing was saved.', 422, $errors);
+        }
+
+        foreach ($clean as $row) {
+            $this->db->execute(
+                "INSERT INTO `deliberation_decisions`
+                   (deliberation_id, student_regnumber, outcome, level_from, level_to,
+                    carry_modules, reason, decided_by)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 ON DUPLICATE KEY UPDATE
+                   outcome       = VALUES(outcome),
+                   level_from    = VALUES(level_from),
+                   level_to      = VALUES(level_to),
+                   carry_modules = VALUES(carry_modules),
+                   reason        = VALUES(reason),
+                   decided_by    = VALUES(decided_by),
+                   decided_at    = CURRENT_TIMESTAMP",
+                array_merge([$id], $row)
+            );
+        }
+
+        SystemLogService::log('UPDATE', 'STUDENTS', "Recorded " . count($clean) . " deliberation decision(s) on session #{$id}", $id, 'deliberation');
+        $this->success($response, ['saved' => count($clean)], count($clean) . ' decision(s) recorded.');
+    }
+
+    /**
+     * GET /api/deliberation/sessions/:id/decisions/preview
+     *
+     * What finalising WOULD change, before anything is written.
+     *
+     * Finalisation locks marks and rewrites student levels, and there is no
+     * un-finalise. A board that discovers a mistake afterwards has no way back
+     * through the UI, so the destructive step gets a dry run first.
+     */
+    public function previewFinalize(Request $request, Response $response): never
+    {
+        $id = (int) $request->param('id');
+        if (!$this->db->fetchOne("SELECT id FROM deliberations WHERE id = ? LIMIT 1", [$id])) {
+            $this->error($response, 'Session not found.', 404);
+        }
+
+        $rows = $this->db->fetchAll(
+            "SELECT d.student_regnumber, d.outcome, d.level_to, d.applied_at,
+                    TRIM(CONCAT(COALESCE(s.fname,''), ' ', COALESCE(s.lname,''))) AS student_name,
+                    s.current_level, s.student_state
+               FROM `deliberation_decisions` d
+               LEFT JOIN `student` s ON s.regnumber = d.student_regnumber COLLATE utf8mb4_general_ci
+              WHERE d.deliberation_id = ?
+              ORDER BY d.outcome, student_name",
+            [$id]
+        );
+
+        $counts  = array_fill_keys(self::OUTCOMES, 0);
+        $changes = [];
+        $missing = [];
+
+        foreach ($rows as $r) {
+            $counts[$r['outcome']] = ($counts[$r['outcome']] ?? 0) + 1;
+
+            if ($r['student_name'] === null || $r['current_level'] === null) {
+                // A decision naming a regnumber with no student row would
+                // silently do nothing on apply. Surface it instead.
+                $missing[] = $r['student_regnumber'];
+                continue;
+            }
+            if ($r['outcome'] === 'promote' && (string) $r['current_level'] !== (string) $r['level_to']) {
+                $changes[] = [
+                    'student_regnumber' => $r['student_regnumber'],
+                    'student_name'      => $r['student_name'],
+                    'change'            => 'level',
+                    'from'              => $r['current_level'],
+                    'to'                => (string) $r['level_to'],
+                    'already_applied'   => $r['applied_at'] !== null,
+                ];
+            }
+            if ($r['outcome'] === 'discontinue' && strtolower((string) $r['student_state']) !== 'dismissed') {
+                $changes[] = [
+                    'student_regnumber' => $r['student_regnumber'],
+                    'student_name'      => $r['student_name'],
+                    'change'            => 'status',
+                    'from'              => $r['student_state'],
+                    'to'                => 'dismissed',
+                    'already_applied'   => $r['applied_at'] !== null,
+                ];
+            }
+        }
+
+        $this->success($response, [
+            'total_decisions' => count($rows),
+            'counts'          => $counts,
+            'changes'         => $changes,
+            'unknown_students'=> $missing,
+        ], 'Preview generated.');
+    }
+
     /**
      * POST /api/deliberation/sessions/:id/finalize
      * Marks the session as finalised and locks all `module_marks` rows for the
@@ -895,11 +1086,94 @@ class DeliberationController extends BaseController
             );
         }
 
+        // ── Apply the board's decisions ──────────────────────────────────
+        // Until now finalising only locked marks; the levels the board decided
+        // on were then moved by hand, one student at a time, with nothing
+        // linking the change back to the session that ordered it. This is the
+        // "kwimura Promotion" half of the request.
+        //
+        // Only rows with applied_at IS NULL are touched, so a re-run cannot
+        // double-apply, and each row is stamped as it lands.
+        $decisions = $this->db->fetchAll(
+            "SELECT id, student_regnumber, outcome, level_to
+               FROM `deliberation_decisions`
+              WHERE deliberation_id = ? AND applied_at IS NULL",
+            [$id]
+        );
+
+        $promoted = 0;
+        $ended    = 0;
+        $skipped  = [];
+
+        foreach ($decisions as $d) {
+            $reg = (string) $d['student_regnumber'];
+            $student = $this->db->fetchOne(
+                // COLLATE binds to the COLUMN, not the placeholder — a bound
+                // parameter is `binary` and "COLLATE utf8mb4_general_ci" on it
+                // raises 1253.
+                "SELECT id, current_level, student_state FROM `student`
+                  WHERE regnumber COLLATE utf8mb4_general_ci = ? LIMIT 1",
+                [$reg]
+            );
+            if (!$student) {
+                // Decision names a student who is not in the table. Recorded
+                // and reported rather than silently dropped.
+                $skipped[] = $reg;
+                continue;
+            }
+
+            if ($d['outcome'] === 'promote' && !empty($d['level_to'])) {
+                // current_level is VARCHAR holding levels.id as text.
+                $this->db->execute(
+                    "UPDATE `student` SET current_level = ? WHERE id = ?",
+                    [(string) (int) $d['level_to'], (int) $student['id']]
+                );
+                $promoted++;
+            } elseif ($d['outcome'] === 'discontinue') {
+                // Write through the same audit trail a registrar's status
+                // change uses (migration 145), so a board-ordered exclusion is
+                // as traceable as a manual one and shows up in the student's
+                // status history with the session as its reason.
+                $this->statusModel->record([
+                    'student_id'     => (int) $student['id'],
+                    'previous_state' => $student['student_state'] ?: null,
+                    'new_state'      => 'dismissed',
+                    'reason'         => "Discontinued by deliberation session #{$id}.",
+                    'changed_by'     => $this->authUserId($request) ?: null,
+                ]);
+                $this->db->execute(
+                    "UPDATE `student` SET student_state = 'dismissed' WHERE id = ?",
+                    [(int) $student['id']]
+                );
+                $ended++;
+            }
+            // repeat_level / repeat_modules / defer leave the level alone by
+            // design — the student stays where they are.
+
+            $this->db->execute(
+                "UPDATE `deliberation_decisions` SET applied_at = NOW() WHERE id = ?",
+                [(int) $d['id']]
+            );
+        }
+
         $this->db->execute(
             "UPDATE deliberations SET finalized=1 WHERE id=?", [$id]
         );
 
-        SystemLogService::log('APPROVE','STUDENTS',"Deliberation session #{$id} finalised",$id,'deliberation');
-        $this->success($response, null, 'Session finalised and marks locked.');
+        SystemLogService::log(
+            'APPROVE',
+            'STUDENTS',
+            "Deliberation session #{$id} finalised — {$promoted} promoted, {$ended} discontinued",
+            $id,
+            'deliberation',
+            ['promoted' => $promoted, 'discontinued' => $ended, 'unknown_students' => $skipped]
+        );
+
+        $this->success($response, [
+            'promoted'         => $promoted,
+            'discontinued'     => $ended,
+            'decisions_applied'=> count($decisions) - count($skipped),
+            'unknown_students' => $skipped,
+        ], 'Session finalised, marks locked and decisions applied.');
     }
 }

@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { BarChart3, FileSpreadsheet } from 'lucide-react'
 import { applicationAdminService } from '@/services/admissionService'
 import { useLevels } from '@/hooks/useLevels'
+import DateRangeFilter from '@/components/ui/DateRangeFilter'
 
 export default function ApplicationStatisticsPage() {
   const { levels } = useLevels()
@@ -70,8 +71,15 @@ export default function ApplicationStatisticsPage() {
           allLabel="All levels"
         />
         <TextFilter   label="Attendance mode" value={filters.mode}        onChange={(v) => setFilters({ ...filters, mode: v })} placeholder="e.g. Day" />
-        <DateFilter   label="Date from"     value={filters.date_from}     onChange={(v) => setFilters({ ...filters, date_from: v })} />
-        <DateFilter   label="Date to"       value={filters.date_to}       onChange={(v) => setFilters({ ...filters, date_to: v })} />
+        {/* Shared control so a range means the same thing here as on the
+            applications list — both now range on submitted_at. */}
+        <div className="col-span-full">
+          <DateRangeFilter
+            label="Submitted"
+            value={{ from: filters.date_from, to: filters.date_to }}
+            onChange={(v) => setFilters({ ...filters, date_from: v.from, date_to: v.to })}
+          />
+        </div>
       </section>
 
       <section className="card p-0 overflow-hidden">
@@ -181,11 +189,3 @@ function TextFilter({ label, value, onChange, placeholder }: { label: string; va
   )
 }
 
-function DateFilter({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-  return (
-    <div>
-      <label className="label">{label}</label>
-      <input type="date" className="input" value={value} onChange={(e) => onChange(e.target.value)} />
-    </div>
-  )
-}

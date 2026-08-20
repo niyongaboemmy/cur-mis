@@ -5,6 +5,7 @@ import {
   CreditCard,
   Search,
   Printer,
+  Download,
   BadgeCheck,
   Ban,
   RefreshCcw,
@@ -104,9 +105,31 @@ export default function StudentIdCardsPage() {
 
   const printM = useMutation({
     mutationFn: () => studentIdService.batchPrint(selected),
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? "Could not build the print file."),
+  });
+
+  const batchDownloadM = useMutation({
+    mutationFn: () => studentIdService.batchDownload(selected),
     onSuccess: () => toast.success("Cards downloaded."),
     onError: (e: any) => toast.error(e?.response?.data?.message ?? "Could not build the print file."),
   });
+
+  // Per-row print / download. `pendingCard` tracks which row is busy so only
+  // that row's buttons show a spinner, not every row's.
+  const [pendingCard, setPendingCard] = useState<number | null>(null);
+
+  const rowCard = async (studentId: number, mode: "print" | "download") => {
+    setPendingCard(studentId);
+    try {
+      await (mode === "print"
+        ? studentIdService.print(studentId)
+        : studentIdService.download(studentId));
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message ?? "Could not build the card.");
+    } finally {
+      setPendingCard(null);
+    }
+  };
 
   const toggle = (id: number) =>
     setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
@@ -190,9 +213,20 @@ export default function StudentIdCardsPage() {
                 onClick={() => printM.mutate()}
                 disabled={selected.length === 0 || printM.isPending}
                 className="btn-secondary disabled:opacity-50"
+                title="Open the selected cards in the print dialog"
               >
                 <Printer className="w-3.5 h-3.5" />
                 {printM.isPending ? "Building…" : "Print selected"}
+              </button>
+              <button
+                type="button"
+                onClick={() => batchDownloadM.mutate()}
+                disabled={selected.length === 0 || batchDownloadM.isPending}
+                className="btn-secondary disabled:opacity-50"
+                title="Save the selected cards as one PDF"
+              >
+                <Download className="w-3.5 h-3.5" />
+                {batchDownloadM.isPending ? "Building…" : "Download selected"}
               </button>
             </div>
           )}
@@ -217,20 +251,24 @@ export default function StudentIdCardsPage() {
                 <th className="px-4 py-3">Card</th>
                 <th className="px-4 py-3">Issued</th>
                 <th className="px-4 py-3">Expires</th>
+                {/* Printing a card only needs VIEW_STUDENTS on the backend
+                    (routes/api/student_ids.php), so this column is not gated
+                    on canManage the way Revoke is. */}
+                <th className="px-4 py-3 text-right">Card</th>
                 {canManage && <th className="px-4 py-3 text-right">Action</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-ink-200 dark:divide-ink-800">
               {rosterQ.isLoading ? (
                 <tr>
-                  <td colSpan={canManage ? 8 : 7} className="px-4 py-12 text-center text-ink-500">
+                  <td colSpan={canManage ? 9 : 8} className="px-4 py-12 text-center text-ink-500">
                     <RefreshCcw className="w-5 h-5 animate-spin mx-auto mb-2 text-brand" />
                     Loading students…
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={canManage ? 8 : 7} className="px-4 py-12 text-center text-ink-500">
+                  <td colSpan={canManage ? 9 : 8} className="px-4 py-12 text-center text-ink-500">
                     No students match these filters.
                   </td>
                 </tr>
@@ -257,6 +295,35 @@ export default function StudentIdCardsPage() {
                     </td>
                     <td className="px-4 py-2.5 text-ink-500 tabular-nums">{fmtDate(r.issue_date)}</td>
                     <td className="px-4 py-2.5 text-ink-500 tabular-nums">{fmtDate(r.expiry_date)}</td>
+                    <td className="px-4 py-2.5 text-right">
+                      {/* An expired card still prints — StudentIdModel::activeForStudent
+                          keys on is_active, not the expiry date. Only a revoked
+                          card (or none at all) has nothing to render. */}
+                      {r.card_id && r.card_state !== "revoked" ? (
+                        <div className="inline-flex items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() => rowCard(r.student_id, "print")}
+                            disabled={pendingCard === r.student_id}
+                            title={`Print ${r.regnumber}'s card`}
+                            className="inline-flex items-center gap-1 text-xs font-bold text-ink-600 dark:text-ink-300 hover:text-brand hover:underline disabled:opacity-50"
+                          >
+                            <Printer className="w-3.5 h-3.5" /> Print
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => rowCard(r.student_id, "download")}
+                            disabled={pendingCard === r.student_id}
+                            title={`Download ${r.regnumber}'s card as PDF`}
+                            className="inline-flex items-center gap-1 text-xs font-bold text-ink-600 dark:text-ink-300 hover:text-brand hover:underline disabled:opacity-50"
+                          >
+                            <Download className="w-3.5 h-3.5" /> PDF
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-ink-400">—</span>
+                      )}
+                    </td>
                     {canManage && (
                       <td className="px-4 py-2.5 text-right">
                         {r.card_id && r.card_state !== "revoked" ? (

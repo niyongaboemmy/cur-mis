@@ -13,6 +13,8 @@ use App\Helpers\TranscriptPdf;
 use App\Helpers\GradingScale;
 use App\Services\AuthService;
 use App\Services\DegreeClassificationService;
+use App\Helpers\MarksTemplateExcel;
+use App\Services\SystemLogService;
 
 /**
  * Module marks controller.
@@ -282,132 +284,104 @@ class ModuleMarksController extends BaseController
 
     /* ── List marks for module + term (full roster) ────────────────────── */
 
+
     /**
-     * GET /api/marks?module_id=&academic_term_id=
-     * Returns the registered roster for that module/term plus any saved
-     * marks (left-joined so unmarked students still appear) and the rich
-     * module header metadata used by the CUR module-marks template
-     * (program, level, option, department, faculty, lecturer, teaching dates).
+     * GET /api/marks/template?module_id=&academic_term_id=
+     *
+     * The blank marks workbook the registry fills in offline — the
+     * "Templete bakuye muri system" the August 2026 report asked for.
+     *
+     * Cut from buildRoster(), the same class list the grid renders, and
+     * stamped on a `_meta` sheet with the module, the term and the maxima it
+     * was issued against. The importer checks that stamp, which is what stops
+     * a sheet filled in for one module being uploaded against another.
      */
-    public function listMarks(Request $request, Response $response): never
+    public function template(Request $request, Response $response): never
     {
-        $moduleId = (int)($request->query('module_id')        ?? 0);
-        $termId   = (int)($request->query('academic_term_id') ?? 0);
+        $moduleId = (int) ($request->query('module_id')        ?? 0);
+        $termId   = (int) ($request->query('academic_term_id') ?? 0);
 
         if ($moduleId <= 0 || $termId <= 0) {
             $this->error($response, 'module_id and academic_term_id are required.', 422);
         }
 
-        // Reading a mark sheet is as sensitive as writing one: it exposes every
-        // student's scores for the module. This endpoint was previously gated
-        // only by the route-level permission, so any RECORD_MODULE_MARKS holder
-        // could read any module's full sheet. MANAGE_MODULE_MARKS still bypasses.
+        // Same gate as reading the sheet: a template lists every student in
+        // the class, so it is exactly as sensitive as the grid.
         $this->ensureCanRecordForModule($request, $response, $moduleId);
 
         $module = $this->db->fetchOne(
-            "SELECT m.module_id, m.module_code, m.module_name, m.module_credits,
-                    m.level, m.d_option,
-                    d.dep_id, d.dep_name, d.dep_acronym, d.program AS dep_program,
-                    f.fac_id, f.fac_name, f.fac_code
+            "SELECT m.module_id, m.module_code, m.module_name, m.level, m.d_option,
+                    d.dep_id
              FROM modules m
              LEFT JOIN departements d ON d.dep_id = m.department
-             LEFT JOIN faculty     f ON f.fac_id = d.fac_id
-             WHERE m.module_id = ?
-             LIMIT 1",
+             WHERE m.module_id = ? LIMIT 1",
             [$moduleId]
         );
-        // 15 module ids hold marks but have no catalogue row — modules deleted or
-        // renumbered before `module_id_map` existed, whose marks were kept during
-        // consolidation because the marks themselves are real. 404-ing here would
-        // strand those 203 rows: reachable in a student's record but on no sheet.
-        // Synthesise a header instead so the mark sheet still opens.
         if (!$module) {
-            $module = [
-                'module_id'     => $moduleId,
-                'module_code'   => 'MODULE-' . $moduleId,
-                'module_name'   => 'Unknown module (not in catalogue)',
-                'module_credits'=> null,
-                'level'         => null,
-                'd_option'      => null,
-                'dep_id'        => null, 'dep_name' => null, 'dep_acronym' => null, 'dep_program' => null,
-                'fac_id'        => null, 'fac_name' => null, 'fac_code' => null,
-            ];
+            $this->error($response, 'Module not found.', 404);
         }
 
         $term = $this->db->fetchOne(
             "SELECT id, label FROM academic_terms WHERE id = ? LIMIT 1",
             [$termId]
         );
-        if (!$term) $this->error($response, 'Term not found.', 404);
-
-        /* ── Serve the term that actually holds this module's marks ────────
-         * Every query below is term-scoped, and the client opens on the term
-         * flagged `is_current`. But 292,632 of the 292,648 marks in the system
-         * were landed by the legacy consolidation under the 'Legacy (imported
-         * marks)' term, so the current term is empty for 663 of the 664
-         * modules that hold marks — the sheet showed a guessed roster and not
-         * one number.
-         *
-         * So: if the requested term has no marks for this module but another
-         * term does, serve that term instead and say so. `requested_term_id`
-         * plus `terms_with_marks` let the client re-sync its own selector, and
-         * `term` stays authoritative for what a save must be written against.
-         * A module with marks in the requested term is never redirected.
-         */
-        $requestedTermId = $termId;
-        $termsWithMarks  = $this->db->fetchAll(
-            "SELECT mm.academic_term_id AS id,
-                    COALESCE(t.label, CONCAT('Term ', mm.academic_term_id)) AS label,
-                    COUNT(*) AS mark_count
-             FROM module_marks mm
-             LEFT JOIN academic_terms t ON t.id = mm.academic_term_id
-             WHERE mm.module_id = ?
-             GROUP BY mm.academic_term_id, t.label
-             ORDER BY mark_count DESC, mm.academic_term_id DESC",
-            [$moduleId]
-        );
-
-        $hasMarksHere = false;
-        foreach ($termsWithMarks as $t) {
-            if ((int)$t['id'] === $termId) { $hasMarksHere = true; break; }
-        }
-        if (!$hasMarksHere && count($termsWithMarks) > 0) {
-            $termId = (int)$termsWithMarks[0]['id'];
-            $term   = $this->db->fetchOne(
-                "SELECT id, label FROM academic_terms WHERE id = ? LIMIT 1",
-                [$termId]
-            ) ?: ['id' => $termId, 'label' => 'Term ' . $termId];
+        if (!$term) {
+            $this->error($response, 'Term not found.', 404);
         }
 
-        // Best-effort lecturer + teaching dates from module_offerings (if present),
-        // falling back to module_assignments → staff for the lecturer.
-        $offering = $this->db->fetchOne(
-            "SELECT instructor_name, start_date, end_date
-             FROM module_offerings
-             WHERE module_id = ?
-             ORDER BY id DESC LIMIT 1",
-            [$moduleId]
-        ) ?: [];
+        $roster = $this->buildRoster($moduleId, $termId, $module);
 
-        $lecturer = $this->db->fetchOne(
-            "SELECT s.first_name, s.last_name, s.email
-             FROM module_assignments ma
-             JOIN staff s ON s.id = ma.staff_id
-             WHERE ma.module_id = ? AND ma.academic_term_id = ?
-             ORDER BY ma.role = 'primary' DESC, ma.id ASC
-             LIMIT 1",
-            [$moduleId, $termId]
+        // Maxima: the sheet's own saved values when it has any, else the CUR
+        // standard 15/15/15/15 + 40. Mirrors how ModulesMarksPage seeds them,
+        // so a template and the grid always show the same denominators.
+        $maxes = ['cat1' => 15.0, 'cat2' => 15.0, 'cat3' => 15.0, 'partial' => 15.0, 'final' => 40.0];
+        foreach ($roster as $r) {
+            if (($r['mark_id'] ?? null) !== null) {
+                $maxes = [
+                    'cat1'    => (float) ($r['cat1_max']         ?: 15),
+                    'cat2'    => (float) ($r['cat2_max']         ?: 15),
+                    'cat3'    => (float) ($r['cat3_max']         ?: 15),
+                    'partial' => (float) ($r['partial_exam_max'] ?: 15),
+                    'final'   => (float) ($r['final_exam_max']   ?: 40),
+                ];
+                break;
+            }
+        }
+        // Trim trailing .0 so the header reads "CAT1 (/15)", not "CAT1 (/15.0)".
+        $maxes = array_map(
+            fn (float $v) => rtrim(rtrim(number_format($v, 2, '.', ''), '0'), '.'),
+            $maxes
         );
 
-        $module['program']         = $module['dep_program'] ?? null;
-        $module['option_acronym']  = $module['d_option'] ?? null;
-        $module['lecturer_name']   = $lecturer
-            ? trim(($lecturer['first_name'] ?? '') . ' ' . ($lecturer['last_name'] ?? ''))
-            : ($offering['instructor_name'] ?? null);
-        $module['lecturer_email']  = $lecturer['email'] ?? null;
-        $module['teaching_started_on'] = $offering['start_date'] ?? null;
-        $module['teaching_ended_on']   = $offering['end_date']   ?? null;
+        $book = MarksTemplateExcel::build($module, $term, $maxes, $roster);
 
+        $safeCode = preg_replace('/[^A-Za-z0-9_-]/', '', (string) $module['module_code']) ?: "module{$moduleId}";
+        SystemLogService::log(
+            'EXPORT',
+            'ACADEMICS',
+            "Marks template issued for {$module['module_code']} (term {$termId}), " . count($roster) . " student(s)",
+            $moduleId,
+            'module'
+        );
+
+        MarksTemplateExcel::stream($book, "marks-template_{$safeCode}_term-{$termId}.xlsx");
+    }
+
+    /**
+     * Build the mark-sheet roster for one (module, term).
+     *
+     * Extracted from listMarks() so the downloadable template is cut from
+     * exactly the same class list the grid shows — a template built from a
+     * second, near-identical query would drift from the grid the moment
+     * either was touched, and the registry would be filling in a sheet for
+     * students the grid does not have.
+     *
+     * Carries all three of listMarks' original paths: formal registrations,
+     * the eligibility fallback when nobody is registered, and the append of
+     * anyone already holding a mark.
+     */
+    private function buildRoster(int $moduleId, int $termId, array $module): array
+    {
         $rosterCols = "st.id AS student_id, st.regnumber, st.fname, st.lname, st.email,
                        st.gender AS sex, st.program AS student_program, st.std_option AS option_acro,
                        mm.id AS mark_id,
@@ -560,6 +534,137 @@ class ModuleMarksController extends BaseController
             $roster[] = $row;
         }
 
+        return $roster;
+    }
+
+    /**
+     * GET /api/marks?module_id=&academic_term_id=
+     * Returns the registered roster for that module/term plus any saved
+     * marks (left-joined so unmarked students still appear) and the rich
+     * module header metadata used by the CUR module-marks template
+     * (program, level, option, department, faculty, lecturer, teaching dates).
+     */
+    public function listMarks(Request $request, Response $response): never
+    {
+        $moduleId = (int)($request->query('module_id')        ?? 0);
+        $termId   = (int)($request->query('academic_term_id') ?? 0);
+
+        if ($moduleId <= 0 || $termId <= 0) {
+            $this->error($response, 'module_id and academic_term_id are required.', 422);
+        }
+
+        // Reading a mark sheet is as sensitive as writing one: it exposes every
+        // student's scores for the module. This endpoint was previously gated
+        // only by the route-level permission, so any RECORD_MODULE_MARKS holder
+        // could read any module's full sheet. MANAGE_MODULE_MARKS still bypasses.
+        $this->ensureCanRecordForModule($request, $response, $moduleId);
+
+        $module = $this->db->fetchOne(
+            "SELECT m.module_id, m.module_code, m.module_name, m.module_credits,
+                    m.level, m.d_option,
+                    d.dep_id, d.dep_name, d.dep_acronym, d.program AS dep_program,
+                    f.fac_id, f.fac_name, f.fac_code
+             FROM modules m
+             LEFT JOIN departements d ON d.dep_id = m.department
+             LEFT JOIN faculty     f ON f.fac_id = d.fac_id
+             WHERE m.module_id = ?
+             LIMIT 1",
+            [$moduleId]
+        );
+        // 15 module ids hold marks but have no catalogue row — modules deleted or
+        // renumbered before `module_id_map` existed, whose marks were kept during
+        // consolidation because the marks themselves are real. 404-ing here would
+        // strand those 203 rows: reachable in a student's record but on no sheet.
+        // Synthesise a header instead so the mark sheet still opens.
+        if (!$module) {
+            $module = [
+                'module_id'     => $moduleId,
+                'module_code'   => 'MODULE-' . $moduleId,
+                'module_name'   => 'Unknown module (not in catalogue)',
+                'module_credits'=> null,
+                'level'         => null,
+                'd_option'      => null,
+                'dep_id'        => null, 'dep_name' => null, 'dep_acronym' => null, 'dep_program' => null,
+                'fac_id'        => null, 'fac_name' => null, 'fac_code' => null,
+            ];
+        }
+
+        $term = $this->db->fetchOne(
+            "SELECT id, label FROM academic_terms WHERE id = ? LIMIT 1",
+            [$termId]
+        );
+        if (!$term) $this->error($response, 'Term not found.', 404);
+
+        /* ── Serve the term that actually holds this module's marks ────────
+         * Every query below is term-scoped, and the client opens on the term
+         * flagged `is_current`. But 292,632 of the 292,648 marks in the system
+         * were landed by the legacy consolidation under the 'Legacy (imported
+         * marks)' term, so the current term is empty for 663 of the 664
+         * modules that hold marks — the sheet showed a guessed roster and not
+         * one number.
+         *
+         * So: if the requested term has no marks for this module but another
+         * term does, serve that term instead and say so. `requested_term_id`
+         * plus `terms_with_marks` let the client re-sync its own selector, and
+         * `term` stays authoritative for what a save must be written against.
+         * A module with marks in the requested term is never redirected.
+         */
+        $requestedTermId = $termId;
+        $termsWithMarks  = $this->db->fetchAll(
+            "SELECT mm.academic_term_id AS id,
+                    COALESCE(t.label, CONCAT('Term ', mm.academic_term_id)) AS label,
+                    COUNT(*) AS mark_count
+             FROM module_marks mm
+             LEFT JOIN academic_terms t ON t.id = mm.academic_term_id
+             WHERE mm.module_id = ?
+             GROUP BY mm.academic_term_id, t.label
+             ORDER BY mark_count DESC, mm.academic_term_id DESC",
+            [$moduleId]
+        );
+
+        $hasMarksHere = false;
+        foreach ($termsWithMarks as $t) {
+            if ((int)$t['id'] === $termId) { $hasMarksHere = true; break; }
+        }
+        if (!$hasMarksHere && count($termsWithMarks) > 0) {
+            $termId = (int)$termsWithMarks[0]['id'];
+            $term   = $this->db->fetchOne(
+                "SELECT id, label FROM academic_terms WHERE id = ? LIMIT 1",
+                [$termId]
+            ) ?: ['id' => $termId, 'label' => 'Term ' . $termId];
+        }
+
+        // Best-effort lecturer + teaching dates from module_offerings (if present),
+        // falling back to module_assignments → staff for the lecturer.
+        $offering = $this->db->fetchOne(
+            "SELECT instructor_name, start_date, end_date
+             FROM module_offerings
+             WHERE module_id = ?
+             ORDER BY id DESC LIMIT 1",
+            [$moduleId]
+        ) ?: [];
+
+        $lecturer = $this->db->fetchOne(
+            "SELECT s.first_name, s.last_name, s.email
+             FROM module_assignments ma
+             JOIN staff s ON s.id = ma.staff_id
+             WHERE ma.module_id = ? AND ma.academic_term_id = ?
+             ORDER BY ma.role = 'primary' DESC, ma.id ASC
+             LIMIT 1",
+            [$moduleId, $termId]
+        );
+
+        $module['program']         = $module['dep_program'] ?? null;
+        $module['option_acronym']  = $module['d_option'] ?? null;
+        $module['lecturer_name']   = $lecturer
+            ? trim(($lecturer['first_name'] ?? '') . ' ' . ($lecturer['last_name'] ?? ''))
+            : ($offering['instructor_name'] ?? null);
+        $module['lecturer_email']  = $lecturer['email'] ?? null;
+        $module['teaching_started_on'] = $offering['start_date'] ?? null;
+        $module['teaching_ended_on']   = $offering['end_date']   ?? null;
+
+        $roster = $this->buildRoster($moduleId, $termId, $module);
+
         // Workflow status & class-level teaching dates: mode of the saved rows
         // (rows are written together as a batch so they share the same values).
         $workflow = ['status' => 'draft', 'claims_opened_at' => null, 'submitted_at' => null, 'confirmed_at' => null];
@@ -575,8 +680,12 @@ class ModuleMarksController extends BaseController
         $batchRow = $this->db->fetchOne(
             "SELECT mm.status, mm.claims_opened_at, mm.submitted_at, mm.confirmed_at,
                     mm.teaching_started_on, mm.teaching_ended_on,
-                    TRIM(CONCAT(COALESCE(sub.first_name,''), ' ', COALESCE(sub.last_name,''))) AS submitted_by_name,
-                    TRIM(CONCAT(COALESCE(con.first_name,''), ' ', COALESCE(con.last_name,''))) AS confirmed_by_name
+                    -- `users` stores one `full_name`; there is no
+                    -- first_name/last_name pair on this table. Selecting them
+                    -- raised 1054 and made every mark sheet 500 — the whole
+                    -- screen, not just this banner.
+                    sub.full_name AS submitted_by_name,
+                    con.full_name AS confirmed_by_name
              FROM module_marks mm
              LEFT JOIN users sub ON sub.id = mm.submitted_by
              LEFT JOIN users con ON con.id = mm.confirmed_by
@@ -642,6 +751,58 @@ class ModuleMarksController extends BaseController
     /* ── Bulk upsert — save the whole roster's marks at once ───────────── */
 
     /**
+     * Validate every component score against the maximum sent with it.
+     *
+     * Keyed by registration number so the client can highlight the offending
+     * rows. Maxima themselves are bounded too: they arrive from the client on
+     * each payload, so an absurd max would otherwise be a way to smuggle an
+     * absurd mark past this check.
+     *
+     * @return array<string, string[]>
+     */
+    private function collectRangeErrors(array $records): array
+    {
+        $components = [
+            'cat1'             => ['cat1_max',         15.0,  'CAT1'],
+            'cat2'             => ['cat2_max',         15.0,  'CAT2'],
+            'cat3'             => ['cat3_max',         15.0,  'CAT3'],
+            'partial_exam'     => ['partial_exam_max', 15.0,  'Partial'],
+            'exam_1st_sitting' => ['final_exam_max',   40.0,  'Exam 1st sitting'],
+            'exam_2nd_sitting' => ['final_exam_max',   40.0,  'Exam 2nd sitting'],
+        ];
+
+        $errors = [];
+
+        foreach ($records as $r) {
+            $reg = trim((string) ($r['student_regnumber'] ?? ''));
+            if ($reg === '') continue;
+
+            foreach ($components as $field => [$maxField, $defaultMax, $label]) {
+                $value = $this->parseDecimal($r[$field] ?? null);
+                if ($value === null) continue;
+
+                $max = $this->parseDecimal($r[$maxField] ?? null) ?? $defaultMax;
+
+                // A max of zero or less cannot be satisfied by any mark, and a
+                // wildly large one defeats the check entirely. 100 is well
+                // above any real component on the CUR template.
+                if ($max <= 0 || $max > 100) {
+                    $errors[$reg][] = "{$label}: the maximum sent ({$max}) is not a usable mark total.";
+                    continue;
+                }
+
+                if ($value < 0) {
+                    $errors[$reg][] = "{$label}: {$value} is negative.";
+                } elseif ($value > $max) {
+                    $errors[$reg][] = "{$label}: {$value} is above the maximum of {$max}.";
+                }
+            }
+        }
+
+        return $errors;
+    }
+
+    /**
      * PUT /api/marks
      * Body:
      *   {
@@ -669,6 +830,24 @@ class ModuleMarksController extends BaseController
 
         $this->ensureCanRecordForModule($request, $response, $moduleId);
         $this->ensureSheetUnlocked($response, $moduleId, $termId);
+
+        // ── Range check, before anything is written ──────────────────────
+        // Nothing here validated a component against its maximum, so a CAT of
+        // 999 out of 15 stored happily and produced a percentage well over
+        // 100 — which then flowed into the grade, the transcript and the
+        // deliberation sheet. Uploading a filled-in template makes that a
+        // single typo away, so the sheet is checked as a whole and rejected
+        // as a whole: a partial write would leave the grid disagreeing with
+        // the database on rows the user never saw fail.
+        $rangeErrors = $this->collectRangeErrors($records);
+        if ($rangeErrors !== []) {
+            $this->error(
+                $response,
+                'Some marks are outside their allowed range. Nothing was saved.',
+                422,
+                $rangeErrors
+            );
+        }
 
         $userId = $this->authUserId($request) ?: null;
         $saved  = 0;

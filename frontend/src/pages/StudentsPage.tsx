@@ -37,6 +37,7 @@ import StudentExportModal from "@/components/admin/StudentExportModal";
 import BulkUploadModal from "@/components/admin/BulkUploadModal";
 import { academicsMgmtService } from "@/services/academicsMgmtService";
 import type { Student } from "@/types/academic";
+import ProfileChangeReviewPanel from '@/components/students/ProfileChangeReviewPanel'
 
 const PER_PAGE = 15;
 
@@ -851,6 +852,10 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
 
   return (
     <div className="space-y-5">
+      {/* Student-proposed identity corrections (migration 147). Renders
+          nothing when the queue is empty. */}
+      <ProfileChangeReviewPanel />
+
       {/* Search + filters */}
       <section className="card p-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">

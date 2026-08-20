@@ -335,6 +335,15 @@ class FeeService
             $bindings[] = $dept;
             $bindings[] = $dept;
         }
+        // Programme (option) — the level the registry actually works at. Faculty
+        // and department were already filterable; without this a registrar had
+        // to eyeball a whole department to find one programme's students.
+        // `student.std_option` stores options.id as text (see the project's
+        // level-id convention), so compare as CHAR.
+        if (!empty($filters['option_id'])) {
+            $where[] = "s.std_option COLLATE utf8mb4_unicode_ci = CAST(? AS CHAR) COLLATE utf8mb4_unicode_ci";
+            $bindings[] = (int)$filters['option_id'];
+        }
         if ($keyword) {
             $where[] = "(s.regnumber LIKE ? OR s.fname LIKE ? OR s.lname LIKE ?)";
             $k = "%{$keyword}%";
@@ -368,6 +377,11 @@ class FeeService
                         SUM(amount_due) AS total_due,
                         SUM(amount_paid) AS total_paid,
                         SUM(bursary_applied) AS total_bursary,
+                        SUM(CASE WHEN fee_type <> 'ARREARS' THEN amount_due ELSE 0 END) AS current_billed,
+                        SUM(CASE WHEN fee_type =  'ARREARS' THEN amount_due ELSE 0 END) AS opening_balance,
+                        SUM(CASE WHEN fee_type =  'ARREARS'
+                                 THEN amount_due - amount_paid - bursary_applied
+                                 ELSE 0 END) AS opening_outstanding,
                         MIN(due_date) AS min_due_date
                     FROM `fee_invoices`
                     WHERE academic_year_id = ? AND fee_type != 'BURSARY_CREDIT' {$semSql}
@@ -378,9 +392,12 @@ class FeeService
         $sumsBindings = array_merge([$yearId], ($semester ? [$semester] : []));
 
         // Re-organised where-only bindings (no join bindings)
+        // Mirrors the order the conditions were pushed onto $where:
+        // faculty, department, option, keyword.
         $whereBindings = [];
         if ($faculty) { $whereBindings[] = $faculty; $whereBindings[] = $faculty; }
         if ($dept)    { $whereBindings[] = $dept;    $whereBindings[] = $dept; }
+        if (!empty($filters['option_id'])) { $whereBindings[] = (int)$filters['option_id']; }
         if ($keyword) { $k = "%{$keyword}%"; $whereBindings[] = $k; $whereBindings[] = $k; $whereBindings[] = $k; }
 
         // 1. Get total count for pagination
@@ -425,6 +442,10 @@ class FeeService
                     COALESCE(sums.total_paid, 0) AS total_collected,
                     COALESCE(sums.total_bursary, 0) AS total_bursary,
                     (COALESCE(sums.total_due, 0) - COALESCE(sums.total_paid, 0) - COALESCE(sums.total_bursary, 0)) AS balance,
+                    COALESCE(sums.current_billed, 0)      AS current_billed,
+                    COALESCE(sums.opening_balance, 0)     AS opening_balance,
+                    COALESCE(sums.opening_outstanding, 0) AS opening_outstanding,
+                    IF(COALESCE(sums.opening_outstanding, 0) > 0, 1, 0) AS has_arrears,
                     (SELECT amount FROM `fee_structures` fs
                      WHERE fs.academic_year_id = ?
                        AND fs.fee_type = 'TUITION'
@@ -453,6 +474,11 @@ class FeeService
                         SUM(amount_due) AS total_due,
                         SUM(amount_paid) AS total_paid,
                         SUM(bursary_applied) AS total_bursary,
+                        SUM(CASE WHEN fee_type <> 'ARREARS' THEN amount_due ELSE 0 END) AS current_billed,
+                        SUM(CASE WHEN fee_type =  'ARREARS' THEN amount_due ELSE 0 END) AS opening_balance,
+                        SUM(CASE WHEN fee_type =  'ARREARS'
+                                 THEN amount_due - amount_paid - bursary_applied
+                                 ELSE 0 END) AS opening_outstanding,
                         MIN(due_date) AS min_due_date
                     FROM `fee_invoices`
                     WHERE academic_year_id = ? AND fee_type != 'BURSARY_CREDIT' {$semSql}
@@ -548,6 +574,11 @@ class FeeService
             $where[] = "s.department = ?";
             $bindings[] = $dept;
         }
+        // Programme (option) — see the note in getGroupBillingSummary().
+        if (!empty($filters['option_id'])) {
+            $where[] = "s.std_option COLLATE utf8mb4_unicode_ci = CAST(? AS CHAR) COLLATE utf8mb4_unicode_ci";
+            $bindings[] = (int)$filters['option_id'];
+        }
         if ($keyword) {
             $where[] = "(s.regnumber LIKE ? OR s.fname LIKE ? OR s.lname LIKE ?)";
             $k = "%{$keyword}%";
@@ -560,11 +591,21 @@ class FeeService
         $offset = ($page - 1) * $perPage;
 
         // Query ALL students with LEFT JOIN to invoices (includes students with no invoices)
+        // `current_billed` / `opening_balance` split the year's charges from the
+        // balance rolled forward out of previous years, which FeeService bills
+        // as a single ARREARS invoice (see generateInvoices STEP 4). The
+        // registry asked for a table of "Billing, openbalance na Total": this
+        // is where those three numbers come from.
         $sumsJoin = "LEFT JOIN (
                     SELECT student_id COLLATE utf8mb4_unicode_ci AS student_id,
                         SUM(amount_due) AS total_due,
                         SUM(amount_paid) AS total_paid,
-                        SUM(bursary_applied) AS total_bursary
+                        SUM(bursary_applied) AS total_bursary,
+                        SUM(CASE WHEN fee_type <> 'ARREARS' THEN amount_due ELSE 0 END) AS current_billed,
+                        SUM(CASE WHEN fee_type =  'ARREARS' THEN amount_due ELSE 0 END) AS opening_balance,
+                        SUM(CASE WHEN fee_type =  'ARREARS'
+                                 THEN amount_due - amount_paid - bursary_applied
+                                 ELSE 0 END) AS opening_outstanding
                     FROM `fee_invoices`
                     WHERE academic_year_id = ? AND fee_type != 'BURSARY_CREDIT' {$semSql}
                     GROUP BY student_id
@@ -574,9 +615,13 @@ class FeeService
 
         // Total count
         $totalSql = "SELECT COUNT(*) AS cnt FROM `student` s WHERE {$whereSql}";
+        // Must mirror the ORDER the conditions were pushed onto $where above —
+        // faculty, department, option, keyword — or the placeholders bind to
+        // the wrong values.
         $whereBindings = [];
         if ($faculty) { $whereBindings[] = $faculty; }
         if ($dept)    { $whereBindings[] = $dept; }
+        if (!empty($filters['option_id'])) { $whereBindings[] = (int)$filters['option_id']; }
         if ($keyword) { $k = "%{$keyword}%"; $whereBindings[] = $k; $whereBindings[] = $k; $whereBindings[] = $k; }
 
         $totalRow = $this->db->fetchOne($totalSql, $whereBindings);
@@ -595,6 +640,11 @@ class FeeService
                     COALESCE(sums.total_paid, 0) AS total_collected,
                     COALESCE(sums.total_bursary, 0) AS total_bursary,
                     COALESCE(sums.total_due, 0) - COALESCE(sums.total_paid, 0) - COALESCE(sums.total_bursary, 0) AS balance,
+                    -- The registry's three columns.
+                    COALESCE(sums.current_billed, 0)      AS current_billed,
+                    COALESCE(sums.opening_balance, 0)     AS opening_balance,
+                    COALESCE(sums.opening_outstanding, 0) AS opening_outstanding,
+                    IF(COALESCE(sums.opening_outstanding, 0) > 0, 1, 0) AS has_arrears,
                     IF(COALESCE(sums.total_due, 0) > 0, 1, 0) AS has_invoices
                  FROM `student` s
                  {$sumsJoin}
@@ -625,9 +675,12 @@ class FeeService
         $result = $this->getGroupBillingSummary($filters);
         $data = $result['data'] ?? [];
 
-        $output = "Reg Number,First Name,Last Name,Faculty,Department,Expected,Collected,Bursary,Balance\n";
+        $output = "Reg Number,First Name,Last Name,Faculty,Department,Billing,Open Balance,Expected,Collected,Bursary,Total Outstanding\n";
         foreach ($data as $row) {
-            $output .= "{$row['regnumber']},{$row['fname']},{$row['lname']},{$row['faculty']},{$row['department']},{$row['total_expected']},{$row['total_collected']},{$row['total_bursary']},{$row['balance']}\n";
+            $output .= "{$row['regnumber']},{$row['fname']},{$row['lname']},{$row['faculty']},{$row['department']},"
+                     . ($row['current_billed']  ?? 0) . ","
+                     . ($row['opening_balance'] ?? 0) . ","
+                     . "{$row['total_expected']},{$row['total_collected']},{$row['total_bursary']},{$row['balance']}\n";
         }
         return $output;
     }
@@ -802,6 +855,153 @@ class FeeService
     // ──────────────────────────────────────────────────────────────────────────
 
     /**
+     * The oldest still-unpaid invoice that outranks $invoice for the same
+     * student, or null when $invoice is itself the oldest outstanding one.
+     *
+     * Ordering is ARREARS first (a balance carried forward outranks anything
+     * billed this year regardless of dates), then by academic year, then by
+     * due date, then by id so the order is total and stable.
+     *
+     * BURSARY_CREDIT rows are credits, not debts, and never block a payment.
+     */
+    private function oldestUnpaidBefore(array $invoice): ?array
+    {
+        $rank = static fn (array $inv): array => [
+            ($inv['fee_type'] ?? '') === 'ARREARS' ? 0 : 1,
+            (int) ($inv['academic_year_id'] ?? 0),
+            (string) ($inv['due_date'] ?? '9999-12-31'),
+            (int) ($inv['id'] ?? 0),
+        ];
+
+        // Pending payments count against the outstanding amount here, even
+        // though they have not yet touched `amount_paid` (that happens on
+        // approval). Otherwise an officer recording a student's arrears and
+        // this year's tuition in one sitting is blocked on the second entry
+        // by the first — the money IS recorded, it is simply awaiting a
+        // finance officer's approval, and the rule is about the student
+        // having paid, not about who has signed it off yet.
+        $candidates = $this->db->fetchAll(
+            "SELECT i.id, i.invoice_number, i.fee_type, i.academic_year_id, i.due_date,
+                    (i.amount_due - i.amount_paid - i.bursary_applied
+                       - COALESCE(p.pending_amount, 0)) AS outstanding
+               FROM `fee_invoices` i
+               LEFT JOIN (
+                    SELECT invoice_id, SUM(amount) AS pending_amount
+                      FROM `fee_payments`
+                     WHERE status = 'pending'
+                     GROUP BY invoice_id
+               ) p ON p.invoice_id = i.id
+              WHERE i.student_id = ?
+                AND i.id <> ?
+                AND i.fee_type <> 'BURSARY_CREDIT'
+                AND i.status NOT IN ('paid', 'waived', 'cancelled')
+                AND (i.amount_due - i.amount_paid - i.bursary_applied
+                       - COALESCE(p.pending_amount, 0)) > 0.009",
+            [$invoice['student_id'], (int) $invoice['id']]
+        );
+
+        $target = $rank($invoice);
+        $oldest = null;
+
+        foreach ($candidates as $c) {
+            if ($rank($c) >= $target) {
+                continue;   // same age or newer — does not block.
+            }
+            if ($oldest === null || $rank($c) < $rank($oldest)) {
+                $oldest = $c;
+            }
+        }
+
+        return $oldest;
+    }
+
+    /**
+     * Allocate one amount across a student's outstanding invoices, oldest
+     * first, and return what was posted where.
+     *
+     * The constructive counterpart to the refusal in recordPayment(): a
+     * finance officer holding a lump sum should have a correct path, not only
+     * a blocked one. Every allocation is written as its own pending payment so
+     * each invoice keeps its own receipt and approval.
+     *
+     * @return array{allocations: array<int, array{invoice_id:int, invoice_number:string, amount:float, receipt_number:string}>, unallocated: float}
+     */
+    public function payOldestFirst(string $studentId, float $amount, array $data, int $actorId): array
+    {
+        if ($amount <= 0) {
+            throw new \InvalidArgumentException('Amount must be greater than zero.');
+        }
+
+        // Pending payments are netted off for the same reason as in
+        // oldestUnpaidBefore() — otherwise a second lump-sum allocation would
+        // double-pay invoices the first one already covered.
+        $invoices = $this->db->fetchAll(
+            "SELECT i.id, i.invoice_number, i.fee_type, i.academic_year_id, i.due_date,
+                    (i.amount_due - i.amount_paid - i.bursary_applied
+                       - COALESCE(p.pending_amount, 0)) AS outstanding
+               FROM `fee_invoices` i
+               LEFT JOIN (
+                    SELECT invoice_id, SUM(amount) AS pending_amount
+                      FROM `fee_payments`
+                     WHERE status = 'pending'
+                     GROUP BY invoice_id
+               ) p ON p.invoice_id = i.id
+              WHERE i.student_id = ?
+                AND i.fee_type <> 'BURSARY_CREDIT'
+                AND i.status NOT IN ('paid', 'waived', 'cancelled')
+                AND (i.amount_due - i.amount_paid - i.bursary_applied
+                       - COALESCE(p.pending_amount, 0)) > 0.009
+              ORDER BY (i.fee_type = 'ARREARS') DESC,
+                       i.academic_year_id ASC,
+                       COALESCE(i.due_date, '9999-12-31') ASC,
+                       i.id ASC",
+            [$studentId]
+        );
+
+        if ($invoices === []) {
+            throw new \RuntimeException('This student has no outstanding invoices.');
+        }
+
+        $remaining   = round($amount, 2);
+        $allocations = [];
+
+        foreach ($invoices as $inv) {
+            if ($remaining <= 0.009) {
+                break;
+            }
+            $take = min($remaining, round((float) $inv['outstanding'], 2));
+            if ($take <= 0.009) {
+                continue;
+            }
+
+            $receipt = $this->generateReceiptNumber();
+            $this->paymentModel->create([
+                'invoice_id'        => (int) $inv['id'],
+                'student_id'        => $studentId,
+                'amount'            => $take,
+                'payment_method'    => $data['payment_method'],
+                'reference_number'  => $data['reference_number'] ?? null,
+                'bank_slip_file_id' => $data['bank_slip_file_id'] ?? null,
+                'receipt_number'    => $receipt,
+                'status'            => 'pending',
+                'notes'             => trim(($data['notes'] ?? '') . ' [oldest-first allocation]'),
+                'recorded_by'       => $actorId,
+                'paid_at'           => $data['paid_at'] ?? date('Y-m-d H:i:s'),
+            ]);
+
+            $allocations[] = [
+                'invoice_id'     => (int) $inv['id'],
+                'invoice_number' => (string) $inv['invoice_number'],
+                'amount'         => $take,
+                'receipt_number' => $receipt,
+            ];
+            $remaining = round($remaining - $take, 2);
+        }
+
+        return ['allocations' => $allocations, 'unallocated' => $remaining];
+    }
+
+    /**
      * Record a payment against an invoice. Updates invoice amount_paid and
      * recalculates its status.
      *
@@ -823,6 +1023,34 @@ class FeeService
         }
 
         $amount        = (float)$data['amount'];
+
+        // ── Oldest debt first ────────────────────────────────────────────
+        // "niba umunyeshuri yishyuye ibanze yishyure ikirarane" — if a student
+        // pays, the arrears must be settled first.
+        //
+        // Nothing enforced this. recordPayment() takes one invoice_id and
+        // posts against it, so a student could pay this year's tuition in full
+        // while an ARREARS invoice from a previous year sat untouched — which
+        // is exactly what the registry asked to prevent.
+        //
+        // The payment is REFUSED rather than silently re-allocated. A finance
+        // officer recording money against a named invoice has to be able to
+        // trust that it landed there; quietly moving it to a different invoice
+        // would make the receipt disagree with the ledger. The error names the
+        // invoice that must be cleared first, and `payOldestFirst()` exists
+        // for officers who do want one amount spread over the queue.
+        $blocking = $this->oldestUnpaidBefore($invoice);
+        if ($blocking !== null) {
+            throw new \RuntimeException(sprintf(
+                'This student has an older unpaid invoice (%s, %s, outstanding %s). '
+                . 'Settle it before recording a payment against %s.',
+                $blocking['invoice_number'],
+                $blocking['fee_type'],
+                number_format((float) $blocking['outstanding'], 2),
+                $invoice['invoice_number']
+            ));
+        }
+
         $receiptNumber = $this->generateReceiptNumber();
 
         $paymentId = $this->paymentModel->create([

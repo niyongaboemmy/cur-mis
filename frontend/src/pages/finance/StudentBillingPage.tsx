@@ -64,6 +64,8 @@ export default function StudentBillingPage() {
 
   const [facultyId, setFacultyId] = useState<string | number>("");
   const [deptId, setDeptId] = useState<string | number>("");
+  // Programme (option) — the level the registry actually bills at.
+  const [optionId, setOptionId] = useState<string | number>("");
   const [keyword, setKeyword] = useState("");
   const [debouncedKeyword, setDebouncedKeyword] = useState("");
   const [page, setPage] = useState(1);
@@ -133,6 +135,17 @@ export default function StudentBillingPage() {
   });
   const departments = departmentsQ.data?.data?.data ?? [];
 
+  // Programmes for the chosen department (or all, when none is chosen).
+  const optionsQ = useQuery({
+    queryKey: ["options", deptId],
+    queryFn: () =>
+      api.get<any>(
+        "/api/academics-management/options",
+        deptId ? { department_id: deptId } : {},
+      ),
+  });
+  const options = optionsQ.data?.data?.data ?? [];
+
   // State for selecting students for bulk generation
   const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set());
   const [selectAll, setSelectAll] = useState(false);
@@ -145,6 +158,7 @@ export default function StudentBillingPage() {
       semester,
       facultyId,
       deptId,
+      optionId,
       debouncedKeyword,
       page,
     ],
@@ -154,6 +168,7 @@ export default function StudentBillingPage() {
         semester: semester ? Number(semester) : undefined,
         faculty_id: facultyId ? Number(facultyId) : undefined,
         department_id: deptId ? Number(deptId) : undefined,
+        option_id: optionId ? Number(optionId) : undefined,
         keyword: debouncedKeyword,
         page,
         per_page: 50,
@@ -229,6 +244,7 @@ export default function StudentBillingPage() {
       ...(semester && { semester: String(semester) }),
       ...(facultyId && { faculty_id: String(facultyId) }),
       ...(deptId && { department_id: String(deptId) }),
+      ...(optionId && { option_id: String(optionId) }),
       ...(debouncedKeyword && { keyword: debouncedKeyword }),
     });
     window.open(
@@ -389,7 +405,7 @@ export default function StudentBillingPage() {
             <SearchableSelect
               options={faculties.map((f: any) => ({ value: f.fac_id, label: f.fac_name }))}
               value={facultyId}
-              onChange={(v) => { setFacultyId(v); setDeptId(""); setPage(1) }}
+              onChange={(v) => { setFacultyId(v); setDeptId(""); setOptionId(""); setPage(1) }}
               placeholder="All faculties"
               allLabel="All faculties"
             />
@@ -399,10 +415,20 @@ export default function StudentBillingPage() {
             <SearchableSelect
               options={departments.map((d: any) => ({ value: d.dep_id, label: d.dep_name }))}
               value={deptId}
-              onChange={(v) => { setDeptId(v); setPage(1) }}
+              onChange={(v) => { setDeptId(v); setOptionId(""); setPage(1) }}
               placeholder="All departments"
               allLabel="All departments"
               disabled={!facultyId && departments.length === 0}
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-ink-400 mb-1.5">Programme</label>
+            <SearchableSelect
+              options={options.map((o: any) => ({ value: o.id, label: o.name }))}
+              value={optionId}
+              onChange={(v) => { setOptionId(v); setPage(1) }}
+              placeholder="All programmes"
+              allLabel="All programmes"
             />
           </div>
           <div>
@@ -534,6 +560,10 @@ export default function StudentBillingPage() {
                   {[
                     { label: "Student",      align: "text-left",  cls: "" },
                     { label: "Department",   align: "text-left",  cls: "hidden lg:table-cell" },
+                    // The registry's three columns: what was charged THIS
+                    // year, what was carried forward, and the running total.
+                    { label: "Billing",      align: "text-right", cls: "hidden md:table-cell" },
+                    { label: "Open balance", align: "text-right", cls: "hidden md:table-cell" },
                     { label: "Invoiced",     align: "text-right", cls: "" },
                     { label: "Paid",         align: "text-right", cls: "" },
                     { label: "Bursary",      align: "text-right", cls: "" },
@@ -552,6 +582,12 @@ export default function StudentBillingPage() {
                   const bursary = Number(s.total_bursary)
                   const due     = Number(s.total_expected)
                   const bal     = Math.max(0, Number(s.balance))
+                  // Billing = charged for this academic year.
+                  // Open balance = rolled forward from previous years, billed
+                  // as a single ARREARS invoice by FeeService.
+                  const billed  = Number((s as any).current_billed ?? 0)
+                  const opening = Number((s as any).opening_balance ?? 0)
+                  const arrearsOutstanding = Number((s as any).opening_outstanding ?? 0)
                   const settled = due > 0 ? Math.min(((paid + bursary) / due) * 100, 100) : 0
                   const isCleared = bal <= 0
                   const isPartial = !isCleared && paid > 0
@@ -594,6 +630,31 @@ export default function StudentBillingPage() {
                       <td className="px-4 py-3 hidden lg:table-cell max-w-[160px]">
                         <p className="text-xs font-medium text-ink-700 dark:text-ink-200 truncate">{s.department}</p>
                         <p className="text-[10px] text-ink-400 truncate uppercase tracking-tight mt-0.5">{s.faculty}</p>
+                      </td>
+
+                      {/* Billing — this year's charges */}
+                      <td className="px-4 py-3 text-right hidden md:table-cell">
+                        <span className="font-mono text-xs text-ink-700 dark:text-ink-200">
+                          {billed > 0 ? formatRWF(billed) : '—'}
+                        </span>
+                      </td>
+
+                      {/* Open balance — carried forward. Flagged in red while
+                          still outstanding: it is the debt that must be
+                          settled before any newer invoice can be paid. */}
+                      <td className="px-4 py-3 text-right hidden md:table-cell">
+                        {opening > 0 ? (
+                          <span
+                            className={`font-mono text-xs font-bold ${arrearsOutstanding > 0 ? 'text-red-600 dark:text-red-400' : 'text-ink-400 line-through'}`}
+                            title={arrearsOutstanding > 0
+                              ? `${formatRWF(arrearsOutstanding)} of this is still unpaid and must be cleared first`
+                              : 'Carried forward and already settled'}
+                          >
+                            {formatRWF(opening)}
+                          </span>
+                        ) : (
+                          <span className="text-ink-200 dark:text-ink-600 text-xs">—</span>
+                        )}
                       </td>
 
                       {/* Invoiced */}

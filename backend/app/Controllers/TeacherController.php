@@ -1038,6 +1038,121 @@ class TeacherController extends BaseController
     // GET /api/teacher/students
     // ──────────────────────────────────────────────────────────────────────
 
+
+    /**
+     * GET /api/teacher/student-filters
+     *
+     * The intakes, classes and modes actually present in THIS lecturer's
+     * classes, each with a headcount.
+     *
+     * Faceted rather than a full catalogue: the intakes table now carries 16
+     * rows, and offering a lecturer 16 intakes when their class spans three is
+     * a worse experience than the problem being fixed. Counts also make the
+     * mixing visible — the report's actual complaint is that a class quietly
+     * blends several cohorts.
+     */
+    public function studentFilters(Request $request, Response $response): never
+    {
+        $uid    = $this->userId($request);
+        $termId = $this->resolveTermId($request);
+        $ids    = LecturerScope::moduleIds($this->db, $uid, $termId);
+
+        if ($ids === []) {
+            $this->success($response, ['intakes' => [], 'levels' => [], 'modes' => []], 'No module assignments.');
+        }
+
+        $ph      = implode(',', array_fill(0, count($ids), '?'));
+        $args    = $ids;
+        $termSql = '';
+        if ($termId !== null && $termId > 0) {
+            $termSql = ' AND r.academic_term_id = ?';
+            $args[]  = $termId;
+        }
+
+        // One pass over the class list; the three facets are grouped from it
+        // in PHP rather than by three near-identical queries.
+        // GROUP BY the registration number with MAX() aggregates, exactly as
+        // students() does — NOT SELECT DISTINCT. `student.regnumber` is not
+        // unique in practice (e.g. "1CUR 12AK02306" matches two rows), so a
+        // DISTINCT over the joined columns yields one row per MATCH and every
+        // facet count comes out inflated. Grouping first counts students.
+        $rows = $this->db->fetchAll(
+            "SELECT r.student_regnumber AS reg,
+                    MAX(s.intake_id)     AS intake_id,
+                    MAX(i.name)          AS intake_name,
+                    MAX(s.intake)        AS intake_raw,
+                    MAX(s.current_level) AS current_level,
+                    MAX(s.program)       AS program
+               FROM `module_registrations` r
+               LEFT JOIN `student` s ON s.regnumber = r.student_regnumber COLLATE utf8mb4_general_ci
+               LEFT JOIN `intakes` i ON i.id = s.intake_id
+              WHERE r.module_id IN ($ph) AND r.status <> 'dropped'{$termSql}
+              GROUP BY r.student_regnumber",
+            $args
+        );
+
+        $intakes = [];
+        $levels  = [];
+        $modes   = [];
+
+        foreach ($rows as $r) {
+            $iid = $r['intake_id'] !== null ? (int) $r['intake_id'] : 0;
+            if (!isset($intakes[$iid])) {
+                $intakes[$iid] = [
+                    'id'    => $iid ?: null,
+                    // Unresolved rows are grouped under one honest bucket
+                    // rather than being scattered as raw strings.
+                    'label' => $iid ? (string) $r['intake_name'] : 'Not recorded',
+                    'count' => 0,
+                ];
+            }
+            $intakes[$iid]['count']++;
+
+            $lvl = $r['current_level'] !== null && $r['current_level'] !== '' ? (int) $r['current_level'] : 0;
+            if (!isset($levels[$lvl])) {
+                $levels[$lvl] = [
+                    'value' => $lvl ?: null,
+                    'label' => $lvl ? (LevelHelper::name($lvl) ?: "Level {$lvl}") : 'Not recorded',
+                    'count' => 0,
+                ];
+            }
+            $levels[$lvl]['count']++;
+
+            $mode = self::normaliseMode($r['program'] ?? null) ?? 'Not recorded';
+            if (!isset($modes[$mode])) {
+                $modes[$mode] = ['value' => $mode === 'Not recorded' ? null : $mode, 'label' => $mode, 'count' => 0];
+            }
+            $modes[$mode]['count']++;
+        }
+
+        // Busiest first — the cohort a lecturer most likely wants is the one
+        // most of their class belongs to.
+        $sortByCount = static function (array $a): array {
+            usort($a, fn ($x, $y) => $y['count'] <=> $x['count']);
+            return $a;
+        };
+
+        $this->success($response, [
+            'intakes' => $sortByCount(array_values($intakes)),
+            'levels'  => $sortByCount(array_values($levels)),
+            'modes'   => $sortByCount(array_values($modes)),
+            'total'   => count($rows),
+        ], 'Student filters fetched.');
+    }
+
+    /**
+     * Tidy the hand-entered mode of study.
+     *
+     * `student.program` holds "Day", " Day", "DAY", "Weekend" and "Holiday"
+     * across 13,235 rows, so the raw value cannot be grouped on or compared
+     * without folding case and stray whitespace first.
+     */
+    private static function normaliseMode(?string $raw): ?string
+    {
+        $v = ucfirst(strtolower(trim((string) $raw)));
+        return $v !== '' ? $v : null;
+    }
+
     /** Every distinct student the lecturer teaches, across all their modules. */
     public function students(Request $request, Response $response): never
     {
@@ -1057,6 +1172,33 @@ class TeacherController extends BaseController
             $args[]  = $termId;
         }
 
+        // Intake / class / mode filters. A lecturer's class mixes cohorts —
+        // that is the problem the report describes — so these narrow the list
+        // rather than replacing it.
+        $filterSql = '';
+
+        $intakeId = (int) ($request->query('intake_id') ?? 0);
+        if ($intakeId > 0) {
+            $filterSql .= ' AND s.intake_id = ?';
+            $args[]     = $intakeId;
+        }
+
+        // "Class" is the level of study — the same value the ID card prints
+        // as Class, and the only class-like grouping the schema has.
+        $level = trim((string) ($request->query('level') ?? ''));
+        if ($level !== '') {
+            $filterSql .= ' AND CAST(NULLIF(s.current_level, \'\') AS UNSIGNED) = ?';
+            $args[]     = (int) $level;
+        }
+
+        $mode = trim((string) ($request->query('mode_of_study') ?? ''));
+        if ($mode !== '') {
+            // `student.program` is hand-entered and holds "Day", " Day" and
+            // "DAY" among others, so compare case- and space-insensitively.
+            $filterSql .= ' AND UPPER(TRIM(s.program)) = ?';
+            $args[]     = strtoupper($mode);
+        }
+
         $rows = $this->db->fetchAll(
             "SELECT
                 r.student_regnumber                          AS regnumber,
@@ -1070,12 +1212,27 @@ class TeacherController extends BaseController
                 MAX(s.phone)         AS phone,
                 MAX(s.photo)         AS photo,
                 MAX(s.current_level) AS level,
+                -- Intake, class and programme type: the three things the
+                -- August 2026 report says a lecturer needs to tell apart the
+                -- students in a mixed class. `intake_id` resolves to the
+                -- catalogue (migration 146); `intake` is kept beside it
+                -- because 1,749 students hold an academic-year string that
+                -- resolves to no intake, and blanking them on screen would
+                -- hide information the registry still has.
+                MAX(s.intake_id)     AS intake_id,
+                MAX(i.name)          AS intake_name,
+                MAX(s.intake)        AS intake_raw,
+                -- Mode of study (Day / Weekend / Holiday) already lives on
+                -- `student.program` — StudentIdCardHelper prints it on the ID
+                -- card. No new column was needed.
+                MAX(s.program)       AS mode_of_study,
                 COUNT(DISTINCT r.module_id)                  AS modules,
                 GROUP_CONCAT(DISTINCT TRIM(m.module_code) ORDER BY m.module_code SEPARATOR ', ') AS module_codes
              FROM `module_registrations` r
              JOIN `modules` m  ON m.module_id = r.module_id
              LEFT JOIN `student` s ON s.regnumber = r.student_regnumber COLLATE utf8mb4_general_ci
-             WHERE r.module_id IN ($ph) AND r.status <> 'dropped'{$termSql}
+             LEFT JOIN `intakes` i ON i.id = s.intake_id
+             WHERE r.module_id IN ($ph) AND r.status <> 'dropped'{$termSql}{$filterSql}
              GROUP BY r.student_regnumber
              ORDER BY full_name ASC, r.student_regnumber ASC",
             $args
@@ -1093,6 +1250,12 @@ class TeacherController extends BaseController
                 'photo'        => $r['photo'] ?: null,
                 'level'        => $r['level'] !== null ? (int)$r['level'] : null,
                 'level_name'   => LevelHelper::name($r['level'] ?? null) ?: null,
+                'intake_id'    => $r['intake_id'] !== null ? (int)$r['intake_id'] : null,
+                // Resolved catalogue name, else the raw text the registry
+                // typed, else nothing. Never a guess.
+                'intake_name'  => $r['intake_name'] ?: ($r['intake_raw'] ?: null),
+                'intake_resolved' => $r['intake_id'] !== null,
+                'mode_of_study'=> self::normaliseMode($r['mode_of_study'] ?? null),
                 'modules'      => (int)$r['modules'],
                 'module_codes' => $r['module_codes'] ?: '',
             ];

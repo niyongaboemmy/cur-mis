@@ -19,6 +19,9 @@ $router->group('/api/marks', function ($router) {
     $router->group('', function ($r) {
         $r->get('',                                  [ModuleMarksController::class, 'listMarks']);
         $r->get('/markable-modules',                 [ModuleMarksController::class, 'myMarkableModules']);
+        // Blank entry workbook for offline marking. Read-only, and gated
+        // per-module inside the controller exactly like the grid.
+        $r->get('/template',                         [ModuleMarksController::class, 'template']);
         $r->get('/students/:regnumber',              [ModuleMarksController::class, 'studentMarks']);
         $r->get('/students/:regnumber/transcript',   [ModuleMarksController::class, 'studentTranscript']);
         // Numeric-id variants — regnumbers like "STD/2026/22699" contain

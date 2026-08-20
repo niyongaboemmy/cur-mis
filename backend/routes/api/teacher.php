@@ -44,8 +44,12 @@ $router->group('/api/teacher', function ($router) {
     // Sessions held + per-student tally, for the course's Attendance tab.
     $router->get('/courses/:moduleId/attendance', [TeacherController::class, 'courseAttendance']);
 
-    // Every student I teach, deduplicated across my modules.
+    // Every student I teach, deduplicated across my modules. Filterable by
+    // intake / class / mode — a lecturer's class mixes cohorts, and until
+    // now there was no way to tell them apart.
     $router->get('/students', [TeacherController::class, 'students']);
+    // The intakes / classes / modes actually present in my classes.
+    $router->get('/student-filters', [TeacherController::class, 'studentFilters']);
 
     // Class blocks + exam sittings + my own leave, over a date window.
     $router->get('/calendar', [TeacherController::class, 'calendar']);

@@ -215,6 +215,8 @@ $router->group('/api/finance', function ($router) {
         $r->post('/invoices/:id',             [FeeController::class, 'updateInvoice']);
 
         $r->post('/payments',                [FeeController::class, 'recordPayment']);
+        // Spread one amount over the outstanding invoices, oldest first.
+        $r->post('/payments/pay-oldest-first', [FeeController::class, 'payOldestFirst']);
         $r->post('/payments/:id/approve',   [FeeController::class, 'approvePayment']);
         $r->post('/payments/:id/reject',    [FeeController::class, 'rejectPayment']);
 

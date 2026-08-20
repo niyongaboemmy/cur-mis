@@ -6,7 +6,6 @@ namespace App\Helpers;
 
 use chillerlan\QRCode\QRCode;
 use chillerlan\QRCode\QROptions;
-use chillerlan\QRCode\Output\QROutputInterface;
 
 /**
  * Renders a printable student ID card (front + back) as HTML / PDF.
@@ -372,21 +371,32 @@ class StudentIdCardHelper
         return $start . '-' . ($start + 1);
     }
 
+    /**
+     * Render the verification QR as a self-contained data URI.
+     *
+     * Constant names matter here and are version-specific: chillerlan/php-qrcode
+     * v4 (what composer.lock pins, 4.4.2) puts the output modes on QRCode as
+     * OUTPUT_IMAGE_PNG / OUTPUT_MARKUP_SVG and base64-encodes via `imageBase64`.
+     * QROutputInterface::GDIMAGE_PNG and `outputBase64` are the v5 spellings —
+     * referencing them on v4 raises an Error, which the catch below turned into
+     * a blank grey box, so every card printed with an empty QR panel and no
+     * complaint. Log the failure rather than swallowing it, so the next
+     * breakage is visible instead of shipping on thousands of ID cards.
+     */
     private static function qrTag(string $content, int $sizeMm): string
     {
         try {
-            if (extension_loaded('gd')) {
-                $opts = new QROptions([
-                    'outputType'   => QROutputInterface::GDIMAGE_PNG,
-                    'outputBase64' => true,
-                    'scale'        => 5,
-                    'eccLevel'     => QRCode::ECC_M,
-                ]);
-                return '<img src="' . (new QRCode($opts))->render($content) . '" style="width:' . $sizeMm . 'mm;height:' . $sizeMm . 'mm;" />';
-            }
-            $opts = new QROptions(['outputType' => QROutputInterface::MARKUP_SVG, 'eccLevel' => QRCode::ECC_M]);
+            $opts = new QROptions([
+                'outputType'  => extension_loaded('gd')
+                    ? QRCode::OUTPUT_IMAGE_PNG
+                    : QRCode::OUTPUT_MARKUP_SVG,
+                'imageBase64' => true,
+                'scale'       => 5,
+                'eccLevel'    => QRCode::ECC_M,
+            ]);
             return '<img src="' . (new QRCode($opts))->render($content) . '" style="width:' . $sizeMm . 'mm;height:' . $sizeMm . 'mm;" />';
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            error_log('[StudentIdCardHelper] QR render failed: ' . $e->getMessage());
             return '<div style="width:' . $sizeMm . 'mm;height:' . $sizeMm . 'mm;border:1px solid #bbb;"></div>';
         }
     }
