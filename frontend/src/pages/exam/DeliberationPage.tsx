@@ -11,8 +11,7 @@ import {
   Lock,
   X,
   LayoutGrid,
-  Users,
-} from "lucide-react";
+  Users, Gavel,} from "lucide-react";
 import * as XLSX from "xlsx";
 import toast from "react-hot-toast";
 import { academicService } from "@/services/academicService";
@@ -26,6 +25,7 @@ import {
   type DeliberationSession,
 } from "@/services/deliberationService";
 import DeliberationMarksView from "./DeliberationMarksView";
+import DeliberationDecisionsPanel from "./DeliberationDecisionsPanel";
 import { useAuthStore } from "@/store/authStore";
 import { PERMISSIONS } from "@/constants/permissions";
 import { useLevels } from "@/hooks/useLevels";
@@ -91,6 +91,8 @@ export default function DeliberationPage() {
 
   /* ── session panel state ─────────────────────────────────────── */
   const [sessionsOpen, setSessionsOpen] = useState(false)
+  // Which session's decisions panel is expanded.
+  const [openDecisions, setOpenDecisions] = useState<number | null>(null)
   const [createOpen, setCreateOpen]     = useState(false)
   const [newNotes, setNewNotes]         = useState('')
   const [newConvenedAt, setNewConvenedAt] = useState('')
@@ -184,15 +186,6 @@ export default function DeliberationPage() {
       setNewConvenedAt('')
     },
     onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed to create session.'),
-  })
-
-  const finalizeSessionMut = useMutation({
-    mutationFn: (id: number) => deliberationService.finalizeSession(id, { std_option: stdOption || undefined }),
-    onSuccess: () => {
-      toast.success('Session finalised — marks locked.')
-      qc.invalidateQueries({ queryKey: ['deliberation-sessions'] })
-    },
-    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Finalise failed.'),
   })
 
   /* ── selected program label (for headers/export filename) ─────── */
@@ -510,7 +503,8 @@ export default function DeliberationPage() {
           ) : (
             <div className="divide-y divide-ink-100 dark:divide-ink-700">
               {sessions.map((s) => (
-                <div key={s.id} className="py-2.5 flex items-start justify-between gap-3">
+                <div key={s.id} className="py-2.5">
+                  <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="flex items-center gap-2 text-[13px] font-medium text-ink-800 dark:text-ink-100">
                       Session #{s.id}
@@ -529,15 +523,33 @@ export default function DeliberationPage() {
                     </div>
                     {s.notes && <p className="text-[12px] text-ink-400 mt-1 italic">{s.notes}</p>}
                   </div>
-                  {canManage && !s.finalized && (
+                  {canManage && (
                     <button
-                      onClick={() => { if (window.confirm('Finalise this session? This will lock all marks for the cohort.')) finalizeSessionMut.mutate(s.id) }}
-                      disabled={finalizeSessionMut.isPending}
-                      className="btn-sm border border-orange-300 text-orange-600 hover:bg-orange-50 flex items-center gap-1 px-2 py-1 rounded text-[12px] whitespace-nowrap"
+                      onClick={() => setOpenDecisions((o) => (o === s.id ? null : s.id))}
+                      className="btn-ghost btn-sm whitespace-nowrap"
+                      title="Board decisions for this session"
                     >
-                      <Lock className="w-3 h-3" /> Finalise
+                      <Gavel className="w-3 h-3" />
+                      {openDecisions === s.id ? 'Hide decisions' : 'Decisions'}
                     </button>
                   )}
+                </div>
+
+                {/* Per-student outcomes, and the finalise step that applies
+                    them. Finalising used to be a bare window.confirm() that
+                    locked marks with no indication of what else it would
+                    change — it now rewrites levels and statuses too, so it
+                    goes through the panel's server-side dry run instead. */}
+                {canManage && openDecisions === s.id && (
+                  <div className="pb-3">
+                    <DeliberationDecisionsPanel
+                      sessionId={s.id}
+                      finalized={!!s.finalized}
+                      stdOption={stdOption || undefined}
+                      onFinalized={() => qc.invalidateQueries({ queryKey: ['deliberation-sessions'] })}
+                    />
+                  </div>
+                )}
                 </div>
               ))}
             </div>

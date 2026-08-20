@@ -41,6 +41,75 @@ export interface StudentIdRosterFilters {
   option_id?: number
 }
 
+/** Save a blob to disk under `name`. */
+function saveBlob(blob: Blob, name: string) {
+  const url = window.URL.createObjectURL(blob)
+  const a   = document.createElement('a')
+  a.href = url; a.download = name
+  document.body.appendChild(a); a.click(); a.remove()
+  window.URL.revokeObjectURL(url)
+}
+
+/**
+ * Hand a PDF blob to the browser's print dialog.
+ *
+ * Rendered through an off-screen iframe rather than window.open() because a
+ * popup blocker silently swallows the latter — the user clicks Print and
+ * nothing happens, with no error to react to. The object URL is revoked on a
+ * timer, not straight after print(): the dialog reads the document lazily, and
+ * revoking immediately leaves the preview blank.
+ */
+function printBlob(blob: Blob) {
+  const url   = window.URL.createObjectURL(blob)
+  const frame = document.createElement('iframe')
+  frame.setAttribute('aria-hidden', 'true')
+  frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;'
+  frame.src = url
+  frame.onload = () => {
+    try {
+      frame.contentWindow?.focus()
+      frame.contentWindow?.print()
+    } catch {
+      // Cross-origin or a browser that refuses to print an iframe — fall back
+      // to a tab the user can print from by hand.
+      window.open(url, '_blank')
+    }
+  }
+  document.body.appendChild(frame)
+  window.setTimeout(() => { frame.remove(); window.URL.revokeObjectURL(url) }, 60_000)
+}
+
+/**
+ * Re-throw an axios error whose body is a Blob with the server's JSON message
+ * pulled out onto `response.data`.
+ *
+ * With `responseType: 'blob'` an error response is delivered as a Blob too, so
+ * `e.response.data.message` is undefined and every failure reaches the caller
+ * as a generic toast — losing messages that tell the user what to do next,
+ * like "None of the selected students hold an active ID card."
+ */
+async function rethrowBlobError(e: any): Promise<never> {
+  const body = e?.response?.data
+  if (body instanceof Blob && body.type.includes('json')) {
+    try {
+      e.response.data = JSON.parse(await body.text())
+    } catch {
+      /* Not the JSON envelope after all — leave the original error alone. */
+    }
+  }
+  throw e
+}
+
+/** Normalise an axios blob response and read the server's filename. */
+function asPdf(res: { data: unknown; headers: Record<string, unknown> }, fallback: string) {
+  const blob = res.data instanceof Blob
+    ? res.data
+    : new Blob([res.data as BlobPart], { type: 'application/pdf' })
+  const cd   = (res.headers['content-disposition'] as string | undefined) ?? ''
+  const m    = /filename="?([^";]+)"?/i.exec(cd)
+  return { blob, name: m?.[1] ?? fallback }
+}
+
 export const studentIdService = {
   /** Students plus their current card state — powers the ID-card workspace. */
   roster: (filters: StudentIdRosterFilters = {}, signal?: AbortSignal) =>
@@ -74,34 +143,45 @@ export const studentIdService = {
     return api.get<{ html: string }>(`/api/student-ids/by-student/${studentId}/card`, params)
   },
 
-  /** Download one PDF holding every selected student's active card. */
-  batchPrint: async (studentIds: number[]) => {
+  /** One PDF holding every selected student's active card. */
+  batchCards: async (studentIds: number[]) => {
     const res = await apiClient.post(
       '/api/student-ids/batch-print',
       { student_ids: studentIds },
       { responseType: 'blob' },
-    )
-    const blob = res.data instanceof Blob ? res.data : new Blob([res.data])
-    const url  = window.URL.createObjectURL(blob)
-    const a    = document.createElement('a')
-    a.href = url; a.download = `id-cards-${studentIds.length}.pdf`
-    document.body.appendChild(a); a.click(); a.remove()
-    window.URL.revokeObjectURL(url)
+    ).catch(rethrowBlobError)
+    return asPdf(res, `id-cards-${studentIds.length}.pdf`)
   },
 
-  /** Download the card as a PDF (carries the auth header). */
-  download: async (studentId: number | string) => {
+  /** Save every selected student's card to disk as one PDF. */
+  batchDownload: async (studentIds: number[]) => {
+    const { blob, name } = await studentIdService.batchCards(studentIds)
+    saveBlob(blob, name)
+  },
+
+  /** Send every selected student's card straight to the print dialog. */
+  batchPrint: async (studentIds: number[]) => {
+    const { blob } = await studentIdService.batchCards(studentIds)
+    printBlob(blob)
+  },
+
+  /** One student's active card as a PDF blob (carries the auth header). */
+  card: async (studentId: number | string) => {
     const res = await apiClient.get(`/api/student-ids/by-student/${studentId}/card`, {
       responseType: 'blob',
-    })
-    const blob = res.data instanceof Blob ? res.data : new Blob([res.data])
-    const cd   = (res.headers['content-disposition'] as string | undefined) ?? ''
-    const m    = /filename="?([^";]+)"?/i.exec(cd)
-    const name = m?.[1] ?? `id-card-${studentId}.pdf`
-    const url  = window.URL.createObjectURL(blob)
-    const a    = document.createElement('a')
-    a.href = url; a.download = name
-    document.body.appendChild(a); a.click(); a.remove()
-    window.URL.revokeObjectURL(url)
+    }).catch(rethrowBlobError)
+    return asPdf(res, `id-card-${studentId}.pdf`)
+  },
+
+  /** Save one student's card to disk. */
+  download: async (studentId: number | string) => {
+    const { blob, name } = await studentIdService.card(studentId)
+    saveBlob(blob, name)
+  },
+
+  /** Send one student's card straight to the print dialog. */
+  print: async (studentId: number | string) => {
+    const { blob } = await studentIdService.card(studentId)
+    printBlob(blob)
   },
 }

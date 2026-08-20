@@ -85,8 +85,11 @@ import {
   Banknote,
   TrendingUp,
   ArrowDownLeft,
+  Printer,
 } from "lucide-react";
 import ModalPortal from "@/components/ui/ModalPortal";
+import StatusChangeModal from "@/components/students/StatusChangeModal";
+import ProfileChangeRequestModal from "@/components/students/ProfileChangeRequestModal";
 import UserAccountPanel from "@/components/account/UserAccountPanel";
 import { ledgerService } from "@/services/financeService";
 import { FEE_TYPE_LABELS, PAYMENT_METHOD_LABELS } from "@/types/finance";
@@ -1018,6 +1021,9 @@ function PersonalDetailsSection({
   }, [student, app]);
 
   const save = useSectionSave(student, selfMode, "Personal details");
+  // Self-service correction path for the identity fields a student cannot
+  // edit directly (migration 147). Admins edit them inline instead.
+  const [requestOpen, setRequestOpen] = useState(false);
   const set =
     (k: keyof ReturnType<typeof buildInitial>) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
@@ -1057,17 +1063,37 @@ function PersonalDetailsSection({
           sub="Identity and parental information."
           icon={User}
         />
-        {!editing && (
-          <button
-            type="button"
-            onClick={() => setEditing(true)}
-            className="btn-secondary btn-sm flex items-center gap-1.5 h-7 px-2.5 shrink-0"
-          >
-            <Edit className="w-3.5 h-3.5" />
-            <span>Edit</span>
-          </button>
-        )}
+        <div className="flex items-center gap-2 shrink-0">
+          {selfMode && !editing && (
+            <button
+              type="button"
+              onClick={() => setRequestOpen(true)}
+              className="btn-ghost btn-sm flex items-center gap-1.5 h-7 px-2.5"
+              title="Ask the registry to correct your name, date of birth or ID"
+            >
+              <Edit className="w-3.5 h-3.5" />
+              <span>Request a correction</span>
+            </button>
+          )}
+          {!editing && (
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="btn-secondary btn-sm flex items-center gap-1.5 h-7 px-2.5"
+            >
+              <Edit className="w-3.5 h-3.5" />
+              <span>Edit</span>
+            </button>
+          )}
+        </div>
       </div>
+
+      {requestOpen && (
+        <ProfileChangeRequestModal
+          student={student}
+          onClose={() => setRequestOpen(false)}
+        />
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5 mt-6">
         {/* First name */}
         {!selfMode && editing ? (
@@ -1525,6 +1551,7 @@ const STUDENT_STATES: ReadonlyArray<{ value: string; label: string }> = [
   { value: "rejected",  label: "Rejected" },
   { value: "dropped",   label: "Dropped out" },
   { value: "dismissed", label: "Dismissed" },
+  { value: "deceased",  label: "Deceased" },
 ];
 
 /**
@@ -1552,29 +1579,16 @@ function normaliseStudentState(raw: string | null | undefined): string {
     rejected:  ["rejected", "reject"],
     dropped:   ["dropped", "dropout", "drop out", "dropped out", "drop_out"],
     dismissed: ["dismissed", "dismiss"],
+    deceased:  ["deceased", "death", "died", "dead"],
   };
   for (const [canonical, spellings] of Object.entries(groups)) {
     if (spellings.includes(value)) return canonical;
   }
-  // An unrecognised state (e.g. the two "xxx" rows) is left alone rather than
-  // being rewritten to Active behind the user's back — StatusOptions renders
-  // it as an extra option so it stays visible and intact.
+  // An unrecognised state (e.g. the 28 "XXX" rows) is left alone rather than
+  // being rewritten to Active behind the user's back. The status display falls
+  // back to showing the raw value, so it stays visible and intact until
+  // somebody deliberately changes it through the Status action.
   return value;
-}
-
-/** The state list, plus the student's own value when it is not one of ours. */
-function StatusOptions({ current }: { current: string }) {
-  const known = STUDENT_STATES.some((s) => s.value === current);
-  return (
-    <>
-      {STUDENT_STATES.map((s) => (
-        <option key={s.value} value={s.value}>{s.label}</option>
-      ))}
-      {!known && current !== "" && (
-        <option value={current}>{current} (current)</option>
-      )}
-    </>
-  );
 }
 
 /**
@@ -1650,6 +1664,7 @@ function ProgrammeSection({
     sponsor: (student.sponsor ?? "") as string,
   });
   const [form, setForm] = useState(buildInitial);
+  const [statusOpen, setStatusOpen] = useState(false);
   useEffect(() => {
     setForm(buildInitial());  
   }, [
@@ -1677,7 +1692,6 @@ function ProgrammeSection({
       acc_year: form.acc_year.trim() || null,
       registration_date: form.registration_date || null,
       regnumber: form.regnumber.trim() || null,
-      student_state: form.student_state || null,
       sponsor: form.sponsor.trim() || null,
     });
 
@@ -1794,13 +1808,20 @@ function ProgrammeSection({
             </FieldGroup>
 
             <FieldGroup label="Status">
-              <select
-                value={form.student_state}
-                onChange={set("student_state")}
-                className={selectInputClass}
+              {/* Same reason as the modal: changing a status is its own
+                  action, with its own evidence rules and audit trail. */}
+              <button
+                type="button"
+                onClick={() => setStatusOpen(true)}
+                className={selectInputClass + " text-left flex items-center justify-between gap-2"}
               >
-                <StatusOptions current={form.student_state} />
-              </select>
+                <span>
+                  {STUDENT_STATES.find((o) => o.value === form.student_state)?.label ??
+                    form.student_state ??
+                    "—"}
+                </span>
+                <span className="text-[11px] font-semibold text-brand">Change…</span>
+              </button>
             </FieldGroup>
           </>
         ) : (
@@ -1853,6 +1874,18 @@ function ProgrammeSection({
             setEditing(false);
           }}
           onSave={handleSave}
+        />
+      )}
+
+      {statusOpen && (
+        <StatusChangeModal
+          studentId={Number(student.id)}
+          studentName={
+            `${student.fname ?? ""} ${student.lname ?? ""}`.trim() ||
+            (student.regnumber ?? "This student")
+          }
+          currentState={normaliseStudentState(student.student_state)}
+          onClose={() => setStatusOpen(false)}
         />
       )}
     </section>
@@ -4894,7 +4927,6 @@ function EditStudentModal({
       // Catalog program (options.id) — the new authoritative academic link.
       std_option: student.std_option ? String(student.std_option) : "",
       current_level: student.current_level || "",
-      student_state: normaliseStudentState(student.student_state),
       birthdate: student.birthdate || "",
       regnumber: student.regnumber || "",
       acc_year: student.acc_year || "",
@@ -5058,12 +5090,16 @@ function EditStudentModal({
                   <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-1.5 block">
                     Status
                   </label>
-                  <select
-                    {...register("student_state")}
-                    className="input w-full cursor-pointer bg-white dark:bg-ink-900"
-                  >
-                    <StatusOptions current={normaliseStudentState(student.student_state)} />
-                  </select>
+                  {/* Read-only here on purpose. A status change needs a reason
+                      and, for a death, a certificate — captured by the Status
+                      action on the Programme card. The server refuses status
+                      changes through this form's endpoint, so an editable box
+                      here could only ever produce a 422. */}
+                  <p className="input w-full bg-ink-50 dark:bg-ink-800/60 text-ink-600 dark:text-ink-300 cursor-not-allowed">
+                    {STUDENT_STATES.find(
+                      (o) => o.value === normaliseStudentState(student.student_state),
+                    )?.label ?? student.student_state ?? "—"}
+                  </p>
                 </div>
                 <div className="sm:col-span-2">
                   <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-500 mb-1.5 block">
@@ -5659,6 +5695,11 @@ function IdCardTab({ student }: { student: any }) {
     onError: (e: any) => toast.error(e?.response?.data?.message ?? "Could not download card."),
   });
 
+  const printMut = useMutation({
+    mutationFn: () => studentIdService.print(studentId as number),
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? "Could not print card."),
+  });
+
   const previewMut = useMutation({
     mutationFn: async () => {
       const photo = student?.photo as string | null | undefined;
@@ -5760,9 +5801,13 @@ function IdCardTab({ student }: { student: any }) {
                 {previewMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Eye className="w-3.5 h-3.5" />}
                 Preview
               </button>
-              <button className="btn-primary btn-sm" disabled={downloadMut.isPending} onClick={() => downloadMut.mutate()}>
+              <button className="btn-primary btn-sm" disabled={printMut.isPending} onClick={() => printMut.mutate()}>
+                {printMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Printer className="w-3.5 h-3.5" />}
+                {printMut.isPending ? "Preparing…" : "Print"}
+              </button>
+              <button className="btn-ghost btn-sm" disabled={downloadMut.isPending} onClick={() => downloadMut.mutate()}>
                 {downloadMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-                {downloadMut.isPending ? "Preparing…" : "Print / PDF"}
+                {downloadMut.isPending ? "Preparing…" : "Download PDF"}
               </button>
             </>
           )}

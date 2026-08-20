@@ -133,7 +133,7 @@ export const admissionRequirementService = {
  * ─────────────────────────────────────────────────────────────── */
 export const applicationAdminService = {
   list: (
-    params: { page?: number; per_page?: number; status?: ApplicationStatus | 'pending'; department_id?: number; intake?: string; campus_id?: number; mode_of_study?: string; search?: string; q?: string; level_id?: number; gender?: string; payment_status?: string; include_hidden?: '1'; only_hidden?: '1'; sort_paid_first?: '1' } = {},
+    params: { page?: number; per_page?: number; status?: ApplicationStatus | 'pending'; department_id?: number; intake?: string; campus_id?: number; mode_of_study?: string; search?: string; q?: string; level_id?: number; gender?: string; payment_status?: string; include_hidden?: '1'; only_hidden?: '1'; sort_paid_first?: '1'; submitted_from?: string; submitted_to?: string } = {},
     signal?: AbortSignal,
   ) => {
     const { q, ...rest } = params;
@@ -143,7 +143,12 @@ export const applicationAdminService = {
     return api.get<PaginatedResponse<StudentApplication>>('/api/admin/applications', scoped, signal);
   },
   
-  getStats: (signal?: AbortSignal) =>
+  /** Dashboard aggregates. Takes the same submission window as list() so
+   *  the stat tiles and the table under them describe the same rows. */
+  getStats: (
+    params: { submitted_from?: string; submitted_to?: string } = {},
+    signal?: AbortSignal,
+  ) =>
     api.get<{ 
       by_status: any[]; 
       by_intake: any[]; 
@@ -152,7 +157,7 @@ export const applicationAdminService = {
       trend: any[];
       recent: any[]; 
       total: number 
-    }>('/api/admin/applications/stats', {}, signal),
+    }>('/api/admin/applications/stats', params, signal),
 
   show: (id: number, signal?: AbortSignal) =>
     api.get<{ 

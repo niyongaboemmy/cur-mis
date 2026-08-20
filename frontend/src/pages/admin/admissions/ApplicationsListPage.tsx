@@ -15,6 +15,7 @@ import ModalPortal from '@/components/ui/ModalPortal'
 import ApplicationsDashboard from './ApplicationsDashboard'
 import { useAuthStore } from '@/store/authStore'
 import SharedBulkUploadModal from '@/components/admin/BulkUploadModal'
+import DateRangeFilter, { type DateRangeValue } from '@/components/ui/DateRangeFilter'
 
 // On the admin side we relabel `submitted` → `Pending` so the queue
 // is framed as "awaiting review" rather than the raw state-machine name.
@@ -98,12 +99,14 @@ export default function ApplicationsListPage() {
   const [mode, setMode] = useState('')
   const [q, setQ] = useState('')
   const [activeTab, setActiveTab] = useState<'list' | 'dashboard'>('list')
+  // Submission date window, shared by the list, the stat tiles and the exports.
+  const [dateRange, setDateRange] = useState<DateRangeValue>({ from: '', to: '' })
 
   const intakesQ = useQuery({ queryKey: ['admin', 'intakes'], queryFn: () => intakeService.list() })
   const intakes = intakesQ.data?.data ?? []
 
   const listQ = useQuery({
-    queryKey: ['admin', 'applications', page, status, intake, campusId, mode, q, levelId, gender, paymentStatus, paidFirst, showHidden],
+    queryKey: ['admin', 'applications', page, status, intake, campusId, mode, q, levelId, gender, paymentStatus, paidFirst, showHidden, dateRange.from, dateRange.to],
     queryFn: () => applicationAdminService.list({
       page, per_page: 15,
       status: status || undefined,
@@ -116,6 +119,8 @@ export default function ApplicationsListPage() {
       q: q || undefined,
       ...(paidFirst ? { sort_paid_first: '1' as const } : {}),
       ...(showHidden ? { only_hidden: '1' as const } : {}),
+      submitted_from: dateRange.from || undefined,
+      submitted_to:   dateRange.to   || undefined,
     }),
     placeholderData: (prev) => prev,
   })
@@ -126,8 +131,11 @@ export default function ApplicationsListPage() {
 
   // Server-side aggregate stats (independent of pagination/filters)
   const statsQ = useQuery({
-    queryKey: ['admin', 'applications', 'stats'],
-    queryFn: () => applicationAdminService.getStats(),
+    queryKey: ['admin', 'applications', 'stats', dateRange.from, dateRange.to],
+    queryFn: () => applicationAdminService.getStats({
+      submitted_from: dateRange.from || undefined,
+      submitted_to:   dateRange.to   || undefined,
+    }),
   })
 
   const stats = useMemo(() => {
@@ -174,6 +182,8 @@ export default function ApplicationsListPage() {
     if (campusId !== '') params.set('campus_id', String(campusId))
     if (mode) params.set('mode_of_study', mode)
     if (q) params.set('search', q)
+    if (dateRange.from) params.set('submitted_from', dateRange.from)
+    if (dateRange.to)   params.set('submitted_to', dateRange.to)
     return applicationAdminService.exportUrl(params.toString())
   }
 
@@ -250,7 +260,7 @@ export default function ApplicationsListPage() {
           {/* Stats strip — clicking a tile applies the matching status filter. */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
             <StatTile
-              icon={FileText} label="Total" value={stats.totalAll}
+              icon={FileText} label="Total Applications" value={stats.totalAll}
               accent="bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
               active={status === ''}
               onClick={() => { setStatus(''); setPage(1) }}
@@ -432,6 +442,16 @@ export default function ApplicationsListPage() {
                   <Download className="w-3.5 h-3.5" /> PDF
                 </a>
               </div>
+            </div>
+
+            {/* Submission window — drives the list, the stat tiles and both
+                exports, so everything on screen describes the same rows. */}
+            <div className="px-3 pb-3 pt-1 border-t border-ink-100 dark:border-ink-800">
+              <DateRangeFilter
+                label="Submitted"
+                value={dateRange}
+                onChange={(v) => { setDateRange(v); setPage(1) }}
+              />
             </div>
 
       {listQ.isLoading ? (

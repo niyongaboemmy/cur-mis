@@ -680,6 +680,8 @@ class FeeController extends BaseController
             'semester'         => $request->query('semester') !== null ? (int)$request->query('semester') : null,
             'faculty_id'       => $request->query('faculty_id') !== null ? (int)$request->query('faculty_id') : null,
             'department_id'    => $request->query('department_id') !== null ? (int)$request->query('department_id') : null,
+            // Programme-level filter — what the registry works at day to day.
+            'option_id'        => $request->query('option_id') !== null ? (int)$request->query('option_id') : null,
             'keyword'          => $request->query('keyword') ?? null,
             'balance_filter'   => $request->query('balance_filter') ?? null, // collected|bursary|pending|partial|overdue
             'page'             => (int)($request->query('page') ?? 1),
@@ -709,6 +711,7 @@ class FeeController extends BaseController
             'semester'         => $request->query('semester') !== null ? (int)$request->query('semester') : null,
             'faculty_id'       => $request->query('faculty_id') !== null ? (int)$request->query('faculty_id') : null,
             'department_id'    => $request->query('department_id') !== null ? (int)$request->query('department_id') : null,
+            // Programme-level filter — what the registry works at day to day.
             'option_id'        => $request->query('option_id') !== null ? (int)$request->query('option_id') : null,
             'keyword'          => $request->query('keyword') ?? null,
             'page'             => (int)($request->query('page') ?? 1),
@@ -738,6 +741,8 @@ class FeeController extends BaseController
             'semester'         => $request->query('semester') !== null ? (int)$request->query('semester') : null,
             'faculty_id'       => $request->query('faculty_id') !== null ? (int)$request->query('faculty_id') : null,
             'department_id'    => $request->query('department_id') !== null ? (int)$request->query('department_id') : null,
+            // Programme-level filter — what the registry works at day to day.
+            'option_id'        => $request->query('option_id') !== null ? (int)$request->query('option_id') : null,
             'keyword'          => $request->query('keyword') ?? null,
         ];
 
@@ -967,6 +972,60 @@ class FeeController extends BaseController
 
         SystemLogService::log('CREATE', 'FINANCE', "Recorded payment of {$data['amount']} for invoice {$data['invoice_id']} (ID {$result['payment_id']}).", (int) $result['payment_id'], 'fee_payment', ['method' => $data['payment_method'], 'amount' => (float) $data['amount']], (array) $actor ?: null);
         $this->success($response, $result, 'Payment recorded successfully.', 201);
+    }
+
+    /**
+     * POST /api/finance/payments/pay-oldest-first
+     *
+     * Spread one amount across a student's outstanding invoices, oldest debt
+     * first. The counterpart to the refusal recordPayment() now raises when an
+     * older invoice is still open — an officer holding a lump sum needs a
+     * correct path, not just a blocked one.
+     *
+     * Body: { student_id, amount, payment_method, reference_number?, notes?, paid_at? }
+     */
+    public function payOldestFirst(Request $request, Response $response): never
+    {
+        $data  = $request->body();
+        $actor = $request->param('_auth_user');
+
+        $errors = ValidationHelper::validate($data, [
+            'student_id'     => 'required',
+            'amount'         => 'required|numeric',
+            'payment_method' => 'required|in:CASH,BANK_TRANSFER,MOBILE_MONEY,BURSARY,WAIVER',
+        ]);
+        if (!empty($errors)) {
+            $this->error($response, 'Validation failed.', 422, $errors);
+        }
+
+        try {
+            $result = $this->service->payOldestFirst(
+                (string) $data['student_id'],
+                (float) $data['amount'],
+                $data,
+                (int) $actor['id']
+            );
+        } catch (\InvalidArgumentException | \RuntimeException $e) {
+            $this->error($response, $e->getMessage(), 422);
+        }
+
+        $count = count($result['allocations']);
+        SystemLogService::log(
+            'CREATE',
+            'FINANCE',
+            "Allocated {$data['amount']} across {$count} invoice(s), oldest first, for {$data['student_id']}.",
+            null,
+            'fee_payment',
+            $result,
+            (array) $actor ?: null
+        );
+
+        $message = $result['unallocated'] > 0.009
+            ? sprintf('Allocated across %d invoice(s). %s could not be allocated — the student owes less than the amount paid.',
+                      $count, number_format($result['unallocated'], 2))
+            : sprintf('Allocated across %d invoice(s), oldest debt first.', $count);
+
+        $this->success($response, $result, $message, 201);
     }
 
     /**

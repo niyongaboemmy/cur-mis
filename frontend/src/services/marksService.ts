@@ -324,6 +324,37 @@ export const marksService = {
   list: (params: { module_id: number; academic_term_id: number }) =>
     api.get<MarksListResponse>('/api/marks', params as Record<string, unknown>),
 
+  /**
+   * Download the blank marks workbook for one (module, term).
+   *
+   * Server-issued rather than built in the browser: the file carries a
+   * `_meta` stamp naming the module and term, which the importer checks
+   * before applying anything. A stamp minted by the same page that validates
+   * it would prove nothing.
+   */
+  downloadTemplate: async (moduleId: number | string, termId: number | string) => {
+    const res = await apiClient.get('/api/marks/template', {
+      params: { module_id: moduleId, academic_term_id: termId },
+      responseType: 'blob',
+    }).catch(async (e: any) => {
+      // Errors arrive as a Blob under responseType:'blob'; unwrap the JSON so
+      // the caller can show the server's message instead of a generic failure.
+      const body = e?.response?.data
+      if (body instanceof Blob && body.type.includes('json')) {
+        try { e.response.data = JSON.parse(await body.text()) } catch { /* leave as-is */ }
+      }
+      throw e
+    })
+    const blob = res.data instanceof Blob ? res.data : new Blob([res.data])
+    const cd   = (res.headers['content-disposition'] as string | undefined) ?? ''
+    const m    = /filename="?([^";]+)"?/i.exec(cd)
+    const url  = window.URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href = url; a.download = m?.[1] ?? `marks-template-${moduleId}-${termId}.xlsx`
+    document.body.appendChild(a); a.click(); a.remove()
+    window.URL.revokeObjectURL(url)
+  },
+
   save: (payload: SaveMarksPayload) =>
     api.put<{ saved: number }>('/api/marks', payload),
 

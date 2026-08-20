@@ -1,5 +1,43 @@
-import { api } from '@/services/api'
+import { api, apiClient } from '@/services/api'
 import type { PaginatedResponse } from '@/types'
+
+/** A student-proposed identity change awaiting (or past) registry review. */
+export interface ProfileChangeRequest {
+  id:               number
+  student_id:       number
+  /** Rendered field-by-field for the reviewer. */
+  changes:          { field: string; label: string; from: string | null; to: string | null }[]
+  reason:           string | null
+  status:           'pending' | 'approved' | 'rejected'
+  review_note:      string | null
+  reviewed_by_name: string | null
+  reviewed_at:      string | null
+  created_at:       string
+  has_document:     boolean
+  document_original_name: string | null
+  /** Present only on the registry queue. */
+  regnumber?:       string
+  student_fname?:   string
+  student_lname?:   string
+}
+
+/** One row of a student's status audit trail (migration 145). */
+export interface StudentStatusChange {
+  id:                     number
+  student_id:             number
+  previous_state:         string | null
+  new_state:              string
+  reason:                 string | null
+  document_original_name: string | null
+  document_mime:          string | null
+  document_size:          number | null
+  /** The storage handle is never sent to the client; this flag stands in for
+   *  it, and the document is fetched through the id-addressed route. */
+  has_document:           boolean
+  changed_by:             number | null
+  changed_by_name:        string | null
+  changed_at:             string
+}
 import type { Student } from '@/types/academic'
 import type { ApplicationDocument } from '@/types/admission'
 import { useAuthStore } from '@/store/authStore'
@@ -418,6 +456,80 @@ export const studentService = {
 
   stats: (params: { acc_year?: string; campus?: string | number; category?: string } = {}, signal?: AbortSignal) =>
     api.get<StudentStats>('/api/students/stats', withGlobalScopes(params), signal),
+
+  /** Propose a change to an identity field, with evidence, for the registry
+   *  to approve (migration 147). Tier-1 fields save straight through
+   *  updateMe(); these need a decision because they print on certificates. */
+  requestProfileChange: (payload: {
+    fields: Record<string, string>
+    reason?: string
+    document?: File | null
+  }) => {
+    const form = new FormData()
+    form.append('fields', JSON.stringify(payload.fields))
+    if (payload.reason)   form.append('reason', payload.reason)
+    if (payload.document) form.append('document', payload.document)
+    return api.upload<{ id: number; fields: string[] }>(
+      '/api/students/me/profile-change-requests',
+      form,
+    )
+  },
+
+  /** The student's own change-request history. */
+  myProfileChangeRequests: (signal?: AbortSignal) =>
+    api.get<ProfileChangeRequest[]>('/api/students/me/profile-change-requests', {}, signal),
+
+  /** The registry's review queue. */
+  listProfileChangeRequests: (status = 'pending', signal?: AbortSignal) =>
+    api.get<ProfileChangeRequest[]>('/api/students/profile-change-requests', { status }, signal),
+
+  decideProfileChangeRequest: (id: number, decision: 'approved' | 'rejected', note?: string) =>
+    api.post<{ status: string }>(`/api/students/profile-change-requests/${id}/decide`, { decision, note }),
+
+  /** One entry in a student's status audit trail (migration 145). */
+  statusHistory: (id: number | string, signal?: AbortSignal) =>
+    api.get<StudentStatusChange[]>(`/api/students/${id}/status-history`, {}, signal),
+
+  /**
+   * Change a student's status, with the reason and evidence the registry
+   * requires. Multipart because the state, the reason and the certificate are
+   * one transaction on the server — the generic PUT refuses status changes so
+   * this stays the only path that records why.
+   *
+   * `reason` is required for `rejected` and `dropped`; `document` for
+   * `deceased`. The server enforces both, so a caller that skips them gets a
+   * 422 naming the missing field rather than a silent partial write.
+   */
+  updateStatus: (
+    id: number | string,
+    payload: { student_state: string; reason?: string; document?: File | null },
+  ) => {
+    const form = new FormData()
+    form.append('student_state', payload.student_state)
+    if (payload.reason)   form.append('reason', payload.reason)
+    if (payload.document) form.append('document', payload.document)
+    return api.upload<{ student_state: string; previous: string }>(
+      `/api/students/${id}/status`,
+      form,
+    )
+  },
+
+  /** URL for a status change's supporting document (auth via cookie/header
+   *  interceptor on apiClient — use downloadStatusDocument to fetch it). */
+  downloadStatusDocument: async (id: number | string, changeId: number) => {
+    const res = await apiClient.get(
+      `/api/students/${id}/status-history/${changeId}/document`,
+      { responseType: 'blob' },
+    )
+    const blob = res.data instanceof Blob ? res.data : new Blob([res.data])
+    const cd   = (res.headers['content-disposition'] as string | undefined) ?? ''
+    const m    = /filename="?([^";]+)"?/i.exec(cd)
+    const url  = window.URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href = url; a.download = m?.[1] ?? `status-document-${changeId}`
+    document.body.appendChild(a); a.click(); a.remove()
+    window.URL.revokeObjectURL(url)
+  },
 
   /** Every value the filter panel can offer, each with the number of
    *  students it would yield. Counts are faceted: pass the filters that are

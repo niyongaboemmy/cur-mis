@@ -10,6 +10,7 @@ use App\Models\StudentModel;
 use App\Models\ApplicationDocumentModel;
 use App\Models\StudentApplicationModel;
 use App\Models\StudentVisaRecordModel;
+use App\Models\StudentStatusChangeModel;
 use App\Models\FacultyModel;
 use App\Models\DepartmentModel;
 use App\Models\OptionModel;
@@ -22,12 +23,14 @@ class StudentController extends BaseController
     private StudentModel $studentModel;
     private ApplicationDocumentModel $docModel;
     private StudentVisaRecordModel $visaModel;
+    private StudentStatusChangeModel $statusModel;
 
     public function __construct()
     {
         $this->studentModel = new StudentModel();
         $this->docModel     = new ApplicationDocumentModel();
         $this->visaModel    = new StudentVisaRecordModel();
+        $this->statusModel  = new StudentStatusChangeModel();
     }
 
     /**
@@ -734,6 +737,27 @@ class StudentController extends BaseController
             }
         }
 
+        // Status changes do NOT go through this endpoint. `student_state` is
+        // still accepted here so the details form can post its whole payload
+        // unchanged, but a change of value is refused and redirected to
+        // POST /api/students/:id/status — the only path that captures the
+        // reason and the supporting document the registry asked for, and the
+        // only one that writes the audit trail. Without this guard the main
+        // edit form would remain a way to mark a student deceased with no
+        // evidence and no record of who did it.
+        if (array_key_exists('student_state', $patch)) {
+            $submitted = strtolower(trim((string) $patch['student_state']));
+            $current   = strtolower(trim((string) ($student['student_state'] ?? '')));
+            if ($submitted !== $current) {
+                $this->error($response, 'Validation failed', 422, [
+                    'student_state' => ['Change a student\'s status from the Status action, so the reason and any supporting document are recorded with it.'],
+                ]);
+            }
+            // Unchanged — drop it rather than rewriting the column with the
+            // same value and dirtying updated_at.
+            unset($patch['student_state']);
+        }
+
         // Programme change recomputes the legacy faculty/department fields
         // from the chosen option so they stay in sync with the catalog.
         if (array_key_exists('std_option', $data)) {
@@ -752,6 +776,168 @@ class StudentController extends BaseController
         }
 
         $this->success($response, null, 'Student updated successfully.');
+    }
+
+
+    /**
+     * The canonical student states the registry may set, mirroring
+     * STUDENT_STATES in StudentDetailsPage.tsx.
+     *
+     * `graduands` is stored plural because that is what the existing rows hold
+     * (commit c7f7e0d) — the singular would leave those students matching no
+     * option.
+     */
+    private const STUDENT_STATES = [
+        'active', 'inactive', 'graduated', 'graduands',
+        'suspended', 'rejected', 'dropped', 'dismissed', 'deceased',
+    ];
+
+    /**
+     * POST /api/students/:id/status
+     *
+     * Change a student's state, recording why and (for a death) the document
+     * that proves it. Multipart, because the state, the reason and the
+     * certificate arrive together: doing it as upload-then-update would leave
+     * an orphaned file whenever the second call failed, or — worse — a student
+     * marked deceased with no evidence attached.
+     *
+     * Body (multipart/form-data):
+     *   student_state  required, one of self::STUDENT_STATES
+     *   reason         required for `rejected` and `dropped`
+     *   document       required for `deceased` (pdf/jpg/png/doc/docx)
+     */
+    public function updateStatus(Request $request, Response $response): never
+    {
+        $id      = (int) $request->param('id');
+        $student = $this->studentModel->find($id);
+        if (!$student) {
+            $this->error($response, 'Student not found', 404);
+        }
+
+        $newState = strtolower(trim((string) ($request->input('student_state') ?? '')));
+        if ($newState === '') {
+            $this->error($response, 'Validation failed', 422, ['student_state' => ['A status is required.']]);
+        }
+        if (!in_array($newState, self::STUDENT_STATES, true)) {
+            $this->error($response, 'Validation failed', 422, [
+                'student_state' => ['"' . $newState . '" is not a status the registry can set.'],
+            ]);
+        }
+
+        $reason = trim((string) ($request->input('reason') ?? ''));
+        if ($reason === '' && in_array($newState, StudentStatusChangeModel::REASON_REQUIRED, true)) {
+            $this->error($response, 'Validation failed', 422, [
+                'reason' => ['A reason is required when a student is marked "' . $newState . '".'],
+            ]);
+        }
+
+        // Supporting document — mandatory for a death, accepted for any state.
+        $file        = $request->file('document');
+        $needsDoc    = in_array($newState, StudentStatusChangeModel::DOCUMENT_REQUIRED, true);
+        $uploaded    = null;
+
+        if (!$file && $needsDoc) {
+            $this->error($response, 'Validation failed', 422, [
+                'document' => ['A supporting document is required when a student is marked deceased.'],
+            ]);
+        }
+
+        if ($file) {
+            $allowed = ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx'];
+            $ext     = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+            if (!in_array($ext, $allowed, true)) {
+                $this->error($response, 'Validation failed', 422, [
+                    'document' => ["Invalid file type '{$ext}'. Allowed: " . implode(', ', $allowed)],
+                ]);
+            }
+            try {
+                $uploaded = (new FileServerClient())->upload($file);
+            } catch (\RuntimeException $e) {
+                $this->error($response, $e->getMessage(), 422);
+            }
+        }
+
+        $previous = (string) ($student['student_state'] ?? '');
+        $actor    = (array) ($request->param('_auth_user') ?? []);
+        $actorId  = (int) ($actor['id'] ?? 0) ?: null;
+
+        // Write the trail first. If the UPDATE below fails we are left with a
+        // recorded intent and an unchanged student, which a registrar can see
+        // and retry — the reverse (state changed, no record of why) is the
+        // outcome this whole feature exists to prevent.
+        $this->statusModel->record([
+            'student_id'              => $id,
+            'previous_state'          => $previous !== '' ? $previous : null,
+            'new_state'               => $newState,
+            'reason'                  => $reason,
+            'document_file_server_id' => $uploaded ? (string) $uploaded['id'] : null,
+            'document_original_name'  => $uploaded['original_name'] ?? null,
+            'document_mime'           => $uploaded['mime'] ?? null,
+            'document_size'           => isset($uploaded['size']) ? (int) $uploaded['size'] : null,
+            'changed_by'              => $actorId,
+        ]);
+
+        $this->studentModel->update($id, ['student_state' => $newState]);
+
+        SystemLogService::log(
+            'UPDATE',
+            'STUDENTS',
+            "Student #{$id} status: " . ($previous !== '' ? $previous : 'unset') . " → {$newState}",
+            $id,
+            'student',
+            ['reason' => $reason ?: null, 'has_document' => $uploaded !== null]
+        );
+
+        $this->success($response, [
+            'student_state' => $newState,
+            'previous'      => $previous,
+        ], 'Student status updated.');
+    }
+
+    /**
+     * GET /api/students/:id/status-history
+     * The audit trail behind the current status.
+     */
+    public function statusHistory(Request $request, Response $response): never
+    {
+        $id = (int) $request->param('id');
+        if (!$this->studentModel->find($id)) {
+            $this->error($response, 'Student not found', 404);
+        }
+
+        $rows = $this->statusModel->forStudent($id);
+
+        // Never leak the storage handle to the client — it is a capability.
+        // The row exposes only whether a document exists; fetching it goes
+        // through the id-addressed download route, which re-checks permission.
+        foreach ($rows as &$r) {
+            $r['has_document'] = !empty($r['document_file_server_id']);
+            unset($r['document_file_server_id']);
+        }
+        unset($r);
+
+        $this->success($response, $rows, 'Status history fetched.');
+    }
+
+    /**
+     * GET /api/students/:id/status-history/:change_id/document
+     * Stream the supporting document behind one status change.
+     */
+    public function downloadStatusDocument(Request $request, Response $response): never
+    {
+        $id     = (int) $request->param('id');
+        $change = $this->statusModel->find((int) $request->param('change_id'));
+
+        // Check the change belongs to the student in the path, so a valid
+        // change id cannot be used to read another student's document.
+        if (!$change || (int) $change['student_id'] !== $id) {
+            $this->error($response, 'Status change not found.', 404);
+        }
+        if (empty($change['document_file_server_id'])) {
+            $this->error($response, 'No supporting document was attached to this change.', 404);
+        }
+
+        $this->streamFileServerDownload((string) $change['document_file_server_id'], $response);
     }
 
     /**
@@ -1555,16 +1741,16 @@ class StudentController extends BaseController
         $student = $this->resolveAuthStudent($request, $response);
         $body    = $request->body();
 
-        // Whitelist of self-editable columns. Anything else in the payload is
-        // silently dropped so a malicious client can't promote themselves to a
-        // different program / level / faculty.
-        $editable = [
-            'phone', 'marital_status',
-            // Residency — student-controlled location data. `address` and
-            // `residence_district` live on the application record and stay
-            // admin-only on purpose.
-            'province', 'district', 'sector', 'cell', 'village',
-        ];
+        // Tier 1 of the three-tier split (migration 147): the student's own
+        // contact and personal-circumstance details, saved immediately.
+        //
+        // Anything outside this list is silently dropped, so a malicious
+        // client cannot promote itself to a different programme / level /
+        // faculty, nor rename itself on a certificate. Identity fields
+        // (names, date of birth, national ID, parents) are tier 2 and go
+        // through requestProfileChange() with evidence; the institutional
+        // fields are tier 3 and are registry-only.
+        $editable = self::SELF_EDITABLE;
 
         $patch = [];
         foreach ($editable as $col) {
@@ -1576,7 +1762,10 @@ class StudentController extends BaseController
 
         $errors = ValidationHelper::validate($patch, [
             'phone'          => ['min:6', 'max:30'],
+            'email'          => ['email', 'max:50'],
             'marital_status' => ['in:single,married,divorced,widowed'],
+            'spouse'         => ['max:50'],
+            'disability'     => ['max:50'],
             'province'       => ['max:50'],
             'district'       => ['max:50'],
             'sector'         => ['max:100'],
@@ -1593,6 +1782,290 @@ class StudentController extends BaseController
 
         $fresh = $this->studentModel->find((int)$student['id']);
         $this->success($response, $fresh, 'Profile updated.');
+    }
+
+
+    /**
+     * Tier 1 — a student edits these themselves, saved immediately.
+     * Their own contact details and personal circumstances; a wrong value
+     * here inconveniences the student and nobody else.
+     */
+    private const SELF_EDITABLE = [
+        'phone', 'email', 'marital_status', 'spouse', 'disability',
+        // Residency. `address` and `residence_district` live on the
+        // application record and stay admin-only on purpose.
+        'province', 'district', 'sector', 'cell', 'village',
+    ];
+
+    /**
+     * Tier 2 — a student may PROPOSE these, with evidence, for the registry
+     * to approve. They print on transcripts, certificates and the ID card, so
+     * they cannot be self-served, but they are still the student's own
+     * identity and do need a correction path.
+     */
+    private const CHANGE_REQUESTABLE = [
+        'fname', 'lname', 'birthdate', 'gender', 'nationality', 'country',
+        'id_card', 'father', 'mother',
+    ];
+
+    /**
+     * Human labels for the reviewer's queue — `id_card` on its own does not
+     * tell a registrar what they are approving.
+     */
+    private const FIELD_LABELS = [
+        'fname'       => 'First name',
+        'lname'       => 'Surname',
+        'birthdate'   => 'Date of birth',
+        'gender'      => 'Gender',
+        'nationality' => 'Nationality',
+        'country'     => 'Country',
+        'id_card'     => 'National ID',
+        'father'      => "Father's name",
+        'mother'      => "Mother's name",
+    ];
+
+    /**
+     * POST /api/students/me/profile-change-requests
+     *
+     * Propose a change to one or more identity fields. Multipart, so the
+     * supporting document travels with the proposal rather than being uploaded
+     * separately and possibly orphaned.
+     *
+     * Body: fields[<name>] = value …, reason, document
+     */
+    public function requestProfileChange(Request $request, Response $response): never
+    {
+        $student   = $this->resolveAuthStudent($request, $response);
+        $studentId = (int) $student['id'];
+
+        // Accept either `fields[fname]=x` or a JSON blob in `fields`.
+        $raw = $request->input('fields');
+        if (is_string($raw)) {
+            $decoded = json_decode($raw, true);
+            $raw = is_array($decoded) ? $decoded : [];
+        }
+        $raw = is_array($raw) ? $raw : [];
+
+        $proposed = [];
+        $previous = [];
+        foreach (self::CHANGE_REQUESTABLE as $col) {
+            if (!array_key_exists($col, $raw)) {
+                continue;
+            }
+            $value = is_string($raw[$col]) ? trim($raw[$col]) : $raw[$col];
+            // Only carry fields that actually differ — a request that changes
+            // nothing wastes a reviewer's time.
+            if ((string) $value === (string) ($student[$col] ?? '')) {
+                continue;
+            }
+            $proposed[$col] = $value;
+            $previous[$col] = $student[$col] ?? null;
+        }
+
+        if ($proposed === []) {
+            $this->error($response, 'Validation failed', 422, [
+                'fields' => ['Change at least one field the registry can review.'],
+            ]);
+        }
+
+        $errors = ValidationHelper::validate($proposed, [
+            'fname'       => ['min:2', 'max:50'],
+            'lname'       => ['min:2', 'max:50'],
+            'gender'      => ['in:M,F,m,f,male,female,Male,Female'],
+            'nationality' => ['max:50'],
+            'country'     => ['max:50'],
+            'id_card'     => ['max:50'],
+            'father'      => ['max:50'],
+            'mother'      => ['max:50'],
+        ]);
+        if (!empty($errors)) {
+            $this->error($response, 'Validation failed', 422, $errors);
+        }
+
+        // One open request at a time. Two pending requests touching the same
+        // field would let whichever the registry approved second silently undo
+        // the first.
+        $open = $this->studentModel->db()->fetchOne(
+            "SELECT id FROM `student_profile_change_requests`
+              WHERE student_id = ? AND status = 'pending' LIMIT 1",
+            [$studentId]
+        );
+        if ($open) {
+            $this->error($response, 'You already have a change request awaiting review. Wait for it to be decided before sending another.', 409);
+        }
+
+        $uploaded = null;
+        $file     = $request->file('document');
+        if ($file) {
+            $allowed = ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx'];
+            $ext     = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+            if (!in_array($ext, $allowed, true)) {
+                $this->error($response, 'Validation failed', 422, [
+                    'document' => ["Invalid file type '{$ext}'. Allowed: " . implode(', ', $allowed)],
+                ]);
+            }
+            try {
+                $uploaded = (new FileServerClient())->upload($file);
+            } catch (\RuntimeException $e) {
+                $this->error($response, $e->getMessage(), 422);
+            }
+        }
+
+        $this->studentModel->db()->execute(
+            "INSERT INTO `student_profile_change_requests`
+               (student_id, proposed, previous, reason,
+                document_file_server_id, document_original_name,
+                document_mime, document_size)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                $studentId,
+                json_encode($proposed, JSON_UNESCAPED_UNICODE),
+                json_encode($previous, JSON_UNESCAPED_UNICODE),
+                trim((string) ($request->input('reason') ?? '')) ?: null,
+                $uploaded ? (string) $uploaded['id'] : null,
+                $uploaded['original_name'] ?? null,
+                $uploaded['mime'] ?? null,
+                isset($uploaded['size']) ? (int) $uploaded['size'] : null,
+            ]
+        );
+
+        $id = (int) $this->studentModel->db()->lastInsertId();
+        SystemLogService::log('CREATE', 'STUDENTS', "Student #{$studentId} requested a profile change (#{$id}).", $id, 'student_profile_change_request');
+
+        $this->success($response, ['id' => $id, 'fields' => array_keys($proposed)],
+            'Change request sent to the registry.', 201);
+    }
+
+    /** GET /api/students/me/profile-change-requests — the student's own history. */
+    public function myProfileChangeRequests(Request $request, Response $response): never
+    {
+        $student = $this->resolveAuthStudent($request, $response);
+        $rows = $this->studentModel->db()->fetchAll(
+            "SELECT r.*, u.full_name AS reviewed_by_name
+               FROM `student_profile_change_requests` r
+               LEFT JOIN `users` u ON u.id = r.reviewed_by
+              WHERE r.student_id = ?
+              ORDER BY r.created_at DESC, r.id DESC",
+            [(int) $student['id']]
+        );
+        $this->success($response, array_map([self::class, 'decorateChangeRequest'], $rows), 'Change requests fetched.');
+    }
+
+    /** GET /api/students/profile-change-requests — the registry's queue. */
+    public function listProfileChangeRequests(Request $request, Response $response): never
+    {
+        $status = (string) ($request->query('status') ?? 'pending');
+        $args   = [];
+        $where  = '1=1';
+        if (in_array($status, ['pending', 'approved', 'rejected'], true)) {
+            $where  = 'r.status = ?';
+            $args[] = $status;
+        }
+
+        $rows = $this->studentModel->db()->fetchAll(
+            "SELECT r.*, u.full_name AS reviewed_by_name,
+                    s.regnumber, s.fname AS student_fname, s.lname AS student_lname
+               FROM `student_profile_change_requests` r
+               LEFT JOIN `users` u ON u.id = r.reviewed_by
+               LEFT JOIN `student` s ON s.id = r.student_id
+              WHERE {$where}
+              ORDER BY r.created_at ASC, r.id ASC",
+            $args
+        );
+        $this->success($response, array_map([self::class, 'decorateChangeRequest'], $rows), 'Change requests fetched.');
+    }
+
+    /**
+     * POST /api/students/profile-change-requests/:id/decide
+     * Body: { decision: approved|rejected, note? }
+     *
+     * Approval applies the proposed values. Re-whitelisted at this point
+     * rather than trusted from the stored JSON, so a row written by any other
+     * means still cannot reach a field the policy does not allow.
+     */
+    public function decideProfileChangeRequest(Request $request, Response $response): never
+    {
+        $id  = (int) $request->param('id');
+        $row = $this->studentModel->db()->fetchOne(
+            "SELECT * FROM `student_profile_change_requests` WHERE id = ? LIMIT 1", [$id]
+        );
+        if (!$row)                       $this->error($response, 'Change request not found.', 404);
+        if ($row['status'] !== 'pending') $this->error($response, 'This request has already been decided.', 409);
+
+        $body     = $request->body();
+        $decision = strtolower(trim((string) ($body['decision'] ?? '')));
+        if (!in_array($decision, ['approved', 'rejected'], true)) {
+            $this->error($response, 'Validation failed', 422, ['decision' => ['Decision must be approved or rejected.']]);
+        }
+
+        $actor   = (array) ($request->param('_auth_user') ?? []);
+        $actorId = (int) ($actor['id'] ?? 0) ?: null;
+
+        if ($decision === 'approved') {
+            $proposed = json_decode((string) $row['proposed'], true);
+            $patch    = [];
+            foreach (self::CHANGE_REQUESTABLE as $col) {
+                if (is_array($proposed) && array_key_exists($col, $proposed)) {
+                    $patch[$col] = $proposed[$col];
+                }
+            }
+            if ($patch !== []) {
+                $this->studentModel->update((int) $row['student_id'], $patch);
+            }
+        }
+
+        $this->studentModel->db()->execute(
+            "UPDATE `student_profile_change_requests`
+                SET status = ?, review_note = ?, reviewed_by = ?, reviewed_at = NOW()
+              WHERE id = ?",
+            [$decision, trim((string) ($body['note'] ?? '')) ?: null, $actorId, $id]
+        );
+
+        SystemLogService::log(
+            $decision === 'approved' ? 'APPROVE' : 'REJECT',
+            'STUDENTS',
+            "Profile change request #{$id} {$decision}.",
+            $id,
+            'student_profile_change_request'
+        );
+
+        $this->success($response, ['status' => $decision], "Change request {$decision}.");
+    }
+
+    /** GET /api/students/profile-change-requests/:id/document */
+    public function downloadProfileChangeDocument(Request $request, Response $response): never
+    {
+        $row = $this->studentModel->db()->fetchOne(
+            "SELECT document_file_server_id FROM `student_profile_change_requests` WHERE id = ? LIMIT 1",
+            [(int) $request->param('id')]
+        );
+        if (!$row || empty($row['document_file_server_id'])) {
+            $this->error($response, 'No supporting document was attached to this request.', 404);
+        }
+        $this->streamFileServerDownload((string) $row['document_file_server_id'], $response);
+    }
+
+    /** Decode the JSON payloads and hide the storage handle. */
+    private static function decorateChangeRequest(array $r): array
+    {
+        $proposed = json_decode((string) ($r['proposed'] ?? '{}'), true) ?: [];
+        $previous = json_decode((string) ($r['previous'] ?? '{}'), true) ?: [];
+
+        $r['proposed'] = $proposed;
+        $r['previous'] = $previous;
+        // A reviewer needs to read the change, not a column name.
+        $r['changes'] = array_map(
+            fn ($col) => [
+                'field' => $col,
+                'label' => self::FIELD_LABELS[$col] ?? $col,
+                'from'  => $previous[$col] ?? null,
+                'to'    => $proposed[$col] ?? null,
+            ],
+            array_keys($proposed)
+        );
+        $r['has_document'] = !empty($r['document_file_server_id']);
+        unset($r['document_file_server_id']);
+        return $r;
     }
 
     /**
