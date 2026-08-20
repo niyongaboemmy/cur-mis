@@ -1,3 +1,4 @@
+// Re-trigger frontend deployment
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
@@ -64,7 +65,6 @@ export default function StudentBillingPage() {
 
   const [facultyId, setFacultyId] = useState<string | number>("");
   const [deptId, setDeptId] = useState<string | number>("");
-  const [optionId, setOptionId] = useState<string | number>("");
   const [keyword, setKeyword] = useState("");
   const [debouncedKeyword, setDebouncedKeyword] = useState("");
   const [page, setPage] = useState(1);
@@ -134,20 +134,9 @@ export default function StudentBillingPage() {
   });
   const departments = departmentsQ.data?.data?.data ?? [];
 
-  const optionsQ = useQuery({
-    queryKey: ["options", deptId],
-    queryFn: () =>
-      api.get<any>(
-        "/api/academics-management/options",
-        deptId ? { dep_id: deptId } : {},
-      ),
-  });
-  const options = optionsQ.data?.data?.data ?? [];
-
   // State for selecting students for bulk generation
   const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set());
   const [selectAll, setSelectAll] = useState(false);
-  const [selectAllMatching, setSelectAllMatching] = useState(false);
 
   const summaryQ = useQuery({
     queryKey: [
@@ -157,7 +146,6 @@ export default function StudentBillingPage() {
       semester,
       facultyId,
       deptId,
-      optionId,
       debouncedKeyword,
       page,
     ],
@@ -167,7 +155,6 @@ export default function StudentBillingPage() {
         semester: semester ? Number(semester) : undefined,
         faculty_id: facultyId ? Number(facultyId) : undefined,
         department_id: deptId ? Number(deptId) : undefined,
-        option_id: optionId ? Number(optionId) : undefined,
         keyword: debouncedKeyword,
         page,
         per_page: 50,
@@ -230,7 +217,6 @@ export default function StudentBillingPage() {
       toast.success(`Bulk generation complete! ${parts}`, { duration: 6000 });
       setSelectedStudents(new Set());
       setSelectAll(false);
-      setSelectAllMatching(false);
       summaryQ.refetch();
     },
     onError: (e: any) =>
@@ -414,21 +400,10 @@ export default function StudentBillingPage() {
             <SearchableSelect
               options={departments.map((d: any) => ({ value: d.dep_id, label: d.dep_name }))}
               value={deptId}
-              onChange={(v) => { setDeptId(v); setOptionId(""); setPage(1) }}
+              onChange={(v) => { setDeptId(v); setPage(1) }}
               placeholder="All departments"
               allLabel="All departments"
               disabled={!facultyId && departments.length === 0}
-            />
-          </div>
-          <div>
-            <label className="block text-[10px] font-bold uppercase tracking-wider text-ink-400 mb-1.5">Option</label>
-            <SearchableSelect
-              options={options.map((o: any) => ({ value: o.opt_id, label: o.opt_name }))}
-              value={optionId}
-              onChange={(v) => { setOptionId(v); setPage(1) }}
-              placeholder="All options"
-              allLabel="All options"
-              disabled={!deptId && options.length === 0}
             />
           </div>
           <div>
@@ -451,76 +426,33 @@ export default function StudentBillingPage() {
         </div>
 
         {/* Bulk Generation Control */}
-        {yearId && (selectedStudents.size > 0 || selectAllMatching) && (
-          <div className="card p-4 bg-gradient-to-r from-brand/5 to-blue-500/5 border border-brand/20 space-y-3">
-            <div className="flex items-center justify-between gap-4 flex-wrap">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-brand/10 flex items-center justify-center">
-                  <TrendingUp className="w-5 h-5 text-brand" />
-                </div>
-                <div>
-                  <p className="font-semibold text-sm text-ink-900 dark:text-white">Generate Invoices</p>
-                  <p className="text-[12px] text-ink-500">
-                    {selectAllMatching
-                      ? `Create TUITION and other fee invoices for ALL ${totalItems} matching student${totalItems !== 1 ? 's' : ''}`
-                      : `Create TUITION and other fee invoices for ${selectedStudents.size} selected student${selectedStudents.size !== 1 ? 's' : ''}`
-                    }
-                  </p>
-                </div>
+        {yearId && selectedStudents.size > 0 && (
+          <div className="card p-4 bg-gradient-to-r from-brand/5 to-blue-500/5 border border-brand/20 flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-brand/10 flex items-center justify-center">
+                <TrendingUp className="w-5 h-5 text-brand" />
               </div>
-              <button
-                className="btn-primary btn-sm flex items-center gap-1.5 px-4 shrink-0"
-                onClick={() => {
-                  const count = selectAllMatching ? totalItems : selectedStudents.size;
-                  if (confirm(`Generate invoices for ${count} student${count !== 1 ? 's' : ''}? This may take a moment.`)) {
-                    if (selectAllMatching) {
-                      bulkMutation.mutate(students.map(s => s.regnumber))
-                    } else {
-                      bulkMutation.mutate(Array.from(selectedStudents))
-                    }
-                  }
-                }}
-                disabled={bulkMutation.isPending}
-              >
-                {bulkMutation.isPending
-                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  : <TrendingUp className="w-3.5 h-3.5" />}
-                {bulkMutation.isPending ? "Generating..." : "Generate Now"}
-              </button>
+              <div>
+                <p className="font-semibold text-sm text-ink-900 dark:text-white">Generate Invoices</p>
+                <p className="text-[12px] text-ink-500">
+                  Create TUITION and other fee invoices for {selectedStudents.size} selected student{selectedStudents.size !== 1 ? 's' : ''}
+                </p>
+              </div>
             </div>
-
-            {/* Quick action buttons */}
-            <div className="flex gap-2 flex-wrap">
-              {!selectAllMatching && (
-                <button
-                  className="text-xs px-3 py-1.5 rounded-lg border border-ink-200 dark:border-ink-700 bg-white dark:bg-ink-800 text-ink-700 dark:text-ink-300 hover:bg-ink-50 dark:hover:bg-ink-700 transition-colors"
-                  onClick={() => setSelectAllMatching(true)}
-                >
-                  Select All {totalItems} Matching
-                </button>
-              )}
-              {selectAllMatching && (
-                <button
-                  className="text-xs px-3 py-1.5 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
-                  onClick={() => {
-                    setSelectAllMatching(false);
-                    setSelectedStudents(new Set());
-                  }}
-                >
-                  Deselect All
-                </button>
-              )}
-              <button
-                className="text-xs px-3 py-1.5 rounded-lg border border-ink-200 dark:border-ink-700 bg-white dark:bg-ink-800 text-ink-700 dark:text-ink-300 hover:bg-ink-50 dark:hover:bg-ink-700 transition-colors"
-                onClick={() => {
-                  setSelectedStudents(new Set());
-                  setSelectAllMatching(false);
-                  setSelectAll(false);
-                }}
-              >
-                Clear Selection
-              </button>
-            </div>
+            <button
+              className="btn-primary btn-sm flex items-center gap-1.5 px-4 shrink-0"
+              onClick={() => {
+                if (confirm(`Generate invoices for ${selectedStudents.size} student${selectedStudents.size !== 1 ? 's' : ''}? This may take a moment.`)) {
+                  bulkMutation.mutate(Array.from(selectedStudents))
+                }
+              }}
+              disabled={bulkMutation.isPending}
+            >
+              {bulkMutation.isPending
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                : <TrendingUp className="w-3.5 h-3.5" />}
+              {bulkMutation.isPending ? "Generating..." : "Generate Now"}
+            </button>
           </div>
         )}
       </div>
@@ -601,14 +533,13 @@ export default function StudentBillingPage() {
                     />
                   </th>
                   {[
-                    { label: "Student",        align: "text-left",  cls: "" },
-                    { label: "Department",     align: "text-left",  cls: "hidden lg:table-cell" },
-                    { label: "Opening Balance", align: "text-right", cls: "" },
-                    { label: "Invoiced",       align: "text-right", cls: "" },
-                    { label: "Paid",           align: "text-right", cls: "" },
-                    { label: "Bursary",        align: "text-right", cls: "" },
-                    { label: "Remaining",      align: "text-right", cls: "" },
-                    { label: "",               align: "text-center", cls: "w-12" },
+                    { label: "Student",      align: "text-left",  cls: "" },
+                    { label: "Department",   align: "text-left",  cls: "hidden lg:table-cell" },
+                    { label: "Invoiced",     align: "text-right", cls: "" },
+                    { label: "Paid",         align: "text-right", cls: "" },
+                    { label: "Bursary",      align: "text-right", cls: "" },
+                    { label: "Remaining",    align: "text-right", cls: "" },
+                    { label: "",             align: "text-center",cls: "w-12" },
                   ].map((h, i) => (
                     <th key={i} className={`px-4 py-3 ${h.align} text-[10px] font-bold uppercase tracking-wider text-ink-400 ${h.cls}`}>
                       {h.label}
@@ -664,15 +595,6 @@ export default function StudentBillingPage() {
                       <td className="px-4 py-3 hidden lg:table-cell max-w-[160px]">
                         <p className="text-xs font-medium text-ink-700 dark:text-ink-200 truncate">{s.department}</p>
                         <p className="text-[10px] text-ink-400 truncate uppercase tracking-tight mt-0.5">{s.faculty}</p>
-                      </td>
-
-                      {/* Opening Balance */}
-                      <td className="px-4 py-3 text-right">
-                        {Number(s.opening_balance) > 0 ? (
-                          <span className="font-mono text-xs font-bold text-orange-600">{formatRWF(s.opening_balance)}</span>
-                        ) : (
-                          <span className="text-ink-200 dark:text-ink-600 text-xs">—</span>
-                        )}
                       </td>
 
                       {/* Invoiced */}
