@@ -2546,4 +2546,31 @@ class FeeController extends BaseController
     {
         $this->success($response, [], 'Application fee reconciliation report.');
     }
+
+    /**
+     * GET /api/finance/billing/intake-years
+     * Fetch unique intake years from student table for billing year selection
+     */
+    public function getIntakeYears(Request $request, Response $response): never
+    {
+        try {
+            $years = $this->db->fetchAll(
+                "SELECT DISTINCT s.intake AS year, ay.id as academic_year_id
+                 FROM `student` s
+                 LEFT JOIN `academic_years` ay ON ay.label = s.intake
+                 WHERE s.intake IS NOT NULL AND s.intake != ''
+                 ORDER BY s.intake DESC",
+                []
+            );
+
+            $formatted = array_map(fn($row) => [
+                'id' => $row['academic_year_id'] ?? $row['year'],
+                'label' => $row['year']
+            ], $years);
+
+            $this->success($response, $formatted, 'Intake years retrieved.');
+        } catch (\Exception $e) {
+            $this->error($response, 'Failed to fetch intake years: ' . $e->getMessage(), 500);
+        }
+    }
 }

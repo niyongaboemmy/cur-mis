@@ -62,6 +62,7 @@ $router->group('/api/finance', function ($router) {
         $r->get('/billing/summary',          [FeeController::class, 'listBillingSummary']);
         $r->get('/billing/all-students',     [FeeController::class, 'listAllStudentsWithStatus']);
         $r->get('/billing/export',           [FeeController::class, 'exportBillingSummary']);
+        $r->get('/billing/intake-years',     [FeeController::class, 'getIntakeYears']);
     }, [new MaybePermissionMiddleware([
         Permissions::VIEW_FINANCE,
         Permissions::MANAGE_FINANCE,

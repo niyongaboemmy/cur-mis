@@ -105,10 +105,10 @@ export default function StudentBillingPage() {
   // ─── Data Fetching ─────────────────────────────────────────────────────────
 
   const yearsQ = useQuery({
-    queryKey: ["academic-years"],
-    queryFn: () => academicService.listYears(),
+    queryKey: ["finance", "billing", "intake-years"],
+    queryFn: () => api.get<any>("/api/finance/billing/intake-years"),
   });
-  const years = yearsQ.data?.data ?? [];
+  const years = yearsQ.data?.data?.data ?? [];
 
   const termsQ = useQuery({
     queryKey: ["academic-terms", yearId],
