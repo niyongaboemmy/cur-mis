@@ -533,13 +533,14 @@ export default function StudentBillingPage() {
                     />
                   </th>
                   {[
-                    { label: "Student",      align: "text-left",  cls: "" },
-                    { label: "Department",   align: "text-left",  cls: "hidden lg:table-cell" },
-                    { label: "Invoiced",     align: "text-right", cls: "" },
-                    { label: "Paid",         align: "text-right", cls: "" },
-                    { label: "Bursary",      align: "text-right", cls: "" },
-                    { label: "Remaining",    align: "text-right", cls: "" },
-                    { label: "",             align: "text-center",cls: "w-12" },
+                    { label: "Student",         align: "text-left",  cls: "" },
+                    { label: "Department",      align: "text-left",  cls: "hidden lg:table-cell" },
+                    { label: "Opening Balance", align: "text-right", cls: "" },
+                    { label: "Invoiced",        align: "text-right", cls: "" },
+                    { label: "Paid",            align: "text-right", cls: "" },
+                    { label: "Bursary",         align: "text-right", cls: "" },
+                    { label: "Remaining",       align: "text-right", cls: "" },
+                    { label: "",                align: "text-center",cls: "w-12" },
                   ].map((h, i) => (
                     <th key={i} className={`px-4 py-3 ${h.align} text-[10px] font-bold uppercase tracking-wider text-ink-400 ${h.cls}`}>
                       {h.label}
@@ -595,6 +596,15 @@ export default function StudentBillingPage() {
                       <td className="px-4 py-3 hidden lg:table-cell max-w-[160px]">
                         <p className="text-xs font-medium text-ink-700 dark:text-ink-200 truncate">{s.department}</p>
                         <p className="text-[10px] text-ink-400 truncate uppercase tracking-tight mt-0.5">{s.faculty}</p>
+                      </td>
+
+                      {/* Opening Balance */}
+                      <td className="px-4 py-3 text-right">
+                        {Number(s.opening_balance) > 0 ? (
+                          <span className="font-mono text-xs font-bold text-orange-600 dark:text-orange-400">{formatRWF(Number(s.opening_balance))}</span>
+                        ) : (
+                          <span className="text-ink-200 dark:text-ink-600 text-xs">—</span>
+                        )}
                       </td>
 
                       {/* Invoiced */}
