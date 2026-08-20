@@ -670,6 +670,7 @@ class FeeService
         // Total count
         $totalSql = "SELECT COUNT(*) AS cnt FROM `student` s WHERE {$whereSql}";
         $whereBindings = [];
+        if ($intakeYear) { $whereBindings[] = $intakeYear; }
         if ($faculty) { $whereBindings[] = $faculty; }
         if ($dept)    { $whereBindings[] = $dept; }
         if ($option)  { $whereBindings[] = $option; }
@@ -701,7 +702,7 @@ class FeeService
                  ORDER BY s.fname ASC
                  LIMIT ? OFFSET ?";
 
-        $dataBindings = array_merge([$yearId], $sumsBindings, [$openingYearId], $whereBindings, [$perPage, $offset]);
+        $dataBindings = array_merge([$openingYearId], $sumsBindings, $whereBindings, [$perPage, $offset]);
         $results = $this->db->fetchAll($dataSql, $dataBindings);
 
         return [
