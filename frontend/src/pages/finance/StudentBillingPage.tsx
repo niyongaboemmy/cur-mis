@@ -147,6 +147,7 @@ export default function StudentBillingPage() {
   // State for selecting students for bulk generation
   const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set());
   const [selectAll, setSelectAll] = useState(false);
+  const [selectAllMatching, setSelectAllMatching] = useState(false);
 
   const summaryQ = useQuery({
     queryKey: [
@@ -229,6 +230,7 @@ export default function StudentBillingPage() {
       toast.success(`Bulk generation complete! ${parts}`, { duration: 6000 });
       setSelectedStudents(new Set());
       setSelectAll(false);
+      setSelectAllMatching(false);
       summaryQ.refetch();
     },
     onError: (e: any) =>
@@ -449,33 +451,76 @@ export default function StudentBillingPage() {
         </div>
 
         {/* Bulk Generation Control */}
-        {yearId && selectedStudents.size > 0 && (
-          <div className="card p-4 bg-gradient-to-r from-brand/5 to-blue-500/5 border border-brand/20 flex items-center justify-between gap-4 flex-wrap">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-brand/10 flex items-center justify-center">
-                <TrendingUp className="w-5 h-5 text-brand" />
+        {yearId && (selectedStudents.size > 0 || selectAllMatching) && (
+          <div className="card p-4 bg-gradient-to-r from-brand/5 to-blue-500/5 border border-brand/20 space-y-3">
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-brand/10 flex items-center justify-center">
+                  <TrendingUp className="w-5 h-5 text-brand" />
+                </div>
+                <div>
+                  <p className="font-semibold text-sm text-ink-900 dark:text-white">Generate Invoices</p>
+                  <p className="text-[12px] text-ink-500">
+                    {selectAllMatching
+                      ? `Create TUITION and other fee invoices for ALL ${totalItems} matching student${totalItems !== 1 ? 's' : ''}`
+                      : `Create TUITION and other fee invoices for ${selectedStudents.size} selected student${selectedStudents.size !== 1 ? 's' : ''}`
+                    }
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="font-semibold text-sm text-ink-900 dark:text-white">Generate Invoices</p>
-                <p className="text-[12px] text-ink-500">
-                  Create TUITION and other fee invoices for {selectedStudents.size} selected student{selectedStudents.size !== 1 ? 's' : ''}
-                </p>
-              </div>
+              <button
+                className="btn-primary btn-sm flex items-center gap-1.5 px-4 shrink-0"
+                onClick={() => {
+                  const count = selectAllMatching ? totalItems : selectedStudents.size;
+                  if (confirm(`Generate invoices for ${count} student${count !== 1 ? 's' : ''}? This may take a moment.`)) {
+                    if (selectAllMatching) {
+                      bulkMutation.mutate(students.map(s => s.regnumber))
+                    } else {
+                      bulkMutation.mutate(Array.from(selectedStudents))
+                    }
+                  }
+                }}
+                disabled={bulkMutation.isPending}
+              >
+                {bulkMutation.isPending
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  : <TrendingUp className="w-3.5 h-3.5" />}
+                {bulkMutation.isPending ? "Generating..." : "Generate Now"}
+              </button>
             </div>
-            <button
-              className="btn-primary btn-sm flex items-center gap-1.5 px-4 shrink-0"
-              onClick={() => {
-                if (confirm(`Generate invoices for ${selectedStudents.size} student${selectedStudents.size !== 1 ? 's' : ''}? This may take a moment.`)) {
-                  bulkMutation.mutate(Array.from(selectedStudents))
-                }
-              }}
-              disabled={bulkMutation.isPending}
-            >
-              {bulkMutation.isPending
-                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                : <TrendingUp className="w-3.5 h-3.5" />}
-              {bulkMutation.isPending ? "Generating..." : "Generate Now"}
-            </button>
+
+            {/* Quick action buttons */}
+            <div className="flex gap-2 flex-wrap">
+              {!selectAllMatching && (
+                <button
+                  className="text-xs px-3 py-1.5 rounded-lg border border-ink-200 dark:border-ink-700 bg-white dark:bg-ink-800 text-ink-700 dark:text-ink-300 hover:bg-ink-50 dark:hover:bg-ink-700 transition-colors"
+                  onClick={() => setSelectAllMatching(true)}
+                >
+                  Select All {totalItems} Matching
+                </button>
+              )}
+              {selectAllMatching && (
+                <button
+                  className="text-xs px-3 py-1.5 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
+                  onClick={() => {
+                    setSelectAllMatching(false);
+                    setSelectedStudents(new Set());
+                  }}
+                >
+                  Deselect All
+                </button>
+              )}
+              <button
+                className="text-xs px-3 py-1.5 rounded-lg border border-ink-200 dark:border-ink-700 bg-white dark:bg-ink-800 text-ink-700 dark:text-ink-300 hover:bg-ink-50 dark:hover:bg-ink-700 transition-colors"
+                onClick={() => {
+                  setSelectedStudents(new Set());
+                  setSelectAllMatching(false);
+                  setSelectAll(false);
+                }}
+              >
+                Clear Selection
+              </button>
+            </div>
           </div>
         )}
       </div>
