@@ -1,6 +1,7 @@
 name: Deploy — Backend (PHP API)
 
 # Method: cPanel UAPI (port 2083) upload + one-time PHP helpers for extraction.
+# Fixed: Corrected cPanel URL to cur.ac.rw:2083
 #
 # Two-zip strategy (fast updates):
 #   backend-src.zip   — source code only (no vendor/), ~300 KB, deployed every push

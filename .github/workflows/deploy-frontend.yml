@@ -1,6 +1,7 @@
 name: Deploy — Frontend (React SPA)
 
 # Target: /home/curac/public_html/umis/
+# Fixed: Updated Node.js to v24, increased timeout
 # URL:    https://cur.ac.rw/umis/
 # Method: cPanel UAPI (port 2083) upload + one-time PHP helper for extraction.
 #
