@@ -312,6 +312,13 @@ class FeeService
             throw new \InvalidArgumentException("Academic Year is required for billing summary.");
         }
 
+        // Get previous year ID for opening_balance (e.g., if viewing 2025/2026, fetch opening_balance from 2024/2025)
+        $prevYearId = $this->db->fetchOne(
+            "SELECT id FROM `academic_years` WHERE id < ? ORDER BY id DESC LIMIT 1",
+            [$yearId]
+        );
+        $openingYearId = $prevYearId ? (int)$prevYearId['id'] : $yearId;
+
         $where = ["s.student_state = 'active'"];
         $bindings = [$yearId]; // For the left join subquery
 
@@ -401,7 +408,7 @@ class FeeService
         $mainBindings = array_merge(
             [$yearId, $semester],
             [$yearId],
-            [$yearId],
+            [$openingYearId],
             [$yearId],
             ($semester ? [$semester] : []),
             $whereBindings
@@ -449,7 +456,7 @@ class FeeService
                     NULLIF(CAST(s.department AS UNSIGNED), 0),
                     (SELECT dep_id FROM `departements` WHERE dep_acronym = s.department LIMIT 1)
                 )
-                LEFT JOIN `student_opening_balance` sob ON sob.student_id = s.regnumber AND sob.academic_year_id = (SELECT id FROM `academic_years` WHERE id < ? ORDER BY id DESC LIMIT 1)
+                LEFT JOIN `student_opening_balance` sob ON sob.student_id = s.regnumber AND sob.academic_year_id = ?
                 LEFT JOIN (
                     SELECT
                         student_id,
@@ -534,6 +541,13 @@ class FeeService
             throw new \InvalidArgumentException("Academic Year is required.");
         }
 
+        // Get previous year ID for opening_balance
+        $prevYearId = $this->db->fetchOne(
+            "SELECT id FROM `academic_years` WHERE id < ? ORDER BY id DESC LIMIT 1",
+            [$yearId]
+        );
+        $openingYearId = $prevYearId ? (int)$prevYearId['id'] : $yearId;
+
         $where = ["s.student_state = 'active'"];
         $bindings = [$yearId]; // For the left join subquery
 
@@ -608,13 +622,13 @@ class FeeService
                     (COALESCE(sob.opening_balance, 0) + COALESCE(sums.total_due, 0) - COALESCE(sums.total_paid, 0) - COALESCE(sums.total_bursary, 0)) AS balance,
                     IF(COALESCE(sums.total_due, 0) > 0, 1, 0) AS has_invoices
                  FROM `student` s
-                 LEFT JOIN `student_opening_balance` sob ON sob.student_id = s.regnumber AND sob.academic_year_id = (SELECT id FROM `academic_years` WHERE id < ? ORDER BY id DESC LIMIT 1)
+                 LEFT JOIN `student_opening_balance` sob ON sob.student_id = s.regnumber AND sob.academic_year_id = ?
                  {$sumsJoin}
                  WHERE {$whereSql}
                  ORDER BY s.fname ASC
                  LIMIT ? OFFSET ?";
 
-        $dataBindings = array_merge([$yearId], $sumsBindings, [$yearId], $whereBindings, [$perPage, $offset]);
+        $dataBindings = array_merge([$yearId], $sumsBindings, [$openingYearId], $whereBindings, [$perPage, $offset]);
         $results = $this->db->fetchAll($dataSql, $dataBindings);
 
         return [
