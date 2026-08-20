@@ -87,7 +87,6 @@ export default function StudentBillingPage() {
 
       return api.get<any>("/api/finance/billing/all-students", params);
     },
-    enabled: !!academicYear,
   });
 
   const paginated = studentsQ.data?.data as any;
