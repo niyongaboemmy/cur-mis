@@ -2555,18 +2555,29 @@ class FeeController extends BaseController
     {
         try {
             $years = $this->db->fetchAll(
-                "SELECT DISTINCT s.intake AS year, ay.id as academic_year_id
+                "SELECT DISTINCT s.intake AS year
                  FROM `student` s
-                 LEFT JOIN `academic_years` ay ON ay.label = s.intake
                  WHERE s.intake IS NOT NULL AND s.intake != ''
                  ORDER BY s.intake DESC",
                 []
             );
 
-            $formatted = array_map(fn($row) => [
-                'id' => $row['academic_year_id'] ?? $row['year'],
-                'label' => $row['year']
-            ], $years);
+            $formatted = array_map(function($row) {
+                $intake = $row['year'];
+                // Normalize format: convert "2023-2024" to "2023/2024" for matching
+                $normalized = str_replace('-', '/', $intake);
+
+                // Try to find matching academic year
+                $ay = $this->db->fetchOne(
+                    "SELECT id FROM `academic_years` WHERE label = ? OR label = ? LIMIT 1",
+                    [$normalized, $intake]
+                );
+
+                return [
+                    'id' => $ay ? (int)$ay['id'] : $intake,
+                    'label' => $intake
+                ];
+            }, $years);
 
             $this->success($response, $formatted, 'Intake years retrieved.');
         } catch (\Exception $e) {

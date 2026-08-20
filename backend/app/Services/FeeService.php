@@ -322,9 +322,12 @@ class FeeService
 
         // Get numeric year ID if intake year provided
         if ($intakeYear) {
+            // Normalize format: convert "2023-2024" to "2023/2024" for matching
+            $normalized = str_replace('-', '/', $intakeYear);
+
             $yearRecord = $this->db->fetchOne(
-                "SELECT id FROM `academic_years` WHERE label = ? LIMIT 1",
-                [$intakeYear]
+                "SELECT id FROM `academic_years` WHERE label = ? OR label = ? LIMIT 1",
+                [$normalized, $intakeYear]
             );
             $yearId = $yearRecord ? (int)$yearRecord['id'] : null;
             if (!$yearId) {
