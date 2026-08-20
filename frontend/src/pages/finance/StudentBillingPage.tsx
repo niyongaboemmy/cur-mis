@@ -64,6 +64,7 @@ export default function StudentBillingPage() {
 
   const [facultyId, setFacultyId] = useState<string | number>("");
   const [deptId, setDeptId] = useState<string | number>("");
+  const [optionId, setOptionId] = useState<string | number>("");
   const [keyword, setKeyword] = useState("");
   const [debouncedKeyword, setDebouncedKeyword] = useState("");
   const [page, setPage] = useState(1);
@@ -133,6 +134,16 @@ export default function StudentBillingPage() {
   });
   const departments = departmentsQ.data?.data?.data ?? [];
 
+  const optionsQ = useQuery({
+    queryKey: ["options", deptId],
+    queryFn: () =>
+      api.get<any>(
+        "/api/academics-management/options",
+        deptId ? { dep_id: deptId } : {},
+      ),
+  });
+  const options = optionsQ.data?.data?.data ?? [];
+
   // State for selecting students for bulk generation
   const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set());
   const [selectAll, setSelectAll] = useState(false);
@@ -145,6 +156,7 @@ export default function StudentBillingPage() {
       semester,
       facultyId,
       deptId,
+      optionId,
       debouncedKeyword,
       page,
     ],
@@ -154,6 +166,7 @@ export default function StudentBillingPage() {
         semester: semester ? Number(semester) : undefined,
         faculty_id: facultyId ? Number(facultyId) : undefined,
         department_id: deptId ? Number(deptId) : undefined,
+        option_id: optionId ? Number(optionId) : undefined,
         keyword: debouncedKeyword,
         page,
         per_page: 50,
@@ -399,10 +412,21 @@ export default function StudentBillingPage() {
             <SearchableSelect
               options={departments.map((d: any) => ({ value: d.dep_id, label: d.dep_name }))}
               value={deptId}
-              onChange={(v) => { setDeptId(v); setPage(1) }}
+              onChange={(v) => { setDeptId(v); setOptionId(""); setPage(1) }}
               placeholder="All departments"
               allLabel="All departments"
               disabled={!facultyId && departments.length === 0}
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-ink-400 mb-1.5">Option</label>
+            <SearchableSelect
+              options={options.map((o: any) => ({ value: o.opt_id, label: o.opt_name }))}
+              value={optionId}
+              onChange={(v) => { setOptionId(v); setPage(1) }}
+              placeholder="All options"
+              allLabel="All options"
+              disabled={!deptId && options.length === 0}
             />
           </div>
           <div>
@@ -532,13 +556,14 @@ export default function StudentBillingPage() {
                     />
                   </th>
                   {[
-                    { label: "Student",      align: "text-left",  cls: "" },
-                    { label: "Department",   align: "text-left",  cls: "hidden lg:table-cell" },
-                    { label: "Invoiced",     align: "text-right", cls: "" },
-                    { label: "Paid",         align: "text-right", cls: "" },
-                    { label: "Bursary",      align: "text-right", cls: "" },
-                    { label: "Remaining",    align: "text-right", cls: "" },
-                    { label: "",             align: "text-center",cls: "w-12" },
+                    { label: "Student",        align: "text-left",  cls: "" },
+                    { label: "Department",     align: "text-left",  cls: "hidden lg:table-cell" },
+                    { label: "Opening Balance", align: "text-right", cls: "" },
+                    { label: "Invoiced",       align: "text-right", cls: "" },
+                    { label: "Paid",           align: "text-right", cls: "" },
+                    { label: "Bursary",        align: "text-right", cls: "" },
+                    { label: "Remaining",      align: "text-right", cls: "" },
+                    { label: "",               align: "text-center", cls: "w-12" },
                   ].map((h, i) => (
                     <th key={i} className={`px-4 py-3 ${h.align} text-[10px] font-bold uppercase tracking-wider text-ink-400 ${h.cls}`}>
                       {h.label}
@@ -594,6 +619,15 @@ export default function StudentBillingPage() {
                       <td className="px-4 py-3 hidden lg:table-cell max-w-[160px]">
                         <p className="text-xs font-medium text-ink-700 dark:text-ink-200 truncate">{s.department}</p>
                         <p className="text-[10px] text-ink-400 truncate uppercase tracking-tight mt-0.5">{s.faculty}</p>
+                      </td>
+
+                      {/* Opening Balance */}
+                      <td className="px-4 py-3 text-right">
+                        {Number(s.opening_balance) > 0 ? (
+                          <span className="font-mono text-xs font-bold text-orange-600">{formatRWF(s.opening_balance)}</span>
+                        ) : (
+                          <span className="text-ink-200 dark:text-ink-600 text-xs">—</span>
+                        )}
                       </td>
 
                       {/* Invoiced */}

@@ -303,6 +303,7 @@ class FeeService
         $semester      = !empty($filters['semester']) ? (int)$filters['semester'] : null;
         $faculty       = !empty($filters['faculty_id']) ? (int)$filters['faculty_id'] : null;
         $dept          = !empty($filters['department_id']) ? (int)$filters['department_id'] : null;
+        $optionId      = !empty($filters['option_id']) ? (int)$filters['option_id'] : null;
         $keyword       = !empty($filters['keyword']) ? trim($filters['keyword']) : null;
         $balanceFilter = !empty($filters['balance_filter']) ? $filters['balance_filter'] : null; // collected|bursary|pending
         $page          = (int)($filters['page'] ?? 1);
@@ -332,6 +333,10 @@ class FeeService
             $where[] = "(s.department COLLATE utf8mb4_unicode_ci = CAST(? AS CHAR) COLLATE utf8mb4_unicode_ci OR s.department = (SELECT dep_acronym FROM `departements` WHERE dep_id = ?))";
             $bindings[] = $dept;
             $bindings[] = $dept;
+        }
+        if ($optionId) {
+            $where[] = "s.option = ?";
+            $bindings[] = $optionId;
         }
         if ($keyword) {
             $where[] = "(s.regnumber LIKE ? OR s.fname LIKE ? OR s.lname LIKE ?)";
@@ -397,11 +402,12 @@ class FeeService
         // 2. Get paginated data
         $offset = ($page - 1) * $perPage;
         
-        // Main bindings (with structure_tuition subquery)
+        // Main bindings (with structure_tuition subquery and opening_balance join)
         $mainBindings = array_merge(
-            [$yearId, $semester], 
-            [$yearId], 
-            ($semester ? [$semester] : []), 
+            [$yearId, $semester],
+            [$yearId],
+            [$yearId],
+            ($semester ? [$semester] : []),
             $whereBindings
         );
 
@@ -413,7 +419,7 @@ class FeeService
         );
 
 
-        $sql = "SELECT 
+        $sql = "SELECT
                     s.regnumber,
                     s.fname,
                     s.lname,
@@ -423,6 +429,7 @@ class FeeService
                     COALESCE(sums.total_paid, 0) AS total_collected,
                     COALESCE(sums.total_bursary, 0) AS total_bursary,
                     (COALESCE(sums.total_due, 0) - COALESCE(sums.total_paid, 0) - COALESCE(sums.total_bursary, 0)) AS balance,
+                    COALESCE(sob.opening_balance, 0) AS opening_balance,
                     (SELECT amount FROM `fee_structures` fs
                      WHERE fs.academic_year_id = ?
                        AND fs.fee_type = 'TUITION'
@@ -445,6 +452,7 @@ class FeeService
                     NULLIF(CAST(s.department AS UNSIGNED), 0),
                     (SELECT dep_id FROM `departements` WHERE dep_acronym = s.department LIMIT 1)
                 )
+                LEFT JOIN `student_opening_balance` sob ON sob.student_id = s.regnumber AND sob.academic_year_id = ?
                 LEFT JOIN (
                     SELECT
                         student_id,
@@ -520,6 +528,7 @@ class FeeService
         $semester      = !empty($filters['semester']) ? (int)$filters['semester'] : null;
         $faculty       = !empty($filters['faculty_id']) ? (int)$filters['faculty_id'] : null;
         $dept          = !empty($filters['department_id']) ? (int)$filters['department_id'] : null;
+        $optionId      = !empty($filters['option_id']) ? (int)$filters['option_id'] : null;
         $keyword       = !empty($filters['keyword']) ? trim($filters['keyword']) : null;
         $page          = (int)($filters['page'] ?? 1);
         $perPage       = (int)($filters['per_page'] ?? 50);
@@ -545,6 +554,10 @@ class FeeService
         if ($dept) {
             $where[] = "s.department = ?";
             $bindings[] = $dept;
+        }
+        if ($optionId) {
+            $where[] = "s.option = ?";
+            $bindings[] = $optionId;
         }
         if ($keyword) {
             $where[] = "(s.regnumber LIKE ? OR s.fname LIKE ? OR s.lname LIKE ?)";
@@ -575,6 +588,7 @@ class FeeService
         $whereBindings = [];
         if ($faculty) { $whereBindings[] = $faculty; }
         if ($dept)    { $whereBindings[] = $dept; }
+        if ($optionId) { $whereBindings[] = $optionId; }
         if ($keyword) { $k = "%{$keyword}%"; $whereBindings[] = $k; $whereBindings[] = $k; $whereBindings[] = $k; }
 
         $totalRow = $this->db->fetchOne($totalSql, $whereBindings);
@@ -593,14 +607,16 @@ class FeeService
                     COALESCE(sums.total_paid, 0) AS total_collected,
                     COALESCE(sums.total_bursary, 0) AS total_bursary,
                     COALESCE(sums.total_due, 0) - COALESCE(sums.total_paid, 0) - COALESCE(sums.total_bursary, 0) AS balance,
+                    COALESCE(sob.opening_balance, 0) AS opening_balance,
                     IF(COALESCE(sums.total_due, 0) > 0, 1, 0) AS has_invoices
                  FROM `student` s
+                 LEFT JOIN `student_opening_balance` sob ON sob.student_id = s.regnumber AND sob.academic_year_id = ?
                  {$sumsJoin}
                  WHERE {$whereSql}
                  ORDER BY s.fname ASC
                  LIMIT ? OFFSET ?";
 
-        $dataBindings = array_merge($sumsBindings, $whereBindings, [$perPage, $offset]);
+        $dataBindings = array_merge([$yearId], $sumsBindings, $whereBindings, [$perPage, $offset]);
         $results = $this->db->fetchAll($dataSql, $dataBindings);
 
         return [
@@ -623,9 +639,9 @@ class FeeService
         $result = $this->getGroupBillingSummary($filters);
         $data = $result['data'] ?? [];
 
-        $output = "Reg Number,First Name,Last Name,Faculty,Department,Expected,Collected,Bursary,Balance\n";
+        $output = "Reg Number,First Name,Last Name,Faculty,Department,Opening Balance,Expected,Collected,Bursary,Balance\n";
         foreach ($data as $row) {
-            $output .= "{$row['regnumber']},{$row['fname']},{$row['lname']},{$row['faculty']},{$row['department']},{$row['total_expected']},{$row['total_collected']},{$row['total_bursary']},{$row['balance']}\n";
+            $output .= "{$row['regnumber']},{$row['fname']},{$row['lname']},{$row['faculty']},{$row['department']},{$row['opening_balance']},{$row['total_expected']},{$row['total_collected']},{$row['total_bursary']},{$row['balance']}\n";
         }
         return $output;
     }
