@@ -709,6 +709,7 @@ class FeeController extends BaseController
             'semester'         => $request->query('semester') !== null ? (int)$request->query('semester') : null,
             'faculty_id'       => $request->query('faculty_id') !== null ? (int)$request->query('faculty_id') : null,
             'department_id'    => $request->query('department_id') !== null ? (int)$request->query('department_id') : null,
+            'option_id'        => $request->query('option_id') !== null ? (int)$request->query('option_id') : null,
             'keyword'          => $request->query('keyword') ?? null,
             'page'             => (int)($request->query('page') ?? 1),
             'per_page'         => (int)($request->query('per_page') ?? 50),
@@ -2772,5 +2773,43 @@ class FeeController extends BaseController
         }
 
         $this->success($response, $results, "Batch complete: {$results['credited']} credited, {$results['skipped']} skipped, {$results['errors']} errors.");
+    }
+
+    /**
+     * GET /api/finance/billing/intake-years
+     * Fetch unique intake years from student table for billing year selection
+     */
+    public function getIntakeYears(Request $request, Response $response): never
+    {
+        try {
+            $years = $this->db->fetchAll(
+                "SELECT DISTINCT s.intake AS year
+                 FROM `student` s
+                 WHERE s.intake IS NOT NULL AND s.intake != ''
+                 ORDER BY s.intake DESC",
+                []
+            );
+
+            $formatted = array_map(function($row) {
+                $intake = $row['year'];
+                // Normalize format: convert "2023-2024" to "2023/2024" for matching
+                $normalized = str_replace('-', '/', $intake);
+
+                // Try to find matching academic year
+                $ay = $this->db->fetchOne(
+                    "SELECT id FROM `academic_years` WHERE label = ? OR label = ? LIMIT 1",
+                    [$normalized, $intake]
+                );
+
+                return [
+                    'id' => $ay ? (int)$ay['id'] : $intake,
+                    'label' => $intake
+                ];
+            }, $years);
+
+            $this->success($response, $formatted, 'Intake years retrieved.');
+        } catch (\Exception $e) {
+            $this->error($response, 'Failed to fetch intake years: ' . $e->getMessage(), 500);
+        }
     }
 }

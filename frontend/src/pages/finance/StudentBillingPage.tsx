@@ -1,3 +1,4 @@
+// Re-trigger frontend deployment
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
@@ -29,25 +30,13 @@ import type { BillingSummary } from "@/types/finance";
 
 export default function StudentBillingPage() {
   const basics = useSystemStore((s) => s.basics);
-  const selectedYearLabel = useSystemStore((s) => s.selectedYearLabel);
   const selectedTermId = useSystemStore((s) => s.selectedTermId);
 
   const [yearId, setYearId] = useState<string | number>("");
   const [semester, setSemester] = useState<string | number>("");
 
-  // Sync with global academic year — always default to active year if nothing is selected
-  useEffect(() => {
-    if (selectedYearLabel) {
-      const year = basics?.years?.find((y) => y.label === selectedYearLabel);
-      if (year) {
-        setYearId(year.id);
-      }
-    } else if (!yearId) {
-      // Fallback to active year if yearId is not set
-      const active = basics?.active_year as any;
-      if (active?.id) setYearId(active.id);
-    }
-  }, [selectedYearLabel, basics?.years, basics?.active_year]);
+  // For billing, we use intake years from student table, not the global academic year
+  // Don't auto-select a year — let user choose from available intake cohorts
 
   // Sync with global academic term
   useEffect(() => {
@@ -64,6 +53,7 @@ export default function StudentBillingPage() {
 
   const [facultyId, setFacultyId] = useState<string | number>("");
   const [deptId, setDeptId] = useState<string | number>("");
+  const [optionId, setOptionId] = useState<string | number>("");
   const [keyword, setKeyword] = useState("");
   const [debouncedKeyword, setDebouncedKeyword] = useState("");
   const [page, setPage] = useState(1);
@@ -103,10 +93,10 @@ export default function StudentBillingPage() {
   // ─── Data Fetching ─────────────────────────────────────────────────────────
 
   const yearsQ = useQuery({
-    queryKey: ["academic-years"],
-    queryFn: () => academicService.listYears(),
+    queryKey: ["finance", "billing", "intake-years"],
+    queryFn: () => api.get<any>("/api/finance/billing/intake-years"),
   });
-  const years = yearsQ.data?.data ?? [];
+  const years = yearsQ.data?.data?.data ?? [];
 
   const termsQ = useQuery({
     queryKey: ["academic-terms", yearId],
@@ -133,6 +123,16 @@ export default function StudentBillingPage() {
   });
   const departments = departmentsQ.data?.data?.data ?? [];
 
+  const optionsQ = useQuery({
+    queryKey: ["options", deptId],
+    queryFn: () =>
+      api.get<any>(
+        "/api/academics-management/options",
+        deptId ? { dep_id: deptId } : {},
+      ),
+  });
+  const options = optionsQ.data?.data?.data ?? [];
+
   // State for selecting students for bulk generation
   const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set());
   const [selectAll, setSelectAll] = useState(false);
@@ -145,20 +145,36 @@ export default function StudentBillingPage() {
       semester,
       facultyId,
       deptId,
+      optionId,
       debouncedKeyword,
       page,
     ],
-    queryFn: () =>
-      api.get<any>('/api/finance/billing/all-students', {
+    queryFn: () => {
+      // If no year selected, fetch without yearId to show all active students
+      if (!yearId) {
+        return api.get<any>('/api/finance/billing/all-students', {
+          semester: semester ? Number(semester) : undefined,
+          faculty_id: facultyId ? Number(facultyId) : undefined,
+          department_id: deptId ? Number(deptId) : undefined,
+          option_id: optionId ? Number(optionId) : undefined,
+          keyword: debouncedKeyword,
+          page,
+          per_page: 50,
+        });
+      }
+      // If year selected, filter by that year
+      return api.get<any>('/api/finance/billing/all-students', {
         academic_year_id: Number(yearId),
         semester: semester ? Number(semester) : undefined,
         faculty_id: facultyId ? Number(facultyId) : undefined,
         department_id: deptId ? Number(deptId) : undefined,
+        option_id: optionId ? Number(optionId) : undefined,
         keyword: debouncedKeyword,
         page,
         per_page: 50,
-      }),
-    enabled: !!yearId,
+      });
+    },
+    // Always enabled - load all students or filtered students
   });
 
   const paginated = summaryQ.data?.data as any;
@@ -399,10 +415,21 @@ export default function StudentBillingPage() {
             <SearchableSelect
               options={departments.map((d: any) => ({ value: d.dep_id, label: d.dep_name }))}
               value={deptId}
-              onChange={(v) => { setDeptId(v); setPage(1) }}
+              onChange={(v) => { setDeptId(v); setOptionId(""); setPage(1) }}
               placeholder="All departments"
               allLabel="All departments"
               disabled={!facultyId && departments.length === 0}
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-ink-400 mb-1.5">Option / Specialization</label>
+            <SearchableSelect
+              options={options.map((o: any) => ({ value: o.opt_id, label: o.opt_name }))}
+              value={optionId}
+              onChange={(v) => { setOptionId(v); setPage(1) }}
+              placeholder="All options"
+              allLabel="All options"
+              disabled={!deptId && options.length === 0}
             />
           </div>
           <div>
@@ -490,14 +517,6 @@ export default function StudentBillingPage() {
             </div>
             <p className="text-sm text-ink-400">Crunching financial data…</p>
           </div>
-        ) : !yearId ? (
-          <div className="py-20 text-center space-y-2">
-            <div className="w-16 h-16 bg-ink-50 dark:bg-ink-800 rounded-2xl flex items-center justify-center mx-auto mb-3">
-              <TrendingUp className="w-8 h-8 text-ink-200" />
-            </div>
-            <p className="font-bold text-ink-800 dark:text-white">Ready to bill?</p>
-            <p className="text-ink-400 text-sm">Select an academic year to load student balances.</p>
-          </div>
         ) : filteredStudents.length === 0 ? (
           <div className="py-20 text-center space-y-2">
             <Search className="w-10 h-10 text-ink-200 mx-auto mb-2" />
@@ -532,13 +551,14 @@ export default function StudentBillingPage() {
                     />
                   </th>
                   {[
-                    { label: "Student",      align: "text-left",  cls: "" },
-                    { label: "Department",   align: "text-left",  cls: "hidden lg:table-cell" },
-                    { label: "Invoiced",     align: "text-right", cls: "" },
-                    { label: "Paid",         align: "text-right", cls: "" },
-                    { label: "Bursary",      align: "text-right", cls: "" },
-                    { label: "Remaining",    align: "text-right", cls: "" },
-                    { label: "",             align: "text-center",cls: "w-12" },
+                    { label: "Student",         align: "text-left",  cls: "" },
+                    { label: "Department",      align: "text-left",  cls: "hidden lg:table-cell" },
+                    { label: "Opening Balance", align: "text-right", cls: "" },
+                    { label: "Invoiced",        align: "text-right", cls: "" },
+                    { label: "Paid",            align: "text-right", cls: "" },
+                    { label: "Bursary",         align: "text-right", cls: "" },
+                    { label: "Remaining",       align: "text-right", cls: "" },
+                    { label: "",                align: "text-center",cls: "w-12" },
                   ].map((h, i) => (
                     <th key={i} className={`px-4 py-3 ${h.align} text-[10px] font-bold uppercase tracking-wider text-ink-400 ${h.cls}`}>
                       {h.label}
@@ -548,11 +568,12 @@ export default function StudentBillingPage() {
               </thead>
               <tbody className="divide-y divide-ink-50 dark:divide-ink-800/60">
                 {filteredStudents.map((s) => {
-                  const paid    = Number(s.total_collected)
-                  const bursary = Number(s.total_bursary)
-                  const due     = Number(s.total_expected)
-                  const bal     = Math.max(0, Number(s.balance))
-                  const settled = due > 0 ? Math.min(((paid + bursary) / due) * 100, 100) : 0
+                  const invoiced = Number(s.total_expected)
+                  const paid     = Number(s.total_collected)
+                  const bursary  = Number(s.total_bursary)
+                  const required = Number(s.total_required)
+                  const bal      = Math.max(0, Number(s.balance))
+                  const settled  = required > 0 ? Math.min(((paid + bursary) / required) * 100, 100) : 0
                   const isCleared = bal <= 0
                   const isPartial = !isCleared && paid > 0
 
@@ -596,10 +617,19 @@ export default function StudentBillingPage() {
                         <p className="text-[10px] text-ink-400 truncate uppercase tracking-tight mt-0.5">{s.faculty}</p>
                       </td>
 
+                      {/* Opening Balance */}
+                      <td className="px-4 py-3 text-right">
+                        {Number(s.opening_balance) > 0 ? (
+                          <span className="font-mono text-xs font-bold text-orange-600 dark:text-orange-400">{formatRWF(Number(s.opening_balance))}</span>
+                        ) : (
+                          <span className="text-ink-200 dark:text-ink-600 text-xs">—</span>
+                        )}
+                      </td>
+
                       {/* Invoiced */}
                       <td className="px-4 py-3 text-right">
                         <div>
-                          <p className="font-mono text-xs font-bold text-ink-800 dark:text-ink-100">{formatRWF(due)}</p>
+                          <p className="font-mono text-xs font-bold text-ink-800 dark:text-ink-100">{formatRWF(invoiced)}</p>
                           {/* mini progress */}
                           <div className="w-full h-0.5 bg-ink-100 dark:bg-ink-700 rounded-full mt-1.5 overflow-hidden">
                             <div
