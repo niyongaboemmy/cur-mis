@@ -611,7 +611,6 @@ class FeeController extends BaseController
             'semester'         => $request->query('semester') !== null ? (int)$request->query('semester') : null,
             'faculty_id'       => $request->query('faculty_id') !== null ? (int)$request->query('faculty_id') : null,
             'department_id'    => $request->query('department_id') !== null ? (int)$request->query('department_id') : null,
-            'option_id'        => $request->query('option_id') !== null ? (int)$request->query('option_id') : null,
             'keyword'          => $request->query('keyword') ?? null,
             'balance_filter'   => $request->query('balance_filter') ?? null, // collected|bursary|pending|partial|overdue
             'page'             => (int)($request->query('page') ?? 1),
@@ -670,7 +669,6 @@ class FeeController extends BaseController
             'semester'         => $request->query('semester') !== null ? (int)$request->query('semester') : null,
             'faculty_id'       => $request->query('faculty_id') !== null ? (int)$request->query('faculty_id') : null,
             'department_id'    => $request->query('department_id') !== null ? (int)$request->query('department_id') : null,
-            'option_id'        => $request->query('option_id') !== null ? (int)$request->query('option_id') : null,
             'keyword'          => $request->query('keyword') ?? null,
         ];
 

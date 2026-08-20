@@ -524,6 +524,7 @@ class FeeService
         $semester      = !empty($filters['semester']) ? (int)$filters['semester'] : null;
         $faculty       = !empty($filters['faculty_id']) ? (int)$filters['faculty_id'] : null;
         $dept          = !empty($filters['department_id']) ? (int)$filters['department_id'] : null;
+        $option        = !empty($filters['option_id']) ? (int)$filters['option_id'] : null;
         $keyword       = !empty($filters['keyword']) ? trim($filters['keyword']) : null;
         $page          = (int)($filters['page'] ?? 1);
         $perPage       = (int)($filters['per_page'] ?? 50);
@@ -549,6 +550,10 @@ class FeeService
         if ($dept) {
             $where[] = "s.department = ?";
             $bindings[] = $dept;
+        }
+        if ($option) {
+            $where[] = "s.option_id = ?";
+            $bindings[] = $option;
         }
         if ($keyword) {
             $where[] = "(s.regnumber LIKE ? OR s.fname LIKE ? OR s.lname LIKE ?)";
@@ -579,6 +584,7 @@ class FeeService
         $whereBindings = [];
         if ($faculty) { $whereBindings[] = $faculty; }
         if ($dept)    { $whereBindings[] = $dept; }
+        if ($option)  { $whereBindings[] = $option; }
         if ($keyword) { $k = "%{$keyword}%"; $whereBindings[] = $k; $whereBindings[] = $k; $whereBindings[] = $k; }
 
         $totalRow = $this->db->fetchOne($totalSql, $whereBindings);
@@ -593,18 +599,21 @@ class FeeService
                     s.student_state,
                     (SELECT fac_name FROM `faculty` WHERE fac_id = CAST(s.faculty AS UNSIGNED) LIMIT 1) AS faculty,
                     (SELECT dep_name FROM `departements` WHERE dep_id = CAST(s.department AS UNSIGNED) LIMIT 1) AS department,
+                    COALESCE(sob.opening_balance, 0) AS opening_balance,
                     COALESCE(sums.total_due, 0) AS total_expected,
                     COALESCE(sums.total_paid, 0) AS total_collected,
                     COALESCE(sums.total_bursary, 0) AS total_bursary,
-                    COALESCE(sums.total_due, 0) - COALESCE(sums.total_paid, 0) - COALESCE(sums.total_bursary, 0) AS balance,
+                    (COALESCE(sob.opening_balance, 0) + COALESCE(sums.total_due, 0)) AS total_required,
+                    (COALESCE(sob.opening_balance, 0) + COALESCE(sums.total_due, 0) - COALESCE(sums.total_paid, 0) - COALESCE(sums.total_bursary, 0)) AS balance,
                     IF(COALESCE(sums.total_due, 0) > 0, 1, 0) AS has_invoices
                  FROM `student` s
+                 LEFT JOIN `student_opening_balance` sob ON sob.student_id = s.regnumber AND sob.academic_year_id = ?
                  {$sumsJoin}
                  WHERE {$whereSql}
                  ORDER BY s.fname ASC
                  LIMIT ? OFFSET ?";
 
-        $dataBindings = array_merge($sumsBindings, $whereBindings, [$perPage, $offset]);
+        $dataBindings = array_merge([$yearId], $sumsBindings, $whereBindings, [$perPage, $offset]);
         $results = $this->db->fetchAll($dataSql, $dataBindings);
 
         return [
