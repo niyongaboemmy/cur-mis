@@ -1816,4 +1816,129 @@ class FeeService
             error_log("Failed to send receipt email: " . $e->getMessage());
         }
     }
+
+    /**
+     * GET /api/finance/billing/all-students (NEW)
+     * Display ALL students with financial data: opening_balance, invoiced, paid, bursary, total_balance
+     * Academic year is OPTIONAL - shows all students if not provided
+     */
+    public function getAllStudentsWithFinancialData(array $filters): array
+    {
+        $state      = $filters['state'] ?? 'all';
+        $keyword    = !empty($filters['keyword']) ? trim($filters['keyword']) : null;
+        $faculty    = !empty($filters['faculty_id']) ? (int)$filters['faculty_id'] : null;
+        $dept       = !empty($filters['department_id']) ? (int)$filters['department_id'] : null;
+        $option     = !empty($filters['option_id']) ? (int)$filters['option_id'] : null;
+        $sort       = $filters['sort'] ?? 'opening_balance';
+        $order      = strtoupper($filters['order'] ?? 'desc') === 'ASC' ? 'ASC' : 'DESC';
+        $page       = (int)($filters['page'] ?? 1);
+        $perPage    = (int)($filters['per_page'] ?? 50);
+
+        $whereBindings = [];
+        $where = [];
+
+        if ($state === 'active') {
+            $where[] = "s.student_state = 'active'";
+        } elseif ($state === 'inactive') {
+            $where[] = "s.student_state = 'inactive'";
+        }
+
+        if ($faculty) {
+            $where[] = "s.faculty_id = ?";
+            $whereBindings[] = $faculty;
+        }
+        if ($dept) {
+            $where[] = "s.department_id = ?";
+            $whereBindings[] = $dept;
+        }
+        if ($option) {
+            $where[] = "s.option_id = ?";
+            $whereBindings[] = $option;
+        }
+        if ($keyword) {
+            $where[] = "(s.regnumber LIKE ? OR s.fname LIKE ? OR s.lname LIKE ?)";
+            $k = "%{$keyword}%";
+            $whereBindings[] = $k;
+            $whereBindings[] = $k;
+            $whereBindings[] = $k;
+        }
+
+        $whereSql = !empty($where) ? "WHERE " . implode(" AND ", $where) : "";
+        $offset = ($page - 1) * $perPage;
+
+        $sortMap = [
+            'name' => 'CONCAT(s.fname, " ", s.lname)',
+            'opening_balance' => 'opening_balance',
+            'invoiced' => 'invoiced',
+            'paid' => 'paid',
+            'bursary' => 'bursary',
+            'total_balance' => 'total_balance',
+            'intake' => 's.intake',
+            'faculty' => 's.faculty_id',
+        ];
+        $orderField = $sortMap[$sort] ?? 'opening_balance';
+
+        $countSql = "SELECT COUNT(DISTINCT s.student_id) as total FROM student s $whereSql";
+        $countResult = $this->db->fetchOne($countSql, $whereBindings);
+        $total = (int)($countResult['total'] ?? 0);
+
+        $sql = "
+            SELECT
+                s.student_id,
+                s.regnumber,
+                s.fname,
+                s.lname,
+                s.student_state,
+                s.intake,
+                s.faculty_id,
+                s.department_id,
+                f.faculty_name as faculty,
+                d.department_name as department,
+                COALESCE(opened.total, 0) as opening_balance,
+                COALESCE(invoices.total_amount, 0) as invoiced,
+                COALESCE(paid_sum.total_paid, 0) as paid,
+                COALESCE(bursary_sum.total_bursary, 0) as bursary,
+                (COALESCE(opened.total, 0) + COALESCE(invoices.total_amount, 0) - COALESCE(paid_sum.total_paid, 0) - COALESCE(bursary_sum.total_bursary, 0)) as total_balance
+            FROM student s
+            LEFT JOIN faculty f ON s.faculty_id = f.faculty_id
+            LEFT JOIN department d ON s.department_id = d.department_id
+            LEFT JOIN (
+                SELECT fi.student_id, SUM(CAST(fi.amount_paid AS DECIMAL(12,2))) as total
+                FROM fee_invoices fi
+                WHERE fi.status NOT IN ('cancelled', 'waived')
+                GROUP BY fi.student_id
+            ) opened ON s.student_id = opened.student_id
+            LEFT JOIN (
+                SELECT fi.student_id, SUM(CAST(fi.amount AS DECIMAL(12,2))) as total_amount
+                FROM fee_invoices fi
+                WHERE fi.status NOT IN ('cancelled', 'waived')
+                GROUP BY fi.student_id
+            ) invoices ON s.student_id = invoices.student_id
+            LEFT JOIN (
+                SELECT fp.student_id, SUM(CAST(fp.amount AS DECIMAL(12,2))) as total_paid
+                FROM fee_payments fp
+                WHERE fp.status = 'completed'
+                GROUP BY fp.student_id
+            ) paid_sum ON s.student_id = paid_sum.student_id
+            LEFT JOIN (
+                SELECT fb.student_id, SUM(CAST(fb.amount_applied AS DECIMAL(12,2))) as total_bursary
+                FROM fee_bursaries fb
+                WHERE fb.status = 'active'
+                GROUP BY fb.student_id
+            ) bursary_sum ON s.student_id = bursary_sum.student_id
+            $whereSql
+            ORDER BY $orderField $order
+            LIMIT $perPage OFFSET $offset
+        ";
+
+        $students = $this->db->fetchAll($sql, $whereBindings);
+
+        return [
+            'data' => $students,
+            'total' => $total,
+            'current_page' => $page,
+            'per_page' => $perPage,
+            'last_page' => ceil($total / $perPage),
+        ];
+    }
 }

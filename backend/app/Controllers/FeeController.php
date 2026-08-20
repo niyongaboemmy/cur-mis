@@ -631,29 +631,29 @@ class FeeController extends BaseController
 
     /**
      * GET /api/finance/billing/all-students
-     * Like billing/summary but includes students with NO invoices (shows 0 balance)
+     * Display ALL students with financial data (opening balance, invoiced, paid, bursary, total balance)
+     * Academic year is OPTIONAL - if not provided, shows all students
      */
     public function listAllStudentsWithStatus(Request $request, Response $response): never
     {
         $filters = [
             'academic_year_id' => (int)($request->query('academic_year_id') ?? 0),
+            'state'            => $request->query('state') ?? 'all',
             'semester'         => $request->query('semester') !== null ? (int)$request->query('semester') : null,
             'faculty_id'       => $request->query('faculty_id') !== null ? (int)$request->query('faculty_id') : null,
             'department_id'    => $request->query('department_id') !== null ? (int)$request->query('department_id') : null,
             'option_id'        => $request->query('option_id') !== null ? (int)$request->query('option_id') : null,
             'keyword'          => $request->query('keyword') ?? null,
+            'sort'             => $request->query('sort') ?? 'opening_balance',
+            'order'            => $request->query('order') ?? 'desc',
             'page'             => (int)($request->query('page') ?? 1),
             'per_page'         => (int)($request->query('per_page') ?? 50),
         ];
 
-        if (!$filters['academic_year_id']) {
-            $this->error($response, 'Academic Year is required.', 400);
-        }
-
         try {
-            $result = $this->service->getAllStudentsWithStatus($filters);
-            $this->success($response, $result, 'All students retrieved.');
-        } catch (\InvalidArgumentException $e) {
+            $result = $this->service->getAllStudentsWithFinancialData($filters);
+            $this->success($response, $result, 'All students with financial data retrieved.');
+        } catch (\Exception $e) {
             $this->error($response, $e->getMessage(), 400);
         }
     }
