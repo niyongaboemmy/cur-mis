@@ -47,7 +47,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  CPANEL_URL: https://cpanel.cur.ac.rw:2083
+  CPANEL_URL: https://cur.ac.rw:2083
   CPANEL_USER: curac
   API_BASE: https://cur.ac.rw/umis/api
 
