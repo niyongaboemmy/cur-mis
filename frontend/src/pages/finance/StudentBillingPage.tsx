@@ -550,11 +550,13 @@ export default function StudentBillingPage() {
               </thead>
               <tbody className="divide-y divide-ink-50 dark:divide-ink-800/60">
                 {filteredStudents.map((s) => {
-                  const paid    = Number(s.total_collected)
-                  const bursary = Number(s.total_bursary)
-                  const due     = Number(s.total_expected)
-                  const bal     = Math.max(0, Number(s.balance))
-                  const settled = due > 0 ? Math.min(((paid + bursary) / due) * 100, 100) : 0
+                  const opening  = Number(s.opening_balance)
+                  const invoiced = Number(s.total_expected)
+                  const paid     = Number(s.total_collected)
+                  const bursary  = Number(s.total_bursary)
+                  const required = Number(s.total_required)
+                  const bal      = Math.max(0, Number(s.balance))
+                  const settled  = required > 0 ? Math.min(((paid + bursary) / required) * 100, 100) : 0
                   const isCleared = bal <= 0
                   const isPartial = !isCleared && paid > 0
 
@@ -610,7 +612,7 @@ export default function StudentBillingPage() {
                       {/* Invoiced */}
                       <td className="px-4 py-3 text-right">
                         <div>
-                          <p className="font-mono text-xs font-bold text-ink-800 dark:text-ink-100">{formatRWF(due)}</p>
+                          <p className="font-mono text-xs font-bold text-ink-800 dark:text-ink-100">{formatRWF(invoiced)}</p>
                           {/* mini progress */}
                           <div className="w-full h-0.5 bg-ink-100 dark:bg-ink-700 rounded-full mt-1.5 overflow-hidden">
                             <div

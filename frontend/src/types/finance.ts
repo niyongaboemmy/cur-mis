@@ -274,6 +274,7 @@ export interface BillingSummary {
   total_expected:   number
   total_collected:  number
   total_bursary:    number
+  total_required:   number
   balance:          number
   structure_tuition: number | null
 }

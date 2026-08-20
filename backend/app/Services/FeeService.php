@@ -424,7 +424,8 @@ class FeeService
                     COALESCE(sums.total_due, 0) AS total_expected,
                     COALESCE(sums.total_paid, 0) AS total_collected,
                     COALESCE(sums.total_bursary, 0) AS total_bursary,
-                    (COALESCE(sums.total_due, 0) - COALESCE(sums.total_paid, 0) - COALESCE(sums.total_bursary, 0)) AS balance,
+                    (COALESCE(sob.opening_balance, 0) + COALESCE(sums.total_due, 0)) AS total_required,
+                    (COALESCE(sob.opening_balance, 0) + COALESCE(sums.total_due, 0) - COALESCE(sums.total_paid, 0) - COALESCE(sums.total_bursary, 0)) AS balance,
                     (SELECT amount FROM `fee_structures` fs
                      WHERE fs.academic_year_id = ?
                        AND fs.fee_type = 'TUITION'
