@@ -299,20 +299,40 @@ class FeeService
      */
     public function getGroupBillingSummary(array $filters): array
     {
-        $yearId        = (int)($filters['academic_year_id'] ?? 0);
-        $semester      = !empty($filters['semester']) ? (int)$filters['semester'] : null;
-        $faculty       = !empty($filters['faculty_id']) ? (int)$filters['faculty_id'] : null;
-        $dept          = !empty($filters['department_id']) ? (int)$filters['department_id'] : null;
-        $keyword       = !empty($filters['keyword']) ? trim($filters['keyword']) : null;
-        $balanceFilter = !empty($filters['balance_filter']) ? $filters['balance_filter'] : null; // collected|bursary|pending
-        $page          = (int)($filters['page'] ?? 1);
-        $perPage       = (int)($filters['per_page'] ?? 50);
+        $yearIdOrIntake = $filters['academic_year_id'] ?? 0;
+        $semester       = !empty($filters['semester']) ? (int)$filters['semester'] : null;
+        $faculty        = !empty($filters['faculty_id']) ? (int)$filters['faculty_id'] : null;
+        $dept           = !empty($filters['department_id']) ? (int)$filters['department_id'] : null;
+        $keyword        = !empty($filters['keyword']) ? trim($filters['keyword']) : null;
+        $balanceFilter  = !empty($filters['balance_filter']) ? $filters['balance_filter'] : null;
+        $page           = (int)($filters['page'] ?? 1);
+        $perPage        = (int)($filters['per_page'] ?? 50);
 
-        if (!$yearId) {
+        if (!$yearIdOrIntake) {
             throw new \InvalidArgumentException("Academic Year is required for billing summary.");
         }
 
-        // Get previous year ID for opening_balance (e.g., if viewing 2025/2026, fetch opening_balance from 2024/2025)
+        // Handle both numeric ID and intake year text
+        $yearId = is_numeric($yearIdOrIntake) ? (int)$yearIdOrIntake : null;
+        $intakeYear = !is_numeric($yearIdOrIntake) ? (string)$yearIdOrIntake : null;
+
+        if (!$yearId && !$intakeYear) {
+            throw new \InvalidArgumentException("Invalid academic year.");
+        }
+
+        // Get numeric year ID if intake year provided
+        if ($intakeYear) {
+            $yearRecord = $this->db->fetchOne(
+                "SELECT id FROM `academic_years` WHERE label = ? LIMIT 1",
+                [$intakeYear]
+            );
+            $yearId = $yearRecord ? (int)$yearRecord['id'] : null;
+            if (!$yearId) {
+                throw new \InvalidArgumentException("Academic year not found: {$intakeYear}");
+            }
+        }
+
+        // Get previous year ID for opening_balance
         $prevYearId = $this->db->fetchOne(
             "SELECT id FROM `academic_years` WHERE id < ? ORDER BY id DESC LIMIT 1",
             [$yearId]
@@ -320,7 +340,17 @@ class FeeService
         $openingYearId = $prevYearId ? (int)$prevYearId['id'] : $yearId;
 
         $where = ["s.student_state = 'active'"];
+
+        // Filter by intake year if provided
+        if ($intakeYear) {
+            $where[] = "s.intake = ?";
+        }
+
         $bindings = [$yearId]; // For the left join subquery
+
+        if ($intakeYear) {
+            $bindings[] = $intakeYear;
+        }
 
         if ($semester) {
             $semSql = "AND (semester = ? OR semester IS NULL)";
@@ -528,27 +558,59 @@ class FeeService
      */
     public function getAllStudentsWithStatus(array $filters): array
     {
-        $yearId        = (int)($filters['academic_year_id'] ?? 0);
-        $semester      = !empty($filters['semester']) ? (int)$filters['semester'] : null;
-        $faculty       = !empty($filters['faculty_id']) ? (int)$filters['faculty_id'] : null;
-        $dept          = !empty($filters['department_id']) ? (int)$filters['department_id'] : null;
-        $option        = !empty($filters['option_id']) ? (int)$filters['option_id'] : null;
-        $keyword       = !empty($filters['keyword']) ? trim($filters['keyword']) : null;
-        $page          = (int)($filters['page'] ?? 1);
-        $perPage       = (int)($filters['per_page'] ?? 50);
+        $yearIdOrIntake = $filters['academic_year_id'] ?? 0;
+        $semester        = !empty($filters['semester']) ? (int)$filters['semester'] : null;
+        $faculty         = !empty($filters['faculty_id']) ? (int)$filters['faculty_id'] : null;
+        $dept            = !empty($filters['department_id']) ? (int)$filters['department_id'] : null;
+        $option          = !empty($filters['option_id']) ? (int)$filters['option_id'] : null;
+        $keyword         = !empty($filters['keyword']) ? trim($filters['keyword']) : null;
+        $page            = (int)($filters['page'] ?? 1);
+        $perPage         = (int)($filters['per_page'] ?? 50);
 
-        if (!$yearId) {
+        if (!$yearIdOrIntake) {
             throw new \InvalidArgumentException("Academic Year is required.");
         }
 
+        // Handle both numeric ID and intake year text (e.g., "2024/2025")
+        $yearId = is_numeric($yearIdOrIntake) ? (int)$yearIdOrIntake : null;
+        $intakeYear = !is_numeric($yearIdOrIntake) ? (string)$yearIdOrIntake : null;
+
+        if (!$yearId && !$intakeYear) {
+            throw new \InvalidArgumentException("Invalid academic year.");
+        }
+
         // Get previous year ID for opening_balance
-        $prevYearId = $this->db->fetchOne(
-            "SELECT id FROM `academic_years` WHERE id < ? ORDER BY id DESC LIMIT 1",
-            [$yearId]
-        );
-        $openingYearId = $prevYearId ? (int)$prevYearId['id'] : $yearId;
+        if ($yearId) {
+            $prevYearId = $this->db->fetchOne(
+                "SELECT id FROM `academic_years` WHERE id < ? ORDER BY id DESC LIMIT 1",
+                [$yearId]
+            );
+            $openingYearId = $prevYearId ? (int)$prevYearId['id'] : $yearId;
+        } else {
+            // If using intake year, get the numeric year ID and previous
+            $yearRecord = $this->db->fetchOne(
+                "SELECT id FROM `academic_years` WHERE label = ? LIMIT 1",
+                [$intakeYear]
+            );
+            $yearId = $yearRecord ? (int)$yearRecord['id'] : null;
+            if (!$yearId) {
+                throw new \InvalidArgumentException("Academic year not found: {$intakeYear}");
+            }
+            $prevYearId = $this->db->fetchOne(
+                "SELECT id FROM `academic_years` WHERE id < ? ORDER BY id DESC LIMIT 1",
+                [$yearId]
+            );
+            $openingYearId = $prevYearId ? (int)$prevYearId['id'] : $yearId;
+        }
 
         $where = ["s.student_state = 'active'"];
+
+        // Filter by intake year if provided
+        if ($intakeYear) {
+            $where[] = "s.intake = ?";
+            $whereBindings[] = $intakeYear;
+        }
+
         $bindings = [$yearId]; // For the left join subquery
 
         if ($semester) {
@@ -560,22 +622,30 @@ class FeeService
 
         if ($faculty) {
             $where[] = "s.faculty = ?";
-            $bindings[] = $faculty;
+            if (!isset($whereBindings)) $whereBindings = [];
+            $whereBindings[] = $faculty;
         }
         if ($dept) {
             $where[] = "s.department = ?";
-            $bindings[] = $dept;
+            if (!isset($whereBindings)) $whereBindings = [];
+            $whereBindings[] = $dept;
         }
         if ($option) {
             $where[] = "s.option_id = ?";
-            $bindings[] = $option;
+            if (!isset($whereBindings)) $whereBindings = [];
+            $whereBindings[] = $option;
         }
         if ($keyword) {
             $where[] = "(s.regnumber LIKE ? OR s.fname LIKE ? OR s.lname LIKE ?)";
             $k = "%{$keyword}%";
-            $bindings[] = $k;
-            $bindings[] = $k;
-            $bindings[] = $k;
+            if (!isset($whereBindings)) $whereBindings = [];
+            $whereBindings[] = $k;
+            $whereBindings[] = $k;
+            $whereBindings[] = $k;
+        }
+
+        if (!isset($whereBindings)) {
+            $whereBindings = [];
         }
 
         $whereSql = implode(" AND ", $where);
