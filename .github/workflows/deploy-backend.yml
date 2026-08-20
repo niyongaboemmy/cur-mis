@@ -159,7 +159,7 @@ jobs:
       # exists there from an earlier manual deploy.
       - name: Upload & extract vendor/ → public_html/umis/backend/vendor/
         if: steps.composer_changed.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
-        timeout-minutes: 8
+        timeout-minutes: 15
         env:
           CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
         run: |
@@ -194,7 +194,7 @@ jobs:
 
       # ── Step 2: Deploy source code → public_html/umis/backend/ ────────────────
       - name: Upload & extract backend source → public_html/umis/backend/
-        timeout-minutes: 3
+        timeout-minutes: 10
         env:
           CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
         run: |
