@@ -1,0 +1,103 @@
+name: Deploy — Frontend (React SPA)
+
+# Target: /home/curac/public_html/umis/
+# URL:    https://cur.ac.rw/umis/
+# Method: cPanel UAPI (port 2083) upload + one-time PHP helper for extraction.
+#
+# Extraction — stage-then-swap:
+#   Files are extracted to a temp dir, then rename()d into the live directory.
+#   rename() is atomic on the same filesystem — near-zero window of mixed files.
+#
+# Required GitHub Secret:
+#   CPANEL_PASS — cPanel account password
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/deploy-frontend.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-frontend
+  cancel-in-progress: false
+
+env:
+  CPANEL_URL: https://cur.ac.rw:2083
+  CPANEL_USER: curac
+  EXTRACTOR_B64: PD9waHAKaWYgKCgkX0dFVFsndG9rZW4nXSA/PyAnJykgIT09ICdERVBMT1lfVE9LRU4nKSB7IGh0dHBfcmVzcG9uc2VfY29kZSg0MDMpOyBkaWUoJ2ZvcmJpZGRlbicpOyB9CiR6aXAgPSBfX0RJUl9fIC4gJy9ERVBMT1lfWklQX05BTUUnOwokc3RhZ2luZyA9IF9fRElSX18gLiAnL19kc18nIC4gdGltZSgpOwokeiA9IG5ldyBaaXBBcmNoaXZlOwppZiAoJHotPm9wZW4oJHppcCkgIT09IFRSVUUpIHsgaHR0cF9yZXNwb25zZV9jb2RlKDUwMCk7IGVjaG8gJ2ZhaWxlZDogJy4kei0+Z2V0U3RhdHVzU3RyaW5nKCk7IGV4aXQ7IH0KaWYgKCFta2Rpcigkc3RhZ2luZywgMDc1NSwgdHJ1ZSkpIHsgaHR0cF9yZXNwb25zZV9jb2RlKDUwMCk7IGVjaG8gJ2ZhaWxlZDogc3RhZ2luZyc7IGV4aXQ7IH0KJHotPmV4dHJhY3RUbygkc3RhZ2luZyk7ICR6LT5jbG9zZSgpOyB1bmxpbmsoJHppcCk7CiRpdCA9IG5ldyBSZWN1cnNpdmVJdGVyYXRvckl0ZXJhdG9yKG5ldyBSZWN1cnNpdmVEaXJlY3RvcnlJdGVyYXRvcigkc3RhZ2luZywgUmVjdXJzaXZlRGlyZWN0b3J5SXRlcmF0b3I6OlNLSVBfRE9UUyksIFJlY3Vyc2l2ZUl0ZXJhdG9ySXRlcmF0b3I6OlNFTEZfRklSU1QpOwpmb3JlYWNoICgkaXQgYXMgJGYpIHsgJHJlbCA9IHN1YnN0cigkZi0+Z2V0UGF0aG5hbWUoKSwgc3RybGVuKCRzdGFnaW5nKSsxKTsgJGQgPSBfX0RJUl9fLicvJy4kcmVsOyBpZiAoJGYtPmlzRGlyKCkpIHsgaWYgKCFpc19kaXIoJGQpKSBta2RpcigkZCwwNzU1LHRydWUpOyB9IGVsc2UgeyAkZGQgPSBkaXJuYW1lKCRkKTsgaWYgKCFpc19kaXIoJGRkKSkgbWtkaXIoJGRkLDA3NTUsdHJ1ZSk7IHJlbmFtZSgkZi0+Z2V0UGF0aG5hbWUoKSwkZCk7IH0gfQokY2wgPSBuZXcgUmVjdXJzaXZlSXRlcmF0b3JJdGVyYXRvcihuZXcgUmVjdXJzaXZlRGlyZWN0b3J5SXRlcmF0b3IoJHN0YWdpbmcsIFJlY3Vyc2l2ZURpcmVjdG9yeUl0ZXJhdG9yOjpTS0lQX0RPVFMpLCBSZWN1cnNpdmVJdGVyYXRvckl0ZXJhdG9yOjpDSElMRF9GSVJTVCk7CmZvcmVhY2ggKCRjbCBhcyAkZikgeyAkZi0+aXNEaXIoKSA/IHJtZGlyKCRmLT5nZXRQYXRobmFtZSgpKSA6IHVubGluaygkZi0+Z2V0UGF0aG5hbWUoKSk7IH0KQHJtZGlyKCRzdGFnaW5nKTsKaWYgKGZ1bmN0aW9uX2V4aXN0cygnb3BjYWNoZV9yZXNldCcpKSBvcGNhY2hlX3Jlc2V0KCk7CnVubGluayhfX0ZJTEVfXyk7IGVjaG8gJ29rJzsK
+
+jobs:
+  build-and-deploy:
+    name: Build & Deploy React SPA
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: TypeScript type-check
+        run: npm run type-check
+        working-directory: frontend
+
+      # frontend/.env.production is committed to git and loaded by Vite automatically.
+      - name: Build production bundle
+        run: NODE_ENV=production npm run build
+        working-directory: frontend
+        env:
+          NODE_ENV: production
+
+      - name: Create deployment archive
+        run: |
+          cd frontend/dist
+          zip -r ../../frontend-deploy.zip . --exclude '*/.DS_Store' --exclude '*/__MACOSX*'
+          cd ../..
+          echo "Archive size: $(du -sh frontend-deploy.zip | cut -f1)"
+
+      - name: Upload & extract
+        env:
+          CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
+        run: |
+          TOKEN=$(openssl rand -hex 16)
+
+          echo "$EXTRACTOR_B64" | base64 -d \
+            | sed -e "s/DEPLOY_TOKEN/$TOKEN/" -e "s/DEPLOY_ZIP_NAME/frontend-deploy.zip/" \
+            > _extract.php
+
+          R=$(curl -s -k -u "$CPANEL_USER:$CPANEL_PASS" \
+            -F "dir=/public_html/umis" \
+            -F "overwrite=1" \
+            -F "file-1=@frontend-deploy.zip;type=application/zip" \
+            "$CPANEL_URL/execute/Fileman/upload_files")
+          echo "Upload zip: $R"
+          [ "$(echo "$R" | jq -r '.status // 0')" = "1" ] || { echo "Zip upload failed"; exit 1; }
+
+          R=$(curl -s -k -u "$CPANEL_USER:$CPANEL_PASS" \
+            -F "dir=/public_html/umis" \
+            -F "overwrite=1" \
+            -F "file-1=@_extract.php;type=text/plain" \
+            "$CPANEL_URL/execute/Fileman/upload_files")
+          echo "Upload extractor: $R"
+          [ "$(echo "$R" | jq -r '.status // 0')" = "1" ] || { echo "Extractor upload failed"; exit 1; }
+
+          RESULT=$(curl -s -k "https://cur.ac.rw/umis/_extract.php?token=$TOKEN")
+          echo "Extract result: $RESULT"
+          [ "$RESULT" = "ok" ] || { echo "Extraction failed: $RESULT"; exit 1; }
+
+      - name: Write job summary
+        if: always()
+        run: |
+          echo "## Frontend Deploy — ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Target | \`~/public_html/umis/\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| URL | https://cur.ac.rw/umis/ |" >> $GITHUB_STEP_SUMMARY

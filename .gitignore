@@ -1,0 +1,117 @@
+# ── AI Tool State ─────────────────────────────────────────────────────────────
+.refact/
+
+
+# ── Logs & Reports ────────────────────────────────────────────────────────────
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+handover
+
+# ── Dependency Directories ───────────────────────────────────────────────────
+node_modules/
+jspm_packages/
+web_modules/
+backend/vendor/
+file-server/vendor/
+bower_components/
+
+# ── Environment & Secrets ────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+!frontend/.env.production
+file-server/.env
+file-server/.env.*
+!file-server/.env.example
+
+# ── Storage & Uploads ────────────────────────────────────────────────────────
+# Exclude actual uploaded files from the repository
+backend/storage/uploads/*
+!backend/storage/uploads/.gitkeep
+file-server/storage/uploads/*
+!file-server/storage/uploads/.gitkeep
+
+# ── Build & Static Output ─────────────────────────────────────────────────────
+frontend/dist/
+build/Release
+.next/
+out/
+.nuxt/
+dist/
+.cache/
+.parcel-cache/
+.svelte-kit/
+**/.vitepress/dist
+**/.vitepress/cache
+.docusaurus/
+.serverless/
+.fusebox/
+
+# ── Refact AI ────────────────────────────────────────────────────────────────
+.refact/
+
+# ── IDE & OS Specific ─────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+Thumbs.db
+.tern-port
+.eslintcache
+.stylelintcache
+.node_repl_history
+
+# ── Miscellaneous ─────────────────────────────────────────────────────────────
+*.tsbuildinfo
+*.tgz
+.npm/
+.yarn-integrity
+pids
+*.pid
+*.seed
+*.pid.lock
+lib-cov/
+coverage/
+.nyc_output/
+.grunt/
+.lock-wscript
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# Large local DB dumps (do not commit — exceed GitHub 100MB limit)
+curac_cur_mis(Iyabo).sql
+
+# Local working data dumps in repo root (legacy exports used for migrations, not code).
+# Root-only glob so it never touches backend/database/migrations/*.sql.
+/*.sql
+
+# Live-server DB exports dropped into database/ (e.g. "curac_save db.sql").
+# Only files directly in database/ — database/migrations/*.sql stays tracked.
+/database/*.sql
+
+# Handover deliverables and one-off reports (not application code).
+deliverables/
+IDENTITY_CONSOLIDATION_REPORT.md
+curac_save.sql
+curac_save.sql

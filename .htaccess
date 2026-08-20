@@ -1,0 +1,34 @@
+# CUR-MIS Universal Router
+# Works for both production (/umis/) and local (/cur-mis/)
+# Do NOT modify RewriteBase - it auto-detects the path
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Auto-detect base path - DO NOT CHANGE THIS
+    RewriteCond %{REQUEST_URI} ^/umis [OR]
+    RewriteCond %{REQUEST_URI} ^/cur-mis
+    RewriteBase /
+
+    # Always pass through real files and directories
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    # Route ALL /api/* requests to api-router.php
+    # This handles: /umis/api/*, /cur-mis/api/*, etc.
+    RewriteCond %{REQUEST_URI} /api/
+    RewriteRule ^(.*)api/(.*)$ api-router.php [QSA,L]
+
+    # Route everything else to React frontend
+    # The frontend handles client-side routing
+    RewriteRule ^ frontend/dist/index.html [QSA,L]
+</IfModule>
+
+# Security: Prevent direct access to sensitive files
+<FilesMatch "\.(env|json|lock|log|md)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+

@@ -1,0 +1,20 @@
+Options -Indexes -MultiViews
+RewriteEngine On
+
+# Pass Authorization header to PHP
+RewriteCond %{HTTP:Authorization} .
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+# Allow CORS OPTIONS preflight through to index.php
+RewriteCond %{REQUEST_METHOD} OPTIONS
+RewriteRule ^ index.php [QSA,L]
+
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.php [L]
+
+<FilesMatch "\.(env|json|lock|log|md|gitignore)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+

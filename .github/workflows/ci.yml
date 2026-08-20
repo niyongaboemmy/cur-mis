@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches-ignore: [main] # main is handled by deploy-* workflows
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Frontend ─────────────────────────────────────────────────────────────────
+  frontend:
+    name: Frontend — Type-check & Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: TypeScript type-check
+        run: npm run type-check
+        working-directory: frontend
+
+      - name: ESLint
+        run: npm run lint
+        working-directory: frontend
+
+  # ── Backend PHP ───────────────────────────────────────────────────────────────
+  backend-php:
+    name: Backend — PHP 8.1 syntax check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          tools: none
+          coverage: none
+
+      - name: Syntax check — backend
+        run: |
+          errors=0
+          while IFS= read -r -d '' file; do
+            php -l "$file" || errors=$((errors + 1))
+          done < <(find backend -name "*.php" -not -path "*/vendor/*" -print0)
+          exit $errors
+
+      - name: Syntax check — file-server
+        run: |
+          errors=0
+          while IFS= read -r -d '' file; do
+            php -l "$file" || errors=$((errors + 1))
+          done < <(find file-server -name "*.php" -not -path "*/vendor/*" -print0)
+          exit $errors
+
+      - name: Syntax check — payment_api
+        run: |
+          errors=0
+          while IFS= read -r -d '' file; do
+            php -l "$file" || errors=$((errors + 1))
+          done < <(find payment_api -name "*.php" -print0)
+          exit $errors

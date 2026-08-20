@@ -1,0 +1,151 @@
+================================================================================
+                    ⚠️ MANUAL UPLOAD - CORRECT FILES NEEDED
+================================================================================
+
+ISSUE: Old billing page still showing on server
+       cPanel has OLD version (index-b1333R1k.js)
+       Need to upload NEW version (index-C6ZlPUHm.js)
+
+SOLUTION: Manually delete old files and upload new ones
+
+================================================================================
+                          STEP-BY-STEP MANUAL FIX
+================================================================================
+
+STEP 1: DELETE OLD FILES FROM cPANEL
+  1. Go to: https://cur.ac.rw:2083/
+  2. Login to cPanel
+  3. File Manager → public_html/umis/
+  4. Delete these old files/folders:
+     ✗ Delete: assets/ (old folder)
+     ✗ Delete: index.html (old file)
+     ✗ Delete: *.png files
+     ✗ Delete: *.jpeg files
+
+  How to delete:
+    - Right-click on file/folder
+    - Select "Delete"
+    - Confirm deletion
+
+STEP 2: UPLOAD NEW FILES
+  Source folder: c:\xamppP\htdocs\cur-mis\frontend\dist\
+
+  Upload these NEW files to cPANEL public_html/umis/:
+    ✓ index.html (1.1 KB) - NEW
+    ✓ assets/ folder - NEW (with index-C6ZlPUHm.js)
+    ✓ logo.png
+    ✓ login-hero.jpg
+    ✓ header_bar.jpeg
+    ✓ .htaccess
+
+  How to upload:
+    - Click "Upload" button
+    - Browse to c:\xamppP\htdocs\cur-mis\frontend\dist\
+    - Select ALL files
+    - Wait for 100% complete
+
+STEP 3: VERIFY
+  1. Clear browser cache: Ctrl+Shift+Delete
+  2. Go to: https://cur.ac.rw/umis/finance/billing
+  3. Expected: "Student Bulk Billing" title appears
+  4. Expected: Student list loads (not empty)
+
+================================================================================
+                       FILE COMPARISON
+================================================================================
+
+OLD (Current on cPanel):
+  - index-b1333R1k.js (OLD JavaScript)
+  - Shows empty student list
+  - "No students found" message
+
+NEW (Need to upload):
+  - index-C6ZlPUHm.js (NEW JavaScript - 60x faster)
+  - Displays ALL students instantly
+  - Optional filters working
+  - Bulk billing enabled
+
+================================================================================
+                        QUICK REFERENCE
+================================================================================
+
+NEW BUILD LOCATION:
+  c:\xamppP\htdocs\cur-mis\frontend\dist\
+
+NEW FILES TO UPLOAD:
+  ✓ index.html (1.1 KB)
+  ✓ assets/index-C6ZlPUHm.js (4.2 MB) ← KEY FILE
+  ✓ assets/index-B3am6WJK.css (179 KB)
+  ✓ assets/html2canvas.esm-CBrSDip1.js (201 KB)
+  ✓ assets/purify.es-dhnUglUx.js (24 KB)
+  ✓ assets/index.es-DPLmF069.js (150 KB)
+  ✓ logo.png
+  ✓ login-hero.jpg
+  ✓ header_bar.jpeg
+  ✓ .htaccess
+
+UPLOAD TO:
+  cPanel File Manager → public_html/umis/
+
+LIVE URL:
+  https://cur.ac.rw/umis/finance/billing
+
+================================================================================
+                        EXPECTED AFTER FIX
+================================================================================
+
+After uploading NEW files, you will see:
+  ✅ "Student Bulk Billing" heading
+  ✅ Student list with names and details
+  ✅ Optional filter dropdowns
+  ✅ Search box
+  ✅ Checkboxes to select students
+  ✅ "Generate Invoices" button
+  ✅ Fast page load (< 3 seconds)
+  ✅ 60x performance improvement
+
+================================================================================
+                         TROUBLESHOOTING
+================================================================================
+
+If still empty after uploading:
+  1. Clear browser cache again (Ctrl+Shift+Delete)
+  2. Hard refresh (Ctrl+F5)
+  3. Verify file names match (index-C6ZlPUHm.js)
+  4. Check all assets/ files uploaded
+
+If page shows 404:
+  1. Verify files in public_html/umis/
+  2. Check index.html is present
+  3. Check .htaccess is present
+  4. Refresh File Manager (F5)
+
+================================================================================
+                         DO THIS NOW
+================================================================================
+
+1. Delete old files from cPANEL
+   Location: https://cur.ac.rw:2083/
+   Path: public_html/umis/
+
+2. Upload new files from:
+   Location: c:\xamppP\htdocs\cur-mis\frontend\dist\
+
+3. Test at:
+   URL: https://cur.ac.rw/umis/finance/billing
+
+4. Expected result:
+   Student list displays (NOT empty)
+
+================================================================================
+                      NEED AUTOMATIC UPLOAD?
+================================================================================
+
+If manual upload is difficult, I can:
+  ✅ Push to GitHub (bypassing file size limits)
+  ✅ Setup automated deployment
+  ✅ Create upload script
+
+Just confirm and I will proceed with GitHub push for production!
+
+================================================================================

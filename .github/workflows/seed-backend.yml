@@ -1,0 +1,53 @@
+name: Seed — Backend (named data seed)
+
+# Runs exactly ONE named data seeder — never "all seeds". Pick the seeder to
+# run from the dropdown below. New seeders are registered in
+# backend/app/Services/SeederService.php and become selectable here once added.
+#
+# Deliberately separate from deploy-backend.yml and migrate-backend.yml:
+# seeding data must always be an explicit, reviewed decision.
+#
+# Required GitHub Secrets:
+#   DEPLOY_KEY — same value as DEPLOY_KEY in backend/.env
+
+on:
+  workflow_dispatch:
+    inputs:
+      seeder:
+        description: 'Seeder to run'
+        required: true
+        type: choice
+        options:
+          - permissions
+
+concurrency:
+  group: seed-backend
+  cancel-in-progress: false
+
+env:
+  API_BASE: https://cur.ac.rw/umis/api
+
+jobs:
+  seed:
+    name: Run named seeder
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Run seeder — ${{ inputs.seeder }}
+        timeout-minutes: 3
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+          SEEDER: ${{ inputs.seeder }}
+        run: |
+          RESULT=$(curl -s -k --max-time 90 -X POST \
+            -H "Authorization: Bearer $DEPLOY_KEY" \
+            --data-urlencode "name=$SEEDER" \
+            "$API_BASE/api/deploy/seed")
+          echo "$RESULT" | jq .
+          echo "$RESULT" | jq -e '.success == true' >/dev/null || { echo "Seeder run reported failure"; exit 1; }
+
+      - name: Write job summary
+        if: always()
+        run: |
+          echo "## Backend Seed — ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "| Seeder | \`${{ inputs.seeder }}\` |" >> $GITHUB_STEP_SUMMARY

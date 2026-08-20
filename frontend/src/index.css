@@ -1,0 +1,269 @@
+/* Poppins — geometric sans, matches the reference dashboard. */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   CUR-MIS :: Catholic University of Rwanda MIS
+   Design system — flat, professional, dense-data friendly.
+   No gradients, no glows, one font (Inter), 14px body.
+   ============================================================ */
+
+@layer base {
+  /* ────────────────────────────────────────────────────────────
+     Tokens aligned to the official CUR brand guide.
+
+     Dual-palette strategy per brand direction:
+       · LIGHT mode  →  "Secondary" palette (brighter, fresher)
+                        Banner Blue #1A4A8C  as the brand surface
+                        Mid Blue    #2B5FA8  as hover
+                        Accent Blue #4A7FC1  as soft tint
+       · DARK  mode  →  "Primary"   palette (authoritative, deeper)
+                        Deep Navy   #0A2A5E  as the brand surface
+                        Gold #F5C400 as the highlight companion
+     ──────────────────────────────────────────────────────────── */
+  :root {
+    /* Surfaces */
+    --bg-app:       240 244 250;   /* #F0F4FA – official Light Background */
+    --bg-surface:   255 255 255;
+    --bg-muted:     217 227 241;
+    --text-strong:  26 26 26;      /* #1A1A1A */
+    --text-muted:   93 103 130;
+    --border-soft:  217 227 241;
+
+    /* Brand — LIGHT mode uses Secondary palette */
+    --brand:        74 127 193;    /* #4A7FC1 Accent Blue — vibrant, readable on white */
+    --brand-hover:  43  95 168;    /* #2B5FA8 Mid Blue — hover darkens */
+    --brand-soft:   74 127 193;    /* #4A7FC1 Accent Blue */
+    --brand-active: 10  42  94;    /* #0A2A5E Deep Navy */
+    --brand-ink:    255 255 255;   /* text that sits on brand surface */
+
+    --ring:         26 74 140;     /* matches --brand */
+  }
+
+  .dark {
+    /* Surfaces — balanced navy-slate hierarchy.
+       Layered from deepest (page) → card → hover for clear visual depth. */
+    --bg-app:       11  17  33;    /* #0B1121 — page background, deep navy-slate */
+    --bg-surface:   21  28  48;    /* #151C30 — cards & elevated surfaces */
+    --bg-muted:     31  41  66;    /* #1F2942 — hover / muted surfaces */
+    --text-strong:  241 245 253;   /* #F1F5FD — headings, near-white */
+    --text-muted:   164 178 207;   /* #A4B2CF — body / secondary, better contrast */
+    --border-soft:  42  54  84;    /* #2A3654 — subtle hairline borders */
+
+    /* Brand — DARK mode: Accent Blue as base so text-brand and bg-brand
+       are both visible against dark surfaces (#151C30). */
+    --brand:        74 127 193;    /* #4A7FC1 Accent Blue — readable on dark bg */
+    --brand-hover:  43  95 168;    /* #2B5FA8 Mid Blue */
+    --brand-soft:  139 170 213;    /* #8BAAD5 — lighter tint for subtle text */
+    --brand-active: 26  74 140;    /* #1A4A8C Banner Blue */
+    --brand-ink:    245 196   0;   /* #F5C400 Gold — sits on brand in dark mode */
+
+    --ring:         245 196 0;     /* gold focus rings in dark */
+  }
+
+  * { @apply box-border; }
+
+  html {
+    @apply scroll-smooth;
+    -webkit-font-smoothing: antialiased;
+    font-size: 14px;
+  }
+
+  body {
+    @apply text-ink-700 antialiased transition-colors duration-300;
+    background-color: rgb(var(--bg-app));
+    font-family: 'Poppins', system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+    line-height: 1.55;
+    font-weight: 400;
+    letter-spacing: -0.003em;
+  }
+
+  .dark body { @apply text-ink-200; }
+
+  /* Softer headings — 500/600 instead of 700/800. */
+  h1, h2, h3, h4, h5, h6 {
+    font-family: inherit;
+    font-weight: 600;
+    letter-spacing: -0.012em;
+    color: rgb(var(--text-strong));
+  }
+
+  /* Pretty scrollbars */
+  ::-webkit-scrollbar           { @apply w-1.5 h-1.5; }
+  ::-webkit-scrollbar-track     { @apply bg-transparent; }
+  ::-webkit-scrollbar-thumb     { @apply bg-ink-200 rounded-full hover:bg-ink-300 transition-colors dark:bg-ink-700 dark:hover:bg-ink-600; }
+
+  input, textarea, select, button { font-family: inherit; font-size: inherit; }
+
+  /* Remove number input spinners for a cleaner look */
+  input[type='number']::-webkit-outer-spin-button,
+  input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+}
+
+/* ============================================================
+   Components
+   ============================================================ */
+@layer components {
+
+  /* ---------- Buttons ---------- */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-md px-3.5 py-2 text-[13px] font-medium
+           transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-sm { @apply px-3 py-1.5 text-[12.5px] gap-1.5; }
+  .btn-lg { @apply px-4 py-2.5 text-[14px] gap-2; }
+
+  /* Primary button uses the semantic brand token — Banner Blue on light,
+     Deep Navy on dark. Text color also flips (white → gold) in dark. */
+  .btn-primary  { @apply btn text-brand-ink bg-brand hover:bg-brand-hover active:bg-brand-active; }
+  .btn-secondary { @apply btn bg-white text-ink-700 border border-ink-200 hover:border-ink-300 hover:bg-ink-50
+                         dark:bg-ink-800 dark:border-ink-700 dark:text-ink-100 dark:hover:bg-ink-700; }
+  .btn-ghost     { @apply btn text-ink-600 hover:bg-ink-100 hover:text-ink-900
+                         dark:text-ink-300 dark:hover:bg-ink-700 dark:hover:text-white; }
+  /* Gold CTA — per CUR brand guide: "gold on navy" or gold as highlight. */
+  .btn-gold      { @apply btn text-primary-900 bg-gold-500 hover:bg-gold-400 active:bg-gold-600
+                         focus-visible:ring-gold-400; }
+  .btn-danger    { @apply btn text-white bg-red-600 hover:bg-red-700; }
+
+  /* Accent text link — Accent Blue tone on light, brighter on dark. */
+  .text-link {
+    @apply text-brand-hover hover:text-brand underline-offset-2 hover:underline transition-colors
+           dark:text-brand-soft dark:hover:text-gold-400;
+  }
+
+  /* ---------- Inputs ---------- */
+  .input {
+    @apply w-full rounded-md border border-ink-200 bg-white px-3 py-2 text-[13.5px] text-ink-900
+           placeholder-ink-400
+           focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100
+           disabled:bg-ink-50 disabled:cursor-not-allowed
+           dark:bg-ink-800 dark:border-ink-700 dark:text-ink-50 dark:placeholder-ink-500
+           dark:focus:ring-primary-900/40;
+    transition: border-color 0.12s, box-shadow 0.12s;
+  }
+
+  .input-sm { @apply py-1.5 text-[12.5px]; }
+
+  .label      { @apply block text-[11.5px] font-medium text-ink-600 mb-1.5 uppercase tracking-[0.06em] dark:text-ink-300; }
+  .error-text { @apply text-[12px] text-red-600 mt-1 dark:text-red-400; }
+
+  /* ---------- Cards ---------- */
+  .card {
+    @apply bg-white rounded-2xl border border-ink-100
+           dark:bg-ink-800 dark:border-ink-700;
+  }
+
+  .card-tight { @apply card p-5; }
+  .card-pad   { @apply card p-6; }
+
+  /* ---------- Stat cards — pastel, flat, no glow ---------- */
+  .stat-card {
+    @apply relative rounded-2xl p-5 flex items-center justify-between gap-3;
+  }
+
+  /* ---------- Nav ---------- */
+  .nav-link {
+    @apply relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13.5px] font-normal transition-colors duration-150;
+  }
+  .nav-link-idle {
+    @apply text-ink-600 hover:bg-ink-50 hover:text-ink-900
+           dark:text-ink-400 dark:hover:bg-ink-700/50 dark:hover:text-white;
+  }
+  /* Soft pill + thin left accent bar — matches Spik reference.
+     Uses the semantic `brand` token so it flips navy↔banner-blue by theme. */
+  .nav-link-active {
+    @apply bg-brand/10 text-brand font-medium
+           dark:bg-brand/25 dark:text-gold-400;
+  }
+  .nav-link-active::before {
+    content: '';
+    @apply absolute left-[-10px] top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-brand dark:bg-gold-500;
+  }
+
+  /* Sub-link — nested under an expandable parent. */
+  .nav-sublink {
+    @apply relative flex items-center rounded-md pl-9 pr-3 py-2 text-[13px] font-normal transition-colors duration-150;
+  }
+  .nav-sublink-idle {
+    @apply text-ink-500 hover:text-ink-900 hover:bg-ink-50
+           dark:text-ink-400 dark:hover:text-white dark:hover:bg-ink-700/50;
+  }
+  .nav-sublink-active {
+    @apply bg-brand/10 text-brand font-medium
+           dark:bg-brand/25 dark:text-gold-400;
+  }
+  .nav-sublink-active::before {
+    content: '';
+    @apply absolute left-[-10px] top-1 bottom-1 w-[3px] rounded-r-full bg-brand dark:bg-gold-500;
+  }
+
+  /* ---------- Sidebar group label ---------- */
+  .nav-group-label {
+    @apply px-3 text-[10.5px] font-medium tracking-[0.12em] text-ink-400 uppercase select-none;
+  }
+
+  /* ---------- Chips / pill badges ---------- */
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap;
+  }
+
+  .chip-soft    { @apply chip bg-ink-100 text-ink-700 dark:bg-ink-700 dark:text-ink-100; }
+  .chip-primary { @apply chip bg-brand/10 text-brand dark:bg-brand/30 dark:text-gold-300; }
+  .chip-gold    { @apply chip bg-gold-100 text-gold-700 dark:bg-gold-900/40 dark:text-gold-300; }
+  .chip-success { @apply chip bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300; }
+  .chip-warning { @apply chip bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300; }
+  .chip-danger  { @apply chip bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300; }
+
+  /* ---------- Section heading ---------- */
+  .section-title { @apply text-[15px] font-semibold text-ink-900 dark:text-white leading-tight; }
+  .section-sub   { @apply text-[12.5px] text-ink-500 dark:text-ink-400 leading-snug; }
+
+  /* ---------- Data tables ---------- */
+  .data-table { @apply w-full text-[13px] text-left; }
+  .data-table thead tr {
+    @apply text-[11px] uppercase tracking-[0.08em] text-ink-500
+           bg-ink-50 dark:bg-ink-900/40
+           border-b border-ink-100 dark:border-ink-700;
+  }
+  .data-table thead th { @apply px-4 py-3 font-medium; }
+  .data-table tbody td { @apply px-4 py-3 align-middle; }
+  .data-table tbody tr {
+    @apply border-t border-ink-100 dark:border-ink-700
+           hover:bg-ink-50/70 dark:hover:bg-ink-700/30 transition-colors;
+  }
+
+  /* ---------- Icon buttons ---------- */
+  .icon-btn {
+    @apply p-2 rounded-md text-ink-500 hover:text-ink-900 hover:bg-ink-100
+           dark:hover:bg-ink-700 dark:hover:text-white transition-colors;
+  }
+
+  /* ---------- Divider dots ---------- */
+  .dot-sep::before {
+    content: '•';
+    @apply mx-1.5 text-ink-300;
+  }
+}
+
+/* ============================================================
+   Utilities
+   ============================================================ */
+@layer utilities {
+  .animate-in {
+    animation-duration: 220ms;
+    animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    animation-fill-mode: forwards;
+  }
+
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { scrollbar-width: none; }
+
+  /* Hair-thin divider used inside dense content */
+  .hairline { @apply border-ink-100 dark:border-ink-700; }
+}

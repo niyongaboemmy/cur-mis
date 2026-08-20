@@ -1,0 +1,189 @@
+╔════════════════════════════════════════════════════════════════════════════════╗
+║                  REGISTRAR GENERATE DOCUMENTS - QUICK FIX                       ║
+║                         Production Deployment Checklist                         ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+
+PROBLEM
+═══════════════════════════════════════════════════════════════════════════════
+Registrar users cannot see "Generate Documents" button in the sidebar online
+at: https://cur.ac.rw/umis/documents/generate
+
+SOLUTION
+═══════════════════════════════════════════════════════════════════════════════
+1. Pull latest code from GitHub
+2. Run ONE database migration
+3. Rebuild frontend (optional if using hot reload)
+4. Clear browser cache
+5. Test with registrar account
+
+
+STEP-BY-STEP DEPLOYMENT
+═══════════════════════════════════════════════════════════════════════════════
+
+☐ STEP 1: Update Code
+  Command: cd /var/www/html/cur-mis && git pull origin main
+  Expected:
+    - 02f961d Add comprehensive Registrar document generation deployment guide
+    - 1ec2b24 Enable Registrar document generation feature with UI fixes
+    - 014a90d Add registrar deployment summary documentation
+    - 1db43b0 Add registrar document generation SQL queries
+
+☐ STEP 2: Run Database Migration
+  File: backend/database/migrations/2026_07_02_088_enable_registrar_document_generation.sql
+
+  Option A (Web UI - Recommended):
+    1. Open http://your-server/migrate.php
+    2. Select migration 2026_07_02_088_enable_registrar_document_generation.sql
+    3. Click "Run"
+    4. Verify "Success"
+
+  Option B (Command Line):
+    mysql -u curac_save -p'curac_save' cur-mis < \
+    backend/database/migrations/2026_07_02_088_enable_registrar_document_generation.sql
+
+☐ STEP 3: Verify Database
+  Run this SQL query:
+    SELECT id, slug FROM permissions WHERE slug = 'GENERATE_DOCUMENTS';
+
+  Expected Result:
+    id | slug
+    9  | GENERATE_DOCUMENTS
+
+☐ STEP 4: Rebuild Frontend (If Using Build Process)
+  Commands:
+    cd frontend
+    npm run build
+    # Deploy dist/ folder to web server
+
+  Or if using dev server:
+    npm run dev
+    (changes auto-reload)
+
+☐ STEP 5: Clear Browser Cache
+  - Press Ctrl+Shift+Del (Windows) or Cmd+Shift+Del (Mac)
+  - Select "All time" and "Cached images and files"
+  - Click "Clear data"
+  - Or close all browser windows and reopen
+
+☐ STEP 6: Test the Feature
+  1. Log in as registrar
+  2. Look at sidebar under "Students" menu
+  3. Should see submenu item: "Generate Documents"
+  4. Click to open document generation interface
+  5. Search for a student
+  6. Click "Preview" on any document type
+  7. Document should appear in modal
+  8. Click "Download PDF" to get the file
+
+
+WHAT GETS FIXED
+═══════════════════════════════════════════════════════════════════════════════
+✅ Database: GENERATE_DOCUMENTS permission is seeded
+✅ Database: Permission assigned to registrar, admin, superadmin roles
+✅ Frontend: Sidebar menu shows "Students > Generate Documents"
+✅ API: /documents/generate endpoint accessible to registrar
+✅ Documents: 8 document types available (transcripts, certificates, letters)
+
+
+FILES CHANGED
+═══════════════════════════════════════════════════════════════════════════════
+1. backend/database/migrations/2026_07_02_088_enable_registrar_document_generation.sql
+   → Seeds GENERATE_DOCUMENTS permission, assigns to roles
+
+2. frontend/src/layouts/MainLayout.tsx
+   → Shows Students menu when registrar has GENERATE_DOCUMENTS permission
+
+3. backend/database/registrar_document_queries.sql
+   → SQL query templates for 12 document types (FYI, no action needed)
+
+4. REGISTRAR_FEATURES_FIX.md
+   → Full deployment guide with troubleshooting
+
+
+DOCUMENT TYPES AVAILABLE
+═══════════════════════════════════════════════════════════════════════════════
+After fix, registrar can generate:
+
+ 1. To Whom For Visa Letter
+ 2. Admission Letter
+ 3. Student Registration Form
+ 4. English Proficiency Certificate
+ 5. Completed Modules Report
+ 6. Bachelor's Degree Certificate
+ 7. Postgraduate Diploma Certificate
+ 8. Undergraduate Degree Certificate
+
+
+TROUBLESHOOTING
+═══════════════════════════════════════════════════════════════════════════════
+
+❌ "Generate Documents" still not visible?
+  → Check: SELECT slug FROM permissions WHERE slug = 'GENERATE_DOCUMENTS';
+  → If empty: Run migration again
+  → If exists: Clear browser cache (Ctrl+Shift+Del)
+
+❌ 403 Forbidden error when accessing /documents/generate?
+  → Registrar doesn't have GENERATE_DOCUMENTS permission
+  → Run the migration: step 2
+
+❌ Cannot find student in search?
+  → Try searching by registration number (e.g., "STU-2024-001")
+  → Try full name search (e.g., "John Smith")
+  → Verify student exists in database
+
+❌ Document preview not loading?
+  → Check browser console (F12 → Console tab)
+  → Verify API endpoint returns data: /api/documents/preview
+  → Check server logs for errors
+
+
+VERIFICATION QUERIES
+═══════════════════════════════════════════════════════════════════════════════
+
+Check if permission exists:
+  SELECT id, slug, name FROM permissions WHERE slug = 'GENERATE_DOCUMENTS';
+
+Check if registrar has permission:
+  SELECT rp.* FROM role_permissions rp
+  JOIN roles r ON r.id = rp.role_id
+  JOIN permissions p ON p.id = rp.permission_id
+  WHERE r.name = 'registrar' AND p.slug = 'GENERATE_DOCUMENTS';
+
+List all registrar permissions:
+  SELECT p.slug, p.name FROM role_permissions rp
+  JOIN roles r ON r.id = rp.role_id
+  JOIN permissions p ON p.id = rp.permission_id
+  WHERE r.name = 'registrar'
+  ORDER BY p.slug;
+
+
+RELATED DOCUMENTATION
+═══════════════════════════════════════════════════════════════════════════════
+- REGISTRAR_FEATURES_FIX.md (Full deployment guide)
+- REGISTRAR_DEPLOYMENT_SUMMARY.md (Feature overview)
+- backend/database/registrar_document_queries.sql (SQL templates)
+
+
+GIT COMMITS
+═══════════════════════════════════════════════════════════════════════════════
+Main branch (origin/main):
+  02f961d - Add comprehensive Registrar document generation deployment guide
+  1ec2b24 - Enable Registrar document generation feature with UI fixes
+  014a90d - Add registrar deployment summary documentation
+  1db43b0 - Add registrar document generation SQL queries
+
+
+SUPPORT
+═══════════════════════════════════════════════════════════════════════════════
+For issues:
+  1. Read REGISTRAR_FEATURES_FIX.md (full guide with troubleshooting)
+  2. Check browser console (F12) for errors
+  3. Run verification queries above
+  4. Check application logs: tail -f /var/log/apache2/error.log
+
+
+═══════════════════════════════════════════════════════════════════════════════
+Status: ✅ READY FOR PRODUCTION DEPLOYMENT
+Last Updated: July 2, 2026
+Estimated Deployment Time: 5-10 minutes
+═══════════════════════════════════════════════════════════════════════════════

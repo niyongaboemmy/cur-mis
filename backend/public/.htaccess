@@ -1,0 +1,20 @@
+Options -Indexes -MultiViews
+RewriteEngine On
+
+# Pass Authorization header to PHP (required for JWT Bearer tokens)
+RewriteCond %{HTTP:Authorization} .
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+# Route OPTIONS preflight to PHP so CorsMiddleware can respond
+RewriteCond %{REQUEST_METHOD} OPTIONS
+RewriteRule ^ index.php [QSA,L]
+
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.php [QSA,L]
+
+<FilesMatch "\.(env|json|lock|log|md|gitignore)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+

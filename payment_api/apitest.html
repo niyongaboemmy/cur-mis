@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>CUR Payment API – Test</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;font-size:14px;background:#f0f2f5;padding:20px;color:#111}
+h1{font-size:18px;margin-bottom:20px;color:#1d4ed8}
+.card{background:#fff;border:1px solid #ddd;border-radius:8px;padding:20px;margin-bottom:16px}
+.step{font-size:11px;color:#888;text-transform:uppercase;margin-bottom:4px}
+h2{font-size:15px;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.badge{background:#16a34a;color:#fff;font-size:11px;padding:2px 8px;border-radius:4px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.field{display:flex;flex-direction:column;gap:3px}
+label{font-size:12px;color:#555}
+input{padding:7px 10px;border:1px solid #ccc;border-radius:5px;font-size:13px;width:100%}
+button{padding:9px 20px;background:#1d4ed8;color:#fff;border:none;border-radius:5px;font-size:13px;cursor:pointer;margin-top:10px}
+button:hover{background:#1e40af}
+.out{margin-top:10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:5px;padding:10px;font-family:monospace;font-size:12px;white-space:pre-wrap;word-break:break-all;max-height:200px;overflow-y:auto}
+.ok{color:#15803d;font-weight:bold;margin-top:6px;font-size:13px}
+.err{color:#dc2626;font-weight:bold;margin-top:6px;font-size:13px}
+.token-box{background:#eff6ff;border:1px solid #bfdbfe;border-radius:5px;padding:8px 10px;font-family:monospace;font-size:11px;color:#1e40af;word-break:break-all;margin-top:8px;min-height:22px}
+.info{font-size:12px;color:#1d4ed8;background:#eff6ff;border-radius:4px;padding:8px 10px;margin:8px 0}
+</style>
+</head>
+<body>
+
+<h1>🏦 CUR Payment API — Test Client</h1>
+
+<!-- BASE URL -->
+<div class="card">
+  <div class="step">Configuration</div>
+  <div class="field">
+    <label>Base URL</label>
+    <input id="BASE" value="https://cur.ac.rw/api" type="text"/>
+  </div>
+</div>
+
+<!-- STEP 1 -->
+<div class="card">
+  <div class="step">Step 1 of 3</div>
+  <h2><span class="badge">POST</span> /token.php — Get Token</h2>
+  <div class="grid">
+    <div class="field"><label>user_name</label><input id="U" value="bk_curac"/></div>
+    <div class="field"><label>password</label><input id="P" value="6523721wegyuw5327853278237gwd783"/></div>
+  </div>
+  <button onclick="step1()">▶ Send Request</button>
+  <div id="P1"></div>
+  <div class="out" id="R1"></div>
+  <div style="margin-top:8px;font-size:12px;color:#555">Token saved for steps 2 & 3:</div>
+  <div class="token-box" id="TOK">— run step 1 first —</div>
+</div>
+
+<!-- STEP 2 -->
+<div class="card">
+  <div class="step">Step 2 of 3</div>
+  <h2><span class="badge">POST</span> /getstudent.php — Verify Student</h2>
+  <div class="grid">
+    <div class="field"><label>payer_code (regnumber)</label><input id="S2R" value="1CUR18AK05399"/></div>
+    <div class="field"><label>merchant_code</label><input id="S2M" value="TH90989816"/></div>
+  </div>
+  <button onclick="step2()">▶ Send Request</button>
+  <div id="P2"></div>
+  <div class="out" id="R2"></div>
+</div>
+
+<!-- STEP 3 -->
+<div class="card">
+  <div class="step">Step 3 of 3</div>
+  <h2><span class="badge">POST</span> /payment.php — Record Payment</h2>
+  <div class="grid">
+    <div class="field"><label>payer_code (regnumber)</label><input id="S3REG" value="1CUR18AK05399"/></div>
+    <div class="field"><label>transaction_id (bank ref)</label><input id="S3TXN" value="TXN20260508002"/></div>
+  </div>
+  <div class="grid">
+    <div class="field"><label>amount (RWF)</label><input id="S3AMT" value="150000" type="number"/></div>
+    <div class="field"><label>payment_channel</label><input id="S3CHN" value="BK"/></div>
+  </div>
+  <div class="grid">
+    <div class="field"><label>slip_number</label><input id="S3SLP" value="SLP-2026-001"/></div>
+    <div class="field"><label>bank_account (blank = skip)</label><input id="S3BNK" value=""/></div>
+  </div>
+  <div class="grid">
+    <div class="field"><label>term (SESSION)</label><input id="S3TRM" value="1"/></div>
+    <div class="field"><label>academic_year</label><input id="S3YR" value="2025-2026"/></div>
+  </div>
+  <div class="grid">
+    <div class="field"><label>payment_purpose_code</label><input id="S3PUR" value="147"/></div>
+    <div class="field"><label>merchant_code</label><input id="S3MER" value="TH90989816"/></div>
+  </div>
+  <div class="info">ℹ bank_account is optional — leave blank if your tbl_bank table has no records.</div>
+  <button onclick="step3()">▶ Send Request</button>
+  <div id="P3"></div>
+  <div class="out" id="R3"></div>
+</div>
+
+<script>
+var TOKEN = '';
+
+function base() {
+  return document.getElementById('BASE').value.replace(/\/+$/, '');
+}
+
+function show(rid, pid, status, data) {
+  var r = document.getElementById(rid);
+  var p = document.getElementById(pid);
+  r.textContent = JSON.stringify(data, null, 2);
+  var ok = status >= 200 && status < 300;
+  p.className = ok ? 'ok' : 'err';
+  p.textContent = ok ? '✓ HTTP ' + status + ' — Success' : '✗ HTTP ' + status + ' — Failed';
+}
+
+function call(url, body, token, rid, pid, cb) {
+  var h = {'Content-Type': 'application/json'};
+  if (token) h['Authorization'] = 'Bearer ' + token;
+
+  var xhr = new XMLHttpRequest();
+  xhr.open('POST', url, true);
+  for (var k in h) xhr.setRequestHeader(k, h[k]);
+
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState !== 4) return;
+    var status = xhr.status;
+    var data;
+    try { data = JSON.parse(xhr.responseText); }
+    catch(e) { data = {raw: xhr.responseText}; }
+    show(rid, pid, status, data);
+    if (cb) cb(status, data);
+  };
+
+  xhr.onerror = function() {
+    show(rid, pid, 0, {error: 'Network / CORS error — check server and .htaccess'});
+  };
+
+  xhr.send(JSON.stringify(body));
+}
+
+function step1() {
+  call(
+    base() + '/token.php',
+    {user_name: document.getElementById('U').value,
+     password:  document.getElementById('P').value},
+    null, 'R1', 'P1',
+    function(status, data) {
+      if (data && data.data && data.data.token) {
+        TOKEN = data.data.token;
+        document.getElementById('TOK').textContent = TOKEN;
+      }
+    }
+  );
+}
+
+function step2() {
+  if (!TOKEN) { alert('Run Step 1 first to get a token.'); return; }
+  call(
+    base() + '/getstudent.php',
+    {payer_code:    document.getElementById('S2R').value,
+     merchant_code: document.getElementById('S2M').value},
+    TOKEN, 'R2', 'P2',
+    function(status, data) {
+      if (data && data.data && data.data.payer_code) {
+        document.getElementById('S3REG').value = data.data.payer_code;
+      }
+    }
+  );
+}
+
+function step3() {
+  if (!TOKEN) { alert('Run Step 1 first to get a token.'); return; }
+  var bank = document.getElementById('S3BNK').value.trim();
+  var body = {
+    payer_code:           document.getElementById('S3REG').value,
+    transaction_id:       document.getElementById('S3TXN').value,
+    amount:               parseFloat(document.getElementById('S3AMT').value),
+    payment_channel:      document.getElementById('S3CHN').value,
+    slip_number:          document.getElementById('S3SLP').value,
+    initial_slip_number:  document.getElementById('S3SLP').value,
+    term:                 document.getElementById('S3TRM').value,
+    academic_year:        document.getElementById('S3YR').value,
+    payment_date_time:    new Date().toISOString().slice(0,19).replace('T',' '),
+    payment_purpose_code: document.getElementById('S3PUR').value,
+    merchant_code:        document.getElementById('S3MER').value
+  };
+  if (bank) body.bank_account = bank;
+  call(base() + '/payment.php', body, TOKEN, 'R3', 'P3', null);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,75 @@
+═══════════════════════════════════════════════════════════════════════════════
+                    PRODUCTION SERVER ERROR - QUICK FIX
+═══════════════════════════════════════════════════════════════════════════════
+
+PROBLEM:
+  "Server error" on OTP verification page (https://cur.ac.rw/umis/verify-otp)
+
+CAUSE:
+  Production database schema is outdated and missing critical columns
+
+SOLUTION:
+  Run 2 commands on production server (takes 5 minutes total)
+
+═══════════════════════════════════════════════════════════════════════════════
+                           DEPLOYMENT STEPS
+═══════════════════════════════════════════════════════════════════════════════
+
+1. SSH INTO PRODUCTION
+   ─────────────────────────────────────────────────────────────────────────
+   ssh user@yourdomain.com
+   cd ~/public_html/umis
+
+2. RUN DATABASE MIGRATION (CRITICAL)
+   ─────────────────────────────────────────────────────────────────────────
+   mysql -u your_db_user -p your_db_name < PRODUCTION_MIGRATION_FIX.sql
+
+   [Enter database password when prompted]
+
+   This adds missing columns and fixes collation issues.
+   Takes ~30 seconds. Safe to run multiple times.
+
+3. UPDATE CODE
+   ─────────────────────────────────────────────────────────────────────────
+   cd backend
+   git pull origin main
+
+   This pulls the latest fixes. No composer install needed.
+
+4. TEST (Optional but recommended)
+   ─────────────────────────────────────────────────────────────────────────
+   curl -X POST "https://yourdomain.com/api/auth/verify-otp" \
+     -H "Content-Type: application/json" \
+     -d '{"email":"test@example.com","otp":"000000"}'
+
+   Should return JSON, NOT "Server error"
+
+═══════════════════════════════════════════════════════════════════════════════
+                            WHAT'S BEEN FIXED
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ Database Schema Fixes (in PRODUCTION_MIGRATION_FIX.sql)
+   - Added missing columns to 5 tables
+   - Standardized database collation
+   - Added performance indexes
+
+✅ Code Resilience (already deployed)
+   - Fixed "headers already sent" errors
+   - Added collation-safe queries
+   - Improved error handling
+
+═══════════════════════════════════════════════════════════════════════════════
+                           FILES TO REFERENCE
+═══════════════════════════════════════════════════════════════════════════════
+
+PRODUCTION_FIX_SUMMARY.md         - Complete detailed explanation
+PRODUCTION_MIGRATION_FIX.sql      - Database migration script
+PRODUCTION_HOTFIX.md              - Full deployment guide
+
+═══════════════════════════════════════════════════════════════════════════════
+
+Timeline:     5 minutes
+Risk Level:   LOW (non-destructive changes)
+Status:       ✅ READY FOR PRODUCTION
+
+For detailed instructions, see: PRODUCTION_FIX_SUMMARY.md

@@ -1,0 +1,40 @@
+<?php
+
+declare(strict_types=1);
+
+use App\Controllers\HrEmployeeController;
+use App\Controllers\StaffQualificationController;
+use App\Middleware\AuthMiddleware;
+use App\Middleware\PermissionMiddleware;
+use App\Constants\Permissions;
+
+/**
+ * HR Employees API Routes
+ */
+
+// Read-only: any user with VIEW_HR_EMPLOYEES
+$router->group('/api/employees', function ($router) {
+    $router->get('/stats', [HrEmployeeController::class, 'stats']);
+    $router->get('',       [HrEmployeeController::class, 'index']);
+    $router->get('/:id',   [HrEmployeeController::class, 'show']);
+}, [AuthMiddleware::class, new PermissionMiddleware(Permissions::VIEW_HR_EMPLOYEES)]);
+
+// Write: requires MANAGE_HR_EMPLOYEES
+$router->group('/api/employees', function ($router) {
+    $router->post('',                    [HrEmployeeController::class, 'create']);
+    $router->post('/:id',                 [HrEmployeeController::class, 'update']);
+    $router->delete('/:id',              [HrEmployeeController::class, 'delete']);
+    $router->post('/:id/toggle-status', [HrEmployeeController::class, 'toggleStatus']);
+}, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES)]);
+
+// Qualifications — read: VIEW_HR_EMPLOYEES
+$router->group('/api/employees', function ($router) {
+    $router->get('/:id/qualifications', [StaffQualificationController::class, 'index']);
+}, [AuthMiddleware::class, new PermissionMiddleware(Permissions::VIEW_HR_EMPLOYEES)]);
+
+// Qualifications — write: MANAGE_HR_EMPLOYEES
+$router->group('/api/employees', function ($router) {
+    $router->post('/:id/qualifications',          [StaffQualificationController::class, 'create']);
+    $router->post('/:id/qualifications/:qid',      [StaffQualificationController::class, 'update']);
+    $router->delete('/:id/qualifications/:qid',   [StaffQualificationController::class, 'delete']);
+}, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES)]);
