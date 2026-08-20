@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Plus, Trash2, Loader2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { documentService } from "@/services/documentService";
+import { useLevels } from "@/hooks/useLevels";
 import { toast } from "react-hot-toast";
 
 export interface ExemptionLetterRow {
@@ -49,6 +50,8 @@ export default function ExemptionLetterModal({
   onClose,
   onPreview,
 }: ExemptionLetterModalProps) {
+  const { levelName } = useLevels();
+
   // Log what we received
   console.log('🎓 ExemptionLetterModal props:', {
     studentName,
@@ -202,7 +205,10 @@ export default function ExemptionLetterModal({
         (m: any) => `${m.module_code} — ${m.module_name}` === value
       );
       if (selectedModule) {
-        newRows[index].level = selectedModule.level?.toString() || "";
+        // `modules.level` is a `levels.id`; the letter names the level, so
+        // auto-fill the catalogue name rather than the foreign key.
+        newRows[index].level =
+          selectedModule.level_name ?? levelName(selectedModule.level, "");
       }
     }
     (newRows[index] as any)[field] = value;

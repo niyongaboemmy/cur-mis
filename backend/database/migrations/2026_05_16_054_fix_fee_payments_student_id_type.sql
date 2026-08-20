@@ -1,3 +1,13 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:d8c65ce83e7758e43e79c185ddb0390b1bc477b362cf79d89130c574e84f7c0c
-size 607
+-- Migration 054: Fix fee_payments.student_id column type
+--
+-- The column was defined as int(10) unsigned in the original schema, but the
+-- system stores student registration numbers (e.g. "CUR/BBA/001/2022") which
+-- are varchar strings — matching fee_invoices.student_id (varchar 20).
+--
+-- FeePaymentModel::listWithDetails() joins on `s.regnumber = fp.student_id`
+-- and filters by string regnumber, so the column must be VARCHAR.
+--
+-- Safe to re-run: MODIFY COLUMN to the same type is a no-op on re-run.
+
+ALTER TABLE `fee_payments`
+    MODIFY COLUMN `student_id` VARCHAR(20) NOT NULL;

@@ -1,3 +1,17 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:831d7141386fe40bd856d0db30433fc003ee3feb19c5d07449fcc2d4ca20ebc5
-size 1311
+-- ──────────────────────────────────────────────────────────────────────────────
+-- Migration 078 — RETIRED / NEUTRALIZED (2026-06-16)
+--
+-- This was a one-shot LOCAL rebuild that DROPPED and reloaded `modules`,
+-- `module_programs` and `module_marks` from an embedded legacy dump. It is
+-- DESTRUCTIVE and must NEVER run against a populated database (production), where
+-- it would wipe live modules and marks.
+--
+-- The canonical, additive, non-destructive schema for these tables is now owned
+-- by  2026_06_16_083_consolidated_session_schema.sql  (CREATE TABLE IF NOT EXISTS
+-- + guarded ALTERs). Loading legacy DATA is a deliberate, separate one-time job —
+-- not something the automatic `migrate` step should ever perform.
+--
+-- Retired to a no-op so `POST /api/deploy/migrate` is safe everywhere. The
+-- original rebuild SQL remains in git history if a fresh import is ever needed.
+-- ──────────────────────────────────────────────────────────────────────────────
+DO 1;

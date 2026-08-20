@@ -50,6 +50,13 @@ $router->group('/api/deliberation', function ($router) {
     $router->group('/sessions', function ($r) {
         $r->post('',                [DeliberationController::class, 'createSession']);
         $r->post('/:id',             [DeliberationController::class, 'updateSession']);
+        // Per-student outcomes: promote / repeat / discontinue / defer.
+        // Recorded and revisable while the session is open; applied on finalise.
+        $r->get('/:id/decisions',           [DeliberationController::class, 'listDecisions']);
+        $r->post('/:id/decisions',          [DeliberationController::class, 'saveDecisions']);
+        // Dry run — what finalising would change. Finalisation cannot be
+        // undone, so the board sees every level and status change first.
+        $r->get('/:id/decisions/preview',   [DeliberationController::class, 'previewFinalize']);
         $r->post('/:id/finalize',   [DeliberationController::class, 'finalizeSession']);
     }, [new PermissionMiddleware(Permissions::MANAGE_DELIBERATIONS)]);
 }, [AuthMiddleware::class]);

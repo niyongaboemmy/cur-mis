@@ -6,12 +6,19 @@ import Modal from '@/components/ui/Modal'
 import { messageService } from '@/services/messageService'
 import type { RecipientOption } from '@/types/messaging'
 import { cn } from '@/utils/helpers'
+import { PERMISSIONS } from '@/constants/permissions'
+import { useAnyPermission } from '@/utils/permissions'
 
 /* ------------------------------------------------------------------ */
 /* Constants                                                            */
 /* ------------------------------------------------------------------ */
 
-/** All role groups — backend enforces per-user send permissions */
+/**
+ * All role groups. `MessageController::canBroadcast()` requires
+ * BROADCAST_MESSAGES or MANAGE_MESSAGES before any of these will send, so the
+ * mode is hidden without them — otherwise the permission's only visible effect
+ * is a failed send after the user has already written the message.
+ */
 const ALL_ROLE_GROUPS: RecipientOption[] = [
   { id: 'all_students',   label: 'All Students',   type: 'role' },
   { id: 'all_lecturers',  label: 'All Lecturers',  type: 'role' },
@@ -62,6 +69,12 @@ export default function ComposeMessageModal({ open, onClose, onSent }: Props) {
   const qc = useQueryClient()
 
   /* Form state */
+  const canBroadcast = useAnyPermission([
+    PERMISSIONS.BROADCAST_MESSAGES,
+    PERMISSIONS.MANAGE_MESSAGES,
+  ])
+  const availableModes = canBroadcast ? MODES : MODES.filter(m => m.id !== 'role')
+
   const [mode, setMode]                       = useState<Mode>('individual')
   const [selectedRecipients, setSelectedRecipients] = useState<RecipientOption[]>([])
   const [selectedRole, setSelectedRole]       = useState<RecipientOption | null>(null)
@@ -206,7 +219,7 @@ export default function ComposeMessageModal({ open, onClose, onSent }: Props) {
         <div>
           <label className="label mb-2">Message type</label>
           <div className="grid grid-cols-3 gap-2">
-            {MODES.map(m => {
+            {availableModes.map(m => {
               const Icon    = m.icon
               const active  = mode === m.id
               return (

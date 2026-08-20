@@ -96,6 +96,53 @@ class UrubutoServiceModel extends BaseModel
     }
 
     /**
+     * Resolve whatever the gateway sent to identify the chosen service.
+     *
+     * A callback may name the service by its `service_code` ('fines-1062'), by
+     * the gateway-side numeric `service_id` ('10264'), or by its display name
+     * ('Fines'). findByCode() handles only the first, so a callback carrying
+     * either of the other two resolved to nothing and the payment lost the one
+     * fact that says WHAT was paid for. Alias resolution is inherited from
+     * findByCode().
+     *
+     * @return array<string,mixed>|null
+     */
+    public function resolveAny(string $candidate): ?array
+    {
+        $needle = trim($candidate);
+        if ($needle === '') {
+            return null;
+        }
+
+        $row = $this->findByCode($needle);
+        if ($row) {
+            return $row;
+        }
+
+        $all = $this->catalogue();
+
+        if (ctype_digit($needle)) {
+            foreach ($all as $svc) {
+                if ((string)($svc['urubuto_service_id'] ?? '') === $needle) {
+                    return $this->findByCode((string)$svc['service_code']);
+                }
+            }
+        }
+
+        $slug = preg_replace('/[^a-z0-9]+/', '', strtolower($needle)) ?? '';
+        if ($slug !== '') {
+            foreach ($all as $svc) {
+                $name = preg_replace('/[^a-z0-9]+/', '', strtolower((string)$svc['service_name'])) ?? '';
+                if ($name !== '' && $name === $slug) {
+                    return $this->findByCode((string)$svc['service_code']);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * The internal fee_invoices.fee_type a gateway service settles — the BILLING
      * vocabulary, used to pick which invoice a payment pays down. Null when the
      * service maps to none.

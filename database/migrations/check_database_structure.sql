@@ -1,3 +1,36 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:ee76daa10a08b6a9a67b0e3ce244ab48f93af5caf4e9fdc6335d5f92e9ed3d4a
-size 933
+-- =============================================================================
+-- CHECK DATABASE STRUCTURE
+-- Run this first to see what tables actually exist
+-- =============================================================================
+
+-- List all tables in the database
+SELECT
+  TABLE_NAME,
+  TABLE_TYPE,
+  TABLE_COLLATION,
+  TABLE_ROWS,
+  DATA_LENGTH,
+  INDEX_LENGTH
+FROM INFORMATION_SCHEMA.TABLES
+WHERE TABLE_SCHEMA = DATABASE()
+ORDER BY TABLE_NAME;
+
+-- Show column details for each table (optional - shows character sets)
+SELECT
+  TABLE_NAME,
+  COLUMN_NAME,
+  COLUMN_TYPE,
+  COLLATION_NAME,
+  IS_NULLABLE,
+  COLUMN_KEY
+FROM INFORMATION_SCHEMA.COLUMNS
+WHERE TABLE_SCHEMA = DATABASE()
+ORDER BY TABLE_NAME, ORDINAL_POSITION;
+
+-- Check for any views (not base tables)
+SELECT
+  TABLE_NAME,
+  TABLE_TYPE
+FROM INFORMATION_SCHEMA.TABLES
+WHERE TABLE_SCHEMA = DATABASE()
+AND TABLE_TYPE = 'VIEW';

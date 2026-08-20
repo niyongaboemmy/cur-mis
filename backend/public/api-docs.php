@@ -739,7 +739,7 @@ $routes = [
     'method'      => 'GET',
     'path'        => '/api/applicant/profile',
     'summary'     => 'Get own profile',
-    'description' => 'Returns the enriched applicant profile including joined application summary, user info, and profile extension fields. Requires a JWT with `is_applicant = true`. Permission: MANAGE_OWN_PROFILE.',
+    'description' => 'Returns the enriched applicant profile including joined application summary, user info, and profile extension fields. Requires a JWT with `is_applicant = true`. No additional permission — self-service profile access follows the account, not a grant.',
     'auth'        => true,
     'rateLimit'   => false,
     'request'     => null,

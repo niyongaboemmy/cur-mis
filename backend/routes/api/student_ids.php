@@ -14,8 +14,10 @@ use App\Constants\Permissions;
  */
 $router->group('/api/student-ids', function ($router) {
 
-    // Read / print — registry viewers.
+    // Read / print — registry viewers. The roster is what the ID-card
+    // workspace lists; it is readable by anyone who can already see students.
     $router->group('', function ($r) {
+        $r->get('',                      [StudentIdController::class, 'index']);
         $r->get('/by-student/:id',       [StudentIdController::class, 'history']);
         $r->get('/by-student/:id/card',  [StudentIdController::class, 'card']);
     }, [new MaybePermissionMiddleware([
@@ -23,10 +25,14 @@ $router->group('/api/student-ids', function ($router) {
         Permissions::MANAGE_STUDENT_IDS,
     ])]);
 
-    // Issue / revoke — managers only.
+    // Issue / revoke / batch print — managers only. Batch print is a manager
+    // action rather than a viewer one because it hands over printable
+    // identity documents in bulk.
     $router->group('', function ($r) {
-        $r->post('/issue',  [StudentIdController::class, 'issue']);
-        $r->delete('/:id',  [StudentIdController::class, 'revoke']);
+        $r->post('/issue',        [StudentIdController::class, 'issue']);
+        $r->post('/batch-issue',  [StudentIdController::class, 'batchIssue']);
+        $r->post('/batch-print',  [StudentIdController::class, 'batchPrint']);
+        $r->delete('/:id',        [StudentIdController::class, 'revoke']);
     }, [new MaybePermissionMiddleware([
         Permissions::MANAGE_STUDENT_IDS,
     ])]);

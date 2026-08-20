@@ -40,7 +40,10 @@ export default function DocumentValidationCarousel() {
   });
 
   const app = appQ.data?.data?.application;
-  const docs = appQ.data?.data?.documents ?? [];
+  // The endpoint returns the full faculty checklist; only uploaded documents can
+  // be validated, but the whole checklist is offered when requesting changes.
+  const checklist = appQ.data?.data?.documents ?? [];
+  const docs = checklist.filter((d) => d.id != null);
 
   const currentDoc = docs[currentIndex];
   const isLast = currentIndex === docs.length - 1;
@@ -105,7 +108,7 @@ export default function DocumentValidationCarousel() {
     
     if (currentDoc) {
       verifyDoc.mutate({
-        documentId: currentDoc.id,
+        documentId: currentDoc.id as number,
         status: status as VerificationStatus.VERIFIED | VerificationStatus.REJECTED,
         comment: comment.trim(),
       });
@@ -140,7 +143,7 @@ export default function DocumentValidationCarousel() {
     );
   }
 
-  const docUrl = currentDoc ? verificationService.downloadUrl(Number(id), currentDoc.id) : "";
+  const docUrl = currentDoc ? verificationService.downloadUrl(Number(id), currentDoc.id as number) : "";
 
   return (
     <ModalPortal>
@@ -367,7 +370,7 @@ export default function DocumentValidationCarousel() {
         isOpen={isRequestChangesOpen}
         onClose={() => setIsRequestChangesOpen(false)}
         applicationId={Number(id)}
-        documents={docs}
+        documents={checklist}
         onSuccess={requestChangesSuccess}
       />
     </div>

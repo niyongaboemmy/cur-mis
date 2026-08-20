@@ -153,6 +153,9 @@ class ModuleModel extends BaseModel
             $row['prerequisites'] = $this->prereqsFor((int)$row['module_id']);
             $row['programs']      = $this->programsFor((int)$row['module_id']);
             $row['levels']        = $this->levelsFor((int)$row['module_id']);
+            // `modules.level` holds a `levels.id`; the catalogue name is what
+            // every screen and export shows, so ship it beside the id.
+            $row['level_name']    = \App\Helpers\LevelHelper::name($row['level'] ?? null) ?: null;
             $agg = $offerings[(int)$row['module_id']] ?? null;
             $row['programs_count'] = $agg['programs_count'] ?? 0;
             $row['orders_used']    = $agg['orders_used']    ?? '';
@@ -192,6 +195,7 @@ class ModuleModel extends BaseModel
         $row['prerequisites'] = $this->prereqsFor($id);
         $row['programs']      = $this->programsFor($id);
         $row['levels']        = $this->levelsFor($id);
+        $row['level_name']    = \App\Helpers\LevelHelper::name($row['level'] ?? null) ?: null;
         return $row;
     }
 
@@ -245,7 +249,7 @@ class ModuleModel extends BaseModel
             ORDER BY m.module_code ASC
         ";
 
-        return $this->db->fetchAll($sql, $departmentIds);
+        return \App\Helpers\LevelHelper::decorate($this->db->fetchAll($sql, $departmentIds));
     }
 
     /**

@@ -24,7 +24,8 @@ use App\Services\SystemLogService;
  *
  * The `payment` and `bank_payment` writes use:
  *   bank_id = 1     (BK / UrubutoPay channel, from tbl_bank)
- *   fee_category = '147'  (bank payment category)
+ *   fee_category = the gateway service_code the payer chose, falling back to
+ *                  '147' (generic bank category) when the callback named none
  *   payment_chanel = 'BK'
  *   status = 1 (confirmed by gateway callback)
  */
@@ -135,17 +136,53 @@ class UrubutoPayService
             ];
         }
 
-        // Not an enrolled student — fall back to an applicant paying the one-off
-        // application processing fee (payer_code = student_applications.application_number).
+        // Not an enrolled student — this is an applicant. Two different debts
+        // ride the SAME payer code (the application number): the one-off
+        // processing fee that lets them submit, and — once admitted — the
+        // admission fees that gate their registration number. Which one the
+        // gateway offers is decided by whether the processing fee has already
+        // been confirmed, so the payer is never shown a bill they have settled
+        // nor one they cannot yet owe.
         $application = $this->lookupApplication($payerCode);
         if ($application) {
-            $fee        = $this->applicationFee();
             $payerNames = trim(strtoupper(($application['first_name'] ?? '') . ' ' . ($application['last_name'] ?? '')));
+            $payerNames = $payerNames !== '' ? $payerNames : 'APPLICANT';
+            $appFeePaid = !empty($application['paid_at']) && !empty($application['transaction_id']);
+
+            if ($appFeePaid) {
+                $services = (new AdmissionBillingService())->gatewayServicesFor((int)$application['id']);
+                $total    = 0;
+                foreach ($services as $service) {
+                    $total += (int)$service['amount'];
+                }
+
+                return [
+                    'merchant_code'               => $merchantCode,
+                    'payer_code'                  => $application['application_number'],
+                    'payer_names'                 => $payerNames,
+                    'currency'                    => 'RWF',
+                    // Registration and CURSU are separate bills that may be paid
+                    // one at a time, so the payer is not forced to send the whole
+                    // balance in a single transaction.
+                    'payer_must_pay_total_amount' => 'NO',
+                    'amount'                      => $total,
+                    'comment'                     => $services === []
+                        ? 'no outstanding balance'
+                        : 'admission fees',
+                    'commission_rate'             => 0,
+                    // Deliberately empty when nothing is owed: quoting the
+                    // already-settled processing fee here is how an applicant
+                    // ends up paying it twice.
+                    'services'                    => $services,
+                ];
+            }
+
+            $fee = $this->applicationFee();
 
             return [
                 'merchant_code'               => $merchantCode,
                 'payer_code'                  => $application['application_number'],
-                'payer_names'                 => $payerNames !== '' ? $payerNames : 'APPLICANT',
+                'payer_names'                 => $payerNames,
                 'currency'                    => 'RWF',
                 // Fixed fee — the applicant must pay it in full, no partial payments.
                 'payer_must_pay_total_amount' => 'YES',
@@ -345,7 +382,7 @@ class UrubutoPayService
         $payerCode   = trim((string)($cb['payer_code'] ?? ''));
         $amount      = (float)($cb['amount'] ?? 0);
         $currency    = strtoupper(trim((string)($cb['currency'] ?? 'RWF'))) ?: 'RWF';
-        $serviceCode = trim((string)($cb['service_code'] ?? $cb['payment_purpose_code'] ?? ''));
+        $serviceCode = $this->extractServiceCode($cb);
         $rawDate     = trim((string)($cb['payment_date_time'] ?? $cb['payment_date'] ?? ''));
         $paymentDate = $rawDate !== '' ? date('Y-m-d H:i:s', strtotime($rawDate)) : date('Y-m-d H:i:s');
 
@@ -353,21 +390,45 @@ class UrubutoPayService
             return ['status' => 'error', 'payment_id' => null, 'message' => 'Invalid callback data: transaction_code, payer_code and amount are required'];
         }
 
+        // A payment whose service cannot be identified still gets recorded, but
+        // it is logged with the whole payload: that log is the only way to
+        // learn a key name extractServiceCode() does not handle yet.
+        if ($serviceCode === '') {
+            error_log('[UrubutoPay] PAYMENT callback named no known service — tx ' . $txCode
+                . ', payload: ' . json_encode($cb));
+        }
+
         // ── Idempotency: check both modern and legacy tables ──────────────────
         $existingModern = $this->db->fetchOne(
-            "SELECT id FROM fee_payments WHERE reference_number = ? OR reference_number LIKE ? LIMIT 1",
+            "SELECT id, receipt_number FROM fee_payments WHERE reference_number = ? OR reference_number LIKE ? LIMIT 1",
             [$txCode, $txCode . '-%']
         );
         if ($existingModern) {
-            return ['status' => 'duplicate', 'payment_id' => (int)$existingModern['id'], 'message' => 'Payment already recorded'];
+            // Carry the ids on the duplicate too: the controller echoes them
+            // back to the gateway, and an acknowledgement without them can read
+            // as a failed delivery — which is how a retried notification turns
+            // into an auto-reversal.
+            return [
+                'status'         => 'duplicate',
+                'payment_id'     => (int)$existingModern['id'],
+                'message'        => 'Payment recorded',
+                'internal_tx_id' => (string)($existingModern['receipt_number'] ?? $txCode),
+                'external_tx_id' => $txCode,
+            ];
         }
 
         $existingLegacy = $this->db->fetchOne(
-            "SELECT id FROM payment WHERE external_transaction_id = ? AND payment_notifi = 'Debit' LIMIT 1",
+            "SELECT id, trans_code FROM payment WHERE external_transaction_id = ? AND payment_notifi = 'Debit' LIMIT 1",
             [$txCode]
         );
         if ($existingLegacy) {
-            return ['status' => 'duplicate', 'payment_id' => null, 'message' => 'Payment already recorded'];
+            return [
+                'status'         => 'duplicate',
+                'payment_id'     => null,
+                'message'        => 'Payment recorded',
+                'internal_tx_id' => (string)($existingLegacy['trans_code'] ?? $txCode),
+                'external_tx_id' => $txCode,
+            ];
         }
 
         // ── Student lookup ────────────────────────────────────────────────────
@@ -924,8 +985,17 @@ class UrubutoPayService
     }
 
     /**
-     * Record a successful UrubutoPay payment of the application processing fee
-     * onto the student_applications row. Idempotent on transaction_id.
+     * Record a successful UrubutoPay payment made by an APPLICANT.
+     *
+     * The application number is the payer code for both debts an applicant can
+     * carry, so this is the fork between them:
+     *
+     *   processing fee unpaid  → settle it, and submit the application on the
+     *                            applicant's behalf (see autoSubmitApplication)
+     *   processing fee settled → it is an admission fee (Registration, CURSU …)
+     *                            and AdmissionBillingService applies it
+     *
+     * Idempotent on transaction_id either way.
      */
     private function recordApplicationPayment(
         array  $application,
@@ -938,10 +1008,10 @@ class UrubutoPayService
         $appId      = (int)($application['id'] ?? 0);
         $appNumber  = (string)($application['application_number'] ?? '');
         $phone      = (string)($application['phone'] ?? '');
+        $appFeePaid = !empty($application['paid_at']) && !empty($application['transaction_id']);
 
-        // Idempotency — same transaction already recorded for this application.
-        if (!empty($application['paid_at'])
-            && (string)($application['transaction_id'] ?? '') === $txCode) {
+        // Idempotency — same transaction already recorded as the processing fee.
+        if ($appFeePaid && (string)($application['transaction_id'] ?? '') === $txCode) {
             return [
                 'status'             => 'duplicate',
                 'payment_id'         => $appId,
@@ -950,6 +1020,12 @@ class UrubutoPayService
                 'external_tx_id'     => $txCode,
                 'payer_phone_number' => $phone,
             ];
+        }
+
+        if ($appFeePaid) {
+            return (new AdmissionBillingService())->applyGatewayPayment(
+                $application, $txCode, $amount, $currency, $paymentDate, $serviceCode
+            );
         }
 
         $this->db->execute(
@@ -971,6 +1047,12 @@ class UrubutoPayService
             ['transaction_code' => $txCode, 'amount' => $amount, 'service_code' => $serviceCode]
         );
 
+        // The payment IS the applicant's last step — carrying them over the
+        // submit button rather than waiting for them to come back and press it.
+        $autoSubmitted = $this->autoSubmitApplication($appId);
+
+        $this->announceApplicationFee($application, $txCode, $amount, $currency, $autoSubmitted);
+
         return [
             'status'             => 'recorded',
             'payment_id'         => $appId,
@@ -979,6 +1061,154 @@ class UrubutoPayService
             'external_tx_id'     => $txCode,
             'payer_phone_number' => $phone,
         ];
+    }
+
+    /**
+     * Submit a draft application now that its processing fee is confirmed.
+     *
+     * The apply wizard persists each step onto the draft as the applicant
+     * completes it, so by the time they reach payment every field is already
+     * stored — there is nothing left for the Submit button to send that is not
+     * on the row already. `auto_submitted` records that the gateway did this,
+     * which is what lets the wizard's own submit call still land as a harmless
+     * data sync if the applicant does come back to the tab.
+     *
+     * Best-effort: money has moved and must stay recorded even if this fails.
+     *
+     * @return bool whether the application was advanced by this call
+     */
+    private function autoSubmitApplication(int $applicationId): bool
+    {
+        try {
+            $app = $this->db->fetchOne(
+                "SELECT id, status, first_name, last_name, email, application_number, intake,
+                        program_id, department_id
+                   FROM `student_applications` WHERE id = ? LIMIT 1",
+                [$applicationId]
+            );
+            if (!$app || (string)$app['status'] !== 'draft') {
+                return false;
+            }
+
+            // Guarded on status in the WHERE clause too: an applicant pressing
+            // Submit at the same moment the callback lands must not produce two
+            // submissions.
+            $affected = $this->db->execute(
+                "UPDATE `student_applications`
+                    SET status            = 'submitted',
+                        submitted_at      = NOW(),
+                        auto_submitted    = 1,
+                        email_verified    = 1,
+                        verification_code = NULL,
+                        updated_at        = NOW()
+                  WHERE id = ? AND status = 'draft'",
+                [$applicationId]
+            );
+            if ($affected < 1) {
+                return false;
+            }
+
+            (new ApplicationService())->logStatusChange(
+                $applicationId, 'draft', 'submitted', null, 'system',
+                'Application submitted automatically on confirmation of the application fee.'
+            );
+
+            $programName = '';
+            if (!empty($app['program_id'])) {
+                $opt = $this->db->fetchOne("SELECT name FROM `options` WHERE id = ? LIMIT 1", [(int)$app['program_id']]);
+                $programName = (string)($opt['name'] ?? '');
+            }
+            if ($programName === '' && !empty($app['department_id'])) {
+                $dep = $this->db->fetchOne("SELECT dep_name FROM `departements` WHERE dep_id = ? LIMIT 1", [(int)$app['department_id']]);
+                $programName = (string)($dep['dep_name'] ?? '');
+            }
+
+            (new MailService())->send(
+                (string)$app['email'],
+                'Application Submitted — Catholic University of Rwanda',
+                \App\Helpers\EmailTemplateHelper::applicationSubmittedTemplate(
+                    (string)$app['first_name'],
+                    (string)($app['application_number'] ?? ''),
+                    $programName,
+                    (string)($app['intake'] ?? '')
+                ),
+                'Dear ' . $app['first_name'] . ', your application to the Catholic University of Rwanda has been '
+                    . 'submitted successfully. Application number: ' . ($app['application_number'] ?? '')
+                    . '. For queries, contact admissions@cur.ac.rw or +250 788 351 906.'
+            );
+
+            NotificationService::pushToPermissionHolders(
+                \App\Constants\Permissions::MANAGE_STUDENT_APPLICATIONS,
+                'admissions',
+                'New application submitted',
+                trim(($app['first_name'] ?? '') . ' ' . ($app['last_name'] ?? ''))
+                    . ' (' . ($app['application_number'] ?? '') . ') submitted their application after paying the '
+                    . 'application fee.',
+                '/admin/admissions/applications/' . $applicationId,
+                'student_application',
+                $applicationId,
+                'info'
+            );
+
+            return true;
+        } catch (\Throwable $e) {
+            error_log('[UrubutoPay] auto-submit failed for application ' . $applicationId . ': ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /** Email + in-system receipt for a confirmed application processing fee. */
+    private function announceApplicationFee(
+        array  $application,
+        string $txCode,
+        float  $amount,
+        string $currency,
+        bool   $autoSubmitted
+    ): void {
+        $appId = (int)$application['id'];
+        $name  = trim(($application['first_name'] ?? '') . ' ' . ($application['last_name'] ?? ''));
+        $label = number_format($amount, 0) . ' ' . ($currency ?: 'RWF');
+
+        try {
+            $to = trim((string)($application['email'] ?? ''));
+            if ($to !== '') {
+                (new MailService())->send(
+                    $to,
+                    'Application Fee Received — Catholic University of Rwanda',
+                    \App\Helpers\EmailTemplateHelper::applicationFeeReceivedTemplate(
+                        $name,
+                        (string)($application['application_number'] ?? ''),
+                        $label,
+                        $txCode,
+                        $autoSubmitted
+                    ),
+                    "Dear {$name}, we have received your application fee of {$label}. Reference {$txCode}."
+                        . ($autoSubmitted ? ' Your application has been submitted automatically.' : '')
+                );
+            }
+        } catch (\Throwable $e) {
+            error_log('[UrubutoPay] application-fee email failed: ' . $e->getMessage());
+        }
+
+        try {
+            $row = $this->db->fetchOne(
+                "SELECT user_id FROM `applicant_profiles` WHERE application_id = ? LIMIT 1",
+                [$appId]
+            );
+            NotificationService::push(
+                (int)($row['user_id'] ?? 0),
+                'admissions',
+                'Application fee received',
+                $label . ' received — reference ' . $txCode . '.'
+                    . ($autoSubmitted ? ' Your application has been submitted.' : ''),
+                '/applicant',
+                'student_application',
+                $appId,
+                'success'
+            );
+        } catch (\Throwable $e) {
+            error_log('[UrubutoPay] application-fee notification failed: ' . $e->getMessage());
+        }
     }
 
     /** Resolve config: merchant code (env first, DB fallback). */
@@ -1328,6 +1558,72 @@ class UrubutoPayService
         return array_slice($merged, 0, $limit);
     }
 
+    /**
+     * Which service did the payer select, given whatever the gateway sent?
+     *
+     * The callback used to be read as `service_code ?? payment_purpose_code`
+     * only, so a payload naming the service any other way — by the numeric
+     * `service_id`, by display name, or nested inside `data` / `services[]` —
+     * left the service blank and the payment fell through to the plain FIFO
+     * waterfall, i.e. onto tuition. Every known shape is tried here, most
+     * specific first, and each candidate is canonicalised through the
+     * `urubuto_services` catalogue so the value stored is always a live
+     * service_code.
+     *
+     * @param array<string,mixed> $cb
+     */
+    private function extractServiceCode(array $cb): string
+    {
+        $codeKeys = ['service_code', 'serviceCode', 'payment_purpose_code', 'paymentPurposeCode',
+                     'purpose_code', 'purposeCode', 'payment_purpose', 'paymentPurpose'];
+        $idKeys   = ['service_id', 'serviceId', 'urubuto_service_id'];
+        $nameKeys = ['service_name', 'serviceName', 'service', 'paid_service', 'payment_purpose_name'];
+
+        $scopes = [$cb];
+        foreach (['data', 'payment', 'transaction', 'details', 'payment_details', 'service', 'selected_service'] as $key) {
+            if (isset($cb[$key]) && is_array($cb[$key])) {
+                $scopes[] = $cb[$key];
+            }
+        }
+        foreach (['services', 'service_list', 'items'] as $key) {
+            if (!empty($cb[$key]) && is_array($cb[$key])) {
+                foreach ($cb[$key] as $entry) {
+                    if (is_array($entry)) {
+                        $scopes[] = $entry;
+                    }
+                }
+            }
+        }
+
+        $rawCode = '';
+        foreach ([$codeKeys, $idKeys, $nameKeys] as $keys) {
+            foreach ($scopes as $scope) {
+                foreach ($keys as $key) {
+                    if (!isset($scope[$key]) || is_array($scope[$key])) {
+                        continue;
+                    }
+                    $value = trim((string)$scope[$key]);
+                    if ($value === '') {
+                        continue;
+                    }
+                    $row = $this->serviceCatalog->resolveAny($value);
+                    if ($row) {
+                        return (string)$row['service_code'];
+                    }
+                    // Code-shaped but unknown — a service registered in the
+                    // merchant portal that the catalogue has not been told
+                    // about. Keep it rather than lose it, but prefer a known
+                    // service if a later candidate resolves.
+                    if ($rawCode === '' && preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)+$/i', $value)) {
+                        $rawCode = $value;
+                    }
+                }
+            }
+        }
+
+        return $rawCode;
+    }
+
     // ── Private: Legacy Table Sync ────────────────────────────────────────────
 
     /**
@@ -1338,7 +1634,7 @@ class UrubutoPayService
      *   payment.student  → student regnumber
      *   bank_payment.reg_no → student regnumber
      *   bank_id = 1 (BK, from tbl_bank)
-     *   fee_category = '147' (bank payment category)
+     *   fee_category = the chosen gateway service_code, '147' when unknown
      *   payment_chanel = 'BK'
      *   status = 1 (confirmed by payment gateway callback)
      */
@@ -1355,7 +1651,12 @@ class UrubutoPayService
         $accYear     = (string)($student['acc_year']      ?? '');
         $levelId     = (string)($student['current_level'] ?? '');
         $bankId      = self::LEGACY_BANK_ID;
-        $feeCategory = self::FEE_CATEGORY_BK;
+        // `payment.fee_category` is where the legacy ledger, PaymentReconciler
+        // and the online-payments report all read the gateway service from
+        // (they join `urubuto_services` on it). Writing the constant here made
+        // every gateway payment show up with no service at all; '147' is only
+        // the fallback for a callback that named none.
+        $feeCategory = $serviceCode !== '' ? $serviceCode : self::FEE_CATEGORY_BK;
         $description = 'UrubutoPay — ' . ($serviceCode ?: 'mobile/USSD payment');
         $user        = 'UrubutoPay';
         $channel     = 'BK';

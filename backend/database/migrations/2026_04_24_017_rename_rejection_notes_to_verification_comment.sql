@@ -1,3 +1,17 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:d75ad9bb3b472beaa6b70007326ab29f073c853ca465777c19b93d8ea3d4253c
-size 737
+-- Migration: 2026_04_24_017_rename_rejection_notes_to_verification_comment
+-- Renames the `rejection_notes` column to `verification_comment` to support comments for both approved and rejected statuses.
+
+SET FOREIGN_KEY_CHECKS = 0;
+
+SET @col_exists = (
+    SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'application_documents' AND COLUMN_NAME = 'rejection_notes'
+);
+
+SET @sql = IF(@col_exists > 0,
+    'ALTER TABLE `application_documents` CHANGE `rejection_notes` `verification_comment` TEXT NULL COMMENT \'Comment explaining approval or rejection\'',
+    'SELECT 1'
+);
+PREPARE _stmt FROM @sql; EXECUTE _stmt; DEALLOCATE PREPARE _stmt;
+
+SET FOREIGN_KEY_CHECKS = 1;

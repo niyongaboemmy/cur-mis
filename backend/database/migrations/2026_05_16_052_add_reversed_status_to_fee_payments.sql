@@ -1,3 +1,7 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:e5177b0aae6ad6892238a0ce6327c2b5f3c12e559624ca86ad22a8d8a8d0682e
-size 297
+-- Migration 052: Add 'reversed' to fee_payments.status enum
+-- Allows UrubutoPay reversals to be tracked without conflating with 'rejected'
+
+ALTER TABLE `fee_payments`
+    MODIFY COLUMN `status`
+        ENUM('pending','confirmed','rejected','reversed')
+        NOT NULL DEFAULT 'pending';

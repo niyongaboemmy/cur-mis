@@ -1,3 +1,18 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:d93cdcd7ad5c95400daa3e4e6c4377351db9a62830efb46e03dd37374fe85743
-size 494
+-- Migration: 2026_04_24_018_add_requested_changes_status
+-- Description: Add 'requested_changes' to student_applications.status enum
+
+ALTER TABLE `student_applications` 
+MODIFY COLUMN `status` ENUM(
+    'draft',
+    'submitted',
+    'documents_under_review',
+    'documents_verified',
+    'documents_rejected',
+    'requested_changes',
+    'merit_listed',
+    'offered',
+    'offer_accepted',
+    'offer_declined',
+    'enrolled',
+    'withdrawn'
+) NOT NULL DEFAULT 'draft';

@@ -10,6 +10,8 @@ use App\Models\RoleModel;
 use App\Models\RolePermissionModel;
 use App\Helpers\ValidationHelper;
 use App\Services\SystemLogService;
+use App\Services\LeaveApprovalService;
+use Core\Database;
 
 class RoleController extends BaseController
 {
@@ -149,18 +151,30 @@ class RoleController extends BaseController
             $this->error($response, 'Permissions array is required', 422);
         }
 
+        // The grid can hand back the same permission twice — two catalogue rows
+        // sharing a slug both resolve to the first matching id — and the same
+        // pair is written twice, which the (role_id, permission_id) primary key
+        // rejects. Deduplicate first, then INSERT IGNORE so a stale or unknown
+        // id is skipped instead of aborting the rest of the grant.
+        $permIds = array_values(array_unique(array_filter(
+            array_map('intval', $data['permissions']),
+            static fn (int $permId): bool => $permId > 0
+        )));
+
         $this->rolePermModel->clearForRole($id);
 
-        foreach ($data['permissions'] as $permId) {
-            try {
-                $this->rolePermModel->create([
-                    'role_id' => $id,
-                    'permission_id' => (int)$permId
-                ]);
-            } catch (\Exception $e) {
-                // Ignore foreign key constrain fail if perm ID doesn't exist
-                continue;
+        if ($permIds) {
+            $placeholders = implode(',', array_fill(0, count($permIds), '(?, ?)'));
+            $bindings     = [];
+            foreach ($permIds as $permId) {
+                $bindings[] = $id;
+                $bindings[] = $permId;
             }
+
+            $this->rolePermModel->db()->execute(
+                'INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`) VALUES ' . $placeholders,
+                $bindings
+            );
         }
 
         // The Permissions modal saves the campus-scope toggle alongside the
@@ -171,9 +185,65 @@ class RoleController extends BaseController
             ]);
         }
 
+        $this->syncLeaveStageBindings($id);
+
         $actor = (array) $request->param('_auth_user');
-        $count = count($data['permissions']);
-        SystemLogService::log('ASSIGN', 'ROLES', "Assigned {$count} permission(s) to role ID {$id}.", $id, 'role', ['permission_ids' => $data['permissions']], $actor ?: null);
+        $count = count($permIds);
+        SystemLogService::log('ASSIGN', 'ROLES', "Assigned {$count} permission(s) to role ID {$id}.", $id, 'role', ['permission_ids' => $permIds], $actor ?: null);
         $this->success($response, null, 'Permissions assigned successfully.');
+    }
+
+    /**
+     * Mirror this role's leave stage permissions into `leave_stage_role_bindings`.
+     *
+     * A leave approval stage is gated on a permission, not on a role, so
+     * granting APPROVE_LEAVE_* here is how an administrator staffs a stage that
+     * would otherwise queue at an office with no accounts in it. Migration 137
+     * turned that binding into a table because the separation-of-duties sweep
+     * used to delete any stage grant it did not recognise from its hard-coded
+     * list — a fix made on this screen did not survive the next deploy.
+     * Registering the grant here is what makes it durable.
+     *
+     * Best-effort: the permission grid has already been written and the request
+     * succeeds either way, so a failure here is logged rather than raised.
+     */
+    private function syncLeaveStageBindings(int $roleId): void
+    {
+        try {
+            $role = $this->roleModel->find($roleId);
+            if (!$role || ($role['name'] ?? '') === 'superadmin') {
+                return;
+            }
+
+            $db    = Database::getInstance();
+            $name  = (string) $role['name'];
+            $slugs = LeaveApprovalService::STAGE_PERMISSIONS;
+
+            // What the role holds after the rewrite above. That intersection is
+            // what should be bound; any stage it used to sign is now unbound.
+            $held = array_values(array_intersect(
+                $slugs,
+                $this->rolePermModel->getSlugsForRole($roleId)
+            ));
+
+            $sql = 'DELETE FROM `leave_stage_role_bindings`
+                     WHERE `role_name` = ?
+                       AND `permission_slug` IN (' . implode(',', array_fill(0, count($slugs), '?')) . ')';
+            if ($held) {
+                $sql .= ' AND `permission_slug` NOT IN (' . implode(',', array_fill(0, count($held), '?')) . ')';
+            }
+            $db->execute($sql, array_merge([$name], $slugs, $held));
+
+            foreach ($held as $slug) {
+                $db->execute(
+                    'INSERT IGNORE INTO `leave_stage_role_bindings`
+                       (`role_name`, `permission_slug`, `note`)
+                     VALUES (?, ?, ?)',
+                    [$name, $slug, 'Granted in Settings → Roles']
+                );
+            }
+        } catch (\Throwable $e) {
+            error_log('[RoleController] leave stage binding sync failed: ' . $e->getMessage());
+        }
     }
 }

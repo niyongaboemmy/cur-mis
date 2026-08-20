@@ -58,7 +58,10 @@ class DocumentVerificationController extends BaseController
             $this->error($response, 'Application not found.', 404);
         }
 
-        $documents = $this->docModel->getForApplication($applicationId);
+        $documents = $this->docModel->getChecklistForApplication(
+            $applicationId,
+            isset($application['faculty_id']) ? (int)$application['faculty_id'] : null
+        );
 
         $this->success($response, [
             'application' => $application,
@@ -168,11 +171,23 @@ class DocumentVerificationController extends BaseController
 
         $data = $request->body();
         $message = $data['message'] ?? '';
-        $docIds = $data['document_ids'] ?? [];
+        $docIds = array_map('intval', $data['document_ids'] ?? []);
+        // Requirements the applicant has not uploaded yet have no application_documents
+        // row, so they are selected by document type instead.
+        $typeIds = array_map('intval', $data['document_type_ids'] ?? []);
 
-        // Get documents for the email notification
-        $allDocs = $this->docModel->getForApplication($applicationId);
-        $selectedDocs = array_filter($allDocs, fn($d) => in_array((int)$d['id'], array_map('intval', $docIds)));
+        // Build the checklist (uploaded docs + un-uploaded requirements) so the
+        // email can name every item the admin asked changes for.
+        $allDocs = $this->docModel->getChecklistForApplication(
+            $applicationId,
+            isset($application['faculty_id']) ? (int)$application['faculty_id'] : null
+        );
+        $selectedDocs = array_filter($allDocs, function ($d) use ($docIds, $typeIds) {
+            if ($d['id'] !== null && in_array((int)$d['id'], $docIds, true)) {
+                return true;
+            }
+            return in_array((int)$d['document_type_id'], $typeIds, true);
+        });
 
         $oldStatus = $application['status'];
         $newStatus = 'requested_changes';

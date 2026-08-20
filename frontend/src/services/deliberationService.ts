@@ -229,6 +229,56 @@ export interface DeliberationExportResponse {
   pass_mark: number
 }
 
+export type DeliberationOutcome =
+  | 'promote'
+  | 'repeat_level'
+  | 'repeat_modules'
+  | 'discontinue'
+  | 'defer'
+
+export interface DecisionInput {
+  student_regnumber: string
+  outcome:           DeliberationOutcome
+  level_from?:       number | null
+  /** Required for `promote` — the server refuses a promotion without it. */
+  level_to?:         number | null
+  carry_modules?:    string | null
+  reason?:           string | null
+}
+
+export interface DeliberationDecision extends DecisionInput {
+  id:                    number
+  deliberation_id:       number
+  student_name:          string | null
+  student_current_level: string | null
+  decided_by_name:       string | null
+  decided_at:            string
+  /** Set when finalise wrote the outcome onto the student record. */
+  applied_at:            string | null
+}
+
+export interface FinalizePreview {
+  total_decisions: number
+  counts:          Record<DeliberationOutcome, number>
+  changes: {
+    student_regnumber: string
+    student_name:      string
+    change:            'level' | 'status'
+    from:              string | null
+    to:                string
+    already_applied:   boolean
+  }[]
+  /** Decisions naming a regnumber with no student row — these apply to nobody. */
+  unknown_students: string[]
+}
+
+export interface FinalizeResult {
+  promoted:          number
+  discontinued:      number
+  decisions_applied: number
+  unknown_students:  string[]
+}
+
 export const deliberationService = {
   grid: (params: DeliberationParams = {}, signal?: AbortSignal) =>
     api.get<DeliberationResponse>('/api/deliberation', params as Record<string, unknown>, signal),
@@ -265,5 +315,18 @@ export const deliberationService = {
     api.put<null>(`/api/deliberation/sessions/${id}`, payload),
 
   finalizeSession: (id: number, payload: { std_option?: string } = {}) =>
-    api.post<null>(`/api/deliberation/sessions/${id}/finalize`, payload),
+    api.post<FinalizeResult>(`/api/deliberation/sessions/${id}/finalize`, payload),
+
+  /* ── Per-student outcomes (migration 148) ─────────────────────────────
+   * The board's minute: who progresses, who repeats, who leaves. Recorded
+   * and revisable while the session is open; applied on finalise. */
+  listDecisions: (sessionId: number, signal?: AbortSignal) =>
+    api.get<DeliberationDecision[]>(`/api/deliberation/sessions/${sessionId}/decisions`, {}, signal),
+
+  saveDecisions: (sessionId: number, decisions: DecisionInput[]) =>
+    api.post<{ saved: number }>(`/api/deliberation/sessions/${sessionId}/decisions`, { decisions }),
+
+  /** Dry run — what finalising would change. Finalisation cannot be undone. */
+  previewFinalize: (sessionId: number, signal?: AbortSignal) =>
+    api.get<FinalizePreview>(`/api/deliberation/sessions/${sessionId}/decisions/preview`, {}, signal),
 }

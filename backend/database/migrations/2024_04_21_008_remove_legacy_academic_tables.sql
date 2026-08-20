@@ -1,3 +1,13 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:312743d7714668611c52ab14993333d3db191f64d7d252686d3a8076a99479d3
-size 399
+-- Migration: Remove legacy academic tables replaced by modules and newer entities
+-- Date: 2024-04-21
+
+SET FOREIGN_KEY_CHECKS = 0;
+
+DROP TABLE IF EXISTS `courses`;
+DROP TABLE IF EXISTS `course_assignments`;
+DROP TABLE IF EXISTS `course_assignment`;
+DROP TABLE IF EXISTS `enrollments`;
+DROP TABLE IF EXISTS `exams`;
+DROP TABLE IF EXISTS `exam_enrollments`;
+
+SET FOREIGN_KEY_CHECKS = 1;

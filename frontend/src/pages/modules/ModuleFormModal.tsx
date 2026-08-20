@@ -6,6 +6,7 @@ import Modal from '@/components/ui/Modal'
 import { moduleCatalogService } from '@/services/modulesService'
 import { academicsMgmtService } from '@/services/academicsMgmtService'
 import type { Module, CreateModulePayload } from '@/types/modules'
+import { useLevels } from '@/hooks/useLevels'
 
 interface Props {
   module:    Partial<Module>
@@ -22,6 +23,7 @@ const EMPTY: CreateModulePayload = {
 
 export default function ModuleFormModal({ module, onClose, onSuccess }: Props) {
   const isEdit = Boolean(module.module_id)
+  const { levels } = useLevels()
   const [form, setForm] = useState<CreateModulePayload>({
     ...EMPTY,
     module_name:    module.module_name    ?? '',
@@ -168,8 +170,15 @@ export default function ModuleFormModal({ module, onClose, onSuccess }: Props) {
         </label>
         <label className="text-[13px]">
           <span className="text-ink-600 block mb-1">Level (year)</span>
-          <input type="number" className="input input-sm w-full" value={form.level}
-            onChange={(e) => setForm({ ...form, level: Number(e.target.value) })} />
+          {/* `modules.level` is a `levels.id`, so this picks by name and still
+              stores the id — a free number field let anyone type a level that
+              matches no catalogue row. */}
+          <select className="input input-sm w-full" value={form.level}
+            onChange={(e) => setForm({ ...form, level: Number(e.target.value) })}>
+            {levels.map((l) => (
+              <option key={l.id} value={l.id}>{l.name}</option>
+            ))}
+          </select>
         </label>
         <label className="text-[13px]">
           <span className="text-ink-600 block mb-1">Status</span>

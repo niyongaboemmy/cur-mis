@@ -32,7 +32,7 @@ class StudentApplicationModel extends BaseModel
         // State machine
         'status', 'document_status', 'merit_score', 'merit_rank',
         // Tracking
-        'submitted_at', 'reviewed_by', 'reviewed_at',
+        'submitted_at', 'auto_submitted', 'reviewed_by', 'reviewed_at',
         'internal_notes', 'rejection_reason', 'ip_address',
         'email_verified', 'verification_code',
         // Task 1.11 — credit-transfer workflow
@@ -86,6 +86,48 @@ class StudentApplicationModel extends BaseModel
              LIMIT 1",
             [$id]
         );
+    }
+
+    /**
+     * Turn a pair of YYYY-MM-DD strings into half-open timestamp bounds
+     * [from, to) suitable for comparing against a DATETIME column.
+     *
+     * Returns [null, null] for absent or unparseable input, so a malformed
+     * value from a query string widens the result set rather than throwing or
+     * silently matching nothing. Bounds arriving the wrong way round are
+     * swapped — a user who picks the dates in the wrong order gets the range
+     * they clearly meant instead of an empty table.
+     *
+     * @return array{0: ?string, 1: ?string}
+     */
+    public static function dateRangeBounds(?string $from, ?string $to): array
+    {
+        $parse = static function (?string $v): ?\DateTimeImmutable {
+            $v = trim((string) $v);
+            if ($v === '') return null;
+            // Accept the full timestamp the browser sometimes sends, but only
+            // ever use the date part — the bounds are whole days.
+            $day = substr($v, 0, 10);
+            $d   = \DateTimeImmutable::createFromFormat('!Y-m-d', $day);
+            // createFromFormat overflows rather than failing, so "2026-02-29"
+            // in a non-leap year would quietly become 1 March. Only accept a
+            // value that round-trips to exactly what was asked for.
+            return ($d && $d->format('Y-m-d') === $day) ? $d : null;
+        };
+
+        $f = $parse($from);
+        $t = $parse($to);
+
+        if ($f !== null && $t !== null && $f > $t) {
+            [$f, $t] = [$t, $f];
+        }
+
+        return [
+            $f?->format('Y-m-d 00:00:00'),
+            // Exclusive upper bound: the day after the one the user picked, so
+            // the whole of the chosen end day is included.
+            $t?->modify('+1 day')->format('Y-m-d 00:00:00'),
+        ];
     }
 
     public function paginateFiltered(int $page, int $perPage, array $filters): array
@@ -214,6 +256,27 @@ class StudentApplicationModel extends BaseModel
             $conditions[] = "EXISTS (SELECT 1 FROM `application_documents` ad WHERE ad.application_id = sa.id AND ad.verification_status = 'pending')";
         }
 
+        // Submission date range. Either bound may be given on its own.
+        //
+        // Expressed as a half-open interval [from 00:00:00, to+1day 00:00:00)
+        // rather than DATE(sa.submitted_at) BETWEEN ? AND ?, for two reasons:
+        // wrapping the column in DATE() makes idx_sa_submitted_at unusable, and
+        // `submitted_at <= '2026-08-20'` would silently drop everything
+        // submitted during that final day, since a bare date compares as
+        // midnight. Callers pass plain YYYY-MM-DD.
+        [$from, $to] = self::dateRangeBounds(
+            $filters['submitted_from'] ?? null,
+            $filters['submitted_to']   ?? null
+        );
+        if ($from !== null) {
+            $conditions[] = 'sa.submitted_at >= ?';
+            $bindings[]   = $from;
+        }
+        if ($to !== null) {
+            $conditions[] = 'sa.submitted_at < ?';
+            $bindings[]   = $to;
+        }
+
         $where = $conditions ? 'WHERE ' . implode(' AND ', $conditions) : '';
 
         $total = (int)($this->db->fetchOne(
@@ -229,6 +292,7 @@ class StudentApplicationModel extends BaseModel
                     ay.label   AS academic_year_label,
                     o.name     AS program_name,
                     c.name     AS campus_name, c.code AS campus_code, c.location AS campus_location,
+                    l.name     AS level_name,
                     COALESCE(ap.profile_photo_id, u.photo) AS applicant_photo_id,
                     (SELECT COUNT(*) FROM application_documents WHERE application_id = sa.id AND verification_status = 'pending') AS pending_docs_count,
                     (SELECT COUNT(*) FROM application_documents WHERE application_id = sa.id AND verification_status = 'verified') AS verified_docs_count,
@@ -239,6 +303,7 @@ class StudentApplicationModel extends BaseModel
              LEFT JOIN `academic_years` ay ON ay.id      = sa.academic_year_id
              LEFT JOIN `options`        o  ON o.id       = sa.program_id
              LEFT JOIN `campuses`       c  ON c.id       = sa.campus_id
+             LEFT JOIN `levels`         l  ON l.id       = sa.level_id
              LEFT JOIN `applicant_profiles` ap ON ap.application_id = sa.id
              LEFT JOIN `users`              u  ON u.id = ap.user_id
              {$where}

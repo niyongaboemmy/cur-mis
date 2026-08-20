@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import VoidRequestButton from "@/components/service-requests/VoidRequestButton";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell,
@@ -333,6 +334,7 @@ export default function ServiceRequestsDashboardPage() {
                       <th className="px-5 py-2">Service</th>
                       <th className="px-5 py-2">Status</th>
                       <th className="px-5 py-2">Submitted</th>
+                      <th className="px-5 py-2"><span className="sr-only">Actions</span></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -354,6 +356,14 @@ export default function ServiceRequestsDashboardPage() {
                         </td>
                         <td className="px-5 py-2.5 text-gray-400 text-xs">
                           {r.submitted_at ? new Date(r.submitted_at).toLocaleString() : "-"}
+                        </td>
+                        <td className="px-5 py-2.5 text-right">
+                          <VoidRequestButton
+                            requestId={r.id}
+                            requestCode={r.request_code}
+                            status={r.status}
+                            invalidateKeys={[["service-requests", "reports"]]}
+                          />
                         </td>
                       </tr>
                     ))}

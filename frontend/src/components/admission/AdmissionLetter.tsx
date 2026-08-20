@@ -123,7 +123,7 @@ export default function AdmissionLetter({ offer, showPrintButton = false }: Admi
           Catholic University of Rwanda, with the recommendations of the Faculty, I am pleased
           to inform you that your request was accepted. You are hence admitted as a Full-Time
           student in the <strong>Faculty of {faculty}</strong>, Department of{' '}
-          <strong>{department}</strong> . Level <strong>{level} {intake}</strong>,
+          <strong>{department}</strong> . <strong>{level} {intake}</strong>,
           Program: <strong>{program}</strong>, Academic Year: <strong>{accYear}</strong>.
         </p>
 

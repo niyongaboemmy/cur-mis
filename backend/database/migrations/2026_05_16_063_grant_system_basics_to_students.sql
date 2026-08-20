@@ -1,3 +1,11 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:8c2299fe84c31b8b506d324c3ef27eda07a9c4fa8b31f1b08f2f9e093eeb5883
-size 458
+-- Migration 063: Grant VIEW_SYSTEM_BASICS to student role
+-- 
+-- Why: Students need access to /api/system/basics to resolve the active 
+--      academic year ID, which is required for the "My Finance" page and 
+--      other self-service features to load data automatically.
+
+INSERT IGNORE INTO role_permissions (role_id, permission_id)
+SELECT r.id, p.id
+FROM roles r
+JOIN permissions p ON p.slug = 'VIEW_SYSTEM_BASICS'
+WHERE r.name = 'student';

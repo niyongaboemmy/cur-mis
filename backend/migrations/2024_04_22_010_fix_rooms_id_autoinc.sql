@@ -1,3 +1,6 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:22a36d00fa171c4409f6137aacd827603e95f531696b869b1654308a54073a0a
-size 214
+-- Migration: make rooms.id a proper AUTO_INCREMENT primary key so POST /facility works.
+-- Date: 2024-04-22
+
+ALTER TABLE `rooms`
+  MODIFY `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  ADD PRIMARY KEY (`id`);

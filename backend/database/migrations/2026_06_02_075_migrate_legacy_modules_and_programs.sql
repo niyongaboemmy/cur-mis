@@ -1,3 +1,11 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:21b3ea5b94c55eea7cb48b4a8dfebbd1b4509217b57f6c10f1b43d831be24b1d
-size 980
+-- ──────────────────────────────────────────────────────────────────────────────
+-- Migration 075 — RETIRED / NEUTRALIZED (2026-06-16)
+--
+-- One-shot legacy import: built `modules` (de-duplicated) + `module_programs`
+-- from an embedded legacy dump. Not safe to run automatically against a populated
+-- database. The canonical, additive schema is now owned by
+-- 2026_06_16_083_consolidated_session_schema.sql; loading legacy DATA is a
+-- separate, deliberate one-time job. Retired to a no-op so `migrate` is safe
+-- everywhere. Original SQL remains in git history.
+-- ──────────────────────────────────────────────────────────────────────────────
+DO 1;

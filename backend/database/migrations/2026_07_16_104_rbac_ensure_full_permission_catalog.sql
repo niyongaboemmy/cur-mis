@@ -1,3 +1,123 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:66765ab0e7fa3c8ccc76af81daa7c8a2c5d423cc529235431f28e9aedccba4ca
-size 17745
+-- ══════════════════════════════════════════════════════════════════════════════
+-- Migration 104: RBAC — guarantee the full 101-slug permission catalog exists.
+--
+-- Context: `Permissions::all()` (backend/app/Constants/Permissions.php) is the
+-- single source of truth for every permission slug the app checks. The rows in
+-- `permissions` are supposed to have been created across ~20 historical
+-- migrations (028, 062, 087, 093, 094, 095, ...). Auditing a fresh environment
+-- during the RBAC hardening work (RBAC_IMPLEMENTATION_PLAN.md) found that not
+-- all of those migrations reliably land their INSERTs against every copy of
+-- this schema — leaving some slugs declared in code but with no `permissions`
+-- row, which silently breaks role-permission assignment for those slugs (they
+-- never show up in the Permissions Management UI and can't be granted to any
+-- role, custom or system).
+--
+-- This migration is a single idempotent catch-all: for every one of the 101
+-- slugs in `Permissions::all()`, insert it if missing. `INSERT IGNORE` against
+-- the UNIQUE KEY on `permissions.slug` makes re-running this a no-op wherever
+-- the row already exists — purely additive, no updates/deletes, safe on
+-- production.
+-- ══════════════════════════════════════════════════════════════════════════════
+
+INSERT IGNORE INTO `permissions` (`category_id`, `name`, `slug`, `description`) VALUES
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'External Portals' LIMIT 1), 'Access Applicant Portal', 'ACCESS_APPLICANT_PORTAL', 'Self-service portal access for prospective students.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'External Portals' LIMIT 1), 'Access Gate', 'ACCESS_GATE', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'External Portals' LIMIT 1), 'Access Student Portal', 'ACCESS_STUDENT_PORTAL', 'Self-service portal access for enrolled students.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Academic Registry' LIMIT 1), 'Broadcast Messages', 'BROADCAST_MESSAGES', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Academic Registry' LIMIT 1), 'Generate Documents', 'GENERATE_DOCUMENTS', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Academic Registry' LIMIT 1), 'Manage Academics', 'MANAGE_ACADEMICS', 'Manage general academic structure and curriculum.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Academic Registry' LIMIT 1), 'Manage Academic Certificates', 'MANAGE_ACADEMIC_CERTIFICATES', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'System Settings' LIMIT 1), 'Manage Academic Settings', 'MANAGE_ACADEMIC_SETTINGS', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'System Settings' LIMIT 1), 'Manage Academic Terms', 'MANAGE_ACADEMIC_TERMS', 'Create and update academic terms / semesters.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'System Settings' LIMIT 1), 'Manage Academic Years', 'MANAGE_ACADEMIC_YEARS', 'Create and update academic years.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Admissions' LIMIT 1), 'Manage Admissions', 'MANAGE_ADMISSIONS', 'Handle enrolment decisions, intakes and admission offers.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Admissions' LIMIT 1), 'Manage Admission Requirements', 'MANAGE_ADMISSION_REQUIREMENTS', 'Configure document and requirement checklists per intake.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Academic Registry' LIMIT 1), 'Manage Announcements', 'MANAGE_ANNOUNCEMENTS', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'HR Management' LIMIT 1), 'Manage Appraisals', 'MANAGE_APPRAISALS', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Attendance' LIMIT 1), 'Manage Attendance', 'MANAGE_ATTENDANCE', 'Manage attendance settings, sessions and override records.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Finance' LIMIT 1), 'Manage Budget Execution', 'MANAGE_BUDGET_EXECUTION', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Academic Registry' LIMIT 1), 'Manage Campuses', 'MANAGE_CAMPUSES', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Student Clearance' LIMIT 1), 'Manage Clearance', 'MANAGE_CLEARANCE', 'Process, approve and flag student clearance records.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Academic Registry' LIMIT 1), 'Manage Degrees', 'MANAGE_DEGREES', 'CRUD for degree programmes.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Academic Registry' LIMIT 1), 'Manage Deliberations', 'MANAGE_DELIBERATIONS', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Academic Registry' LIMIT 1), 'Manage Departments', 'MANAGE_DEPARTMENTS', 'CRUD for departments.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Examinations' LIMIT 1), 'Manage Exams', 'MANAGE_EXAMS', 'Manage exam scheduling, invigilation and official transcripts.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Academic Registry' LIMIT 1), 'Manage Facilities', 'MANAGE_FACILITIES', 'Manage rooms and physical facilities.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Finance' LIMIT 1), 'Manage Finance', 'MANAGE_FINANCE', 'Manage fees, billing, payments, waivers and expense records.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Finance' LIMIT 1), 'Manage Fines', 'MANAGE_FINES', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'External Portals' LIMIT 1), 'Manage Gate', 'MANAGE_GATE', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Academic Registry' LIMIT 1), 'Manage Grading Scales', 'MANAGE_GRADING_SCALES', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Academic Registry' LIMIT 1), 'Manage Graduands', 'MANAGE_GRADUANDS', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'HR Management' LIMIT 1), 'Manage HR Employees', 'MANAGE_HR_EMPLOYEES', 'Create and edit employee records, contracts and documents.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'HR Management' LIMIT 1), 'Manage Leave Requests', 'MANAGE_LEAVE_REQUESTS', 'Approve, reject and manage employee leave requests.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'HR Management' LIMIT 1), 'Manage Leave Types', 'MANAGE_LEAVE_TYPES', 'CRUD for leave type definitions (Annual, Sick, etc.).'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Academic Registry' LIMIT 1), 'Manage Levels', 'MANAGE_LEVELS', 'CRUD for study levels (Year 1, Year 2, …).'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Admissions' LIMIT 1), 'Manage Merit List', 'MANAGE_MERIT_LIST', 'Modify algorithm settings, run and publish merit lists.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Academic Registry' LIMIT 1), 'Manage Messages', 'MANAGE_MESSAGES', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Academic Registry' LIMIT 1), 'Manage Modules', 'MANAGE_MODULES', 'CRUD for course modules.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Modules Management' LIMIT 1), 'Manage Module Assignments', 'MANAGE_MODULE_ASSIGNMENTS', 'Assign teaching staff to modules.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Modules Management' LIMIT 1), 'Manage Module Marks', 'MANAGE_MODULE_MARKS', 'Override and finalise marks across all modules (admin).'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Modules Management' LIMIT 1), 'Manage Module Registrations', 'MANAGE_MODULE_REGISTRATIONS', 'Manage student registrations per module.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Modules Management' LIMIT 1), 'Manage Module Schedules', 'MANAGE_MODULE_SCHEDULES', 'Manage timetable slots for modules.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Academic Registry' LIMIT 1), 'Manage Options', 'MANAGE_OPTIONS', 'CRUD for department options and specialisations.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Applicant Self-Service' LIMIT 1), 'Manage Own Profile', 'MANAGE_OWN_PROFILE', 'Applicant self-management: edit their own profile and upload documents.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Finance' LIMIT 1), 'Manage Payment Calendar', 'MANAGE_PAYMENT_CALENDAR', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'HR Management' LIMIT 1), 'Manage Payroll', 'MANAGE_PAYROLL', 'Generate, approve and process monthly payroll runs.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Administration' LIMIT 1), 'Manage Permissions', 'MANAGE_PERMISSIONS', 'Organise permission categories and slugs.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Examinations' LIMIT 1), 'Manage Revaluations', 'MANAGE_REVALUATIONS', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Administration' LIMIT 1), 'Manage Roles', 'MANAGE_ROLES', 'Create, update and delete system roles.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Academic Registry' LIMIT 1), 'Manage Schools', 'MANAGE_SCHOOLS', 'CRUD for schools and faculties.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'System Settings' LIMIT 1), 'Manage Settings', 'MANAGE_SETTINGS', 'Modify global system configuration.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Academic Registry' LIMIT 1), 'Manage Students', 'MANAGE_STUDENTS', 'Create, edit and manage student records.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Admissions' LIMIT 1), 'Manage Student Applications', 'MANAGE_STUDENT_APPLICATIONS', 'View, filter, and action student application submissions.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Academic Registry' LIMIT 1), 'Manage Student Ids', 'MANAGE_STUDENT_IDS', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Academic Registry' LIMIT 1), 'Manage Timetable', 'MANAGE_TIMETABLE', 'Create and edit the academic timetable.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Academic Registry' LIMIT 1), 'Manage Transcript Requests', 'MANAGE_TRANSCRIPT_REQUESTS', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Administration' LIMIT 1), 'Manage Users', 'MANAGE_USERS', 'Full user management: create, edit, activate, deactivate.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Academic Registry' LIMIT 1), 'Moderate Forums', 'MODERATE_FORUMS', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Finance' LIMIT 1), 'My Invoice', 'MY_INVOICE', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Attendance' LIMIT 1), 'Record Attendance', 'RECORD_ATTENDANCE', 'Record student attendance for a session.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Modules Management' LIMIT 1), 'Record Module Marks', 'RECORD_MODULE_MARKS', 'Record and update marks for assigned modules.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'HR Management' LIMIT 1), 'Request Leave', 'REQUEST_LEAVE', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Finance' LIMIT 1), 'Send Fee Alerts', 'SEND_FEE_ALERTS', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Academic Registry' LIMIT 1), 'Send Messages', 'SEND_MESSAGES', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Admissions' LIMIT 1), 'Verify Documents', 'VERIFY_DOCUMENTS', 'Approve or reject applicant-uploaded documents.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Academic Registry' LIMIT 1), 'View Academic Analytics', 'VIEW_ACADEMIC_ANALYTICS', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Academic Registry' LIMIT 1), 'View Announcements', 'VIEW_ANNOUNCEMENTS', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'HR Management' LIMIT 1), 'View Appraisals', 'VIEW_APPRAISALS', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Attendance' LIMIT 1), 'View Attendance', 'VIEW_ATTENDANCE', 'View student attendance records and session logs.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Finance' LIMIT 1), 'View Budget Execution', 'VIEW_BUDGET_EXECUTION', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Student Clearance' LIMIT 1), 'View Clearance', 'VIEW_CLEARANCE', 'View student clearance status and outstanding items.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Administration' LIMIT 1), 'View Dashboard', 'VIEW_DASHBOARD', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Examinations' LIMIT 1), 'View Exams', 'VIEW_EXAMS', 'View exam schedules and published results.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Finance' LIMIT 1), 'View Finance', 'VIEW_FINANCE', 'Read financial records: invoices, payments, balances.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Finance' LIMIT 1), 'View Finance Approvals', 'VIEW_FINANCE_APPROVALS', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Finance' LIMIT 1), 'View Finance Balance', 'VIEW_FINANCE_BALANCE', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Finance' LIMIT 1), 'View Finance Billing', 'VIEW_FINANCE_BILLING', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Finance' LIMIT 1), 'View Finance Bursaries', 'VIEW_FINANCE_BURSARIES', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Finance' LIMIT 1), 'View Finance Clearance', 'VIEW_FINANCE_CLEARANCE', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Finance' LIMIT 1), 'View Finance Expenses', 'VIEW_FINANCE_EXPENSES', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Finance' LIMIT 1), 'View Finance Overview', 'VIEW_FINANCE_OVERVIEW', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Finance' LIMIT 1), 'View Finance Refunds', 'VIEW_FINANCE_REFUNDS', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Finance' LIMIT 1), 'View Finance Reports', 'VIEW_FINANCE_REPORTS', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Finance' LIMIT 1), 'View Finance Sponsors', 'VIEW_FINANCE_SPONSORS', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Finance' LIMIT 1), 'View Finance Structures', 'VIEW_FINANCE_STRUCTURES', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Finance' LIMIT 1), 'View Fines', 'VIEW_FINES', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Academic Registry' LIMIT 1), 'View Forums', 'VIEW_FORUMS', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'External Portals' LIMIT 1), 'View Gate Logs', 'VIEW_GATE_LOGS', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Academic Registry' LIMIT 1), 'View Graduands', 'VIEW_GRADUANDS', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'HR Management' LIMIT 1), 'View HR Employees', 'VIEW_HR_EMPLOYEES', 'Read employee list and individual profiles.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'HR Management' LIMIT 1), 'View Leave Requests', 'VIEW_LEAVE_REQUESTS', 'View all employee leave requests and their statuses.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Admissions' LIMIT 1), 'View Merit List', 'VIEW_MERIT_LIST', 'View the generated merit/ranking lists.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Finance' LIMIT 1), 'View Mobile Payments', 'VIEW_MOBILE_PAYMENTS', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Modules Management' LIMIT 1), 'View Module Marks', 'VIEW_MODULE_MARKS', 'Read student marks across all modules.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Modules Management' LIMIT 1), 'View My Modules', 'VIEW_MY_MODULES', 'View modules the current user is assigned to teach.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Finance' LIMIT 1), 'View Online Payments History', 'VIEW_ONLINE_PAYMENTS_HISTORY', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Finance' LIMIT 1), 'View Payment Calendar', 'VIEW_PAYMENT_CALENDAR', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'HR Management' LIMIT 1), 'View Payroll', 'VIEW_PAYROLL', 'View employee payroll slips and payroll summaries.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'System Settings' LIMIT 1), 'View Settings', 'VIEW_SETTINGS', 'Read global system configuration.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Academic Registry' LIMIT 1), 'View Students', 'VIEW_STUDENTS', 'Search and view student records and profiles.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Finance' LIMIT 1), 'View Student Directory Finance', 'VIEW_STUDENT_DIRECTORY_FINANCE', NULL),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'System Settings' LIMIT 1), 'View System Basics', 'VIEW_SYSTEM_BASICS', 'Read basic system info, branding and health data.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Administration' LIMIT 1), 'View System Logs', 'VIEW_SYSTEM_LOGS', 'Read system activity and audit logs.'),
+  ((SELECT id FROM `permission_categories` WHERE `name` = 'Academic Registry' LIMIT 1), 'View Timetable', 'VIEW_TIMETABLE', 'View the academic timetable.');

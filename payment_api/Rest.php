@@ -33,6 +33,136 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 header('Content-Type: application/json; charset=utf-8');
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Gateway wire log
+//
+// Nothing recorded what UrubutoPay actually sent us, which is why the question
+// "did the gateway reverse this on its own, or did we ask it to?" could not be
+// answered from our side. Every request that reaches this API — and the exact
+// response we gave it, with how long we took — is now appended to one file.
+//
+// Enabled by URUBUTOPAY_DEBUG_LOG=true in backend/.env (the flag already
+// existed there but was never read by anything). The Authorization header is
+// redacted; nothing else is, because the whole point is to see the raw payload.
+// ─────────────────────────────────────────────────────────────────────────────
+if (!function_exists('urubutoWireLogPath')) {
+    function urubutoWireLogPath(): ?string
+    {
+        static $path = false;
+        if ($path !== false) {
+            return $path;
+        }
+
+        // Only real gateway traffic is worth recording — a CLI include (tests,
+        // scripts) has no request to log.
+        if (PHP_SAPI === 'cli') {
+            return $path = null;
+        }
+
+        $enabled = false;
+        $envFile = __DIR__ . '/../backend/.env';
+        if (is_file($envFile)) {
+            foreach (file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+                $line = trim($line);
+                if ($line === '' || $line[0] === '#') continue;
+                $parts = explode('=', $line, 2);
+                if (count($parts) === 2 && trim($parts[0]) === 'URUBUTOPAY_DEBUG_LOG') {
+                    $enabled = in_array(strtolower(trim($parts[1], "\"' ")), ['1', 'true', 'yes', 'on'], true);
+                }
+            }
+        }
+        if (!$enabled) {
+            return $path = null;
+        }
+
+        // `backend/logs` first: it sits outside this API's directory, so the
+        // file is not reachable over HTTP even if a rule is missed. Falls back
+        // to a local `logs/` dir, which is created WITH a deny rule — the
+        // payloads hold payer names and phone numbers and must never be
+        // fetchable at /payment_api/logs/urubuto_gateway.log. (The repo's
+        // .gitignore excludes `logs`, so the rule cannot be shipped as a
+        // committed file; it is written here instead.)
+        $dir = __DIR__ . '/../backend/logs';
+        if (!is_dir($dir) || !is_writable($dir)) {
+            $dir = __DIR__ . '/logs';
+            if (!is_dir($dir)) {
+                @mkdir($dir, 0775, true);
+            }
+            $deny = $dir . '/.htaccess';
+            if (is_dir($dir) && !is_file($deny)) {
+                @file_put_contents(
+                    $deny,
+                    "<IfModule mod_authz_core.c>\n    Require all denied\n</IfModule>\n"
+                    . "<IfModule !mod_authz_core.c>\n    Order allow,deny\n    Deny from all\n</IfModule>\n"
+                );
+            }
+        }
+        if (!is_dir($dir) || !is_writable($dir)) {
+            $dir = sys_get_temp_dir();
+        }
+
+        return $path = $dir . '/urubuto_gateway.log';
+    }
+}
+
+if (!function_exists('urubutoWireLog')) {
+    /** Append one entry, rotating at 5 MB so the file cannot fill the account. */
+    function urubutoWireLog(string $entry): void
+    {
+        $file = urubutoWireLogPath();
+        if ($file === null) {
+            return;
+        }
+        if (is_file($file) && filesize($file) > 5 * 1024 * 1024) {
+            @rename($file, $file . '.1');
+        }
+        @file_put_contents($file, $entry, FILE_APPEND | LOCK_EX);
+    }
+}
+
+if (urubutoWireLogPath() !== null) {
+    $GLOBALS['__urubuto_started'] = microtime(true);
+    $GLOBALS['__urubuto_request'] = file_get_contents('php://input');
+
+    $__headers = [];
+    foreach ($_SERVER as $__k => $__v) {
+        if (str_starts_with($__k, 'HTTP_')) {
+            $__name = ucwords(strtolower(str_replace('_', '-', substr($__k, 5))), '-');
+            $__headers[$__name] = (stripos($__name, 'authorization') !== false) ? '«redacted»' : $__v;
+        }
+    }
+    $GLOBALS['__urubuto_headers'] = $__headers;
+
+    // Capture whatever the endpoint echoes so the log holds the exact bytes the
+    // gateway received. ackAndFinish() below stashes its own copy first, since
+    // it flushes the buffer before this shutdown handler runs.
+    ob_start();
+    register_shutdown_function(static function (): void {
+        $body = $GLOBALS['__urubuto_response'] ?? null;
+        if ($body === null) {
+            $body = ob_get_contents();
+            if ($body === false) {
+                $body = '';
+            }
+        }
+        $ms = (int)round((microtime(true) - ($GLOBALS['__urubuto_started'] ?? microtime(true))) * 1000);
+
+        urubutoWireLog(sprintf(
+            "%s\n[%s] %s %s from %s — HTTP %d in %d ms\nheaders: %s\nrequest : %s\nresponse: %s\n",
+            str_repeat('=', 78),
+            date('Y-m-d H:i:s'),
+            $_SERVER['REQUEST_METHOD'] ?? '?',
+            $_SERVER['REQUEST_URI']    ?? '?',
+            $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '?',
+            http_response_code() ?: 0,
+            $ms,
+            json_encode($GLOBALS['__urubuto_headers'] ?? []),
+            $GLOBALS['__urubuto_request'] ?: '(empty)',
+            $body !== '' ? $body : '(empty)'
+        ));
+    });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Bearer-token guard (skip for the token-claim endpoint itself)
 // ─────────────────────────────────────────────────────────────────────────────
 if (!function_exists('getDbCredentials')) {
@@ -420,6 +550,197 @@ class Rest
         return $type !== '' ? $type : null;
     }
 
+    /**
+     * Does this value look like a gateway service_code ('fines-1062') rather
+     * than a display name or a stray number? Used to decide whether an
+     * unrecognised value is safe to record verbatim.
+     */
+    private function looksLikeServiceCode(string $value): bool
+    {
+        return (bool)preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)+$/i', trim($value));
+    }
+
+    /**
+     * Canonicalise one candidate value against the `urubuto_services` catalogue.
+     *
+     * The gateway is not consistent about WHAT identifies the chosen service:
+     * it may be the service_code ('fines-1062'), the gateway-side numeric
+     * service_id ('10264'), or the display name ('Fines'). All three resolve
+     * here to the live service_code, with `alias_of` followed one hop so codes
+     * from the retired merchant registration still land on the live service.
+     *
+     * Returns '' when the value matches nothing, so an unrecognised value is
+     * never silently promoted to some real service.
+     */
+    private function canonicalServiceCode(string $candidate): string
+    {
+        $needle = trim($candidate);
+        if ($needle === '') {
+            return '';
+        }
+
+        $rows = $this->urubutoServices();
+        if (!$rows) {
+            // Catalogue unreachable (migration 134 not applied). Keep an
+            // obviously code-shaped value rather than losing it; ignore the rest.
+            return $this->looksLikeServiceCode($needle) ? $needle : '';
+        }
+
+        $byCode = [];
+        foreach ($rows as $row) {
+            $byCode[strtolower((string)$row['service_code'])] = $row;
+        }
+
+        $match = $byCode[strtolower($needle)] ?? null;
+
+        if (!$match && ctype_digit($needle)) {
+            foreach ($rows as $row) {
+                if ((string)($row['urubuto_service_id'] ?? '') === $needle) {
+                    $match = $row;
+                    break;
+                }
+            }
+        }
+
+        if (!$match) {
+            $slug = preg_replace('/[^a-z0-9]+/', '', strtolower($needle)) ?? '';
+            if ($slug !== '') {
+                foreach ($rows as $row) {
+                    $name = preg_replace('/[^a-z0-9]+/', '', strtolower((string)$row['service_name'])) ?? '';
+                    if ($name !== '' && $name === $slug) {
+                        $match = $row;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (!$match) {
+            return '';
+        }
+
+        $alias = trim((string)($match['alias_of'] ?? ''));
+        if ($alias !== '' && isset($byCode[strtolower($alias)])) {
+            $match = $byCode[strtolower($alias)];
+        }
+
+        return (string)$match['service_code'];
+    }
+
+    /**
+     * Which service did the payer actually select on the gateway?
+     *
+     * This used to be a two-key read with a hardcoded default:
+     *
+     *     trim($data['payment_purpose_code'] ?? $data['service_code'] ?? 'tuition-fees-4679')
+     *
+     * so ANY callback not using one of those two exact key names was recorded
+     * as TUITION — which is why every payment, whatever the payer picked from
+     * the 22-service menu, landed on `tuition-fees-4679` in `payment` and
+     * `bank_payment` and was then reconciled against tuition invoices. The
+     * default is gone: a service is either recognised or the field is left
+     * blank, and the row falls back to the generic bank category '147', which
+     * is honest and still reconciles FIFO.
+     *
+     * Every key name and payload shape the gateway is known to use is tried,
+     * most specific first: an explicit code, then the numeric service_id, then
+     * the display name.
+     */
+    private function resolveCallbackServiceCode(array $data): string
+    {
+        $codeKeys = ['service_code', 'serviceCode', 'payment_purpose_code', 'paymentPurposeCode',
+                     'purpose_code', 'purposeCode', 'payment_purpose', 'paymentPurpose'];
+        $idKeys   = ['service_id', 'serviceId', 'urubuto_service_id'];
+        $nameKeys = ['service_name', 'serviceName', 'service', 'paid_service', 'payment_purpose_name'];
+
+        // The identifying field is not always at the top level: some channels
+        // wrap the payload in `data` / `payment` / `transaction`, and others
+        // send the chosen service as an entry in a `services[]` list.
+        $scopes = [$data];
+        foreach (['data', 'payment', 'transaction', 'details', 'payment_details', 'service', 'selected_service'] as $key) {
+            if (isset($data[$key]) && is_array($data[$key])) {
+                $scopes[] = $data[$key];
+            }
+        }
+        foreach (['services', 'service_list', 'items'] as $key) {
+            if (!empty($data[$key]) && is_array($data[$key])) {
+                foreach ($data[$key] as $entry) {
+                    if (is_array($entry)) {
+                        $scopes[] = $entry;
+                    }
+                }
+            }
+        }
+
+        $rawCode = '';
+        foreach ([$codeKeys, $idKeys, $nameKeys] as $keys) {
+            foreach ($scopes as $scope) {
+                foreach ($keys as $key) {
+                    if (!isset($scope[$key]) || is_array($scope[$key])) {
+                        continue;
+                    }
+                    $value = trim((string)$scope[$key]);
+                    if ($value === '') {
+                        continue;
+                    }
+                    $code = $this->canonicalServiceCode($value);
+                    if ($code !== '') {
+                        return $code;
+                    }
+                    // Code-shaped but unknown — a service added in the merchant
+                    // portal that the catalogue has not been told about yet.
+                    // Hold on to it, but keep looking for a known service first.
+                    if ($rawCode === '' && $this->looksLikeServiceCode($value)) {
+                        $rawCode = $value;
+                    }
+                }
+            }
+        }
+
+        return $rawCode;
+    }
+
+    /**
+     * Answer the gateway NOW, then keep working.
+     *
+     * The payment callback used to run the whole ledger reconciliation before
+     * writing a byte of response, so however long invoice matching took was
+     * time UrubutoPay spent waiting on an unanswered notification. A gateway
+     * that does not get a clean, prompt acknowledgement retries, and a
+     * notification it never manages to deliver is exactly the sort of thing
+     * that gets auto-reversed. The money is already recorded by the time this
+     * is called; the reconciliation that follows is our own bookkeeping and the
+     * gateway has no stake in how long it takes.
+     */
+    private function ackAndFinish(array $payload, int $code = 200): void
+    {
+        $body = json_encode($payload);
+        http_response_code($code);
+        header('Content-Type: application/json; charset=utf-8');
+
+        // Keep a copy for the wire log — the buffer is gone after the flush.
+        $GLOBALS['__urubuto_response'] = $body;
+
+        if (function_exists('fastcgi_finish_request')) {
+            echo $body;
+            while (ob_get_level() > 0) {
+                ob_end_flush();
+            }
+            fastcgi_finish_request();
+            return;
+        }
+
+        // mod_php / CGI: close the connection by declaring the length.
+        ignore_user_abort(true);
+        header('Connection: close');
+        header('Content-Length: ' . strlen($body));
+        echo $body;
+        while (ob_get_level() > 0) {
+            ob_end_flush();
+        }
+        flush();
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // 0. CLAIM TOKEN  –  POST /api/token.php
     //    No bearer token required for this endpoint (define SKIP_TOKEN_CHECK).
@@ -799,7 +1120,10 @@ class Rest
         $term           = trim($data['term']                 ?? '');
         $academicYear   = trim($data['academic_year']        ?? '');
         $paymentDate    = trim($data['payment_date_time']    ?? $date);
-        $purposeCode    = trim($data['payment_purpose_code'] ?? '');
+        // Resolved against the service catalogue so a service_id or a service
+        // name identifies the service just as well as its code; the raw value
+        // still stands in when the bank sends a purpose code of its own.
+        $purposeCode    = $this->resolveCallbackServiceCode($data) ?: trim($data['payment_purpose_code'] ?? '');
         $merchantCode   = trim($data['merchant_code']        ?? '');
 
         // ── Validate required fields ──────────────────────────────────────────
@@ -1016,6 +1340,19 @@ class Rest
         $date           = date('Y-m-d H:i:s');
         $transactionId  = trim($rows['transaction_id']          ?? '');
         $amount         = (float)($rows['amount']               ?? 0);
+
+        // A reversal takes money back out of a student's ledger, and nothing in
+        // this system ever asks for one — every reversal is an inbound,
+        // authenticated request from the gateway. Trace it unconditionally,
+        // regardless of the debug-log flag, so there is always a record of who
+        // asked and what they sent.
+        error_log(sprintf(
+            '[UrubutoPay] REVERSAL requested from %s — tx=%s amount=%s payload=%s',
+            $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'unknown',
+            $transactionId !== '' ? $transactionId : '(none)',
+            $amount > 0 ? (string)$amount : '(unspecified)',
+            json_encode($rows)
+        ));
 
         if ($transactionId === '') {
             http_response_code(400);
@@ -1266,13 +1603,29 @@ class Rest
         $payerCode    = trim($data['payer_code']                                             ?? '');
         $amount       = (float)($data['amount']                                              ?? 0);
         $paymentDate  = trim($data['payment_date_time']    ?? $data['payment_date']          ?? $date);
-        $serviceCode  = trim($data['payment_purpose_code'] ?? $data['service_code']          ?? 'tuition-fees-4679');
+        $serviceCode  = $this->resolveCallbackServiceCode($data);
         $cbStatus     = strtoupper(trim($data['transaction_status'] ?? $data['status']       ?? ''));
 
-        // Only PAYMENT callbacks touch the ledger; acknowledge others silently
+        // Only PAYMENT callbacks touch the ledger; acknowledge others silently.
+        //
+        // Every 200 this method returns carries the same `data` block, whatever
+        // the outcome. A gateway that parses the acknowledgement looks for
+        // those fields; a bare 200 without them can read as a failed
+        // notification, and a notification the gateway believes it never
+        // delivered is a candidate for auto-reversal. A retry must therefore
+        // look exactly like the first success.
         if ($callbackType !== 'PAYMENT') {
             http_response_code(200);
-            echo json_encode(['timestamp' => $date, 'status' => 200, 'message' => 'Callback acknowledged']);
+            echo json_encode([
+                'timestamp' => $date,
+                'status'    => 200,
+                'message'   => 'Callback acknowledged',
+                'data'      => [
+                    'internal_transaction_id' => '',
+                    'external_transaction_id' => $txCode,
+                    'payer_phone_number'      => '',
+                ],
+            ]);
             return;
         }
 
@@ -1282,9 +1635,26 @@ class Rest
             return;
         }
 
+        // No service is invented any more. When the gateway names none, say so
+        // with the full payload — that log is the only way to learn a key name
+        // this resolver does not handle yet.
+        if ($serviceCode === '') {
+            error_log('[UrubutoPay] PAYMENT callback named no known service — tx ' . $txCode
+                . ', payload: ' . json_encode($data));
+        }
+
         if (!in_array($cbStatus, ['SUCCESSFUL', 'VALID', 'PENDING_SETTLEMENT'], true)) {
             http_response_code(200);
-            echo json_encode(['timestamp' => $date, 'status' => 200, 'message' => 'Non-successful payment acknowledged']);
+            echo json_encode([
+                'timestamp' => $date,
+                'status'    => 200,
+                'message'   => 'Non-successful payment acknowledged',
+                'data'      => [
+                    'internal_transaction_id' => '',
+                    'external_transaction_id' => $txCode,
+                    'payer_phone_number'      => '',
+                ],
+            ]);
             return;
         }
 
@@ -1298,7 +1668,17 @@ class Rest
                 if (!empty($application['paid_at'])
                     && (string)($application['transaction_id'] ?? '') === $txCode) {
                     http_response_code(200);
-                    echo json_encode(['timestamp' => $date, 'status' => 200, 'message' => 'Payment already recorded']);
+                    echo json_encode([
+                        'timestamp' => $date,
+                        'status'    => 200,
+                        'message'   => 'Payment recorded',
+                        'duplicate' => true,
+                        'data'      => [
+                            'internal_transaction_id' => (string)$application['application_number'],
+                            'external_transaction_id' => $txCode,
+                            'payer_phone_number'      => (string)($application['phone'] ?? ''),
+                        ],
+                    ]);
                     return;
                 }
 
@@ -1343,12 +1723,31 @@ class Rest
                 // awaiting payment (e.g. a retried/duplicate webhook delivery).
                 if (in_array($serviceRequest['status'], ['paid', 'completed'], true)) {
                     http_response_code(200);
-                    echo json_encode(['timestamp' => $date, 'status' => 200, 'message' => 'Payment already recorded']);
+                    echo json_encode([
+                        'timestamp' => $date,
+                        'status'    => 200,
+                        'message'   => 'Payment recorded',
+                        'duplicate' => true,
+                        'data'      => [
+                            'internal_transaction_id' => (string)$serviceRequest['request_code'],
+                            'external_transaction_id' => $txCode,
+                            'payer_phone_number'      => (string)($serviceRequest['phone'] ?? ''),
+                        ],
+                    ]);
                     return;
                 }
                 if ($serviceRequest['status'] !== 'awaiting_payment') {
                     http_response_code(200);
-                    echo json_encode(['timestamp' => $date, 'status' => 200, 'message' => 'Service request is not awaiting payment']);
+                    echo json_encode([
+                        'timestamp' => $date,
+                        'status'    => 200,
+                        'message'   => 'Service request is not awaiting payment',
+                        'data'      => [
+                            'internal_transaction_id' => (string)$serviceRequest['request_code'],
+                            'external_transaction_id' => $txCode,
+                            'payer_phone_number'      => (string)($serviceRequest['phone'] ?? ''),
+                        ],
+                    ]);
                     return;
                 }
 
@@ -1411,8 +1810,21 @@ class Rest
         $stmtChk->close();
 
         if ($existing) {
+            // Same body as the original success, including the internal
+            // transaction code we issued the first time — a retry must be
+            // indistinguishable from the first delivery.
             http_response_code(200);
-            echo json_encode(['timestamp' => $date, 'status' => 200, 'message' => 'Payment already recorded']);
+            echo json_encode([
+                'timestamp' => $date,
+                'status'    => 200,
+                'message'   => 'Payment recorded',
+                'duplicate' => true,
+                'data'      => [
+                    'internal_transaction_id' => (string)($existing['trans_code'] ?? ''),
+                    'external_transaction_id' => $txCode,
+                    'payer_phone_number'      => (string)($student['phone'] ?? ''),
+                ],
+            ]);
             return;
         }
 
@@ -1428,7 +1840,7 @@ class Rest
         $statusVal   = 1;
         $action      = 'Debit';
         $slipNo      = $txCode;
-        $desc        = 'UrubutoPay mobile/USSD — ' . $serviceCode;
+        $desc        = 'UrubutoPay mobile/USSD — ' . ($serviceCode ?: 'unspecified service');
 
         $stmtIns = $this->db->prepare(
             'INSERT INTO payment
@@ -1476,16 +1888,12 @@ class Rest
             error_log('[LegacySync:bank_payment ERROR] ' . $e->getMessage());
         }
 
-        // Reconcile immediately — callback is async so no client waiting
-        try {
-            require_once __DIR__ . '/payment_reconciler.php';
-            (new PaymentReconciler($this->db))->reconcile($transCode);
-        } catch (\Throwable $e) {
-            error_log('[Callback Reconciler ERROR] ' . $e->getMessage());
-        }
-
-        http_response_code(200);
-        echo json_encode([
+        // Acknowledge FIRST — the money is in the ledger at this point and the
+        // gateway has no stake in how long reconciliation takes. Reconciling
+        // before answering meant a slow invoice pass was time UrubutoPay spent
+        // waiting on an unanswered notification, which is how a successful
+        // payment ends up retried and then reversed.
+        $this->ackAndFinish([
             'timestamp' => $date,
             'status'    => 200,
             'message'   => 'Payment recorded',
@@ -1495,5 +1903,12 @@ class Rest
                 'payer_phone_number'      => (string)($student['phone'] ?? ''),
             ],
         ]);
+
+        try {
+            require_once __DIR__ . '/payment_reconciler.php';
+            (new PaymentReconciler($this->db))->reconcile($transCode);
+        } catch (\Throwable $e) {
+            error_log('[Callback Reconciler ERROR] ' . $e->getMessage());
+        }
     }
 }

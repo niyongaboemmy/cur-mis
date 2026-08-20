@@ -61,7 +61,6 @@ $router->group('/api/finance', function ($router) {
     $router->group('', function ($r) {
         $r->get('/billing/summary',          [FeeController::class, 'listBillingSummary']);
         $r->get('/billing/all-students',     [FeeController::class, 'listAllStudentsWithStatus']);
-        $r->get('/billing/students',         [FeeController::class, 'listBillingStudents']);
         $r->get('/billing/export',           [FeeController::class, 'exportBillingSummary']);
         $r->get('/billing/intake-years',     [FeeController::class, 'getIntakeYears']);
     }, [new MaybePermissionMiddleware([
@@ -126,8 +125,6 @@ $router->group('/api/finance', function ($router) {
         Permissions::VIEW_FINANCE,
         Permissions::MANAGE_FINANCE,
         Permissions::VIEW_FINANCE_CLEARANCE,
-        Permissions::VIEW_CLEARANCE,
-        Permissions::MANAGE_CLEARANCE,
     ])]);
 
     // ── Read-only: reports ───────────────────────────────────────────────────
@@ -187,6 +184,7 @@ $router->group('/api/finance', function ($router) {
     // ── Student self-service ──────────────────────────────────────────────────
     $router->group('/my', function ($r) {
         $r->get('/invoices',  [FeeController::class, 'getMyInvoices']);
+        $r->get('/fines',     [FeeController::class, 'getMyFines']);
         $r->get('/clearance', [FeeController::class, 'getMyClearance']);
         $r->get('/bill/pdf',  [FeeController::class, 'downloadMyBillPdf']);
         $r->get('/payment-calendar', [PaymentCalendarController::class, 'listMyDocuments']);
@@ -218,6 +216,8 @@ $router->group('/api/finance', function ($router) {
         $r->post('/invoices/:id',             [FeeController::class, 'updateInvoice']);
 
         $r->post('/payments',                [FeeController::class, 'recordPayment']);
+        // Spread one amount over the outstanding invoices, oldest first.
+        $r->post('/payments/pay-oldest-first', [FeeController::class, 'payOldestFirst']);
         $r->post('/payments/:id/approve',   [FeeController::class, 'approvePayment']);
         $r->post('/payments/:id/reject',    [FeeController::class, 'rejectPayment']);
 

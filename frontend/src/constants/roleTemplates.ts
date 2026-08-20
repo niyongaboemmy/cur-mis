@@ -15,9 +15,9 @@ export interface RoleTemplate {
  * is enforced by the backend. Grounded in the actual 101-slug catalog in
  * backend/app/Constants/Permissions.php — every slug referenced below exists
  * and is actively enforced by real routes/pages, so a template always maps to
- * working access, not aspirational features (VIEW_TIMETABLE/MANAGE_TIMETABLE,
- * MANAGE_OWN_PROFILE and the two portal-access slugs are deliberately never
- * used here — they're reserved/self-service, not staff-role material).
+ * working access, not aspirational features. The two portal-access slugs are
+ * deliberately never used here — they are self-service, not staff-role
+ * material.
  */
 export const ROLE_TEMPLATES: RoleTemplate[] = [
   // ── Finance ──────────────────────────────────────────────────────────────
@@ -234,7 +234,7 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
       PERMISSIONS.VIEW_STUDENTS,
       PERMISSIONS.MANAGE_STUDENT_IDS,
       PERMISSIONS.VIEW_ATTENDANCE,
-      PERMISSIONS.VIEW_CLEARANCE,
+      PERMISSIONS.VIEW_FINANCE_CLEARANCE,
       PERMISSIONS.GENERATE_DOCUMENTS,
     ],
   },
@@ -272,11 +272,10 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
     name: 'Student Clearance Officer',
     category: 'Student Services',
     description:
-      'Processes and approves student clearance across academic and finance checkpoints.',
+      'Reviews student clearance across academic and finance checkpoints. Clearance is a read-only view — it is computed from fees and registration, not edited directly.',
     permissions: [
-      PERMISSIONS.VIEW_CLEARANCE,
-      PERMISSIONS.MANAGE_CLEARANCE,
       PERMISSIONS.VIEW_FINANCE_CLEARANCE,
+      PERMISSIONS.VIEW_STUDENTS,
     ],
   },
   {

@@ -701,7 +701,12 @@ class GraduandController extends BaseController
              GROUP BY ga.intake_year ORDER BY ga.intake_year DESC"
         );
 
-        $data = array_map(function (array $r): array {
+        // Classify the whole page in one query rather than per row.
+        $honours = DegreeClassificationService::honoursForMany(
+            array_column($rows, 'regnumber')
+        );
+
+        $data = array_map(function (array $r) use ($honours): array {
             $row = $this->shapeAuditRow($r);
             $row['graduand_id']     = $r['graduand_id'] !== null ? (int)$r['graduand_id'] : null;
             // No row yet means the same thing as a stored 'waiting'.
@@ -709,11 +714,19 @@ class GraduandController extends BaseController
             $row['degree_class']    = $r['degree_class'];
             $row['graduation_date'] = $r['graduation_date'];
             $row['ceremony_number'] = $r['ceremony_number'];
-            // The classification the weighted average implies, offered as the
-            // default when adding the student to the list.
-            $row['suggested_class'] = $row['weighted_avg'] !== null
-                ? DegreeClassificationService::classifyOrNull((float)$row['weighted_avg'])
-                : null;
+
+            // The class the regulations award, offered as the default when
+            // adding the student to the list. Decided on the final-level
+            // modules, not on the cumulative average — a 71% average with one
+            // 58% module is not a 2i, however the average reads. The average
+            // remains the fallback for a record with no final-level marks to
+            // assess, which is where the honours rules have nothing to say.
+            $h = $honours[(string)$r['regnumber']] ?? null;
+            $row['classification']  = $h;
+            $row['suggested_class'] = $h['class']
+                ?? ($row['weighted_avg'] !== null
+                    ? DegreeClassificationService::classifyOrNull((float)$row['weighted_avg'])
+                    : null);
             return $row;
         }, $rows);
 
@@ -918,14 +931,24 @@ class GraduandController extends BaseController
         // keeps the numbers it was granted on, rather than silently tracking
         // later recomputations.
         $eligible = $this->db->fetchAll(
-            "SELECT ga.student_id, ga.weighted_avg, ga.credits_earned
+            "SELECT ga.student_id, ga.weighted_avg, ga.credits_earned, s.regnumber
              FROM `graduation_audit` ga
+             JOIN `student` s ON s.id = ga.student_id
              WHERE ga.student_id IN ({$ph}) AND ga.is_complete = 1",
             $ids
         );
         if (!$eligible) {
             $this->error($response, 'None of the selected students have completed their curriculum.', 422);
         }
+
+        // When the caller did not name a class, each student gets the one the
+        // regulations award them — computed for the whole selection in one
+        // query. The average is the fallback for a record the honours rules
+        // cannot assess (no final-level marks), which is where it was the only
+        // answer before.
+        $honours = $degreeClass === null
+            ? DegreeClassificationService::honoursForMany(array_column($eligible, 'regnumber'))
+            : [];
 
         $userId  = $this->authUserId($request) ?: null;
         $updated = 0;
@@ -935,6 +958,7 @@ class GraduandController extends BaseController
             foreach ($eligible as $e) {
                 $avg   = $e['weighted_avg'] !== null ? (float)$e['weighted_avg'] : null;
                 $class = $degreeClass
+                    ?? ($honours[(string)$e['regnumber']]['class'] ?? null)
                     ?? ($avg !== null ? DegreeClassificationService::classifyOrNull($avg) : null)
                     ?? 'Pass';
 
@@ -1126,11 +1150,14 @@ class GraduandController extends BaseController
             $row['regnumber'], $yearId
         );
 
-        // Allow override via body; default to computed classification
+        // Allow override via body; otherwise the class the regulations award,
+        // falling back to the average-derived one when the honours rules have
+        // no final-level marks to assess.
+        $honours = DegreeClassificationService::honoursFor((string)$row['regnumber']);
         $degreeClass = isset($body['degree_class'])
             && in_array($body['degree_class'], ['First Class','Upper Second','Lower Second','Pass','Distinction'], true)
             ? $body['degree_class']
-            : ($elig['degree_class'] ?? 'Pass');
+            : ($honours['class'] ?? $elig['degree_class'] ?? 'Pass');
 
         $this->db->execute(
             "INSERT INTO graduands

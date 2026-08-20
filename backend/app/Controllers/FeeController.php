@@ -361,6 +361,75 @@ class FeeController extends BaseController
     }
 
     /**
+     * GET /api/finance/my/fines
+     *
+     * Student self-service view of their own fines. Every /api/fines/* route is
+     * gated behind staff permissions, so before this endpoint a fined student
+     * could see their balance rise with no way to find out why or to pay it.
+     *
+     * Each fine is returned with the invoice it was billed on (fines are always
+     * invoiced with fee_type = 'FINE'), so the portal can link straight to the
+     * payable invoice instead of leaving the student at a dead end.
+     */
+    public function getMyFines(Request $request, Response $response): never
+    {
+        $reg = $this->authStudentRegnumber($request);
+        if (!$reg) $this->error($response, 'No student profile linked to this account.', 404);
+
+        $rows = $this->db->fetchAll(
+            "SELECT f.id, f.fine_type, f.reason, f.amount, f.status,
+                    f.invoice_id, f.created_at, f.waived_at,
+                    i.invoice_number, i.academic_year_id,
+                    i.amount_due, i.amount_paid, i.status AS invoice_status, i.due_date,
+                    ay.label AS academic_year_label
+             FROM `fee_fines` f
+             LEFT JOIN `fee_invoices`   i  ON i.id  = f.invoice_id
+             LEFT JOIN `academic_years` ay ON ay.id = i.academic_year_id
+             WHERE CONVERT(f.student_id USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                 = CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci
+             ORDER BY f.created_at DESC",
+            [$reg]
+        );
+
+        $fines = array_map(static function (array $r): array {
+            $due  = (float)($r['amount_due']  ?? 0);
+            $paid = (float)($r['amount_paid'] ?? 0);
+            return [
+                'id'                  => (int)$r['id'],
+                'fine_type'           => (string)$r['fine_type'],
+                'reason'              => (string)$r['reason'],
+                'amount'              => (float)$r['amount'],
+                'status'              => (string)$r['status'],
+                'created_at'          => $r['created_at'],
+                'waived_at'           => $r['waived_at'],
+                'invoice_id'          => $r['invoice_id'] !== null ? (int)$r['invoice_id'] : null,
+                'invoice_number'      => $r['invoice_number'],
+                'invoice_status'      => $r['invoice_status'],
+                'due_date'            => $r['due_date'],
+                'academic_year_id'    => $r['academic_year_id'] !== null ? (int)$r['academic_year_id'] : null,
+                'academic_year_label' => $r['academic_year_label'],
+                // What the student still has to pay on this fine's invoice.
+                'balance'             => max(0.0, round($due - $paid, 2)),
+            ];
+        }, $rows);
+
+        // 'waived' fines are settled and 'paid' ones are done — neither is owed.
+        $outstanding = array_values(array_filter(
+            $fines,
+            static fn(array $f): bool => in_array($f['status'], ['pending', 'invoiced'], true)
+        ));
+
+        $this->success($response, [
+            'fines'   => $fines,
+            'summary' => [
+                'total_fines'        => count($fines),
+                'outstanding_count'  => count($outstanding),
+                'outstanding_amount' => round(array_sum(array_column($outstanding, 'amount')), 2),
+            ],
+        ], 'Fines retrieved.');
+    }
+
+    /**
      * GET /api/finance/my/invoices
      * Student self-service: authenticated student's own ledger.
      */
@@ -611,6 +680,8 @@ class FeeController extends BaseController
             'semester'         => $request->query('semester') !== null ? (int)$request->query('semester') : null,
             'faculty_id'       => $request->query('faculty_id') !== null ? (int)$request->query('faculty_id') : null,
             'department_id'    => $request->query('department_id') !== null ? (int)$request->query('department_id') : null,
+            // Programme-level filter — what the registry works at day to day.
+            'option_id'        => $request->query('option_id') !== null ? (int)$request->query('option_id') : null,
             'keyword'          => $request->query('keyword') ?? null,
             'balance_filter'   => $request->query('balance_filter') ?? null, // collected|bursary|pending|partial|overdue
             'page'             => (int)($request->query('page') ?? 1),
@@ -636,12 +707,19 @@ class FeeController extends BaseController
      */
     public function listAllStudentsWithStatus(Request $request, Response $response): never
     {
+        // Not cast to int: getIntakeYears() hands the UI an intake label
+        // ("2023-2024") whenever that cohort has no `academic_years` row, and
+        // the service accepts either form. An (int) cast here would turn the
+        // label into 0 and silently widen the filter to every year.
+        // No year guard here: this endpoint backs the Billing screen's opening state,
+        // which lists every active student before a cohort is picked.
         $filters = [
-            'academic_year_id' => (int)($request->query('academic_year_id') ?? 0),
+            'academic_year_id' => $request->query('academic_year_id') ?: 0,
             'state'            => $request->query('state') ?? 'all',
             'semester'         => $request->query('semester') !== null ? (int)$request->query('semester') : null,
             'faculty_id'       => $request->query('faculty_id') !== null ? (int)$request->query('faculty_id') : null,
             'department_id'    => $request->query('department_id') !== null ? (int)$request->query('department_id') : null,
+            // Programme-level filter — what the registry works at day to day.
             'option_id'        => $request->query('option_id') !== null ? (int)$request->query('option_id') : null,
             'keyword'          => $request->query('keyword') ?? null,
             'sort'             => $request->query('sort') ?? 'opening_balance',
@@ -649,7 +727,6 @@ class FeeController extends BaseController
             'page'             => (int)($request->query('page') ?? 1),
             'per_page'         => (int)($request->query('per_page') ?? 50),
         ];
-
         try {
             $result = $this->service->getAllStudentsWithFinancialData($filters);
             $this->success($response, $result, 'All students with financial data retrieved.');
@@ -669,6 +746,8 @@ class FeeController extends BaseController
             'semester'         => $request->query('semester') !== null ? (int)$request->query('semester') : null,
             'faculty_id'       => $request->query('faculty_id') !== null ? (int)$request->query('faculty_id') : null,
             'department_id'    => $request->query('department_id') !== null ? (int)$request->query('department_id') : null,
+            // Programme-level filter — what the registry works at day to day.
+            'option_id'        => $request->query('option_id') !== null ? (int)$request->query('option_id') : null,
             'keyword'          => $request->query('keyword') ?? null,
         ];
 
@@ -684,92 +763,6 @@ class FeeController extends BaseController
         header("Content-Disposition: attachment; filename=\"{$filename}\"");
         echo $csv;
         exit;
-    }
-
-    /**
-     * GET /api/finance/billing/students
-     * List all students for bulk billing (simple view, no financial data)
-     */
-    public function listBillingStudents(Request $request, Response $response): never
-    {
-        $state = $request->query('state'); // active, inactive, or all
-        $intake = $request->query('intake');
-        $facultyId = $request->query('faculty_id');
-        $deptId = $request->query('department_id');
-        $optionId = $request->query('option_id');
-        $keyword = $request->query('keyword');
-        $page = (int)($request->query('page') ?? 1);
-        $perPage = (int)($request->query('per_page') ?? 100);
-        $sort = $request->query('sort') ?? 'name';
-        $order = $request->query('order') ?? 'asc';
-
-        $where = [];
-        $bindings = [];
-
-        if ($state && $state !== 'all') {
-            $where[] = "s.student_state = ?";
-            $bindings[] = $state;
-        }
-        if ($intake) {
-            $where[] = "s.intake = ?";
-            $bindings[] = $intake;
-        }
-        if ($facultyId) {
-            $where[] = "s.faculty = ?";
-            $bindings[] = $facultyId;
-        }
-        if ($deptId) {
-            $where[] = "s.department = ?";
-            $bindings[] = $deptId;
-        }
-        if ($optionId) {
-            $where[] = "s.option_id = ?";
-            $bindings[] = $optionId;
-        }
-        if ($keyword) {
-            $where[] = "(s.regnumber LIKE ? OR s.fname LIKE ? OR s.lname LIKE ?)";
-            $k = "%{$keyword}%";
-            $bindings[] = $k;
-            $bindings[] = $k;
-            $bindings[] = $k;
-        }
-
-        $whereSql = $where ? "WHERE " . implode(" AND ", $where) : "";
-
-        // Sort mapping
-        $sortMap = [
-            'name' => 's.lname, s.fname',
-            'intake' => 's.intake',
-            'faculty' => 's.faculty',
-            'department' => 's.department',
-            'state' => 's.student_state',
-        ];
-        $sortField = $sortMap[$sort] ?? 's.lname, s.fname';
-        $orderDir = strtoupper($order) === 'DESC' ? 'DESC' : 'ASC';
-
-        // Get total count
-        $countSql = "SELECT COUNT(*) AS cnt FROM `student` s {$whereSql}";
-        $totalRow = $this->db->fetchOne($countSql, $bindings);
-        $total = (int)($totalRow['cnt'] ?? 0);
-
-        // Get paginated data
-        $offset = ($page - 1) * $perPage;
-        $dataSql = "SELECT s.regnumber, s.fname, s.lname, s.faculty, s.department, s.student_state, s.intake
-                   FROM `student` s
-                   {$whereSql}
-                   ORDER BY {$sortField} {$orderDir}
-                   LIMIT ? OFFSET ?";
-
-        $dataBindings = array_merge($bindings, [$perPage, $offset]);
-        $students = $this->db->fetchAll($dataSql, $dataBindings);
-
-        $this->success($response, [
-            'data' => $students,
-            'total' => $total,
-            'per_page' => $perPage,
-            'current_page' => $page,
-            'last_page' => (int)ceil($total / $perPage),
-        ], 'Students retrieved.');
     }
 
 
@@ -826,36 +819,119 @@ class FeeController extends BaseController
      * GET /api/finance/online-payments
      * List all legacy online payments from the `payment` table.
      */
+    /**
+     * Does this database have the UrubutoPay service catalogue (migration 134)?
+     * Memoised per request; false makes the online-payments listing behave as it
+     * did before the catalogue existed instead of erroring on a missing table.
+     */
+    private function hasUrubutoCatalogue(): bool
+    {
+        static $ready = null;
+        if ($ready !== null) {
+            return $ready;
+        }
+
+        try {
+            $row = $this->db->fetchOne(
+                "SELECT COUNT(*) AS c FROM INFORMATION_SCHEMA.TABLES
+                  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'urubuto_services'",
+                []
+            );
+            return $ready = ((int)($row['c'] ?? 0) > 0);
+        } catch (\Throwable $e) {
+            return $ready = false;
+        }
+    }
+
     public function listOnlinePaymentsHistory(Request $request, Response $response): never
     {
         $page    = max(1, (int)($request->query('page') ?? 1));
         $perPage = max(1, min(100, (int)($request->query('per_page') ?? 20)));
         $keyword = $request->query('keyword') ?? '';
+        // VIEW_MOBILE_PAYMENTS opens this listing, so it has to be able to
+        // narrow to the mobile-money side of it: `payment_chanel` is the
+        // channel the payer used (USSD, mobile money, bank) and
+        // `fee_category` is the UrubutoPay service code they picked.
+        $channel     = trim((string)($request->query('channel') ?? ''));
+        $serviceCode = trim((string)($request->query('service_code') ?? ''));
 
         $offset = ($page - 1) * $perPage;
 
         $whereClause = "1=1";
         $params = [];
 
+        if ($channel !== '') {
+            $whereClause .= " AND p.`payment_chanel` = ?";
+            $params[] = $channel;
+        }
+
+        if ($serviceCode !== '') {
+            $whereClause .= " AND p.`fee_category` = ?";
+            $params[] = $serviceCode;
+        }
+
         if ($keyword) {
             $whereClause .= " AND (p.student LIKE ? OR p.slip_no LIKE ? OR p.trans_code LIKE ? OR s.regnumber LIKE ? OR CONCAT(s.fname, ' ', s.lname) LIKE ?)";
             $search = "%{$keyword}%";
-            $params = [$search, $search, $search, $search, $search];
+            // Append — the channel/service filters above already put their
+            // bindings in $params, and reassigning here would drop them while
+            // leaving their placeholders in the WHERE clause.
+            array_push($params, $search, $search, $search, $search, $search);
         }
 
         $countQuery = "SELECT COUNT(*) as total FROM `payment` p LEFT JOIN `student` s ON CONVERT(p.student USING utf8mb4) COLLATE utf8mb4_unicode_ci = CONVERT(s.regnumber USING utf8mb4) COLLATE utf8mb4_unicode_ci WHERE $whereClause";
         $totalRow = $this->db->fetchOne($countQuery, $params);
         $total = (int)($totalRow['total'] ?? 0);
 
-        $query = "SELECT p.*, s.regnumber as student_regnumber, s.fname as student_fname, s.lname as student_lname, s.id as student_db_id FROM `payment` p LEFT JOIN `student` s ON CONVERT(p.student USING utf8mb4) COLLATE utf8mb4_unicode_ci = CONVERT(s.regnumber USING utf8mb4) COLLATE utf8mb4_unicode_ci WHERE $whereClause ORDER BY p.`date` DESC LIMIT $perPage OFFSET $offset";
+        // `payment.fee_category` carries the UrubutoPay service_code the payer
+        // chose (see UrubutoPayService::writeLegacyDebit). Resolve it to the
+        // service name and its fee category so the listing can say WHAT was
+        // paid for instead of showing a raw code — or nothing at all for the
+        // legacy numeric categories ('147' bank, '146' reversal).
+        // Guarded on migration 134 having run.
+        $hasCatalogue = $this->hasUrubutoCatalogue();
+        $svcSelect = $hasCatalogue
+            ? "COALESCE(live.`service_name`, us.`service_name`)                       AS service_name,
+               COALESCE(live.`service_code`, us.`service_code`)                       AS service_code,
+               COALESCE(ft.`label`, live.`fee_structure_type`, us.`fee_structure_type`) AS fee_category_label,"
+            : "NULL AS service_name, NULL AS service_code, NULL AS fee_category_label,";
+        $svcJoin = $hasCatalogue
+            ? "LEFT JOIN `urubuto_services` us   ON us.`service_code` = p.`fee_category`
+               LEFT JOIN `urubuto_services` live ON live.`service_code` = us.`alias_of`
+               LEFT JOIN `fee_types` ft          ON ft.`code` = COALESCE(live.`fee_structure_type`, us.`fee_structure_type`)"
+            : '';
+
+        $query = "SELECT p.*, {$svcSelect} s.regnumber as student_regnumber, s.fname as student_fname, s.lname as student_lname, s.id as student_db_id FROM `payment` p LEFT JOIN `student` s ON CONVERT(p.student USING utf8mb4) COLLATE utf8mb4_unicode_ci = CONVERT(s.regnumber USING utf8mb4) COLLATE utf8mb4_unicode_ci {$svcJoin} WHERE $whereClause ORDER BY p.`date` DESC LIMIT $perPage OFFSET $offset";
         $data = $this->db->fetchAll($query, $params);
 
         // Fetch basic dashboard metrics for online payments
         $metricsQuery = "SELECT COUNT(*) as total_tx, SUM(amount) as total_amount FROM `payment`";
         $metrics = $this->db->fetchOne($metricsQuery);
 
+        // Options for the channel / service pickers. Channels come from the
+        // data itself because the gateway adds new ones without a migration.
+        $channels = array_values(array_filter(array_column(
+            $this->db->fetchAll(
+                "SELECT DISTINCT `payment_chanel` FROM `payment`
+                  WHERE `payment_chanel` IS NOT NULL AND `payment_chanel` <> ''
+                  ORDER BY `payment_chanel` ASC"
+            ),
+            'payment_chanel'
+        )));
+
+        $services = $hasCatalogue
+            ? $this->db->fetchAll(
+                "SELECT `service_code`, `service_name` FROM `urubuto_services`
+                  WHERE `is_active` = 1 ORDER BY `sort_order` ASC, `service_name` ASC"
+              )
+            : [];
+
         $this->success($response, [
             'data' => $data,
+            'filters' => [
+                'channels' => $channels,
+                'services' => $services,
+            ],
             'pagination' => [
                 'current_page' => $page,
                 'per_page'     => $perPage,
@@ -901,6 +977,60 @@ class FeeController extends BaseController
 
         SystemLogService::log('CREATE', 'FINANCE', "Recorded payment of {$data['amount']} for invoice {$data['invoice_id']} (ID {$result['payment_id']}).", (int) $result['payment_id'], 'fee_payment', ['method' => $data['payment_method'], 'amount' => (float) $data['amount']], (array) $actor ?: null);
         $this->success($response, $result, 'Payment recorded successfully.', 201);
+    }
+
+    /**
+     * POST /api/finance/payments/pay-oldest-first
+     *
+     * Spread one amount across a student's outstanding invoices, oldest debt
+     * first. The counterpart to the refusal recordPayment() now raises when an
+     * older invoice is still open — an officer holding a lump sum needs a
+     * correct path, not just a blocked one.
+     *
+     * Body: { student_id, amount, payment_method, reference_number?, notes?, paid_at? }
+     */
+    public function payOldestFirst(Request $request, Response $response): never
+    {
+        $data  = $request->body();
+        $actor = $request->param('_auth_user');
+
+        $errors = ValidationHelper::validate($data, [
+            'student_id'     => 'required',
+            'amount'         => 'required|numeric',
+            'payment_method' => 'required|in:CASH,BANK_TRANSFER,MOBILE_MONEY,BURSARY,WAIVER',
+        ]);
+        if (!empty($errors)) {
+            $this->error($response, 'Validation failed.', 422, $errors);
+        }
+
+        try {
+            $result = $this->service->payOldestFirst(
+                (string) $data['student_id'],
+                (float) $data['amount'],
+                $data,
+                (int) $actor['id']
+            );
+        } catch (\InvalidArgumentException | \RuntimeException $e) {
+            $this->error($response, $e->getMessage(), 422);
+        }
+
+        $count = count($result['allocations']);
+        SystemLogService::log(
+            'CREATE',
+            'FINANCE',
+            "Allocated {$data['amount']} across {$count} invoice(s), oldest first, for {$data['student_id']}.",
+            null,
+            'fee_payment',
+            $result,
+            (array) $actor ?: null
+        );
+
+        $message = $result['unallocated'] > 0.009
+            ? sprintf('Allocated across %d invoice(s). %s could not be allocated — the student owes less than the amount paid.',
+                      $count, number_format($result['unallocated'], 2))
+            : sprintf('Allocated across %d invoice(s), oldest debt first.', $count);
+
+        $this->success($response, $result, $message, 201);
     }
 
     /**
@@ -2631,6 +2761,82 @@ class FeeController extends BaseController
     public function applicationFeeReconciliation(Request $request, Response $response): never
     {
         $this->success($response, [], 'Application fee reconciliation report.');
+    }
+
+    /**
+     * POST /api/finance/reports/application-fee-reconciliation/run-pending
+     *
+     * Batch-credit all enrolled students whose application fee has not yet
+     * been transferred. Useful for backfilling after the feature is deployed.
+     *
+     * Body: { academic_year_id: int }
+     */
+    public function runPendingApplicationFeeCredits(Request $request, Response $response): never
+    {
+        $data   = $request->body();
+        $actor  = $request->param('_auth_user');
+        $yearId = (int)($data['academic_year_id'] ?? 0);
+
+        if (!$yearId) {
+            $this->error($response, 'academic_year_id is required.', 422);
+        }
+
+        $tableExists = (bool)$this->db->fetchOne(
+            "SELECT COUNT(*) AS cnt FROM information_schema.TABLES
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'student_applications'",
+            []
+        )['cnt'];
+
+        if (!$tableExists) {
+            $this->error($response, 'student_applications table not found — admissions module not yet migrated.', 422);
+        }
+
+        // Fetch pending: enrolled but not yet transferred, scoped to the given year
+        $pending = $this->db->fetchAll(
+            "SELECT sa.id AS application_id,
+                    sa.enrolled_student_id,
+                    sa.payment_amount,
+                    sa.transaction_id
+             FROM `student_applications` sa
+             WHERE sa.enrolled_student_id IS NOT NULL
+               AND sa.paid_at IS NOT NULL
+               AND COALESCE(sa.payment_amount, 0) > 0
+               AND sa.transaction_id IS NOT NULL
+               AND sa.academic_year_id = ?
+               AND NOT EXISTS (
+                 SELECT 1 FROM `fee_payments` fp
+                 WHERE fp.source = 'APPLICATION_TRANSFER'
+                   AND fp.source_application_id = sa.id
+               )",
+            [$yearId]
+        );
+
+        $results  = ['credited' => 0, 'skipped' => 0, 'errors' => 0, 'details' => []];
+        $actorId  = (int)($actor['id'] ?? 0);
+
+        foreach ($pending as $row) {
+            try {
+                $result = $this->service->creditApplicationFee(
+                    studentId:      (string)$row['enrolled_student_id'],
+                    academicYearId: $yearId,
+                    amount:         (float)$row['payment_amount'],
+                    transactionRef: (string)$row['transaction_id'],
+                    applicationId:  (int)$row['application_id'],
+                    actorId:        $actorId
+                );
+                if ($result['status'] === 'credited') {
+                    $results['credited']++;
+                } else {
+                    $results['skipped']++;
+                }
+                $results['details'][] = ['id' => $row['application_id'], 'result' => $result['status']];
+            } catch (\Throwable $e) {
+                $results['errors']++;
+                $results['details'][] = ['id' => $row['application_id'], 'result' => 'error', 'message' => $e->getMessage()];
+            }
+        }
+
+        $this->success($response, $results, "Batch complete: {$results['credited']} credited, {$results['skipped']} skipped, {$results['errors']} errors.");
     }
 
     /**

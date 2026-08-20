@@ -1,6 +1,11 @@
 import { api, apiClient } from '@/services/api'
 import { useAuthStore } from '@/store/authStore'
 import type { ApiResponse } from '@/types'
+// The roster reports the same classification the transcript does — one shape,
+// defined beside the marks it is computed from.
+import type { HonoursClassification } from '@/services/marksService'
+
+export type { HonoursClassification }
 
 /** The graduation lifecycle. `waiting` is where a student who has finished
  *  their curriculum sits until someone actions them — the roster renders a
@@ -242,8 +247,15 @@ export interface ReadyRow extends CompletionRow {
   degree_class:     DegreeClass | null
   graduation_date:  string | null
   ceremony_number:  string | null
-  /** Classification implied by weighted_avg — the default when adding. */
+  /**
+   * The class the regulations award, and the default when adding the student
+   * to the list. Comes from the final-level modules (see `classification`);
+   * falls back to the class `weighted_avg` implies when there are none to
+   * assess.
+   */
   suggested_class:  DegreeClass | null
+  /** How `suggested_class` was reached — thresholds met, floor, caveats. */
+  classification?:  HonoursClassification | null
 }
 
 export interface ReadySummary {

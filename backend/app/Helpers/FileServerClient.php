@@ -4,8 +4,13 @@ declare(strict_types=1);
 
 namespace App\Helpers;
 
-use RuntimeException;
-
+/**
+ * Thin HTTP client for the standalone file-storage service.
+ *
+ * Every failure leaves here as a {@see FileServerException} so callers can tell
+ * "your file is invalid" (422) apart from "storage is broken" (502) — see the
+ * doc block on that class for why the distinction matters.
+ */
 class FileServerClient
 {
     private string $baseUrl;
@@ -29,25 +34,70 @@ class FileServerClient
     }
 
     /**
+     * Fail fast when the storage credentials are absent.
+     *
+     * Without this an empty FILE_SERVER_KEY is sent as a blank X-API-Key header,
+     * the file server answers 401 "Invalid API Key", and that upstream message
+     * used to be relayed to the end user as if their file were at fault. A
+     * missing key is a deployment problem, so say so in the log and give the
+     * user a generic, honest "service unavailable".
+     */
+    private function assertConfigured(): void
+    {
+        $missing = [];
+        if ($this->baseUrl === '') $missing[] = 'FILE_SERVER_URL';
+        if ($this->apiKey  === '') $missing[] = 'FILE_SERVER_KEY';
+
+        if ($missing !== []) {
+            throw FileServerException::upstream(
+                'File storage is not configured — missing env var(s): ' . implode(', ', $missing)
+                . '. Set them in backend/.env; FILE_SERVER_KEY must match the value in file-server/.env.'
+            );
+        }
+    }
+
+    /** True when the storage service answers its health check. */
+    public function healthy(): bool
+    {
+        if ($this->baseUrl === '') {
+            return false;
+        }
+        $ch = curl_init($this->baseUrl . '/health');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 5,
+        ]);
+        curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        return $code >= 200 && $code < 300;
+    }
+
+    /**
      * Validate and upload a file from $_FILES to the file server.
      *
      * @param  array $file  One entry from $_FILES (e.g. $_FILES['document'])
      * @return array [id, original_name, mime, size]
-     * @throws RuntimeException on validation failure or server error
+     * @throws FileServerException client-kind on validation failure, upstream-kind on storage/config error
      */
     public function upload(array $file): array
     {
+        $this->assertConfigured();
+
         if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
-            throw new RuntimeException('File upload failed with error code: ' . ($file['error'] ?? 'unknown'));
+            throw FileServerException::client($this->uploadErrorMessage((int)($file['error'] ?? -1)));
         }
 
         if (($file['size'] ?? 0) > self::MAX_SIZE) {
-            throw new RuntimeException('File exceeds the maximum allowed size of 5 MB.');
+            throw FileServerException::client('File exceeds the maximum allowed size of 5 MB.');
         }
 
+        // Authoritative type check: the file's actual content, not the
+        // client-supplied $_FILES['type'], which is trivially spoofed.
         $mime = $this->detectMime($file['tmp_name'] ?? '');
         if (!in_array($mime, self::ALLOWED_MIMES, true)) {
-            throw new RuntimeException('Invalid file type. Allowed: PDF, JPEG, PNG.');
+            throw FileServerException::client('Invalid file type. Allowed: PDF, JPEG, PNG, WebP.');
         }
 
         $ch = curl_init($this->baseUrl . '/upload');
@@ -70,14 +120,17 @@ class FileServerClient
         curl_close($ch);
 
         if ($error) {
-            throw new RuntimeException('Could not reach file storage service: ' . $error);
+            throw FileServerException::upstream('Could not reach file storage service: ' . $error);
         }
 
         $body = json_decode((string)$raw, true);
 
         if ($httpCode < 200 || $httpCode >= 300 || empty($body['data']['id'])) {
-            $msg = $body['message'] ?? 'Unknown error';
-            throw new RuntimeException("File storage service error ({$httpCode}): {$msg}");
+            $msg  = $body['message'] ?? 'Unknown error';
+            $hint = in_array($httpCode, [401, 403], true)
+                ? ' — FILE_SERVER_KEY in backend/.env does not match FILE_SERVER_KEY in file-server/.env.'
+                : '';
+            throw FileServerException::upstream("File storage service error ({$httpCode}): {$msg}{$hint}");
         }
 
         return [
@@ -92,10 +145,12 @@ class FileServerClient
      * Download a file from the file server by its UUID.
      *
      * @return array [content, mime, original_name]
-     * @throws RuntimeException on server error
+     * @throws FileServerException client-kind when the file is missing, upstream-kind on storage error
      */
     public function download(string $fileServerId): array
     {
+        $this->assertConfigured();
+
         $ch = curl_init($this->baseUrl . '/download/' . rawurlencode($fileServerId));
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
@@ -113,15 +168,15 @@ class FileServerClient
         curl_close($ch);
 
         if ($error) {
-            throw new RuntimeException('Could not reach file storage service: ' . $error);
+            throw FileServerException::upstream('Could not reach file storage service: ' . $error);
         }
 
         if ($httpCode === 404) {
-            throw new RuntimeException('File not found.');
+            throw FileServerException::client('File not found.');
         }
 
         if ($httpCode < 200 || $httpCode >= 300) {
-            throw new RuntimeException('File storage service error.');
+            throw FileServerException::upstream("File storage download failed with HTTP {$httpCode}.");
         }
 
         $headers = substr($response, 0, $headerSize);
@@ -166,6 +221,23 @@ class FileServerClient
         curl_close($ch);
 
         return $httpCode >= 200 && $httpCode < 300;
+    }
+
+    /** Human-readable text for a PHP $_FILES upload error code. */
+    private function uploadErrorMessage(int $code): string
+    {
+        return match ($code) {
+            UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE =>
+                'File exceeds the maximum allowed size of 5 MB.',
+            UPLOAD_ERR_PARTIAL =>
+                'The file was only partially uploaded. Please try again.',
+            UPLOAD_ERR_NO_FILE =>
+                'No file was uploaded.',
+            UPLOAD_ERR_NO_TMP_DIR, UPLOAD_ERR_CANT_WRITE, UPLOAD_ERR_EXTENSION =>
+                'The server could not process the upload. Please contact the administrator.',
+            default =>
+                'File upload failed. Please try again.',
+        };
     }
 
     private function detectMime(string $path): string

@@ -6,6 +6,7 @@ use App\Controllers\AcademicController;
 use App\Controllers\AcademicsManagementController;
 use App\Middleware\AuthMiddleware;
 use App\Middleware\PermissionMiddleware;
+use App\Middleware\MaybePermissionMiddleware;
 use App\Constants\Permissions;
 
 /**
@@ -86,14 +87,25 @@ $router->group('/api/academics-management/instructors', function (Core\Router $r
     $r->get('', [AcademicsManagementController::class, 'instructors']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_MODULE_SCHEDULES)]);
 
-// Exam scheduling — per-module exam date/time, drives the Exams sub-tab
-// and the per-exam attendance sheet. Reuses MANAGE_MODULE_SCHEDULES so it
-// inherits the same admin role as the teaching schedule. The literal
-// `/scheduled-modules` route is registered before `/:id` so it wins.
+// Exam scheduling — per-module exam date/time, drives the Exams sub-tab and
+// the per-exam attendance sheet. The literal `/scheduled-modules` route is
+// registered before `/:id` so it wins.
+//
+// Reading is separated from writing so VIEW_EXAMS finally means something: a
+// head of department can see when their department sits its papers without
+// also being able to move them. Writing keeps MANAGE_MODULE_SCHEDULES, so the
+// people who could edit exams before still can.
 $router->group('/api/academics-management/exams', function (Core\Router $r) {
     $r->get   ('/scheduled-modules',   [AcademicsManagementController::class, 'examScheduledModules']);
     $r->get   ('/:id/attendance',      [AcademicsManagementController::class, 'examAttendance']);
     $r->get   ('',                     [AcademicsManagementController::class, 'listExams']);
+}, [AuthMiddleware::class, new MaybePermissionMiddleware([
+    Permissions::VIEW_EXAMS,
+    Permissions::MANAGE_EXAMS,
+    Permissions::MANAGE_MODULE_SCHEDULES,
+])]);
+
+$router->group('/api/academics-management/exams', function (Core\Router $r) {
     $r->post  ('',                     [AcademicsManagementController::class, 'createExam']);
     $r->put   ('/:id',                 [AcademicsManagementController::class, 'updateExam']);
     $r->delete('/:id',                 [AcademicsManagementController::class, 'deleteExam']);

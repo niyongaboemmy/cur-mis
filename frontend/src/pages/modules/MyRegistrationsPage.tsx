@@ -12,6 +12,7 @@ import {
   type Revaluation, type BacklogRow,
 } from '@/services/revaluationService'
 import { transcriptService } from '@/services/transcriptService'
+import { useLevels } from '@/hooks/useLevels'
 import type { ModuleRegistration } from '@/types/modules'
 
 type Tab = 'available' | 'mine' | 'exams' | 'marks' | 'revaluation'
@@ -20,6 +21,7 @@ const VALID_TABS: readonly Tab[] = ['available', 'mine', 'exams', 'marks', 'reva
 
 export default function MyRegistrationsPage() {
   const qc = useQueryClient()
+  const { levelName } = useLevels()
 
   const [sp, setSp] = useSearchParams()
 
@@ -209,7 +211,7 @@ export default function MyRegistrationsPage() {
               <div className="font-mono text-[11px] text-ink-500 mb-0.5">{m.module_code}</div>
               <div className="font-semibold text-ink-900 dark:text-white mb-1">{m.module_name}</div>
               <div className="text-[12px] text-ink-500 mb-2">
-                {m.module_credits} credits · Level {m.level}
+                {m.module_credits} credits · {m.level_name ?? levelName(m.level)}
               </div>
               {m.description && (
                 <p className="text-[12px] text-ink-600 dark:text-ink-300 mb-3 line-clamp-3">{m.description}</p>

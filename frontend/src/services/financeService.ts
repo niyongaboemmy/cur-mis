@@ -2,6 +2,7 @@ import { api, apiClient } from "@/services/api";
 import { useAuthStore } from "@/store/authStore";
 import type { PaginatedResponse } from "@/types";
 import type {
+  MyFinesResponse,
   FeeStructure,
   FeeInvoice,
   FeePayment,
@@ -145,6 +146,10 @@ export const paymentService = {
       keyword?: string;
       page?: number;
       per_page?: number;
+      /** `payment.payment_chanel` — USSD, mobile money, bank. */
+      channel?: string;
+      /** UrubutoPay `service_code` the payer selected. */
+      service_code?: string;
     },
     signal?: AbortSignal,
   ) =>
@@ -159,6 +164,10 @@ export const paymentService = {
       metrics: {
         total_transactions: number;
         total_amount: number;
+      };
+      filters?: {
+        channels: string[];
+        services: { service_code: string; service_name: string }[];
       };
     }>("/api/finance/online-payments", params ?? {}, signal),
 
@@ -615,6 +624,14 @@ export const myLedgerService = {
     signal?: AbortSignal,
   ) =>
     api.get<StudentLedger>("/api/finance/my/invoices", params ?? {}, signal),
+
+  /**
+   * The student's own fines. Not year-filtered: a fine stays owed until it is
+   * paid or waived, so hiding it behind the academic-year selector is how it
+   * went unnoticed in the first place.
+   */
+  getMyFines: (signal?: AbortSignal) =>
+    api.get<MyFinesResponse>("/api/finance/my/fines", {}, signal),
 
   getMyClearance: (
     academicYearId: number,

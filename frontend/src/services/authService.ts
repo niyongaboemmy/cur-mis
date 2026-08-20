@@ -61,4 +61,12 @@ export const authService = {
     form.append('photo', file)
     return api.upload<{ photo: string }>('/api/auth/me/photo', form)
   },
+
+  /**
+   * Remove the authenticated user's profile photo.
+   * Returns the same user shape as uploadMyPhoto with `photo: null`, so the
+   * auth store can be refreshed from either response identically.
+   */
+  deleteMyPhoto: () =>
+    api.delete<{ photo: null }>('/api/auth/me/photo'),
 }

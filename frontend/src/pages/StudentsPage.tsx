@@ -37,6 +37,7 @@ import StudentExportModal from "@/components/admin/StudentExportModal";
 import BulkUploadModal from "@/components/admin/BulkUploadModal";
 import { academicsMgmtService } from "@/services/academicsMgmtService";
 import type { Student } from "@/types/academic";
+import ProfileChangeReviewPanel from '@/components/students/ProfileChangeReviewPanel'
 
 const PER_PAGE = 15;
 
@@ -548,8 +549,8 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
 
   // Entity data for filters. Departments + programs are loaded once and
   // shown flat — no faculty cascade — so the user can pick either directly.
-  const deptsQ = useQuery({ queryKey: ['acmgmt', 'departments', 'all'], queryFn: () => academicsMgmtService.list<any>('departments', { per_page: 200 }), staleTime: 5 * 60_000 });
-  const allDepartments: any[] = deptsQ.data?.data?.data ?? [];
+  // Departments now come from /students/filter-options together with their
+  // faculty, so the picker can narrow to the selected faculty.
   const programsQ = useQuery({ queryKey: ['acmgmt', 'options', 'all'], queryFn: () => academicsMgmtService.list<any>('options', { per_page: 500 }), staleTime: 5 * 60_000 });
   const allPrograms: any[] = programsQ.data?.data?.data ?? [];
 
@@ -569,6 +570,16 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
   const learning_mode = sp.get("learning_mode") ?? "";
   const campus = sp.get("campus") ?? "";
   const intake = sp.get("intake") ?? "";
+  const faculty = sp.get("faculty") ?? "";
+  const country = sp.get("country") ?? "";
+  const province = sp.get("province") ?? "";
+  const district = sp.get("district") ?? "";
+  const sector = sp.get("sector") ?? "";
+  const ageMin = sp.get("age_min") ?? "";
+  const ageMax = sp.get("age_max") ?? "";
+  // Explicit academic-year filter. Falls back to the topbar's year when the
+  // user hasn't picked one here, so the existing scope still applies.
+  const accYear = sp.get("acc_year") ?? "";
   const sort_by = sp.get("sort_by") ?? "";
   const sort_dir = (sp.get("sort_dir") as "asc" | "desc") ?? "desc";
   const page = Math.max(1, Number(sp.get("page") || 1));
@@ -603,33 +614,32 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
     }
   };
 
-  // When a programme is picked we send ONLY the programme filter (plus the
-  // search box if the user is typing). Implicit filters like the topnav's
-  // academic year and the auto-derived department would AND together with
-  // `std_option` and silently zero out the result set, so we drop them.
-  // To filter further on top of a programme, the admin can clear the
-  // programme picker first or we'll add explicit filter combinators later.
+  // Every filter composes — Option included. It used to be exclusive (picking
+  // one dropped all the others) because an auto-derived department could AND
+  // with `std_option` and zero the result set. Department is now chosen by
+  // hand and the Option list is scoped to it, so the pair always agrees:
+  // measured across the Education options, 99.4% of students matched by an
+  // option also carry that option's department. Exclusivity only survived as
+  // a way to silently discard the nine other filters the user had set.
   const listParams: StudentListParams = useMemo(() => {
-    if (program) {
-      return {
-        page,
-        per_page: PER_PAGE,
-        q: debouncedQ || undefined,
-        std_option: program,
-        sort_by: sort_by || undefined,
-        sort_dir: sort_dir || undefined,
-      };
-    }
     return {
       page,
       per_page: PER_PAGE,
       q: debouncedQ || undefined,
+      std_option: program || undefined,
       gender: gender || undefined,
       student_state: state === "all" ? undefined : state,
       nationality: nationality || undefined,
+      faculty: faculty || undefined,
       department: department || undefined,
       current_level: level || undefined,
-      acc_year: selectedYear || undefined,
+      acc_year: accYear || selectedYear || undefined,
+      country: country || undefined,
+      province: province || undefined,
+      district: district || undefined,
+      sector: sector || undefined,
+      age_min: ageMin || undefined,
+      age_max: ageMax || undefined,
       campus: campus || undefined,
       intake: intake || undefined,
       learning_mode: learning_mode || undefined,
@@ -642,9 +652,17 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
     gender,
     state,
     nationality,
+    faculty,
     department,
     level,
     selectedYear,
+    accYear,
+    country,
+    province,
+    district,
+    sector,
+    ageMin,
+    ageMax,
     program,
     campus,
     intake,
@@ -658,6 +676,100 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
     queryFn: () => studentService.list(listParams),
     placeholderData: (prev) => prev,
   });
+
+  // Values for the filter bar, each carrying the number of students it would
+  // yield. Counts are faceted server-side — every dimension is counted with
+  // the other active filters applied but its own excluded — so the active
+  // filters have to be sent, and the panel re-reads whenever they change.
+  const facetParams = useMemo(() => {
+    const { page: _p, per_page: _pp, sort_by: _sb, sort_dir: _sd, ...rest } = listParams;
+    return rest;
+  }, [listParams]);
+  const filterOptsQ = useQuery({
+    queryKey: ['students', 'filter-options', facetParams, selectedCampusId, selectedCategory ?? 'all'],
+    queryFn: ({ signal }) => studentService.filterOptions(facetParams, signal),
+    placeholderData: (prev) => prev,
+    staleTime: 60_000,
+  });
+  const filterOpts = filterOptsQ.data?.data;
+
+  /** Case-insensitive compare — the location columns hold mixed casing. */
+  const sameValue = (a?: string | null, b?: string | null) =>
+    (a ?? '').trim().toLowerCase() === (b ?? '').trim().toLowerCase();
+
+  /** "Huye (1,308)" — showing the count before the click is the point of the
+   *  faceted endpoint, so every picker below labels its options this way. */
+  const withCount = (f: { value: string; label: string; total: number }): FacetOption => ({
+    value: f.value,
+    label: `${f.label} (${f.total.toLocaleString()})`,
+  });
+
+  const facultyFacets: FacetOption[] = useMemo(
+    () => (filterOpts?.faculties ?? []).map(withCount),
+    [filterOpts],
+  );
+
+  // Departments narrow to the chosen faculty; with none chosen, all are shown.
+  // The counts already respect the faculty — the server excludes only the
+  // dimension being counted — so this filter is purely about what to offer.
+  const departmentFacetsScoped: FacetOption[] = useMemo(() => {
+    const all = filterOpts?.departments ?? [];
+    const scoped = faculty ? all.filter((d) => d.faculty_id === faculty) : all;
+    return scoped.map(withCount);
+  }, [filterOpts, faculty]);
+
+  // Districts belong to a province, sectors to a district — the pairings come
+  // from the data, so cascading never offers a combination nobody lives in.
+  const provinceFacets: FacetOption[] = useMemo(
+    () => (filterOpts?.provinces ?? []).map(withCount),
+    [filterOpts],
+  );
+  const districtFacets: FacetOption[] = useMemo(
+    () => (filterOpts?.districts ?? [])
+      .filter((d) => !province || sameValue(d.province, province))
+      .map(withCount),
+    [filterOpts, province],
+  );
+  const sectorFacets: FacetOption[] = useMemo(
+    () => (filterOpts?.sectors ?? [])
+      .filter((x) => !district || sameValue(x.district, district))
+      .map(withCount),
+    [filterOpts, district],
+  );
+  const countryFacets: FacetOption[] = useMemo(
+    () => (filterOpts?.countries ?? []).map(withCount),
+    [filterOpts],
+  );
+  const accYearFacets: FacetOption[] = useMemo(
+    () => (filterOpts?.academic_years ?? []).map(withCount),
+    [filterOpts],
+  );
+
+  const statusFacets: FacetOption[] = useMemo(
+    () => (filterOpts?.statuses ?? []).map(withCount),
+    [filterOpts],
+  );
+
+  /**
+   * The Option picker is specific to Education, per the registry's request:
+   * only that faculty's intake is tracked at option level, so showing it for
+   * every department would offer a choice that means nothing elsewhere.
+   */
+  const educationFacultyIds = useMemo(
+    () => new Set(
+      (filterOpts?.faculties ?? [])
+        .filter((f) => f.is_education)
+        .map((f) => f.value),
+    ),
+    [filterOpts],
+  );
+  const selectedDeptFacultyId = useMemo(() => {
+    const d = (filterOpts?.departments ?? []).find((x) => x.value === department);
+    return d?.faculty_id ?? '';
+  }, [filterOpts, department]);
+  const showOptionFilter =
+    (!!faculty && educationFacultyIds.has(faculty)) ||
+    (!!selectedDeptFacultyId && educationFacultyIds.has(selectedDeptFacultyId));
 
   const campusesQ = useQuery({ queryKey: ['acmgmt', 'campuses', 'all'], queryFn: () => academicsMgmtService.list<any>('campuses', { per_page: 200 }), staleTime: 5 * 60_000 });
   const allCampuses: any[] = campusesQ.data?.data?.data ?? [];
@@ -693,6 +805,14 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
     gender,
     state === "active" ? "" : state,
     nationality,
+    faculty,
+    country,
+    province,
+    district,
+    sector,
+    ageMin,
+    ageMax,
+    accYear,
     department,
     level,
     program,
@@ -705,11 +825,6 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
      Backend filter expectations:
        - department → departements.dep_id (numeric, stored as varchar in `student`)
        - std_option → option id; backend resolves to id/name/code/acro/admission chain. */
-  const departmentFacets: FacetOption[] = useMemo(
-    () => allDepartments.map((d: any) => ({ value: String(d.dep_id), label: String(d.dep_name) })),
-    [allDepartments],
-  );
-
   // Programmes are gated behind a department: the picker only renders once a
   // department is chosen, and its options are scoped to that department.
   const programFacets: FacetOption[] = useMemo(() => {
@@ -728,21 +843,8 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
     update({ department: v || undefined, program: undefined });
   };
 
-  /** Picking a programme is an exclusive query (the backend sends only
-   *  `std_option`). Keep the department selected — it scopes the programme
-   *  list and keeps this picker visible — but clear the filters the programme
-   *  query ignores so the visible chips stay accurate. */
   const onProgramChange = (v: string | undefined) => {
-    if (!v) {
-      update({ program: undefined });
-      return;
-    }
-    update({
-      program: v,
-      current_level: undefined,
-      gender: undefined,
-      nationality: undefined,
-    });
+    update({ program: v || undefined });
   };
 
   const clearAll = () =>
@@ -750,6 +852,10 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
 
   return (
     <div className="space-y-5">
+      {/* Student-proposed identity corrections (migration 147). Renders
+          nothing when the queue is empty. */}
+      <ProfileChangeReviewPanel />
+
       {/* Search + filters */}
       <section className="card p-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
@@ -762,20 +868,6 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
                 placeholder="Search by name, email, reg #…"
                 className="input pl-9"
               />
-            </div>
-            <div className="flex items-center gap-2 w-full md:w-40 shrink-0">
-              <span className="text-[11px] uppercase tracking-wider text-ink-400 whitespace-nowrap">
-                State
-              </span>
-              <select
-                value={state}
-                onChange={(e) => update({ student_state: e.target.value })}
-                className="input input-sm w-full bg-white dark:bg-ink-900 cursor-pointer text-ink-900 dark:text-white"
-              >
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-                <option value="all">All</option>
-              </select>
             </div>
           </div>
 
@@ -824,7 +916,7 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
               onClick={() => setExportOpen(true)}
               disabled={total === 0}
               className="btn-primary btn-sm flex items-center gap-1.5"
-              title="Export the current student list to CSV"
+              title="Download the filtered student list as Excel or CSV"
             >
               <Download className="w-3.5 h-3.5" /> Export
             </button>
@@ -832,23 +924,52 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
         </div>
 
         <div className="mt-3 flex flex-wrap items-end gap-2">
-          {/* Department first — it gates the programme picker below. */}
+          {/* Sole owner of `student_state`. The picker's own "All" entry
+              reports the empty string, but an ABSENT student_state means
+              Active on this page — so clearing has to say "all" out loud, and
+              "all" maps back to empty here to keep that entry highlighted. */}
+          <FilterSelect
+            label="Status"
+            value={state === "all" ? "" : state}
+            onChange={(v) => update({ student_state: v || "all" })}
+            options={statusFacets}
+            placeholder="All statuses"
+            className="w-full sm:w-44"
+          />
+          <FilterSelect
+            label="Academic year"
+            value={accYear}
+            onChange={(v) => update({ acc_year: v })}
+            options={accYearFacets}
+            placeholder={selectedYear ? `${selectedYear} (from topbar)` : "All years"}
+            className="w-full sm:w-48"
+          />
+          {/* Faculty narrows the department list below it. */}
+          <FilterSelect
+            label="Faculty"
+            value={faculty}
+            onChange={(v) => update({ faculty: v, department: "", program: "" })}
+            options={facultyFacets}
+            placeholder="All faculties"
+            className="w-full sm:w-64"
+          />
+          {/* Department — scoped to the faculty when one is picked. */}
           <FilterSelect
             label="Department"
             value={department}
             onChange={onDepartmentChange}
-            options={departmentFacets}
+            options={departmentFacetsScoped}
             placeholder="Select department…"
             className="w-full sm:w-56"
           />
-          {/* Programme appears only once a department is chosen, scoped to it. */}
-          {department && (
+          {/* Option is Education-only — see showOptionFilter. */}
+          {showOptionFilter && (
             <FilterSelect
-              label="Program"
+              label="Option"
               value={program}
               onChange={onProgramChange}
               options={programFacets}
-              placeholder="All programs"
+              placeholder="All options"
               className="w-full sm:w-64"
             />
           )}
@@ -894,7 +1015,77 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
             placeholder="Select mode…"
             className="w-full sm:w-44"
           />
+          <FilterSelect
+            label="Country"
+            value={country}
+            onChange={(v) => update({ country: v })}
+            options={countryFacets}
+            placeholder="All countries"
+            className="w-full sm:w-48"
+          />
+          {/* Province → District → Sector. Choosing a parent clears its
+              children so a stale pairing can never be submitted. */}
+          <FilterSelect
+            label="Province"
+            value={province}
+            onChange={(v) => update({ province: v, district: "", sector: "" })}
+            options={provinceFacets}
+            placeholder="All provinces"
+            className="w-full sm:w-44"
+          />
+          <FilterSelect
+            label="District"
+            value={district}
+            onChange={(v) => update({ district: v, sector: "" })}
+            options={districtFacets}
+            placeholder={province ? "All districts" : "All districts"}
+            className="w-full sm:w-44"
+          />
+          <FilterSelect
+            label="Sector"
+            value={sector}
+            onChange={(v) => update({ sector: v })}
+            options={sectorFacets}
+            placeholder="All sectors"
+            className="w-full sm:w-44"
+          />
+          <div className="w-full sm:w-auto">
+            <label className="block text-[11px] font-medium text-ink-500 dark:text-ink-400 mb-1">
+              Age
+            </label>
+            <div className="flex items-center gap-1.5">
+              <input
+                type="number" min={0} max={120} inputMode="numeric"
+                value={ageMin}
+                onChange={(e) => update({ age_min: e.target.value })}
+                placeholder="Min"
+                className="input w-20"
+                aria-label="Minimum age"
+              />
+              <span className="text-ink-400 text-[12px]">–</span>
+              <input
+                type="number" min={0} max={120} inputMode="numeric"
+                value={ageMax}
+                onChange={(e) => update({ age_max: e.target.value })}
+                placeholder="Max"
+                className="input w-20"
+                aria-label="Maximum age"
+              />
+            </div>
+          </div>
         </div>
+
+        {/* Age is derived from date of birth, which most records don't carry.
+            Saying so up front stops the shrunken count reading as a bug. */}
+        {(ageMin || ageMax) && filterOpts?.age && (
+          <p className="mt-2 text-[11px] text-amber-600 dark:text-amber-400">
+            Age comes from date of birth, which only{" "}
+            {filterOpts.age.known.toLocaleString()} of{" "}
+            {filterOpts.total.toLocaleString()} students have on record.
+            Students without a usable date of birth are not included while an
+            age filter is set.
+          </p>
+        )}
       </section>
 
       {/* Table */}
@@ -1010,29 +1201,16 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
         onClose={() => setExportOpen(false)}
         totalRecords={total}
         filters={
-          // Mirror studentService.list exactly so the CSV always matches
-          // the visible cohort. The list builder treats program as an
-          // exclusive mode (it drops every other filter and queries via
-          // std_option), so we do the same here. Global campus +
-          // category live in the topbar stores and are auto-injected by
-          // the service layer.
-          program
-            ? {
-                q:          debouncedQ || undefined,
-                std_option: program,
-              }
-            : {
-                q:             debouncedQ || undefined,
-                gender:        gender || undefined,
-                student_state: state === "all" ? undefined : state,
-                nationality:   nationality || undefined,
-                department:    department || undefined,
-                current_level: level || undefined,
-                acc_year:      selectedYear || undefined,
-                campus:        campus || undefined,
-                intake:        intake || undefined,
-                learning_mode: learning_mode || undefined,
-              }
+          // Derived from listParams, never hand-copied: the export must always
+          // describe the cohort on screen, and a second hand-maintained list
+          // silently drifts every time a filter is added. Paging and sorting
+          // are dropped — an export covers the whole filtered set, not a page.
+          // Global campus + category live in the topbar stores and are
+          // injected by the service layer.
+          (() => {
+            const { page: _p, per_page: _pp, sort_by: _sb, sort_dir: _sd, ...rest } = listParams;
+            return rest as Record<string, string | number | undefined>;
+          })()
         }
       />
 

@@ -41,6 +41,7 @@ import { PERMISSIONS } from "@/constants";
 import { usePermission } from "@/utils/permissions";
 
 import { formatRWF } from "@/utils/formatCurrency";
+import { useLevels } from "@/hooks/useLevels";
 
 const BURSARY_TYPES = [
   "Government Scholarship",
@@ -1635,6 +1636,7 @@ function BursaryModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { levelName } = useLevels();
   const [form, setForm] = useState<CreateBursaryPayload>({
     student_id: initial?.student_id ?? "",
     academic_year_id: initial?.academic_year_id ?? defaultYearId ?? 0,
@@ -1794,7 +1796,7 @@ function BursaryModal({
                         Level/Class
                       </span>
                       <p className="font-bold text-ink-700">
-                        {student.level_name ?? student.level ?? "—"}
+                        {student.level_name ?? levelName(student.level)}
                       </p>
                     </div>
                     <div>

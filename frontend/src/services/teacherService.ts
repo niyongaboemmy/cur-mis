@@ -44,6 +44,8 @@ export interface TeacherCourse {
   module_name:         string
   module_credits:      number | null
   level:               number | null
+  /** Resolved `levels.name` — displayed instead of the raw `levels.id`. */
+  level_name:          string | null
   department_id:       number | null
   role:                'primary' | 'assistant'
   hours_per_week:      number | null
@@ -65,6 +67,7 @@ export interface TeacherClassStudent {
   phone:           string | null
   photo:           string | null
   level:           number | null
+  level_name:      string | null
   student_state:   string | null
   total:           number | null
   percentage:      number | null
@@ -146,8 +149,33 @@ export interface TeacherStudent {
   phone:        string | null
   photo:        string | null
   level:        number | null
+  level_name:   string | null
+  /** Resolved intake (migration 146). Null where the student's stored intake
+   *  is an academic-year string that maps to no intake — 1,749 such rows. */
+  intake_id:    number | null
+  /** Catalogue name, or the raw stored text when it could not be resolved. */
+  intake_name:  string | null
+  /** False when `intake_name` is the raw text rather than a catalogue entry. */
+  intake_resolved: boolean
+  /** Day / Weekend / Holiday, from `student.program`. */
+  mode_of_study: string | null
   modules:      number
   module_codes: string
+}
+
+/** Facets present in THIS lecturer's classes, each with a headcount. */
+export interface TeacherStudentFilters {
+  intakes: { id: number | null;    label: string; count: number }[]
+  levels:  { value: number | null; label: string; count: number }[]
+  modes:   { value: string | null; label: string; count: number }[]
+  total:   number
+}
+
+export interface TeacherStudentQuery {
+  term_id?:       number
+  intake_id?:     number
+  level?:         number
+  mode_of_study?: string
 }
 
 export interface TeacherSummary {
@@ -281,6 +309,7 @@ export interface ExamAttendanceSheet {
     gender:        string | null
     photo:         string | null
     level:         number | null
+    level_name:    string | null
     status:        ExamAttendanceStatus | null
     seat_no:       string | null
     signed_in_at:  string | null
@@ -394,8 +423,20 @@ export const teacherService = {
       signal,
     ),
 
-  students: (termId?: number, signal?: AbortSignal) =>
-    api.get<TeacherStudent[]>('/api/teacher/students', termId ? { term_id: termId } : undefined, signal),
+  students: (params: TeacherStudentQuery = {}, signal?: AbortSignal) =>
+    api.get<TeacherStudent[]>(
+      '/api/teacher/students',
+      Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== '')),
+      signal,
+    ),
+
+  /** Intakes / classes / modes actually present in my classes, with counts. */
+  studentFilters: (termId?: number, signal?: AbortSignal) =>
+    api.get<TeacherStudentFilters>(
+      '/api/teacher/student-filters',
+      termId ? { term_id: termId } : undefined,
+      signal,
+    ),
 
   calendar: (params?: { from?: string; to?: string; term_id?: number }, signal?: AbortSignal) =>
     api.get<TeacherCalendar>('/api/teacher/calendar', params, signal),

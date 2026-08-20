@@ -53,16 +53,28 @@ $router->group('/api/service-requests/reports', function ($router) {
 // Student (authenticated) — submit + own requests
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Tracking your own requests needs only a valid JWT — the controller scopes
+// every one of these to the caller's own requester_user_id. Someone whose
+// submit permission is later revoked must still be able to follow, pay for and
+// download the requests they already filed.
 $router->group('/api/service-requests', function ($router) {
     $router->get('/mine', [ServiceRequestController::class, 'myRequests']);
-    $router->post('', [ServiceRequestController::class, 'submit']);
     $router->get('/:id/progress', [ServiceRequestController::class, 'progress']);
     $router->get('/:id/checkout-link', [ServiceRequestController::class, 'getCheckoutLink']);
     $router->get('/:id/download', [ServiceRequestController::class, 'download']);
-    $router->post('/:id/resubmit', [ServiceRequestController::class, 'resubmit']);
     $router->get('/:id/attachments', [ServiceRequestController::class, 'listAttachments']);
     $router->get('/:id/attachments/:attachment_id/download', [ServiceRequestController::class, 'downloadAttachment']);
 }, [AuthMiddleware::class]);
+
+// Filing a request is what SUBMIT_SERVICE_REQUEST names. The UI has gated the
+// catalogue on it all along while the API accepted any authenticated caller.
+// Migration 142 grants the slug to every role that could already submit, so
+// enforcing it here changes nobody's access — it just makes the permission
+// real, and revocable.
+$router->group('/api/service-requests', function ($router) {
+    $router->post('', [ServiceRequestController::class, 'submit']);
+    $router->post('/:id/resubmit', [ServiceRequestController::class, 'resubmit']);
+}, [AuthMiddleware::class, new PermissionMiddleware(Permissions::SUBMIT_SERVICE_REQUEST)]);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Staff approval queue — permission-gated per stage inside the controller

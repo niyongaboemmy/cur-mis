@@ -1,3 +1,8 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:268602c3ce079c10de62a265c6213e1ff75936f98a85f5494417e5984f09cfd2
-size 639
+-- =============================================================================
+-- Migration 068: Academic Analytics & Reporting Dashboard Permission (Gap 14)
+-- Adds: VIEW_ACADEMIC_ANALYTICS permission under Academic Registry category
+-- =============================================================================
+
+INSERT IGNORE INTO `permissions` (`category_id`, `name`, `slug`, `description`) VALUES
+  (2, 'View Academic Analytics', 'VIEW_ACADEMIC_ANALYTICS',
+   'Access the academic analytics and reporting dashboard (pass/fail rates, grade distribution, enrollment trends, department performance, attendance compliance)');

@@ -17,6 +17,8 @@ import {
   Megaphone,
   MessagesSquare,
   Loader2,
+  LifeBuoy,
+  ArrowRight,
   type LucideIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -27,6 +29,7 @@ import { PERMISSIONS } from "@/constants";
 import { isSuperadmin } from "@/utils/permissions";
 import { api } from "@/services/api";
 import { useDebounce } from "@/hooks/useDebounce";
+import { searchHelp, helpPath } from "@/data/help";
 
 /* ------------------------------------------------------------------ */
 /*  Deep (record-level) search — GET /api/search?q=                     */
@@ -138,7 +141,7 @@ const SEARCH_INDEX: SearchEntry[] = [
     keywords: ["payroll", "salary", "salaries", "payslip", "pay slip", "monthly pay", "pay breakdown", "compensation", "remuneration"],
     icon: Briefcase,
     group: "HR Management",
-    permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES],
+    permissions: [PERMISSIONS.VIEW_PAYROLL, PERMISSIONS.MANAGE_PAYROLL],
   },
   {
     to: "/hr/payments",
@@ -147,7 +150,7 @@ const SEARCH_INDEX: SearchEntry[] = [
     keywords: ["salary payments", "disbursement", "payment history", "pay records", "payroll history", "paid salaries", "payment records"],
     icon: Briefcase,
     group: "HR Management",
-    permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES],
+    permissions: [PERMISSIONS.VIEW_PAYROLL, PERMISSIONS.MANAGE_PAYROLL],
   },
   {
     to: "/hr/leave",
@@ -156,7 +159,11 @@ const SEARCH_INDEX: SearchEntry[] = [
     keywords: ["leave", "leave requests", "leave management", "vacation", "time off", "annual leave", "sick leave", "leave approvals", "leave balance", "days off", "absence"],
     icon: Briefcase,
     group: "HR Management",
-    permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES],
+    permissions: [
+      PERMISSIONS.VIEW_HR_EMPLOYEES,
+      PERMISSIONS.VIEW_LEAVE_REQUESTS,
+      PERMISSIONS.MANAGE_LEAVE_REQUESTS,
+    ],
   },
   {
     to: "/hr/settings",
@@ -288,7 +295,11 @@ const SEARCH_INDEX: SearchEntry[] = [
     keywords: ["finance", "financial", "overview", "fees", "payments", "billing summary", "money", "revenue", "income", "finance overview"],
     icon: CreditCard,
     group: "Finance",
-    permissions: [PERMISSIONS.VIEW_FINANCE, PERMISSIONS.MANAGE_FINANCE],
+    permissions: [
+      PERMISSIONS.VIEW_FINANCE,
+      PERMISSIONS.MANAGE_FINANCE,
+      PERMISSIONS.VIEW_FINANCE_OVERVIEW,
+    ],
   },
   {
     to: "/finance/billing",
@@ -297,7 +308,11 @@ const SEARCH_INDEX: SearchEntry[] = [
     keywords: ["billing", "invoices", "student billing", "fee payment", "ledger", "invoice management", "student ledger", "tuition payment", "payment records", "receipt"],
     icon: CreditCard,
     group: "Finance",
-    permissions: [PERMISSIONS.VIEW_FINANCE, PERMISSIONS.MANAGE_FINANCE],
+    permissions: [
+      PERMISSIONS.VIEW_FINANCE,
+      PERMISSIONS.MANAGE_FINANCE,
+      PERMISSIONS.VIEW_FINANCE_BILLING,
+    ],
   },
   {
     to: "/finance/approvals",
@@ -378,7 +393,11 @@ const SEARCH_INDEX: SearchEntry[] = [
     keywords: ["revenue reports", "finance reports", "fee collection", "revenue", "collection report", "financial report", "income report", "payment summary"],
     icon: CreditCard,
     group: "Finance",
-    permissions: [PERMISSIONS.VIEW_FINANCE, PERMISSIONS.MANAGE_FINANCE],
+    permissions: [
+      PERMISSIONS.VIEW_FINANCE,
+      PERMISSIONS.MANAGE_FINANCE,
+      PERMISSIONS.VIEW_FINANCE_REPORTS,
+    ],
   },
   {
     to: "/my-finance",
@@ -461,7 +480,6 @@ const SEARCH_INDEX: SearchEntry[] = [
     ],
     icon: Layers,
     group: "Administration",
-    hideForRoles: ["hr_manager"],
     permissions: [
       PERMISSIONS.MANAGE_ACADEMICS,
       PERMISSIONS.MANAGE_DEGREES,
@@ -470,6 +488,42 @@ const SEARCH_INDEX: SearchEntry[] = [
       PERMISSIONS.MANAGE_OPTIONS,
       PERMISSIONS.MANAGE_LEVELS,
       PERMISSIONS.MANAGE_SCHOOLS,
+      PERMISSIONS.MANAGE_LEAVE_TYPES,
+      PERMISSIONS.MANAGE_CAMPUSES,
+      PERMISSIONS.MANAGE_ADMISSIONS,
+    ],
+  },
+  {
+    to: "/timetable",
+    label: "Timetable",
+    sub: "Weekly session grid by programme, room and lecturer",
+    keywords: ["timetable", "schedule", "weekly schedule", "class schedule", "sessions", "lectures", "rooms", "time table", "calendar"],
+    icon: Layers,
+    group: "Academics",
+    permissions: [
+      PERMISSIONS.VIEW_TIMETABLE,
+      PERMISSIONS.MANAGE_TIMETABLE,
+    ],
+  },
+  {
+    to: "/settings",
+    label: "System Settings",
+    sub: "Guidance videos and application fee mapping",
+    keywords: ["settings", "system settings", "configuration", "guidance videos", "fee mapping", "application fee", "institution settings", "preferences"],
+    icon: Settings,
+    group: "Administration",
+    permissions: [PERMISSIONS.VIEW_SETTINGS, PERMISSIONS.MANAGE_SETTINGS],
+  },
+  {
+    to: "/academic/system-documents",
+    label: "System Documents",
+    sub: "Fee structures, policies and institutional files",
+    keywords: ["system documents", "documents", "policies", "fee structure", "institutional documents", "downloads", "forms", "templates"],
+    icon: Layers,
+    group: "Administration",
+    permissions: [
+      PERMISSIONS.MANAGE_ACADEMIC_SETTINGS,
+      PERMISSIONS.VIEW_SYSTEM_BASICS,
     ],
   },
   {
@@ -574,6 +628,23 @@ export default function GlobalSearch() {
     return entries;
   }, [deepSearchQuery.data]);
 
+  // Help Centre articles are searched from the same box. A user who types
+  // "approve leave" is as likely to want the instructions as the queue.
+  const helpEntries = useMemo<SearchEntry[]>(() => {
+    const q = query.trim();
+    if (q.length < 2) return [];
+    // minScore 25 keeps the four slots to genuine matches — below that a hit is
+    // one shared word, which reads as the wrong answer rather than a near miss.
+    return searchHelp(q, 4, 25).map((hit) => ({
+      to: helpPath(hit.moduleId, hit.articleId),
+      label: hit.title,
+      sub: hit.matchedStep ?? hit.summary,
+      keywords: [],
+      icon: LifeBuoy,
+      group: "Help & Guides",
+    }));
+  }, [query]);
+
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return [];
@@ -585,8 +656,8 @@ export default function GlobalSearch() {
       return e.keywords.some((kw) => kw.toLowerCase().includes(q));
     });
 
-    return [...pageResults, ...liveEntries];
-  }, [query, isVisible, liveEntries]);
+    return [...pageResults, ...liveEntries, ...helpEntries];
+  }, [query, isVisible, liveEntries, helpEntries]);
 
   // Group results by their group label
   const grouped = useMemo(() => {
@@ -664,6 +735,37 @@ export default function GlobalSearch() {
   // Compute flat index offset per group for keyboard tracking
   let flatIdx = 0;
 
+  /**
+   * Always-present escape hatch into the Help Centre. It is shown whether or
+   * not anything matched: "I searched and found nothing" is precisely the
+   * moment a user needs instructions rather than records.
+   */
+  const helpFooter = (
+    <button
+      type="button"
+      onMouseDown={(e) => {
+        e.preventDefault();
+        go(`/help/search?q=${encodeURIComponent(query.trim())}`);
+      }}
+      className="w-full flex items-center justify-between gap-3 px-4 py-2.5 border-t border-ink-100 dark:border-ink-700 text-left hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors group/help"
+    >
+      <span className="flex items-center gap-2.5 min-w-0">
+        <span className="flex-shrink-0 p-1.5 rounded-lg bg-primary-100 text-primary-700 dark:bg-primary-800/50 dark:text-primary-200">
+          <LifeBuoy className="w-3.5 h-3.5" />
+        </span>
+        <span className="min-w-0">
+          <span className="block text-[12.5px] font-medium text-ink-800 dark:text-ink-100 truncate">
+            Search the Help Centre for "{query.trim()}"
+          </span>
+          <span className="block text-[11px] text-ink-400">
+            Step-by-step guides for every module
+          </span>
+        </span>
+      </span>
+      <ArrowRight className="w-3.5 h-3.5 flex-shrink-0 text-ink-300 group-hover/help:text-primary-500 group-hover/help:translate-x-0.5 transition-all" />
+    </button>
+  );
+
   return (
     <div className="relative w-[280px] lg:w-[400px]">
       {/* Input */}
@@ -700,8 +802,11 @@ export default function GlobalSearch() {
           className="absolute top-[calc(100%+8px)] left-0 w-full min-w-[320px] bg-white dark:bg-ink-800 border border-ink-100 dark:border-ink-700 rounded-2xl shadow-xl overflow-hidden z-50"
         >
           {results.length === 0 ? (
-            <div className="px-5 py-8 text-center text-[13px] text-ink-400">
-              No results for <span className="font-medium text-ink-600 dark:text-ink-200">"{query}"</span>
+            <div>
+              <div className="px-5 pt-8 pb-5 text-center text-[13px] text-ink-400">
+                No results for <span className="font-medium text-ink-600 dark:text-ink-200">"{query}"</span>
+              </div>
+              {helpFooter}
             </div>
           ) : (
             <div className="max-h-[420px] overflow-y-auto py-2">
@@ -756,6 +861,7 @@ export default function GlobalSearch() {
                   })}
                 </div>
               ))}
+              {helpFooter}
               <div className="px-4 py-2 border-t border-ink-100 dark:border-ink-700 flex items-center gap-3 text-[11px] text-ink-300">
                 <span><kbd className="font-mono">↑↓</kbd> navigate</span>
                 <span><kbd className="font-mono">↵</kbd> open</span>

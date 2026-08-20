@@ -1,3 +1,8 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:f6d5464004dc13132d35a4608cfae2c97286c899d9fa68839c630d8459dd2ef8
-size 535
+-- Migration 113: add 'voided' to service_request_approvals.decision so the
+-- VOID_SERVICE_REQUEST permission (seeded in migration 112) has an audit-log
+-- decision value to write when a supervisor cancels a request outside the
+-- normal approve/reject/changes-requested stage flow.
+-- Idempotent — safe to re-run (MySQL allows re-declaring the same ENUM).
+
+ALTER TABLE `service_request_approvals`
+  MODIFY COLUMN `decision` ENUM('submitted','approved','rejected','changes_requested','payment_confirmed','voided') NOT NULL;

@@ -9,7 +9,7 @@ import {
   CheckCircle2, FileCheck, SendHorizontal, RotateCcw, Lock,
   UserPlus, Search, X, Download, Upload, AlertTriangle,
   Filter, BookOpen, ChevronLeft, AlertCircle,
-  CalendarClock, UserSearch,
+  CalendarClock, UserSearch, FileSpreadsheet,
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import toast from 'react-hot-toast'
@@ -19,6 +19,7 @@ import { attendanceService, type ScheduledBlock } from '@/services/attendanceSer
 import { portalService } from '@/services/admissionService'
 import { academicsMgmtService } from '@/services/academicsMgmtService'
 import SearchableSelect from '@/components/ui/SearchableSelect'
+import { useLevels } from '@/hooks/useLevels'
 import {
   marksService,
   type MarkableModule,
@@ -183,6 +184,7 @@ function AllModulesPicker({
   onPickModule: (moduleId: number, code: string, name: string) => void
 }) {
   const [search, setSearch] = useState('')
+  const { levelName } = useLevels()
 
   const modulesQ = useQuery({
     queryKey: ['marks', 'markable-modules', termId],
@@ -263,7 +265,7 @@ function AllModulesPicker({
                   >
                     <td className="px-4 py-2.5 font-mono font-bold text-brand">{m.module_code}</td>
                     <td className="px-4 py-2.5 text-ink-800 dark:text-ink-100">{m.module_name}</td>
-                    <td className="px-4 py-2.5 text-ink-500">{m.level ? `Level ${m.level}` : '—'}</td>
+                    <td className="px-4 py-2.5 text-ink-500">{(m as any).level_name ?? levelName(m.level)}</td>
                     <td className="px-4 py-2.5 text-right">
                       <span className="btn-primary btn-sm inline-flex">View marks</span>
                     </td>
@@ -287,6 +289,7 @@ function AllModulesPicker({
  * path-segment routing.
  */
 function StudentMarksExplorer() {
+  const { levelName } = useLevels()
   const [query, setQuery]     = useState('')
   const [debounced, setDeb]   = useState('')
   const [picked, setPicked]   = useState<{ id: number; label: string } | null>(null)
@@ -467,7 +470,7 @@ function StudentMarksExplorer() {
                           <tr key={r.module_id} className="hover:bg-ink-50/50 dark:hover:bg-ink-700/20">
                             <td className="px-3 py-2 font-mono font-semibold text-amber-700 dark:text-amber-400">{r.module_code}</td>
                             <td className="px-3 py-2 text-ink-800 dark:text-ink-100">{r.module_name}</td>
-                            <td className="px-3 py-2 text-center text-ink-500">{r.level ?? '—'}</td>
+                            <td className="px-3 py-2 text-center text-ink-500">{(r as any).level_name ?? levelName(r.level)}</td>
                             <td className="px-3 py-2 text-center text-ink-500">{r.module_credits ?? '—'}</td>
                           </tr>
                         ))}
@@ -954,6 +957,24 @@ export function MarksEditor({
     XLSX.writeFile(wb, `marks_${moduleH.module_code.replace(/\s+/g, '')}_term-${termId}.xlsx`)
   }
 
+  /* ── Template — blank entry sheet issued by the server ──────────── */
+  // Distinct from Export: Export dumps what is on screen (marks and all),
+  // while this is an empty sheet stamped with the module and term, which the
+  // importer then checks. Fetched from the server rather than built here so
+  // the stamp cannot be forged by the page that also consumes it.
+  const [templateBusy, setTemplateBusy] = useState(false)
+  const downloadTemplate = async () => {
+    if (!moduleId || !termId) return
+    setTemplateBusy(true)
+    try {
+      await marksService.downloadTemplate(moduleId, termId)
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message ?? 'Could not build the template.')
+    } finally {
+      setTemplateBusy(false)
+    }
+  }
+
   /* ── Import — parse file, show preview modal, apply on approve ──── */
   const [preview, setPreview] = useState<ImportPreview | null>(null)
 
@@ -963,7 +984,38 @@ export function MarksEditor({
       const buf = await file.arrayBuffer()
       // SheetJS reads CSV / TSV / XLSX / XLS automatically.
       const wb  = XLSX.read(buf, { type: 'array' })
-      const ws  = wb.Sheets[wb.SheetNames[0]]
+
+      /* ── Identity check ───────────────────────────────────────────────
+       * A workbook issued by GET /api/marks/template carries a `_meta`
+       * sheet naming the module and term it was cut for. Without this
+       * check the importer keys on registration number alone, so a sheet
+       * filled in for one module uploads cleanly against another and
+       * silently overwrites the marks of every student enrolled in both.
+       *
+       * A file with no `_meta` is still accepted — CSVs typed by hand and
+       * sheets exported from the grid before this existed have to keep
+       * working — but one that HAS the stamp must match. */
+      const meta = readTemplateMeta(wb)
+      if (meta) {
+        if (meta.module_id && String(meta.module_id) !== String(moduleId)) {
+          toast.error(
+            `This sheet was issued for ${meta.module_code || 'module ' + meta.module_id}, ` +
+            `not the module open here. Open that module's sheet, or download a fresh template.`,
+            { duration: 9000 },
+          )
+          return
+        }
+        if (meta.term_id && String(meta.term_id) !== String(termId)) {
+          toast.error(
+            `This sheet was issued for ${meta.term_label || 'term ' + meta.term_id}, ` +
+            `but you are marking term ${termId}. Switch term, or download a fresh template.`,
+            { duration: 9000 },
+          )
+          return
+        }
+      }
+
+      const ws  = wb.Sheets[wb.SheetNames.find((n) => n !== '_meta') ?? wb.SheetNames[0]]
       if (!ws) { toast.error('No sheet found in the file.'); return }
       const rows: string[][] = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' }) as any
       if (rows.length < 2) { toast.error('File is empty.'); return }
@@ -1248,10 +1300,23 @@ export function MarksEditor({
               className="btn-ghost btn-sm"
               disabled={!canExport}
               onClick={handleExport}
-              title="Download the roster as an Excel template"
+              title="Download the current sheet, marks included"
             >
               <Download className="w-3.5 h-3.5" /> Export
             </button>
+            {canWrite && (
+              <button
+                className="btn-ghost btn-sm"
+                disabled={!moduleId || !termId || templateBusy}
+                onClick={downloadTemplate}
+                title="Download a blank marks template issued by the system for this module and term"
+              >
+                {templateBusy
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  : <FileSpreadsheet className="w-3.5 h-3.5" />}
+                {templateBusy ? 'Preparing…' : 'Template'}
+              </button>
+            )}
             {canWrite && (
               <button
                 className="btn-ghost btn-sm"
@@ -1717,6 +1782,7 @@ function ModuleHeaderCard({
   // by default so they stop eating a full row above the roster.
   const [maxesOpen, setMaxesOpen] = useState(false)
   const scale = useGradingScale()
+  const { levelName } = useLevels()
 
   const statusLabel: Record<MarksWorkflowStatus, string> = {
     draft:        'Draft',
@@ -1743,7 +1809,7 @@ function ModuleHeaderCard({
       `${moduleH.dep_name}${meaningful(moduleH.dep_acronym) ? ` (${moduleH.dep_acronym})` : ''}`,
     meaningful(moduleH.fac_name) &&
       `${moduleH.fac_name}${meaningful(moduleH.fac_code) ? ` (${moduleH.fac_code})` : ''}`,
-    meaningful(moduleH.level) && `Level ${moduleH.level}`,
+    meaningful((moduleH as any).level_name ?? levelName(moduleH.level, '')),
     meaningful(moduleH.program),
     meaningful(moduleH.option_acronym),
   ].filter(Boolean) as string[]
@@ -2185,6 +2251,7 @@ function ModuleCombobox({
   const [open, setOpen]       = useState(false)
   const [query, setQuery]     = useState('')
   const [highlight, setHighlight] = useState(0)
+  const { levelName } = useLevels()
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
 
@@ -2303,7 +2370,7 @@ function ModuleCombobox({
                   <span className="flex-1 min-w-0 truncate">{m.module_name}</span>
                   {m.level !== null && m.level !== undefined && (
                     <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-ink-100 text-ink-600 dark:bg-ink-700/60 dark:text-ink-300 shrink-0">
-                      L{m.level}
+                      {(m as any).level_name ?? levelName(m.level)}
                     </span>
                   )}
                   {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-primary-600 shrink-0" />}
@@ -2318,6 +2385,43 @@ function ModuleCombobox({
 }
 
 /* ─── Import helpers ────────────────────────────────────────────────── */
+
+/** The identity stamp a server-issued marks template carries on its `_meta`
+ *  sheet — see backend/app/Helpers/MarksTemplateExcel.php. */
+interface TemplateMeta {
+  magic:        string
+  module_id?:   string
+  module_code?: string
+  term_id?:     string
+  term_label?:  string
+}
+
+const TEMPLATE_MAGIC = 'CUR-MIS-MARKS-TEMPLATE'
+
+/**
+ * Read the `_meta` sheet from an uploaded workbook.
+ *
+ * Returns null when the file carries no stamp — a hand-typed CSV, or a sheet
+ * exported from the grid before templates existed. Those still import; only a
+ * file that claims to be a template is held to matching the open module/term.
+ */
+function readTemplateMeta(wb: XLSX.WorkBook): TemplateMeta | null {
+  const ws = wb.Sheets['_meta']
+  if (!ws) return null
+  try {
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' }) as string[][]
+    const kv: Record<string, string> = {}
+    for (const r of rows) {
+      const k = String(r?.[0] ?? '').trim()
+      if (k) kv[k] = String(r?.[1] ?? '').trim()
+    }
+    // Guard against an unrelated workbook that happens to have a `_meta` tab.
+    if (kv.magic !== TEMPLATE_MAGIC) return null
+    return kv as unknown as TemplateMeta
+  } catch {
+    return null
+  }
+}
 
 function emptyDraft(): RowDraft {
   return { cat1: '', cat2: '', cat3: '', partial: '', exam1: '', exam2: '', remarks: '' }

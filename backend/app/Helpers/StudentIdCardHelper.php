@@ -6,7 +6,6 @@ namespace App\Helpers;
 
 use chillerlan\QRCode\QRCode;
 use chillerlan\QRCode\QROptions;
-use chillerlan\QRCode\Output\QROutputInterface;
 
 /**
  * Renders a printable student ID card (front + back) as HTML / PDF.
@@ -33,7 +32,7 @@ class StudentIdCardHelper
         $reg     = htmlspecialchars((string) ($student['regnumber'] ?? '—'));
         $faculty = htmlspecialchars((string) ($student['fac_name'] ?? ($student['faculty'] ?? '—')));
         $dept    = htmlspecialchars((string) ($student['dep_name'] ?? ($student['department'] ?? '—')));
-        $level   = htmlspecialchars((string) ($student['current_level'] ?? '—'));
+        $level   = htmlspecialchars(LevelHelper::name($student['level_name'] ?? $student['current_level'] ?? null, '—'));
         $mode    = htmlspecialchars(self::normalizeMode((string) ($student['program'] ?? '')));
 
         $barcode = (string) ($card['barcode'] ?? $reg);
@@ -118,7 +117,7 @@ class StudentIdCardHelper
                                 <table cellpadding="0" cellspacing="0" style="margin-top:1.5mm;">
                                     <tr><td class="lbl">Faculty:&nbsp;</td><td class="val">{$faculty}</td></tr>
                                     <tr><td class="lbl">Dep:&nbsp;</td><td class="val">{$dept}</td></tr>
-                                    <tr><td class="lbl">Class:&nbsp;</td><td class="val">Level {$level}</td></tr>
+                                    <tr><td class="lbl">Class:&nbsp;</td><td class="val">{$level}</td></tr>
                                     <tr><td class="lbl">Mode:&nbsp;</td><td class="val">{$mode}</td></tr>
                                 </table>
                             </td>
@@ -162,18 +161,79 @@ class StudentIdCardHelper
         HTML;
     }
 
+    /**
+     * One document holding many cards, each starting on a fresh page.
+     *
+     * Built by reusing buildHtml() per card and keeping only the first
+     * document's shell, so the stylesheet is defined exactly once and the
+     * batch can never drift from the single-card layout.
+     *
+     * @param array<int, array{student: array, card: array, opts?: array}> $items
+     */
+    public static function buildBatchHtml(array $items): string
+    {
+        if ($items === []) {
+            return '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body></body></html>';
+        }
+
+        $shellOpen  = '';
+        $shellClose = '</body></html>';
+        $bodies     = [];
+
+        foreach ($items as $item) {
+            $html = self::buildHtml($item['student'], $item['card'], $item['opts'] ?? []);
+
+            $openAt = strpos($html, '<body>');
+            $endAt  = strrpos($html, '</body>');
+            if ($openAt === false || $endAt === false) {
+                // Shape changed unexpectedly — fall back to the whole document
+                // rather than emitting a half-parsed card.
+                $bodies[] = $html;
+                continue;
+            }
+
+            if ($shellOpen === '') {
+                $shellOpen = substr($html, 0, $openAt + strlen('<body>'));
+            }
+
+            $bodies[] = substr($html, $openAt + strlen('<body>'), $endAt - $openAt - strlen('<body>'));
+        }
+
+        $break = '<div style="page-break-after: always;"></div>';
+
+        return $shellOpen . implode($break, $bodies) . $shellClose;
+    }
+
     /** Stream as a landscape PDF (front + back stacked). Falls back to HTML. */
     public static function stream(string $html, string $filename, bool $download = true): never
     {
         if (class_exists('\\Dompdf\\Dompdf')) {
-            $opts = new \Dompdf\Options();
-            $opts->set('isHtml5ParserEnabled', true);
-            $opts->set('isRemoteEnabled', true);
-            $pdf = new \Dompdf\Dompdf($opts);
-            $pdf->loadHtml($html);
-            $pdf->setPaper('A4', 'portrait');
-            $pdf->render();
-            $pdf->stream($filename, ['Attachment' => $download ? 1 : 0]);
+            // Dompdf trips a pile of PHP 8.4 "implicitly nullable parameter"
+            // deprecations. With display_errors on (any dev box) they are
+            // echoed BEFORE the PDF body, so the download arrives starting
+            // with `<br /><b>Deprecated</b>…` and no reader will open it.
+            // Buffer everything Dompdf emits and discard it, so only the
+            // rendered document reaches the client.
+            ob_start();
+            try {
+                $opts = new \Dompdf\Options();
+                $opts->set('isHtml5ParserEnabled', true);
+                $opts->set('isRemoteEnabled', true);
+                $pdf = new \Dompdf\Dompdf($opts);
+                $pdf->loadHtml($html);
+                $pdf->setPaper('A4', 'portrait');
+                $pdf->render();
+                $output = $pdf->output();
+            } finally {
+                // Drop the notices; never let them prepend the body.
+                ob_end_clean();
+            }
+
+            header('Content-Type: application/pdf');
+            header('Content-Disposition: ' . ($download ? 'attachment' : 'inline')
+                . '; filename="' . addslashes($filename) . '"');
+            header('Content-Length: ' . strlen((string) $output));
+            echo $output;
             exit;
         }
 
@@ -311,21 +371,32 @@ class StudentIdCardHelper
         return $start . '-' . ($start + 1);
     }
 
+    /**
+     * Render the verification QR as a self-contained data URI.
+     *
+     * Constant names matter here and are version-specific: chillerlan/php-qrcode
+     * v4 (what composer.lock pins, 4.4.2) puts the output modes on QRCode as
+     * OUTPUT_IMAGE_PNG / OUTPUT_MARKUP_SVG and base64-encodes via `imageBase64`.
+     * QROutputInterface::GDIMAGE_PNG and `outputBase64` are the v5 spellings —
+     * referencing them on v4 raises an Error, which the catch below turned into
+     * a blank grey box, so every card printed with an empty QR panel and no
+     * complaint. Log the failure rather than swallowing it, so the next
+     * breakage is visible instead of shipping on thousands of ID cards.
+     */
     private static function qrTag(string $content, int $sizeMm): string
     {
         try {
-            if (extension_loaded('gd')) {
-                $opts = new QROptions([
-                    'outputType'   => QROutputInterface::GDIMAGE_PNG,
-                    'outputBase64' => true,
-                    'scale'        => 5,
-                    'eccLevel'     => QRCode::ECC_M,
-                ]);
-                return '<img src="' . (new QRCode($opts))->render($content) . '" style="width:' . $sizeMm . 'mm;height:' . $sizeMm . 'mm;" />';
-            }
-            $opts = new QROptions(['outputType' => QROutputInterface::MARKUP_SVG, 'eccLevel' => QRCode::ECC_M]);
+            $opts = new QROptions([
+                'outputType'  => extension_loaded('gd')
+                    ? QRCode::OUTPUT_IMAGE_PNG
+                    : QRCode::OUTPUT_MARKUP_SVG,
+                'imageBase64' => true,
+                'scale'       => 5,
+                'eccLevel'    => QRCode::ECC_M,
+            ]);
             return '<img src="' . (new QRCode($opts))->render($content) . '" style="width:' . $sizeMm . 'mm;height:' . $sizeMm . 'mm;" />';
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            error_log('[StudentIdCardHelper] QR render failed: ' . $e->getMessage());
             return '<div style="width:' . $sizeMm . 'mm;height:' . $sizeMm . 'mm;border:1px solid #bbb;"></div>';
         }
     }

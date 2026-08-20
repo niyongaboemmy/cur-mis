@@ -26,7 +26,7 @@ class RolePermissionModel extends BaseModel
      */
     public function getSlugsForRole(int $roleId): array
     {
-        $sql = "SELECT p.slug 
+        $sql = "SELECT DISTINCT p.slug 
                 FROM {$this->table} rp 
                 JOIN permissions p ON rp.permission_id = p.id 
                 WHERE rp.role_id = ?";
@@ -39,7 +39,7 @@ class RolePermissionModel extends BaseModel
      */
     public function getDetailedPermissionsForRole(int $roleId): array
     {
-        $sql = "SELECT p.id, p.name, p.slug, p.category_id 
+        $sql = "SELECT DISTINCT p.id, p.name, p.slug, p.category_id 
                 FROM permissions p
                 JOIN role_permissions rp ON p.id = rp.permission_id
                 WHERE rp.role_id = ?

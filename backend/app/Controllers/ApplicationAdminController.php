@@ -121,6 +121,9 @@ class ApplicationAdminController extends BaseController
             'gender'          => $request->query('gender')          ?? '',
             'payment_status'  => $request->query('payment_status')  ?? '',
             'sort_paid_first' => $request->query('sort_paid_first') ?? '',
+            // Submission date range (YYYY-MM-DD). Either bound may stand alone.
+            'submitted_from'  => $request->query('submitted_from')  ?? '',
+            'submitted_to'    => $request->query('submitted_to')    ?? '',
         ];
 
         // Remove empty filter keys so they are not used as conditions
@@ -185,7 +188,10 @@ class ApplicationAdminController extends BaseController
             $this->error($response, 'Application not found.', 404);
         }
 
-        $documents = $this->docModel->getForApplication($id);
+        $documents = $this->docModel->getChecklistForApplication(
+            $id,
+            isset($application['faculty_id']) ? (int)$application['faculty_id'] : null
+        );
         $statusLog = $this->logModel->getForApplication($id);
 
         // Fetch merit criteria for this application's context
@@ -324,8 +330,24 @@ class ApplicationAdminController extends BaseController
         if ($campusId  > 0) { $conds[] = 'sa.campus_id = ?';     $bind[] = $campusId; }
         if ($levelId   > 0) { $conds[] = 'sa.level_id = ?';      $bind[] = $levelId; }
         if ($mode !== '')   { $conds[] = 'sa.mode_of_study = ?'; $bind[] = $mode; }
-        if ($dateFrom !== ''){ $conds[] = 'sa.created_at >= ?';   $bind[] = $dateFrom . ' 00:00:00'; }
-        if ($dateTo !== '')  { $conds[] = 'sa.created_at <= ?';   $bind[] = $dateTo   . ' 23:59:59'; }
+
+        // Date window. Two corrections over the previous inline version:
+        //
+        //  - filters `submitted_at`, not `created_at`. The applications list
+        //    ranges on submitted_at, and a report that answered the same
+        //    question off a different column would disagree with the list it
+        //    is meant to summarise. `created_at` is when the draft row was
+        //    first written, which for a portal applicant can be days before
+        //    they actually submit.
+        //  - half-open upper bound via the shared helper, instead of
+        //    '23:59:59' — which drops anything stamped in the last second of
+        //    the day on a fractional-second column.
+        [$rangeFrom, $rangeTo] = StudentApplicationModel::dateRangeBounds(
+            $dateFrom !== '' ? $dateFrom : null,
+            $dateTo   !== '' ? $dateTo   : null
+        );
+        if ($rangeFrom !== null) { $conds[] = 'sa.submitted_at >= ?'; $bind[] = $rangeFrom; }
+        if ($rangeTo   !== null) { $conds[] = 'sa.submitted_at <  ?'; $bind[] = $rangeTo; }
         $where = 'WHERE ' . implode(' AND ', $conds);
 
         $db = $this->appModel->db();
@@ -1059,59 +1081,84 @@ class ApplicationAdminController extends BaseController
             }
         }
 
+        // Submission date range, shared with the list. The stat tiles on the
+        // applications page are rendered from these counts while the table
+        // below them comes from index() — so if the tiles ignored the range
+        // the user would read "Total Applications 4,812" above a table
+        // showing one month's 137 rows.
+        //
+        // Applied to the breakdown counts only. The catalogues (all_campuses,
+        // all_levels, all_modes) are pick-lists, `trend` carries its own
+        // explicit 7-day window, `recent` is a newest-8 feed, and
+        // desynced_pending_count is a data-integrity warning that stays true
+        // regardless of which window is on screen.
+        [$rangeFrom, $rangeTo] = StudentApplicationModel::dateRangeBounds(
+            $request->query('submitted_from'),
+            $request->query('submitted_to')
+        );
+        $rangeWhere  = '';
+        $rangeParams = [];
+        if ($rangeFrom !== null) { $rangeWhere .= ' AND sa.submitted_at >= ?'; $rangeParams[] = $rangeFrom; }
+        if ($rangeTo   !== null) { $rangeWhere .= ' AND sa.submitted_at <  ?'; $rangeParams[] = $rangeTo; }
+
+        // Scope clause first, then range — the bindings must follow the same
+        // order they appear in the string.
+        $filterWhere  = $scopeWhere . $rangeWhere;
+        $filterParams = array_merge($scopeParams, $rangeParams);
+
         // All admin-facing aggregates exclude `draft` applications since those
         // are applicant-side work-in-progress and have not been submitted.
         $statusCounts = $db->fetchAll(
             "SELECT sa.status, COUNT(*) as cnt
              FROM student_applications sa
-             WHERE sa.status <> 'draft' {$scopeWhere}
+             WHERE sa.status <> 'draft' {$filterWhere}
              GROUP BY sa.status",
-            $scopeParams
+            $filterParams
         );
 
         $intakeCounts = $db->fetchAll(
             "SELECT sa.intake, COUNT(*) as cnt
              FROM student_applications sa
-             WHERE sa.status <> 'draft' {$scopeWhere}
+             WHERE sa.status <> 'draft' {$filterWhere}
              GROUP BY sa.intake",
-            $scopeParams
+            $filterParams
         );
 
         $deptCounts = $db->fetchAll(
             "SELECT d.dep_name as label, COUNT(*) as cnt
              FROM student_applications sa
              JOIN departements d ON d.dep_id = sa.department_id
-             WHERE sa.status <> 'draft' {$scopeWhere}
+             WHERE sa.status <> 'draft' {$filterWhere}
              GROUP BY sa.department_id
              ORDER BY cnt DESC",
-            $scopeParams
+            $filterParams
         );
 
         $genderCounts = $db->fetchAll(
             "SELECT sa.gender as label, COUNT(*) as cnt
              FROM student_applications sa
-             WHERE sa.status <> 'draft' {$scopeWhere}
+             WHERE sa.status <> 'draft' {$filterWhere}
              GROUP BY sa.gender",
-            $scopeParams
+            $filterParams
         );
 
         $campusCounts = $db->fetchAll(
             "SELECT sa.campus_id AS id, c.name AS label, COUNT(*) AS cnt
              FROM student_applications sa
              LEFT JOIN campuses c ON c.id = sa.campus_id
-             WHERE sa.status <> 'draft' AND sa.campus_id IS NOT NULL {$scopeWhere}
+             WHERE sa.status <> 'draft' AND sa.campus_id IS NOT NULL {$filterWhere}
              GROUP BY sa.campus_id, c.name
              ORDER BY cnt DESC",
-            $scopeParams
+            $filterParams
         );
 
         $modeCounts = $db->fetchAll(
             "SELECT sa.mode_of_study AS label, COUNT(*) AS cnt
              FROM student_applications sa
-             WHERE sa.status <> 'draft' AND sa.mode_of_study IS NOT NULL AND sa.mode_of_study <> '' {$scopeWhere}
+             WHERE sa.status <> 'draft' AND sa.mode_of_study IS NOT NULL AND sa.mode_of_study <> '' {$filterWhere}
              GROUP BY sa.mode_of_study
              ORDER BY cnt DESC",
-            $scopeParams
+            $filterParams
         );
 
         // The campus catalogue shown in filter dropdowns. For scope-locked
@@ -1135,10 +1182,10 @@ class ApplicationAdminController extends BaseController
             "SELECT sa.level_id AS id, l.name AS label, COUNT(*) AS cnt
              FROM student_applications sa
              LEFT JOIN levels l ON l.id = sa.level_id
-             WHERE sa.status <> 'draft' AND sa.level_id IS NOT NULL {$scopeWhere}
+             WHERE sa.status <> 'draft' AND sa.level_id IS NOT NULL {$filterWhere}
              GROUP BY sa.level_id, l.name
              ORDER BY l.name ASC",
-            $scopeParams
+            $filterParams
         );
         $allLevels = $db->fetchAll(
             "SELECT id, name AS label FROM levels ORDER BY name ASC"
@@ -1225,6 +1272,10 @@ class ApplicationAdminController extends BaseController
             'intake'        => $request->query('intake')        ?? '',
             'campus_id'     => $request->query('campus_id')     ?? '',
             'mode_of_study' => $request->query('mode_of_study') ?? '',
+            // The export must reproduce exactly what the list shows, so it
+            // takes the same date range.
+            'submitted_from'=> $request->query('submitted_from')?? '',
+            'submitted_to'  => $request->query('submitted_to')  ?? '',
         ];
         $filters = array_filter($filters, fn($v) => $v !== '');
 
@@ -1283,6 +1334,15 @@ class ApplicationAdminController extends BaseController
         if (!empty($filters['campus_id']))     $filterSummary[] = 'Campus #' . $filters['campus_id'];
         if (!empty($filters['mode_of_study'])) $filterSummary[] = 'Mode: ' . $filters['mode_of_study'];
         if (!empty($filters['search']))        $filterSummary[] = 'Search: "' . $filters['search'] . '"';
+        // Name the window on the printed report. Without this the PDF looks
+        // like a full census of the applications table when it is in fact one
+        // month's worth.
+        if (!empty($filters['submitted_from']) || !empty($filters['submitted_to'])) {
+            $filterSummary[] = 'Submitted: '
+                . (!empty($filters['submitted_from']) ? (string)$filters['submitted_from'] : 'any')
+                . ' → '
+                . (!empty($filters['submitted_to'])   ? (string)$filters['submitted_to']   : 'any');
+        }
         $filterLine = $filterSummary ? implode(' · ', $filterSummary) : 'No filters applied';
 
         $rowsHtml = '';

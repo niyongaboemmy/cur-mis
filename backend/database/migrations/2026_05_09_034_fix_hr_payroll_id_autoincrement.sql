@@ -1,3 +1,6 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:557270c20f0dd97a70769bd718b98b47e23f0637823a2d8b8b979cd7283f2e0f
-size 333
+-- Fix hr_payroll.id: add AUTO_INCREMENT (missing, causing insert failures)
+-- Fix hr_payroll.status: add 'Approved' to ENUM (controller allows it)
+
+ALTER TABLE `hr_payroll`
+  MODIFY COLUMN `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  MODIFY COLUMN `status` ENUM('Pending','Paid','Approved') NOT NULL DEFAULT 'Pending';

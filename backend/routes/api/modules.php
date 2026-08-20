@@ -31,7 +31,13 @@ $router->group('/api/modules', function ($router) {
         $r->post('',                  [ModulesManagementController::class, 'createSchedule']);
         $r->post('/:id',               [ModulesManagementController::class, 'updateSchedule']);
         $r->delete('/:id',            [ModulesManagementController::class, 'deleteSchedule']);
-    }, [new PermissionMiddleware(Permissions::MANAGE_MODULE_SCHEDULES)]);
+    }, [new MaybePermissionMiddleware([
+        Permissions::MANAGE_MODULE_SCHEDULES,
+        // The timetable page edits these same rows; rather than duplicating
+        // the CRUD (and its conflict checks) behind a second slug, the slug is
+        // accepted here.
+        Permissions::MANAGE_TIMETABLE,
+    ])]);
 
     // Assignments
     $router->group('/assignments', function ($r) {

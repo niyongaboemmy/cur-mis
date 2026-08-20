@@ -22,6 +22,7 @@ import { academicsMgmtService } from '@/services/academicsMgmtService'
 import { moduleCatalogService, moduleRegistrationService } from '@/services/modulesService'
 import { studentService } from '@/services/studentService'
 import { useSessionStorage } from '@/hooks/useSessionStorage'
+import { useLevels } from '@/hooks/useLevels'
 import type { AcademicTerm } from '@/types/academic'
 import type { Module, ModuleRegistration } from '@/types/modules'
 
@@ -44,6 +45,7 @@ type OptionRow = {
 
 export default function RegistrationsPanel() {
   const qc = useQueryClient()
+  const { levelName } = useLevels()
 
   /* ── Term picker (defaults to current) ───────────────────── */
   const termsQ = useQuery({ queryKey: ['academic', 'terms'], queryFn: () => academicService.listTerms() })
@@ -501,7 +503,7 @@ export default function RegistrationsPanel() {
                         <div className="font-mono font-semibold text-[12.5px] text-ink-900 dark:text-white">{m.module_code}</div>
                         <div className="text-[12px] text-ink-600 dark:text-ink-300 truncate">{m.module_name}</div>
                         <div className="text-[10.5px] text-ink-400 mt-1 flex items-center gap-1.5 flex-wrap">
-                          <span>L{m.level} · {m.module_credits} cr</span>
+                          <span>{(m as any).level_name ?? levelName(m.level)} · {m.module_credits} cr</span>
                           {isScheduled ? (
                             modes.length > 0 ? (
                               modes.map((mo) => (

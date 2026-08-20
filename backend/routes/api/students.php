@@ -20,10 +20,16 @@ $router->group('/api/students', function ($router) {
     $router->post('/me',                                 [StudentController::class, 'updateMe']);
     $router->get('/me/photo',                           [StudentController::class, 'downloadMyPhoto']);
     $router->post('/me/photo',                          [StudentController::class, 'uploadMyPhoto']);
+    $router->delete('/me/photo',                        [StudentController::class, 'deleteMyPhoto']);
     $router->get('/me/documents',                       [StudentController::class, 'meDocuments']);
     $router->post('/me/documents',                      [StudentController::class, 'meUploadDocument']);
     $router->get('/me/documents/:document_id/download', [StudentController::class, 'meDownloadDocument']);
     $router->get('/me/program-modules',                 [StudentController::class, 'meProgramModules']);
+    // Tier 2 of the self-service split (migration 147): a student proposes
+    // a change to an identity field, with evidence, for the registry to
+    // approve. Tier 1 fields save straight through POST /me above.
+    $router->get('/me/profile-change-requests',         [StudentController::class, 'myProfileChangeRequests']);
+    $router->post('/me/profile-change-requests',        [StudentController::class, 'requestProfileChange']);
     // Self-service visa for international students.
     $router->get('/me/visa',                            [StudentController::class, 'meVisa']);
     $router->post('/me/visa',                           [StudentController::class, 'meAddVisa']);
@@ -34,6 +40,9 @@ $router->group('/api/students', function ($router) {
 // Read-only: any user with VIEW_STUDENTS
 $router->group('/api/students', function ($router) {
     $router->get('/stats',                                [StudentController::class, 'stats']);
+    // Faceted values + counts for the list page's filter panel. Literal
+    // segment, so it must stay ahead of the /:id matchers below.
+    $router->get('/filter-options',                       [StudentController::class, 'filterOptions']);
     // Bulk CSV export (literal segments must come before /:id).
     $router->get('/export',                               [StudentController::class, 'exportCsv']);
     $router->get('/export-columns',                       [StudentController::class, 'exportColumnsList']);
@@ -48,6 +57,10 @@ $router->group('/api/students', function ($router) {
     // before /:id so it wins route matching.
     $router->get('/international',                        [StudentController::class, 'listInternational']);
     $router->get('/international/export',                 [StudentController::class, 'exportInternationalCsv']);
+    // Registry queue for student-proposed identity changes. Literal path,
+    // so it must precede the /:id matchers.
+    $router->get('/profile-change-requests',              [StudentController::class, 'listProfileChangeRequests']);
+    $router->get('/profile-change-requests/:id/document', [StudentController::class, 'downloadProfileChangeDocument']);
     $router->get('',                                      [StudentController::class, 'index']);
     $router->get('/:id',                                  [StudentController::class, 'show']);
     $router->get('/:id/photo',                            [StudentController::class, 'downloadPhoto']);
@@ -55,6 +68,11 @@ $router->group('/api/students', function ($router) {
     $router->get('/:id/documents/:document_id/download',  [StudentController::class, 'downloadDocument']);
     $router->get('/:id/program-modules',                  [StudentController::class, 'programModules']);
     $router->get('/:id/program-modules/export',           [StudentController::class, 'programModulesExport']);
+    // Status audit trail + the evidence behind one change. Read-only, so
+    // it sits with the other VIEW_STUDENTS reads; writing a status needs
+    // MANAGE_STUDENTS and lives in the write group below.
+    $router->get('/:id/status-history',                   [StudentController::class, 'statusHistory']);
+    $router->get('/:id/status-history/:change_id/document', [StudentController::class, 'downloadStatusDocument']);
     $router->get('/:id/visa',                             [StudentController::class, 'listVisaRecords']);
     $router->get('/:id/visa/document',                    [StudentController::class, 'downloadVisaDocument']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::VIEW_STUDENTS)]);
@@ -72,8 +90,14 @@ $router->group('/api/students', function ($router) {
     $router->post('/:id',           [StudentController::class, 'update']);
     $router->delete('/:id',        [StudentController::class, 'delete']);
     $router->post('/:id/photo',    [StudentController::class, 'uploadPhoto']);
+    $router->delete('/:id/photo',  [StudentController::class, 'deletePhoto']);
     // Task 1.13 — visa record write + registry officer assignment.
     $router->post('/:id/visa',           [StudentController::class, 'addVisaRecord']);
+    // Status change with its reason / supporting document. Separate from
+    // POST /:id because it is multipart and enforces evidence rules that
+    // the generic update deliberately refuses to apply silently.
+    $router->post('/profile-change-requests/:id/decide', [StudentController::class, 'decideProfileChangeRequest']);
+    $router->post('/:id/status',         [StudentController::class, 'updateStatus']);
     $router->post('/:id/assign-registry', [StudentController::class, 'assignRegistryOfficer']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_STUDENTS)]);
 

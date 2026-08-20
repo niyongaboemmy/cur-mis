@@ -399,7 +399,30 @@ class Rest {
         $payerCode    = trim($data['payer_code']       ?? '');
         $amount       = (float)($data['amount']        ?? 0);
         $payDate      = trim($data['payment_date']     ?? $d);
-        $serviceCode  = trim($data['service_code']     ?? 'tuition-fees-4679');
+        // No default: defaulting to tuition here recorded every payment, of
+        // whatever service, as TUITION. Unknown/absent leaves fee_category on
+        // the generic '147' below. Mirrors Rest::resolveCallbackServiceCode().
+        $serviceCode  = trim($data['service_code'] ?? $data['payment_purpose_code'] ?? $data['serviceCode'] ?? '');
+        if ($serviceCode !== '' && !isset(CUR_SERVICES[$serviceCode])) {
+            // Not a code — accept the display name UrubutoPay shows on the menu.
+            $slug  = preg_replace('/[^a-z0-9]+/', '', strtolower($serviceCode)) ?? '';
+            $named = '';
+            foreach (CUR_SERVICES as $code => $name) {
+                if ($slug !== '' && $slug === (preg_replace('/[^a-z0-9]+/', '', strtolower((string)$name)) ?? '')) {
+                    $named = (string)$code;
+                    break;
+                }
+            }
+            // A code-shaped value this copy has not been told about (the list
+            // above is a manual mirror) is kept rather than discarded.
+            if ($named === '' && !preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)+$/i', $serviceCode)) {
+                $named = '';
+                $serviceCode = '';
+            }
+            if ($named !== '') {
+                $serviceCode = $named;
+            }
+        }
         $cbStatus     = trim($data['status']           ?? '');
 
         if ($type !== 'PAYMENT') {

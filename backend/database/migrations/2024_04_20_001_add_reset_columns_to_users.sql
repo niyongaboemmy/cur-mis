@@ -1,3 +1,4 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:83ed8b3949794e442035b2996a9288014176a70bbdfb07407c460367aa132603
-size 219
+-- Add reset token columns to users table for password reset functionality
+ALTER TABLE users 
+ADD COLUMN reset_token VARCHAR(255) NULL AFTER role, 
+ADD COLUMN reset_token_expires_at DATETIME NULL AFTER reset_token;

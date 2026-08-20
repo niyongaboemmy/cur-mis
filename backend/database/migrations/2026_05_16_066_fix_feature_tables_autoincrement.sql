@@ -1,3 +1,25 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:4758f973d0d040ad1cf212e53ccac78b20ab127d1b8b59da413c0f7c4fac5f21
-size 1340
+-- ──────────────────────────────────────────────────────────────────────────────
+-- Migration: Fix missing PRIMARY KEY / AUTO_INCREMENT on comprehensive-schema
+-- feature tables. These were created without a key, so INSERTs fail with
+-- "Field 'id' doesn't have a default value".
+--
+-- All are empty except grading_scales (ids 1..7, contiguous), so adding the
+-- key + auto-increment is safe. Re-running is a no-op (the migrate runner
+-- treats "multiple primary key"/1068 as already-applied).
+-- ──────────────────────────────────────────────────────────────────────────────
+
+ALTER TABLE `announcements`
+  MODIFY `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  ADD PRIMARY KEY (`id`);
+
+ALTER TABLE `student_ids`
+  MODIFY `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  ADD PRIMARY KEY (`id`);
+
+ALTER TABLE `revaluations`
+  MODIFY `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  ADD PRIMARY KEY (`id`);
+
+ALTER TABLE `grading_scales`
+  MODIFY `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  ADD PRIMARY KEY (`id`);

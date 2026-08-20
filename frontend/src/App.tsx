@@ -4,7 +4,7 @@ import MainLayout from "@/layouts/MainLayout";
 import ProtectedRoute from "@/components/layout/ProtectedRoute";
 import ErrorBoundary from "@/components/layout/ErrorBoundary";
 import { useThemeStore } from "@/store/themeStore";
-import { PERMISSIONS } from "@/constants/permissions";
+import { PERMISSIONS, LEAVE_STAGE_PERMISSIONS } from "@/constants/permissions";
 
 // ── Pages (direct imports — no lazy() to avoid chunk-load failures on cPanel) ──
 import WelcomePage from "@/pages/WelcomePage";
@@ -51,6 +51,9 @@ import GraduandManagementPage from "@/pages/academic/GraduandManagementPage";
 import AcademicCertificatesPage from "@/pages/academic/AcademicCertificatesPage";
 import AcademicAnalyticsPage from "@/pages/academic/AcademicAnalyticsPage";
 import SystemDocumentsPage from "@/pages/academic/SystemDocumentsPage";
+import SystemSettingsPage from "@/pages/admin/SystemSettingsPage";
+import StudentIdCardsPage from "@/pages/StudentIdCardsPage";
+import TimetablePage from "@/pages/timetable/TimetablePage";
 
 // Gate Management Module
 import GateManagementPage from "@/pages/gate/GateManagementPage";
@@ -94,6 +97,13 @@ import AnnouncementsPage from "@/pages/announcements/AnnouncementsPage";
 import ForumsPage from "@/pages/forums/ForumsPage";
 import ForumThreadPage from "@/pages/forums/ForumThreadPage";
 import VerifyStudentPage from "@/pages/public/VerifyStudentPage";
+// Help Centre — end-user documentation. Deliberately ungated: every role
+// needs to be able to read every guide, including one written for another role.
+import HelpCenterPage from "@/pages/help/HelpCenterPage";
+import HelpModulePage from "@/pages/help/HelpModulePage";
+import HelpArticlePage from "@/pages/help/HelpArticlePage";
+import HelpSearchPage from "@/pages/help/HelpSearchPage";
+import HelpGlossaryPage from "@/pages/help/HelpGlossaryPage";
 // Placeholders still in use for modules not yet wired up
 import ExamSchedulesPage from "@/pages/exam/ExamSchedulesPage";
 import ExamResultsPage from "@/pages/exam/ExamResultsPage";
@@ -184,6 +194,16 @@ function App() {
               <Route path="/home" element={<HomePage />} />
               <Route path="/profile" element={<UserProfilePage />} />
               <Route path="/my/service-requests" element={<MyServiceRequestsPage />} />
+
+              {/* ── Help Centre ── */}
+              <Route path="/help" element={<HelpCenterPage />} />
+              <Route path="/help/search" element={<HelpSearchPage />} />
+              <Route path="/help/glossary" element={<HelpGlossaryPage />} />
+              <Route path="/help/m/:moduleId" element={<HelpModulePage />} />
+              <Route
+                path="/help/m/:moduleId/:articleId"
+                element={<HelpArticlePage />}
+              />
 
               <Route
                 element={
@@ -297,6 +317,22 @@ function App() {
                 <Route path="/students/:id" element={<StudentDetailsPage />} />
               </Route>
 
+              {/* ── Student ID cards — /api/student-ids accepts VIEW_STUDENTS
+                  OR MANAGE_STUDENT_IDS, so a card officer without the student
+                  register still reaches their own workspace. ── */}
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={[
+                      PERMISSIONS.MANAGE_STUDENT_IDS,
+                      PERMISSIONS.VIEW_STUDENTS,
+                    ]}
+                  />
+                }
+              >
+                <Route path="/students/id-cards" element={<StudentIdCardsPage />} />
+              </Route>
+
               {/* ── Document Generation ── */}
               <Route
                 element={
@@ -323,10 +359,44 @@ function App() {
                 <Route path="/hr/staff/:id" element={<StaffDetailPage />} />
                 <Route path="/hr/attendance" element={<HrAttendancePage />} />
                 <Route path="/hr/documents" element={<HrDocumentsPage />} />
+              </Route>
+
+              {/* ── Appraisals — gated on the permission the appraisal API
+                  itself enforces (VIEW_APPRAISALS), with HR viewers still
+                  admitted. ── */}
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={[
+                      PERMISSIONS.VIEW_APPRAISALS,
+                      PERMISSIONS.MANAGE_APPRAISALS,
+                      PERMISSIONS.VIEW_HR_EMPLOYEES,
+                    ]}
+                  />
+                }
+              >
+                <Route path="/hr/appraisals" element={<AppraisalPage />} />
+              </Route>
+
+              {/* ── Payroll — the payroll endpoints are gated server-side on
+                  VIEW_PAYROLL / MANAGE_PAYROLL, not on VIEW_HR_EMPLOYEES.
+                  Guarding these pages on the HR-staff permission meant a
+                  payroll officer holding VIEW_PAYROLL was bounced back to "/",
+                  while an HR viewer without it reached a page that only
+                  answered 403. ── */}
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={[
+                      PERMISSIONS.VIEW_PAYROLL,
+                      PERMISSIONS.MANAGE_PAYROLL,
+                    ]}
+                  />
+                }
+              >
                 <Route path="/hr/payroll" element={<PayrollPage />} />
                 <Route path="/hr/payroll/:id" element={<PayrollSlipPage />} />
                 <Route path="/hr/payments" element={<PaymentsPage />} />
-                <Route path="/hr/appraisals" element={<AppraisalPage />} />
               </Route>
 
               {/* ── Leave management — any HR viewer OR leave view/approve role ── */}
@@ -352,9 +422,7 @@ function App() {
                 element={
                   <ProtectedRoute
                     requiredPermissions={[
-                      PERMISSIONS.APPROVE_LEAVE_L1,
-                      PERMISSIONS.APPROVE_LEAVE_L2,
-                      PERMISSIONS.APPROVE_LEAVE_FINAL,
+                      ...LEAVE_STAGE_PERMISSIONS,
                       PERMISSIONS.MANAGE_LEAVE_REQUESTS,
                     ]}
                   />
@@ -432,14 +500,15 @@ function App() {
                   path="/me/profile"
                   element={<StudentDetailsPage selfMode />}
                 />
-                <Route
-                  path="/my-finance"
-                  element={
-                    <ProtectedRoute requiredPermissions={PERMISSIONS.MY_INVOICE} />
-                  }
-                >
-                  <Route index element={<MyFinancePage />} />
-                </Route>
+              </Route>
+
+              <Route
+                path="/my-finance"
+                element={
+                  <ProtectedRoute requiredPermissions={PERMISSIONS.MY_INVOICE} />
+                }
+              >
+                <Route index element={<MyFinancePage />} />
               </Route>
 
               {/* ── Academic Settings ── */}
@@ -447,6 +516,12 @@ function App() {
                 element={
                   <ProtectedRoute
                     requiredPermissions={[
+                      PERMISSIONS.MANAGE_ACADEMICS,
+                      PERMISSIONS.MANAGE_DEPARTMENTS,
+                      PERMISSIONS.MANAGE_OPTIONS,
+                      PERMISSIONS.MANAGE_MODULES,
+                      PERMISSIONS.MANAGE_MODULE_SCHEDULES,
+                      PERMISSIONS.MANAGE_MODULE_REGISTRATIONS,
                       PERMISSIONS.MANAGE_ACADEMIC_YEARS,
                       PERMISSIONS.MANAGE_ACADEMIC_TERMS,
                       PERMISSIONS.VIEW_SYSTEM_BASICS,
@@ -473,6 +548,8 @@ function App() {
                       PERMISSIONS.MANAGE_LEVELS,
                       PERMISSIONS.MANAGE_SCHOOLS,
                       PERMISSIONS.MANAGE_LEAVE_TYPES,
+                      PERMISSIONS.MANAGE_CAMPUSES,
+                      PERMISSIONS.MANAGE_ADMISSIONS,
                     ]}
                   />
                 }
@@ -485,14 +562,43 @@ function App() {
 
               {/* ── Grading Scale ── */}
               <Route
-                element={<ProtectedRoute requiredPermissions={[PERMISSIONS.VIEW_SYSTEM_BASICS]} />}
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={[
+                      PERMISSIONS.MANAGE_GRADING_SCALES,
+                      PERMISSIONS.VIEW_SYSTEM_BASICS,
+                    ]}
+                  />
+                }
               >
                 <Route path="/academic/grading-scale" element={<AcademicGradingScalePage />} />
               </Route>
 
+              {/* ── System settings — the home for the endpoints VIEW_SETTINGS
+                  and MANAGE_SETTINGS guard. ── */}
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={[
+                      PERMISSIONS.VIEW_SETTINGS,
+                      PERMISSIONS.MANAGE_SETTINGS,
+                    ]}
+                  />
+                }
+              >
+                <Route path="/settings" element={<SystemSettingsPage />} />
+              </Route>
+
               {/* ── System Documents (Fee Structures, Policies, etc.) ── */}
               <Route
-                element={<ProtectedRoute requiredPermissions={[PERMISSIONS.VIEW_SYSTEM_BASICS]} />}
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={[
+                      PERMISSIONS.MANAGE_ACADEMIC_SETTINGS,
+                      PERMISSIONS.VIEW_SYSTEM_BASICS,
+                    ]}
+                  />
+                }
               >
                 <Route path="/academic/system-documents" element={<SystemDocumentsPage />} />
               </Route>
@@ -568,7 +674,6 @@ function App() {
                     path="verifications/:id/validate"
                     element={<DocumentValidationCarousel />}
                   />
-                  <Route path="merit" element={<MeritPage />} />
                   <Route path="offers" element={<OffersPage />} />
                   <Route path="requirements" element={<RequirementsPage />} />
                   <Route
@@ -583,7 +688,36 @@ function App() {
                     element={<ApplicationStatisticsPage />}
                   />
                 </Route>
-                {/* Task 1.13 — international students compliance list. */}
+              </Route>
+
+              {/* Merit lists — /api/applications/merit is gated on the merit
+                  slugs, so this cannot sit inside the admissions guard. */}
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={[
+                      PERMISSIONS.VIEW_MERIT_LIST,
+                      PERMISSIONS.MANAGE_MERIT_LIST,
+                      PERMISSIONS.MANAGE_ADMISSIONS,
+                    ]}
+                  />
+                }
+              >
+                <Route path="/admin/admissions" element={<AdmissionsHub />}>
+                  <Route path="merit" element={<MeritPage />} />
+                </Route>
+              </Route>
+
+              {/* Task 1.13 — international students compliance list. Served by
+                  /api/students/international, which is gated on VIEW_STUDENTS,
+                  so it is guarded on that rather than on the admissions set. */}
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={PERMISSIONS.VIEW_STUDENTS}
+                  />
+                }
+              >
                 <Route
                   path="/admin/international-students"
                   element={<InternationalStudentsPage />}
@@ -638,6 +772,21 @@ function App() {
                 </Route>
               </Route>
 
+              {/* ── Timetable — read surface over module_schedules. ── */}
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={[
+                      PERMISSIONS.VIEW_TIMETABLE,
+                      PERMISSIONS.MANAGE_TIMETABLE,
+                      PERMISSIONS.MANAGE_MODULE_SCHEDULES,
+                    ]}
+                  />
+                }
+              >
+                <Route path="/timetable" element={<TimetablePage />} />
+              </Route>
+
               {/* ── My Modules (staff/student) ── */}
               <Route
                 element={
@@ -667,6 +816,26 @@ function App() {
                     requiredPermissions={[
                       PERMISSIONS.VIEW_FINANCE,
                       PERMISSIONS.MANAGE_FINANCE,
+                      PERMISSIONS.VIEW_FINANCE_OVERVIEW,
+                      PERMISSIONS.VIEW_FINANCE_BILLING,
+                      PERMISSIONS.VIEW_FINANCE_REPORTS,
+                      PERMISSIONS.VIEW_FINANCE_STRUCTURES,
+                      PERMISSIONS.VIEW_FINANCE_BURSARIES,
+                      PERMISSIONS.VIEW_FINANCE_APPROVALS,
+                      PERMISSIONS.VIEW_FINANCE_SPONSORS,
+                      PERMISSIONS.VIEW_FINANCE_EXPENSES,
+                      PERMISSIONS.VIEW_FINANCE_REFUNDS,
+                      PERMISSIONS.VIEW_FINANCE_BALANCE,
+                      PERMISSIONS.VIEW_FINANCE_CLEARANCE,
+                      PERMISSIONS.VIEW_STUDENT_DIRECTORY_FINANCE,
+                      PERMISSIONS.VIEW_ONLINE_PAYMENTS_HISTORY,
+                      PERMISSIONS.VIEW_MOBILE_PAYMENTS,
+                      PERMISSIONS.VIEW_PAYMENT_CALENDAR,
+                      PERMISSIONS.MANAGE_PAYMENT_CALENDAR,
+                      PERMISSIONS.VIEW_BUDGET_EXECUTION,
+                      PERMISSIONS.MANAGE_BUDGET_EXECUTION,
+                      PERMISSIONS.VIEW_FINES,
+                      PERMISSIONS.MANAGE_FINES,
                     ]}
                   />
                 }
@@ -681,6 +850,7 @@ function App() {
                       <ProtectedRoute
                         requiredPermissions={[
                           PERMISSIONS.VIEW_ONLINE_PAYMENTS_HISTORY,
+                          PERMISSIONS.VIEW_MOBILE_PAYMENTS,
                           PERMISSIONS.MANAGE_FINANCE,
                         ]}
                       />
@@ -776,6 +946,7 @@ function App() {
                 element={
                   <ProtectedRoute
                     requiredPermissions={[
+                      PERMISSIONS.VIEW_EXAMS,
                       PERMISSIONS.MANAGE_EXAMS,
                       PERMISSIONS.MANAGE_MODULE_SCHEDULES,
                     ]}
@@ -789,6 +960,7 @@ function App() {
                   <ProtectedRoute
                     requiredPermissions={[
                       PERMISSIONS.MANAGE_EXAMS,
+                      PERMISSIONS.MANAGE_DELIBERATIONS,
                       PERMISSIONS.VIEW_MODULE_MARKS,
                       PERMISSIONS.RECORD_MODULE_MARKS,
                       PERMISSIONS.MANAGE_MODULE_MARKS,

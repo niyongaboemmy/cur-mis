@@ -519,7 +519,9 @@ class AuthService
     public function changePassword(int $userId, string $currentPassword, string $newPassword): array
     {
         $model = new UserModel();
-        $user  = $model->find($userId);
+        // findBy() — not find(). find() runs the row through hideFields(), which
+        // strips `password`, so the verify below would receive null and fatal.
+        $user  = $model->findBy('id', $userId);
 
         if (!$user) {
             return ['success' => false, 'message' => 'User not found.', 'code' => 404];
@@ -573,6 +575,95 @@ class AuthService
             return \App\Helpers\LecturerScope::moduleIds(\Core\Database::getInstance(), $userId) !== [];
         } catch (\Throwable) {
             return false;
+        }
+    }
+
+
+    /**
+     * Re-resolve a token payload's AUTHORISATION fields against the database.
+     *
+     * The JWT carries `role` and `permissions[]` as claims stamped at OTP
+     * login. Every gate in the app — PermissionMiddleware,
+     * MaybePermissionMiddleware, TeacherPortalMiddleware, ApplicantMiddleware
+     * and the ~15 controllers that read `$authUser['permissions']` inline —
+     * used to trust those claims verbatim, which made them a snapshot of the
+     * role's grants at the moment the user last typed an OTP.
+     *
+     * That broke grants in a way that looked like a backend bug: the frontend
+     * gates its menus and routes off `GET /api/auth/me`, which has always
+     * re-read permissions from the DB, so a newly granted permission lit the
+     * feature up in the UI immediately — while the API behind it kept
+     * answering 403 from the frozen claim, for the whole JWT_EXPIRY window
+     * (a week by default). There is no refresh endpoint; the only cure was to
+     * log out and back in through a fresh OTP email.
+     *
+     * Authorisation is therefore resolved here, per request, from
+     * `users → roles → role_permissions`, which is the same source `/me`
+     * reads. Grant or revoke a permission and it takes effect on the next
+     * request, on both sides of the wire.
+     *
+     * Identity claims (id, email, names) still come from the signed token —
+     * only the fields that decide ACCESS are re-read. Returns null when the
+     * account has since been deleted or disabled, so a stale token stops
+     * outliving the account it was issued for.
+     *
+     * @param  array $tokenUser  the `user` object decoded from the JWT
+     * @return array|null        the payload with live role/permissions, or null
+     */
+    public static function hydrateAuthUser(array $tokenUser): ?array
+    {
+        $userId = (int)($tokenUser['id'] ?? 0);
+        if ($userId <= 0) {
+            return $tokenUser;
+        }
+
+        // A single request can pass through several middleware and helpers
+        // that each want the actor; resolve once per request, not per read.
+        static $cache = [];
+        if (array_key_exists($userId, $cache)) {
+            return $cache[$userId];
+        }
+
+        try {
+            $db  = \Core\Database::getInstance();
+            $row = $db->fetchOne(
+                'SELECT u.id, u.role_id, u.is_active, r.name AS role_name, r.enforce_campus_scope
+                   FROM users u
+                   LEFT JOIN roles r ON r.id = u.role_id
+                  WHERE u.id = ?
+                  LIMIT 1',
+                [$userId]
+            );
+
+            if (!$row || !(int)($row['is_active'] ?? 0)) {
+                return $cache[$userId] = null;
+            }
+
+            $roleId = (int)($row['role_id'] ?? 0);
+            $slugs  = $roleId > 0
+                ? $db->fetchAll(
+                    'SELECT p.slug
+                       FROM role_permissions rp
+                       JOIN permissions p ON p.id = rp.permission_id
+                      WHERE rp.role_id = ?',
+                    [$roleId]
+                  )
+                : [];
+
+            $user = $tokenUser;
+            $user['role_id']              = $roleId ?: null;
+            $user['role']                 = $row['role_name'] ?? 'guest';
+            $user['role_name']            = $row['role_name'] ?? 'guest';
+            $user['enforce_campus_scope'] = (int)($row['enforce_campus_scope'] ?? 0) === 1;
+            $user['permissions']          = array_values(array_column($slugs, 'slug'));
+            $user['is_applicant']         = ($row['role_name'] ?? '') === 'applicant';
+
+            return $cache[$userId] = $user;
+        } catch (\Throwable $e) {
+            // A DB hiccup must not lock the whole API out. Fall back to the
+            // signed claims — no worse than the behaviour this replaces.
+            error_log('[auth] permission hydration failed for user ' . $userId . ': ' . $e->getMessage());
+            return $tokenUser;
         }
     }
 

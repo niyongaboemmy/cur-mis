@@ -1,3 +1,16 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:ed926151f34657ff1cc8bc1b1d56fe93c7486b8b5d158d22b0486914bf6eaadd
-size 1164
+-- ──────────────────────────────────────────────────────────────────────────────
+-- Migration: Add VIEW_ONLINE_PAYMENTS_HISTORY permission
+-- Date: 2026-05-16
+-- ──────────────────────────────────────────────────────────────────────────────
+
+SET @finance_cat_id = (SELECT `id` FROM `permission_categories` WHERE `name` = 'Finance' LIMIT 1);
+
+INSERT IGNORE INTO `permissions` (`category_id`, `name`, `slug`, `description`) 
+VALUES 
+    (@finance_cat_id, 'View Online Payments History', 'VIEW_ONLINE_PAYMENTS_HISTORY', 'View the legacy online payments history table from UrubutoPay and other gateways');
+
+INSERT IGNORE INTO `role_permissions` (`role_id`, `permission_id`)
+SELECT r.`id`, p.`id`
+FROM `roles` r
+JOIN `permissions` p ON p.`slug` = 'VIEW_ONLINE_PAYMENTS_HISTORY'
+WHERE r.`name` IN ('superadmin', 'admin', 'finance_officer');

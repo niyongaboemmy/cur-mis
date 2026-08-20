@@ -30,6 +30,112 @@ class StudentIdController extends BaseController
         $this->db    = Database::getInstance();
     }
 
+    // ── GET /api/student-ids ──────────────────────────────────────────────────
+    /**
+     * Roster of students and their current card state, for the ID-card
+     * workspace. Query: page, per_page, keyword, state, campus, option_id.
+     */
+    public function index(Request $request, Response $response): never
+    {
+        $page    = max(1, (int) ($request->query('page') ?? 1));
+        $perPage = max(1, min(200, (int) ($request->query('per_page') ?? 25)));
+
+        $result = $this->model->roster([
+            'keyword'   => (string) ($request->query('keyword') ?? ''),
+            'state'     => (string) ($request->query('state') ?? ''),
+            'campus'    => (string) ($request->query('campus') ?? ''),
+            'option_id' => (int) ($request->query('option_id') ?? 0),
+        ], $page, $perPage);
+
+        $total = $result['total'];
+
+        $this->success($response, [
+            'data'       => $result['rows'],
+            'pagination' => [
+                'current_page' => $page,
+                'per_page'     => $perPage,
+                'total'        => $total,
+                'last_page'    => (int) max(1, ceil($total / $perPage)),
+            ],
+        ], 'ID card roster fetched.');
+    }
+
+    // ── POST /api/student-ids/batch-issue ─────────────────────────────────────
+    /**
+     * Issue a card to several students in one action. Partial success is
+     * reported per student rather than failing the whole batch — one bad id in
+     * a 200-student selection should not cost the other 199 their cards.
+     * Body: { student_ids: int[], validity_years?: int }
+     */
+    public function batchIssue(Request $request, Response $response): never
+    {
+        $actor = (array) $request->param('_auth_user');
+        $body  = $request->body();
+
+        $ids = array_values(array_unique(array_filter(
+            array_map('intval', (array) ($body['student_ids'] ?? [])),
+            fn (int $id): bool => $id > 0
+        )));
+
+        if ($ids === []) {
+            $this->error($response, 'Select at least one student.', 422);
+        }
+        if (count($ids) > 500) {
+            $this->error($response, 'Issue at most 500 cards at a time.', 422);
+        }
+
+        $years  = max(1, min(10, (int) ($body['validity_years'] ?? 4)));
+        $issued = [];
+        $failed = [];
+
+        foreach ($ids as $studentId) {
+            $student = $this->db->fetchOne(
+                'SELECT id, regnumber FROM `student` WHERE id = ? LIMIT 1',
+                [$studentId]
+            );
+            if (!$student) {
+                $failed[] = ['student_id' => $studentId, 'reason' => 'Student not found.'];
+                continue;
+            }
+
+            try {
+                $barcode    = $this->generateBarcode((string) $student['regnumber']);
+                $issueDate  = date('Y-m-d');
+                $expiryDate = date('Y-m-d', strtotime("+{$years} years"));
+
+                $cardId = $this->db->transaction(function () use ($studentId, $issueDate, $expiryDate, $barcode): int {
+                    $this->model->deactivateAll($studentId);
+                    return (int) $this->model->create([
+                        'student_id'  => $studentId,
+                        'issue_date'  => $issueDate,
+                        'expiry_date' => $expiryDate,
+                        'barcode'     => $barcode,
+                        'is_active'   => 1,
+                    ]);
+                });
+
+                $issued[] = ['student_id' => $studentId, 'card_id' => $cardId, 'barcode' => $barcode];
+            } catch (\Throwable $e) {
+                $failed[] = ['student_id' => $studentId, 'reason' => 'Could not issue a card for this student.'];
+                error_log('[student-ids] batch issue failed for student ' . $studentId . ': ' . $e->getMessage());
+            }
+        }
+
+        SystemLogService::log('CREATE', 'STUDENT_ID',
+            'User ' . ($actor['id'] ?? '?') . ' batch-issued ' . count($issued) . ' ID card(s).',
+            null, 'student_id',
+            ['issued' => count($issued), 'failed' => count($failed), 'validity_years' => $years],
+            $actor
+        );
+
+        $this->success($response, [
+            'issued' => $issued,
+            'failed' => $failed,
+        ], count($failed) === 0
+            ? count($issued) . ' ID card(s) issued.'
+            : count($issued) . ' issued, ' . count($failed) . ' skipped.');
+    }
+
     // ── POST /api/student-ids/issue ───────────────────────────────────────────
     /**
      * Issue (or re-issue) an ID card for a student. Deactivates any prior card.
@@ -140,6 +246,67 @@ class StudentIdController extends BaseController
 
         $reg = preg_replace('/[^A-Za-z0-9_-]/', '', (string) ($student['regnumber'] ?? "s{$studentId}"));
         StudentIdCardHelper::stream($html, "id-card-{$reg}.pdf");
+    }
+
+    // ── POST /api/student-ids/batch-print ─────────────────────────────────────
+    /**
+     * Stream one PDF holding the active cards of every selected student.
+     * Students with no active card are skipped rather than failing the batch.
+     * Body: { student_ids: int[] }
+     */
+    public function batchPrint(Request $request, Response $response): never
+    {
+        $body = $request->body();
+
+        $ids = array_values(array_unique(array_filter(
+            array_map('intval', (array) ($body['student_ids'] ?? [])),
+            fn (int $id): bool => $id > 0
+        )));
+
+        if ($ids === []) {
+            $this->error($response, 'Select at least one student.', 422);
+        }
+        if (count($ids) > 200) {
+            $this->error($response, 'Print at most 200 cards at a time.', 422);
+        }
+
+        $verifyBase = null;
+        $items      = [];
+
+        foreach ($ids as $studentId) {
+            $card = $this->model->activeForStudent($studentId);
+            if (!$card) {
+                continue;
+            }
+
+            $student = DocumentHelper::fetchStudentData($studentId);
+            if (!$student) {
+                continue;
+            }
+
+            $opts = ['verify_url' => $this->verifyUrl((string) $card['barcode'], $request)];
+
+            $dataUri = StudentIdCardHelper::resolvePhotoDataUri($student['photo'] ?? null);
+            if ($dataUri !== null) {
+                $opts['photo_data_uri'] = $dataUri;
+            } else {
+                $legacyUrl = \App\Helpers\PhotoHelper::legacyUrl($student['photo'] ?? null);
+                if ($legacyUrl !== null) {
+                    $opts['photo_url'] = $legacyUrl;
+                }
+            }
+
+            $items[] = ['student' => $student, 'card' => $card, 'opts' => $opts];
+        }
+
+        if ($items === []) {
+            $this->error($response, 'None of the selected students hold an active ID card. Issue their cards first.', 422);
+        }
+
+        unset($verifyBase);
+
+        $html = StudentIdCardHelper::buildBatchHtml($items);
+        StudentIdCardHelper::stream($html, 'id-cards-' . count($items) . '.pdf');
     }
 
     // ── DELETE /api/student-ids/:id ───────────────────────────────────────────

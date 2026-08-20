@@ -1,3 +1,6 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:9882f85f6924736b4f85d0314a8f45c8ca7a98ac00dc68984bed718a397edd8f
-size 334
+-- Add payment_id link to fee_refunds so each refund is tied to a specific confirmed payment,
+-- enabling server-side enforcement that refund amount ≤ original payment amount.
+
+ALTER TABLE `fee_refunds`
+  ADD COLUMN `payment_id` INT UNSIGNED NULL DEFAULT NULL AFTER `student_id`,
+  ADD INDEX  `idx_fr_payment` (`payment_id`);

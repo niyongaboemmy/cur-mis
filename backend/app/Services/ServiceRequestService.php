@@ -167,11 +167,24 @@ class ServiceRequestService
                 continue;
             }
 
-            $ext = strtolower(pathinfo($file['name'] ?? '', PATHINFO_EXTENSION));
-            $extToMime = ['pdf' => 'application/pdf', 'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png', 'webp' => 'image/webp'];
-            $allowedMimes = $spec['mime_types'] ?? [];
-            if (!empty($allowedMimes) && !in_array($extToMime[$ext] ?? '', $allowedMimes, true)) {
-                throw new \RuntimeException("Invalid file type for '{$spec['label']}'. Allowed: " . implode(', ', $allowedMimes));
+            // `mime_types` in the catalog is authored inconsistently — some rows
+            // hold extensions ("pdf", "jpg"), others real MIME types
+            // ("application/pdf"). Normalise both the spec and the uploaded file
+            // to canonical extensions before comparing, otherwise an extension
+            // list can never match a MIME-derived value and every upload is
+            // rejected with a 422 that contradicts its own "Allowed:" hint.
+            $allowed = self::normaliseTypeList($spec['mime_types'] ?? []);
+            if ($allowed !== []) {
+                $ext = strtolower(pathinfo((string)($file['name'] ?? ''), PATHINFO_EXTENSION));
+                $candidates = array_filter([
+                    self::canonicalExtension($ext),
+                    self::canonicalExtension((string)($file['type'] ?? '')),
+                ]);
+                if (array_intersect($candidates, $allowed) === []) {
+                    throw new \RuntimeException(
+                        "Invalid file type for '{$spec['label']}'. Allowed: " . implode(', ', $allowed)
+                    );
+                }
             }
 
             $client   = new FileServerClient();
@@ -179,6 +192,55 @@ class ServiceRequestService
         }
 
         return $uploaded;
+    }
+
+    /**
+     * Canonical extension for a type token that may be either a bare extension
+     * ("jpg", ".JPG") or a MIME type ("image/jpeg"). Returns '' when the token
+     * is not a type we recognise.
+     */
+    private static function canonicalExtension(string $token): string
+    {
+        $token = strtolower(trim($token, " \t\n\r\0\x0B."));
+        if ($token === '') {
+            return '';
+        }
+
+        // MIME types that map onto one of our accepted extensions.
+        $mimeToExt = [
+            'application/pdf' => 'pdf',
+            'image/jpeg'      => 'jpg',
+            'image/jpg'       => 'jpg',   // non-standard but emitted by some clients
+            'image/pjpeg'     => 'jpg',
+            'image/png'       => 'png',
+            'image/webp'      => 'webp',
+        ];
+        if (isset($mimeToExt[$token])) {
+            return $mimeToExt[$token];
+        }
+
+        // Bare extensions. 'jpeg' folds into 'jpg' so the two spellings compare equal.
+        $extAliases = ['pdf' => 'pdf', 'jpg' => 'jpg', 'jpeg' => 'jpg', 'png' => 'png', 'webp' => 'webp'];
+        return $extAliases[$token] ?? '';
+    }
+
+    /** Normalise a catalog `mime_types` list to unique canonical extensions. */
+    private static function normaliseTypeList(mixed $list): array
+    {
+        if (!is_array($list)) {
+            return [];
+        }
+        $out = [];
+        foreach ($list as $token) {
+            if (!is_string($token)) {
+                continue;
+            }
+            $ext = self::canonicalExtension($token);
+            if ($ext !== '' && !in_array($ext, $out, true)) {
+                $out[] = $ext;
+            }
+        }
+        return $out;
     }
 
     public function submit(string $serviceSlug, array $formData, array $files, array $requester): array

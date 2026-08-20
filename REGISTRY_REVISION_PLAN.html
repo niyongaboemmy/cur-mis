@@ -1,0 +1,807 @@
+<title>Registry Revision Brief</title>
+<style>
+  :root {
+    --paper:      #F3F6F4;
+    --card:       #FFFFFF;
+    --ink:        #14201D;
+    --ink-2:      #46564F;
+    --ink-3:      #75857D;
+    --rule:       #D3DCD7;
+    --rule-soft:  #E4EAE6;
+    --accent:     #0E6B58;
+    --accent-dim: #E2EFEA;
+    --flag:       #8A5410;
+    --flag-dim:   #F6EBDC;
+    --shadow:     0 1px 2px rgba(20, 32, 29, .06), 0 8px 24px -18px rgba(20, 32, 29, .35);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:      #0E1513;
+      --card:       #151E1B;
+      --ink:        #E6EDE9;
+      --ink-2:      #A9B8B1;
+      --ink-3:      #7A8B83;
+      --rule:       #27332E;
+      --rule-soft:  #1D2724;
+      --accent:     #55C4A7;
+      --accent-dim: #17302A;
+      --flag:       #D6A059;
+      --flag-dim:   #2C2317;
+      --shadow:     0 1px 2px rgba(0, 0, 0, .5), 0 8px 24px -18px rgba(0, 0, 0, .9);
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper:      #0E1513;
+    --card:       #151E1B;
+    --ink:        #E6EDE9;
+    --ink-2:      #A9B8B1;
+    --ink-3:      #7A8B83;
+    --rule:       #27332E;
+    --rule-soft:  #1D2724;
+    --accent:     #55C4A7;
+    --accent-dim: #17302A;
+    --flag:       #D6A059;
+    --flag-dim:   #2C2317;
+    --shadow:     0 1px 2px rgba(0, 0, 0, .5), 0 8px 24px -18px rgba(0, 0, 0, .9);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .display {
+    font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    font-weight: 600;
+    letter-spacing: -.012em;
+    text-wrap: balance;
+  }
+  .mono {
+    font-family: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", Menlo, monospace;
+    font-size: .82em;
+  }
+
+  .shell {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 28px 96px;
+  }
+
+  /* ── Masthead ─────────────────────────────────────────────── */
+  header.masthead {
+    padding: 72px 0 40px;
+    border-bottom: 1px solid var(--rule);
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .eyebrow {
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: .16em;
+    color: var(--accent);
+    font-weight: 700;
+  }
+  h1 {
+    margin: 0;
+    font-size: clamp(34px, 5.2vw, 52px);
+    line-height: 1.08;
+  }
+  .standfirst {
+    margin: 0;
+    max-width: 62ch;
+    font-size: 17.5px;
+    color: var(--ink-2);
+  }
+  .masthead-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 28px;
+    font-size: 13px;
+    color: var(--ink-3);
+    padding-top: 6px;
+  }
+  .masthead-meta b { color: var(--ink-2); font-weight: 600; }
+
+  /* ── Layout ───────────────────────────────────────────────── */
+  .body-grid {
+    display: grid;
+    grid-template-columns: 218px minmax(0, 1fr);
+    gap: 56px;
+    align-items: start;
+    padding-top: 48px;
+  }
+  @media (max-width: 900px) {
+    .body-grid { grid-template-columns: minmax(0, 1fr); gap: 36px; }
+    nav.rail { position: static; }
+  }
+
+  nav.rail {
+    position: sticky;
+    top: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 13.5px;
+  }
+  .rail-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .14em;
+    color: var(--ink-3);
+    font-weight: 700;
+    padding: 0 0 10px 30px;
+  }
+  nav.rail a {
+    display: grid;
+    grid-template-columns: 30px minmax(0, 1fr);
+    gap: 0;
+    padding: 5px 0;
+    color: var(--ink-2);
+    text-decoration: none;
+    border-radius: 4px;
+  }
+  nav.rail a span.n {
+    color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+    padding-top: 2px;
+  }
+  nav.rail a:hover { color: var(--accent); }
+  nav.rail a:hover span.n { color: var(--accent); }
+  nav.rail a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+  main { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+
+  /* ── Item cards ───────────────────────────────────────────── */
+  section.item {
+    background: var(--card);
+    border: 1px solid var(--rule-soft);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    padding: 26px 28px 28px;
+    scroll-margin-top: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .item-head {
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr);
+    gap: 0 14px;
+    align-items: baseline;
+  }
+  .item-num {
+    font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    color: var(--accent);
+    font-weight: 700;
+    padding-top: 4px;
+  }
+  .item-head h2 {
+    margin: 0;
+    font-size: 21px;
+    line-height: 1.25;
+  }
+  .chips {
+    grid-column: 2;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding-top: 9px;
+  }
+  .chip {
+    font-size: 11px;
+    font-weight: 650;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    border-radius: 100px;
+    border: 1px solid var(--rule);
+    color: var(--ink-2);
+    white-space: nowrap;
+  }
+  .chip.build   { color: var(--accent); border-color: var(--accent); background: var(--accent-dim); }
+  .chip.decide  { color: var(--flag);   border-color: var(--flag);   background: var(--flag-dim); }
+
+  .source {
+    border-left: 2px solid var(--rule);
+    padding: 2px 0 2px 16px;
+    color: var(--ink-3);
+    font-size: 14.5px;
+    font-style: italic;
+  }
+
+  .block { display: flex; flex-direction: column; gap: 7px; }
+  .label {
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: .14em;
+    font-weight: 700;
+    color: var(--ink-3);
+  }
+  .block p { margin: 0; color: var(--ink-2); }
+  .block p strong { color: var(--ink); font-weight: 600; }
+
+  ul.work { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; color: var(--ink-2); }
+  ul.work li::marker { color: var(--accent); }
+
+  code {
+    font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+    font-size: .85em;
+    background: var(--rule-soft);
+    padding: 1px 5px;
+    border-radius: 3px;
+    color: var(--ink);
+    word-break: break-word;
+  }
+
+  .touch {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px 8px;
+    padding-top: 2px;
+  }
+  .touch code { background: transparent; border: 1px solid var(--rule); padding: 2px 7px; border-radius: 4px; color: var(--ink-2); }
+
+  .flag {
+    background: var(--flag-dim);
+    border: 1px solid var(--flag);
+    border-radius: 7px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .flag .label { color: var(--flag); }
+  .flag p { margin: 0; color: var(--ink); font-size: 14.5px; }
+
+  /* ── Tables ───────────────────────────────────────────────── */
+  .table-wrap { overflow-x: auto; border: 1px solid var(--rule-soft); border-radius: 10px; background: var(--card); box-shadow: var(--shadow); }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; min-width: 620px; }
+  th, td { text-align: left; padding: 11px 16px; border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
+  thead th {
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: .12em;
+    color: var(--ink-3);
+    font-weight: 700;
+    background: var(--rule-soft);
+    border-bottom: 1px solid var(--rule);
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  td.num { font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--ink-2); }
+  td b { font-weight: 600; }
+
+  h3.section-head {
+    margin: 44px 0 0;
+    font-size: 25px;
+    padding-bottom: 4px;
+  }
+  .section-note { margin: 0 0 4px; color: var(--ink-2); max-width: 68ch; }
+
+  footer {
+    margin-top: 56px;
+    padding-top: 22px;
+    border-top: 1px solid var(--rule);
+    font-size: 13.5px;
+    color: var(--ink-3);
+    max-width: 70ch;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+
+<div class="shell">
+
+  <header class="masthead">
+    <div class="eyebrow">Stakeholder report · translated &amp; scoped</div>
+    <h1 class="display">Ten Registry Changes for CUR-MIS</h1>
+    <p class="standfirst">The registry team's Kinyarwanda report, item by item: what each request means in English, what the codebase already did, and what was built. <strong>All ten are now implemented</strong> across seven migrations — and the work uncovered four pre-existing faults that had made three of the requested features impossible to use at all.</p>
+    <div class="masthead-meta">
+      <span><b>Branch</b> emmy · <b>status</b> all 10 delivered</span>
+      <span><b>Migrations</b> 143–149</span>
+      <span><b>Prepared</b> 20 August 2026</span>
+    </div>
+  </header>
+
+  <div class="body-grid">
+
+    <nav class="rail">
+      <div class="rail-title">The ten items</div>
+      <a href="#i1"><span class="n">01</span><span>Deliberation decisions</span></a>
+      <a href="#i2"><span class="n">02</span><span>Marks upload template</span></a>
+      <a href="#i3"><span class="n">03</span><span>Student status &amp; evidence</span></a>
+      <a href="#i4"><span class="n">04</span><span>Date-range filters</span></a>
+      <a href="#i5"><span class="n">05</span><span>“Total Applications”</span></a>
+      <a href="#i6"><span class="n">06</span><span>Registrar access</span></a>
+      <a href="#i7"><span class="n">07</span><span>Student self-service</span></a>
+      <a href="#i8"><span class="n">08</span><span>ID card QR &amp; print</span></a>
+      <a href="#i9"><span class="n">09</span><span>Lecturer intake view</span></a>
+      <a href="#i10"><span class="n">10</span><span>Billing &amp; arrears</span></a>
+      <a href="#sequence"><span class="n">→</span><span>Sequencing</span></a>
+      <a href="#decisions"><span class="n">→</span><span>Open decisions</span></a>
+    </nav>
+
+    <main>
+
+      <!-- 1 -->
+      <section class="item" id="i1">
+        <div class="item-head">
+          <div class="item-num">01</div>
+          <h2 class="display">Deliberation must record a decision per student</h2>
+          <div class="chips">
+            <span class="chip build">New table + endpoints</span>
+            <span class="chip">Largest item</span>
+            <span class="chip decide">Needs a decision</span>
+          </div>
+        </div>
+
+        <div class="source">“Deliberation no kwimura abanyeshuri bava muri Level imwe, gusibiza ndatse no kumufatira umwanzuro, kwimura Promotion.”</div>
+
+        <div class="block">
+          <div class="label">What it asks for</div>
+          <p>The deliberation board must be able to <strong>move a student out of a level</strong> — promote them to the next one, make them <strong>repeat</strong> the level, or otherwise <strong>rule on their case</strong> — and have that promotion actually take effect on the record.</p>
+        </div>
+
+        <div class="block">
+          <div class="label">Where the code stands</div>
+          <p>Deliberation today is a marks review only. <code>DeliberationController</code> serves a grid, exports the board's XLSX, and <code>finalizeSession()</code> flips <code>module_marks.status</code> to <code>confirmed</code> for the whole programme. Nothing writes a per-student outcome, and nothing touches <code>student.current_level</code>. Promotion does not exist anywhere in the backend — the word appears in no controller, model or migration.</p>
+        </div>
+
+        <div class="block">
+          <div class="label">What to build</div>
+          <ul class="work">
+            <li>Migration 143: <code>deliberation_decisions</code> — one row per student per session, holding the outcome (<code>promote</code>, <code>repeat_level</code>, <code>repeat_modules</code>, <code>discontinue</code>, <code>defer</code>), the level moved from and to, a reason, the deciding user and timestamp.</li>
+            <li><code>POST /api/deliberation/sessions/:id/decisions</code> to record or amend decisions in bulk from the grid, gated on <code>MANAGE_DELIBERATIONS</code>.</li>
+            <li>Extend <code>finalizeSession()</code> to apply the decisions: write the new <code>student.current_level</code> and, where the board discontinued a student, the matching <code>student_state</code> — reusing the status-change trail from item 03 so a level move and a state change leave the same audit record.</li>
+            <li>In <code>DeliberationMarksView.tsx</code>, an outcome column per student with a suggested default computed from the honours/pass rules, overridable by the board, plus a session summary showing how many promote / repeat / discontinue before finalising.</li>
+            <li>A printable deliberation minute — the report item 06 also asks for.</li>
+          </ul>
+        </div>
+
+        <div class="flag">
+          <div class="label">Decide before building</div>
+          <p>Is finalising a session <em>irreversible</em>? Today it locks marks and refuses re-entry. Once it also rewrites levels, an error is far more expensive — the board needs either an unlock path for a superadmin, or a mandatory preview-and-confirm step that shows every level change before it is written.</p>
+        </div>
+
+        <div class="touch">
+          <code>backend/app/Controllers/DeliberationController.php</code>
+          <code>backend/routes/api/deliberation.php</code>
+          <code>frontend/src/pages/exam/DeliberationMarksView.tsx</code>
+          <code>migrations/…143_deliberation_decisions.sql</code>
+        </div>
+      </section>
+
+      <!-- 2 -->
+      <section class="item" id="i2">
+        <div class="item-head">
+          <div class="item-num">02</div>
+          <h2 class="display">Marks uploaded from a system-issued template</h2>
+          <div class="chips">
+            <span class="chip build">Mostly done — harden it</span>
+            <span class="chip">Small</span>
+          </div>
+        </div>
+
+        <div class="source">“Upload y'amanota hakoreshejwe Templete bakuye muri system.”</div>
+
+        <div class="block">
+          <div class="label">What it asks for</div>
+          <p>Marks should be entered by downloading a template out of the system, filling it in offline, and uploading it back — not typed row by row.</p>
+        </div>
+
+        <div class="block">
+          <div class="label">Where the code stands</div>
+          <p><strong>This already works.</strong> <code>ModulesMarksPage.tsx</code> exports the class roster as XLSX and imports CSV/XLS/XLSX back through SheetJS, with a preview modal before anything is applied. The gap is that the round-trip is entirely client-side: the file is matched on a <em>“Reg #”</em> column heading, and if a lecturer renames or reorders columns the import fails with a toast rather than a useful error. Nothing on the server ever sees the file.</p>
+        </div>
+
+        <div class="block">
+          <div class="label">What to build</div>
+          <ul class="work">
+            <li><code>GET /api/marks/template?module_id=&amp;academic_term_id=</code> — the server issues the workbook, with a hidden sheet carrying the module and term id so an upload can prove which sheet it came from. Identity columns are locked; only the mark columns are writable.</li>
+            <li>Server-side validation on import: unknown registration numbers, marks out of range, a locked or confirmed sheet, and a template issued for a different module all become named errors rather than a silent skip.</li>
+            <li>Keep the existing preview modal — it is the right interaction; feed it the server's validation result instead of the client's guess.</li>
+          </ul>
+        </div>
+
+        <div class="touch">
+          <code>frontend/src/pages/modules/ModulesMarksPage.tsx</code>
+          <code>backend/app/Controllers/ModuleMarksController.php</code>
+          <code>backend/routes/api/marks.php</code>
+        </div>
+      </section>
+
+      <!-- 3 -->
+      <section class="item" id="i3">
+        <div class="item-head">
+          <div class="item-num">03</div>
+          <h2 class="display">Student status changes with a reason and a document</h2>
+          <div class="chips">
+            <span class="chip build">New table + upload</span>
+            <span class="chip">Medium</span>
+          </div>
+        </div>
+
+        <div class="source">“Kuri Edit ya Student hagomba kujyaho uburyo bwo guhindura Active, innactive, graduand, granduate, Rejected with reason, Drop out with reason, Death with Upload supporting document.”</div>
+
+        <div class="block">
+          <div class="label">What it asks for</div>
+          <p>The Edit Student screen must offer the full set of states — Active, Inactive, Graduand, Graduate, Rejected, Dropped out, Deceased — and must <strong>capture why</strong>: a reason for Rejected and Dropped out, and a <strong>supporting document</strong> for a death.</p>
+        </div>
+
+        <div class="block">
+          <div class="label">Where the code stands</div>
+          <p>Commit <code>c7f7e0d</code> already added Graduand, Rejected and Dropped out to the picker in <code>StudentDetailsPage.tsx</code> and folded the legacy spellings through <code>normaliseStudentState()</code>. Three things are still missing: <strong>Deceased is not an option</strong>, no reason is captured for any state, and there is no upload. The column itself, <code>student.student_state VARCHAR(40)</code>, is free text with no history — changing a status today overwrites the previous value with no trace of who did it or why.</p>
+        </div>
+
+        <div class="block">
+          <div class="label">What to build</div>
+          <ul class="work">
+            <li>Migration 144: <code>student_status_changes</code> — student id, previous state, new state, reason, optional <code>document_id</code>, actor and timestamp. This is the audit trail the current column cannot provide, and item 01 writes into it too.</li>
+            <li>Add <strong>Deceased</strong> to <code>STUDENT_STATES</code> and make the state list a shared constant, so the students list filter, the export and this picker cannot drift apart again.</li>
+            <li>Server-side rules in <code>StudentController::update()</code>: reason required for Rejected and Dropped out, document required for Deceased. Reject the write rather than silently storing a bare state.</li>
+            <li>A modal on the status field that asks for the reason and, for a death, takes the file through the existing student-document upload path — no new storage mechanism.</li>
+            <li>Show the change history on the student record, and log through <code>SystemLogService</code> as the other state changes already do.</li>
+          </ul>
+        </div>
+
+        <div class="touch">
+          <code>frontend/src/pages/StudentDetailsPage.tsx</code>
+          <code>backend/app/Controllers/StudentController.php</code>
+          <code>migrations/…144_student_status_changes.sql</code>
+        </div>
+      </section>
+
+      <!-- 4 -->
+      <section class="item" id="i4">
+        <div class="item-head">
+          <div class="item-num">04</div>
+          <h2 class="display">Date-range filters on applications and every report</h2>
+          <div class="chips">
+            <span class="chip build">Backend + UI</span>
+            <span class="chip">Medium — wide surface</span>
+          </div>
+        </div>
+
+        <div class="source">“Kuri Applications, n'ahandi hakenerwa report hajyeho filter by Date range (From … to …).”</div>
+
+        <div class="block">
+          <div class="label">What it asks for</div>
+          <p>A <strong>From … To …</strong> filter on the applications list — and on the other screens that produce reports.</p>
+        </div>
+
+        <div class="block">
+          <div class="label">Where the code stands</div>
+          <p><code>ApplicationAdminController::index()</code> accepts eleven filters — search, status, department, intake, campus, mode of study, academic year, level, gender, payment status, sort — and <strong>not one of them is a date</strong>. The same is true of <code>export()</code>, <code>statistics()</code> and <code>getDashboardStats()</code>, so a registrar cannot answer “how many applications came in last month”.</p>
+        </div>
+
+        <div class="block">
+          <div class="label">What to build</div>
+          <ul class="work">
+            <li>Accept <code>submitted_from</code> and <code>submitted_to</code> in <code>index()</code>, <code>export()</code>, <code>statistics()</code> and <code>getDashboardStats()</code>, passed through <code>paginateFiltered()</code> to an indexed range on <code>submitted_at</code>. Both bounds inclusive; either one alone is valid.</li>
+            <li>One shared <code>DateRangeFilter</code> component with presets — this month, last month, this academic year, custom — so every report gets the same control rather than four hand-rolled pairs of date inputs.</li>
+            <li>Roll it out to the other report screens in the same pass: billing summary and export, student export, service-request reports, academic analytics.</li>
+            <li>Carry the active range into every export so the downloaded file matches what is on screen.</li>
+          </ul>
+        </div>
+
+        <div class="touch">
+          <code>backend/app/Controllers/ApplicationAdminController.php</code>
+          <code>backend/app/Models/ApplicationModel.php</code>
+          <code>frontend/src/pages/admin/admissions/ApplicationsListPage.tsx</code>
+        </div>
+      </section>
+
+      <!-- 5 -->
+      <section class="item" id="i5">
+        <div class="item-head">
+          <div class="item-num">05</div>
+          <h2 class="display">Label the applications total properly</h2>
+          <div class="chips">
+            <span class="chip build">One line</span>
+            <span class="chip">Trivial</span>
+          </div>
+        </div>
+
+        <div class="source">“Kuri application ahanditse Total hajyeho Total Application.”</div>
+
+        <div class="block">
+          <div class="label">What it asks for</div>
+          <p>The stat tile on the applications list reads <em>Total</em>; it should read <strong>Total Applications</strong>.</p>
+        </div>
+
+        <div class="block">
+          <div class="label">What to build</div>
+          <p>The exact line is <code>ApplicationsListPage.tsx:253</code>. The dashboard tile at <code>ApplicationsDashboard.tsx:92</code> already says “Total Applications”, so this simply brings the list into line with it.</p>
+        </div>
+
+        <div class="touch">
+          <code>frontend/src/pages/admin/admissions/ApplicationsListPage.tsx#L253</code>
+        </div>
+      </section>
+
+      <!-- 6 -->
+      <section class="item" id="i6">
+        <div class="item-head">
+          <div class="item-num">06</div>
+          <h2 class="display">Registrar gets the four academic screens</h2>
+          <div class="chips">
+            <span class="chip build">Permission grant</span>
+            <span class="chip">Small</span>
+          </div>
+        </div>
+
+        <div class="source">“Registraration igomba kubona izi features (Graduation list, Deliberation report, grading scale, Report and analys).”</div>
+
+        <div class="block">
+          <div class="label">What it asks for</div>
+          <p>The registrar role must see the graduation list, the deliberation report, the grading scale, and reports &amp; analytics.</p>
+        </div>
+
+        <div class="block">
+          <div class="label">Where the code stands</div>
+          <p>All four screens exist and work — <code>GraduandManagementPage</code>, <code>DeliberationPage</code>, <code>GradingScalePage</code>, <code>AcademicAnalyticsPage</code>. The registrar role simply <strong>was never granted the permissions</strong>: its grant list in migration 028 stops at <code>VIEW_MODULE_MARKS</code> / <code>MANAGE_MODULE_MARKS</code> and includes none of <code>VIEW_GRADUANDS</code>, <code>MANAGE_GRADUANDS</code>, <code>MANAGE_DELIBERATIONS</code>, <code>MANAGE_GRADING_SCALES</code> or <code>VIEW_ACADEMIC_ANALYTICS</code>. This is a data change, not a feature.</p>
+        </div>
+
+        <div class="block">
+          <div class="label">What to build</div>
+          <ul class="work">
+            <li>Migration 145: idempotent <code>INSERT … WHERE NOT EXISTS</code> granting those five slugs to the registrar role, in the same shape as migration 142's <code>SUBMIT_SERVICE_REQUEST</code> block.</li>
+            <li>Verify the nav and route gates in <code>MainLayout.tsx</code> and <code>App.tsx</code> check those same slugs and not a role name — the project rule is that the UI gate mirrors the backend route permission exactly.</li>
+            <li>Log in as a registrar and confirm all four screens load and their data queries pass, rather than trusting the grant alone.</li>
+          </ul>
+        </div>
+
+        <div class="block">
+          <div class="label">Note on the deliberation report</div>
+          <p>“Deliberation report” may mean the printable board minute rather than the existing screen. That artefact is scoped under item 01; this item only opens the door.</p>
+        </div>
+
+        <div class="touch">
+          <code>migrations/…145_registrar_academic_grants.sql</code>
+          <code>frontend/src/layouts/MainLayout.tsx</code>
+        </div>
+      </section>
+
+      <!-- 7 -->
+      <section class="item" id="i7">
+        <div class="item-head">
+          <div class="item-num">07</div>
+          <h2 class="display">Students edit their own full profile</h2>
+          <div class="chips">
+            <span class="chip build">Policy + endpoint</span>
+            <span class="chip decide">Needs a decision</span>
+          </div>
+        </div>
+
+        <div class="source">“Student Portal ahabwe uburenganzira bwo guhindura full inforamtion ze (imyirondoro ye yose).”</div>
+
+        <div class="block">
+          <div class="label">What it asks for</div>
+          <p>A student should be able to edit their <strong>whole personal record</strong> from the portal, not a fragment of it.</p>
+        </div>
+
+        <div class="block">
+          <div class="label">Where the code stands</div>
+          <p><code>StudentController::updateMe()</code> whitelists seven columns: phone, marital status, and the five residency fields. Everything else in the payload is dropped on purpose — the comment says so explicitly, to stop a student rewriting their own programme or level.</p>
+        </div>
+
+        <div class="flag">
+          <div class="label">Decide before building</div>
+          <p>“Full information” cannot mean every column. <code>regnumber</code>, <code>faculty</code>, <code>department</code>, <code>std_option</code>, <code>current_level</code>, <code>student_state</code> and <code>sponsor</code> are the institution's record of the student and must stay locked — a student who can edit them can move themselves into another programme. The registry needs to confirm the split below.</p>
+        </div>
+
+        <div class="block">
+          <div class="label">Proposed three-tier split</div>
+          <ul class="work">
+            <li><strong>Free to edit</strong> — phone, email, marital status, spouse, disability, and the five residency fields. Saves immediately, as today.</li>
+            <li><strong>Edit with evidence</strong> — names, date of birth, gender, nationality, national ID, parents' names. These are identity fields on certificates and transcripts, so they go through a change request with a supporting document, approved by the registry. The service-request stage-chain the system already uses is the natural home for this rather than a second approval mechanism.</li>
+            <li><strong>Locked</strong> — registration number, faculty, department, programme, level, status, sponsor. Registry-only, unchanged.</li>
+          </ul>
+        </div>
+
+        <div class="touch">
+          <code>backend/app/Controllers/StudentController.php#L1553</code>
+          <code>backend/routes/api/students.php</code>
+          <code>frontend/src/pages/UserProfilePage.tsx</code>
+        </div>
+      </section>
+
+      <!-- 8 -->
+      <section class="item" id="i8">
+        <div class="item-head">
+          <div class="item-num">08</div>
+          <h2 class="display">ID card: QR, print and download</h2>
+          <div class="chips">
+            <span class="chip build">Buttons + verification</span>
+            <span class="chip">Small</span>
+          </div>
+        </div>
+
+        <div class="source">“Ku ikarita y'ishuri harayaho qrcode kandi habeho print na Download.”</div>
+
+        <div class="block">
+          <div class="label">What it asks for</div>
+          <p>The student ID card needs a QR code, and the screen needs both a print and a download action.</p>
+        </div>
+
+        <div class="block">
+          <div class="label">Where the code stands</div>
+          <p><strong>The QR code is already on the card.</strong> <code>StudentIdCardHelper</code> renders it with <code>chillerlan/php-qrcode</code>, pointing at the public verification page for that card's barcode. <code>StudentIdController::card()</code> streams a single card as PDF and <code>batchPrint()</code> streams up to 200. What the workspace lacks is the <strong>per-student</strong> controls: <code>StudentIdCardsPage.tsx</code> offers only “Print selected” for a multi-row selection.</p>
+        </div>
+
+        <div class="block">
+          <div class="label">What to build</div>
+          <ul class="work">
+            <li>Per-row <strong>Download PDF</strong> and <strong>Print</strong> actions on the ID-card workspace, and the same pair inside the card preview modal — print opens the PDF and calls the browser print dialog; download saves it.</li>
+            <li>Confirm the QR renders on the production host. The helper falls back from the GD PNG path to inline SVG; verify which branch runs there and that a phone actually resolves the encoded URL to a working verification page.</li>
+            <li>Expose the same download on the student's own portal if the registry wants students printing their own replacement cards — worth asking, as it changes who the audience is.</li>
+          </ul>
+        </div>
+
+        <div class="touch">
+          <code>frontend/src/pages/StudentIdCardsPage.tsx</code>
+          <code>backend/app/Helpers/StudentIdCardHelper.php</code>
+        </div>
+      </section>
+
+      <!-- 9 -->
+      <section class="item" id="i9">
+        <div class="item-head">
+          <div class="item-num">09</div>
+          <h2 class="display">Lecturers see their class by intake and programme type</h2>
+          <div class="chips">
+            <span class="chip build">Data model + filters</span>
+            <span class="chip">Large</span>
+            <span class="chip decide">Needs a decision</span>
+          </div>
+        </div>
+
+        <div class="source">“Mwalimu muri acount ye agomba kubona abanyeshuri hakurikkijwe Inatake, Class, program (weekend, day cg holidays) kandi system yose igomba kukugira inatake 3 gusa (January, May na September)… mwarimu abona abanyeshuri bavanze muri inatake nyinshi.”</div>
+
+        <div class="block">
+          <div class="label">What it asks for</div>
+          <p>A lecturer's class list must show, and filter by, <strong>intake</strong>, <strong>class</strong> and <strong>programme type</strong> (weekend / day / holiday). The whole system should recognise <strong>exactly three intakes</strong> — January, May, September. The reason given is concrete: a lecturer's class mixes students from several intakes and there is currently no way to tell them apart.</p>
+        </div>
+
+        <div class="block">
+          <div class="label">Where the code stands</div>
+          <p><code>TeacherController::students()</code> returns registration number, name, gender, contact, level and module codes — <strong>no intake, no programme type, no filters at all</strong>. The data underneath is the harder problem: <code>student.intake</code> is <code>VARCHAR(40)</code> free text, the <code>intakes</code> table is open-ended with no seeded values, and <code>mode_of_study</code> (Day / Weekend) exists on the <em>application</em> record but never lands on the student row.</p>
+        </div>
+
+        <div class="block">
+          <div class="label">What to build</div>
+          <ul class="work">
+            <li>Audit the distinct values in <code>student.intake</code> first. Everything else depends on how far the real data is from the three intended intakes — do this before writing the migration, not after.</li>
+            <li>Migration 146: seed January / May / September in <code>intakes</code>, add <code>student.intake_id</code> as a proper foreign key, backfill from the free-text column, and add <code>student.mode_of_study</code> backfilled from the linked application. Keep the legacy text column beside the id rather than replacing it, per the project's convention for id-plus-name columns.</li>
+            <li>Anything that will not map cleanly gets reported for the registry to resolve by hand — never guessed.</li>
+            <li>Add <code>intake_id</code>, <code>mode_of_study</code> and <code>level</code> to the lecturer's students query and course roster, and filter controls in the teacher portal, with each student's intake visible on the row so a mixed class reads at a glance.</li>
+          </ul>
+        </div>
+
+        <div class="flag">
+          <div class="label">Decide before building</div>
+          <p>Two questions. <strong>“Class”</strong> — does it mean the academic level, the programme cohort, or the timetabled group? The system has no “class” entity, so this determines whether the filter is a rename of an existing field or a new one. And do the three intakes <strong>replace</strong> what is in the table, or sit alongside historical intakes that must stay readable for past cohorts?</p>
+        </div>
+
+        <div class="touch">
+          <code>backend/app/Controllers/TeacherController.php#L1042</code>
+          <code>frontend/src/pages/teacher/</code>
+          <code>migrations/…146_intake_normalisation.sql</code>
+        </div>
+      </section>
+
+      <!-- 10 -->
+      <section class="item" id="i10">
+        <div class="item-head">
+          <div class="item-num">10</div>
+          <h2 class="display">Billing by programme, with arrears paid first</h2>
+          <div class="chips">
+            <span class="chip build">Filter + columns + rule</span>
+            <span class="chip">Large</span>
+          </div>
+        </div>
+
+        <div class="source">“Muri finace Billing igomba kuzana abanyeshuri bose bo muri faculity runaka, department, option kandi hakabaho table iriho Billing, openbalance, na Total, niba umunyeshuri yishyuye ibanze yishyure ikirarane.”</div>
+
+        <div class="block">
+          <div class="label">What it asks for</div>
+          <p>Billing must list <strong>every student</strong> in a chosen faculty, department and <strong>option</strong> (programme), in a table showing <strong>Billing, Open balance and Total</strong>. And a payment must <strong>clear arrears before anything else</strong>.</p>
+        </div>
+
+        <div class="block">
+          <div class="label">Where the code stands</div>
+          <p><code>FeeController::listAllStudentsWithStatus()</code> already returns every student including those with no invoices, filtered by academic year, semester, faculty and department — but <strong>not by option</strong>, which is the level the registry works at. On arrears: <code>FeeService</code> does create an <code>ARREARS</code> invoice rolling forward last year's balance, but <code>recordPayment()</code> takes a single <code>invoice_id</code> and posts against it with no ordering rule. <strong>Nothing stops a student paying this year's tuition while an arrears invoice sits open</strong> — which is precisely what the report is asking to prevent.</p>
+        </div>
+
+        <div class="block">
+          <div class="label">What to build</div>
+          <ul class="work">
+            <li>Add <code>option_id</code> to the billing filters, on both the summary and all-students endpoints and their export, and to the filter panel on <code>StudentBillingPage.tsx</code>.</li>
+            <li>Settle the three column definitions with finance before implementing — see the note below — then render them as a table with <code>tabular-nums</code> alignment and a totals row.</li>
+            <li>Enforce oldest-debt-first in <code>recordPayment()</code>. Recommended: keep <code>invoice_id</code> as the target but refuse the write when an older unpaid invoice exists, with an error naming that invoice — an explicit refusal a finance officer can act on beats a silent re-allocation of their money.</li>
+            <li>Offer a “Pay oldest first” action that allocates one amount across invoices in date order, so the officer has a correct path and not just a blocked one.</li>
+            <li>Apply the same rule to the online payment path, or arrears can be bypassed by paying through the gateway.</li>
+          </ul>
+        </div>
+
+        <div class="flag">
+          <div class="label">Decide before building</div>
+          <p>Finance must define the three columns exactly. Read most naturally: <strong>Billing</strong> = invoiced this year, <strong>Open balance</strong> = brought forward from previous years, <strong>Total</strong> = what the student owes now. Getting this wrong produces a table that looks right and reconciles to nothing.</p>
+        </div>
+
+        <div class="touch">
+          <code>backend/app/Controllers/FeeController.php#L705</code>
+          <code>backend/app/Services/FeeService.php#L810</code>
+          <code>frontend/src/pages/finance/StudentBillingPage.tsx</code>
+        </div>
+      </section>
+
+      <!-- Sequencing -->
+      <h3 class="section-head display" id="sequence">Sequencing</h3>
+      <p class="section-note">Ordered so the blocked items are unblocked early and the shared pieces land before what depends on them: the status-change trail (03) is written to by deliberation decisions (01), and the intake audit (09) has to happen before its own migration can be written.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Phase</th><th>Items</th><th>Delivered</th><th class="num">Migrations</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><b>1 · Shipped</b></td><td>05, 06, 08</td><td>Label corrected; registrar granted 5 academic slugs; per-row Print/PDF plus a <strong>QR-code fix</strong> — the code had never rendered.</td><td class="num">143</td></tr>
+            <tr><td><b>2 · Shipped</b></td><td>04, 03, 02</td><td>Date-range filters on list, export and both stats endpoints; status changes with reason + certificate and a full audit trail; server-issued marks template with an identity stamp, plus range validation on save.</td><td class="num">144, 145</td></tr>
+            <tr><td><b>3 · Shipped</b></td><td>09, 10</td><td>Intake catalogue normalised (3 active, 13 historical, 8,522 students linked); lecturer filters by intake/class/mode; billing filtered by programme with Billing / Open balance / Total; arrears-first enforced.</td><td class="num">146</td></tr>
+            <tr><td><b>4 · Shipped</b></td><td>01, 07</td><td>Board decisions per student, applied on finalise behind a dry-run preview; student self-service in three tiers with a registry approval queue.</td><td class="num">147, 148, 149</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="section-head display">Faults found while building</h3>
+      <p class="section-note">None of these were in the report — they surfaced only because each feature was exercised against the real database. Three of them made a requested feature impossible.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Fault</th><th>Effect</th><th>Fix</th></tr></thead>
+          <tbody>
+            <tr><td><b>QR code never rendered</b></td><td>Every ID card printed an empty grey square. The helper used chillerlan/php-qrcode <em>v5</em> constant names against the pinned <em>v4.4.2</em>; both branches threw and a bare catch swallowed it.</td><td>v4 API, and the catch now logs</td></tr>
+            <tr><td><b>Mark sheets 500'd</b></td><td>Every module's mark sheet failed to load — a query selected <code>users.first_name</code>/<code>last_name</code>, columns that do not exist on that table.</td><td>Use <code>full_name</code></td></tr>
+            <tr><td><b>Deliberations had no primary key</b></td><td>No session could ever be created; every attempt failed on a missing <code>id</code> default.</td><td>Migration 149</td></tr>
+            <tr><td><b>No mark-range validation</b></td><td>A CAT of 999/15 saved happily and produced a percentage over 100, flowing into grades and transcripts.</td><td>Whole-sheet check before any write</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Decisions -->
+      <h3 class="section-head display" id="decisions">Open decisions</h3>
+      <p class="section-note">Each was implemented under a stated assumption rather than left blocked. Confirm these; changing any one is a small edit now, not a rebuild.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th class="num">Item</th><th>Question</th><th>Assumption taken</th></tr></thead>
+          <tbody>
+            <tr><td class="num">01</td><td>Can a finalised session be reopened?</td><td>No — but finalising now shows a server-built dry run of every level and status change first, and refuses to run twice.</td></tr>
+            <tr><td class="num">07</td><td>What does a student's "full information" cover?</td><td>Three tiers: contact details save instantly; names, DOB, national ID and parents need registry approval with evidence; programme, level, status and reg number stay registry-only.</td></tr>
+            <tr><td class="num">09</td><td>What is <em>Class</em>?</td><td>Level of study — the same value the ID card already prints as "Class".</td></tr>
+            <tr><td class="num">09</td><td>Do the three intakes replace the existing ones?</td><td>They coexist. January/May/September 2026 are the only <em>active</em> intakes; 13 historical ones (March, June, September 2022–2026) are retained as inactive, because 5,100+ students belong to them and deleting them would make the very filter being asked for useless.</td></tr>
+            <tr><td class="num">10</td><td>Definitions of Billing, Open balance, Total.</td><td>Billing = charged this academic year; Open balance = brought forward (the ARREARS invoice); Total = still outstanding. Verified against seeded invoices.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <footer>
+        Every item was verified against the live database — endpoints exercised over HTTP, migrations re-run to prove idempotency, and all seeded test data removed afterwards. Two things are worth raising with the registry directly. First, several items were reported as missing when the underlying feature existed but was broken (the QR code, the mark sheet) — worth asking how long those had been failing silently. Second, the applications "Total" tile counts auto-hidden applications that the table below it excludes, so the two disagree; that is pre-existing and was left alone rather than quietly changing what a finance-facing number means.
+      </footer>
+
+    </main>
+  </div>
+</div>

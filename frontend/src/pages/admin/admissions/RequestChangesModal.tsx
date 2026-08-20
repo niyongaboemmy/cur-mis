@@ -31,10 +31,18 @@ export default function RequestChangesModal({
   onSuccess,
 }: RequestChangesModalProps) {
   const [step, setStep] = useState(1);
-  const [selectedDocIds, setSelectedDocIds] = useState<number[]>(
+  // Requirements with nothing attached have no application_documents row, so the
+  // selection is keyed by document type — it is stable for uploaded and
+  // not-yet-uploaded items alike.
+  const [selectedTypeIds, setSelectedTypeIds] = useState<number[]>(
     documents
-      .filter((d) => d.verification_status === "rejected")
-      .map((d) => d.id),
+      .filter(
+        (d) =>
+          d.verification_status === "rejected" ||
+          (d as any).id == null ||
+          (d as any).is_uploaded === false,
+      )
+      .map((d) => d.document_type_id),
   );
   const [message, setMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -44,26 +52,32 @@ export default function RequestChangesModal({
 
   if (!isOpen) return null;
 
-  const handleToggleDoc = (id: number) => {
-    setSelectedDocIds((prev) =>
-      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id],
+  const handleToggleDoc = (typeId: number) => {
+    setSelectedTypeIds((prev) =>
+      prev.includes(typeId)
+        ? prev.filter((i) => i !== typeId)
+        : [...prev, typeId],
     );
   };
 
+  const isSelected = (doc: ApplicationDocument) =>
+    selectedTypeIds.includes(doc.document_type_id);
+
+  const isMissing = (doc: ApplicationDocument) => (doc as any).id == null;
+
   const handleSubmit = async () => {
-    if (selectedDocIds.length === 0) return;
+    if (selectedTypeIds.length === 0) return;
+
+    const selected = documents.filter(isSelected);
 
     setIsSubmitting(true);
     try {
-      // First, we might need to ensure the selected docs are marked as rejected on the backend
-      // But for now, the 'request-changes' endpoint sends email for current 'rejected' docs.
-      // If the user selects docs that AREN'T rejected yet, we should probably update them first.
-
-      // For simplicity and to match the user's "Selecting documents" request:
-      // We will tell the backend to send the email with the message.
       await verificationService.requestDocumentChanges(applicationId, {
         message,
-        document_ids: selectedDocIds,
+        document_ids: selected
+          .filter((d) => !isMissing(d))
+          .map((d) => d.id as number),
+        document_type_ids: selected.map((d) => d.document_type_id),
       });
       onSuccess();
       onClose();
@@ -120,18 +134,18 @@ export default function RequestChangesModal({
               <div className="flex flex-col w-full gap-3">
                 {documents.map((doc) => (
                   <div
-                    key={doc.id}
+                    key={doc.id ?? `type-${doc.document_type_id}`}
                     className={`group w-full p-4 rounded-2xl border-2 transition-all cursor-pointer flex items-center justify-between gap-4 ${
-                      selectedDocIds.includes(doc.id)
+                      isSelected(doc)
                         ? "border-red-500 bg-red-50/30 dark:bg-red-900/10"
                         : "border-ink-100 dark:border-ink-800 hover:border-brand/20 bg-white dark:bg-ink-900"
                     }`}
-                    onClick={() => handleToggleDoc(doc.id)}
+                    onClick={() => handleToggleDoc(doc.document_type_id)}
                   >
                     <div className="flex items-center gap-4">
                       <div
                         className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                          selectedDocIds.includes(doc.id)
+                          isSelected(doc)
                             ? "bg-red-100 text-red-600"
                             : "bg-ink-100 text-ink-400"
                         }`}
@@ -143,29 +157,33 @@ export default function RequestChangesModal({
                           {doc.type_name}
                         </p>
                         <p className="text-[11px] text-ink-500 max-w-[360px] truncate">
-                          {doc.file_original_name}
+                          {isMissing(doc)
+                            ? `Not uploaded${(doc as any).is_required ? " · required" : ""}`
+                            : doc.file_original_name}
                         </p>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <button
-                        className="p-2 rounded-lg hover:bg-white dark:hover:bg-ink-800 text-ink-400 hover:text-brand transition-colors"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setPreviewDoc(doc);
-                        }}
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
+                      {!isMissing(doc) && (
+                        <button
+                          className="p-2 rounded-lg hover:bg-white dark:hover:bg-ink-800 text-ink-400 hover:text-brand transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPreviewDoc(doc);
+                          }}
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                      )}
                       <div
                         className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${
-                          selectedDocIds.includes(doc.id)
+                          isSelected(doc)
                             ? "border-red-500 bg-red-500 text-white"
                             : "border-ink-200 dark:border-ink-700"
                         }`}
                       >
-                        {selectedDocIds.includes(doc.id) && (
+                        {isSelected(doc) && (
                           <CheckCircle2 className="w-4 h-4" />
                         )}
                       </div>
@@ -196,17 +214,19 @@ export default function RequestChangesModal({
 
               <div className="bg-ink-50 dark:bg-ink-800/50 p-4 rounded-2xl border border-ink-100 dark:border-ink-800">
                 <p className="text-[11px] uppercase tracking-widest font-black text-ink-400 mb-2">
-                  Selected for change ({selectedDocIds.length})
+                  Selected for change ({selectedTypeIds.length})
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  {selectedDocIds.map((id) => {
-                    const doc = documents.find((d) => d.id === id);
+                  {selectedTypeIds.map((typeId) => {
+                    const doc = documents.find(
+                      (d) => d.document_type_id === typeId,
+                    );
                     return (
                       <span
-                        key={id}
+                        key={typeId}
                         className="px-3 py-1 bg-white dark:bg-ink-900 border border-ink-200 dark:border-ink-700 rounded-full text-[12px] font-bold text-ink-700 dark:text-ink-300"
                       >
-                        {doc?.type_name}
+                        {doc?.type_name ?? doc?.document_type_name}
                       </span>
                     );
                   })}
@@ -231,7 +251,7 @@ export default function RequestChangesModal({
           {step === 1 ? (
             <button
               className="btn-primary px-8 shadow-xl shadow-brand/20"
-              disabled={selectedDocIds.length === 0}
+              disabled={selectedTypeIds.length === 0}
               onClick={() => setStep(2)}
             >
               Next Step <ChevronRight className="w-4 h-4 ml-2" />
@@ -270,7 +290,7 @@ export default function RequestChangesModal({
                 <img
                   src={verificationService.downloadUrl(
                     applicationId,
-                    previewDoc.id,
+                    previewDoc.id as number,
                   )}
                   className="w-full h-full object-contain"
                   alt="Preview"
@@ -279,7 +299,7 @@ export default function RequestChangesModal({
                 <iframe
                   src={verificationService.downloadUrl(
                     applicationId,
-                    previewDoc.id,
+                    previewDoc.id as number,
                   )}
                   className="w-full h-full rounded-xl bg-white"
                   title="PDF Preview"

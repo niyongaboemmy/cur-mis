@@ -26,6 +26,23 @@ class AuthMiddleware
             ResponseHelper::json(['success' => false, 'message' => 'Unauthorized. Invalid or expired token.'], 401);
         }
 
-        $request->setRouteParams(['_auth_user' => $decoded['user'] ?? $decoded]);
+        $tokenUser = (array) ($decoded['user'] ?? $decoded);
+
+        // Authorisation is resolved from the database, not from the token.
+        // The JWT's `role` / `permissions[]` claims are a snapshot taken at
+        // login, so without this a permission granted to a role today would
+        // not reach its holders until their week-long token expired and they
+        // logged in again — while the frontend, which gates off the
+        // DB-backed /api/auth/me, had already shown them the feature.
+        $user = AuthService::hydrateAuthUser($tokenUser);
+
+        if ($user === null) {
+            ResponseHelper::json([
+                'success' => false,
+                'message' => 'Unauthorized. This account is no longer active.',
+            ], 401);
+        }
+
+        $request->setRouteParams(['_auth_user' => $user]);
     }
 }

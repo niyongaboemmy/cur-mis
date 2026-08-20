@@ -143,6 +143,13 @@ export interface FeePayment {
   created_at:           string
   fee_type?:            FeeType
   academic_year_id?:    number
+  /** fee_types.label for `fee_type` — set by the API, and the only label that
+   *  covers categories added after FEE_TYPE_LABELS was written. */
+  fee_type_label?:      string | null
+  /** The UrubutoPay service the payer selected, when the payment came from the
+   *  gateway: the code as sent, and its catalogue name ("Fines", "Transcript"). */
+  urubuto_service_code?: string | null
+  urubuto_service_name?: string | null
 }
 
 export interface RecordPaymentPayload {
@@ -270,11 +277,16 @@ export interface BillingSummary {
   lname:            string
   faculty:          string
   department:       string
-  opening_balance:  number
+  /** Charged for THIS academic year (everything except the ARREARS invoice). */
+  current_billed:      number
+  /** Brought forward from previous years — the ARREARS invoice FeeService bills. */
+  opening_balance:     number
+  /** How much of that opening balance is still unpaid. */
+  opening_outstanding: number
+  has_arrears:         number
   total_expected:   number
   total_collected:  number
   total_bursary:    number
-  total_required:   number
   balance:          number
   structure_tuition: number | null
 }
@@ -1012,3 +1024,55 @@ export interface FinanceStudentDirectoryRow {
   fee_status:   FinanceStudentFeeSummary
 }
 
+
+/* ────────────────────────────────────────────────────────────────────
+ * Student self-service fines (GET /api/finance/my/fines)
+ * ──────────────────────────────────────────────────────────────────── */
+
+export type FineType =
+  | 'LATE_SUBMISSION'
+  | 'LOST_ID_CARD'
+  | 'LIBRARY_FINE'
+  | 'LATE_REGISTRATION'
+  | 'ACADEMIC_DOCUMENT'
+  | 'OTHER'
+
+export const FINE_TYPE_LABELS: Record<FineType, string> = {
+  LATE_SUBMISSION:   'Late Submission',
+  LOST_ID_CARD:      'Lost ID Card',
+  LIBRARY_FINE:      'Library Fine',
+  LATE_REGISTRATION: 'Late Registration',
+  ACADEMIC_DOCUMENT: 'Academic Document',
+  OTHER:             'Other',
+}
+
+/** pending/invoiced are owed; paid/waived are settled. */
+export type FineStatus = 'pending' | 'invoiced' | 'waived' | 'paid'
+
+export interface MyFine {
+  id:                  number
+  fine_type:           FineType
+  reason:              string
+  amount:              number
+  status:              FineStatus
+  created_at:          string
+  waived_at:           string | null
+  /** The FINE invoice this was billed on — the payable target. */
+  invoice_id:          number | null
+  invoice_number:      string | null
+  invoice_status:      InvoiceStatus | null
+  due_date:            string | null
+  academic_year_id:    number | null
+  academic_year_label: string | null
+  /** Amount still outstanding on the linked invoice. */
+  balance:             number
+}
+
+export interface MyFinesResponse {
+  fines: MyFine[]
+  summary: {
+    total_fines:        number
+    outstanding_count:  number
+    outstanding_amount: number
+  }
+}

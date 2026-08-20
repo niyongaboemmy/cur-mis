@@ -12,6 +12,7 @@ import Pagination, { DEFAULT_PER_PAGE_OPTIONS } from '@/components/ui/Pagination
 import { useDebounce } from '@/hooks/useDebounce'
 import { cn } from '@/utils/helpers'
 import { useGradingScale } from '@/utils/gradingScale'
+import { useLevels } from '@/hooks/useLevels'
 import {
   graduandService,
   type AuditLevelGroup,
@@ -60,6 +61,7 @@ function defaultCutoff(): string {
 /* ── Panel ─────────────────────────────────────────────────────────────────── */
 
 export default function GraduationAuditPanel() {
+  const { levels } = useLevels()
   const [startedBefore, setStartedBefore] = useState(defaultCutoff)
   // Opens on the students who already have a mark for every module in their
   // program — the graduation list itself. The other buckets are one click away.
@@ -142,7 +144,8 @@ export default function GraduationAuditPanel() {
               className="rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:border-ink-700 dark:bg-ink-900 dark:text-white"
             >
               <option value={0}>Any</option>
-              {[1, 2, 3, 4, 5].map((l) => <option key={l} value={l}>Year {l}</option>)}
+              {/* Named from the catalogue; the value stays the id the API filters on. */}
+              {levels.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
             </select>
           </div>
 
@@ -498,6 +501,7 @@ const pctOf = (v: number | string | null | undefined): number | null => {
 export function StudentAuditModal({ row, onClose }: { row: AuditModalTarget | null; onClose: () => void }) {
   const [only, setOnly] = useState<'all' | 'outstanding'>('all')
   const scale = useGradingScale()
+  const { levelName } = useLevels()
 
   const { data: result, isLoading } = useQuery({
     queryKey: ['graduation-audit-detail', row?.id],
@@ -534,7 +538,7 @@ export function StudentAuditModal({ row, onClose }: { row: AuditModalTarget | nu
         ? g.modules
         : g.modules.filter((m) => m.status === 'missing' || m.status === 'pending' || m.status === 'failed')
       mods.forEach((m) => out.push({
-        Level:        g.level_name,
+        Level:        g.level_name ?? levelName(g.level_id, ''),
         Code:         m.module_code || '—',
         Module:       m.module_name || '—',
         Credits:      m.module_credits || '',
@@ -661,7 +665,7 @@ export function StudentAuditModal({ row, onClose }: { row: AuditModalTarget | nu
                 value={detail.student.started_on ?? '—'}
                 hint={detail.student.start_source ? START_SOURCE_HINT[detail.student.start_source] : undefined}
               />
-              <Fact label="Year of study" value={detail.student.current_level ?? '—'} />
+              <Fact label="Year of study" value={levelName(detail.student.current_level)} />
               <Fact label="Enrolment" value={detail.student.student_state ?? '—'} />
             </div>
 
@@ -766,7 +770,7 @@ export function StudentAuditModal({ row, onClose }: { row: AuditModalTarget | nu
             return (
               <div key={`${g.level_id ?? 'none'}`} className="overflow-hidden rounded-lg border border-gray-200 dark:border-ink-700">
                 <div className="flex items-center justify-between bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-700 dark:bg-ink-900/40 dark:text-ink-200">
-                  <span>{g.level_name}</span>
+                  <span>{g.level_name ?? levelName(g.level_id)}</span>
                   <span className="font-normal text-gray-500 dark:text-ink-400">
                     {g.modules.filter((m) => m.status !== 'missing' && m.status !== 'pending').length} of {g.modules.length} recorded
                   </span>

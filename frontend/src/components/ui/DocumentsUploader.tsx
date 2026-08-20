@@ -193,7 +193,7 @@ function Row({
           open={previewOpen}
           onClose={() => setPreviewOpen(false)}
           title={requirement.document_type_name || "Document Preview"}
-          url={applicantService.downloadUrl(existing.id)}
+          url={applicantService.downloadUrl(existing.id as number)}
           mimeType={existing.file_mime ?? undefined}
         />
       )}
