@@ -706,8 +706,12 @@ class FeeController extends BaseController
      */
     public function listAllStudentsWithStatus(Request $request, Response $response): never
     {
+        // Not cast to int: getIntakeYears() hands the UI an intake label
+        // ("2023-2024") whenever that cohort has no `academic_years` row, and
+        // the service accepts either form. An (int) cast here would turn the
+        // label into 0 and silently widen the filter to every year.
         $filters = [
-            'academic_year_id' => (int)($request->query('academic_year_id') ?? 0),
+            'academic_year_id' => $request->query('academic_year_id') ?: 0,
             'semester'         => $request->query('semester') !== null ? (int)$request->query('semester') : null,
             'faculty_id'       => $request->query('faculty_id') !== null ? (int)$request->query('faculty_id') : null,
             'department_id'    => $request->query('department_id') !== null ? (int)$request->query('department_id') : null,
@@ -718,9 +722,10 @@ class FeeController extends BaseController
             'per_page'         => (int)($request->query('per_page') ?? 50),
         ];
 
-        if (!$filters['academic_year_id']) {
-            $this->error($response, 'Academic Year is required.', 400);
-        }
+        // No year guard here, unlike /billing/summary: this endpoint backs the
+        // Billing screen's opening state, which lists every active student
+        // before a cohort is picked. The year narrows the invoice sums when
+        // given; without it they span all years.
 
         try {
             $result = $this->service->getAllStudentsWithStatus($filters);

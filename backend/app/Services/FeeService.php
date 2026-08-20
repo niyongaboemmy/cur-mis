@@ -607,40 +607,28 @@ class FeeService
         $page            = (int)($filters['page'] ?? 1);
         $perPage         = (int)($filters['per_page'] ?? 50);
 
-        if (!$yearIdOrIntake) {
-            throw new \InvalidArgumentException("Academic Year is required.");
-        }
+        // The year is optional here: the Billing screen opens with no cohort
+        // chosen and expects every active student listed, invoiced or not. With
+        // no year the invoice sums below simply span all years instead of one.
+        // Handle both numeric ID and intake year text (e.g., "2024/2025").
+        $yearId     = null;
+        $intakeYear = null;
 
-        // Handle both numeric ID and intake year text (e.g., "2024/2025")
-        $yearId = is_numeric($yearIdOrIntake) ? (int)$yearIdOrIntake : null;
-        $intakeYear = !is_numeric($yearIdOrIntake) ? (string)$yearIdOrIntake : null;
+        if ($yearIdOrIntake) {
+            $yearId     = is_numeric($yearIdOrIntake) ? (int)$yearIdOrIntake : null;
+            $intakeYear = !is_numeric($yearIdOrIntake) ? (string)$yearIdOrIntake : null;
 
-        if (!$yearId && !$intakeYear) {
-            throw new \InvalidArgumentException("Invalid academic year.");
-        }
-
-        // Get previous year ID for opening_balance
-        if ($yearId) {
-            $prevYearId = $this->db->fetchOne(
-                "SELECT id FROM `academic_years` WHERE id < ? ORDER BY id DESC LIMIT 1",
-                [$yearId]
-            );
-            $openingYearId = $prevYearId ? (int)$prevYearId['id'] : $yearId;
-        } else {
-            // If using intake year, get the numeric year ID and previous
-            $yearRecord = $this->db->fetchOne(
-                "SELECT id FROM `academic_years` WHERE label = ? LIMIT 1",
-                [$intakeYear]
-            );
-            $yearId = $yearRecord ? (int)$yearRecord['id'] : null;
-            if (!$yearId) {
-                throw new \InvalidArgumentException("Academic year not found: {$intakeYear}");
+            // An intake label is a cohort on `student`, not necessarily a row in
+            // `academic_years` — students carry intakes the calendar never got.
+            // Filter by the label and let the sums span all years, rather than
+            // rejecting a cohort the registry can legitimately select.
+            if ($intakeYear) {
+                $yearRecord = $this->db->fetchOne(
+                    "SELECT id FROM `academic_years` WHERE label = ? OR label = ? LIMIT 1",
+                    [$intakeYear, str_replace('-', '/', $intakeYear)]
+                );
+                $yearId = $yearRecord ? (int)$yearRecord['id'] : null;
             }
-            $prevYearId = $this->db->fetchOne(
-                "SELECT id FROM `academic_years` WHERE id < ? ORDER BY id DESC LIMIT 1",
-                [$yearId]
-            );
-            $openingYearId = $prevYearId ? (int)$prevYearId['id'] : $yearId;
         }
 
         $where = ["s.student_state = 'active'"];
@@ -651,7 +639,8 @@ class FeeService
             $whereBindings[] = $intakeYear;
         }
 
-        $bindings = [$yearId]; // For the left join subquery
+        $yearSql  = $yearId ? "AND academic_year_id = ?" : "";
+        $bindings = $yearId ? [$yearId] : []; // For the left join subquery
 
         if ($semester) {
             $semSql = "AND (semester = ? OR semester IS NULL)";
@@ -711,11 +700,12 @@ class FeeService
                                  THEN amount_due - amount_paid - bursary_applied
                                  ELSE 0 END) AS opening_outstanding
                     FROM `fee_invoices`
-                    WHERE academic_year_id = ? AND fee_type != 'BURSARY_CREDIT' {$semSql}
+                    WHERE fee_type != 'BURSARY_CREDIT' {$yearSql} {$semSql}
                     GROUP BY student_id
                 ) AS sums ON sums.student_id = s.regnumber COLLATE utf8mb4_unicode_ci";
 
-        $sumsBindings = array_merge([$yearId], ($semester ? [$semester] : []));
+        // Bindings must mirror the placeholder order in the subquery: year, then semester.
+        $sumsBindings = array_merge(($yearId ? [$yearId] : []), ($semester ? [$semester] : []));
 
         // Total count
         $totalSql = "SELECT COUNT(*) AS cnt FROM `student` s WHERE {$whereSql}";

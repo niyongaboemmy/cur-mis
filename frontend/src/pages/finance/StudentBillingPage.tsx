@@ -97,7 +97,10 @@ export default function StudentBillingPage() {
     queryKey: ["finance", "billing", "intake-years"],
     queryFn: () => api.get<any>("/api/finance/billing/intake-years"),
   });
-  const years = yearsQ.data?.data?.data ?? [];
+  // getIntakeYears() returns a flat array, so the payload is one level up from
+  // the paginated dropdowns below (faculties/departments/options), which nest
+  // their rows inside a {data, total} envelope.
+  const years = yearsQ.data?.data ?? [];
 
   const termsQ = useQuery({
     queryKey: ["academic-terms", yearId],
@@ -164,9 +167,11 @@ export default function StudentBillingPage() {
           per_page: 50,
         });
       }
-      // If year selected, filter by that year
+      // If year selected, filter by that year. Sent as-is rather than through
+      // Number(): a cohort with no `academic_years` row is identified by its
+      // intake label ("2023-2024"), which Number() would turn into NaN.
       return api.get<any>('/api/finance/billing/all-students', {
-        academic_year_id: Number(yearId),
+        academic_year_id: yearId,
         semester: semester ? Number(semester) : undefined,
         faculty_id: facultyId ? Number(facultyId) : undefined,
         department_id: deptId ? Number(deptId) : undefined,
