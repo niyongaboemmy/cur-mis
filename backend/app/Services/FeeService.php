@@ -411,6 +411,13 @@ class FeeService
 
         $whereSql = implode(" AND ", $where);
 
+        // Merge note (main ← emmy): main JOINed a separate, manually-created
+        // `student_opening_balance` table here and ADDED it to total_due, while
+        // emmy derives the opening balance from the ARREARS invoice FeeService
+        // already generates — which is inside total_due. The two cannot both
+        // apply: keeping them together double-counted every carried-forward
+        // debt. emmy's version won (it ships a migration; main's table had
+        // none), so the JOIN, its binding and its select were removed.
         // Build the sums subquery fragment (reused in count query when balance filter is active)
         $sumsJoin = "LEFT JOIN (
                     SELECT student_id,
@@ -456,11 +463,16 @@ class FeeService
         // 2. Get paginated data
         $offset = ($page - 1) * $perPage;
         
-        // Main bindings (with structure_tuition subquery and opening_balance join)
+        // Main bindings, in the order the placeholders appear in $sql:
+        //   1-2  structure_tuition subquery  (fs.academic_year_id, fs.semester)
+        //   3    the sums subquery           (academic_year_id)
+        //   4    {$semSql}, when a semester is selected
+        //   5+   {$whereSql}
+        // main carried a fourth year binding here for its
+        // `student_opening_balance` JOIN; that JOIN is gone (see the merge note
+        // above), and leaving its binding behind shifted everything after it.
         $mainBindings = array_merge(
             [$yearId, $semester],
-            [$yearId],
-            [$openingYearId],
             [$yearId],
             ($semester ? [$semester] : []),
             $whereBindings
@@ -480,7 +492,6 @@ class FeeService
                     s.lname,
                     f.fac_name AS faculty,
                     d.dep_name AS department,
-                    COALESCE(sob.opening_balance, 0) AS opening_balance,
                     COALESCE(sums.total_due, 0) AS total_expected,
                     COALESCE(sums.total_paid, 0) AS total_collected,
                     COALESCE(sums.total_bursary, 0) AS total_bursary,
@@ -511,7 +522,6 @@ class FeeService
                     NULLIF(CAST(s.department AS UNSIGNED), 0),
                     (SELECT dep_id FROM `departements` WHERE dep_acronym = s.department LIMIT 1)
                 )
-                LEFT JOIN `student_opening_balance` sob ON sob.student_id = s.regnumber AND sob.academic_year_id = ?
                 LEFT JOIN (
                     SELECT
                         student_id,
@@ -660,12 +670,10 @@ class FeeService
             if (!isset($whereBindings)) $whereBindings = [];
             $whereBindings[] = $dept;
         }
-        if ($option) {
-            $where[] = "s.option_id = ?";
-            if (!isset($whereBindings)) $whereBindings = [];
-            $whereBindings[] = $option;
-        }
-        // Programme (option) — see the note in getGroupBillingSummary().
+        // Programme (option). NOTE: main filtered on `s.option_id`, which does
+        // not exist on `student`; the real column is `s.std_option` (options.id
+        // stored as text). emmy's condition below is the surviving one.
+        // See the note in getGroupBillingSummary().
         if (!empty($filters['option_id'])) {
             $where[] = "s.std_option COLLATE utf8mb4_unicode_ci = CAST(? AS CHAR) COLLATE utf8mb4_unicode_ci";
             $bindings[] = (int)$filters['option_id'];
@@ -733,7 +741,6 @@ class FeeService
                     s.student_state,
                     (SELECT fac_name FROM `faculty` WHERE fac_id = CAST(s.faculty AS UNSIGNED) LIMIT 1) AS faculty,
                     (SELECT dep_name FROM `departements` WHERE dep_id = CAST(s.department AS UNSIGNED) LIMIT 1) AS department,
-                    COALESCE(sob.opening_balance, 0) AS opening_balance,
                     COALESCE(sums.total_due, 0) AS total_expected,
                     COALESCE(sums.total_paid, 0) AS total_collected,
                     COALESCE(sums.total_bursary, 0) AS total_bursary,
@@ -745,13 +752,12 @@ class FeeService
                     IF(COALESCE(sums.opening_outstanding, 0) > 0, 1, 0) AS has_arrears,
                     IF(COALESCE(sums.total_due, 0) > 0, 1, 0) AS has_invoices
                  FROM `student` s
-                 LEFT JOIN `student_opening_balance` sob ON sob.student_id = s.regnumber AND sob.academic_year_id = ?
                  {$sumsJoin}
                  WHERE {$whereSql}
                  ORDER BY s.fname ASC
                  LIMIT ? OFFSET ?";
 
-        $dataBindings = array_merge([$openingYearId], $sumsBindings, $whereBindings, [$perPage, $offset]);
+        $dataBindings = array_merge($sumsBindings, $whereBindings, [$perPage, $offset]);
         $results = $this->db->fetchAll($dataSql, $dataBindings);
 
         return [

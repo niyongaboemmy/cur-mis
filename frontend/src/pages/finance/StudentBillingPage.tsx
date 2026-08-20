@@ -655,7 +655,7 @@ export default function StudentBillingPage() {
                       {/* Invoiced */}
                       <td className="px-4 py-3 text-right">
                         <div>
-                          <p className="font-mono text-xs font-bold text-ink-800 dark:text-ink-100">{formatRWF(invoiced)}</p>
+                          <p className="font-mono text-xs font-bold text-ink-800 dark:text-ink-100">{formatRWF(due)}</p>
                           {/* mini progress */}
                           <div className="w-full h-0.5 bg-ink-100 dark:bg-ink-700 rounded-full mt-1.5 overflow-hidden">
                             <div

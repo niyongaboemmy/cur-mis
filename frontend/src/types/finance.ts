@@ -277,11 +277,16 @@ export interface BillingSummary {
   lname:            string
   faculty:          string
   department:       string
-  opening_balance:  number
+  /** Charged for THIS academic year (everything except the ARREARS invoice). */
+  current_billed:      number
+  /** Brought forward from previous years — the ARREARS invoice FeeService bills. */
+  opening_balance:     number
+  /** How much of that opening balance is still unpaid. */
+  opening_outstanding: number
+  has_arrears:         number
   total_expected:   number
   total_collected:  number
   total_bursary:    number
-  total_required:   number
   balance:          number
   structure_tuition: number | null
 }
