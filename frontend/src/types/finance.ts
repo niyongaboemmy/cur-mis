@@ -265,15 +265,16 @@ export interface FinanceSummary {
 // ─── Billing Summary ──────────────────────────────────────────────────────────
 
 export interface BillingSummary {
-  regnumber:       string
-  fname:           string
-  lname:           string
-  faculty:         string
-  department:      string
-  total_expected:  number
-  total_collected: number
-  total_bursary:   number
-  balance:         number
+  regnumber:        string
+  fname:            string
+  lname:            string
+  faculty:          string
+  department:       string
+  opening_balance:  number
+  total_expected:   number
+  total_collected:  number
+  total_bursary:    number
+  balance:          number
   structure_tuition: number | null
 }
 
