@@ -30,7 +30,6 @@ import type { BillingSummary } from "@/types/finance";
 
 export default function StudentBillingPage() {
   const basics = useSystemStore((s) => s.basics);
-  const selectedYearLabel = useSystemStore((s) => s.selectedYearLabel);
   const selectedTermId = useSystemStore((s) => s.selectedTermId);
 
   const [yearId, setYearId] = useState<string | number>("");
@@ -563,7 +562,6 @@ export default function StudentBillingPage() {
               </thead>
               <tbody className="divide-y divide-ink-50 dark:divide-ink-800/60">
                 {filteredStudents.map((s) => {
-                  const opening  = Number(s.opening_balance)
                   const invoiced = Number(s.total_expected)
                   const paid     = Number(s.total_collected)
                   const bursary  = Number(s.total_bursary)
