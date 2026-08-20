@@ -36,19 +36,8 @@ export default function StudentBillingPage() {
   const [yearId, setYearId] = useState<string | number>("");
   const [semester, setSemester] = useState<string | number>("");
 
-  // Sync with global academic year — always default to active year if nothing is selected
-  useEffect(() => {
-    if (selectedYearLabel) {
-      const year = basics?.years?.find((y) => y.label === selectedYearLabel);
-      if (year) {
-        setYearId(year.id);
-      }
-    } else if (!yearId) {
-      // Fallback to active year if yearId is not set
-      const active = basics?.active_year as any;
-      if (active?.id) setYearId(active.id);
-    }
-  }, [selectedYearLabel, basics?.years, basics?.active_year]);
+  // For billing, we use intake years from student table, not the global academic year
+  // Don't auto-select a year — let user choose from available intake cohorts
 
   // Sync with global academic term
   useEffect(() => {
