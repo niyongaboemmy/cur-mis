@@ -283,7 +283,7 @@ const QUICK_ACTIONS: QA[] = [
     hideForRoles: ["student", "applicant"],
   },
 
-  // Registrar Report
+  // Registrar Report — visible to all authenticated users
   {
     to: "https://cur.ac.rw/umis/documents/registrar_report/index.php",
     icon: FileText,
@@ -291,6 +291,7 @@ const QUICK_ACTIONS: QA[] = [
     sub: "Academic registrar documents",
     accent:
       "bg-accent-lilac text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
+    // No permissions or roles required — visible to every authenticated user
   },
 ];
 
