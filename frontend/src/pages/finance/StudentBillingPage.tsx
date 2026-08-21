@@ -299,7 +299,7 @@ export default function StudentBillingPage() {
   const studentsQ = useQuery({
     queryKey: ["billing-students", studentState, debouncedKeyword, page, sortField, sortOrder],
     queryFn: () =>
-      api.get<any>("/api/finance/billing/all-students", {
+      api.get<any>("/finance/billing/all-students", {
         state: studentState !== "all" ? studentState : undefined,
         keyword: debouncedKeyword || undefined,
         sort: sortField,
@@ -332,7 +332,7 @@ export default function StudentBillingPage() {
   const generateMutation = useMutation({
     mutationFn: async () => {
       if (selectedStudents.size === 0) throw new Error("Please select at least one student");
-      return api.post("/api/finance/billing/bulk-generate", { student_ids: Array.from(selectedStudents) });
+      return api.post("/finance/billing/bulk-generate", { student_ids: Array.from(selectedStudents) });
     },
     onSuccess: () => {
       toast.success(`✅ Invoices generated for ${selectedStudents.size} students`);
