@@ -2259,7 +2259,12 @@ class FeeService
         ];
         $orderField = $sortMap[$sort] ?? 'opening_balance';
 
-        $countSql = "SELECT COUNT(DISTINCT s.id) as total FROM student s $whereSql";
+        $countSql = "
+            SELECT COUNT(DISTINCT s.id) as total
+            FROM student s
+            LEFT JOIN student_opening_balances sob ON s.id = sob.student_id
+            $whereSql
+        ";
         $countResult = $this->db->fetchOne($countSql, $whereBindings);
         $total = (int)($countResult['total'] ?? 0);
 
@@ -2286,12 +2291,8 @@ class FeeService
             LEFT JOIN (
                 SELECT student_id, opening_balance
                 FROM student_opening_balances
-                WHERE (student_id, academic_year_id) IN (
-                    SELECT student_id, MAX(academic_year_id)
-                    FROM student_opening_balances
-                    WHERE semester = 1
-                    GROUP BY student_id
-                )
+                WHERE semester = 1
+                ORDER BY academic_year_id DESC
             ) sob ON s.id = sob.student_id
             LEFT JOIN (
                 SELECT fi.student_id, SUM(CAST(fi.amount_due AS DECIMAL(12,2))) as total_amount
