@@ -130,6 +130,7 @@ export default function ModulesCatalogPage() {
               <th className="px-4 py-2.5 font-bold text-ink-400 uppercase tracking-wider text-[10px]">Credits</th>
               <th className="px-4 py-2.5 font-bold text-ink-400 uppercase tracking-wider text-[10px]">Level</th>
               <th className="px-4 py-2.5 font-bold text-ink-400 uppercase tracking-wider text-[10px]">Department</th>
+              <th className="px-4 py-2.5 font-bold text-ink-400 uppercase tracking-wider text-[10px]">Learning Mode</th>
               <th className="px-4 py-2.5 font-bold text-ink-400 uppercase tracking-wider text-[10px]">Prereqs</th>
               <th className="px-4 py-2.5 font-bold text-ink-400 uppercase tracking-wider text-[10px]">Status</th>
               <th className="px-4 py-2.5 font-bold text-ink-400 uppercase tracking-wider text-[10px] text-right">Actions</th>
@@ -137,11 +138,11 @@ export default function ModulesCatalogPage() {
           </thead>
           <tbody className="divide-y divide-ink-100 dark:divide-ink-700">
             {q.isLoading ? (
-              <tr><td colSpan={8} className="p-8 text-center">
+              <tr><td colSpan={9} className="p-8 text-center">
                 <Loader2 className="w-6 h-6 animate-spin mx-auto text-brand" />
               </td></tr>
             ) : rows.length === 0 ? (
-              <tr><td colSpan={8} className="p-8 text-center text-ink-400">No modules match the filter.</td></tr>
+              <tr><td colSpan={9} className="p-8 text-center text-ink-400">No modules match the filter.</td></tr>
             ) : rows.map((m) => (
               <tr key={m.module_id} className="hover:bg-ink-50/50 dark:hover:bg-ink-700/20">
                 <td className="px-4 py-3 font-mono text-ink-900 dark:text-white">{m.module_code}</td>
@@ -150,6 +151,15 @@ export default function ModulesCatalogPage() {
                 <td className="px-4 py-3">{(m as any).level_name ?? levelName(m.level)}</td>
                 <td className="px-4 py-3 text-ink-500">
                   {deptMap.get(Number(m.department)) ?? `#${m.department}`}
+                </td>
+                <td className="px-4 py-3">
+                  <span className={`chip-xs ${
+                    m.learning_mode === 'weekend' ? 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400'
+                    : m.learning_mode === 'holiday' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400'
+                    : 'bg-slate-100 text-slate-700 dark:bg-slate-500/20 dark:text-slate-400'
+                  }`}>
+                    {m.learning_mode ? m.learning_mode.charAt(0).toUpperCase() + m.learning_mode.slice(1) : 'Day'}
+                  </span>
                 </td>
                 <td className="px-4 py-3 text-ink-500">
                   {(m.prerequisites ?? []).length === 0

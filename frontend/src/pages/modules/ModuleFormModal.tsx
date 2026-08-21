@@ -17,7 +17,7 @@ interface Props {
 const EMPTY: CreateModulePayload = {
   module_name: '', module_code: '', module_credits: 0,
   department: 0, level: 1,
-  description: '', status: 'active',
+  description: '', status: 'active', learning_mode: 'day',
   prerequisite_ids: [],
 }
 
@@ -57,6 +57,7 @@ export default function ModuleFormModal({ module, onClose, onSuccess }: Props) {
       module_code:      module.module_code      ?? f.module_code ?? '',
       description:      module.description      ?? f.description ?? '',
       status:           module.status            ?? f.status ?? 'active',
+      learning_mode:    module.learning_mode    ?? f.learning_mode ?? 'day',
       module_credits:   Number(module.module_credits ?? f.module_credits ?? 0),
       department:       Number(module.department     ?? f.department     ?? 0),
       level:            Number(module.level          ?? f.level          ?? 1),
@@ -187,6 +188,15 @@ export default function ModuleFormModal({ module, onClose, onSuccess }: Props) {
             <option value="draft">Draft</option>
             <option value="active">Active</option>
             <option value="archived">Archived</option>
+          </select>
+        </label>
+        <label className="text-[13px]">
+          <span className="text-ink-600 block mb-1">Learning Mode</span>
+          <select className="input input-sm w-full" value={form.learning_mode || 'day'}
+            onChange={(e) => setForm({ ...form, learning_mode: e.target.value as any })}>
+            <option value="day">Day (Weekday)</option>
+            <option value="weekend">Weekend</option>
+            <option value="holiday">Holiday</option>
           </select>
         </label>
         <label className="text-[13px] col-span-2">
