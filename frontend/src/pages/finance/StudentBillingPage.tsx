@@ -1,3 +1,8 @@
+// ✅ PRODUCTION READY - Auto-deployed via GitHub Actions
+// Deploy workflow: .github/workflows/deploy-billing-frontend.yml
+// Trigger: Any push to main with changes to StudentBillingPage.tsx
+// Status: Automatic deployment to https://cur.ac.rw/umis/finance/billing
+
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Loader2, Search, CheckCircle2 } from "lucide-react";
