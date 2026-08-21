@@ -2225,15 +2225,15 @@ class FeeService
         }
 
         if ($faculty) {
-            $where[] = "s.faculty_id = ?";
+            $where[] = "s.faculty = ?";
             $whereBindings[] = $faculty;
         }
         if ($dept) {
-            $where[] = "s.department_id = ?";
+            $where[] = "s.department = ?";
             $whereBindings[] = $dept;
         }
         if ($option) {
-            $where[] = "s.option_id = ?";
+            $where[] = "s.std_option = ?";
             $whereBindings[] = $option;
         }
         if ($keyword) {
@@ -2265,48 +2265,52 @@ class FeeService
 
         $sql = "
             SELECT
-                s.student_id,
+                s.id as student_id,
                 s.regnumber,
                 s.fname,
                 s.lname,
                 s.student_state,
                 s.intake,
-                s.faculty_id,
-                s.department_id,
+                s.faculty as faculty_id,
+                s.department as department_id,
                 f.faculty_name as faculty,
                 d.department_name as department,
-                COALESCE(opened.total, 0) as opening_balance,
+                COALESCE(sob.opening_balance, 0) as opening_balance,
                 COALESCE(invoices.total_amount, 0) as invoiced,
                 COALESCE(paid_sum.total_paid, 0) as paid,
                 COALESCE(bursary_sum.total_bursary, 0) as bursary,
-                (COALESCE(opened.total, 0) + COALESCE(invoices.total_amount, 0) - COALESCE(paid_sum.total_paid, 0) - COALESCE(bursary_sum.total_bursary, 0)) as total_balance
+                (COALESCE(sob.opening_balance, 0) + COALESCE(invoices.total_amount, 0) - COALESCE(paid_sum.total_paid, 0) - COALESCE(bursary_sum.total_bursary, 0)) as total_balance
             FROM student s
-            LEFT JOIN faculty f ON s.faculty_id = f.faculty_id
-            LEFT JOIN department d ON s.department_id = d.department_id
+            LEFT JOIN faculty f ON s.faculty = f.faculty_id
+            LEFT JOIN department d ON s.department = d.department_id
             LEFT JOIN (
-                SELECT fi.student_id, SUM(CAST(fi.amount_paid AS DECIMAL(12,2))) as total
+                SELECT student_id, opening_balance
+                FROM student_opening_balances
+                WHERE (student_id, academic_year_id) IN (
+                    SELECT student_id, MAX(academic_year_id)
+                    FROM student_opening_balances
+                    WHERE semester = 1
+                    GROUP BY student_id
+                )
+            ) sob ON s.id = sob.student_id
+            LEFT JOIN (
+                SELECT fi.student_id, SUM(CAST(fi.amount_due AS DECIMAL(12,2))) as total_amount
                 FROM fee_invoices fi
                 WHERE fi.status NOT IN ('cancelled', 'waived')
                 GROUP BY fi.student_id
-            ) opened ON s.student_id = opened.student_id
-            LEFT JOIN (
-                SELECT fi.student_id, SUM(CAST(fi.amount AS DECIMAL(12,2))) as total_amount
-                FROM fee_invoices fi
-                WHERE fi.status NOT IN ('cancelled', 'waived')
-                GROUP BY fi.student_id
-            ) invoices ON s.student_id = invoices.student_id
+            ) invoices ON s.id = invoices.student_id
             LEFT JOIN (
                 SELECT fp.student_id, SUM(CAST(fp.amount AS DECIMAL(12,2))) as total_paid
                 FROM fee_payments fp
                 WHERE fp.status = 'completed'
                 GROUP BY fp.student_id
-            ) paid_sum ON s.student_id = paid_sum.student_id
+            ) paid_sum ON s.id = paid_sum.student_id
             LEFT JOIN (
                 SELECT fb.student_id, SUM(CAST(fb.amount_applied AS DECIMAL(12,2))) as total_bursary
                 FROM fee_bursaries fb
                 WHERE fb.status = 'active'
                 GROUP BY fb.student_id
-            ) bursary_sum ON s.student_id = bursary_sum.student_id
+            ) bursary_sum ON s.id = bursary_sum.student_id
             $whereSql
             ORDER BY $orderField $order
             LIMIT $perPage OFFSET $offset
