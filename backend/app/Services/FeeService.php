@@ -2262,7 +2262,7 @@ class FeeService
         $countSql = "
             SELECT COUNT(DISTINCT s.id) as total
             FROM student s
-            LEFT JOIN student_opening_balances sob ON s.id = sob.student_id
+            LEFT JOIN student_opening_balance sob ON s.id = sob.student_id
             $whereSql
         ";
         $countResult = $this->db->fetchOne($countSql, $whereBindings);
@@ -2290,7 +2290,7 @@ class FeeService
             LEFT JOIN department d ON s.department = d.department_id
             LEFT JOIN (
                 SELECT student_id, opening_balance
-                FROM student_opening_balances
+                FROM student_opening_balance
                 WHERE semester = 1
                 ORDER BY academic_year_id DESC
             ) sob ON s.id = sob.student_id
