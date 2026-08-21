@@ -46,18 +46,19 @@ export default function StudentBillingPage() {
   const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set());
   const [selectAll, setSelectAll] = useState(false);
 
-  // DEBUG: Log page state
+  // DEBUG: Log page state on mount
   useEffect(() => {
-    console.log("📊 Billing Page Loaded", {
+    console.log("📊 Billing Page Loaded - FORCE REDEPLOY", {
       studentState,
       debouncedKeyword,
       page,
       isLoading: studentsQ.isLoading,
       studentCount: students.length,
       totalItems,
-      apiError: studentsQ.error?.message
+      apiError: studentsQ.error?.message,
+      apiUrl: "/api/finance/billing/all-students"
     });
-  }, [studentState, debouncedKeyword, page, students.length, totalItems]);
+  }, [studentState, debouncedKeyword, page, students.length, totalItems, studentsQ.error]);
 
   const perPage = 50;
 
