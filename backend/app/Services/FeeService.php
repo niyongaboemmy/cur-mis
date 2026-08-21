@@ -2259,7 +2259,7 @@ class FeeService
         ];
         $orderField = $sortMap[$sort] ?? 'opening_balance';
 
-        $countSql = "SELECT COUNT(DISTINCT s.student_id) as total FROM student s $whereSql";
+        $countSql = "SELECT COUNT(DISTINCT s.id) as total FROM student s $whereSql";
         $countResult = $this->db->fetchOne($countSql, $whereBindings);
         $total = (int)($countResult['total'] ?? 0);
 
