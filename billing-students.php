@@ -44,16 +44,14 @@ try {
 
     $whereSql = !empty($where) ? "WHERE " . implode(" AND ", $where) : "";
 
-    // Count total
+    // Count total - use simple query
     $countSql = "SELECT COUNT(DISTINCT s.id) as total FROM student s $whereSql";
-    $countStmt = $conn->prepare($countSql);
-    if (!empty($bindings)) {
-        $types = str_repeat('s', count($bindings));
-        $countStmt->bind_param($types, ...$bindings);
+    $countResult = $conn->query($countSql);
+    if (!$countResult) {
+        throw new Exception('Count query failed: ' . $conn->error);
     }
-    $countStmt->execute();
-    $countResult = $countStmt->get_result()->fetch_assoc();
-    $total = (int)($countResult['total'] ?? 0);
+    $countRow = $countResult->fetch_assoc();
+    $total = (int)($countRow['total'] ?? 0);
 
     // Build sort map
     $sortMap = [
@@ -80,16 +78,14 @@ try {
             s.intake,
             s.faculty as faculty_id,
             s.department as department_id,
-            COALESCE(f.faculty_name, '') as faculty,
-            COALESCE(d.department_name, '') as department,
+            '' as faculty,
+            '' as department,
             COALESCE(sob.opening_balance, 0) as opening_balance,
             COALESCE(invoices.total_amount, 0) as invoiced,
             COALESCE(paid_sum.total_paid, 0) as paid,
             COALESCE(bursary_sum.total_bursary, 0) as bursary,
             (COALESCE(sob.opening_balance, 0) + COALESCE(invoices.total_amount, 0) - COALESCE(paid_sum.total_paid, 0) - COALESCE(bursary_sum.total_bursary, 0)) as total_balance
         FROM student s
-        LEFT JOIN faculty f ON s.faculty = f.faculty_id
-        LEFT JOIN department d ON s.department = d.department_id
         LEFT JOIN student_opening_balance sob ON s.id = sob.student_id
         LEFT JOIN (
             SELECT fi.student_id, SUM(CAST(fi.amount_due AS DECIMAL(12,2))) as total_amount
@@ -104,9 +100,8 @@ try {
             GROUP BY fp.student_id
         ) paid_sum ON s.id = paid_sum.student_id
         LEFT JOIN (
-            SELECT fb.student_id, SUM(CAST(fb.amount_applied AS DECIMAL(12,2))) as total_bursary
+            SELECT fb.student_id, SUM(CAST(fb.amount AS DECIMAL(12,2))) as total_bursary
             FROM fee_bursaries fb
-            WHERE fb.status = 'active'
             GROUP BY fb.student_id
         ) bursary_sum ON s.id = bursary_sum.student_id
         $whereSql
@@ -114,13 +109,27 @@ try {
         LIMIT $per_page OFFSET $offset
     ";
 
-    $stmt = $conn->prepare($sql);
-    if (!empty($bindings)) {
+    // If no WHERE clause, just run query directly
+    if (empty($bindings)) {
+        $result = $conn->query($sql);
+        if (!$result) {
+            throw new Exception('Query failed: ' . $conn->error);
+        }
+    } else {
+        // Use prepared statement only when needed
+        $stmt = $conn->prepare($sql);
+        if (!$stmt) {
+            throw new Exception('Prepare failed: ' . $conn->error);
+        }
         $types = str_repeat('s', count($bindings));
-        $stmt->bind_param($types, ...$bindings);
+        if (!$stmt->bind_param($types, ...$bindings)) {
+            throw new Exception('Bind param failed: ' . $stmt->error);
+        }
+        if (!$stmt->execute()) {
+            throw new Exception('Execute failed: ' . $stmt->error);
+        }
+        $result = $stmt->get_result();
     }
-    $stmt->execute();
-    $result = $stmt->get_result();
 
     $students = [];
     while ($row = $result->fetch_assoc()) {
