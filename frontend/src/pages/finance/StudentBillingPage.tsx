@@ -303,7 +303,6 @@ export default function StudentBillingPage() {
         state: studentState !== "all" ? studentState : undefined,
         keyword: debouncedKeyword || undefined,
         sort: sortField,
-        order: sortOrder,
         page,
         per_page: perPage,
       }),
