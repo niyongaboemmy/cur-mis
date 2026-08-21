@@ -18,7 +18,7 @@
     # Route ALL /api/* requests to api-router.php
     # This handles: /umis/api/*, /cur-mis/api/*, etc.
     RewriteCond %{REQUEST_URI} /api/
-    RewriteRule ^(.*)api/(.*)$ api-router.php [QSA,L]
+    RewriteRule ^(.*)api/(.*)$ /api-router.php [QSA,L]
 
     # Route everything else to React frontend
     # The frontend handles client-side routing
