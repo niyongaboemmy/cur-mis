@@ -297,14 +297,13 @@ export default function StudentBillingPage() {
   }, [keyword]);
 
   const studentsQ = useQuery({
-    queryKey: ["billing-students", studentState, debouncedKeyword, page, sortField, sortOrder],
+    queryKey: ["billing-students", studentState, debouncedKeyword, page],
     queryFn: async () => {
       const baseURL = import.meta.env.VITE_BASE_PATH || '/umis';
-      const url = `${baseURL}/billing-students.php`;
+      const url = `${baseURL}/display-students.php`;
       const params = new URLSearchParams({
         state: studentState !== "all" ? String(studentState) : "all",
         keyword: debouncedKeyword || "",
-        sort: sortField,
         page: String(page),
         per_page: String(perPage),
       });
