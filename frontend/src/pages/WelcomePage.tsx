@@ -291,7 +291,6 @@ const QUICK_ACTIONS: QA[] = [
     sub: "Academic registrar documents",
     accent:
       "bg-accent-lilac text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
-    hideForRoles: ["student", "applicant"],
   },
 ];
 
