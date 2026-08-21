@@ -18,7 +18,7 @@ class StudentModel extends BaseModel
         'photo', 'marital_status', 'spouse', 'disability',
         'father', 'mother', 'reference', 'id_card', 'country',
         'province', 'district', 'sector', 'cell', 'village',
-        'index_number',
+        'index_number', 'learning_mode',
     ];
 
     /**

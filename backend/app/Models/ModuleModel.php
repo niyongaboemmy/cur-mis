@@ -386,9 +386,9 @@ class ModuleModel extends BaseModel
      */
     public function listEligibleFor(string $regnumber, int $termId): array
     {
-        // Student context (department + level)
+        // Student context (department + level + learning mode)
         $student = $this->db->fetchOne(
-            "SELECT department, current_level FROM `student` WHERE regnumber = ? LIMIT 1",
+            "SELECT department, current_level, learning_mode FROM `student` WHERE regnumber = ? LIMIT 1",
             [$regnumber]
         );
         if (!$student) {
@@ -396,6 +396,7 @@ class ModuleModel extends BaseModel
         }
 
         $level = !empty($student['current_level']) ? (int)$student['current_level'] : 999;
+        $learningMode = (string)($student['learning_mode'] ?? 'day');
 
         // Exclude modules the student has already engaged with — same-term
         // registrations (any status), AND any completed/registered module
@@ -404,11 +405,13 @@ class ModuleModel extends BaseModel
         // Also require an existing teaching schedule in the target term —
         // students can only enrol in modules that the registrar has actually
         // scheduled, mirroring the Module scheduling page.
+        // Filter by learning mode so students only see modules scheduled for their mode.
         $rows = $this->db->fetchAll(
             "SELECT m.*
              FROM `modules` m
              WHERE m.status = 'active'
                AND m.level <= ?
+               AND (m.learning_mode IS NULL OR m.learning_mode = ?)
                AND m.module_id NOT IN (
                    SELECT module_id FROM `module_registrations`
                    WHERE student_regnumber = ?
@@ -419,7 +422,7 @@ class ModuleModel extends BaseModel
                    WHERE ms.module_id = m.module_id
                      AND ms.academic_term_id = ?
                )",
-            [$level, $regnumber, $termId, $termId]
+            [$level, $learningMode, $regnumber, $termId, $termId]
         );
 
         // Filter by prerequisite completion (cheaper in PHP than nested NOT EXISTS per row)
