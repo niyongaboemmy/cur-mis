@@ -298,14 +298,21 @@ export default function StudentBillingPage() {
 
   const studentsQ = useQuery({
     queryKey: ["billing-students", studentState, debouncedKeyword, page, sortField, sortOrder],
-    queryFn: () =>
-      api.get<any>("/finance/billing/all-students", {
-        state: studentState !== "all" ? studentState : undefined,
-        keyword: debouncedKeyword || undefined,
+    queryFn: async () => {
+      const baseURL = import.meta.env.VITE_BASE_PATH || '/umis';
+      const url = `${baseURL}/billing-students.php`;
+      const params = new URLSearchParams({
+        state: studentState !== "all" ? String(studentState) : "all",
+        keyword: debouncedKeyword || "",
         sort: sortField,
-        page,
-        per_page: perPage,
-      }),
+        page: String(page),
+        per_page: String(perPage),
+      });
+      const response = await fetch(`${url}?${params}`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message);
+      return data;
+    },
   });
 
   const paginated = studentsQ.data?.data as any;
