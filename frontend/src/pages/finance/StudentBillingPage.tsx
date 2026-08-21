@@ -39,12 +39,25 @@ const formatRWF = (value: number) => {
 export default function StudentBillingPage() {
   const [keyword, setKeyword] = useState("");
   const [debouncedKeyword, setDebouncedKeyword] = useState("");
-  const [studentState, setStudentState] = useState<string | number>("all");
+  const [studentState, setStudentState] = useState<string | number>("all");  // Default: ALL students (no filters)
   const [page, setPage] = useState(1);
   const [sortField, setSortField] = useState<SortField>("opening_balance");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set());
   const [selectAll, setSelectAll] = useState(false);
+
+  // DEBUG: Log page state
+  useEffect(() => {
+    console.log("📊 Billing Page Loaded", {
+      studentState,
+      debouncedKeyword,
+      page,
+      isLoading: studentsQ.isLoading,
+      studentCount: students.length,
+      totalItems,
+      apiError: studentsQ.error?.message
+    });
+  }, [studentState, debouncedKeyword, page, students.length, totalItems]);
 
   const perPage = 50;
 
