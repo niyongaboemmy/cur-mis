@@ -1225,38 +1225,56 @@ class UrubutoPayService
     /**
      * Application processing fee (RWF).
      *
+     * The database comes FIRST so that raising the fee in the admin UI moves
+     * every quote at once — this page, the hosted checkout and the ledger.
+     * An env override that outranked it would silently pin the gateway to a
+     * stale amount while the apply page (SystemBasicsController::
+     * getPublicApplicationFee, also DB-first) showed the new one.
+     *
      * Priority:
-     *  1. fee_structures amount for the mapped fee type + active academic year
+     *  1. fee_structures row named by settings.application_fee_mapped_fee_structure_id
      *  2. settings.application_fee_amount
      *  3. URUBUTOPAY_APPLICATION_FEE env var
      *  4. Hard default: 5,000 RWF
      */
     private function applicationFee(): int
     {
-        // 1. Check env override first (highest priority for config-driven deployments)
+        // 1 + 2. Mapped fee structure, then the settings amount. Resolved here
+        // rather than through FeeService::resolveApplicationFeeAmount() because
+        // that method substitutes its own 5,000 default for "nothing
+        // configured", which would make the env fallback below unreachable.
+        try {
+            $structure = $this->db->fetchOne(
+                "SELECT fs.amount
+                   FROM `settings` s
+                   JOIN `fee_structures` fs ON fs.id = CAST(s.value AS UNSIGNED)
+                  WHERE s.key_name = 'application_fee_mapped_fee_structure_id'
+                    AND fs.is_active = 1
+                  LIMIT 1",
+                []
+            );
+            if ($structure && (float)$structure['amount'] > 0) {
+                return (int)round((float)$structure['amount']);
+            }
+
+            $amountRow = $this->db->fetchOne(
+                "SELECT value FROM `settings` WHERE key_name = 'application_fee_amount' LIMIT 1",
+                []
+            );
+            if ($amountRow && (float)$amountRow['value'] > 0) {
+                return (int)round((float)$amountRow['value']);
+            }
+        } catch (\Throwable $e) {
+            // fall through to env / default
+        }
+
+        // 3. Env override
         $envFee = (int)($_ENV['URUBUTOPAY_APPLICATION_FEE'] ?? 0);
         if ($envFee > 0) {
             return $envFee;
         }
 
-        // 2. Try FeeService resolution (maps fee structures + settings)
-        try {
-            $feeService = new FeeService();
-            // Resolve the active academic year
-            $yearRow = $this->db->fetchOne(
-                "SELECT id FROM `academic_years` WHERE is_current = 1 ORDER BY id DESC LIMIT 1",
-                []
-            );
-            $yearId = $yearRow ? (int)$yearRow['id'] : 0;
-            $amount = $feeService->resolveApplicationFeeAmount($yearId);
-            if ($amount > 0) {
-                return (int)$amount;
-            }
-        } catch (\Throwable $e) {
-            // fall through to default
-        }
-
-        // 3. Hard default (5,000 RWF)
+        // 4. Hard default (5,000 RWF)
         return 5000;
     }
 
