@@ -18,7 +18,7 @@ export interface Module {
   hours?:         number | null
   price?:         number | null
   school_id?:     number | null
-  learning_mode?: 'day' | 'weekend' | 'holiday'
+  learning_mode?: 'day' | 'evening' | 'weekend' | 'holiday'
   description?:   string | null
   status:         'draft' | 'active' | 'archived'
   prerequisites?: ModulePrereqRef[]
@@ -112,7 +112,7 @@ export interface CreateModulePayload {
   hours?:           number | null
   price?:           number | null
   school_id?:       number | null
-  learning_mode?:   'day' | 'weekend' | 'holiday'
+  learning_mode?:   'day' | 'evening' | 'weekend' | 'holiday'
   prerequisite_ids?: number[]
 }
 

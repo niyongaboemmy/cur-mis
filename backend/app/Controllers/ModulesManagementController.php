@@ -803,11 +803,24 @@ class ModulesManagementController extends BaseController
         }
 
         $student = $this->modules->db()->fetchOne(
-            'SELECT department, current_level FROM `student` WHERE regnumber = ? LIMIT 1',
+            'SELECT department, current_level, learning_mode FROM `student` WHERE regnumber = ? LIMIT 1',
             [$regnumber]
         );
         if (!$student) {
             return ['ok' => false, 'message' => 'Student record not found.'];
+        }
+
+        // A module scheduled for one delivery mode is only open to students
+        // enrolled in that mode. Mirrors the filter in ModuleModel::listEligibleFor,
+        // which hides such modules from the list — this guards the direct POST.
+        $moduleMode  = (string)($module['learning_mode'] ?? '');
+        $studentMode = ($student['learning_mode'] ?? '') !== '' ? (string)$student['learning_mode'] : 'day';
+        if ($moduleMode !== '' && $moduleMode !== $studentMode) {
+            return [
+                'ok'      => false,
+                'message' => 'This module is offered in the ' . $moduleMode
+                    . ' mode; your enrollment is ' . $studentMode . '.',
+            ];
         }
 
         // Level check: only block if the student has a level set and it's below the module's

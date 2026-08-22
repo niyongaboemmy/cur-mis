@@ -155,7 +155,7 @@ export interface Student {
   id_card?:            string | null
   photo?:              string | null
   nationality?:        string | null
-  learning_mode?:      'day' | 'weekend' | 'holiday'
+  learning_mode?:      'day' | 'evening' | 'weekend' | 'holiday'
   [k: string]:         unknown
 }
 

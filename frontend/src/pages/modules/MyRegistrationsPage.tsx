@@ -218,6 +218,7 @@ export default function MyRegistrationsPage() {
                   <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
                     m.learning_mode === 'weekend' ? 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400'
                     : m.learning_mode === 'holiday' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400'
+                    : m.learning_mode === 'evening' ? 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400'
                     : 'bg-slate-100 text-slate-700 dark:bg-slate-500/20 dark:text-slate-400'
                   }`}>
                     {m.learning_mode.charAt(0).toUpperCase() + m.learning_mode.slice(1)}

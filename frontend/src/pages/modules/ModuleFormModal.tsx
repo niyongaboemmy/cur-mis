@@ -195,6 +195,7 @@ export default function ModuleFormModal({ module, onClose, onSuccess }: Props) {
           <select className="input input-sm w-full" value={form.learning_mode || 'day'}
             onChange={(e) => setForm({ ...form, learning_mode: e.target.value as any })}>
             <option value="day">Day (Weekday)</option>
+            <option value="evening">Evening</option>
             <option value="weekend">Weekend</option>
             <option value="holiday">Holiday</option>
           </select>
