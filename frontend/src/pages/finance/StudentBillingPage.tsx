@@ -357,6 +357,46 @@ const StudentDetailsModal = ({ student, isOpen, onClose }: StudentDetailsModalPr
               <p className="text-ink-500 dark:text-ink-400 text-sm">No sponsors assigned</p>
             )}
           </div>
+
+          <div className="border-t border-ink-200 dark:border-ink-600 pt-4">
+            <h3 className="font-bold text-ink-900 dark:text-white mb-4">📋 Actions</h3>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  if (student) {
+                    api.post(`/api/finance/students/generate`, {
+                      student_id: student.student_id,
+                      academic_year_id: 0
+                    }).then(() => {
+                      toast.success(`✅ Invoice generated for ${student.fname} ${student.lname}`);
+                    }).catch((err: any) => {
+                      toast.error(`❌ ${err.response?.data?.message || 'Failed to generate invoice'}`);
+                    });
+                  }
+                }}
+                className="flex-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm font-medium transition"
+              >
+                Generate Invoice
+              </button>
+              <button
+                onClick={() => {
+                  if (student) {
+                    import('../../services/financeService').then(({ feeInvoicePdfService }) => {
+                      feeInvoicePdfService.downloadStudentBillPdf(student.student_id, {
+                        academic_year_id: 0,
+                        semester: undefined
+                      }).catch(() => {
+                        toast.error('❌ Failed to download bill');
+                      });
+                    });
+                  }
+                }}
+                className="flex-1 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm font-medium transition"
+              >
+                Download Bill PDF
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
