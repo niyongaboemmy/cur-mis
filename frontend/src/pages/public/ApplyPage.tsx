@@ -1628,12 +1628,7 @@ function PaymentStep({
   };
 
   const payNow = () => {
-    if (!checkout?.checkout_url) {
-      toast.error('Preparing your payment link — please try again in a moment.');
-      checkoutQuery.refetch();
-      return;
-    }
-    window.open(checkout.checkout_url, '_blank', 'noopener,noreferrer');
+    window.open('https://urubutopay.rw/pay-now?origin=internal', '_blank', 'noopener,noreferrer');
     setOpened(true);
     toast.success('Complete your payment in the Urubuto Pay tab, then return here.');
     statusQuery.refetch();
@@ -1691,15 +1686,11 @@ function PaymentStep({
           <button
             type="button"
             onClick={payNow}
-            disabled={checkoutQuery.isLoading || !confirmAccurate}
+            disabled={!confirmAccurate}
             className="btn-primary w-full sm:w-auto"
             title={!confirmAccurate ? 'Confirm your information is accurate first' : undefined}
           >
-            {checkoutQuery.isLoading ? (
-              <><Loader2 className="w-4 h-4 animate-spin" /> Preparing payment…</>
-            ) : (
-              <><CreditCard className="w-4 h-4" /> Pay {formatFee} RWF with Urubuto Pay</>
-            )}
+            <><CreditCard className="w-4 h-4" /> Pay {formatFee} RWF with Urubuto Pay</>
           </button>
 
           {!confirmAccurate && (

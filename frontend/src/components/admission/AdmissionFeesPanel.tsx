@@ -101,26 +101,14 @@ export default function AdmissionFeesPanel({
   })
 
   const payNow = async (bill?: AdmissionBill) => {
-    try {
-      const res = isValidator
-        ? await admissionBillingService.checkout(applicationId as number, bill?.fee_type)
-        : await applicantService.getAdmissionBillCheckout(bill?.fee_type)
-      const url = res.data?.checkout_url
-      if (!url) {
-        toast.error('The payment link is not ready yet — please try again in a moment.')
-        return
-      }
-      window.open(url, '_blank', 'noopener,noreferrer')
-      setOpenedCheckout(true)
-      toast.success(
-        isValidator
-          ? 'Urubuto Pay opened. This page updates itself once the payment is confirmed.'
-          : 'Complete your payment in the Urubuto Pay tab, then come back here.',
-      )
-      billsQ.refetch()
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || 'Could not open the payment page.')
-    }
+    window.open('https://urubutopay.rw/pay-now?origin=internal', '_blank', 'noopener,noreferrer')
+    setOpenedCheckout(true)
+    toast.success(
+      isValidator
+        ? 'Urubuto Pay opened. This page updates itself once the payment is confirmed.'
+        : 'Complete your payment in the Urubuto Pay tab, then come back here.',
+    )
+    billsQ.refetch()
   }
 
   const copy = (label: string, value?: string | null) => {
