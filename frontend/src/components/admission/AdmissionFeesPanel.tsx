@@ -109,7 +109,7 @@ export default function AdmissionFeesPanel({
 
     const form = document.createElement('form')
     form.method = 'POST'
-    form.action = 'https://urubutopay.rw/pay-now'
+    form.action = 'https://urubutopay.rw/pay-now?origin=internal'
     form.target = '_blank'
 
     const merchantInput = document.createElement('input')
@@ -122,14 +122,8 @@ export default function AdmissionFeesPanel({
     payerInput.name = 'payer_code'
     payerInput.value = data.payer_code
 
-    const originInput = document.createElement('input')
-    originInput.type = 'hidden'
-    originInput.name = 'origin'
-    originInput.value = 'internal'
-
     form.appendChild(merchantInput)
     form.appendChild(payerInput)
-    form.appendChild(originInput)
     document.body.appendChild(form)
     form.submit()
     document.body.removeChild(form)
