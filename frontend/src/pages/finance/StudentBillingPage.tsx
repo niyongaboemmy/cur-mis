@@ -280,6 +280,7 @@ export default function StudentBillingPage() {
   const [keyword, setKeyword] = useState("");
   const [debouncedKeyword, setDebouncedKeyword] = useState("");
   const [studentState, setStudentState] = useState<string | number>("all");
+  const [initialized, setInitialized] = useState(false);
   const [page, setPage] = useState(1);
   const [sortField, setSortField] = useState<SortField>("opening_balance");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
@@ -302,16 +303,19 @@ export default function StudentBillingPage() {
       const baseURL = import.meta.env.VITE_BASE_PATH || '/umis';
       const url = `${baseURL}/display-students.php`;
       const params = new URLSearchParams({
-        state: studentState !== "all" ? String(studentState) : "all",
+        state: String(studentState),
         keyword: debouncedKeyword || "",
         page: String(page),
         per_page: String(perPage),
       });
       const response = await fetch(`${url}?${params}`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
-      if (!response.ok) throw new Error(data.message);
+      if (!data.success) throw new Error(data.message || 'Failed to fetch students');
       return data;
     },
+    retry: 2,
+    staleTime: 30000,
   });
 
   const paginated = studentsQ.data?.data as any;
