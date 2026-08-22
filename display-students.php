@@ -73,7 +73,7 @@ try {
 
     $order_by = $sort_map[$sort] ?? $sort_map['opening_balance'];
 
-    // Main query
+    // Main query with optimized JOINs
     $offset = ($page - 1) * $per_page;
     $sql = "
         SELECT
@@ -85,30 +85,16 @@ try {
             s.intake,
             s.email,
             COALESCE(sob.opening_balance, 0) as opening_balance,
-            COALESCE(invoices.total_amount, 0) as invoiced,
-            COALESCE(paid.total_paid, 0) as paid,
-            COALESCE(bursary.total_bursary, 0) as bursary,
-            (COALESCE(sob.opening_balance, 0) + COALESCE(invoices.total_amount, 0) - COALESCE(paid.total_paid, 0) - COALESCE(bursary.total_bursary, 0)) as total_balance
+            COALESCE(SUM(CASE WHEN fi.status NOT IN ('cancelled', 'waived') THEN CAST(fi.amount_due AS DECIMAL(12,2)) ELSE 0 END), 0) as invoiced,
+            COALESCE(SUM(CASE WHEN fp.status = 'completed' THEN CAST(fp.amount AS DECIMAL(12,2)) ELSE 0 END), 0) as paid,
+            COALESCE(SUM(CAST(fb.amount AS DECIMAL(12,2))), 0) as bursary
         FROM student s
         LEFT JOIN student_opening_balance sob ON s.id = sob.student_id
-        LEFT JOIN (
-            SELECT fi.student_id, SUM(CAST(fi.amount_due AS DECIMAL(12,2))) as total_amount
-            FROM fee_invoices fi
-            WHERE fi.status NOT IN ('cancelled', 'waived')
-            GROUP BY fi.student_id
-        ) invoices ON s.id = invoices.student_id
-        LEFT JOIN (
-            SELECT fp.student_id, SUM(CAST(fp.amount AS DECIMAL(12,2))) as total_paid
-            FROM fee_payments fp
-            WHERE fp.status = 'completed'
-            GROUP BY fp.student_id
-        ) paid ON s.id = paid.student_id
-        LEFT JOIN (
-            SELECT fb.student_id, SUM(CAST(fb.amount AS DECIMAL(12,2))) as total_bursary
-            FROM fee_bursaries fb
-            GROUP BY fb.student_id
-        ) bursary ON s.id = bursary.student_id
+        LEFT JOIN fee_invoices fi ON s.id = fi.student_id
+        LEFT JOIN fee_payments fp ON s.id = fp.student_id
+        LEFT JOIN fee_bursaries fb ON s.id = fb.student_id
         $where_clause
+        GROUP BY s.id, s.regnumber, s.fname, s.lname, s.student_state, s.intake, s.email, sob.opening_balance
         ORDER BY $order_by
         LIMIT $per_page OFFSET $offset
     ";
@@ -130,7 +116,8 @@ try {
         $row['invoiced'] = (float)$row['invoiced'];
         $row['paid'] = (float)$row['paid'];
         $row['bursary'] = (float)$row['bursary'];
-        $row['total_balance'] = (float)$row['total_balance'];
+        // Calculate total balance: opening + invoiced - paid - bursary
+        $row['total_balance'] = $row['opening_balance'] + $row['invoiced'] - $row['paid'] - $row['bursary'];
         $students[] = $row;
     }
 
