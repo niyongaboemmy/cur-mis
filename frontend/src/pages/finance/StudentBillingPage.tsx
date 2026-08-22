@@ -21,6 +21,14 @@ interface Student {
   total_balance: number;
 }
 
+interface BillingResponse {
+  data: Student[];
+  total: number;
+  current_page: number;
+  per_page: number;
+  last_page: number;
+}
+
 type SortField = "opening_balance" | "invoiced" | "paid" | "bursary" | "total_balance" | "fname";
 
 const formatRWF = (value: number) =>
@@ -270,7 +278,7 @@ const StudentDetailsModal = ({ student, isOpen, onClose }: StudentDetailsModalPr
     if (isOpen && student) {
       setLoading(true);
       api.get(`/api/finance/sponsors?student_id=${student.student_id}`)
-        .then((res) => setSponsors(res.data || []))
+        .then((res) => setSponsors((res.data as any) || []))
         .catch(() => setSponsors([]))
         .finally(() => setLoading(false));
     }
@@ -298,10 +306,6 @@ const StudentDetailsModal = ({ student, isOpen, onClose }: StudentDetailsModalPr
             <div>
               <label className="text-sm font-medium text-ink-500 dark:text-ink-400">Registration Number</label>
               <p className="text-base font-semibold text-ink-900 dark:text-white">{student.regnumber}</p>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-ink-500 dark:text-ink-400">Email</label>
-              <p className="text-base font-semibold text-ink-900 dark:text-white">{student.email || "N/A"}</p>
             </div>
             <div>
               <label className="text-sm font-medium text-ink-500 dark:text-ink-400">Status</label>
@@ -467,14 +471,14 @@ export default function StudentBillingPage() {
         sort: sortField,
         order: sortOrder,
       };
-      const response = await api.get('/api/finance/billing/all-students', { params });
+      const response = await api.get<BillingResponse>('/api/finance/billing/all-students', { params });
       return response.data;
     },
     retry: 2,
     staleTime: 30000,
   });
 
-  const paginated = studentsQ.data?.data as any;
+  const paginated = studentsQ.data as BillingResponse | undefined;
   const students: Student[] = paginated?.data ?? [];
   const totalItems = paginated?.total ?? 0;
   const lastPage = paginated?.last_page ?? 1;
