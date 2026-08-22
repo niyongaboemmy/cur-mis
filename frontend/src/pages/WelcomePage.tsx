@@ -282,6 +282,17 @@ const QUICK_ACTIONS: QA[] = [
       "bg-accent-sky text-sky-700 dark:bg-sky-900/30 dark:text-sky-300",
     hideForRoles: ["student", "applicant"],
   },
+
+  // Registrar Report — visible to all authenticated users
+  {
+    to: "https://cur.ac.rw/umis/documents/registrar_report/index.php",
+    icon: FileText,
+    label: "Registrar Report",
+    sub: "Academic registrar documents",
+    accent:
+      "bg-accent-lilac text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
+    // No permissions or roles required — visible to every authenticated user
+  },
 ];
 
 /* ─── main component ─────────────────────────────────────────────── */
@@ -300,6 +311,7 @@ export default function WelcomePage() {
     return <TeacherDashboardPage />;
   }
   const [showDocumentsModal, setShowDocumentsModal] = useState(false);
+  const [showRegistrarModal, setShowRegistrarModal] = useState(false);
 
   const role = user?.role ?? "";
   const userPerms = user?.permissions ?? [];
@@ -471,8 +483,9 @@ export default function WelcomePage() {
                   const Icon = action.icon;
                   const isExternal = action.to.startsWith("http");
                   const isDocumentsModal = action.label === "More Documents";
+                  const isRegistrarModal = action.label === "Registrar Report";
 
-                  if (isDocumentsModal) {
+                  if (isDocumentsModal || isRegistrarModal) {
                     return (
                       <motion.button
                         key={action.label}
@@ -480,7 +493,7 @@ export default function WelcomePage() {
                         variants={fadeUp}
                         initial="hidden"
                         animate="visible"
-                        onClick={() => setShowDocumentsModal(true)}
+                        onClick={() => isRegistrarModal ? setShowRegistrarModal(true) : setShowDocumentsModal(true)}
                         className="group card p-4 flex items-center gap-3.5 hover:border-brand/40 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 text-left"
                       >
                         <span
@@ -618,6 +631,40 @@ export default function WelcomePage() {
               <iframe
                 src="https://cur.ac.rw/umis/documents/"
                 title="University Documents"
+                className="w-full h-full border-0"
+              />
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Registrar Report Modal */}
+      {showRegistrarModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="bg-white dark:bg-ink-950 rounded-xl shadow-2xl w-full h-[90vh] flex flex-col max-w-[80%]"
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-6 border-b border-ink-200 dark:border-ink-800">
+              <h2 className="text-[18px] font-semibold text-ink-900 dark:text-white">
+                Registrar Report
+              </h2>
+              <button
+                onClick={() => setShowRegistrarModal(false)}
+                className="p-2 hover:bg-ink-100 dark:hover:bg-ink-800 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-ink-600 dark:text-ink-400" />
+              </button>
+            </div>
+
+            {/* Modal Content - iframe */}
+            <div className="flex-1 overflow-hidden">
+              <iframe
+                src="https://cur.ac.rw/umis/documents/registrar_report/index.php"
+                title="Registrar Report"
                 className="w-full h-full border-0"
               />
             </div>

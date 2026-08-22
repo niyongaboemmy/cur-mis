@@ -18,9 +18,16 @@ if (php_sapi_name() === 'cli') {
     die("CLI access not allowed\n");
 }
 
-// Get the request path
+// Get the request path and strip the /api part for backend routing
 $request_uri = $_SERVER['REQUEST_URI'] ?? '/';
 $request_method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+
+// Strip /api/ prefix so backend router receives correct path
+// /umis/api/finance/billing/all-students → /finance/billing/all-students
+if (preg_match('#/api/(.*)$#', $request_uri, $matches)) {
+    $_SERVER['REQUEST_URI'] = '/' . $matches[1];
+    $_SERVER['PATH_INFO'] = '/' . $matches[1];
+}
 
 // Debug logging (remove in production after verifying)
 error_log(sprintf(
