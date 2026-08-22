@@ -1,14 +1,11 @@
 name: Deploy — Frontend (Billing Page Only)
 
-# Auto-deploy billing page when changes pushed to main
+# Manual-only. The full SPA deploy (deploy-frontend.yml) already builds and
+# ships the billing page together with the rest of the app — running this on
+# every frontend push doubled the build for the same target directory, and
+# its "Extract on server" step never actually extracted anything. Kept for
+# deliberate manual runs only.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'frontend/src/pages/finance/StudentBillingPage.tsx'
-      - 'frontend/src/**'
-      - 'frontend/package.json'
-      - '.github/workflows/deploy-billing-frontend.yml'
   workflow_dispatch:
 
 concurrency:
@@ -90,7 +87,22 @@ jobs:
           echo "✅ Archive ready"
           ls -lh billing-frontend.zip
 
+      # The university server's firewall drops connections from GitHub-hosted
+      # runners. Probe cPanel first: when it is unreachable, skip the deploy
+      # steps with a warning instead of failing the run.
+      - name: Preflight — is cPanel reachable from this runner?
+        id: preflight
+        run: |
+          if curl -sk --connect-timeout 15 --max-time 25 -o /dev/null "$CPANEL_URL/login"; then
+            echo "reachable=true" >> "$GITHUB_OUTPUT"
+            echo "cPanel reachable — deploying."
+          else
+            echo "reachable=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Deploy skipped — cPanel unreachable::$CPANEL_URL refuses connections from GitHub-hosted runners (server firewall). Deploy from an allowed network: CPANEL_PASS='...' bash deploy-from-local.sh frontend"
+          fi
+
       - name: Upload to cPanel
+        if: steps.preflight.outputs.reachable == 'true'
         env:
           CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
         run: |
@@ -114,6 +126,7 @@ jobs:
           fi
 
       - name: Extract on server
+        if: steps.preflight.outputs.reachable == 'true'
         run: |
           echo "🔓 Extracting archive on production..."
 
@@ -124,6 +137,7 @@ jobs:
           echo "✅ Archive extracted"
 
       - name: Verify deployment
+        if: steps.preflight.outputs.reachable == 'true'
         run: |
           echo "✅ Waiting for production update..."
           sleep 3

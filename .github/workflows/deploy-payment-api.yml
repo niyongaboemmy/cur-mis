@@ -24,7 +24,9 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  CPANEL_URL: https://cpanel.cur.ac.rw:2083
+  # NOTE: cpanel.cur.ac.rw resolves to a DIFFERENT IP (197.243.25.55) that
+  # does not answer on 2083 — cPanel lives on cur.ac.rw itself (197.243.30.91).
+  CPANEL_URL: https://cur.ac.rw:2083
   CPANEL_USER: curac
   # Base64-encoded staged PHP extractor. Placeholders DEPLOY_TOKEN and
   # DEPLOY_ZIP_NAME are replaced by sed at runtime. Avoids heredoc in YAML.
@@ -51,7 +53,22 @@ jobs:
           cd ..
           echo "Archive size: $(du -sh payment-api.zip | cut -f1)"
 
+      # The university server's firewall drops connections from GitHub-hosted
+      # runners. Probe cPanel first: when it is unreachable, skip the deploy
+      # steps with a loud warning instead of failing the run.
+      - name: Preflight — is cPanel reachable from this runner?
+        id: preflight
+        run: |
+          if curl -sk --connect-timeout 15 --max-time 25 -o /dev/null "$CPANEL_URL/login"; then
+            echo "reachable=true" >> "$GITHUB_OUTPUT"
+            echo "cPanel reachable — deploying."
+          else
+            echo "reachable=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Deploy skipped — cPanel unreachable::$CPANEL_URL refuses connections from GitHub-hosted runners (server firewall). Deploy manually from an allowed network."
+          fi
+
       - name: Upload & extract
+        if: steps.preflight.outputs.reachable == 'true'
         env:
           CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
         run: |
@@ -89,6 +106,7 @@ jobs:
         if: always()
         run: |
           echo "## Payment API Deploy — ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "| Upload | ${{ steps.preflight.outputs.reachable == 'true' && 'deployed' || 'SKIPPED — cPanel unreachable from GitHub runners' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Target | \`~/public_html/payment_api/\` |" >> $GITHUB_STEP_SUMMARY
           echo "| URL | https://cur.ac.rw/payment_api/ |" >> $GITHUB_STEP_SUMMARY

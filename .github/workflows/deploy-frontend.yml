@@ -64,7 +64,26 @@ jobs:
           cd ../..
           echo "Archive size: $(du -sh frontend-deploy.zip | cut -f1)"
 
+      # The university server's firewall drops connections from GitHub-hosted
+      # runners (every run since 2026-08-20 died with curl exit 28 here, after
+      # all build steps passed). Probe cPanel first: when it is unreachable,
+      # skip the deploy steps with a loud warning instead of failing the run —
+      # the build above has already validated the code. Ship from an allowed
+      # network with `bash deploy-from-local.sh` until the firewall allowlists
+      # GitHub's runner IP ranges (https://api.github.com/meta).
+      - name: Preflight — is cPanel reachable from this runner?
+        id: preflight
+        run: |
+          if curl -sk --connect-timeout 15 --max-time 25 -o /dev/null "$CPANEL_URL/login"; then
+            echo "reachable=true" >> "$GITHUB_OUTPUT"
+            echo "cPanel reachable — deploying."
+          else
+            echo "reachable=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Deploy skipped — cPanel unreachable::$CPANEL_URL refuses connections from GitHub-hosted runners (server firewall). The build passed; deploy from an allowed network: CPANEL_PASS='...' bash deploy-from-local.sh frontend"
+          fi
+
       - name: Upload & extract
+        if: steps.preflight.outputs.reachable == 'true'
         env:
           CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
         run: |
@@ -98,6 +117,7 @@ jobs:
         if: always()
         run: |
           echo "## Frontend Deploy — ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "| Upload | ${{ steps.preflight.outputs.reachable == 'true' && 'deployed' || 'SKIPPED — cPanel unreachable from GitHub runners; run deploy-from-local.sh' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Target | \`~/public_html/umis/\` |" >> $GITHUB_STEP_SUMMARY
           echo "| URL | https://cur.ac.rw/umis/ |" >> $GITHUB_STEP_SUMMARY
