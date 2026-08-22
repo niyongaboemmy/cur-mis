@@ -1233,6 +1233,13 @@ class UrubutoPayService
      */
     private function applicationFee(): int
     {
+        // 1. Check env override first (highest priority for config-driven deployments)
+        $envFee = (int)($_ENV['URUBUTOPAY_APPLICATION_FEE'] ?? 0);
+        if ($envFee > 0) {
+            return $envFee;
+        }
+
+        // 2. Try FeeService resolution (maps fee structures + settings)
         try {
             $feeService = new FeeService();
             // Resolve the active academic year
@@ -1246,9 +1253,11 @@ class UrubutoPayService
                 return (int)$amount;
             }
         } catch (\Throwable $e) {
-            // fall through
+            // fall through to default
         }
-        return (int)($_ENV['URUBUTOPAY_APPLICATION_FEE'] ?? 5000);
+
+        // 3. Hard default (5,000 RWF)
+        return 5000;
     }
 
     /**
