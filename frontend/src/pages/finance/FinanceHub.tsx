@@ -2,7 +2,6 @@ import { Outlet } from "react-router-dom";
 import ResponsiveTabBar from "@/components/ui/ResponsiveTabBar";
 import {
   LayoutDashboard,
-  BookOpenCheck,
   Settings2,
   Award,
   BarChart3,
@@ -45,13 +44,6 @@ const TABS = [
     icon: Settings2,
     end: false,
     permissions: [PERMISSIONS.VIEW_FINANCE_STRUCTURES],
-  },
-  {
-    to: "/finance/billing",
-    label: "Billing",
-    icon: BookOpenCheck,
-    end: false,
-    permissions: [PERMISSIONS.VIEW_FINANCE_BILLING],
   },
   {
     to: "/finance/bursaries",
