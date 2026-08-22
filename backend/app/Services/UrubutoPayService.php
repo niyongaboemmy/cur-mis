@@ -959,26 +959,28 @@ class UrubutoPayService
     {
         $merchantCode = $this->merchantCode();
         $serviceCode  = $this->applicationServiceCode();
+        $fee          = $this->applicationFee();
         $checkoutBase = $_ENV['URUBUTOPAY_CHECKOUT_URL'] ?? self::CHECKOUT_BASE; // .../pay-now
 
         // UrubutoPay's PRE-FILLED deep link is the `/pay-now/initiate` route — it
-        // reads origin/mhcd/pycd/sccd from the query, skips the merchant+payer
+        // reads origin/mhcd/pycd/sccd/amnt from the query, skips the merchant+payer
         // entry form, and goes straight to choosing a payment method. The bare
         // `/pay-now` page IGNORES these params (verified against their JS bundle),
         // which is why the fields showed up empty before.
         //   mhcd = merchant code, pycd = payer code (= application number),
-        //   sccd = service code, origin=internal marks an institutional deep link.
+        //   sccd = service code, amnt = amount in RWF, origin=internal marks an institutional deep link.
         $checkoutUrl = rtrim($checkoutBase, '/') . '/initiate'
             . '?origin=internal'
             . '&mhcd=' . urlencode($merchantCode)
             . '&pycd=' . urlencode($appNumber)
-            . '&sccd=' . urlencode($serviceCode);
+            . '&sccd=' . urlencode($serviceCode)
+            . '&amnt=' . urlencode((string)$fee);
 
         return [
             'checkout_url'  => $checkoutUrl,
             'merchant_code' => $merchantCode,
             'payer_code'    => $appNumber,
-            'amount'        => $this->applicationFee(),
+            'amount'        => $fee,
             'currency'      => 'RWF',
             'service_code'  => $serviceCode,
         ];
