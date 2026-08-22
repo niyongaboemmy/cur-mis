@@ -2678,9 +2678,9 @@ class FeeController extends BaseController
      */
     public function downloadMyBillPdf(Request $request, Response $response): never
     {
-        $actor = $request->param('_auth_user');
-        if (!isset($actor->student_id) || !$actor->student_id) {
-            $this->error($response, 'Only students can access this endpoint.', 403);
+        $studentRegnumber = $this->authStudentRegnumber($request);
+        if (!$studentRegnumber) {
+            $this->error($response, 'Only authenticated students can access this endpoint.', 403);
         }
 
         // Reuse the same logic as downloadStudentBillPdf but for the authenticated student
@@ -2689,7 +2689,7 @@ class FeeController extends BaseController
             $this->error($response, 'academic_year_id is required.', 422);
         }
 
-        $studentId = (string)$actor->student_id;
+        $studentId = (string)$studentRegnumber;
         $semester = !empty($request->query()['semester']) ? (int)$request->query()['semester'] : null;
 
         $db = \Core\Database::getInstance();

@@ -269,7 +269,7 @@ const StudentDetailsModal = ({ student, isOpen, onClose }: StudentDetailsModalPr
   useEffect(() => {
     if (isOpen && student) {
       setLoading(true);
-      api.get(`/finance/sponsors?student_id=${student.student_id}`)
+      api.get(`/api/finance/sponsors?student_id=${student.student_id}`)
         .then((res) => setSponsors(res.data || []))
         .catch(() => setSponsors([]))
         .finally(() => setLoading(false));
@@ -417,21 +417,18 @@ export default function StudentBillingPage() {
   }, [keyword]);
 
   const studentsQ = useQuery({
-    queryKey: ["billing-students", studentState, debouncedKeyword, page],
+    queryKey: ["billing-students", studentState, debouncedKeyword, page, sortField, sortOrder],
     queryFn: async () => {
-      const baseURL = import.meta.env.VITE_BASE_PATH || '/umis';
-      const url = `${baseURL}/display-students.php`;
-      const params = new URLSearchParams({
+      const params = {
         state: String(studentState),
         keyword: debouncedKeyword || "",
         page: String(page),
         per_page: String(perPage),
-      });
-      const response = await fetch(`${url}?${params}`);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data = await response.json();
-      if (!data.success) throw new Error(data.message || 'Failed to fetch students');
-      return data;
+        sort: sortField,
+        order: sortOrder,
+      };
+      const response = await api.get('/api/finance/billing/all-students', { params });
+      return response.data;
     },
     retry: 2,
     staleTime: 30000,
@@ -460,7 +457,7 @@ export default function StudentBillingPage() {
   const generateMutation = useMutation({
     mutationFn: async () => {
       if (selectedStudents.size === 0) throw new Error("Please select at least one student");
-      return api.post("/finance/billing/bulk-generate", { student_ids: Array.from(selectedStudents) });
+      return api.post("/api/finance/billing/bulk-generate", { student_ids: Array.from(selectedStudents) });
     },
     onSuccess: () => {
       toast.success(`✅ Invoices generated for ${selectedStudents.size} students`);

@@ -2262,7 +2262,7 @@ class FeeService
         $countSql = "
             SELECT COUNT(DISTINCT s.id) as total
             FROM student s
-            LEFT JOIN student_opening_balance sob ON s.id = sob.student_id
+            LEFT JOIN student_opening_balances sob ON s.regnumber = sob.student_id
             $whereSql
         ";
         $countResult = $this->db->fetchOne($countSql, $whereBindings);
@@ -2276,46 +2276,46 @@ class FeeService
                 s.lname,
                 s.student_state,
                 s.intake,
-                s.faculty as faculty_id,
-                s.department as department_id,
-                f.faculty_name as faculty,
-                d.department_name as department,
-                COALESCE(sob.opening_balance, 0) as opening_balance,
+                COALESCE(sob_latest.opening_balance, 0) as opening_balance,
                 COALESCE(invoices.total_amount, 0) as invoiced,
                 COALESCE(paid_sum.total_paid, 0) as paid,
                 COALESCE(bursary_sum.total_bursary, 0) as bursary,
-                (COALESCE(sob.opening_balance, 0) + COALESCE(invoices.total_amount, 0) - COALESCE(paid_sum.total_paid, 0) - COALESCE(bursary_sum.total_bursary, 0)) as total_balance
+                (COALESCE(sob_latest.opening_balance, 0) + COALESCE(invoices.total_amount, 0) - COALESCE(paid_sum.total_paid, 0) - COALESCE(bursary_sum.total_bursary, 0)) as total_balance
             FROM student s
-            LEFT JOIN faculty f ON s.faculty = f.faculty_id
-            LEFT JOIN department d ON s.department = d.department_id
             LEFT JOIN (
-                SELECT student_id, opening_balance
-                FROM student_opening_balance
-                WHERE semester = 1
-                ORDER BY academic_year_id DESC
-            ) sob ON s.id = sob.student_id
+                SELECT sob1.student_id, sob1.opening_balance
+                FROM student_opening_balances sob1
+                INNER JOIN (
+                    SELECT student_id, MAX(academic_year_id) as max_year
+                    FROM student_opening_balances
+                    WHERE student_id IS NOT NULL AND student_id <> ''
+                    GROUP BY student_id
+                ) latest ON latest.student_id = sob1.student_id AND latest.max_year = sob1.academic_year_id
+                GROUP BY sob1.student_id
+            ) sob_latest ON s.regnumber = sob_latest.student_id
             LEFT JOIN (
                 SELECT fi.student_id, SUM(CAST(fi.amount_due AS DECIMAL(12,2))) as total_amount
                 FROM fee_invoices fi
-                WHERE fi.status NOT IN ('cancelled', 'waived')
+                WHERE fi.status NOT IN ('cancelled', 'waived') AND fi.student_id IS NOT NULL AND fi.student_id <> ''
                 GROUP BY fi.student_id
-            ) invoices ON s.id = invoices.student_id
+            ) invoices ON s.regnumber = invoices.student_id
             LEFT JOIN (
                 SELECT fp.student_id, SUM(CAST(fp.amount AS DECIMAL(12,2))) as total_paid
                 FROM fee_payments fp
-                WHERE fp.status = 'completed'
+                WHERE fp.status = 'confirmed' AND fp.student_id IS NOT NULL AND fp.student_id <> ''
                 GROUP BY fp.student_id
-            ) paid_sum ON s.id = paid_sum.student_id
+            ) paid_sum ON s.regnumber = paid_sum.student_id
             LEFT JOIN (
-                SELECT fb.student_id, SUM(CAST(fb.amount_applied AS DECIMAL(12,2))) as total_bursary
+                SELECT fb.student_id, SUM(CAST(fb.amount AS DECIMAL(12,2))) as total_bursary
                 FROM fee_bursaries fb
-                WHERE fb.status = 'active'
+                WHERE fb.status = 'confirmed' AND fb.student_id IS NOT NULL AND fb.student_id <> ''
                 GROUP BY fb.student_id
-            ) bursary_sum ON s.id = bursary_sum.student_id
+            ) bursary_sum ON s.regnumber = bursary_sum.student_id
             $whereSql
             ORDER BY $orderField $order
             LIMIT $perPage OFFSET $offset
         ";
+        /* Intentionally uses student_opening_balances snapshot table (unlike getGroupBillingSummary's ARREARS-derived figure) to avoid double-counting. These are two separate "opening balance" concepts for different pages. */
 
         $students = $this->db->fetchAll($sql, $whereBindings);
 
