@@ -15,6 +15,9 @@
     RewriteCond %{REQUEST_FILENAME} -d
     RewriteRule ^ - [L]
 
+    # CRITICAL: Pass through api-router.php itself (do NOT route to frontend)
+    RewriteRule ^api-router\.php$ - [L]
+
     # Route ALL /api/* requests to api-router.php
     # This handles: /umis/api/*, /cur-mis/api/*, etc.
     RewriteCond %{REQUEST_URI} /api/
