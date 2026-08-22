@@ -449,6 +449,7 @@ export default function StudentBillingPage() {
   const [selectAll, setSelectAll] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isBillingModalOpen, setIsBillingModalOpen] = useState(false);
 
   const perPage = 50;
 
@@ -525,9 +526,17 @@ export default function StudentBillingPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="space-y-2">
-        <h1 className="text-3xl font-bold text-ink-900 dark:text-white">📊 Bulk Billing Management</h1>
-        <p className="text-ink-500">View all students and their financial data. Select and bill in bulk.</p>
+      <div className="space-y-2 flex items-start justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-ink-900 dark:text-white">📊 Bulk Billing Management</h1>
+          <p className="text-ink-500">View all students and their financial data. Select and bill in bulk.</p>
+        </div>
+        <button
+          onClick={() => setIsBillingModalOpen(true)}
+          className="btn btn-primary"
+        >
+          📋 Open Billing Interface
+        </button>
       </div>
 
       <div className="grid grid-cols-5 gap-4">
@@ -585,6 +594,27 @@ export default function StudentBillingPage() {
           setSelectedStudent(null);
         }}
       />
+
+      {/* Billing Interface Modal */}
+      {isBillingModalOpen && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
+          <div className="w-full h-full flex">
+            {/* Close button on top right */}
+            <button
+              onClick={() => setIsBillingModalOpen(false)}
+              className="absolute top-4 right-4 z-60 bg-white dark:bg-ink-800 rounded-full p-2 shadow-lg hover:bg-ink-100 dark:hover:bg-ink-700"
+            >
+              <X className="w-6 h-6 text-ink-900 dark:text-white" />
+            </button>
+            {/* Full-screen iframe */}
+            <iframe
+              src="/umis/finance/billing/index.php"
+              className="w-full h-full border-none"
+              title="Billing Interface"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
