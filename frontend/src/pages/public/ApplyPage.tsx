@@ -1628,7 +1628,39 @@ function PaymentStep({
   };
 
   const payNow = () => {
-    window.open('https://urubutopay.rw/pay-now?origin=internal', '_blank', 'noopener,noreferrer');
+    if (!checkout?.merchant_code || !checkout?.payer_code) {
+      toast.error('Payment information not ready — please try again.');
+      checkoutQuery.refetch();
+      return;
+    }
+
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = 'https://urubutopay.rw/pay-now';
+    form.target = '_blank';
+
+    const merchantInput = document.createElement('input');
+    merchantInput.type = 'hidden';
+    merchantInput.name = 'merchant_code';
+    merchantInput.value = checkout.merchant_code;
+
+    const payerInput = document.createElement('input');
+    payerInput.type = 'hidden';
+    payerInput.name = 'payer_code';
+    payerInput.value = checkout.payer_code;
+
+    const originInput = document.createElement('input');
+    originInput.type = 'hidden';
+    originInput.name = 'origin';
+    originInput.value = 'internal';
+
+    form.appendChild(merchantInput);
+    form.appendChild(payerInput);
+    form.appendChild(originInput);
+    document.body.appendChild(form);
+    form.submit();
+    document.body.removeChild(form);
+
     setOpened(true);
     toast.success('Complete your payment in the Urubuto Pay tab, then return here.');
     statusQuery.refetch();
@@ -1686,11 +1718,15 @@ function PaymentStep({
           <button
             type="button"
             onClick={payNow}
-            disabled={!confirmAccurate}
+            disabled={checkoutQuery.isLoading || !confirmAccurate}
             className="btn-primary w-full sm:w-auto"
             title={!confirmAccurate ? 'Confirm your information is accurate first' : undefined}
           >
-            <><CreditCard className="w-4 h-4" /> Pay {formatFee} RWF with Urubuto Pay</>
+            {checkoutQuery.isLoading ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /> Preparing payment…</>
+            ) : (
+              <><CreditCard className="w-4 h-4" /> Pay {formatFee} RWF with Urubuto Pay</>
+            )}
           </button>
 
           {!confirmAccurate && (

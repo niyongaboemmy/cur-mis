@@ -101,7 +101,39 @@ export default function AdmissionFeesPanel({
   })
 
   const payNow = async (bill?: AdmissionBill) => {
-    window.open('https://urubutopay.rw/pay-now?origin=internal', '_blank', 'noopener,noreferrer')
+    if (!data?.merchant_code || !data?.payer_code) {
+      toast.error('Payment information not ready — please try again.')
+      billsQ.refetch()
+      return
+    }
+
+    const form = document.createElement('form')
+    form.method = 'POST'
+    form.action = 'https://urubutopay.rw/pay-now'
+    form.target = '_blank'
+
+    const merchantInput = document.createElement('input')
+    merchantInput.type = 'hidden'
+    merchantInput.name = 'merchant_code'
+    merchantInput.value = data.merchant_code
+
+    const payerInput = document.createElement('input')
+    payerInput.type = 'hidden'
+    payerInput.name = 'payer_code'
+    payerInput.value = data.payer_code
+
+    const originInput = document.createElement('input')
+    originInput.type = 'hidden'
+    originInput.name = 'origin'
+    originInput.value = 'internal'
+
+    form.appendChild(merchantInput)
+    form.appendChild(payerInput)
+    form.appendChild(originInput)
+    document.body.appendChild(form)
+    form.submit()
+    document.body.removeChild(form)
+
     setOpenedCheckout(true)
     toast.success(
       isValidator
