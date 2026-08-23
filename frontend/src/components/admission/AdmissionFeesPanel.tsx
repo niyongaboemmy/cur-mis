@@ -100,7 +100,7 @@ export default function AdmissionFeesPanel({
       toast.error(e?.response?.data?.message || 'Could not raise the admission fees.'),
   })
 
-  const payNow = async (bill?: AdmissionBill) => {
+  const payNow = async () => {
     if (!data?.merchant_code || !data?.payer_code) {
       toast.error('Payment information not ready — please try again.')
       billsQ.refetch()
@@ -302,7 +302,7 @@ export default function AdmissionFeesPanel({
                 </span>
               ) : (
                 <>
-                  <button className="btn-primary btn-sm" onClick={() => payNow(bill)}>
+                  <button className="btn-primary btn-sm" onClick={() => payNow()}>
                     <CreditCard className="w-3.5 h-3.5" />
                     {isValidator ? 'Open payment page' : `Pay ${fmt(bill.balance)} RWF`}
                   </button>
