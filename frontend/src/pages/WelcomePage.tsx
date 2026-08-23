@@ -1055,7 +1055,7 @@ function ApplicantWelcome({ firstName }: { firstName: string }) {
             {/* Modal Content - iframe */}
             <div className="flex-1 overflow-hidden">
               <iframe
-                src="https://cur.ac.rw/umis/finance/billing/student/index.php"
+                src="https://cur.ac.rw/umis/finance/billing/student/login.php"
                 title="Fee Billing Help"
                 className="w-full h-full border-0"
               />
