@@ -117,21 +117,24 @@ export default function ApplicantOverviewPage() {
                 </a>
               )}
             </div>
-            {hasDraft ? (
-              <a
-                href="/apply"
-                className="btn-primary inline-flex items-center gap-1.5 whitespace-nowrap"
-              >
-                <ChevronRight className="w-3.5 h-3.5" /> Continue Draft
-              </a>
-            ) : !hasSubmitted ? (
-              <a
-                href="/apply"
-                className="btn-primary inline-flex items-center gap-1.5 whitespace-nowrap"
-              >
-                <Plus className="w-3.5 h-3.5" /> New Application
-              </a>
-            ) : null}
+            <div className="flex items-center gap-3">
+              {hasDraft ? (
+                <a
+                  href="/apply"
+                  className="btn-primary inline-flex items-center gap-1.5 whitespace-nowrap"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" /> Continue Draft
+                </a>
+              ) : !hasSubmitted ? (
+                <a
+                  href="/apply"
+                  className="btn-primary inline-flex items-center gap-1.5 whitespace-nowrap"
+                >
+                  <Plus className="w-3.5 h-3.5" /> New Application
+                </a>
+              ) : null}
+              <FinanceBillingButton />
+            </div>
           </div>
 
           {/* Stats strip */}
@@ -1166,6 +1169,36 @@ function TabBtn({
     >
       <Icon className="w-4 h-4" /> {label}
     </button>
+  );
+}
+
+function FinanceBillingButton() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="btn-secondary inline-flex items-center gap-1.5 whitespace-nowrap"
+      >
+        <Building2 className="w-3.5 h-3.5" /> Finance & Billing
+      </button>
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Finance & Billing"
+        size="xl"
+      >
+        <div className="h-[70vh] w-full">
+          <iframe
+            src="https://cur.ac.rw/umis/finance/billing/student/login.php"
+            title="Finance & Billing"
+            className="w-full h-full border-0 rounded-lg"
+            style={{ width: '97%', marginLeft: 'auto', marginRight: 'auto' }}
+          />
+        </div>
+      </Modal>
+    </>
   );
 }
 
