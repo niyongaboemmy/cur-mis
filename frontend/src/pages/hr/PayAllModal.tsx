@@ -86,8 +86,9 @@ function computeBreakdown(
   const maternity = gross * (cfg.maternity_employee_rate / 100);
   const rssb =
     gross * ((cfg.rssb_employee_rate + cfg.maternity_employee_rate) / 100);
-  const cbhi = gross * (cfg.cbhi_employee_rate / 100);
-  const net = Math.max(0, gross - paye - rssb - cbhi);
+  const netBeforeCbhi = Math.max(0, gross - paye - rssb);
+  const cbhi = netBeforeCbhi * (cfg.cbhi_employee_rate / 100);
+  const net = Math.max(0, netBeforeCbhi - cbhi);
   return { gross, paye, rssb, maternity, cbhi, net };
 }
 const DEFAULT_CFG: PayrollConfig = {
