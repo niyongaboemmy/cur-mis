@@ -109,6 +109,17 @@ const QUICK_ACTIONS: QA[] = [
     roles: ["student"],
   },
 
+  // Student Finance Portal — opens modal with iframe
+  {
+    to: "#finance-portal",
+    icon: Wallet,
+    label: "Finance Portal",
+    sub: "Billing and payment information",
+    accent:
+      "bg-accent-lilac text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
+    roles: ["student"],
+  },
+
   // Applicant-only
   {
     to: "/applicant",
@@ -313,6 +324,7 @@ export default function WelcomePage() {
   }
   const [showDocumentsModal, setShowDocumentsModal] = useState(false);
   const [showRegistrarModal, setShowRegistrarModal] = useState(false);
+  const [showFinancePortalModal, setShowFinancePortalModal] = useState(false);
 
   const role = user?.role ?? "";
   const userPerms = user?.permissions ?? [];
@@ -485,8 +497,9 @@ export default function WelcomePage() {
                   const isExternal = action.to.startsWith("http");
                   const isDocumentsModal = action.label === "More Documents";
                   const isRegistrarModal = action.label === "Registrar Report";
+                  const isFinancePortalModal = action.label === "Finance Portal";
 
-                  if (isDocumentsModal || isRegistrarModal) {
+                  if (isDocumentsModal || isRegistrarModal || isFinancePortalModal) {
                     return (
                       <motion.button
                         key={action.label}
@@ -494,7 +507,11 @@ export default function WelcomePage() {
                         variants={fadeUp}
                         initial="hidden"
                         animate="visible"
-                        onClick={() => isRegistrarModal ? setShowRegistrarModal(true) : setShowDocumentsModal(true)}
+                        onClick={() => {
+                          if (isRegistrarModal) setShowRegistrarModal(true);
+                          else if (isFinancePortalModal) setShowFinancePortalModal(true);
+                          else setShowDocumentsModal(true);
+                        }}
                         className="group card p-4 flex items-center gap-3.5 hover:border-brand/40 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 text-left"
                       >
                         <span
@@ -667,6 +684,42 @@ export default function WelcomePage() {
                 src="https://cur.ac.rw/umis/documents/registrar_report/index.php"
                 title="Registrar Report"
                 className="w-full h-full border-0"
+              />
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Finance Portal Modal */}
+      {showFinancePortalModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="bg-white dark:bg-ink-950 rounded-xl shadow-2xl w-full h-[90vh] flex flex-col"
+            style={{ maxWidth: "97vw" }}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-6 border-b border-ink-200 dark:border-ink-800">
+              <h2 className="text-[18px] font-semibold text-ink-900 dark:text-white">
+                Student Finance Portal
+              </h2>
+              <button
+                onClick={() => setShowFinancePortalModal(false)}
+                className="p-2 hover:bg-ink-100 dark:hover:bg-ink-800 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-ink-600 dark:text-ink-400" />
+              </button>
+            </div>
+
+            {/* Modal Content - iframe */}
+            <div className="flex-1 overflow-hidden">
+              <iframe
+                src="https://cur.ac.rw/umis/finance/billing/student/login.php"
+                title="Student Finance Portal"
+                className="w-full h-full border-0"
+                allow="same-origin"
               />
             </div>
           </motion.div>
