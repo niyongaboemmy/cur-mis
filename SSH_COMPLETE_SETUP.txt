@@ -1,0 +1,286 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║                    🔐 COMPLETE SSH SETUP GUIDE                             ║
+║                                                                              ║
+║                   Configure SSH in 5 Minutes                               ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+================================================================================
+📚 AVAILABLE GUIDES
+================================================================================
+
+Choose the guide that fits your learning style:
+
+1. SSH_SETUP_QUICK_START.txt
+   └─ 🚀 Fast setup (5 minutes)
+   └─ Step-by-step commands
+   └─ For "just tell me what to do"
+
+2. SSH_CONFIGURATION_GUIDE.md
+   └─ 📖 Detailed explanation
+   └─ Why each step matters
+   └─ Troubleshooting section
+   └─ For "I want to understand"
+
+3. SSH_SETUP_VISUAL_GUIDE.txt
+   └─ 📊 Visual diagrams
+   └─ ASCII flowcharts
+   └─ Folder structures
+   └─ For "I like visuals"
+
+👉 START WITH: SSH_SETUP_QUICK_START.txt (fastest!)
+
+================================================================================
+⚡ SUPER QUICK VERSION (IF YOU'RE IN A HURRY)
+================================================================================
+
+Open PowerShell and run these 6 commands:
+
+1. Check keys:
+   ls $env:USERPROFILE\.ssh\
+
+2. If no id_rsa, create it:
+   ssh-keygen -t rsa -b 4096 -f "$env:USERPROFILE\.ssh\id_rsa" -N ""
+
+3. Get public key:
+   Get-Content $env:USERPROFILE\.ssh\id_rsa.pub
+
+4. Copy the output (entire line starting with "ssh-rsa...")
+
+5. Login to cPanel and add it:
+   https://cyimo-whm-private.aos.rw:2083/
+   → Search: SSH
+   → Click: Manage SSH Keys
+   → Click: Import Key
+   → Paste key
+   → Click: Import
+
+6. Test it works:
+   ssh -p 2083 curac@cyimo-whm-private.aos.rw "echo test"
+
+✅ If you see "test" → Success! SSH is ready!
+
+================================================================================
+🔑 WHAT IS SSH?
+================================================================================
+
+SSH = Secure Shell
+
+Think of it as:
+   🔓 Door locked with your fingerprint
+   🔐 No one can open it except you
+   🔑 Your key is split into:
+      • Private key (your fingerprint - keep secret!)
+      • Public key (the lock - can put anywhere)
+
+When you connect:
+   Your Computer ← [Match?] → Server
+   (Private Key)  → ✅ Yes → Allowed!
+                  → ❌ No → Denied!
+
+================================================================================
+5-STEP SETUP PROCESS
+================================================================================
+
+STEP 1: Create SSH Key Pair (if you don't have one)
+┌─────────────────────────────────────────────────────┐
+│ Windows PowerShell:                                 │
+│ ssh-keygen -t rsa -b 4096 -f "$env:USERPROFILE\... │
+│                          .ssh\id_rsa" -N ""        │
+│                                                      │
+│ Mac/Linux:                                          │
+│ ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N "" │
+└─────────────────────────────────────────────────────┘
+
+STEP 2: Get Your Public Key
+┌─────────────────────────────────────────────────────┐
+│ Windows:                                            │
+│ Get-Content $env:USERPROFILE\.ssh\id_rsa.pub      │
+│                                                      │
+│ Mac/Linux:                                          │
+│ cat ~/.ssh/id_rsa.pub                              │
+│                                                      │
+│ 👉 COPY the entire output                          │
+└─────────────────────────────────────────────────────┘
+
+STEP 3: Add Public Key to cPanel Server
+┌─────────────────────────────────────────────────────┐
+│ 1. Login: https://cyimo-whm-private.aos.rw:2083/  │
+│ 2. Search: "SSH"                                    │
+│ 3. Click: Manage SSH Keys                           │
+│ 4. Click: Import Key                                │
+│ 5. Paste: Your public key (from STEP 2)            │
+│ 6. Click: Import                                    │
+│ 7. Status: Should show "Authorized"                │
+└─────────────────────────────────────────────────────┘
+
+STEP 4: Test SSH Connection
+┌─────────────────────────────────────────────────────┐
+│ Command:                                            │
+│ ssh -p 2083 curac@cyimo-whm-private.aos.rw \      │
+│   "echo test"                                       │
+│                                                      │
+│ ✅ SUCCESS: You see "test"                         │
+│ ❌ FAILED: You see "Permission denied"             │
+│          (Public key not on server - redo STEP 3) │
+└─────────────────────────────────────────────────────┘
+
+STEP 5: Verify Git Access
+┌─────────────────────────────────────────────────────┐
+│ Command:                                            │
+│ ssh -p 2083 curac@cyimo-whm-private.aos.rw \      │
+│   "cd /home/curac/umis && git log --oneline -3"  │
+│                                                      │
+│ ✅ SUCCESS: You see list of commits               │
+│ ❌ FAILED: You see "not a git repository"         │
+│          (Need to initialize git on server)       │
+└─────────────────────────────────────────────────────┘
+
+================================================================================
+🆘 TROUBLESHOOTING
+================================================================================
+
+PROBLEM: "Permission denied (publickey)"
+└─ REASON: Public key not on server
+└─ SOLUTION:
+   1. Go back to cPanel (STEP 3)
+   2. Make sure key is imported and authorized
+   3. Try again
+
+PROBLEM: "Connection refused"
+└─ REASON: Server not responding
+└─ SOLUTION:
+   1. Check server is online
+   2. Check internet connection
+   3. Try IP: ssh -p 2083 curac@197.243.30.91
+
+PROBLEM: "Could not resolve hostname"
+└─ REASON: DNS issue
+└─ SOLUTION:
+   1. Try IP address instead: ssh -p 2083 curac@197.243.30.91
+   2. Check internet connection
+
+PROBLEM: "not a git repository"
+└─ REASON: Git not initialized
+└─ SOLUTION:
+   Run this command to initialize:
+
+   ssh -p 2083 curac@cyimo-whm-private.aos.rw << 'EOF'
+   cd /home/curac/umis
+   git init
+   git remote add origin https://github.com/niyongaboemmy/cur-mis.git
+   git fetch origin main
+   git checkout main
+   EOF
+
+================================================================================
+✅ VERIFICATION CHECKLIST
+================================================================================
+
+After setup, all these should work:
+
+[ ] SSH Key Pair Created
+    Test: ls $env:USERPROFILE\.ssh\id_rsa.pub
+
+[ ] Public Key on Server
+    Test: ssh -p 2083 curac@cyimo-whm-private.aos.rw "echo test"
+    Expected: test
+
+[ ] Git Accessible
+    Test: ssh -p 2083 curac@cyimo-whm-private.aos.rw \
+          "cd /home/curac/umis && git status"
+    Expected: On branch main
+
+[ ] Can Pull Code
+    Test: ssh -p 2083 curac@cyimo-whm-private.aos.rw \
+          "cd /home/curac/umis && git log --oneline -1"
+    Expected: Latest commit hash
+
+[ ] Project Files Exist
+    Test: ssh -p 2083 curac@cyimo-whm-private.aos.rw \
+          "ls -la /home/curac/umis"
+    Expected: frontend, backend, .github directories
+
+🎉 If all pass → SSH fully configured!
+
+================================================================================
+🚀 WHAT'S NEXT
+================================================================================
+
+Once SSH is working:
+
+1. GitHub Actions can now deploy automatically
+2. Push code to GitHub
+3. Watch GitHub Actions deploy in 10-15 seconds
+4. Code appears in production automatically!
+
+Example:
+   git commit --allow-empty -m "test: verify ssh"
+   git push origin main
+
+   Then check: https://github.com/niyongaboemmy/cur-mis/actions
+
+   Should see 🟢 green checkmark!
+
+================================================================================
+🔒 SECURITY REMINDER
+================================================================================
+
+✅ DO:
+   • Keep id_rsa private (only your computer)
+   • Back up your SSH keys
+   • Use 4096-bit keys
+   • Rotate keys yearly
+
+❌ DON'T:
+   • Share id_rsa
+   • Put id_rsa on GitHub
+   • Email private key
+   • Use weak keys
+
+================================================================================
+📞 QUICK REFERENCE COMMANDS
+================================================================================
+
+Create key:
+   ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N ""
+
+Show public key:
+   cat ~/.ssh/id_rsa.pub
+
+Test SSH:
+   ssh -p 2083 curac@cyimo-whm-private.aos.rw "echo test"
+
+Test git:
+   ssh -p 2083 curac@cyimo-whm-private.aos.rw \
+     "cd /home/curac/umis && git status"
+
+Pull code manually:
+   ssh -p 2083 curac@cyimo-whm-private.aos.rw \
+     "cd /home/curac/umis && git pull origin main"
+
+Check commit:
+   ssh -p 2083 curac@cyimo-whm-private.aos.rw \
+     "cd /home/curac/umis && git log --oneline -5"
+
+================================================================================
+📖 DETAILED GUIDES
+================================================================================
+
+For more details, see:
+
+1. SSH_SETUP_QUICK_START.txt
+   → 5-minute step-by-step guide
+
+2. SSH_CONFIGURATION_GUIDE.md
+   → Detailed explanations and troubleshooting
+
+3. SSH_SETUP_VISUAL_GUIDE.txt
+   → Visual diagrams and flowcharts
+
+================================================================================
+
+👉 START HERE: SSH_SETUP_QUICK_START.txt
+
+Follow it step-by-step and you'll have SSH working in 5 minutes!
+
+================================================================================
