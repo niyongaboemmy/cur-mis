@@ -1,0 +1,240 @@
+================================================================================
+🔐 SSH SETUP - QUICK START (5 MINUTES)
+================================================================================
+
+Follow these steps in order to set up SSH for production server access.
+
+================================================================================
+STEP 1: CHECK IF YOU HAVE SSH KEY (30 SECONDS)
+================================================================================
+
+Open PowerShell and type:
+
+   ls $env:USERPROFILE\.ssh\
+
+OR on Mac/Linux:
+
+   ls ~/.ssh/
+
+Look for:
+   ✅ id_rsa (private key)
+   ✅ id_rsa.pub (public key)
+
+IF YOU SEE BOTH:
+   You already have SSH keys! Go to STEP 4.
+
+IF YOU DON'T SEE THEM:
+   Follow STEP 2 to create them.
+
+================================================================================
+STEP 2: CREATE SSH KEY (IF YOU DON'T HAVE ONE) (1 MINUTE)
+================================================================================
+
+Open PowerShell and type:
+
+   ssh-keygen -t rsa -b 4096 -f "$env:USERPROFILE\.ssh\id_rsa" -N ""
+
+OR on Mac/Linux:
+
+   ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N ""
+
+You should see:
+
+   Generating public/private rsa key pair...
+   Your identification has been saved in ~/.ssh/id_rsa
+   Your public key has been saved in ~/.ssh/id_rsa.pub
+
+Done! ✅
+
+================================================================================
+STEP 3: GET YOUR PUBLIC KEY (30 SECONDS)
+================================================================================
+
+Type this command:
+
+   On Windows:
+   Get-Content $env:USERPROFILE\.ssh\id_rsa.pub
+
+   On Mac/Linux:
+   cat ~/.ssh/id_rsa.pub
+
+You'll see something like:
+
+   ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDa5Z8x9q2x8v... user@computer
+
+👉 COPY THE ENTIRE LINE (select all, Ctrl+C)
+
+================================================================================
+STEP 4: ADD PUBLIC KEY TO CPANEL SERVER (2 MINUTES)
+================================================================================
+
+LOGIN TO CPANEL:
+   👉 Go to: https://cyimo-whm-private.aos.rw:2083/
+   Username: curac
+   Password: (your cPanel password)
+
+FIND SSH KEYS:
+   1. Search for "SSH" in the search box
+   2. Click "SSH Access" or "SSH Keys"
+   3. Click "Manage SSH Keys" or "Import Key"
+
+ADD YOUR PUBLIC KEY:
+   1. Click "Import Key" button
+   2. Paste your public key (from STEP 3) into the text box
+   3. Click "Import"
+   4. Authorize or confirm
+
+VERIFY:
+   You should see your key listed as "Authorized"
+
+Done! ✅
+
+================================================================================
+STEP 5: TEST SSH CONNECTION (1 MINUTE)
+================================================================================
+
+Open PowerShell and type:
+
+   ssh -p 2083 curac@cyimo-whm-private.aos.rw "echo test"
+
+RESULTS:
+
+   ✅ If you see: "test"
+      SUCCESS! SSH is working!
+
+   ❌ If you see: "Permission denied"
+      Problem: Public key not on server
+      Solution: Go back to STEP 4 and add public key again
+
+   ❌ If you see: "Connection refused"
+      Problem: Server not responding
+      Solution: Check server is online
+
+   ❌ If you see: "Could not resolve hostname"
+      Problem: DNS issue
+      Solution: Try: ssh -p 2083 curac@197.243.30.91
+
+================================================================================
+STEP 6: TEST GIT PULL (1 MINUTE)
+================================================================================
+
+If SSH test worked, test git:
+
+   ssh -p 2083 curac@cyimo-whm-private.aos.rw "cd /home/curac/umis && git log --oneline -5"
+
+RESULTS:
+
+   ✅ If you see: List of commits
+      SUCCESS! Git is working!
+
+   ❌ If you see: "not a git repository"
+      Problem: Git not initialized on server
+      Solution: See INITIALIZE GIT section below
+
+   ❌ If you see: "cd: no such file or directory"
+      Problem: Path is wrong
+      Solution: Check PRODUCTION_PATH in GitHub Secrets
+
+================================================================================
+BONUS: INITIALIZE GIT ON SERVER (IF NEEDED)
+================================================================================
+
+If you got "not a git repository" error:
+
+   ssh -p 2083 curac@cyimo-whm-private.aos.rw << 'EOF'
+   cd /home/curac/umis
+   git init
+   git remote add origin https://github.com/niyongaboemmy/cur-mis.git
+   git fetch origin main
+   git checkout main
+   git pull origin main
+   echo "Git initialized!"
+   EOF
+
+This will:
+   1. Initialize git repo
+   2. Add GitHub as remote
+   3. Fetch latest code
+   4. Check out main branch
+   5. Pull all code
+
+Done! ✅
+
+================================================================================
+STEP 7: VERIFY DEPLOYMENT (1 MINUTE)
+================================================================================
+
+After git is initialized, check if code is there:
+
+   ssh -p 2083 curac@cyimo-whm-private.aos.rw "cd /home/curac/umis && ls -la"
+
+You should see your project files:
+   frontend/
+   backend/
+   .github/
+   README.md
+   etc.
+
+If you see files, deployment is working! ✅
+
+================================================================================
+✅ SUCCESS CHECKLIST
+================================================================================
+
+[ ] SSH key generated (id_rsa + id_rsa.pub)
+[ ] Public key added to cPanel server
+[ ] SSH connection test successful (echo test works)
+[ ] Git log shows commits (git log --oneline -5 works)
+[ ] Project files visible (ls -la shows frontend/, backend/, etc.)
+[ ] Git initialized on server (git status works)
+
+If all checked: SSH is fully configured! 🎉
+
+================================================================================
+🚀 NOW WHAT?
+================================================================================
+
+Once SSH is working:
+
+1. GitHub Actions will automatically deploy
+2. Test by pushing a commit: git push origin main
+3. Check GitHub Actions for green checkmark
+4. Production will have latest code
+
+Example test:
+
+   git commit --allow-empty -m "test: verify deployment"
+   git push origin main
+
+Wait 15 seconds, then check: https://github.com/niyongaboemmy/cur-mis/actions
+
+Should show 🟢 green checkmark!
+
+================================================================================
+❓ STILL HAVING ISSUES?
+================================================================================
+
+If SSH is not working, the likely issues are:
+
+1. Public key not on server
+   └─ Solution: Re-do STEP 4 in cPanel
+
+2. SSH key file corrupted
+   └─ Solution: Delete and regenerate (STEP 2)
+
+3. Server not reachable
+   └─ Solution: Check internet, try IP: ssh -p 2083 curac@197.243.30.91
+
+4. Wrong username/password for cPanel
+   └─ Solution: Check cPanel login credentials
+
+5. Git not initialized on server
+   └─ Solution: Run the "INITIALIZE GIT" section above
+
+================================================================================
+
+📖 For detailed info, see: SSH_CONFIGURATION_GUIDE.md
+
+Once SSH works, automatic deployment will work perfectly! ✅
+
+================================================================================
