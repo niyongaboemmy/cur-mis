@@ -740,12 +740,14 @@ function AdmissionOfferBanner({
           </p>
         </div>
         <div className="flex flex-col gap-3 shrink-0">
-          <button
-            className="btn-white px-8 py-3 rounded-2xl font-black uppercase tracking-widest text-[12px] shadow-xl shadow-black/10 hover:-translate-y-0.5 transition-transform"
-            onClick={() => setViewingLetter(true)}
+          <a
+            href={`/umis/documents/all_certificate/generate_document.php?type=admission_letter&student_id=${details.student_id ?? ''}&file_name=Admission_Letter_FORMAT.pdf&applicant=1`}
+            target="_blank"
+            rel="noreferrer"
+            className="btn-white px-8 py-3 rounded-2xl font-black uppercase tracking-widest text-[12px] shadow-xl shadow-black/10 hover:-translate-y-0.5 transition-transform inline-flex items-center justify-center gap-2"
           >
-            <FileText className="w-4 h-4 mr-2" /> View Offer Letter
-          </button>
+            <FileText className="w-4 h-4" /> View Offer Letter
+          </a>
           {details.offer?.letter_token && (
             <a
               href={`/umis/documents/all_certificate/generate_document.php?type=admission_letter&student_id=${details.student_id ?? ''}&file_name=Admission_Letter_FORMAT.pdf&applicant=1`}
