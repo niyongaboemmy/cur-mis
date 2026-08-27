@@ -311,17 +311,6 @@ const QUICK_ACTIONS: QA[] = [
 export default function WelcomePage() {
   const { user } = useAuthStore();
 
-  // Teaching staff land straight on their own dashboard. "/" is the post-login
-  // destination (useAuth navigates here after OTP verification), and for a
-  // lecturer the generic launcher is a detour — everything they need is on the
-  // teaching dashboard.
-  //
-  // NOTE: reads `user.permissions` directly rather than useAnyPermission(),
-  // which bypasses for superadmin and would redirect every superadmin here.
-  // ACCESS_TEACHER_PORTAL is granted only to `lecturer`/`HOD`.
-  if (user?.permissions?.includes(PERMISSIONS.ACCESS_TEACHER_PORTAL)) {
-    return <TeacherDashboardPage />;
-  }
   const [showDocumentsModal, setShowDocumentsModal] = useState(false);
   const [showRegistrarModal, setShowRegistrarModal] = useState(false);
   const [showFinancePortalModal, setShowFinancePortalModal] = useState(false);
@@ -331,7 +320,6 @@ export default function WelcomePage() {
   const isApplicant = role === "applicant" || user?.is_applicant;
   const isSuper = isSuperadmin(user);
 
-  // Hooks must run unconditionally — all useMemo calls before any early return.
   const firstName = useMemo(
     () => user?.full_name?.split(" ")[0] ?? "there",
     [user],
@@ -341,18 +329,19 @@ export default function WelcomePage() {
     return user?.role_name ?? role ?? "Staff";
   }, [user, isApplicant, role]);
 
-  // Per-role filter — same model as the sidebar in MainLayout.
   const actions = useMemo(() => {
     return QUICK_ACTIONS.filter((qa) => {
       if (qa.hideForRoles?.includes(role)) return false;
       if (qa.roles && qa.roles.length > 0) return qa.roles.includes(role);
-      // No permission requirement → universally visible
       if (!qa.permissions || qa.permissions.length === 0) return true;
-      // Superadmin sees every permission-gated card; everyone else needs a match
       if (isSuper) return true;
       return qa.permissions.some((p) => userPerms.includes(p));
     });
   }, [role, userPerms, isSuper]);
+
+  if (user?.permissions?.includes(PERMISSIONS.ACCESS_TEACHER_PORTAL)) {
+    return <TeacherDashboardPage />;
+  }
 
   // Early return AFTER all hooks so Rules of Hooks are satisfied.
   if (isApplicant) {

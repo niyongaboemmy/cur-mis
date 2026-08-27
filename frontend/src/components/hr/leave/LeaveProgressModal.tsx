@@ -62,7 +62,6 @@ export default function LeaveProgressModal({
   useEffect(() => {
     clearBadges.mutate();
     // Once per request opened — deliberately not keyed on the mutation object.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestId]);
 
   // Escape closes, like every other modal in the app.

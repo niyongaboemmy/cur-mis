@@ -40,30 +40,26 @@ export const systemDocumentService = {
    * Returns blob for file download
    */
   download: async (docId: number, fileName: string): Promise<void> => {
-    try {
-      const response = await fetch(`/api/system-documents/${docId}/download`, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('cur-mis-auth') ? JSON.parse(localStorage.getItem('cur-mis-auth') || '{}').token : ''}`,
-        },
-      })
+    const response = await fetch(`/api/system-documents/${docId}/download`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${localStorage.getItem('cur-mis-auth') ? JSON.parse(localStorage.getItem('cur-mis-auth') || '{}').token : ''}`,
+      },
+    })
 
-      if (!response.ok) {
-        throw new Error(`Download failed: ${response.statusText}`)
-      }
-
-      const blob = await response.blob()
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = fileName
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      URL.revokeObjectURL(url)
-    } catch (error) {
-      throw error
+    if (!response.ok) {
+      throw new Error(`Download failed: ${response.statusText}`)
     }
+
+    const blob = await response.blob()
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = fileName
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
   },
 
   /**
