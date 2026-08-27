@@ -3,9 +3,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import {
   AlertCircle, BadgeCheck, CheckCircle2, Copy, CreditCard, ExternalLink,
-  Loader2, Receipt, ReceiptText, ShieldCheck, Wallet,
+  Loader2, Receipt, ReceiptText, ShieldCheck, Wallet, BanknoteIcon,
 } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
+import BordereauPaymentForm from './BordereauPaymentForm'
 import {
   admissionBillingService, applicantService,
   type AdmissionBill, type AdmissionBillingOverview,
@@ -51,6 +52,7 @@ export default function AdmissionFeesPanel({
 
   const [confirming, setConfirming] = useState<AdmissionBill | null>(null)
   const [openedCheckout, setOpenedCheckout] = useState(false)
+  const [showBordereauForm, setShowBordereauForm] = useState(false)
 
   const billsQ = useQuery({
     queryKey,
@@ -306,6 +308,15 @@ export default function AdmissionFeesPanel({
                     <CreditCard className="w-3.5 h-3.5" />
                     {isValidator ? 'Open payment page' : `Pay ${fmt(bill.balance)} RWF`}
                   </button>
+                  {!isValidator && (
+                    <button
+                      className="btn-secondary btn-sm"
+                      onClick={() => setShowBordereauForm(true)}
+                      title="Paid via bank transfer? Submit your receipt number for verification"
+                    >
+                      <BanknoteIcon className="w-3.5 h-3.5" /> Bordereau
+                    </button>
+                  )}
                   {isValidator && canManage && (
                     <button
                       className="btn-secondary btn-sm"
@@ -403,6 +414,19 @@ export default function AdmissionFeesPanel({
           onClose={() => setConfirming(null)}
           onDone={() => {
             setConfirming(null)
+            qc.invalidateQueries({ queryKey })
+          }}
+        />
+      )}
+
+      {!isValidator && summary && (
+        <BordereauPaymentForm
+          applicationId={applicationId as number}
+          requiredAmount={summary.balance > 0 ? summary.balance : summary.total_paid}
+          isOpen={showBordereauForm}
+          onClose={() => setShowBordereauForm(false)}
+          onApproved={() => {
+            setShowBordereauForm(false)
             qc.invalidateQueries({ queryKey })
           }}
         />
