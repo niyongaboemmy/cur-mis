@@ -392,6 +392,8 @@ export const ENTITIES: EntityCfg[] = [
     defaultSort: { key: 'module_code', dir: 'asc' },
     importMatchKey: 'module_code',
     filters: [
+      { key: 'program_ids', label: 'Department Option',
+        selectFrom: { slug: 'options', valueKey: 'id', labelKey: 'name' } },
       { key: 'department', label: 'Department',
         selectFrom: { slug: 'departments', valueKey: 'dep_id', labelKey: 'dep_name' } },
       { key: 'level',      label: 'Level',
