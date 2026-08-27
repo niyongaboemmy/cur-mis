@@ -297,36 +297,37 @@ export default function AdmissionFeesPanel({
               </p>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 shrink-0">
               {bill.status === 'paid' ? (
                 <span className="flex items-center gap-1.5 text-[12.5px] font-semibold text-emerald-600 dark:text-emerald-400">
                   <CheckCircle2 className="w-4 h-4" /> Paid
                 </span>
               ) : (
-                <>
-                  <button className="btn-primary btn-sm" onClick={() => payNow()}>
-                    <CreditCard className="w-3.5 h-3.5" />
+                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                  <button className="btn-primary" onClick={() => payNow()}>
+                    <CreditCard className="w-4 h-4" />
                     {isValidator ? 'Open payment page' : `Pay ${fmt(bill.balance)} RWF`}
                   </button>
                   {!isValidator && (
                     <button
-                      className="btn-secondary btn-sm"
+                      className="btn-secondary"
                       onClick={() => setShowBordereauForm(true)}
                       title="Paid via bank transfer? Submit your receipt number for verification"
                     >
-                      <BanknoteIcon className="w-3.5 h-3.5" /> Bordereau
+                      <BanknoteIcon className="w-4 h-4" />
+                      Bordereau
                     </button>
                   )}
                   {isValidator && canManage && (
                     <button
-                      className="btn-secondary btn-sm"
+                      className="btn-secondary"
                       onClick={() => setConfirming(bill)}
                       title="Record a bank transfer or cash payment already received"
                     >
-                      <ShieldCheck className="w-3.5 h-3.5" /> Confirm offline
+                      <ShieldCheck className="w-4 h-4" /> Confirm offline
                     </button>
                   )}
-                </>
+                </div>
               )}
             </div>
           </div>
