@@ -1,0 +1,107 @@
+================================================================================
+🔧 FIX DEPLOYMENT FAILURES - START HERE
+================================================================================
+
+STATUS: ❌ Red X on GitHub Actions
+MEANING: Code pushed to GitHub ✅ BUT deployment to cPanel failed ❌
+
+================================================================================
+⚡ IMMEDIATE ACTION - 5 MINUTES
+================================================================================
+
+1. TEST SSH CONNECTION
+   ────────────────────
+   Command:
+   ssh -p 2083 -i deploy_key curac@cyimo-whm-private.aos.rw "echo test"
+
+   Result:
+   ✅ If you see "test" → SSH works!
+   ❌ If you see "Permission denied" → SSH key problem
+
+2. TEST GIT ON SERVER
+   ──────────────────
+   Command:
+   ssh -p 2083 curac@cyimo-whm-private.aos.rw "cd /home/curac/umis && git status"
+
+   Result:
+   ✅ If you see git status → Good!
+   ❌ If you see "not a git repository" → Initialize git (see below)
+
+3. CHECK GITHUB SECRETS
+   ────────────────────
+   Go to: https://github.com/niyongaboemmy/cur-mis/settings/secrets/actions
+
+   Verify all 5 are present:
+   ✅ CPANEL_HOST
+   ✅ CPANEL_USER
+   ✅ CPANEL_SSH_PORT
+   ✅ CPANEL_SSH_KEY
+   ✅ PRODUCTION_PATH
+
+   Missing any? ADD IT.
+
+================================================================================
+🔴 IF GIT NOT INITIALIZED
+================================================================================
+
+Run this on your server:
+
+ssh -p 2083 curac@cyimo-whm-private.aos.rw << 'EOF'
+cd /home/curac/umis
+git init
+git remote add origin https://github.com/niyongaboemmy/cur-mis.git
+git fetch origin main
+git checkout main
+git pull origin main
+EOF
+
+Then verify:
+ssh -p 2083 curac@cyimo-whm-private.aos.rw "cd /home/curac/umis && git log --oneline -1"
+
+================================================================================
+🟢 AFTER FIXING ISSUE
+================================================================================
+
+Push a test commit to retrigger deployment:
+
+git commit --allow-empty -m "test: retry deployment after fix"
+git push origin main
+
+Then check GitHub Actions again for green checkmark:
+https://github.com/niyongaboemmy/cur-mis/actions
+
+================================================================================
+📝 CHECK GITHUB ACTIONS ERROR
+================================================================================
+
+1. Go to: https://github.com/niyongaboemmy/cur-mis/actions
+2. Click the RED X deployment (most recent)
+3. Click "Deploy to cPanel Production" job
+4. Scroll to the BOTTOM
+5. READ THE ERROR MESSAGE
+
+Common errors:
+- "Permission denied" → SSH key issue
+- "not a git repository" → Initialize git on server
+- "secret not found" → Missing GitHub secret
+- "Connection refused" → Server unreachable
+
+================================================================================
+✅ QUICK CHECKLIST
+================================================================================
+
+[ ] Read GitHub Actions error message
+[ ] Test: ssh -p 2083 -i deploy_key curac@cyimo-whm-private.aos.rw "echo test"
+[ ] Test: ssh -p 2083 curac@cyimo-whm-private.aos.rw "cd /home/curac/umis && git status"
+[ ] Verify all 5 GitHub secrets exist
+[ ] If git not initialized: run init commands above
+[ ] Push test commit to retrigger deployment
+[ ] Check GitHub Actions for green checkmark
+
+================================================================================
+
+Once you fix the issue, deployment will work automatically for all future pushes!
+
+Need help? Message me with the GitHub Actions error message you see.
+
+================================================================================

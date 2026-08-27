@@ -953,9 +953,14 @@ class ApplicantProfileController extends BaseController
         // a2_grades, principal_passes, serial_number, program_id/campus_id/
         // mode_of_study/level_id, payment_*) are exposed without having to
         // remember to add each one to a hand-picked map.
+
+        // Include student_id from offer if available (for document generation)
+        $studentId = $offer['student_id'] ?? null;
+
         $payload = array_merge($application, [
             'academic_year'      => $application['academic_year_label'] ?? '',
             'offer'              => $offer,
+            'student_id'         => $studentId,
             'document_checklist' => $checklist,
             'status_log'         => $logRows,
         ]);

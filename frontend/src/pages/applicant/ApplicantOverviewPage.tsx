@@ -600,7 +600,7 @@ function ApplicationView({ app, onBack }: { app: any; onBack?: () => void }) {
           </div>
           {(details as any)?.offer?.letter_token && (
             <a
-              href={`${import.meta.env.VITE_API_URL ?? ''}/api/portal/admission-letter?token=${(details as any).offer.letter_token}`}
+              href={`/umis/documents/all_certificate/generate_document.php?type=admission_letter&student_id=${(details as any).student_id ?? ''}&file_name=Admission_Letter_FORMAT.pdf&applicant=1`}
               target="_blank"
               rel="noreferrer"
               className="shrink-0 flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[12px] font-black uppercase tracking-widest transition-colors"
@@ -748,7 +748,7 @@ function AdmissionOfferBanner({
           </button>
           {details.offer?.letter_token && (
             <a
-              href={`${import.meta.env.VITE_API_URL ?? ''}/api/portal/admission-letter?token=${details.offer.letter_token}`}
+              href={`/umis/documents/all_certificate/generate_document.php?type=admission_letter&student_id=${details.student_id ?? ''}&file_name=Admission_Letter_FORMAT.pdf&applicant=1`}
               target="_blank"
               rel="noreferrer"
               className="flex items-center justify-center gap-2 px-8 py-3 rounded-2xl font-black uppercase tracking-widest text-[12px] bg-white/20 hover:bg-white/30 text-white border border-white/30 transition-colors"
