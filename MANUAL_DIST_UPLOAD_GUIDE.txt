@@ -1,0 +1,259 @@
+================================================================================
+📤 MANUAL UPLOAD DIST FOLDER TO PRODUCTION
+================================================================================
+
+This guide shows how to manually upload only the dist folder to production
+without using GitHub Actions.
+
+================================================================================
+⚡ QUICK OPTION 1: USING SFTP (EASIEST FOR GUI)
+================================================================================
+
+STEP 1: Download & Install FileZilla
+────────────────────────────────────
+Go to: https://filezilla-project.org/download.php
+Download: FileZilla Client (not server)
+
+STEP 2: Connect to Production Server
+─────────────────────────────────────
+Open FileZilla
+Click: File → Site Manager
+
+New Site:
+├─ Protocol: SFTP
+├─ Host: cyimo-whm-private.aos.rw
+├─ Port: 2083
+├─ Login Type: Key file
+├─ User: curac
+├─ Key file: C:\Users\College Saint Andre\.ssh\id_rsa
+└─ Click: Connect
+
+STEP 3: Navigate to Production Folder
+──────────────────────────────────────
+Remote path: /home/curac/umis/
+
+STEP 4: Upload Dist Folder
+──────────────────────────
+Left side (Local): Navigate to C:\xamppP\htdocs\cur-mis\frontend\dist\
+Right side (Remote): In /home/curac/umis/
+
+Actions:
+1. On left, right-click on dist folder
+2. Click "Upload"
+3. If asked to overwrite existing dist folder, click "Yes"
+
+STEP 5: Verify Upload
+─────────────────────
+On right side, you should see:
+  /home/curac/umis/dist/
+  ├── index.html
+  ├── assets/
+  │   ├── index-CQCnnJvW.js
+  │   ├── index-CWbYnykr.css
+  │   └── ... (other files)
+
+Done! ✅
+
+================================================================================
+💻 QUICK OPTION 2: USING POWERSHELL (COMMAND LINE)
+================================================================================
+
+This requires SSH key to be set up (see SSH_COMPLETE_SETUP.txt)
+
+STEP 1: Open PowerShell
+───────────────────────
+Press: Windows + R
+Type: powershell
+Press: Enter
+
+STEP 2: Navigate to Project
+────────────────────────────
+cd C:\xamppP\htdocs\cur-mis\frontend
+
+STEP 3: Remove Old Dist on Server
+──────────────────────────────────
+ssh -p 2083 curac@cyimo-whm-private.aos.rw "rm -rf /home/curac/umis/dist"
+
+STEP 4: Upload New Dist Folder
+───────────────────────────────
+scp -P 2083 -r dist\ curac@cyimo-whm-private.aos.rw:/home/curac/umis/
+
+Note: The backslash at the end is important! (dist\)
+
+STEP 5: Verify Upload
+─────────────────────
+ssh -p 2083 curac@cyimo-whm-private.aos.rw "ls -la /home/curac/umis/dist/"
+
+You should see:
+  index.html
+  assets/
+
+Done! ✅
+
+================================================================================
+🔧 DETAILED OPTION 2: STEP-BY-STEP WITH EXPLANATIONS
+================================================================================
+
+STEP 1: Open PowerShell
+───────────────────────
+Press Windows + R
+Type: powershell
+Press Enter
+
+STEP 2: Go to Frontend Folder
+──────────────────────────────
+Type this command:
+   cd C:\xamppP\htdocs\cur-mis\frontend
+
+Press Enter
+
+STEP 3: Delete Old Dist on Server (OPTIONAL but RECOMMENDED)
+─────────────────────────────────────────────────────────────
+This removes the old dist folder to avoid conflicts.
+
+Type this command:
+   ssh -p 2083 curac@cyimo-whm-private.aos.rw "rm -rf /home/curac/umis/dist"
+
+Press Enter
+
+You should see:
+   (no output = success)
+
+STEP 4: Upload New Dist Folder
+───────────────────────────────
+This copies the entire dist folder to the server.
+
+Type this command:
+   scp -P 2083 -r dist\ curac@cyimo-whm-private.aos.rw:/home/curac/umis/
+
+Press Enter
+
+Wait for the upload to complete. You'll see:
+   (no errors = success)
+
+The backslash at the end is IMPORTANT! It means "copy this folder and all contents"
+
+STEP 5: Verify Upload Worked
+─────────────────────────────
+Type this command to check if files are on server:
+   ssh -p 2083 curac@cyimo-whm-private.aos.rw "ls -la /home/curac/umis/dist/"
+
+Press Enter
+
+You should see:
+   index.html
+   assets
+   ...
+
+If you see these files, upload was successful! ✅
+
+================================================================================
+⚠️ WHAT IF SSH KEY DOESN'T WORK?
+================================================================================
+
+If you get "Permission denied" error:
+
+1. Make sure SSH is configured (see SSH_COMPLETE_SETUP.txt)
+2. Test SSH first:
+   ssh -p 2083 curac@cyimo-whm-private.aos.rw "echo test"
+   Should see: test
+
+3. If that doesn't work, use FileZilla (Option 1) instead
+
+================================================================================
+📋 COMPLETE UPLOAD PROCESS
+================================================================================
+
+These are the exact commands to copy & paste:
+
+OPEN POWERSHELL AND RUN THESE ONE BY ONE:
+
+1. Navigate to folder:
+   cd C:\xamppP\htdocs\cur-mis\frontend
+
+2. Delete old dist on server:
+   ssh -p 2083 curac@cyimo-whm-private.aos.rw "rm -rf /home/curac/umis/dist"
+
+3. Upload new dist folder:
+   scp -P 2083 -r dist\ curac@cyimo-whm-private.aos.rw:/home/curac/umis/
+
+4. Verify it worked:
+   ssh -p 2083 curac@cyimo-whm-private.aos.rw "ls -la /home/curac/umis/dist/"
+
+5. Check index.html exists:
+   ssh -p 2083 curac@cyimo-whm-private.aos.rw "cat /home/curac/umis/dist/index.html | head -5"
+
+Done! ✅
+
+================================================================================
+🎯 QUICK SUMMARY
+================================================================================
+
+Option 1 (GUI - Easiest):
+   → Download FileZilla
+   → Connect via SFTP
+   → Drag & drop dist folder
+   → Done!
+
+Option 2 (Command Line - Fastest):
+   → Open PowerShell
+   → cd C:\xamppP\htdocs\cur-mis\frontend
+   → scp -P 2083 -r dist\ curac@cyimo-whm-private.aos.rw:/home/curac/umis/
+   → Done!
+
+================================================================================
+✅ AFTER UPLOAD
+================================================================================
+
+Once upload is complete:
+
+1. Go to your site: https://cur.ac.rw/umis/
+
+2. You should see the updated version immediately
+
+3. If you don't see changes:
+   - Clear browser cache (Ctrl+Shift+Delete)
+   - Or open in incognito mode (Ctrl+Shift+N)
+
+4. Check browser console for errors (F12)
+
+Done! 🎉
+
+================================================================================
+📞 TROUBLESHOOTING
+================================================================================
+
+Problem: "Permission denied (publickey)"
+└─ SSH key not on server
+└─ Solution: Follow SSH_COMPLETE_SETUP.txt first
+
+Problem: "scp: command not found"
+└─ Git Bash not installed
+└─ Solution: Install Git for Windows (includes scp)
+
+Problem: Files uploaded but site still shows old version
+└─ Browser cache
+└─ Solution: Hard refresh (Ctrl+Shift+R or Ctrl+F5)
+
+Problem: "No such file or directory"
+└─ Path is wrong
+└─ Solution: Check you're in C:\xamppP\htdocs\cur-mis\frontend
+
+Problem: Upload is very slow
+└─ Normal for large files
+└─ Solution: Wait (dist folder is ~5MB, might take 30 seconds)
+
+================================================================================
+📚 RELATED GUIDES
+================================================================================
+
+For more help, see:
+• SSH_COMPLETE_SETUP.txt ........... How to set up SSH first
+• BUILD_COMPLETE_SUMMARY.txt ...... Build details
+• HOW_TO_CHECK_DEPLOYMENT.md ...... How to verify deployment
+
+================================================================================
+
+Ready to upload? Pick Option 1 (FileZilla) or Option 2 (PowerShell) above!
+
+================================================================================
