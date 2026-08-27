@@ -129,6 +129,9 @@ export interface FilterCfg {
   label: string
   /** Lookup source for the dropdown options. */
   selectFrom: { slug: AcMgmtEntity; valueKey: string; labelKey: string }
+  /** Filter this dropdown's options by another filter's chosen value:
+   *  options[parentKey].relatedRowKey == chosen[parentKey]. */
+  filterBy?: { parentKey: string; relatedRowKey: string }
 }
 
 /** Hook called when the create/edit form mutates a single field. Useful for
@@ -392,12 +395,16 @@ export const ENTITIES: EntityCfg[] = [
     defaultSort: { key: 'module_code', dir: 'asc' },
     importMatchKey: 'module_code',
     filters: [
-      { key: 'program_ids', label: 'Department Option',
-        selectFrom: { slug: 'options', valueKey: 'id', labelKey: 'name' } },
+      { key: 'faculty', label: 'Faculty',
+        selectFrom: { slug: 'faculties', valueKey: 'fac_id', labelKey: 'fac_name' } },
       { key: 'department', label: 'Department',
-        selectFrom: { slug: 'departments', valueKey: 'dep_id', labelKey: 'dep_name' } },
-      { key: 'level',      label: 'Level',
-        selectFrom: { slug: 'levels',      valueKey: 'id',     labelKey: 'name' } },
+        selectFrom: { slug: 'departments', valueKey: 'dep_id', labelKey: 'dep_name' },
+        filterBy: { parentKey: 'faculty', relatedRowKey: 'fac_id' } },
+      { key: 'program_ids', label: 'Department Option',
+        selectFrom: { slug: 'options', valueKey: 'id', labelKey: 'name' },
+        filterBy: { parentKey: 'department', relatedRowKey: 'department_id' } },
+      { key: 'level', label: 'Level',
+        selectFrom: { slug: 'levels', valueKey: 'id', labelKey: 'name' } },
     ],
     // Single-program import: the user picks the program in the import-
     // context dialog, then uploads a small file with just these columns.
