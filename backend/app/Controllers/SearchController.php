@@ -47,13 +47,13 @@ class SearchController extends BaseController
 
         $data = [
             'students' => $can(Permissions::VIEW_STUDENTS)
-                ? $this->searchStudents($db, $like, $limit)
+                ? $this->searchStudents($db, $q, $limit)
                 : [],
             'staff' => $can(Permissions::VIEW_HR_EMPLOYEES)
-                ? $this->searchStaff($db, $like, $limit)
+                ? $this->searchStaff($db, $q, $limit)
                 : [],
             'applications' => ($can(Permissions::MANAGE_STUDENT_APPLICATIONS) || $can(Permissions::VIEW_MERIT_LIST))
-                ? $this->searchApplications($db, $like, $limit)
+                ? $this->searchApplications($db, $q, $limit)
                 : [],
             'announcements' => $can(Permissions::VIEW_ANNOUNCEMENTS)
                 ? $this->searchAnnouncements($db, $like, $limit)
@@ -66,15 +66,34 @@ class SearchController extends BaseController
         $this->success($response, $data, 'Search results fetched.');
     }
 
-    private function searchStudents(Database $db, string $like, int $limit): array
+    /**
+     * Tokenised person search: every word must match SOME column, so a full
+     * name finds the student in either order — "DUSINGIZIMANA Agnes" is
+     * fname + lname, and matching the whole string against single columns
+     * found nothing. Returns [whereSql, bindings].
+     */
+    private static function tokenWhere(string $q, array $cols): array
     {
+        $clauses = [];
+        $bind    = [];
+        foreach (preg_split('/\s+/', trim($q)) ?: [] as $term) {
+            if ($term === '') continue;
+            $clauses[] = '(' . implode(' OR ', array_map(static fn ($c) => "$c LIKE ?", $cols)) . ')';
+            foreach ($cols as $ignored) $bind[] = "%$term%";
+        }
+        return [$clauses ? implode(' AND ', $clauses) : '1=0', $bind];
+    }
+
+    private function searchStudents(Database $db, string $q, int $limit): array
+    {
+        [$where, $bind] = self::tokenWhere($q, ['fname', 'lname', 'regnumber', 'email']);
         $rows = $db->fetchAll(
             "SELECT id, fname, lname, regnumber, email
              FROM student
-             WHERE fname LIKE ? OR lname LIKE ? OR regnumber LIKE ? OR email LIKE ?
+             WHERE $where
              ORDER BY lname ASC
              LIMIT " . $limit,
-            [$like, $like, $like, $like]
+            $bind
         );
 
         return array_map(static fn (array $r) => [
@@ -85,15 +104,16 @@ class SearchController extends BaseController
         ], $rows);
     }
 
-    private function searchStaff(Database $db, string $like, int $limit): array
+    private function searchStaff(Database $db, string $q, int $limit): array
     {
+        [$where, $bind] = self::tokenWhere($q, ['employee_fname', 'employee_lname', 'employee_position']);
         $rows = $db->fetchAll(
             "SELECT employee_id, employee_fname, employee_lname, employee_position
              FROM employees
-             WHERE employee_fname LIKE ? OR employee_lname LIKE ? OR employee_position LIKE ?
+             WHERE $where
              ORDER BY employee_lname ASC
              LIMIT " . $limit,
-            [$like, $like, $like]
+            $bind
         );
 
         return array_map(static fn (array $r) => [
@@ -104,15 +124,16 @@ class SearchController extends BaseController
         ], $rows);
     }
 
-    private function searchApplications(Database $db, string $like, int $limit): array
+    private function searchApplications(Database $db, string $q, int $limit): array
     {
+        [$where, $bind] = self::tokenWhere($q, ['first_name', 'last_name', 'application_number', 'email']);
         $rows = $db->fetchAll(
             "SELECT id, first_name, last_name, application_number, status
              FROM student_applications
-             WHERE first_name LIKE ? OR last_name LIKE ? OR application_number LIKE ? OR email LIKE ?
+             WHERE $where
              ORDER BY submitted_at DESC
              LIMIT " . $limit,
-            [$like, $like, $like, $like]
+            $bind
         );
 
         return array_map(static fn (array $r) => [

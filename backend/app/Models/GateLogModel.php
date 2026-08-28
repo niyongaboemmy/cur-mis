@@ -47,9 +47,13 @@ class GateLogModel extends BaseModel
             $bindings[] = $filters['date_to'];
         }
         if (!empty($filters['search'])) {
-            $where[]    = '(s.fname LIKE ? OR s.lname LIKE ? OR gl.student_id LIKE ?)';
-            $term       = '%' . $filters['search'] . '%';
-            $bindings   = array_merge($bindings, [$term, $term, $term]);
+            // Per-word: a full name matches across fname+lname in any order.
+            foreach (preg_split('/\s+/', trim((string)$filters['search'])) ?: [] as $word) {
+                if ($word === '') continue;
+                $where[]    = '(s.fname LIKE ? OR s.lname LIKE ? OR gl.student_id LIKE ?)';
+                $term       = '%' . $word . '%';
+                $bindings   = array_merge($bindings, [$term, $term, $term]);
+            }
         }
 
         $whereSql = $where ? ('WHERE ' . implode(' AND ', $where)) : '';

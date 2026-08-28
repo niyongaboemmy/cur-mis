@@ -31,9 +31,13 @@ class FineModel extends BaseModel
             $bindings[] = $filters['fine_type'];
         }
         if (!empty($filters['search'])) {
-            $where[]    = '(s.fname LIKE ? OR s.lname LIKE ? OR ff.student_id LIKE ? OR ff.reason LIKE ?)';
-            $term       = '%' . $filters['search'] . '%';
-            $bindings   = array_merge($bindings, [$term, $term, $term, $term]);
+            // Per-word: a full name matches across fname+lname in any order.
+            foreach (preg_split('/\s+/', trim((string)$filters['search'])) ?: [] as $word) {
+                if ($word === '') continue;
+                $where[]    = '(s.fname LIKE ? OR s.lname LIKE ? OR ff.student_id LIKE ? OR ff.reason LIKE ?)';
+                $term       = '%' . $word . '%';
+                $bindings   = array_merge($bindings, [$term, $term, $term, $term]);
+            }
         }
 
         $whereSql = $where ? ('WHERE ' . implode(' AND ', $where)) : '';

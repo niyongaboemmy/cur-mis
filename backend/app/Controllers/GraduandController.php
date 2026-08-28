@@ -162,9 +162,13 @@ class GraduandController extends BaseController
         }
         $search = trim((string)($request->query('search') ?? ''));
         if ($search !== '') {
-            $base[] = '(ga.regnumber LIKE ? OR s.fname LIKE ? OR s.lname LIKE ?)';
-            $like   = '%' . $search . '%';
-            array_push($baseArgs, $like, $like, $like);
+            // Per-word: a full name matches across fname+lname in any order.
+            foreach (preg_split('/\s+/', $search) ?: [] as $term) {
+                if ($term === '') continue;
+                $base[] = '(ga.regnumber LIKE ? OR s.fname LIKE ? OR s.lname LIKE ?)';
+                $like   = '%' . $term . '%';
+                array_push($baseArgs, $like, $like, $like);
+            }
         }
 
         $where  = $base;
@@ -616,9 +620,13 @@ class GraduandController extends BaseController
         }
         $search = trim((string)($request->query('search') ?? ''));
         if ($search !== '') {
-            $where[] = '(ga.regnumber LIKE ? OR s.fname LIKE ? OR s.lname LIKE ?)';
-            $like    = '%' . $search . '%';
-            array_push($args, $like, $like, $like);
+            // Per-word: a full name matches across fname+lname in any order.
+            foreach (preg_split('/\s+/', $search) ?: [] as $term) {
+                if ($term === '') continue;
+                $where[] = '(ga.regnumber LIKE ? OR s.fname LIKE ? OR s.lname LIKE ?)';
+                $like    = '%' . $term . '%';
+                array_push($args, $like, $like, $like);
+            }
         }
         // Lifecycle filter. A student with no `graduands` row reads as 'waiting'
         // exactly like one stored with that status, so the filter has to match

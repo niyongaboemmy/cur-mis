@@ -450,9 +450,13 @@ class DeliberationController extends BaseController
             $args[]  = (int)$level;
         }
         if ($q !== '') {
-            $where[] = '(mm.student_regnumber LIKE ? OR st.fname LIKE ? OR st.lname LIKE ?)';
-            $like    = "%{$q}%";
-            $args[]  = $like; $args[] = $like; $args[] = $like;
+            // Per-word: a full name matches across fname+lname in any order.
+            foreach (preg_split('/\s+/', trim($q)) ?: [] as $term) {
+                if ($term === '') continue;
+                $where[] = '(mm.student_regnumber LIKE ? OR st.fname LIKE ? OR st.lname LIKE ?)';
+                $like    = "%{$term}%";
+                $args[]  = $like; $args[] = $like; $args[] = $like;
+            }
         }
 
         return [implode(' AND ', $where), $args];

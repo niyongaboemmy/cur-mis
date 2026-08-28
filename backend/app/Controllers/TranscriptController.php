@@ -92,9 +92,13 @@ class TranscriptController extends BaseController
             $args[]  = $yearId;
         }
         if ($search !== '') {
-            $where[] = '(s.regnumber LIKE ? OR s.fname LIKE ? OR s.lname LIKE ?)';
-            $like    = "%{$search}%";
-            array_push($args, $like, $like, $like);
+            // Per-word: a full name matches across fname+lname in any order.
+            foreach (preg_split('/\s+/', trim($search)) ?: [] as $term) {
+                if ($term === '') continue;
+                $where[] = '(s.regnumber LIKE ? OR s.fname LIKE ? OR s.lname LIKE ?)';
+                $like    = "%{$term}%";
+                array_push($args, $like, $like, $like);
+            }
         }
 
         $whereStr = implode(' AND ', $where);
