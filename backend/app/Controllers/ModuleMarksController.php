@@ -1433,6 +1433,40 @@ class ModuleMarksController extends BaseController
         // twice in the totals below.
         $rows = $this->dedupeTranscriptRows($rows);
 
+        // ── Curriculum filter ────────────────────────────────────────────────
+        // The signed transcript prints the intersection of the student's marks
+        // with their option's curriculum. The legacy record carries class-wide
+        // bulk entries for modules the student never took (~15% of resolved
+        // rows), and the registrar's printed record excludes them — verified
+        // against a signed transcript, where marks ∩ curriculum reproduced the
+        // printed module list exactly. A curriculum that matches NONE of the
+        // rows is wrong data, not an empty record: print everything rather
+        // than a blank transcript, and say so in the totals.
+        $excluded           = [];
+        $curriculumApplied  = false;
+        $optionId = (int)(preg_match('/^\d+/', (string)($student['std_option'] ?? ''), $m0) ? $m0[0] : 0);
+        if ($optionId > 0) {
+            $set = array_flip(array_column($this->db->fetchAll(
+                "SELECT DISTINCT UPPER(REPLACE(m.module_code, ' ', '')) AS ident
+                 FROM `module_programs` mp
+                 JOIN `modules` m ON m.module_id = mp.module_id
+                 WHERE mp.option_id = ?",
+                [$optionId]
+            ), 'ident'));
+            if (!empty($set)) {
+                $in = $out = [];
+                foreach ($rows as $row) {
+                    $ident = strtoupper((string)preg_replace('/\s+/', '', (string)($row['module_code'] ?? '')));
+                    if ($ident !== '' && isset($set[$ident])) { $in[] = $row; } else { $out[] = $row; }
+                }
+                if (!empty($in)) {
+                    $rows              = $in;
+                    $excluded          = $out;
+                    $curriculumApplied = true;
+                }
+            }
+        }
+
         // Compute per-module credit_point = credits × marks/100 weighted equivalent.
         // The transcript model uses MARKS/100 directly (so percentage is the mark).
         $totalCredits      = 0;
@@ -1479,6 +1513,15 @@ class ModuleMarksController extends BaseController
             // holds only part of the record, so classifying it would report a
             // class off an incomplete final year.
             'classification'       => $yearId > 0 ? null : DegreeClassificationService::honours($rows),
+            // Whether the option-curriculum intersection was applied, and what
+            // it removed — surfaced so the marks screens can show staff the
+            // out-of-curriculum entries instead of losing them silently.
+            'curriculum_filter'    => $curriculumApplied,
+            'out_of_curriculum'    => array_map(static fn ($r) => [
+                'module_code' => $r['module_code'] ?? null,
+                'module_name' => $r['module_name'] ?? null,
+                'percentage'  => $r['percentage'] ?? null,
+            ], $excluded),
         ];
 
         return [$rows, $totals, $student];
