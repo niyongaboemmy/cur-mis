@@ -189,11 +189,18 @@ class StudentController extends BaseController
         $bindings = [];
 
         if ($search !== '') {
-            $clauses[]  = "({$p}fname LIKE ? OR {$p}lname LIKE ? OR {$p}regnumber LIKE ? OR {$p}email LIKE ?)";
-            $bindings[] = "%$search%";
-            $bindings[] = "%$search%";
-            $bindings[] = "%$search%";
-            $bindings[] = "%$search%";
+            // Tokenised: each word must match SOME column, so a full name
+            // works in either order — "DUSINGIZIMANA Agnes" is fname + lname,
+            // and matching the whole string against single columns found
+            // nothing.
+            foreach (preg_split('/\s+/', trim((string)$search)) ?: [] as $term) {
+                if ($term === '') continue;
+                $clauses[]  = "({$p}fname LIKE ? OR {$p}lname LIKE ? OR {$p}regnumber LIKE ? OR {$p}email LIKE ?)";
+                $bindings[] = "%$term%";
+                $bindings[] = "%$term%";
+                $bindings[] = "%$term%";
+                $bindings[] = "%$term%";
+            }
         }
 
         $this->applyFilterableClauses($request, $clauses, $bindings, $alias, $except);

@@ -542,8 +542,6 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
   const [sp, setSp] = useSearchParams();
   const facets = stats?.facets;
 
-  // Academic year comes from the global topnav selector — not the URL.
-  const selectedYear = useSystemStore((s) => s.selectedYearLabel);
   const selectedCampusId = useCampusFilterStore((s) => s.selectedCampusId);
   const selectedCategory = useCategoryFilterStore((s) => s.selectedCategory);
 
@@ -577,8 +575,10 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
   const sector = sp.get("sector") ?? "";
   const ageMin = sp.get("age_min") ?? "";
   const ageMax = sp.get("age_max") ?? "";
-  // Explicit academic-year filter. Falls back to the topbar's year when the
-  // user hasn't picked one here, so the existing scope still applies.
+  // Explicit academic-year filter only. The registry deliberately does NOT
+  // inherit the topbar's year: `student.acc_year` is maintained only while a
+  // student is active, so an implicit current-year scope silently hid every
+  // inactive and graduated student — "All students" showed half the registry.
   const accYear = sp.get("acc_year") ?? "";
   const sort_by = sp.get("sort_by") ?? "";
   const sort_dir = (sp.get("sort_dir") as "asc" | "desc") ?? "desc";
@@ -633,7 +633,7 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
       faculty: faculty || undefined,
       department: department || undefined,
       current_level: level || undefined,
-      acc_year: accYear || selectedYear || undefined,
+      acc_year: accYear || undefined,
       country: country || undefined,
       province: province || undefined,
       district: district || undefined,
@@ -655,7 +655,6 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
     faculty,
     department,
     level,
-    selectedYear,
     accYear,
     country,
     province,
@@ -941,7 +940,7 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
             value={accYear}
             onChange={(v) => update({ acc_year: v })}
             options={accYearFacets}
-            placeholder={selectedYear ? `${selectedYear} (from topbar)` : "All years"}
+            placeholder="All years"
             className="w-full sm:w-48"
           />
           {/* Faculty narrows the department list below it. */}
