@@ -1515,8 +1515,11 @@ class ModuleMarksController extends BaseController
             // shows the same string.
             $r['module_code'] = trim((string)preg_replace('/\s+/', ' ', $raw));
 
-            $key = strtoupper((string)preg_replace('/\s+/', '', $raw))
-                 . '|' . (string)($r['level'] ?? '');
+            // Identity is the normalised code alone — the catalogue carries the
+            // same module under different levels ("NALP4322" at level 3 and
+            // "NALP 4322" at level 4); keying on level printed it twice and
+            // counted its credits twice.
+            $key = strtoupper((string)preg_replace('/\s+/', '', $raw));
             // A row with no code is not a duplicate of the next codeless row —
             // keep those apart by module_id rather than merging them all.
             if ($r['module_code'] === '') {
