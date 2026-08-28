@@ -1,0 +1,297 @@
+================================================================================
+🔐 SSH SETUP - VISUAL GUIDE
+================================================================================
+
+Here's what SSH does and how to set it up visually:
+
+================================================================================
+WHAT IS SSH?
+================================================================================
+
+SSH = Secure Tunnel to Your Server
+
+Your Computer ────[SSH TUNNEL]──── Production Server
+                   (Encrypted)
+
+This tunnel lets you:
+✅ Connect securely
+✅ Run commands
+✅ Deploy code
+✅ Manage files
+
+================================================================================
+HOW IT WORKS
+================================================================================
+
+1. YOU generate SSH keys:
+   Your Computer:
+   ├─ id_rsa (private key - SECRET! Keep on your computer)
+   └─ id_rsa.pub (public key - Put on server)
+
+2. SERVER stores your public key:
+   Server:
+   └─ authorized_keys (contains your public key)
+
+3. WHEN YOU CONNECT:
+   Your Computer          Production Server
+        │                       │
+        └─ id_rsa.pub ────→ Check authorized_keys
+             │                  │
+             └─ Match? ────→ ✅ Yes → Connect!
+
+                            ❌ No → Denied!
+
+================================================================================
+THE SETUP PROCESS (VISUAL)
+================================================================================
+
+STEP 1: Create Keys
+────────────────────
+   Your Computer:
+   ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N ""
+
+   Creates:
+   📄 id_rsa (private - keep secret!)
+   📄 id_rsa.pub (public - send to server)
+
+STEP 2: Copy Public Key
+─────────────────────────
+   Get your public key:
+   cat ~/.ssh/id_rsa.pub
+
+   Output:
+   ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDa5Z8x9q2... you@computer
+           └─ Copy this entire line
+
+STEP 3: Add to Server
+──────────────────────
+   cPanel → SSH Access → Import Key
+   │
+   └─ Paste your public key
+   └─ Click Import
+   └─ Authorize
+
+   Server now has:
+   📄 ~/.ssh/authorized_keys (your public key)
+
+STEP 4: Test Connection
+────────────────────────
+   Your Computer:
+   ssh -p 2083 curac@cyimo-whm-private.aos.rw "echo test"
+
+   Result:
+   test ✅ (success!)
+
+   OR
+
+   Permission denied ❌ (key not on server)
+
+STEP 5: Deploy!
+────────────────
+   Now GitHub Actions can deploy automatically:
+
+   You push code to GitHub
+           │
+           ↓
+   GitHub Actions runs
+           │
+           ↓
+   Uses SSH to connect to server ✅
+           │
+           ↓
+   git pull pulls latest code
+           │
+           ↓
+   🟢 Deployment complete!
+
+================================================================================
+FOLDER STRUCTURE
+================================================================================
+
+Your Computer:
+~/.ssh/
+├─ id_rsa          ← Private key (SECRET! Don't share!)
+├─ id_rsa.pub      ← Public key (copy to server)
+└─ known_hosts     ← List of servers you've connected to
+
+Production Server:
+/root/.ssh/
+├─ authorized_keys ← Your public key (how it recognizes you)
+└─ known_hosts     ← Your computer's host key
+
+================================================================================
+KEY CONCEPTS
+================================================================================
+
+🔒 Private Key (id_rsa)
+   ├─ Only on your computer
+   ├─ Never share!
+   ├─ Like your password/signature
+   └─ Proves "it's really you"
+
+🔑 Public Key (id_rsa.pub)
+   ├─ On the server
+   ├─ Safe to share
+   ├─ Like a lock
+   └─ Used to verify your private key
+
+🔐 Secure Connection (SSH)
+   ├─ Encrypted tunnel
+   ├─ No passwords transmitted
+   ├─ Cannot be intercepted
+   └─ Very secure!
+
+================================================================================
+STEP-BY-STEP COMMANDS
+================================================================================
+
+STEP 1: Check for existing keys
+────────────────────────────────
+Windows:
+   ls $env:USERPROFILE\.ssh\
+
+Mac/Linux:
+   ls ~/.ssh/
+
+Look for: id_rsa and id_rsa.pub
+(If they exist, skip to STEP 4)
+
+STEP 2: Create SSH key
+───────────────────────
+Windows:
+   ssh-keygen -t rsa -b 4096 -f "$env:USERPROFILE\.ssh\id_rsa" -N ""
+
+Mac/Linux:
+   ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N ""
+
+STEP 3: Get public key
+───────────────────────
+Windows:
+   Get-Content $env:USERPROFILE\.ssh\id_rsa.pub
+
+Mac/Linux:
+   cat ~/.ssh/id_rsa.pub
+
+👉 COPY THE ENTIRE OUTPUT
+
+STEP 4: Add to cPanel server
+──────────────────────────────
+1. Login to: https://cyimo-whm-private.aos.rw:2083/
+2. Search: SSH Access
+3. Click: Manage SSH Keys
+4. Click: Import Key
+5. Paste your public key
+6. Click: Import
+7. Authorize
+
+STEP 5: Test SSH
+─────────────────
+   ssh -p 2083 curac@cyimo-whm-private.aos.rw "echo test"
+
+If you see "test" → ✅ SUCCESS!
+If you see "Permission denied" → ❌ Retry STEP 4
+
+STEP 6: Test Git
+─────────────────
+   ssh -p 2083 curac@cyimo-whm-private.aos.rw "cd /home/curac/umis && git log --oneline -3"
+
+If you see commits → ✅ SUCCESS!
+If you see "not a git repository" → ❌ Initialize git (see guide)
+
+================================================================================
+TROUBLESHOOTING FLOWCHART
+================================================================================
+
+SSH Test Failed?
+│
+├─ "Permission denied"
+│  └─ Public key not on server
+│     └─ Solution: Re-add key in cPanel (STEP 4)
+│
+├─ "Connection refused"
+│  └─ Server not responding
+│     └─ Solution: Check if server is online
+│
+├─ "Could not resolve hostname"
+│  └─ DNS issue
+│     └─ Solution: Use IP: ssh -p 2083 curac@197.243.30.91
+│
+└─ "Operation timed out"
+   └─ Firewall or network issue
+      └─ Solution: Check internet connection
+
+Git Test Failed?
+│
+├─ "not a git repository"
+│  └─ Git not initialized
+│     └─ Solution: Run git init (see SSH_SETUP_QUICK_START.txt)
+│
+├─ "cd: no such file or directory"
+│  └─ Wrong path
+│     └─ Solution: Check /home/curac/umis exists
+│
+└─ "Permission denied"
+   └─ No write permissions
+      └─ Solution: Check directory permissions
+
+================================================================================
+SECURE PRACTICES
+================================================================================
+
+✅ DO:
+   ✓ Keep id_rsa private (your computer only)
+   ✓ Back up your SSH keys (save somewhere safe)
+   ✓ Use strong key size (4096 bits)
+   ✓ Rotate keys yearly (create new ones)
+   ✓ Use different keys for different servers
+
+❌ DON'T:
+   ✗ Share your id_rsa private key
+   ✗ Put id_rsa in GitHub
+   ✗ Email your private key
+   ✗ Use weak key size (less than 4096)
+   ✗ Use same key for everything
+
+================================================================================
+VERIFICATION CHECKLIST
+================================================================================
+
+After setup, you should be able to run all these successfully:
+
+[ ] ssh -p 2083 curac@cyimo-whm-private.aos.rw "echo test"
+    Result: test
+
+[ ] ssh -p 2083 curac@cyimo-whm-private.aos.rw "cd /home/curac/umis && git status"
+    Result: On branch main...
+
+[ ] ssh -p 2083 curac@cyimo-whm-private.aos.rw "cd /home/curac/umis && git log --oneline -1"
+    Result: e701101 Add SSH guides
+
+[ ] ssh -p 2083 curac@cyimo-whm-private.aos.rw "ls -la /home/curac/umis"
+    Result: frontend backend .github ...
+
+If all succeed → ✅ SSH is fully configured!
+
+================================================================================
+NEXT STEPS
+================================================================================
+
+1. Follow this guide step-by-step
+2. Test SSH connection
+3. Test git commands
+4. GitHub Actions will now deploy automatically!
+
+Example test deployment:
+   git commit --allow-empty -m "test: verify ssh setup"
+   git push origin main
+
+Wait 15 seconds, check GitHub Actions for green checkmark!
+
+================================================================================
+
+📖 Full details: SSH_CONFIGURATION_GUIDE.md
+⚡ Quick setup: SSH_SETUP_QUICK_START.txt
+
+Questions? See the troubleshooting section above!
+
+================================================================================

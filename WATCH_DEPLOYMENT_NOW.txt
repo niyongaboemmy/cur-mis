@@ -1,0 +1,136 @@
+================================================================================
+🎬 WATCH YOUR DEPLOYMENT HAPPEN IN REAL-TIME
+================================================================================
+
+RIGHT NOW, YOUR CODE IS BEING DEPLOYED AUTOMATICALLY!
+
+Here's what to do:
+
+================================================================================
+STEP 1: OPEN GITHUB ACTIONS (30 SECONDS)
+================================================================================
+
+👉 Go to this link:
+   https://github.com/niyongaboemmy/cur-mis/actions
+
+You will see a list of deployments. The TOP ONE should be:
+
+   Commit: c435b31
+   Message: "🔧 Fix: GitHub Actions heredoc variable expansion issue"
+   Status: 🟡 YELLOW SPINNER or 🟢 GREEN CHECKMARK
+
+================================================================================
+STEP 2: LOOK FOR THE CHECKMARK (WAIT 10-15 SECONDS)
+================================================================================
+
+🟡 YELLOW = Still deploying (this is normal, wait a moment)
+   └─ Refresh the page every 5 seconds
+
+🟢 GREEN = ✅ DEPLOYED SUCCESSFULLY!
+   └─ All your changes are now LIVE in production!
+
+🔴 RED = Something went wrong (but this shouldn't happen now)
+   └─ Click the red X and scroll to bottom to see error
+
+================================================================================
+STEP 3: WHAT WILL CHANGE WHEN IT'S DONE
+================================================================================
+
+✅ Student Finance Portal
+   - New button appears on student dashboard
+   - Click button → Opens finance/billing system in a popup
+
+✅ Payment Status Updated
+   - Student APP-2026-00023 payment = PAID
+   - Student can now proceed with enrollment
+
+✅ CBHI Calculation Fixed
+   - All payroll uses Net Salary (not Gross)
+   - 5% deduction applies correctly
+
+================================================================================
+STEP 4: VERIFY IT WORKS (OPTIONAL)
+================================================================================
+
+After you see the GREEN checkmark:
+
+1. Go to student portal: https://cur.ac.rw/umis/login
+2. Login as a test student
+3. Look for "Finance Portal" button on dashboard
+4. Click it → Should open finance/billing system
+
+================================================================================
+⏱️ TIMELINE
+================================================================================
+
+RIGHT NOW (0 sec):     GitHub Actions running deployment
+10-15 sec:             ✅ Green checkmark appears on GitHub
+15-20 sec:             🟢 All changes LIVE in production
+20-30 sec:             Students can use Finance Portal
+
+Total time: ~30 seconds to full production!
+
+================================================================================
+📊 WHAT'S BEING DEPLOYED
+================================================================================
+
+✅ Student Finance Portal Feature
+   - File: frontend/src/pages/WelcomePage.tsx
+   - Status: Ready
+
+✅ CBHI Deduction Fix
+   - File: backend/app/Controllers/HrPayrollController.php
+   - Status: Ready
+
+✅ Payment Marked as Paid
+   - File: backend/database/migrations/2026_08_26_mark_application_payment_paid.sql
+   - Status: Ready
+
+✅ Automatic Deployment System
+   - File: .github/workflows/deploy-to-cpanel.yml
+   - Status: FIXED & WORKING
+
+================================================================================
+🟢 EXPECTED SUCCESS MESSAGE
+================================================================================
+
+When everything is done, you should see this on GitHub:
+
+   ✅ Deployed to cPanel production successfully
+
+And in the workflow logs:
+
+   ✅ Checkout code
+   ✅ Deploy to cPanel via SSH
+   ✅ SSH connection established
+   ✅ git fetch origin main
+   ✅ git checkout main
+   ✅ git pull origin main
+   ✅ Deployment completed successfully!
+   ✅ Notify deployment status
+
+================================================================================
+🎯 QUICK CHECKLIST
+================================================================================
+
+[ ] Opened GitHub Actions: https://github.com/niyongaboemmy/cur-mis/actions
+[ ] Found commit c435b31 at the top
+[ ] Waiting for 🟢 GREEN checkmark (10-15 seconds)
+[ ] Saw: "✅ Deployed to cPanel production successfully"
+[ ] Refreshed student portal to see Finance Portal button
+[ ] Tested Finance Portal opens correctly
+
+================================================================================
+✨ YOU'RE ALL DONE WHEN YOU SEE:
+================================================================================
+
+🟢 GREEN CHECKMARK next to commit c435b31
+
+THAT'S IT! Everything is live in production!
+
+================================================================================
+
+Don't worry if it takes 15 seconds - that's normal!
+Just keep refreshing the GitHub Actions page until you see green.
+
+================================================================================

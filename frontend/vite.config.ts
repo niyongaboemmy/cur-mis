@@ -3,9 +3,8 @@ import react from "@vitejs/plugin-react";
 import path from "path";
 
 export default defineConfig(({ mode }) => {
-  // Load ALL env vars (prefix '' = include non-VITE_ ones like MAMP_PORT)
+  // Load ALL env vars (prefix '' = include non-VITE_ ones)
   const env = loadEnv(mode, process.cwd(), "");
-  const mampPort = env.MAMP_PORT ?? "8888";
   // In production set VITE_BASE_PATH=/umis/ so all assets are rooted there.
   // In dev, leave blank or set to / — Vite defaults to /.
   const basePath = env.VITE_BASE_PATH

@@ -3,9 +3,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import {
   AlertCircle, BadgeCheck, CheckCircle2, Copy, CreditCard, ExternalLink,
-  Loader2, Receipt, ReceiptText, ShieldCheck, Wallet,
+  Loader2, Receipt, ReceiptText, ShieldCheck, Wallet, BanknoteIcon, Upload, Lock, LockOpen,
 } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
+import BordereauPaymentForm from './BordereauPaymentForm'
 import {
   admissionBillingService, applicantService,
   type AdmissionBill, type AdmissionBillingOverview,
@@ -51,6 +52,7 @@ export default function AdmissionFeesPanel({
 
   const [confirming, setConfirming] = useState<AdmissionBill | null>(null)
   const [openedCheckout, setOpenedCheckout] = useState(false)
+  const [showBordereauForm, setShowBordereauForm] = useState(false)
 
   const billsQ = useQuery({
     queryKey,
@@ -100,27 +102,41 @@ export default function AdmissionFeesPanel({
       toast.error(e?.response?.data?.message || 'Could not raise the admission fees.'),
   })
 
-  const payNow = async (bill?: AdmissionBill) => {
-    try {
-      const res = isValidator
-        ? await admissionBillingService.checkout(applicationId as number, bill?.fee_type)
-        : await applicantService.getAdmissionBillCheckout(bill?.fee_type)
-      const url = res.data?.checkout_url
-      if (!url) {
-        toast.error('The payment link is not ready yet — please try again in a moment.')
-        return
-      }
-      window.open(url, '_blank', 'noopener,noreferrer')
-      setOpenedCheckout(true)
-      toast.success(
-        isValidator
-          ? 'Urubuto Pay opened. This page updates itself once the payment is confirmed.'
-          : 'Complete your payment in the Urubuto Pay tab, then come back here.',
-      )
+  const payNow = async () => {
+    if (!data?.merchant_code || !data?.payer_code) {
+      toast.error('Payment information not ready — please try again.')
       billsQ.refetch()
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || 'Could not open the payment page.')
+      return
     }
+
+    const form = document.createElement('form')
+    form.method = 'POST'
+    form.action = 'https://urubutopay.rw/pay-now?origin=internal'
+    form.target = '_blank'
+
+    const merchantInput = document.createElement('input')
+    merchantInput.type = 'hidden'
+    merchantInput.name = 'merchant_code'
+    merchantInput.value = data.merchant_code
+
+    const payerInput = document.createElement('input')
+    payerInput.type = 'hidden'
+    payerInput.name = 'payer_code'
+    payerInput.value = data.payer_code
+
+    form.appendChild(merchantInput)
+    form.appendChild(payerInput)
+    document.body.appendChild(form)
+    form.submit()
+    document.body.removeChild(form)
+
+    setOpenedCheckout(true)
+    toast.success(
+      isValidator
+        ? 'Urubuto Pay opened. This page updates itself once the payment is confirmed.'
+        : 'Complete your payment in the Urubuto Pay tab, then come back here.',
+    )
+    billsQ.refetch()
   }
 
   const copy = (label: string, value?: string | null) => {
@@ -281,27 +297,60 @@ export default function AdmissionFeesPanel({
               </p>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 shrink-0 w-full">
               {bill.status === 'paid' ? (
                 <span className="flex items-center gap-1.5 text-[12.5px] font-semibold text-emerald-600 dark:text-emerald-400">
                   <CheckCircle2 className="w-4 h-4" /> Paid
                 </span>
               ) : (
-                <>
-                  <button className="btn-primary btn-sm" onClick={() => payNow(bill)}>
-                    <CreditCard className="w-3.5 h-3.5" />
+                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                  {/* Pay Now Button */}
+                  <button className="btn-primary" onClick={() => payNow()}>
+                    <CreditCard className="w-4 h-4" />
                     {isValidator ? 'Open payment page' : `Pay ${fmt(bill.balance)} RWF`}
                   </button>
+
+                  {/* Bordereau Button (Student Only) */}
+                  {!isValidator && (
+                    <button
+                      className="btn-secondary"
+                      onClick={() => setShowBordereauForm(true)}
+                      title="Paid via bank transfer? Submit your receipt number for verification"
+                    >
+                      <BanknoteIcon className="w-4 h-4" />
+                      Bordereau
+                    </button>
+                  )}
+
+                  {/* Upload Slip Button (Student Only) */}
+                  {!isValidator && (
+                    <label className="btn-secondary cursor-pointer">
+                      <Upload className="w-4 h-4" />
+                      Upload Slip
+                      <input
+                        type="file"
+                        accept=".pdf,.jpg,.jpeg,.png"
+                        className="hidden"
+                        onChange={(e) => {
+                          if (e.target.files?.[0]) {
+                            toast.success('Payment slip uploaded. Finance will review within 24 hours.')
+                          }
+                        }}
+                      />
+                    </label>
+                  )}
+
+                  {/* Confirm Offline Button (Finance Only) */}
                   {isValidator && canManage && (
                     <button
-                      className="btn-secondary btn-sm"
+                      className="btn-secondary"
                       onClick={() => setConfirming(bill)}
                       title="Record a bank transfer or cash payment already received"
                     >
-                      <ShieldCheck className="w-3.5 h-3.5" /> Confirm offline
+                      <ShieldCheck className="w-4 h-4" /> Confirm offline
                     </button>
                   )}
-                </>
+                </div>
               )}
             </div>
           </div>
@@ -330,6 +379,46 @@ export default function AdmissionFeesPanel({
         <Note tone="emerald" icon={<CheckCircle2 className="w-5 h-5" />}>
           All admission fees are settled — this applicant is ready for a registration number.
         </Note>
+      )}
+
+      {/* Continue Button - Active only when payment approved */}
+      {!isValidator && summary && summary.balance === 0 && (
+        <div className="flex gap-3 pt-4">
+          <button
+            onClick={() => window.history.back()}
+            className="btn-secondary flex-1"
+          >
+            ← Previous
+          </button>
+          <button
+            onClick={() => {
+              window.location.href = '/dashboard'
+            }}
+            className="btn-primary flex-1 inline-flex items-center justify-center gap-2"
+          >
+            <LockOpen className="w-4 h-4" />
+            Continue to Next Step
+          </button>
+        </div>
+      )}
+
+      {/* Locked State - Show when payment not complete */}
+      {!isValidator && summary && summary.balance > 0 && (
+        <div className="flex gap-3 pt-4">
+          <button
+            onClick={() => window.history.back()}
+            className="btn-secondary flex-1"
+          >
+            ← Previous
+          </button>
+          <button
+            disabled
+            className="btn-secondary flex-1 opacity-50 cursor-not-allowed inline-flex items-center justify-center gap-2"
+          >
+            <Lock className="w-4 h-4" />
+            Complete Payment to Continue
+          </button>
+        </div>
       )}
 
       {/* Receipts */}
@@ -389,6 +478,19 @@ export default function AdmissionFeesPanel({
           onClose={() => setConfirming(null)}
           onDone={() => {
             setConfirming(null)
+            qc.invalidateQueries({ queryKey })
+          }}
+        />
+      )}
+
+      {!isValidator && summary && (
+        <BordereauPaymentForm
+          applicationId={applicationId as number}
+          requiredAmount={summary.balance > 0 ? summary.balance : summary.total_paid}
+          isOpen={showBordereauForm}
+          onClose={() => setShowBordereauForm(false)}
+          onApproved={() => {
+            setShowBordereauForm(false)
             qc.invalidateQueries({ queryKey })
           }}
         />

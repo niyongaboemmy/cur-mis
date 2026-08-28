@@ -23,6 +23,7 @@ import {
   XCircle,
   Loader2,
   X,
+  HelpCircle,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { PERMISSIONS } from "@/constants";
@@ -105,6 +106,17 @@ const QUICK_ACTIONS: QA[] = [
     sub: "Your enrolment & marks",
     accent:
       "bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300",
+    roles: ["student"],
+  },
+
+  // Student Finance Portal — opens modal with iframe
+  {
+    to: "#finance-portal",
+    icon: Wallet,
+    label: "Finance Portal",
+    sub: "Billing and payment information",
+    accent:
+      "bg-accent-lilac text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
     roles: ["student"],
   },
 
@@ -299,26 +311,15 @@ const QUICK_ACTIONS: QA[] = [
 export default function WelcomePage() {
   const { user } = useAuthStore();
 
-  // Teaching staff land straight on their own dashboard. "/" is the post-login
-  // destination (useAuth navigates here after OTP verification), and for a
-  // lecturer the generic launcher is a detour — everything they need is on the
-  // teaching dashboard.
-  //
-  // NOTE: reads `user.permissions` directly rather than useAnyPermission(),
-  // which bypasses for superadmin and would redirect every superadmin here.
-  // ACCESS_TEACHER_PORTAL is granted only to `lecturer`/`HOD`.
-  if (user?.permissions?.includes(PERMISSIONS.ACCESS_TEACHER_PORTAL)) {
-    return <TeacherDashboardPage />;
-  }
   const [showDocumentsModal, setShowDocumentsModal] = useState(false);
   const [showRegistrarModal, setShowRegistrarModal] = useState(false);
+  const [showFinancePortalModal, setShowFinancePortalModal] = useState(false);
 
   const role = user?.role ?? "";
   const userPerms = user?.permissions ?? [];
   const isApplicant = role === "applicant" || user?.is_applicant;
   const isSuper = isSuperadmin(user);
 
-  // Hooks must run unconditionally — all useMemo calls before any early return.
   const firstName = useMemo(
     () => user?.full_name?.split(" ")[0] ?? "there",
     [user],
@@ -328,18 +329,19 @@ export default function WelcomePage() {
     return user?.role_name ?? role ?? "Staff";
   }, [user, isApplicant, role]);
 
-  // Per-role filter — same model as the sidebar in MainLayout.
   const actions = useMemo(() => {
     return QUICK_ACTIONS.filter((qa) => {
       if (qa.hideForRoles?.includes(role)) return false;
       if (qa.roles && qa.roles.length > 0) return qa.roles.includes(role);
-      // No permission requirement → universally visible
       if (!qa.permissions || qa.permissions.length === 0) return true;
-      // Superadmin sees every permission-gated card; everyone else needs a match
       if (isSuper) return true;
       return qa.permissions.some((p) => userPerms.includes(p));
     });
   }, [role, userPerms, isSuper]);
+
+  if (user?.permissions?.includes(PERMISSIONS.ACCESS_TEACHER_PORTAL)) {
+    return <TeacherDashboardPage />;
+  }
 
   // Early return AFTER all hooks so Rules of Hooks are satisfied.
   if (isApplicant) {
@@ -484,8 +486,9 @@ export default function WelcomePage() {
                   const isExternal = action.to.startsWith("http");
                   const isDocumentsModal = action.label === "More Documents";
                   const isRegistrarModal = action.label === "Registrar Report";
+                  const isFinancePortalModal = action.label === "Finance Portal";
 
-                  if (isDocumentsModal || isRegistrarModal) {
+                  if (isDocumentsModal || isRegistrarModal || isFinancePortalModal) {
                     return (
                       <motion.button
                         key={action.label}
@@ -493,7 +496,11 @@ export default function WelcomePage() {
                         variants={fadeUp}
                         initial="hidden"
                         animate="visible"
-                        onClick={() => isRegistrarModal ? setShowRegistrarModal(true) : setShowDocumentsModal(true)}
+                        onClick={() => {
+                          if (isRegistrarModal) setShowRegistrarModal(true);
+                          else if (isFinancePortalModal) setShowFinancePortalModal(true);
+                          else setShowDocumentsModal(true);
+                        }}
                         className="group card p-4 flex items-center gap-3.5 hover:border-brand/40 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 text-left"
                       >
                         <span
@@ -671,6 +678,42 @@ export default function WelcomePage() {
           </motion.div>
         </div>
       )}
+
+      {/* Finance Portal Modal */}
+      {showFinancePortalModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="bg-white dark:bg-ink-950 rounded-xl shadow-2xl w-full h-[90vh] flex flex-col"
+            style={{ maxWidth: "97vw" }}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-6 border-b border-ink-200 dark:border-ink-800">
+              <h2 className="text-[18px] font-semibold text-ink-900 dark:text-white">
+                Student Finance Portal
+              </h2>
+              <button
+                onClick={() => setShowFinancePortalModal(false)}
+                className="p-2 hover:bg-ink-100 dark:hover:bg-ink-800 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-ink-600 dark:text-ink-400" />
+              </button>
+            </div>
+
+            {/* Modal Content - iframe */}
+            <div className="flex-1 overflow-hidden">
+              <iframe
+                src="https://cur.ac.rw/umis/finance/billing/student/login.php"
+                title="Student Finance Portal"
+                className="w-full h-full border-0"
+                allow="same-origin"
+              />
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }
@@ -758,6 +801,7 @@ const STATUS_META: Record<
 function ApplicantWelcome({ firstName }: { firstName: string }) {
   const greeting = getGreeting();
   const dateLabel = formatNow();
+  const [showFeeHelpModal, setShowFeeHelpModal] = useState(false);
 
   const appsQ = useQuery({
     queryKey: ["applicant", "applications"],
@@ -1007,10 +1051,60 @@ function ApplicantWelcome({ firstName }: { firstName: string }) {
                   accent="bg-accent-peach text-orange-700 dark:bg-orange-900/30 dark:text-orange-300"
                 />
               )}
+              <button
+                onClick={() => setShowFeeHelpModal(true)}
+                className="group card p-4 flex items-center gap-3.5 hover:border-brand/40 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 text-left"
+              >
+                <span className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-accent-sky text-sky-700 dark:bg-sky-900/30 dark:text-sky-300 transition-all group-hover:scale-110">
+                  <HelpCircle className="w-[18px] h-[18px]" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[13.5px] font-semibold text-ink-900 dark:text-white leading-tight">
+                    Ask for Help with Fee
+                  </p>
+                  <p className="text-[11.5px] text-ink-500 truncate mt-0.5">Get assistance with billing</p>
+                </div>
+                <ArrowRight className="w-3.5 h-3.5 text-ink-300 shrink-0 group-hover:text-brand group-hover:translate-x-0.5 transition-all" />
+              </button>
             </div>
           </motion.div>
         </div>
       </div>
+
+      {/* Fee Help Modal */}
+      {showFeeHelpModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="bg-white dark:bg-ink-950 rounded-xl shadow-2xl w-full h-[90vh] flex flex-col"
+            style={{ maxWidth: "97%" }}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-6 border-b border-ink-200 dark:border-ink-800">
+              <h2 className="text-[18px] font-semibold text-ink-900 dark:text-white">
+                Fee Billing Help
+              </h2>
+              <button
+                onClick={() => setShowFeeHelpModal(false)}
+                className="p-2 hover:bg-ink-100 dark:hover:bg-ink-800 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-ink-600 dark:text-ink-400" />
+              </button>
+            </div>
+
+            {/* Modal Content - iframe */}
+            <div className="flex-1 overflow-hidden">
+              <iframe
+                src="https://cur.ac.rw/umis/finance/billing/student/login.php"
+                title="Fee Billing Help"
+                className="w-full h-full border-0"
+              />
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }

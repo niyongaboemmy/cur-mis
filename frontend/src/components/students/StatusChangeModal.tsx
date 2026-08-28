@@ -105,7 +105,7 @@ export default function StatusChangeModal({
   // certificate can't be attached to an unrelated change by accident.
   useEffect(() => {
     if (!needsDoc && file && !changed) setFile(null)
-  }, [needsDoc]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [needsDoc])
 
   return (
     <ModalPortal>

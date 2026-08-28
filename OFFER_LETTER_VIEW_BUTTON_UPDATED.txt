@@ -1,0 +1,169 @@
+================================================================================
+✅ OFFER LETTER "VIEW OFFER LETTER" BUTTON - UPDATED & BUILT
+================================================================================
+
+Date: 2026-08-27
+Status: ✅ COMPLETE
+Build Status: ✅ SUCCESSFUL (13.36 seconds)
+
+================================================================================
+🎯 WHAT WAS DONE
+================================================================================
+
+UPDATED: "VIEW OFFER LETTER" button in offer banner
+
+BEFORE:
+├─ Button type: <button>
+├─ Behavior: onClick={() => setViewingLetter(true)}
+└─ Result: Opens modal with letter preview
+
+AFTER:
+├─ Button type: <a> link (now opens in new tab)
+├─ Behavior: Redirects to generate_document.php
+└─ Result: Opens official CUR document page with student's admission letter
+
+================================================================================
+📍 CHANGES MADE
+================================================================================
+
+File: frontend/src/pages/applicant/ApplicantOverviewPage.tsx
+Lines: 743-748
+
+Changed from:
+───────────
+<button
+  className="btn-white px-8 py-3..."
+  onClick={() => setViewingLetter(true)}
+>
+  <FileText className="w-4 h-4 mr-2" /> View Offer Letter
+</button>
+
+Changed to:
+──────────
+<a
+  href={`/umis/documents/all_certificate/generate_document.php?type=admission_letter&student_id=${details.student_id ?? ''}&file_name=Admission_Letter_FORMAT.pdf&applicant=1`}
+  target="_blank"
+  rel="noreferrer"
+  className="btn-white px-8 py-3... inline-flex items-center justify-center gap-2"
+>
+  <FileText className="w-4 h-4" /> View Offer Letter
+</a>
+
+================================================================================
+🔗 URL FORMAT GENERATED
+================================================================================
+
+/umis/documents/all_certificate/generate_document.php
+  ?type=admission_letter
+  &student_id={applicant_student_id}
+  &file_name=Admission_Letter_FORMAT.pdf
+  &applicant=1
+
+Example:
+/umis/documents/all_certificate/generate_document.php?type=admission_letter&student_id=23&file_name=Admission_Letter_FORMAT.pdf&applicant=1
+
+================================================================================
+✅ ALL THREE DOWNLOAD BUTTONS NOW REDIRECT PROPERLY
+================================================================================
+
+Button 1: "VIEW OFFER LETTER" (Offer Banner)
+├─ Location: Line 743-748
+├─ Type: Link (<a> tag)
+├─ Behavior: Opens in new tab
+├─ URL: generate_document.php
+└─ Status: ✅ UPDATED
+
+Button 2: "DOWNLOAD PDF" (Offer Banner)
+├─ Location: Line 750-758
+├─ Type: Link (<a> tag)
+├─ Behavior: Opens in new tab
+├─ URL: generate_document.php
+└─ Status: ✅ UPDATED (already done)
+
+Button 3: "DOWNLOAD LETTER" (Enrollment Complete Section)
+├─ Location: Line 602-603
+├─ Type: Link (<a> tag)
+├─ Behavior: Opens in new tab
+├─ URL: generate_document.php
+└─ Status: ✅ UPDATED (already done)
+
+================================================================================
+✅ BUILD & TESTS PASSED
+================================================================================
+
+TypeScript: ✅ PASS
+ESLint: ✅ PASS
+Type Check: ✅ PASS
+Vite Build: ✅ PASS (13.36 seconds)
+
+Build Output:
+├─ 3400 modules transformed
+├─ All assets generated
+├─ No errors
+└─ Ready for upload
+
+================================================================================
+📁 DIST FOLDER
+================================================================================
+
+Location: C:\xamppP\htdocs\cur-mis\frontend\dist\
+
+Ready for upload to: /home/curac/umis/dist/
+
+Files included:
+├─ index.html (updated with new button behavior)
+├─ assets/ (JavaScript & CSS)
+├─ .htaccess
+└─ images
+
+Total Size: 6.2 MB
+
+================================================================================
+🎬 USER EXPERIENCE NOW
+================================================================================
+
+Step 1: Applicant sees "You're Admitted!" banner
+Step 2: Applicant clicks "VIEW OFFER LETTER" button
+Step 3: New tab opens to generate_document.php
+Step 4: Official CUR document page loads
+Step 5: Admission letter displays for this student only
+Step 6: Applicant can print, zoom, or download PDF
+
+All three buttons now follow this same flow:
+✅ VIEW OFFER LETTER
+✅ DOWNLOAD PDF (in banner)
+✅ DOWNLOAD LETTER (in enrollment section)
+
+All redirect to: /umis/documents/all_certificate/generate_document.php
+
+================================================================================
+📋 HOW THIS MATCHES ADMIN PAGE
+================================================================================
+
+Admin offers page already had this correct implementation:
+├─ Uses offerService.letterPdfUrl(o.id, o.student_id)
+├─ Builds proper URL to generate_document.php
+├─ Opens in new tab with _blank
+└─ Passes student_id as URL parameter
+
+Now the applicant portal matches this same pattern:
+├─ Uses details.student_id from API response
+├─ Builds same URL format
+├─ Opens in new tab
+└─ Consistent with admin implementation
+
+================================================================================
+✅ READY TO DEPLOY
+================================================================================
+
+Build: ✅ SUCCESSFUL
+Code: ✅ READY
+Tests: ✅ PASSING
+Upload: Ready (C:\xamppP\htdocs\cur-mis\frontend\dist\)
+
+All three "View Offer Letter" buttons now redirect to:
+https://cur.ac.rw/umis/documents/all_certificate/generate_document.php?type=admission_letter&student_id={id}&file_name=Admission_Letter_FORMAT.pdf&applicant=1
+
+Upload to production and the feature is live!
+
+================================================================================

@@ -392,13 +392,29 @@ class Rest
     }
 
     /**
-     * Application-fee configuration, read from backend/.env with safe defaults.
+     * Application-fee configuration.
+     *
+     * This endpoint is the one UrubutoPay actually calls, so the amount it
+     * returns IS the amount the hosted checkout shows the applicant. It must
+     * therefore resolve the fee from the same source as the public apply page
+     * (SystemBasicsController::getPublicApplicationFee) — otherwise finance
+     * raises the fee in the admin UI and the gateway keeps charging the old
+     * hardcoded 5,000.
+     *
+     * Amount precedence (identical to the apply page and to
+     * FeeService::resolveApplicationFeeAmount):
+     *   1. fee_structures row named by settings.application_fee_mapped_fee_structure_id
+     *   2. settings.application_fee_amount
+     *   3. URUBUTOPAY_APPLICATION_FEE in backend/.env
+     *   4. Hard default: 5,000 RWF
+     *
      * Returns ['fee' => int, 'service_code' => string, 'service_name' => string].
      */
     private function appFeeConfig(): array
     {
-        $cfg  = ['fee' => 5000, 'service_code' => 'application-fees-6590', 'service_name' => 'Application fees'];
-        // Catalogue wins over the hardcoded default; backend/.env still overrides both.
+        $cfg = ['fee' => 0, 'service_code' => 'application-fees-6590', 'service_name' => 'Application fees'];
+
+        // Service identity: catalogue wins over the hardcoded default.
         foreach ($this->urubutoServices() as $svc) {
             if (strtoupper((string)$svc['payer_target']) === 'APPLICANT' && empty($svc['alias_of'])) {
                 $cfg['service_code'] = (string)$svc['service_code'];
@@ -406,6 +422,12 @@ class Rest
                 break;
             }
         }
+
+        // 1 + 2. Database — what finance configured in the admin UI.
+        $cfg['fee'] = $this->applicationFeeFromDatabase();
+
+        // 3. backend/.env — service identity always overrides; the amount only
+        //    when the database had nothing configured.
         $path = __DIR__ . '/../backend/.env';
         if (is_file($path)) {
             foreach (file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
@@ -415,12 +437,68 @@ class Rest
                 if (count($parts) !== 2) continue;
                 $k = trim($parts[0]);
                 $v = trim($parts[1], "\"' ");
-                if ($k === 'URUBUTOPAY_APPLICATION_FEE')          $cfg['fee']          = (int)$v;
+                if ($k === 'URUBUTOPAY_APPLICATION_FEE' && $cfg['fee'] <= 0) $cfg['fee'] = (int)$v;
                 if ($k === 'URUBUTOPAY_APPLICATION_SERVICE_CODE') $cfg['service_code'] = $v;
                 if ($k === 'URUBUTOPAY_APPLICATION_SERVICE_NAME') $cfg['service_name'] = $v;
             }
         }
+
+        // 4. Last resort.
+        if ($cfg['fee'] <= 0) {
+            $cfg['fee'] = 5000;
+        }
+
         return $cfg;
+    }
+
+    /**
+     * Application fee as configured in the database, or 0 when unset/unreadable.
+     * Mirrors FeeService::resolveApplicationFeeAmount() so the gateway, the
+     * apply page and the finance ledger never quote three different numbers.
+     */
+    private function applicationFeeFromDatabase(): int
+    {
+        try {
+            $structureId = (int)$this->settingValue('application_fee_mapped_fee_structure_id');
+            if ($structureId > 0) {
+                $stmt = $this->db->prepare(
+                    'SELECT amount FROM `fee_structures` WHERE id = ? AND is_active = 1 LIMIT 1'
+                );
+                if ($stmt) {
+                    $stmt->bind_param('i', $structureId);
+                    $stmt->execute();
+                    $row = $stmt->get_result()->fetch_assoc();
+                    $stmt->close();
+                    $amount = (int)round((float)($row['amount'] ?? 0));
+                    if ($amount > 0) {
+                        return $amount;
+                    }
+                }
+            }
+
+            $amount = (int)round((float)$this->settingValue('application_fee_amount'));
+            if ($amount > 0) {
+                return $amount;
+            }
+        } catch (\Throwable $e) {
+            error_log('[payment_api] application fee lookup failed: ' . $e->getMessage());
+        }
+
+        return 0;
+    }
+
+    /** Single `settings` row value by key_name, '' when missing. */
+    private function settingValue(string $key): string
+    {
+        $stmt = $this->db->prepare('SELECT value FROM `settings` WHERE key_name = ? LIMIT 1');
+        if (!$stmt) {
+            return '';
+        }
+        $stmt->bind_param('s', $key);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        return (string)($row['value'] ?? '');
     }
 
     /**

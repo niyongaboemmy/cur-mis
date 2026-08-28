@@ -920,8 +920,9 @@ function EditGrossModal({
   const payeFormula = calcPaye(gross, formula);
   const rssb = gross * rssbRate;
   const maternity = gross * (cfg.maternity_employee_rate / 100);
-  const cbhi = gross * cbhiRate;
-  const net = Math.max(0, gross - payeFormula - rssb - cbhi - otherDedTotal);
+  const netBeforeCbhi = Math.max(0, gross - payeFormula - rssb - otherDedTotal);
+  const cbhi = netBeforeCbhi * cbhiRate;
+  const net = Math.max(0, netBeforeCbhi - cbhi);
 
   const save = useMutation({
     mutationFn: () =>

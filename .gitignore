@@ -114,5 +114,9 @@ curac_cur_mis(Iyabo).sql
 deliverables/
 IDENTITY_CONSOLIDATION_REPORT.md
 curac_save.sql
-curac_save.sql
-curac_save.sql
+
+# SSH Deploy Keys (GitHub to cPanel automatic deployment)
+deploy_key
+deploy_key.pub
+scripts/deploy_key
+scripts/deploy_key.pub

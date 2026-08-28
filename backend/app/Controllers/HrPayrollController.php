@@ -365,9 +365,10 @@ class HrPayrollController extends BaseController
         $cbhiVal  = (float)($data['cbhi']         ?? 0);
 
         // Recalculate net including other_deductions
-        $netVal = isset($data['net_salary']) && $data['net_salary'] !== ''
-            ? max(0, (float)$data['net_salary'] - $otherDeductions + $autoOtherDed)
-            : max(0, $grossVal - $payeVal - $rssbVal - $cbhiVal - $otherDeductions);
+        // CBHI is now deducted from net salary (after PAYE and RSSB)
+        $netBeforeCbhi = max(0, $grossVal - $payeVal - $rssbVal - $otherDeductions);
+        $cbhiVal = max(0, $netBeforeCbhi * (0.05));
+        $netVal = max(0, $netBeforeCbhi - $cbhiVal);
 
         $payload = [
             'emp_id'              => $empId,
@@ -748,13 +749,14 @@ class HrPayrollController extends BaseController
             ) ?: [];
 
             $otherDed = array_sum(array_column($dedRows, 'monthly_amount'));
-            $net      = max(0,
+            $netBeforeCbhi = max(0,
                 (float)$p['gross']
                 - (float)$p['tax']
                 - (float)$p['pension']
-                - (float)$p['cbhi']
                 - $otherDed
             );
+            $cbhi = $netBeforeCbhi * 0.05;
+            $net = max(0, $netBeforeCbhi - $cbhi);
 
             $db->execute(
                 "UPDATE hr_payroll SET other_deductions = ?, net = ? WHERE id = ?",

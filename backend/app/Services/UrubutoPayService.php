@@ -959,26 +959,28 @@ class UrubutoPayService
     {
         $merchantCode = $this->merchantCode();
         $serviceCode  = $this->applicationServiceCode();
+        $fee          = $this->applicationFee();
         $checkoutBase = $_ENV['URUBUTOPAY_CHECKOUT_URL'] ?? self::CHECKOUT_BASE; // .../pay-now
 
         // UrubutoPay's PRE-FILLED deep link is the `/pay-now/initiate` route — it
-        // reads origin/mhcd/pycd/sccd from the query, skips the merchant+payer
+        // reads origin/mhcd/pycd/sccd/amnt from the query, skips the merchant+payer
         // entry form, and goes straight to choosing a payment method. The bare
         // `/pay-now` page IGNORES these params (verified against their JS bundle),
         // which is why the fields showed up empty before.
         //   mhcd = merchant code, pycd = payer code (= application number),
-        //   sccd = service code, origin=internal marks an institutional deep link.
+        //   sccd = service code, amnt = amount in RWF, origin=internal marks an institutional deep link.
         $checkoutUrl = rtrim($checkoutBase, '/') . '/initiate'
             . '?origin=internal'
             . '&mhcd=' . urlencode($merchantCode)
             . '&pycd=' . urlencode($appNumber)
-            . '&sccd=' . urlencode($serviceCode);
+            . '&sccd=' . urlencode($serviceCode)
+            . '&amnt=' . urlencode((string)$fee);
 
         return [
             'checkout_url'  => $checkoutUrl,
             'merchant_code' => $merchantCode,
             'payer_code'    => $appNumber,
-            'amount'        => $this->applicationFee(),
+            'amount'        => $fee,
             'currency'      => 'RWF',
             'service_code'  => $serviceCode,
         ];
@@ -1225,30 +1227,57 @@ class UrubutoPayService
     /**
      * Application processing fee (RWF).
      *
+     * The database comes FIRST so that raising the fee in the admin UI moves
+     * every quote at once — this page, the hosted checkout and the ledger.
+     * An env override that outranked it would silently pin the gateway to a
+     * stale amount while the apply page (SystemBasicsController::
+     * getPublicApplicationFee, also DB-first) showed the new one.
+     *
      * Priority:
-     *  1. fee_structures amount for the mapped fee type + active academic year
+     *  1. fee_structures row named by settings.application_fee_mapped_fee_structure_id
      *  2. settings.application_fee_amount
      *  3. URUBUTOPAY_APPLICATION_FEE env var
      *  4. Hard default: 5,000 RWF
      */
     private function applicationFee(): int
     {
+        // 1 + 2. Mapped fee structure, then the settings amount. Resolved here
+        // rather than through FeeService::resolveApplicationFeeAmount() because
+        // that method substitutes its own 5,000 default for "nothing
+        // configured", which would make the env fallback below unreachable.
         try {
-            $feeService = new FeeService();
-            // Resolve the active academic year
-            $yearRow = $this->db->fetchOne(
-                "SELECT id FROM `academic_years` WHERE is_current = 1 ORDER BY id DESC LIMIT 1",
+            $structure = $this->db->fetchOne(
+                "SELECT fs.amount
+                   FROM `settings` s
+                   JOIN `fee_structures` fs ON fs.id = CAST(s.value AS UNSIGNED)
+                  WHERE s.key_name = 'application_fee_mapped_fee_structure_id'
+                    AND fs.is_active = 1
+                  LIMIT 1",
                 []
             );
-            $yearId = $yearRow ? (int)$yearRow['id'] : 0;
-            $amount = $feeService->resolveApplicationFeeAmount($yearId);
-            if ($amount > 0) {
-                return (int)$amount;
+            if ($structure && (float)$structure['amount'] > 0) {
+                return (int)round((float)$structure['amount']);
+            }
+
+            $amountRow = $this->db->fetchOne(
+                "SELECT value FROM `settings` WHERE key_name = 'application_fee_amount' LIMIT 1",
+                []
+            );
+            if ($amountRow && (float)$amountRow['value'] > 0) {
+                return (int)round((float)$amountRow['value']);
             }
         } catch (\Throwable $e) {
-            // fall through
+            // fall through to env / default
         }
-        return (int)($_ENV['URUBUTOPAY_APPLICATION_FEE'] ?? 5000);
+
+        // 3. Env override
+        $envFee = (int)($_ENV['URUBUTOPAY_APPLICATION_FEE'] ?? 0);
+        if ($envFee > 0) {
+            return $envFee;
+        }
+
+        // 4. Hard default (5,000 RWF)
+        return 5000;
     }
 
     /**

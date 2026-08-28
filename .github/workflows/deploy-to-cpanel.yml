@@ -1,0 +1,57 @@
+name: Deploy to cPanel Production
+
+# Manual-only: this SSH-based deploy requires secrets that are not configured
+# (CPANEL_HOST, CPANEL_SSH_KEY, CPANEL_SSH_PORT, PRODUCTION_PATH) and assumes
+# a git checkout on the server that does not exist in the current layout —
+# on push it failed unconditionally. Run it deliberately once SSH access and
+# the server-side checkout are actually set up.
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Deploy to cPanel via SSH
+        env:
+          CPANEL_HOST: ${{ secrets.CPANEL_HOST }}
+          CPANEL_USER: ${{ secrets.CPANEL_USER }}
+          CPANEL_SSH_KEY: ${{ secrets.CPANEL_SSH_KEY }}
+          CPANEL_SSH_PORT: ${{ secrets.CPANEL_SSH_PORT }}
+          PRODUCTION_PATH: ${{ secrets.PRODUCTION_PATH }}
+        run: |
+          # Add cPanel host to known_hosts to avoid SSH key verification prompt
+          mkdir -p ~/.ssh
+          ssh-keyscan -p $CPANEL_SSH_PORT -H $CPANEL_HOST >> ~/.ssh/known_hosts 2>/dev/null || true
+
+          # Create SSH key file
+          echo "$CPANEL_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          # Deploy to production
+          ssh -i ~/.ssh/deploy_key -p $CPANEL_SSH_PORT $CPANEL_USER@$CPANEL_HOST << EOF
+          set -e
+          echo "Starting deployment to production..."
+          cd $PRODUCTION_PATH
+
+          # Pull latest code from main branch
+          git fetch origin main
+          git checkout main
+          git pull origin main
+
+          echo "Deployment completed successfully!"
+          EOF
+
+          # Clean up SSH key
+          rm -f ~/.ssh/deploy_key
+
+      # Summary instead of an issue comment: context.issue.number does not
+      # exist on push/dispatch events, so createComment threw unconditionally.
+      - name: Notify deployment status
+        if: always()
+        run: |
+          echo "## Deploy to cPanel — ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY

@@ -117,21 +117,24 @@ export default function ApplicantOverviewPage() {
                 </a>
               )}
             </div>
-            {hasDraft ? (
-              <a
-                href="/apply"
-                className="btn-primary inline-flex items-center gap-1.5 whitespace-nowrap"
-              >
-                <ChevronRight className="w-3.5 h-3.5" /> Continue Draft
-              </a>
-            ) : !hasSubmitted ? (
-              <a
-                href="/apply"
-                className="btn-primary inline-flex items-center gap-1.5 whitespace-nowrap"
-              >
-                <Plus className="w-3.5 h-3.5" /> New Application
-              </a>
-            ) : null}
+            <div className="flex items-center gap-3">
+              {hasDraft ? (
+                <a
+                  href="/apply"
+                  className="btn-primary inline-flex items-center gap-1.5 whitespace-nowrap"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" /> Continue Draft
+                </a>
+              ) : !hasSubmitted ? (
+                <a
+                  href="/apply"
+                  className="btn-primary inline-flex items-center gap-1.5 whitespace-nowrap"
+                >
+                  <Plus className="w-3.5 h-3.5" /> New Application
+                </a>
+              ) : null}
+              <FinanceBillingButton />
+            </div>
           </div>
 
           {/* Stats strip */}
@@ -597,7 +600,7 @@ function ApplicationView({ app, onBack }: { app: any; onBack?: () => void }) {
           </div>
           {(details as any)?.offer?.letter_token && (
             <a
-              href={`${import.meta.env.VITE_API_URL ?? ''}/api/portal/admission-letter?token=${(details as any).offer.letter_token}`}
+              href={`/umis/documents/all_certificate/generate_document.php?type=admission_letter&student_id=${(details as any).student_id ?? ''}&file_name=Admission_Letter_FORMAT.pdf&applicant=1`}
               target="_blank"
               rel="noreferrer"
               className="shrink-0 flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[12px] font-black uppercase tracking-widest transition-colors"
@@ -737,15 +740,17 @@ function AdmissionOfferBanner({
           </p>
         </div>
         <div className="flex flex-col gap-3 shrink-0">
-          <button
-            className="btn-white px-8 py-3 rounded-2xl font-black uppercase tracking-widest text-[12px] shadow-xl shadow-black/10 hover:-translate-y-0.5 transition-transform"
-            onClick={() => setViewingLetter(true)}
+          <a
+            href={`/umis/documents/all_certificate/generate_document.php?type=admission_letter&student_id=${details.student_id ?? ''}&file_name=Admission_Letter_FORMAT.pdf&applicant=1`}
+            target="_blank"
+            rel="noreferrer"
+            className="btn-white px-8 py-3 rounded-2xl font-black uppercase tracking-widest text-[12px] shadow-xl shadow-black/10 hover:-translate-y-0.5 transition-transform inline-flex items-center justify-center gap-2"
           >
-            <FileText className="w-4 h-4 mr-2" /> View Offer Letter
-          </button>
+            <FileText className="w-4 h-4" /> View Offer Letter
+          </a>
           {details.offer?.letter_token && (
             <a
-              href={`${import.meta.env.VITE_API_URL ?? ''}/api/portal/admission-letter?token=${details.offer.letter_token}`}
+              href={`/umis/documents/all_certificate/generate_document.php?type=admission_letter&student_id=${details.student_id ?? ''}&file_name=Admission_Letter_FORMAT.pdf&applicant=1`}
               target="_blank"
               rel="noreferrer"
               className="flex items-center justify-center gap-2 px-8 py-3 rounded-2xl font-black uppercase tracking-widest text-[12px] bg-white/20 hover:bg-white/30 text-white border border-white/30 transition-colors"
@@ -1166,6 +1171,36 @@ function TabBtn({
     >
       <Icon className="w-4 h-4" /> {label}
     </button>
+  );
+}
+
+function FinanceBillingButton() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="btn-secondary inline-flex items-center gap-1.5 whitespace-nowrap"
+      >
+        <Building2 className="w-3.5 h-3.5" /> Finance & Billing
+      </button>
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Finance & Billing"
+        size="xl"
+      >
+        <div className="h-[70vh] w-full">
+          <iframe
+            src="https://cur.ac.rw/umis/finance/billing/student/login.php"
+            title="Finance & Billing"
+            className="w-full h-full border-0 rounded-lg"
+            style={{ width: '97%', marginLeft: 'auto', marginRight: 'auto' }}
+          />
+        </div>
+      </Modal>
+    </>
   );
 }
 

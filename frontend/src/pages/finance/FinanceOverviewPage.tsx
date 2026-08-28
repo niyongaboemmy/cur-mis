@@ -358,7 +358,7 @@ export default function FinanceOverviewPage() {
             <div className="w-12 h-12 rounded-xl bg-brand text-white flex items-center justify-center">
               <ExternalLink className="w-5 h-5" />
             </div>
-            <h3 className="text-sm font-semibold text-ink-800 dark:text-white">Opening Balance</h3>
+            <h3 className="text-sm font-semibold text-ink-800 dark:text-white">Students Billing Form</h3>
             <p className="text-[11px] text-ink-500 text-center">Various payments and sponsors</p>
           </button>
         </div>

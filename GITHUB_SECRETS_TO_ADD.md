@@ -1,0 +1,173 @@
+# GitHub Secrets - Ready to Add
+
+## ✅ All Information Prepared
+
+I've generated your SSH keys and prepared all 5 secrets. Here's exactly what to add to GitHub.
+
+---
+
+## 🔑 Add These 5 Secrets to GitHub
+
+**Go to**: https://github.com/niyongaboemmy/cur-mis/settings/secrets/actions
+
+Click **"New repository secret"** for each one:
+
+---
+
+### Secret 1: CPANEL_HOST
+```
+Name:  CPANEL_HOST
+Value: cyimo-whm-private.aos.rw
+```
+
+---
+
+### Secret 2: CPANEL_USER
+```
+Name:  CPANEL_USER
+Value: curac
+```
+
+---
+
+### Secret 3: CPANEL_SSH_PORT
+```
+Name:  CPANEL_SSH_PORT
+Value: 2083
+```
+
+---
+
+### Secret 4: CPANEL_SSH_KEY
+```
+Name:  CPANEL_SSH_KEY
+Value: [COPY ENTIRE KEY BELOW - INCLUDING BEGIN AND END LINES]
+```
+
+**Paste this entire key as the value:**
+
+```
+-----BEGIN OPENSSH PRIVATE KEY-----
+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
+-----END OPENSSH PRIVATE KEY-----
+```
+
+---
+
+### Secret 5: PRODUCTION_PATH
+```
+Name:  PRODUCTION_PATH
+Value: /home/curac/umis
+```
+
+---
+
+## 📋 Summary
+
+| Secret | Value |
+|--------|-------|
+| CPANEL_HOST | cyimo-whm-private.aos.rw |
+| CPANEL_USER | curac |
+| CPANEL_SSH_PORT | 2083 |
+| CPANEL_SSH_KEY | [RSA private key - see above] |
+| PRODUCTION_PATH | /home/curac/umis |
+
+---
+
+## ✅ Steps to Add Secrets
+
+1. Go to: https://github.com/niyongaboemmy/cur-mis/settings/secrets/actions
+2. Click **"New repository secret"**
+3. Enter Name: `CPANEL_HOST`
+4. Enter Value: `cyimo-whm-private.aos.rw`
+5. Click **"Add secret"**
+6. Repeat for the other 4 secrets
+
+---
+
+## 🚀 After Adding Secrets
+
+1. **Secrets are saved** in GitHub (encrypted)
+2. **Next push to main** will trigger deployment
+3. **Automatic deployment** happens (~10 seconds)
+4. **Your code goes live** on production server
+
+---
+
+## 📝 Test Deployment
+
+After adding all 5 secrets, push a test commit:
+
+```bash
+git commit --allow-empty -m "test: trigger auto-deployment"
+git push origin main
+```
+
+Then watch the deployment:
+- Go to: https://github.com/niyongaboemmy/cur-mis/actions
+- Click the latest workflow run
+- Watch "Deploy to cPanel Production" complete
+
+---
+
+## 🎯 Expected Outcome
+
+✅ GitHub Actions runs  
+✅ SSH connects to cPanel  
+✅ Code pulled from GitHub  
+✅ Production updated  
+✅ Students see Finance Portal button  
+
+**All in ~10 seconds!**
+
+---
+
+**Status**: Ready to deploy  
+**Feature**: Student Finance Portal (already implemented)  
+**Next Step**: Add these 5 secrets to GitHub

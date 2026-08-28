@@ -1628,12 +1628,33 @@ function PaymentStep({
   };
 
   const payNow = () => {
-    if (!checkout?.checkout_url) {
-      toast.error('Preparing your payment link — please try again in a moment.');
+    if (!checkout?.merchant_code || !checkout?.payer_code) {
+      toast.error('Payment information not ready — please try again.');
       checkoutQuery.refetch();
       return;
     }
-    window.open(checkout.checkout_url, '_blank', 'noopener,noreferrer');
+
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = 'https://urubutopay.rw/pay-now?origin=internal';
+    form.target = '_blank';
+
+    const merchantInput = document.createElement('input');
+    merchantInput.type = 'hidden';
+    merchantInput.name = 'merchant_code';
+    merchantInput.value = checkout.merchant_code;
+
+    const payerInput = document.createElement('input');
+    payerInput.type = 'hidden';
+    payerInput.name = 'payer_code';
+    payerInput.value = checkout.payer_code;
+
+    form.appendChild(merchantInput);
+    form.appendChild(payerInput);
+    document.body.appendChild(form);
+    form.submit();
+    document.body.removeChild(form);
+
     setOpened(true);
     toast.success('Complete your payment in the Urubuto Pay tab, then return here.');
     statusQuery.refetch();

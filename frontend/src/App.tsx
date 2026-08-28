@@ -130,6 +130,7 @@ import FinanceOverviewPage from "@/pages/finance/FinanceOverviewPage";
 import StudentLedgerPage from "@/pages/finance/StudentLedgerPage";
 import StudentBillingPage from "@/pages/finance/StudentBillingPage";
 import PaymentApprovalsPage from "@/pages/finance/PaymentApprovalsPage";
+import BordereauVerificationPage from "@/pages/finance/BordereauVerificationPage";
 import FeeStructuresPage from "@/pages/finance/FeeStructuresPage";
 import BursariesPage from "@/pages/finance/BursariesPage";
 import ExpensesPage from "@/pages/finance/ExpensesPage";
@@ -845,6 +846,7 @@ function App() {
                   <Route path="billing" element={<StudentBillingPage />} />
                   <Route path="billing/*" element={<StudentLedgerPage />} />
                   <Route path="approvals" element={<PaymentApprovalsPage />} />
+                  <Route path="bordereau-verification" element={<BordereauVerificationPage />} />
                   <Route
                     element={
                       <ProtectedRoute
