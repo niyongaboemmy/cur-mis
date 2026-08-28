@@ -174,6 +174,33 @@ UPDATE `modules`
  WHERE UPPER(REPLACE(`module_code`, ' ', '')) = 'DTMD5312'
    AND `module_credits` = 20;
 
+-- Level-of-study corrections, also per the signed transcript: these modules
+-- print on the wrong page because the catalogue's `level` disagrees with the
+-- level the registrar's record teaches them at (mostly the digit their own
+-- code carries). Applied to every catalogue row of the module, so the
+-- cross-level duplicates ('NALP4322' vs 'NALP 4322') land on one page.
+UPDATE `modules` SET `level` = 3 WHERE UPPER(REPLACE(`module_code`,' ','')) = 'ENPR3311' AND `level` <> 3;
+UPDATE `modules` SET `level` = 4 WHERE UPPER(REPLACE(`module_code`,' ','')) = 'NALP4322' AND `level` <> 4;
+UPDATE `modules` SET `level` = 4 WHERE UPPER(REPLACE(`module_code`,' ','')) = 'DSAL4322' AND `level` <> 4;
+UPDATE `modules` SET `level` = 4 WHERE UPPER(REPLACE(`module_code`,' ','')) = 'NETL4322' AND `level` <> 4;
+UPDATE `modules` SET `level` = 4 WHERE UPPER(REPLACE(`module_code`,' ','')) = 'MTEC4322' AND `level` <> 4;
+UPDATE `modules` SET `level` = 5 WHERE UPPER(REPLACE(`module_code`,' ','')) = 'DATA5312' AND `level` <> 5;
+UPDATE `modules` SET `level` = 5 WHERE UPPER(REPLACE(`module_code`,' ','')) = 'DTMD5312' AND `level` <> 5;
+
+-- Grading scale: the table was seeded with a generic 4.0-style ladder
+-- (B down to 60, C at 50, an F grade) that CUR does not use. The official
+-- scale, printed as the legend on every signed transcript:
+--   A = Very Good (80-100) · B = Good (70-79) · C = Satisfaction (60-69)
+--   D = Pass (50-59) · E = Fail (below 50)
+-- With the old ladder a 63 printed as B where the signed record says C.
+DELETE FROM `grading_scales`;
+INSERT INTO `grading_scales` (`id`, `grade`, `min_marks`, `max_marks`, `grade_point`, `description`) VALUES
+  (1, 'A', 80.00, 100.00, 4.0, 'Very Good'),
+  (2, 'B', 70.00,  79.99, 3.0, 'Good'),
+  (3, 'C', 60.00,  69.99, 2.0, 'Satisfaction'),
+  (4, 'D', 50.00,  59.99, 1.0, 'Pass'),
+  (5, 'E',  0.00,  49.99, 0.0, 'Fail');
+
 -- ── 5. Clean up ──────────────────────────────────────────────────────────────
 DROP TABLE IF EXISTS `_tmr_imported`;
 DROP TABLE IF EXISTS `_tmr_rank`;
