@@ -197,21 +197,22 @@ jobs:
             done
             return 1
           }
-
-          TOKEN=$(openssl rand -hex 16)
-          echo "$EXTRACTOR_HOME_B64" | base64 -d \
-            | sed -e "s/DEPLOY_TOKEN/$TOKEN/" \
-                  -e "s|DEPLOY_OFFSET|/..|" \
-                  -e "s/DEPLOY_ZIP_NAME/backend-vendor.zip/" \
-                  -e "s/DEPLOY_DEST_DIR/backend/" \
-            > _extract_vendor.php
+          ex() {
+            local z="$1" d="$2" r i
+            for i in 1 2 3; do
+              r=$(curl -s -k --connect-timeout 20 --max-time 300 -u "$CPANEL_USER:$CPANEL_PASS" \
+                "$CPANEL_URL/json-api/cpanel?cpanel_jsonapi_apiversion=2&cpanel_jsonapi_module=Fileman&cpanel_jsonapi_func=fileop&op=extract&sourcefiles=$z&destfiles=$d&doubledecode=0" || true)
+              if printf '%s' "$r" | jq -e '(.cpanelresult.error // "") == "" and .cpanelresult.data' >/dev/null 2>&1; then
+                echo "extract $z -> $d: ok"; return 0
+              fi
+              echo "extract $z -> $d attempt $i failed: ${r:0:300}"
+              sleep 5
+            done
+            return 1
+          }
 
           up backend-vendor.zip /public_html/umis
-          up _extract_vendor.php /public_html/umis/api
-
-          RESULT=$(curl -s -k --connect-timeout 20 --max-time 120 "https://cur.ac.rw/umis/api/_extract_vendor.php?token=$TOKEN")
-          echo "Extract result: $RESULT"
-          [ "$RESULT" = "ok" ] || { echo "Vendor extraction failed: $RESULT"; exit 1; }
+          ex /public_html/umis/backend-vendor.zip /public_html/umis/backend
 
       # ── Step 2: Deploy source code → public_html/umis/backend/ ────────────────
       - name: Upload & extract backend source → public_html/umis/backend/
@@ -233,21 +234,22 @@ jobs:
             done
             return 1
           }
-
-          TOKEN=$(openssl rand -hex 16)
-          echo "$EXTRACTOR_HOME_B64" | base64 -d \
-            | sed -e "s/DEPLOY_TOKEN/$TOKEN/" \
-                  -e "s|DEPLOY_OFFSET|/..|" \
-                  -e "s/DEPLOY_ZIP_NAME/backend-src.zip/" \
-                  -e "s/DEPLOY_DEST_DIR/backend/" \
-            > _extract_src.php
+          ex() {
+            local z="$1" d="$2" r i
+            for i in 1 2 3; do
+              r=$(curl -s -k --connect-timeout 20 --max-time 300 -u "$CPANEL_USER:$CPANEL_PASS" \
+                "$CPANEL_URL/json-api/cpanel?cpanel_jsonapi_apiversion=2&cpanel_jsonapi_module=Fileman&cpanel_jsonapi_func=fileop&op=extract&sourcefiles=$z&destfiles=$d&doubledecode=0" || true)
+              if printf '%s' "$r" | jq -e '(.cpanelresult.error // "") == "" and .cpanelresult.data' >/dev/null 2>&1; then
+                echo "extract $z -> $d: ok"; return 0
+              fi
+              echo "extract $z -> $d attempt $i failed: ${r:0:300}"
+              sleep 5
+            done
+            return 1
+          }
 
           up backend-src.zip /public_html/umis
-          up _extract_src.php /public_html/umis/api
-
-          RESULT=$(curl -s -k --connect-timeout 20 --max-time 60 "https://cur.ac.rw/umis/api/_extract_src.php?token=$TOKEN")
-          echo "Extract result: $RESULT"
-          [ "$RESULT" = "ok" ] || { echo "Extraction failed: $RESULT"; exit 1; }
+          ex /public_html/umis/backend-src.zip /public_html/umis/backend
 
       # ── Step 3: Deploy public/ entry point ────────────────────────────────────
       - name: Upload & extract backend/public/ → public_html/umis/api/
@@ -269,52 +271,27 @@ jobs:
             done
             return 1
           }
-
-          TOKEN=$(openssl rand -hex 16)
-          echo "$EXTRACTOR_INPLACE_B64" | base64 -d \
-            | sed -e "s/DEPLOY_TOKEN/$TOKEN/" -e "s/DEPLOY_ZIP_NAME/backend-public.zip/" \
-            > _extract_pub.php
+          ex() {
+            local z="$1" d="$2" r i
+            for i in 1 2 3; do
+              r=$(curl -s -k --connect-timeout 20 --max-time 300 -u "$CPANEL_USER:$CPANEL_PASS" \
+                "$CPANEL_URL/json-api/cpanel?cpanel_jsonapi_apiversion=2&cpanel_jsonapi_module=Fileman&cpanel_jsonapi_func=fileop&op=extract&sourcefiles=$z&destfiles=$d&doubledecode=0" || true)
+              if printf '%s' "$r" | jq -e '(.cpanelresult.error // "") == "" and .cpanelresult.data' >/dev/null 2>&1; then
+                echo "extract $z -> $d: ok"; return 0
+              fi
+              echo "extract $z -> $d attempt $i failed: ${r:0:300}"
+              sleep 5
+            done
+            return 1
+          }
 
           up backend-public.zip /public_html/umis/api
-          up _extract_pub.php /public_html/umis/api
+          ex /public_html/umis/api/backend-public.zip /public_html/umis/api
 
-          RESULT=$(curl -s -k --connect-timeout 20 --max-time 60 "https://cur.ac.rw/umis/api/_extract_pub.php?token=$TOKEN")
-          echo "Extract result: $RESULT"
-          [ "$RESULT" = "ok" ] || { echo "Extraction failed: $RESULT"; exit 1; }
-
-      # ── Step 4: Flush OPcache via fresh PHP helper ────────────────────────────
-      # Upload a brand-new PHP file (not yet cached by OPcache) that calls
-      # opcache_reset(). PHP-FPM runs several worker processes that each keep
-      # their own OPcache; one call only clears whichever worker handles that
-      # request. We call it repeatedly (round-robin across workers) so every
-      # worker recompiles fresh bytecode, then delete the helper file.
-      - name: Flush OPcache (all workers)
-        if: steps.preflight.outputs.reachable == 'true'
-        timeout-minutes: 2
-        env:
-          CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
-        run: |
-          TOKEN=$(openssl rand -hex 16)
-
-          echo "$FLUSH_OPCACHE_B64" | base64 -d \
-            | sed "s/FLUSH_TOKEN/$TOKEN/" \
-            > _flush_opcache.php
-
-          R=$(curl -s -k --connect-timeout 20 --max-time 60 -u "$CPANEL_USER:$CPANEL_PASS" \
-            -F "dir=/public_html/umis/api" \
-            -F "overwrite=1" \
-            -F "file-1=@_flush_opcache.php;type=text/plain" \
-            "$CPANEL_URL/execute/Fileman/upload_files")
-          echo "Upload flush helper: $R"
-          [ "$(printf '%s' "$R" | jq -r '.status // 0' 2>/dev/null || echo 0)" = "1" ] || { echo "Upload failed"; exit 1; }
-
-          sleep 1
-          for i in $(seq 1 19); do
-            RESULT=$(curl -s -k --max-time 15 "https://cur.ac.rw/umis/api/_flush_opcache.php?token=$TOKEN")
-            echo "OPcache flush #$i: $RESULT"
-          done
-          RESULT=$(curl -s -k --max-time 15 "https://cur.ac.rw/umis/api/_flush_opcache.php?token=$TOKEN&last=1")
-          echo "OPcache flush #20 (self-delete): $RESULT"
+      # ── Step 4 (retired): the flush helper was an uploaded PHP file, which
+      # the server's security layer now blocks as a webshell. OPcache is
+      # cleared through the backend's own authenticated endpoint below,
+      # called repeatedly to round-robin across the FPM workers. ──────────────
 
       # ── Step 5: Clear OPcache via API ─────────────────────────────────────────
       # Deliberately does NOT run migrations or seeds — this workflow ships code
@@ -325,10 +302,14 @@ jobs:
         env:
           DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
         run: |
-          RESULT=$(curl -s -k --max-time 15 -X POST \
-            -H "Authorization: Bearer $DEPLOY_KEY" \
-            "$API_BASE/api/deploy/cache-clear")
-          echo "Cache clear: $RESULT"
+          # Called repeatedly: PHP-FPM workers each keep their own OPcache and
+          # one request only clears whichever worker served it.
+          for i in $(seq 1 12); do
+            RESULT=$(curl -s -k --max-time 15 -X POST \
+              -H "Authorization: Bearer $DEPLOY_KEY" \
+              "$API_BASE/api/deploy/cache-clear" || true)
+            echo "Cache clear #$i: $RESULT"
+          done
 
       - name: Write job summary
         if: always()

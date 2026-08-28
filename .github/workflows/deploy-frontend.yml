@@ -88,11 +88,12 @@ jobs:
         if: steps.preflight.outputs.reachable == 'true'
         env:
           CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
-        # Retried and parse-safe: connectivity to this server is intermittent,
-        # and a run once died because one response was an HTML error page that
-        # crashed a bare `jq` AFTER the zip had already landed. Each upload
-        # gets 3 attempts and jq failures count as a failed attempt, not a
-        # crashed step.
+        # NO PHP HELPER: the server's security layer blocks uploading .php
+        # files (returns an HTML block page — run 33226* proved zips pass but
+        # the extractor helper is flagged as a webshell, which is also what
+        # keeps greylisting the runner IPs). Extraction happens server-side
+        # through cPanel's own API instead: Fileman::fileop op=extract.
+        # Uploads and extracts are retried and parse-safe.
         run: |
           up() {
             local f="$1" d="$2" r s i
@@ -107,18 +108,23 @@ jobs:
             done
             return 1
           }
-
-          TOKEN=$(openssl rand -hex 16)
-          echo "$EXTRACTOR_B64" | base64 -d \
-            | sed -e "s/DEPLOY_TOKEN/$TOKEN/" -e "s/DEPLOY_ZIP_NAME/frontend-deploy.zip/" \
-            > _extract.php
+          ex() {
+            local z="$1" d="$2" r i
+            for i in 1 2 3; do
+              r=$(curl -s -k --connect-timeout 20 --max-time 300 -u "$CPANEL_USER:$CPANEL_PASS" \
+                "$CPANEL_URL/json-api/cpanel?cpanel_jsonapi_apiversion=2&cpanel_jsonapi_module=Fileman&cpanel_jsonapi_func=fileop&op=extract&sourcefiles=$z&destfiles=$d&doubledecode=0" || true)
+              if printf '%s' "$r" | jq -e '(.cpanelresult.error // "") == "" and .cpanelresult.data' >/dev/null 2>&1; then
+                echo "extract $z -> $d: ok"; return 0
+              fi
+              echo "extract $z -> $d attempt $i failed: ${r:0:300}"
+              sleep 5
+            done
+            return 1
+          }
 
           up frontend-deploy.zip /public_html/umis
-          up _extract.php /public_html/umis
-
-          RESULT=$(curl -s -k --connect-timeout 20 --max-time 120 "https://cur.ac.rw/umis/_extract.php?token=$TOKEN")
-          echo "Extract result: $RESULT"
-          [ "$RESULT" = "ok" ] || { echo "Extraction failed: $RESULT"; exit 1; }
+          ex /public_html/umis/frontend-deploy.zip /public_html/umis
+          echo "Frontend deployed."
 
       - name: Write job summary
         if: always()
