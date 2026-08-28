@@ -35,4 +35,8 @@ $router->group('/api/finance/bordereau', function ($r) {
     $r->post('/:id/approve', [BordereauxPaymentController::class, 'approveBordereau']);
     $r->post('/:id/reject', [BordereauxPaymentController::class, 'rejectBordereau']);
     $r->get('/dashboard-stats', [BordereauxPaymentController::class, 'getDashboardStats']);
-}, [AuthMiddleware::class, new PermissionMiddleware(Permissions::ACCESS_FINANCE_MODULE)]);
+// VIEW_FINANCE_APPROVALS: the same permission that gates the existing payment
+// approvals surface — bordereau review is the same reviewers doing the same
+// class of work. (The original ACCESS_FINANCE_MODULE constant never existed
+// and fatally crashed EVERY api request at route-registration time.)
+}, [AuthMiddleware::class, new PermissionMiddleware(Permissions::VIEW_FINANCE_APPROVALS)]);
