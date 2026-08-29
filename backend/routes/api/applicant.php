@@ -56,6 +56,10 @@ $router->group('/api/applicant', function ($router) {
     // were removed with the "Already Paid" tab they served.
     $router->get('/application/payment/checkout', [ApplicantProfileController::class, 'getPaymentCheckout']);
     $router->get('/application/payment/status',   [ApplicantProfileController::class, 'getPaymentStatus']);
+    // Development only — marks the fee paid the way the gateway callback would,
+    // because UrubutoPay cannot call back into a local machine. Answers 403
+    // whenever APP_ENV is not local or APP_DEBUG is off.
+    $router->post('/application/payment/simulate', [ApplicantProfileController::class, 'simulatePayment']);
 
     // ── Admission fees (Registration, CURSU …) ───────────────────────────────
     // Raised once the applicant is admitted; paid on the same payer code as the

@@ -182,6 +182,9 @@ class ApplicantProfileController extends BaseController
         $data['paid']               = !empty($app['paid_at']) && !empty($app['transaction_id']);
         $data['transaction_id']     = $app['transaction_id'] ?? null;
         $data['application_number'] = $appNumber;
+        // Local development can never reach the real gateway, so the wizard is
+        // offered a "simulate payment" shortcut instead (see simulatePayment()).
+        $data['dev_mode']           = $this->isDevEnvironment();
 
         $this->success($response, $data, 'Checkout link generated.');
     }
@@ -215,7 +218,80 @@ class ApplicantProfileController extends BaseController
             'currency'           => $app['payment_currency'] ?? 'RWF',
             'application_number' => $app['application_number'] ?? null,
             'status'             => $app['status'] ?? null,
+            'dev_mode'           => $this->isDevEnvironment(),
         ], 'Payment status fetched.');
+    }
+
+    /**
+     * True only when the backend runs locally with debugging on. Guards the
+     * payment simulation below — on production both flags say otherwise, so the
+     * endpoint refuses every call there.
+     */
+    private function isDevEnvironment(): bool
+    {
+        $env   = strtolower(trim((string)($_ENV['APP_ENV'] ?? 'production')));
+        $debug = filter_var($_ENV['APP_DEBUG'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+        return $debug && in_array($env, ['local', 'development', 'dev'], true);
+    }
+
+    /**
+     * POST /api/applicant/application/payment/simulate
+     *
+     * Development only. UrubutoPay cannot be paid from a local machine (the
+     * gateway has no route back to localhost for its callback), which would
+     * leave the last wizard step impossible to test. This marks the application
+     * fee as settled exactly the way the callback would, with an obviously fake
+     * transaction id so simulated payments stay recognisable in the data.
+     */
+    public function simulatePayment(Request $request, Response $response): never
+    {
+        if (!$this->isDevEnvironment()) {
+            $this->error($response, 'Payment simulation is only available in development.', 403);
+        }
+
+        $profile = $request->param('_applicant_profile');
+        $appId   = (int)($profile['application_id'] ?? 0);
+        if (!$appId) {
+            $this->error($response, 'No active application.', 404);
+        }
+
+        $app = $this->appModel->find($appId);
+        if (!$app) {
+            $this->error($response, 'Application not found.', 404);
+        }
+
+        // Already settled — report it rather than overwrite a real payment.
+        if (!empty($app['paid_at']) && !empty($app['transaction_id'])) {
+            $this->success($response, [
+                'paid'           => true,
+                'transaction_id' => $app['transaction_id'],
+                'paid_at'        => $app['paid_at'],
+                'simulated'      => false,
+            ], 'Application fee already paid.');
+        }
+
+        $appNumber = trim((string)($app['application_number'] ?? ''));
+        $checkout  = (new UrubutoPayService())->generateApplicationCheckoutUrl($appNumber);
+
+        $transactionId = 'DEV-SIM-' . ($appNumber !== '' ? $appNumber . '-' : '') . date('YmdHis');
+        $paidAt        = date('Y-m-d H:i:s');
+
+        $this->appModel->update($appId, [
+            'transaction_id'   => $transactionId,
+            'payment_amount'   => (float)($checkout['amount'] ?? 0),
+            'payment_currency' => (string)($checkout['currency'] ?? 'RWF'),
+            'paid_at'          => $paidAt,
+        ]);
+
+        $this->success($response, [
+            'paid'           => true,
+            'transaction_id' => $transactionId,
+            'paid_at'        => $paidAt,
+            'amount'         => (float)($checkout['amount'] ?? 0),
+            'currency'       => (string)($checkout['currency'] ?? 'RWF'),
+            'simulated'      => true,
+        ], 'Payment simulated (development mode).');
     }
 
 
