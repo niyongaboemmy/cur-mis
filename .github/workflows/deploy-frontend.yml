@@ -75,15 +75,23 @@ jobs:
       # GitHub's runner IP ranges (https://api.github.com/meta).
       - name: Preflight — is cPanel reachable from this runner?
         id: preflight
+        # The block is intermittent, not absolute: a single probe kept
+        # declaring the server unreachable on runs whose upload would have
+        # worked. Probe up to 6 times over ~2 minutes and only give up if
+        # every attempt fails.
         run: |
-          if curl -sk --connect-timeout 15 --max-time 25 -o /dev/null "$CPANEL_URL/login"; then
-            echo "reachable=true" >> "$GITHUB_OUTPUT"
-            echo "cPanel reachable — deploying."
-          else
-            echo "reachable=false" >> "$GITHUB_OUTPUT"
-            echo "::warning title=Deploy skipped — cPanel unreachable::$CPANEL_URL refuses connections from GitHub-hosted runners (server firewall). The build passed; deploy from an allowed network: CPANEL_PASS='...' bash deploy-from-local.sh frontend"
+          reach=false
+          for i in 1 2 3 4 5 6; do
+            if curl -sk --connect-timeout 20 --max-time 30 -o /dev/null "$CPANEL_URL/login"; then
+              reach=true; echo "cPanel reachable on attempt $i — deploying."; break
+            fi
+            echo "attempt $i: no answer from $CPANEL_URL"
+            [ $i -lt 6 ] && sleep 20
+          done
+          echo "reachable=$reach" >> "$GITHUB_OUTPUT"
+          if [ "$reach" != "true" ]; then
+            echo "::warning title=Deploy skipped — cPanel unreachable::$CPANEL_URL did not answer in 6 attempts over 2 minutes (server firewall). The build passed; deploy from an allowed network: CPANEL_PASS='...' bash deploy-from-local.sh"
           fi
-
       - name: Upload & extract
         if: steps.preflight.outputs.reachable == 'true'
         env:
