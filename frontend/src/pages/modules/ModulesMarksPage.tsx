@@ -976,12 +976,17 @@ export function MarksEditor({
   // while this is an empty sheet stamped with the module and term, which the
   // importer then checks. Fetched from the server rather than built here so
   // the stamp cannot be forged by the page that also consumes it.
+  // Cut for writeTermId, not termId: when the server redirected us to the term
+  // that actually holds the marks (the legacy sheet), the grid shows and saves
+  // to THAT term. A template stamped with the requested term would carry a
+  // different roster from the one on screen and then fail its own identity
+  // check on the way back in.
   const [templateBusy, setTemplateBusy] = useState(false)
   const downloadTemplate = async () => {
-    if (!moduleId || !termId) return
+    if (!moduleId || !writeTermId) return
     setTemplateBusy(true)
     try {
-      await marksService.downloadTemplate(moduleId, termId)
+      await marksService.downloadTemplate(moduleId, writeTermId)
     } catch (e: any) {
       toast.error(e?.response?.data?.message ?? 'Could not build the template.')
     } finally {
@@ -1019,10 +1024,14 @@ export function MarksEditor({
           )
           return
         }
-        if (meta.term_id && String(meta.term_id) !== String(termId)) {
+        // Checked against writeTermId — the term the grid is actually editing,
+        // which is not the requested one whenever the server redirected us to
+        // the sheet that holds the marks.
+        if (meta.term_id && String(meta.term_id) !== String(writeTermId)) {
           toast.error(
             `This sheet was issued for ${meta.term_label || 'term ' + meta.term_id}, ` +
-            `but you are marking term ${termId}. Switch term, or download a fresh template.`,
+            `but you are marking ${payload?.term?.label || 'term ' + writeTermId}. ` +
+            `Switch term, or download a fresh template.`,
             { duration: 9000 },
           )
           return
@@ -1129,8 +1138,26 @@ export function MarksEditor({
    * transcript can always be traced back to the sheet it arrived on. Who
    * uploaded it is recorded server-side on save (`recorded_by`).
    */
-  const applyImport = (keep: Set<string>, note: string) => {
+  const applyImport = async (keep: Set<string>, note: string) => {
     if (!preview) return
+
+    // A confirmed or submitted sheet is write-protected on the server, so
+    // staged rows would only fail at Save. Re-open it here — after the user
+    // has seen the preview and approved it, and only for someone allowed to.
+    // Doing it at this point rather than before the file picker also keeps
+    // the picker inside the original click, which browsers require.
+    if (isLocked) {
+      if (!canConfirm) {
+        toast.error('These marks are locked. Ask the registry to re-open the sheet first.')
+        return
+      }
+      try {
+        await wf.mutateAsync('reset')
+      } catch {
+        return   // the mutation's onError has already reported why
+      }
+    }
+
     const stamp = `Uploaded ${new Date().toISOString().slice(0, 10)}`
     const suffix = note.trim() ? `${stamp} · ${note.trim()}` : stamp
     let applied = 0
@@ -1253,7 +1280,40 @@ export function MarksEditor({
   }, [onBridge, save.isPending, marksCanSave])
 
   const canExport = !!roster && roster.length > 0
-  const canImport = canExport && !isLocked && canWrite
+
+  /* Importing into a locked sheet used to be a dead end: the button was
+   * disabled with no stated reason, and the only way forward — "Re-open for
+   * editing" — was never mentioned. A confirmed sheet is write-protected on
+   * the server too, so staging rows into one would fail at Save anyway.
+   * So: whoever may re-open the sheet may import into it, taking the re-open
+   * as an explicit step first; everyone else keeps the block, now explained. */
+  const canUnlock  = canConfirm
+  const canImport  = canExport && canWrite && (!isLocked || canUnlock)
+  const importHint = !canExport
+    ? 'Nothing to import into — this module has no roster for the term.'
+    : isLocked
+      ? (canUnlock
+          ? `These marks are ${status} and locked — importing re-opens the sheet for editing first.`
+          : `These marks are ${status} and locked. Ask the registry to re-open the sheet before importing.`)
+      : 'Upload a completed sheet (xlsx, xls, csv, tsv)'
+
+  /* Say up front what importing into a locked sheet will cost, then open the
+   * picker. Everything stays synchronous here: a file picker opened after an
+   * await has lost the click that justified it, and browsers block it. The
+   * re-open itself happens in applyImport, once the preview is approved. */
+  const startImport = () => {
+    if (isLocked) {
+      if (!canUnlock) return
+      const ok = window.confirm(
+        `These marks are ${status} and locked.\n\n` +
+        'Applying an upload will re-open the sheet for editing: it returns to ' +
+        'draft, and must be submitted and confirmed again afterwards.\n\n' +
+        'Continue and choose a file?',
+      )
+      if (!ok) return
+    }
+    fileRef.current?.click()
+  }
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -1356,11 +1416,14 @@ export function MarksEditor({
             {canWrite && (
               <button
                 className="btn-ghost btn-sm"
-                disabled={!canImport}
-                onClick={() => fileRef.current?.click()}
-                title="Upload a completed sheet (xlsx, xls, csv, tsv)"
+                disabled={!canImport || wf.isPending}
+                onClick={startImport}
+                title={importHint}
               >
-                <Upload className="w-3.5 h-3.5" /> Import
+                {wf.isPending
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  : <Upload className="w-3.5 h-3.5" />}
+                Import
               </button>
             )}
             {canWrite && (
@@ -2460,13 +2523,14 @@ function ImportPreviewModal({
 }: {
   preview:  ImportPreview | null
   onCancel: () => void
-  onApprove: (keep: Set<string>, note: string) => void
+  onApprove: (keep: Set<string>, note: string) => void | Promise<void>
 }) {
   // Rows the user chose to leave as they are. A conflict defaults to taking
   // the uploaded value — that is why the file was uploaded — but every one of
   // them can be kept instead, row by row or all at once.
   const [keep, setKeep] = useState<Set<string>>(new Set())
   const [note, setNote] = useState('')
+  const [applying, setApplying] = useState(false)
   if (!preview) return null
   const { entries, summary } = preview
   const changedRegs = entries.filter((e) => e.matched && e.changed).map((e) => e.regnumber)
@@ -2623,16 +2687,26 @@ function ImportPreviewModal({
               </>
             )}
             <div className="ml-auto flex items-center gap-2">
-              <button className="btn-ghost btn-sm" onClick={onCancel}>Cancel</button>
+              <button className="btn-ghost btn-sm" onClick={onCancel} disabled={applying}>Cancel</button>
               <button
                 className="btn-primary btn-sm"
-                disabled={takeCount === 0}
-                onClick={() => onApprove(keep, note)}
+                // Approving a locked sheet re-opens it first, so this is not
+                // instant — without the guard a second click fires a second
+                // re-open and applies the rows twice.
+                disabled={takeCount === 0 || applying}
+                onClick={async () => {
+                  setApplying(true)
+                  try { await onApprove(keep, note) } finally { setApplying(false) }
+                }}
               >
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                {takeCount === 0
-                  ? 'Nothing to apply'
-                  : `Apply ${takeCount} row${takeCount === 1 ? '' : 's'}`}
+                {applying
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  : <CheckCircle2 className="w-3.5 h-3.5" />}
+                {applying
+                  ? 'Applying…'
+                  : takeCount === 0
+                    ? 'Nothing to apply'
+                    : `Apply ${takeCount} row${takeCount === 1 ? '' : 's'}`}
               </button>
             </div>
           </div>
