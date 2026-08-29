@@ -49,23 +49,25 @@ class MarksTemplateExcel
         $sheet = $book->getActiveSheet();
         $sheet->setTitle('Marks');
 
+        // CUR records one CAT total and one exam mark — not four CAT
+        // components — so that is what the sheet asks for. Anything wider
+        // just invites the four columns to be left blank.
+        $catsMax  = $maxes['cats']  ?? 60;
+        $finalMax = $maxes['final'] ?? 40;
+
         $headers = [
             'Reg #', 'First Name', 'Surname', 'Sex', 'Program', 'Option',
-            "CAT1 (/{$maxes['cat1']})",
-            "CAT2 (/{$maxes['cat2']})",
-            "CAT3 (/{$maxes['cat3']})",
-            "Partial (/{$maxes['partial']})",
-            "Exam 1st (/{$maxes['final']})",
-            "Exam 2nd (/{$maxes['final']})",
+            "CAT (/{$catsMax})",
+            "EXAM (/{$finalMax})",
             'Remarks',
         ];
 
         $sheet->fromArray($headers, null, 'A1');
-        $sheet->getStyle('A1:M1')->getFont()->setBold(true);
-        $sheet->getStyle('A1:M1')->getFill()
+        $sheet->getStyle('A1:I1')->getFont()->setBold(true);
+        $sheet->getStyle('A1:I1')->getFill()
               ->setFillType(Fill::FILL_SOLID)
               ->getStartColor()->setRGB('E8EEF4');
-        $sheet->getStyle('A1:M1')->getAlignment()
+        $sheet->getStyle('A1:I1')->getAlignment()
               ->setWrapText(true)->setVertical(Alignment::VERTICAL_CENTER);
         $sheet->freezePane('A2');
 
@@ -81,15 +83,14 @@ class MarksTemplateExcel
             $sheet->setCellValue("D{$row}", (string) ($r['sex'] ?? ''));
             $sheet->setCellValue("E{$row}", (string) ($r['student_program'] ?? ''));
             $sheet->setCellValue("F{$row}", (string) ($r['option_acro'] ?? ''));
-            // G–M (the mark columns and remarks) are deliberately left empty —
-            // this is a blank entry sheet, not an export of current marks.
+            // G–I (CAT, EXAM, Remarks) are deliberately left empty — this is
+            // a blank entry sheet, not an export of current marks.
             $row++;
         }
 
         foreach ([
             'A' => 18, 'B' => 18, 'C' => 18, 'D' => 6, 'E' => 14, 'F' => 10,
-            'G' => 10, 'H' => 10, 'I' => 10, 'J' => 11,
-            'K' => 12, 'L' => 12, 'M' => 26,
+            'G' => 12, 'H' => 12, 'I' => 30,
         ] as $col => $width) {
             $sheet->getColumnDimension($col)->setWidth($width);
         }
@@ -104,11 +105,8 @@ class MarksTemplateExcel
             ['module_code',  (string) ($module['module_code'] ?? '')],
             ['term_id',      (string) ($term['id'] ?? '')],
             ['term_label',   (string) ($term['label'] ?? '')],
-            ['cat1_max',     (string) $maxes['cat1']],
-            ['cat2_max',     (string) $maxes['cat2']],
-            ['cat3_max',     (string) $maxes['cat3']],
-            ['partial_max',  (string) $maxes['partial']],
-            ['final_max',    (string) $maxes['final']],
+            ['cats_max',     (string) $catsMax],
+            ['final_max',    (string) $finalMax],
             ['issued_at',    date('Y-m-d H:i:s')],
             ['note',         'Do not edit or delete this sheet — the upload is rejected without it.'],
         ], null, 'A1');

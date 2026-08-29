@@ -137,7 +137,11 @@ export interface MarksListResponse {
 export interface SaveMarkRecord {
   student_regnumber: string
 
-  // Component scores (CUR template).
+  /** CAT total out of 60 — what CUR records and what the sheet asks for.
+   *  When present it is the CAT mark and the components below stay null. */
+  cats_total?:       number | null
+
+  // Component scores (kept for historical rows that carry a breakdown).
   cat1?:             number | null
   cat2?:             number | null
   cat3?:             number | null

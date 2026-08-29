@@ -32,6 +32,10 @@ import {
 } from '@/services/marksService'
 
 interface RowDraft {
+  /** CAT total out of 60 — what CUR actually records and what the sheet asks
+   *  for. When set it IS the CAT mark; cat1–partial stay for the handful of
+   *  historical rows that carry a component breakdown. */
+  cats:     string
   cat1:     string
   cat2:     string
   cat3:     string
@@ -664,6 +668,7 @@ export function MarksEditor({
     const next: Record<string, RowDraft> = {}
     for (const r of roster) {
       next[r.regnumber] = {
+        cats:    toStr(r.cat_marks) || sumComponents(r),
         cat1:    toStr(r.cat1),
         cat2:    toStr(r.cat2),
         cat3:    toStr(r.cat3),
@@ -707,17 +712,20 @@ export function MarksEditor({
         if (cur && !isEmpty) continue
         if (r.mark_id !== null) {
           next[r.regnumber] = {
+            // Seed the CAT total from what was actually recorded: the stored
+            // aggregate when there is one, else the sum of any components.
+            cats:    toStr(r.cat_marks) || sumComponents(r),
             cat1:    toStr(r.cat1),
             cat2:    toStr(r.cat2),
             cat3:    toStr(r.cat3),
             partial: toStr(r.partial_exam),
-            exam1:   toStr(r.exam_1st_sitting),
+            exam1:   toStr(r.exam_1st_sitting) || toStr(r.exam_marks),
             exam2:   toStr(r.exam_2nd_sitting),
             remarks: r.remarks ?? '',
           }
           changed = true
         } else if (!cur) {
-          next[r.regnumber] = { cat1: '', cat2: '', cat3: '', partial: '', exam1: '', exam2: '', remarks: '' }
+          next[r.regnumber] = { cats: '', cat1: '', cat2: '', cat3: '', partial: '', exam1: '', exam2: '', remarks: '' }
           changed = true
         }
       }
@@ -790,7 +798,10 @@ export function MarksEditor({
         map[r.regnumber] = legacyRow(r) ?? blank()
         continue
       }
-      const catsTotal = (c1 ?? 0) + (c2 ?? 0) + (c3 ?? 0) + (pe ?? 0)
+      const catsDirect = num(d.cats)
+      const catsTotal = catsDirect !== null
+        ? catsDirect
+        : (c1 ?? 0) + (c2 ?? 0) + (c3 ?? 0) + (pe ?? 0)
       const finalMark = e2 !== null ? Math.max(e1 ?? 0, e2) : (e1 ?? null)
       const total     = catsTotal + (finalMark ?? 0)
       const pct       = maxSum > 0 ? +(total / maxSum * 100).toFixed(2) : null
@@ -812,7 +823,7 @@ export function MarksEditor({
     setDrafts((prev) => ({
       ...prev,
       [reg]: {
-        ...(prev[reg] ?? { cat1: '', cat2: '', cat3: '', partial: '', exam1: '', exam2: '', remarks: '' }),
+        ...(prev[reg] ?? { cats: '', cat1: '', cat2: '', cat3: '', partial: '', exam1: '', exam2: '', remarks: '' }),
         [key]: val,
       },
     }))
@@ -826,6 +837,7 @@ export function MarksEditor({
       if (r.is_exempted) { out[r.regnumber] = false; continue }
       const d = drafts[r.regnumber]; if (!d) { out[r.regnumber] = false; continue }
       const same =
+        toStr(r.cat_marks)        === d.cats &&
         toStr(r.cat1)             === d.cat1 &&
         toStr(r.cat2)             === d.cat2 &&
         toStr(r.cat3)             === d.cat3 &&
@@ -858,15 +870,17 @@ export function MarksEditor({
           // never overwrite them from this page.
           if (r.is_exempted) return null
           const d = drafts[r.regnumber]; if (!d) return null
+          const cats = num(d.cats)
           const cat1 = num(d.cat1), cat2 = num(d.cat2), cat3 = num(d.cat3)
           const pe   = num(d.partial)
           const e1   = num(d.exam1), e2 = num(d.exam2)
           const remarks = d.remarks?.trim() || null
-          if (cat1 === null && cat2 === null && cat3 === null && pe === null && e1 === null && e2 === null && !remarks) {
+          if (cats === null && cat1 === null && cat2 === null && cat3 === null && pe === null && e1 === null && e2 === null && !remarks) {
             return null
           }
           return {
             student_regnumber: r.regnumber,
+            cats_total: cats,
             cat1, cat2, cat3, partial_exam: pe,
             exam_1st_sitting: e1, exam_2nd_sitting: e2,
             cat1_max: maxes.cat1, cat2_max: maxes.cat2, cat3_max: maxes.cat3,
@@ -934,7 +948,7 @@ export function MarksEditor({
       const c = computed[r.regnumber]
       aoa.push([
         r.regnumber, r.fname, r.lname, r.sex ?? '', r.student_program ?? '', r.option_acro ?? '',
-        d.cat1, d.cat2, d.cat3, d.partial, d.exam1, d.exam2, d.remarks,
+        d.cats, d.exam1, d.remarks,
         c?.catsTotal ?? '', c?.finalMark ?? '', c?.total ?? '', c?.pct ?? '', c?.grade ?? '',
       ])
     })
@@ -1032,11 +1046,14 @@ export function MarksEditor({
         return -1
       }
       const iReg     = idx('reg #', 'reg#', 'reg', 'regnumber', 'registration')
+      // The template now issues one CAT column. `cat1`-style headers are still
+      // recognised so sheets cut before this keep importing.
+      const iCats    = idx('cat (', 'cat/', 'cat /', 'tot. cats', 'total cats', 'cats')
       const iCat1    = idx('cat1', 'cat 1')
       const iCat2    = idx('cat2', 'cat 2')
       const iCat3    = idx('cat3', 'cat 3')
       const iPartial = idx('partial')
-      const iExam1   = idx('exam 1st', 'exam1', '1st sitting', '1st')
+      const iExam1   = idx('exam (', 'exam/', 'exam /', 'exam 1st', 'exam1', '1st sitting', '1st', 'exam')
       const iExam2   = idx('exam 2nd', 'exam2', '2nd', 'special')
       const iRemarks = idx('remarks', 'remark', 'comment')
 
@@ -1076,6 +1093,7 @@ export function MarksEditor({
         }
         const cur: RowDraft = drafts[target.regnumber] ?? emptyDraft()
         const incoming: RowDraft = {
+          cats:    cell(row, iCats)    || cur.cats,
           cat1:    cell(row, iCat1)    || cur.cat1,
           cat2:    cell(row, iCat2)    || cur.cat2,
           cat3:    cell(row, iCat3)    || cur.cat3,
@@ -1104,18 +1122,36 @@ export function MarksEditor({
     }
   }
 
-  const applyImport = () => {
+  /**
+   * Apply the reviewed upload. `keep` names the rows the user chose to leave
+   * alone, and every row that IS taken gets the upload stamped into its
+   * remark — the date, and whatever note was given — so a mark on a
+   * transcript can always be traced back to the sheet it arrived on. Who
+   * uploaded it is recorded server-side on save (`recorded_by`).
+   */
+  const applyImport = (keep: Set<string>, note: string) => {
     if (!preview) return
+    const stamp = `Uploaded ${new Date().toISOString().slice(0, 10)}`
+    const suffix = note.trim() ? `${stamp} · ${note.trim()}` : stamp
+    let applied = 0
     setDrafts((prev) => {
       const next = { ...prev }
       for (const e of preview.entries) {
         if (!e.matched || !e.changed) continue
-        next[e.regnumber] = e.incoming
+        if (keep.has(e.regnumber)) continue
+        const base = e.incoming.remarks?.trim()
+        next[e.regnumber] = { ...e.incoming, remarks: base ? `${base} · ${suffix}` : suffix }
+        applied++
       }
       return next
     })
-    const n = preview.summary.matched
-    toast.success(`Applied ${n} row${n === 1 ? '' : 's'} of marks.`)
+    const kept = preview.entries.filter((e) => e.matched && e.changed && keep.has(e.regnumber)).length
+    toast.success(
+      `Applied ${applied} row${applied === 1 ? '' : 's'}` +
+      (kept ? `, kept ${kept} existing.` : '.') +
+      ' Review, then Save marks to write them.',
+      { duration: 6000 },
+    )
     setPreview(null)
   }
 
@@ -1417,7 +1453,7 @@ export function MarksEditor({
               setExtras((prev) => ({ ...prev, [s.regnumber]: s }))
               setDrafts((prev) => prev[s.regnumber] ? prev : ({
                 ...prev,
-                [s.regnumber]: { cat1: '', cat2: '', cat3: '', partial: '', exam1: '', exam2: '', remarks: '' },
+                [s.regnumber]: { cats: '', cat1: '', cat2: '', cat3: '', partial: '', exam1: '', exam2: '', remarks: '' },
               }))
             }}
             onRemove={(reg) => {
@@ -1551,11 +1587,9 @@ export function MarksEditor({
                     <th rowSpan={2} className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase border-r border-ink-100 dark:border-ink-700">Reg #</th>
                     <th rowSpan={2} className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase border-r border-ink-100 dark:border-ink-700">Program</th>
                     <th rowSpan={2} className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase border-r border-ink-100 dark:border-ink-700">Option</th>
-                    <th rowSpan={2} className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase text-center border-r border-ink-100 dark:border-ink-700">CAT1<br/><span className="font-normal text-ink-400">/{maxes.cat1}</span></th>
-                    <th rowSpan={2} className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase text-center border-r border-ink-100 dark:border-ink-700">CAT2<br/><span className="font-normal text-ink-400">/{maxes.cat2}</span></th>
-                    <th rowSpan={2} className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase text-center border-r border-ink-100 dark:border-ink-700">CAT3<br/><span className="font-normal text-ink-400">/{maxes.cat3}</span></th>
-                    <th rowSpan={2} className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase text-center border-r border-ink-100 dark:border-ink-700">Partial<br/><span className="font-normal text-ink-400">/{maxes.partial}</span></th>
-                    <th rowSpan={2} className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase text-center border-r border-ink-100 dark:border-ink-700 bg-amber-50 dark:bg-amber-500/10">Tot. CATs<br/><span className="font-normal text-ink-400">/{maxes.cats}</span></th>
+                    {/* One CAT column, out of 60 — how CUR records marks and
+                        what the upload template asks for. */}
+                    <th rowSpan={2} className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase text-center border-r border-ink-100 dark:border-ink-700">CAT<br/><span className="font-normal text-ink-400">/{maxes.cats}</span></th>
                     <th colSpan={2} className="px-2 py-1.5 font-bold text-ink-500 text-[10px] uppercase text-center border-r border-ink-100 dark:border-ink-700">Final Exam /{maxes.final}</th>
                     <th rowSpan={2} className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase text-center border-r border-ink-100 dark:border-ink-700 bg-amber-50 dark:bg-amber-500/10">Final Mark</th>
                     <th rowSpan={2} className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase text-center border-r border-ink-100 dark:border-ink-700 bg-amber-50 dark:bg-amber-500/10">Tot %</th>
@@ -1572,16 +1606,10 @@ export function MarksEditor({
                   {visibleRoster.map((r: MarksRosterRow) => {
                     // Position on the full sheet, not within the filtered view.
                     const i = rosterIndex.get(r.regnumber) ?? 0
-                    const d = drafts[r.regnumber] ?? { cat1: '', cat2: '', cat3: '', partial: '', exam1: '', exam2: '', remarks: '' }
+                    const d = drafts[r.regnumber] ?? { cats: '', cat1: '', cat2: '', cat3: '', partial: '', exam1: '', exam2: '', remarks: '' }
                     const c = computed[r.regnumber]
                     const isExempted = !!r.is_exempted
                     const rowDisabled = isLocked || isExempted
-                    // Values shown come from the legacy CAT/exam columns, not
-                    // from the CUR component boxes (which are empty for them).
-                    // Only collapse the component cells to static text while the
-                    // row is read-only — on a re-opened sheet the inputs must
-                    // stay live so the breakdown can be keyed in properly.
-                    const isLegacy = !!c?.legacy && !isExempted && rowDisabled
                     return (
                       <tr key={r.regnumber} className={`hover:bg-ink-50/50 dark:hover:bg-ink-700/20 ${
                         isExempted ? 'bg-violet-50/40 dark:bg-violet-500/10' :
@@ -1625,50 +1653,18 @@ export function MarksEditor({
                         <td className="px-2 py-2 font-mono border-r border-ink-100 dark:border-ink-700">{r.regnumber}</td>
                         <td className="px-2 py-2 border-r border-ink-100 dark:border-ink-700">{r.student_program ?? '—'}</td>
                         <td className="px-2 py-2 border-r border-ink-100 dark:border-ink-700">{r.option_acro ?? '—'}</td>
-                        {/* A legacy row has no CAT1–Partial breakdown to show —
-                            only the aggregate that was recorded — so the four
-                            component cells say so instead of offering four
-                            empty boxes that imply the marks are missing. */}
-                        {isLegacy ? (
-                          <td
-                            colSpan={4}
-                            className="px-2 py-2 text-center text-[11px] italic text-ink-400 border-r border-ink-100 dark:border-ink-700"
-                            title="Imported mark — recorded as a single CAT total, with no CAT1/CAT2/CAT3/Partial split"
-                          >
-                            no breakdown recorded
-                          </td>
-                        ) : (
-                          <>
-                            <td className="px-1 py-1 text-center border-r border-ink-100 dark:border-ink-700">
-                              <NumCell cellId={`${i}:0`} value={d.cat1} max={maxes.cat1} disabled={rowDisabled} onChange={(v) => setCell(r.regnumber, 'cat1', v)} />
-                            </td>
-                            <td className="px-1 py-1 text-center border-r border-ink-100 dark:border-ink-700">
-                              <NumCell cellId={`${i}:1`} value={d.cat2} max={maxes.cat2} disabled={rowDisabled} onChange={(v) => setCell(r.regnumber, 'cat2', v)} />
-                            </td>
-                            <td className="px-1 py-1 text-center border-r border-ink-100 dark:border-ink-700">
-                              <NumCell cellId={`${i}:2`} value={d.cat3} max={maxes.cat3} disabled={rowDisabled} onChange={(v) => setCell(r.regnumber, 'cat3', v)} />
-                            </td>
-                            <td className="px-1 py-1 text-center border-r border-ink-100 dark:border-ink-700">
-                              <NumCell cellId={`${i}:3`} value={d.partial} max={maxes.partial} disabled={rowDisabled} onChange={(v) => setCell(r.regnumber, 'partial', v)} />
-                            </td>
-                          </>
-                        )}
-                        <td className="px-2 py-2 text-center font-semibold bg-amber-50/50 dark:bg-amber-500/5 border-r border-ink-100 dark:border-ink-700">
-                          {isExempted ? '—' : (c?.catsTotal ?? '—')}
-                        </td>
                         <td className="px-1 py-1 text-center border-r border-ink-100 dark:border-ink-700">
-                          {isLegacy ? (
-                            <span className="font-medium text-ink-800 dark:text-ink-100">{c?.finalMark ?? '—'}</span>
-                          ) : (
-                            <NumCell cellId={`${i}:4`} value={d.exam1} max={maxes.final} disabled={rowDisabled} onChange={(v) => setCell(r.regnumber, 'exam1', v)} />
-                          )}
-                        </td>
-                        <td className="px-1 py-1 text-center border-r border-ink-100 dark:border-ink-700">
-                          {isLegacy ? (
+                          {isExempted ? (
                             <span className="text-ink-400">—</span>
                           ) : (
-                            <NumCell cellId={`${i}:5`} value={d.exam2} max={maxes.final} disabled={rowDisabled} onChange={(v) => setCell(r.regnumber, 'exam2', v)} />
+                            <NumCell cellId={`${i}:0`} value={d.cats} max={maxes.cats} disabled={rowDisabled} onChange={(v) => setCell(r.regnumber, 'cats', v)} />
                           )}
+                        </td>
+                        <td className="px-1 py-1 text-center border-r border-ink-100 dark:border-ink-700">
+                          <NumCell cellId={`${i}:1`} value={d.exam1} max={maxes.final} disabled={rowDisabled} onChange={(v) => setCell(r.regnumber, 'exam1', v)} />
+                        </td>
+                        <td className="px-1 py-1 text-center border-r border-ink-100 dark:border-ink-700">
+                          <NumCell cellId={`${i}:2`} value={d.exam2} max={maxes.final} disabled={rowDisabled} onChange={(v) => setCell(r.regnumber, 'exam2', v)} />
                         </td>
                         <td className="px-2 py-2 text-center font-semibold bg-amber-50/50 dark:bg-amber-500/5 border-r border-ink-100 dark:border-ink-700">
                           {isExempted ? '—' : (c?.finalMark ?? '—')}
@@ -2424,7 +2420,16 @@ function readTemplateMeta(wb: XLSX.WorkBook): TemplateMeta | null {
 }
 
 function emptyDraft(): RowDraft {
-  return { cat1: '', cat2: '', cat3: '', partial: '', exam1: '', exam2: '', remarks: '' }
+  return { cats: '', cat1: '', cat2: '', cat3: '', partial: '', exam1: '', exam2: '', remarks: '' }
+}
+
+/** Sum of any CAT components on a persisted row, '' when it carries none. */
+function sumComponents(r: MarksRosterRow): string {
+  const parts = [r.cat1, r.cat2, r.cat3, r.partial_exam]
+    .map((v) => (v === null || v === undefined || v === '' ? null : Number(v)))
+    .filter((v): v is number => v !== null && Number.isFinite(v))
+  if (parts.length === 0) return ''
+  return String(+parts.reduce((a, b) => a + b, 0).toFixed(2))
 }
 
 function sameDraft(a: RowDraft, b: RowDraft): boolean {
@@ -2455,13 +2460,23 @@ function ImportPreviewModal({
 }: {
   preview:  ImportPreview | null
   onCancel: () => void
-  onApprove: () => void
+  onApprove: (keep: Set<string>, note: string) => void
 }) {
+  // Rows the user chose to leave as they are. A conflict defaults to taking
+  // the uploaded value — that is why the file was uploaded — but every one of
+  // them can be kept instead, row by row or all at once.
+  const [keep, setKeep] = useState<Set<string>>(new Set())
+  const [note, setNote] = useState('')
   if (!preview) return null
   const { entries, summary } = preview
+  const changedRegs = entries.filter((e) => e.matched && e.changed).map((e) => e.regnumber)
+  // A "conflict" is a matched row that already holds a different mark.
+  const conflicts = entries.filter(
+    (e) => e.matched && e.changed && Object.values(e.current).some((v) => String(v ?? '') !== ''),
+  ).length
+  const takeCount = changedRegs.filter((r) => !keep.has(r)).length
   const cols: { k: keyof RowDraft; label: string }[] = [
-    { k: 'cat1', label: 'C1' }, { k: 'cat2', label: 'C2' }, { k: 'cat3', label: 'C3' },
-    { k: 'partial', label: 'P' }, { k: 'exam1', label: 'E1' }, { k: 'exam2', label: 'E2' },
+    { k: 'cats', label: 'CAT' }, { k: 'exam1', label: 'EXAM' },
   ]
   return (
     <div className="fixed inset-0 z-50 bg-ink-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
@@ -2505,6 +2520,7 @@ function ImportPreviewModal({
                 {cols.map((c) => (
                   <th key={c.k} colSpan={2} className="px-2 py-2 border-b border-ink-100 dark:border-ink-700 text-center">{c.label}</th>
                 ))}
+                <th className="px-3 py-2 border-b border-ink-100 dark:border-ink-700">Which to keep</th>
               </tr>
               <tr>
                 <th className="border-b border-ink-100 dark:border-ink-700"></th>
@@ -2516,6 +2532,7 @@ function ImportPreviewModal({
                     <th className="px-2 py-1 border-b border-ink-100 dark:border-ink-700 text-center text-[9px] font-medium text-ink-400">new</th>
                   </Fragment2>
                 ))}
+                <th className="border-b border-ink-100 dark:border-ink-700"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-ink-100 dark:divide-ink-700">
@@ -2526,7 +2543,9 @@ function ImportPreviewModal({
                   <td className="px-3 py-1.5 whitespace-nowrap">
                     {e.matched
                       ? (e.changed
-                          ? <span className="text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Update</span>
+                          ? (keep.has(e.regnumber)
+                              ? <span className="text-ink-400 inline-flex items-center gap-1">Kept as is</span>
+                              : <span className="text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Update</span>)
                           : <span className="text-ink-400">Unchanged</span>)
                       : <span className="text-amber-700 dark:text-amber-300 inline-flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Not in roster</span>}
                   </td>
@@ -2545,24 +2564,78 @@ function ImportPreviewModal({
                       </Fragment2>
                     )
                   })}
+                  <td className="px-3 py-1.5 whitespace-nowrap">
+                    {e.matched && e.changed ? (
+                      <select
+                        className="input input-sm py-0.5 text-[11.5px] w-[128px]"
+                        value={keep.has(e.regnumber) ? 'existing' : 'incoming'}
+                        onChange={(ev) => setKeep((prev) => {
+                          const next = new Set(prev)
+                          if (ev.target.value === 'existing') next.add(e.regnumber)
+                          else next.delete(e.regnumber)
+                          return next
+                        })}
+                      >
+                        <option value="incoming">Uploaded</option>
+                        <option value="existing">Existing</option>
+                      </select>
+                    ) : (
+                      <span className="text-ink-300">—</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
 
-        <div className="px-5 py-3 border-t border-ink-100 dark:border-ink-700 flex items-center justify-end gap-2 bg-ink-50/40 dark:bg-ink-700/20">
-          <button className="btn-ghost btn-sm" onClick={onCancel}>Cancel</button>
-          <button
-            className="btn-primary btn-sm"
-            disabled={summary.matched === 0}
-            onClick={onApprove}
-          >
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            {summary.matched === 0
-              ? 'Nothing to apply'
-              : `Approve & apply ${summary.matched} row${summary.matched === 1 ? '' : 's'}`}
-          </button>
+        <div className="px-5 py-3 border-t border-ink-100 dark:border-ink-700 space-y-3 bg-ink-50/40 dark:bg-ink-700/20">
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="text-[12.5px] flex-1 min-w-[240px]">
+              <span className="text-ink-600 dark:text-ink-300 block mb-1">
+                Note for these marks <span className="text-ink-400">(optional)</span>
+              </span>
+              <input
+                className="input input-sm w-full"
+                placeholder="e.g. Resit results, received from the Faculty on 28 Aug"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+              />
+            </label>
+            <p className="text-[11.5px] text-ink-400 max-w-[300px]">
+              Today's date is recorded on every row taken, together with this note and
+              who uploaded it.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {conflicts > 0 && (
+              <>
+                <span className="text-[12px] text-ink-500">{conflicts} row(s) already have marks:</span>
+                <button
+                  className="btn-ghost btn-sm"
+                  onClick={() => setKeep(new Set(changedRegs))}
+                >Keep all existing</button>
+                <button
+                  className="btn-ghost btn-sm"
+                  onClick={() => setKeep(new Set())}
+                >Use all uploaded</button>
+              </>
+            )}
+            <div className="ml-auto flex items-center gap-2">
+              <button className="btn-ghost btn-sm" onClick={onCancel}>Cancel</button>
+              <button
+                className="btn-primary btn-sm"
+                disabled={takeCount === 0}
+                onClick={() => onApprove(keep, note)}
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                {takeCount === 0
+                  ? 'Nothing to apply'
+                  : `Apply ${takeCount} row${takeCount === 1 ? '' : 's'}`}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>

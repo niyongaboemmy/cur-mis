@@ -332,22 +332,19 @@ class ModuleMarksController extends BaseController
         $roster = $this->buildRoster($moduleId, $termId, $module);
 
         // Maxima: the sheet's own saved values when it has any, else the CUR
-        // standard 15/15/15/15 + 40. Mirrors how ModulesMarksPage seeds them,
-        // so a template and the grid always show the same denominators.
-        $maxes = ['cat1' => 15.0, 'cat2' => 15.0, 'cat3' => 15.0, 'partial' => 15.0, 'final' => 40.0];
+        // standard 60 + 40. Mirrors how ModulesMarksPage seeds them, so a
+        // template and the grid always show the same denominators.
+        $maxes = ['cats' => 60.0, 'final' => 40.0];
         foreach ($roster as $r) {
             if (($r['mark_id'] ?? null) !== null) {
                 $maxes = [
-                    'cat1'    => (float) ($r['cat1_max']         ?: 15),
-                    'cat2'    => (float) ($r['cat2_max']         ?: 15),
-                    'cat3'    => (float) ($r['cat3_max']         ?: 15),
-                    'partial' => (float) ($r['partial_exam_max'] ?: 15),
-                    'final'   => (float) ($r['final_exam_max']   ?: 40),
+                    'cats'  => (float) ($r['cats_max']       ?: 60),
+                    'final' => (float) ($r['final_exam_max'] ?: 40),
                 ];
                 break;
             }
         }
-        // Trim trailing .0 so the header reads "CAT1 (/15)", not "CAT1 (/15.0)".
+        // Trim trailing .0 so the header reads "CAT (/60)", not "CAT (/60.0)".
         $maxes = array_map(
             fn (float $v) => rtrim(rtrim(number_format($v, 2, '.', ''), '0'), '.'),
             $maxes
@@ -763,6 +760,10 @@ class ModuleMarksController extends BaseController
     private function collectRangeErrors(array $records): array
     {
         $components = [
+            // The CAT total out of 60 — what the sheet and the upload
+            // template ask for. Checked exactly like the components it
+            // replaces, so a 999 typed into a spreadsheet is still refused.
+            'cats_total'       => ['cats_max',         60.0,  'CAT'],
             'cat1'             => ['cat1_max',         15.0,  'CAT1'],
             'cat2'             => ['cat2_max',         15.0,  'CAT2'],
             'cat3'             => ['cat3_max',         15.0,  'CAT3'],
@@ -888,16 +889,27 @@ class ModuleMarksController extends BaseController
             $catsMax     = $this->parseDecimal($r['cats_max']         ?? null) ?? 60.0;
             $finalMax    = $this->parseDecimal($r['final_exam_max']   ?? null) ?? 40.0;
 
+            // CUR records one CAT total out of 60, not four components — that
+            // is how 292,632 of the 292,648 marks in the system are stored and
+            // what the sheet and the upload template now ask for. When it is
+            // given it IS the CAT mark; the components stay null rather than
+            // being invented.
+            $catsDirect = $this->parseDecimal($r['cats_total'] ?? null);
+
             $remarks = isset($r['remarks']) && $r['remarks'] !== '' ? (string)$r['remarks'] : null;
 
-            $hasAny = $cat1 !== null || $cat2 !== null || $cat3 !== null
+            $hasAny = $catsDirect !== null
+                   || $cat1 !== null || $cat2 !== null || $cat3 !== null
                    || $partial !== null || $exam1 !== null || $exam2 !== null
                    || ($remarks !== null && $remarks !== '');
 
             if (!$hasAny) continue;
 
-            // Total CATs = cat1 + cat2 + cat3 + partial (NULL counts as 0).
-            $catsTotal = ($cat1 ?? 0) + ($cat2 ?? 0) + ($cat3 ?? 0) + ($partial ?? 0);
+            // Total CATs: the direct figure when given, otherwise the sum of
+            // the components (NULL counts as 0).
+            $catsTotal = $catsDirect !== null
+                ? (float)$catsDirect
+                : ($cat1 ?? 0) + ($cat2 ?? 0) + ($cat3 ?? 0) + ($partial ?? 0);
             // Final exam mark uses the better of the two sittings (resit beats first).
             $finalMark = $exam2 !== null
                 ? max((float)($exam1 ?? 0), (float)$exam2)
