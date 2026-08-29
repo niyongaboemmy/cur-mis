@@ -8,6 +8,23 @@ export interface MarkableModule {
   academic_term_id?:  number
 }
 
+/** One module a programme's transcript may or may not print. */
+export interface TranscriptModuleRow {
+  module_ident:         string
+  module_code:          string
+  module_name:          string | null
+  level:                number | null
+  module_credits:       number | null
+  students_with_marks:  number
+  avg_mark:             number | null
+  /** Distinct mark values across the cohort — 1 or 2 means a bulk entry. */
+  distinct_marks:       number
+  in_curriculum:        boolean
+  /** An explicit registry decision, or null when the curriculum decides. */
+  ruling:               'show' | 'hide' | null
+  prints_on_transcript: boolean
+}
+
 export interface MarksRosterRow {
   student_id:        number
   regnumber:         string
@@ -424,6 +441,26 @@ export const marksService = {
     const q = qs.toString()
     return `${apiBase}/api/marks/my/transcript${q ? `?${q}` : ''}`
   },
+
+  /**
+   * Which modules a programme's transcript prints, with the evidence needed
+   * to rule on each: how many students hold a mark, the average, and how many
+   * DISTINCT marks (a real course spreads; a bulk entry repeats one value).
+   */
+  transcriptModules: (optionId: number | string) =>
+    api.get<{
+      option: { id: number; name: string; code?: string | null }
+      modules: TranscriptModuleRow[]
+      summary: { total: number; printing: number; hidden: number; ruled: number }
+    }>('/api/marks/transcript-modules', { option_id: optionId }),
+
+  /** `visible`: 'show' | 'hide' | null (null hands the module back to the curriculum rule). */
+  setTranscriptModule: (body: {
+    option_id: number | string
+    module_ident: string
+    visible: 'show' | 'hide' | null
+    note?: string
+  }) => api.post('/api/marks/transcript-modules', body),
 
   /** Fetch the transcript as a blob (carries auth header) and trigger a browser download. */
   downloadTranscript: async (params: { academic_year_id?: number | string } = {}) => {

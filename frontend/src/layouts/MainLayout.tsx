@@ -568,6 +568,17 @@ const NAV_TREE: NavNode[] = [
         ],
       },
       {
+        // Which modules each programme's transcript prints. Modules nobody has
+        // ruled on follow the curriculum, so this only ever narrows or widens
+        // a programme deliberately.
+        to: "/academic/transcript-modules",
+        label: "Transcript modules",
+        permissions: [
+          PERMISSIONS.MANAGE_MODULE_MARKS,
+          PERMISSIONS.MANAGE_ACADEMICS,
+        ],
+      },
+      {
         to: "/academic/analytics",
         label: "Reports & analytics",
         permissions: [PERMISSIONS.VIEW_ACADEMIC_ANALYTICS],
@@ -942,6 +953,10 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
   "/academic/grading-scale": {
     title: "Grading Scale",
     sub: "Configure percentage bands and GPA points for the institution",
+  },
+  "/academic/transcript-modules": {
+    title: "Transcript Modules",
+    sub: "Choose which modules each programme's transcript prints",
   },
   "/academic/transcript-requests": {
     title: "Transcript Requests",

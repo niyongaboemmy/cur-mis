@@ -1442,23 +1442,33 @@ class ModuleMarksController extends BaseController
         // printed module list exactly. A curriculum that matches NONE of the
         // rows is wrong data, not an empty record: print everything rather
         // than a blank transcript, and say so in the totals.
-        $excluded           = [];
-        $curriculumApplied  = false;
-        $optionId = (int)(preg_match('/^\d+/', (string)($student['std_option'] ?? ''), $m0) ? $m0[0] : 0);
+        // A registry ruling (transcript_module_visibility) overrides the
+        // curriculum in BOTH directions — print a module the curriculum omits,
+        // or suppress one it includes. Modules nobody has ruled on fall back to
+        // curriculum membership, so this changes nothing until staff decide.
+        $excluded          = [];
+        $curriculumApplied = false;
+        $optionId = self::optionIdOf($student);
         if ($optionId > 0) {
-            $set = array_flip(array_column($this->db->fetchAll(
-                "SELECT DISTINCT UPPER(REPLACE(m.module_code, ' ', '')) AS ident
-                 FROM `module_programs` mp
-                 JOIN `modules` m ON m.module_id = mp.module_id
-                 WHERE mp.option_id = ?",
-                [$optionId]
-            ), 'ident'));
-            if (!empty($set)) {
+            $set     = $this->curriculumIdents($optionId);
+            $rulings = $this->transcriptRulings($optionId);
+
+            if (!empty($set) || !empty($rulings)) {
                 $in = $out = [];
                 foreach ($rows as $row) {
-                    $ident = strtoupper((string)preg_replace('/\s+/', '', (string)($row['module_code'] ?? '')));
-                    if ($ident !== '' && isset($set[$ident])) { $in[] = $row; } else { $out[] = $row; }
+                    $ident  = self::identOf($row['module_code'] ?? '');
+                    $ruled  = $ident !== '' && array_key_exists($ident, $rulings);
+                    $show   = $ruled ? $rulings[$ident] : ($ident !== '' && isset($set[$ident]));
+                    if ($show) {
+                        $in[] = $row;
+                    } else {
+                        $row['excluded_reason'] = $ruled ? 'hidden_by_registry' : 'not_in_curriculum';
+                        $out[] = $row;
+                    }
                 }
+                // Never print a blank transcript: a programme whose curriculum
+                // matches none of the student's modules is bad data, not an
+                // empty record.
                 if (!empty($in)) {
                     $rows              = $in;
                     $excluded          = $out;
@@ -1518,9 +1528,14 @@ class ModuleMarksController extends BaseController
             // out-of-curriculum entries instead of losing them silently.
             'curriculum_filter'    => $curriculumApplied,
             'out_of_curriculum'    => array_map(static fn ($r) => [
-                'module_code' => $r['module_code'] ?? null,
-                'module_name' => $r['module_name'] ?? null,
-                'percentage'  => $r['percentage'] ?? null,
+                'module_id'       => $r['module_id'] ?? null,
+                'module_code'     => $r['module_code'] ?? null,
+                'module_name'     => $r['module_name'] ?? null,
+                'module_credits'  => $r['module_credits'] ?? null,
+                'level'           => $r['level'] ?? null,
+                'percentage'      => $r['percentage'] ?? null,
+                'grade'           => $r['grade'] ?? null,
+                'excluded_reason' => $r['excluded_reason'] ?? 'not_in_curriculum',
             ], $excluded),
         ];
 
@@ -1574,6 +1589,208 @@ class ModuleMarksController extends BaseController
             }
         }
         return array_values($best);
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════
+     * Which modules a programme's transcript prints
+     * ═══════════════════════════════════════════════════════════════════ */
+
+    /**
+     * GET /api/marks/transcript-modules?option_id=
+     *
+     * Every module this programme's students actually hold marks for, plus
+     * everything in its curriculum — with the evidence a registrar needs to
+     * rule on each one: how many students carry a mark, the average, and how
+     * many DISTINCT marks there are. A real course shows a spread of marks; a
+     * class-wide bulk entry shows the same value stamped across a cohort.
+     */
+    public function transcriptModules(Request $request, Response $response): never
+    {
+        $optionId = (int)($request->query('option_id') ?? 0);
+        if ($optionId <= 0) $this->error($response, 'option_id is required.', 422);
+
+        $option = $this->db->fetchOne('SELECT id, name, code FROM `options` WHERE id = ? LIMIT 1', [$optionId]);
+        if (!$option) $this->error($response, 'Programme not found.', 404);
+
+        $stats = $this->db->fetchAll(
+            "SELECT UPPER(REPLACE(mo.module_code, ' ', '')) AS module_ident,
+                    MIN(TRIM(mo.module_code))  AS module_code,
+                    MIN(mo.module_name)        AS module_name,
+                    MIN(mo.level)              AS level,
+                    MIN(mo.module_credits)     AS module_credits,
+                    COUNT(DISTINCT mm.student_regnumber) AS students_with_marks,
+                    ROUND(AVG(mm.percentage), 1)         AS avg_mark,
+                    COUNT(DISTINCT mm.percentage)        AS distinct_marks
+             FROM `module_marks` mm
+             JOIN `modules` mo ON mo.module_id = mm.module_id
+             JOIN `student` s  ON s.regnumber  = mm.student_regnumber
+             WHERE mm.superseded = 0
+               AND mm.percentage IS NOT NULL
+               AND CAST(NULLIF(REGEXP_SUBSTR(s.std_option, '^[0-9]+'), '') AS UNSIGNED) = ?
+             GROUP BY module_ident",
+            [$optionId]
+        );
+
+        $curriculum = $this->curriculumIdents($optionId);
+        $rulings    = $this->transcriptRulings($optionId);
+
+        $byIdent = [];
+        foreach ($stats as $s) {
+            $byIdent[(string)$s['module_ident']] = [
+                'module_ident'        => $s['module_ident'],
+                'module_code'         => $s['module_code'],
+                'module_name'         => $s['module_name'],
+                'level'               => $s['level'] !== null ? (int)$s['level'] : null,
+                'module_credits'      => $s['module_credits'] !== null ? (int)$s['module_credits'] : null,
+                'students_with_marks' => (int)$s['students_with_marks'],
+                'avg_mark'            => $s['avg_mark'] !== null ? (float)$s['avg_mark'] : null,
+                'distinct_marks'      => (int)$s['distinct_marks'],
+                'in_curriculum'       => isset($curriculum[(string)$s['module_ident']]),
+            ];
+        }
+
+        // Curriculum modules nobody has a mark for still deserve a row — the
+        // registrar may want to rule on them before results arrive.
+        foreach ($this->db->fetchAll(
+            "SELECT DISTINCT UPPER(REPLACE(m.module_code, ' ', '')) AS module_ident,
+                    TRIM(m.module_code) AS module_code, m.module_name, m.level, m.module_credits
+             FROM `module_programs` mp
+             JOIN `modules` m ON m.module_id = mp.module_id
+             WHERE mp.option_id = ?",
+            [$optionId]
+        ) as $c) {
+            $id = (string)$c['module_ident'];
+            if (isset($byIdent[$id])) continue;
+            $byIdent[$id] = [
+                'module_ident'        => $id,
+                'module_code'         => $c['module_code'],
+                'module_name'         => $c['module_name'],
+                'level'               => $c['level'] !== null ? (int)$c['level'] : null,
+                'module_credits'      => $c['module_credits'] !== null ? (int)$c['module_credits'] : null,
+                'students_with_marks' => 0,
+                'avg_mark'            => null,
+                'distinct_marks'      => 0,
+                'in_curriculum'       => true,
+            ];
+        }
+
+        $rows = [];
+        foreach ($byIdent as $ident => $m) {
+            $ruled = array_key_exists($ident, $rulings);
+            $m['ruling']            = $ruled ? ($rulings[$ident] ? 'show' : 'hide') : null;
+            $m['prints_on_transcript'] = $ruled ? $rulings[$ident] : $m['in_curriculum'];
+            $rows[] = $m;
+        }
+        usort($rows, static fn ($a, $b) => [$a['level'] ?? 99, $a['module_code']] <=> [$b['level'] ?? 99, $b['module_code']]);
+
+        $this->success($response, [
+            'option'  => $option,
+            'modules' => $rows,
+            'summary' => [
+                'total'    => count($rows),
+                'printing' => count(array_filter($rows, static fn ($r) => $r['prints_on_transcript'])),
+                'hidden'   => count(array_filter($rows, static fn ($r) => !$r['prints_on_transcript'])),
+                'ruled'    => count(array_filter($rows, static fn ($r) => $r['ruling'] !== null)),
+            ],
+        ], 'Transcript modules fetched.');
+    }
+
+    /**
+     * POST /api/marks/transcript-modules
+     * body: option_id, module_ident, visible ("show" | "hide" | null to clear)
+     *
+     * Recorded with who decided it — this changes what a signed document says,
+     * so it is never anonymous.
+     */
+    public function setTranscriptModule(Request $request, Response $response): never
+    {
+        $optionId = (int)($request->input('option_id') ?? 0);
+        $ident    = self::identOf($request->input('module_ident') ?? '');
+        $visible  = $request->input('visible');
+        $note     = trim((string)($request->input('note') ?? ''));
+
+        if ($optionId <= 0 || $ident === '') {
+            $this->error($response, 'option_id and module_ident are required.', 422);
+        }
+
+        $user   = (array)$request->param('_auth_user');
+        $userId = (int)($user['id'] ?? 0) ?: null;
+
+        // null / "" clears the ruling and hands the module back to the
+        // curriculum rule.
+        if ($visible === null || $visible === '' || $visible === 'default') {
+            $this->db->query(
+                'DELETE FROM `transcript_module_visibility` WHERE `option_id` = ? AND `module_ident` = ?',
+                [$optionId, $ident]
+            );
+            $this->success($response, ['option_id' => $optionId, 'module_ident' => $ident, 'ruling' => null],
+                'Ruling cleared — the curriculum decides again.');
+        }
+
+        $show = in_array($visible, ['show', 'true', '1', 1, true], true) ? 1 : 0;
+
+        $this->db->query(
+            "INSERT INTO `transcript_module_visibility`
+                (`option_id`, `module_ident`, `visible`, `note`, `decided_by`)
+             VALUES (?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE
+                `visible` = VALUES(`visible`), `note` = VALUES(`note`),
+                `decided_by` = VALUES(`decided_by`)",
+            [$optionId, $ident, $show, $note !== '' ? $note : null, $userId]
+        );
+
+        $this->success($response, [
+            'option_id'    => $optionId,
+            'module_ident' => $ident,
+            'ruling'       => $show ? 'show' : 'hide',
+        ], $show ? 'Module will print on transcripts.' : 'Module will not print on transcripts.');
+    }
+
+    /** Module identity used everywhere here: code, upper-cased, spaces stripped. */
+    private static function identOf(mixed $code): string
+    {
+        return strtoupper((string)preg_replace('/\s+/', '', (string)$code));
+    }
+
+    /** `student.std_option` is free text that usually starts with the id. */
+    private static function optionIdOf(array $student): int
+    {
+        return (int)(preg_match('/^\d+/', (string)($student['std_option'] ?? ''), $m) ? $m[0] : 0);
+    }
+
+    /** @return array<string,true> module idents in this option's curriculum */
+    private function curriculumIdents(int $optionId): array
+    {
+        return array_flip(array_column($this->db->fetchAll(
+            "SELECT DISTINCT UPPER(REPLACE(m.module_code, ' ', '')) AS ident
+             FROM `module_programs` mp
+             JOIN `modules` m ON m.module_id = mp.module_id
+             WHERE mp.option_id = ?",
+            [$optionId]
+        ), 'ident'));
+    }
+
+    /**
+     * Registry rulings for one option: ident => bool (true = print).
+     * Tolerates the table being absent so a backend deployed ahead of its
+     * migration keeps serving transcripts on the curriculum rule alone.
+     *
+     * @return array<string,bool>
+     */
+    private function transcriptRulings(int $optionId): array
+    {
+        try {
+            $out = [];
+            foreach ($this->db->fetchAll(
+                "SELECT `module_ident`, `visible` FROM `transcript_module_visibility` WHERE `option_id` = ?",
+                [$optionId]
+            ) as $r) {
+                $out[(string)$r['module_ident']] = ((int)$r['visible'] === 1);
+            }
+            return $out;
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     /**

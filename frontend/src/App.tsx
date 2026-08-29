@@ -46,6 +46,7 @@ import AppraisalPage from "@/pages/hr/AppraisalPage";
 import AcademicSettingsPage from "@/pages/academic/AcademicSettingsPage";
 import AcademicsManagementPage from "@/pages/academic/AcademicsManagementPage";
 import AcademicGradingScalePage from "@/pages/academic/GradingScalePage";
+import TranscriptModulesPage from "@/pages/academic/TranscriptModulesPage";
 import TranscriptRequestsPage from "@/pages/academic/TranscriptRequestsPage";
 import GraduandManagementPage from "@/pages/academic/GraduandManagementPage";
 import AcademicCertificatesPage from "@/pages/academic/AcademicCertificatesPage";
@@ -573,6 +574,21 @@ function App() {
                 }
               >
                 <Route path="/academic/grading-scale" element={<AcademicGradingScalePage />} />
+              </Route>
+
+              {/* ── Transcript modules — changes what a signed document says,
+                  so it is gated like marks management, matching the API. ── */}
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredPermissions={[
+                      PERMISSIONS.MANAGE_MODULE_MARKS,
+                      PERMISSIONS.MANAGE_ACADEMICS,
+                    ]}
+                  />
+                }
+              >
+                <Route path="/academic/transcript-modules" element={<TranscriptModulesPage />} />
               </Route>
 
               {/* ── System settings — the home for the endpoints VIEW_SETTINGS

@@ -45,6 +45,24 @@ $router->group('/api/marks', function ($router) {
         Permissions::MANAGE_MODULE_MARKS,
     ])]);
 
+    // Which modules a programme's transcript prints. Reading is open to anyone
+    // who may read marks; changing it alters what a signed document says, so
+    // it is restricted to the registry and academics.
+    $router->group('/transcript-modules', function ($r) {
+        $r->get('', [ModuleMarksController::class, 'transcriptModules']);
+    }, [new MaybePermissionMiddleware([
+        Permissions::VIEW_MODULE_MARKS,
+        Permissions::MANAGE_MODULE_MARKS,
+        Permissions::MANAGE_ACADEMICS,
+    ])]);
+
+    $router->group('/transcript-modules', function ($r) {
+        $r->post('', [ModuleMarksController::class, 'setTranscriptModule']);
+    }, [new MaybePermissionMiddleware([
+        Permissions::MANAGE_MODULE_MARKS,
+        Permissions::MANAGE_ACADEMICS,
+    ])]);
+
     // Student self-service — gated by VIEW_MY_MODULES (same as MyRegistrations).
     $router->group('/my', function ($r) {
         $r->get('',            [ModuleMarksController::class, 'myMarks']);
