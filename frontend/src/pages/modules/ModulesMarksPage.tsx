@@ -928,15 +928,16 @@ export function MarksEditor({
   /* ── Export — XLSX for clean Excel round-trip ─────────────────── */
   const handleExport = () => {
     if (!roster || !moduleH) return
+    // These must stay in step with the row shape pushed below — a header list
+    // longer than the row puts every mark under the wrong heading, and the
+    // sheet still round-trips through the importer without complaint.
     const headers = [
       'Reg #', 'First Name', 'Surname', 'Sex', 'Program', 'Option',
-      `CAT1 (/${maxes.cat1})`, `CAT2 (/${maxes.cat2})`, `CAT3 (/${maxes.cat3})`,
-      `Partial (/${maxes.partial})`,
-      `Exam 1st (/${maxes.final})`, `Exam 2nd (/${maxes.final})`,
+      `CAT (/${maxes.cats})`, `EXAM (/${maxes.final})`,
       'Remarks',
       // Read-only trailing columns so an imported sheet doesn't export blank —
-      // its marks live in these aggregates, not in the component boxes. The
-      // import matcher keys off the component headers above and ignores these.
+      // its marks live in these aggregates, not in the entry boxes. The import
+      // matcher keys off the two entry headers above and ignores these.
       'Recorded CAT total', 'Recorded exam', 'Recorded total', 'Recorded %', 'Grade',
     ]
     // Export exactly what is on screen. Dumping the full roster would put back
@@ -958,8 +959,7 @@ export function MarksEditor({
     ws['!cols'] = [
       { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 5 },
       { wch: 12 }, { wch: 8 },
-      { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 9 },
-      { wch: 11 }, { wch: 13 }, { wch: 24 },
+      { wch: 11 }, { wch: 11 }, { wch: 24 },
       { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 11 }, { wch: 8 },
     ]
     for (let R = 1; R <= visibleRoster.length; R++) {
