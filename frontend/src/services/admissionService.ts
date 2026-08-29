@@ -573,6 +573,8 @@ export const applicantService = {
       paid:               boolean
       transaction_id:     string | null
       application_number: string
+      /** True only on a local dev backend — enables the simulate-payment shortcut. */
+      dev_mode:           boolean
     }>('/api/applicant/application/payment/checkout', {}, signal),
 
   /** Urubuto Pay — poll whether the application fee has been confirmed. */
@@ -585,7 +587,21 @@ export const applicantService = {
       currency:           string
       application_number: string | null
       status:             string | null
+      dev_mode:           boolean
     }>('/api/applicant/application/payment/status', {}, signal),
+
+  /**
+   * Dev only — mark the application fee paid without the gateway. The backend
+   * answers 403 unless it runs locally (APP_ENV=local + APP_DEBUG=true), so this
+   * is inert in production.
+   */
+  simulatePayment: () =>
+    api.post<{
+      paid:           boolean
+      transaction_id: string
+      paid_at:        string
+      simulated:      boolean
+    }>('/api/applicant/application/payment/simulate', {}),
 
   listApplications: (signal?: AbortSignal) =>
     api.get<StudentApplication[]>('/api/applicant/application', {}, signal),

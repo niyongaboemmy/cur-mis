@@ -807,20 +807,27 @@ export default function ApplyPage() {
             <ArrowLeft className="w-4 h-4" /> Previous
           </button>
           {step === 5 ? (
-            <button
-              type="button"
-              onClick={() => submitWithPaymentM.mutate()}
-              className="btn-primary"
-              disabled={submitWithPaymentM.isPending || !confirmAccurate || !paid}
-            >
-              {submitWithPaymentM.isPending ? (
-                <><Loader2 className="w-4 h-4 animate-spin" /> Submitting…</>
-              ) : paid ? (
-                <>Submit Application <ArrowRight className="w-4 h-4" /></>
-              ) : (
-                <>Awaiting payment confirmation…</>
-              )}
-            </button>
+            /* Before the fee is confirmed the only call to action is the Pay
+               button inside the step — a second, dead button down here read as
+               a rival way to start the payment. */
+            paid ? (
+              <button
+                type="button"
+                onClick={() => submitWithPaymentM.mutate()}
+                className="btn-primary"
+                disabled={submitWithPaymentM.isPending || !confirmAccurate}
+              >
+                {submitWithPaymentM.isPending ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Submitting…</>
+                ) : (
+                  <>Submit Application <ArrowRight className="w-4 h-4" /></>
+                )}
+              </button>
+            ) : (
+              <p className="text-[12.5px] text-ink-500 dark:text-ink-400">
+                Your application is submitted automatically once the fee is confirmed.
+              </p>
+            )
           ) : (
             <button
               type="button"
@@ -1627,6 +1634,20 @@ function PaymentStep({
     );
   };
 
+  // Dev only — the gateway cannot call back into a local machine, so the
+  // backend exposes a shortcut that settles the fee the way the callback would.
+  // It is gated server-side (403 unless APP_ENV=local), and the button below
+  // only renders when the checkout response says so.
+  const simulateM = useMutation({
+    mutationFn: () => applicantService.simulatePayment(),
+    onSuccess: () => {
+      toast.success('Payment simulated (development mode).');
+      onPaidChange(true);
+      statusQuery.refetch();
+    },
+    onError: (e: any) => toast.error(e?.message || 'Could not simulate the payment.'),
+  });
+
   const payNow = () => {
     if (!checkout?.merchant_code || !checkout?.payer_code) {
       toast.error('Payment information not ready — please try again.');
@@ -1697,6 +1718,11 @@ function PaymentStep({
               Your {formatFee} RWF application fee was received{txId ? <> · Ref <span className="font-mono">{txId}</span></> : null}.
               Your application is being submitted automatically — no further action needed.
             </p>
+            {!confirmAccurate && (
+              <div className="mt-3">
+                <ConsentCheck checked={confirmAccurate} onChange={onConfirmChange} />
+              </div>
+            )}
           </div>
         </div>
       ) : (
@@ -1709,25 +1735,46 @@ function PaymentStep({
             <PayDetailRow label="Payer code" value={checkout?.payer_code ?? '…'} hint="Your application number" onCopy={() => copy('Payer code', checkout?.payer_code)} />
           </div>
 
-          <button
-            type="button"
-            onClick={payNow}
-            disabled={checkoutQuery.isLoading || !confirmAccurate}
-            className="btn-primary w-full sm:w-auto"
-            title={!confirmAccurate ? 'Confirm your information is accurate first' : undefined}
-          >
-            {checkoutQuery.isLoading ? (
-              <><Loader2 className="w-4 h-4 animate-spin" /> Preparing payment…</>
-            ) : (
-              <><CreditCard className="w-4 h-4" /> Pay {formatFee} RWF with Urubuto Pay</>
+          {/* The consent tick gates the Pay button, so it sits directly above it.
+              Down with the checklist it read as an afterthought — applicants met
+              a disabled button with no visible reason. */}
+          <ConsentCheck checked={confirmAccurate} onChange={onConfirmChange} />
+
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+            <button
+              type="button"
+              onClick={payNow}
+              disabled={checkoutQuery.isLoading || !confirmAccurate}
+              className="btn-primary w-full sm:w-auto"
+              title={!confirmAccurate ? 'Tick the confirmation above first' : undefined}
+            >
+              {checkoutQuery.isLoading ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Preparing payment…</>
+              ) : (
+                <><CreditCard className="w-4 h-4" /> Pay {formatFee} RWF with Urubuto Pay</>
+              )}
+            </button>
+
+            {checkout?.dev_mode && (
+              <button
+                type="button"
+                onClick={() => simulateM.mutate()}
+                disabled={simulateM.isPending || !confirmAccurate}
+                className="btn-secondary w-full sm:w-auto"
+                title="Development only — marks the fee paid without the gateway"
+              >
+                {simulateM.isPending ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Simulating…</>
+                ) : (
+                  <>Simulate payment (dev)</>
+                )}
+              </button>
             )}
-          </button>
+          </div>
 
           {!confirmAccurate && (
             <p className="text-[12.5px] text-amber-700 dark:text-amber-300">
-              Review your details below and tick “I confirm that all information provided is
-              accurate” to enable payment. Paying submits your application, so this is your last
-              chance to correct anything.
+              Tick the confirmation above to enable payment.
             </p>
           )}
 
@@ -1811,20 +1858,37 @@ function PaymentStep({
           <ChecklistItem ok={paid}>Application fee paid (Urubuto Pay)</ChecklistItem>
         </ul>
 
-        <label className="flex items-start gap-2 pt-2 border-t border-ink-100 dark:border-ink-800 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={confirmAccurate}
-            onChange={(e) => onConfirmChange(e.target.checked)}
-            className="mt-1 rounded border-ink-300 dark:border-ink-600 text-brand focus:ring-brand/30"
-          />
-          <span className="text-[13px] text-ink-700 dark:text-ink-200">
-            I confirm that all information provided is accurate, and I understand that my
-            application is submitted as soon as my payment is confirmed.
-          </span>
-        </label>
+        {!confirmAccurate && (
+          <p className="pt-2 border-t border-ink-100 dark:border-ink-800 text-[12.5px] text-ink-500 dark:text-ink-400">
+            Once everything above is correct, scroll back up to the Payment section, tick the
+            confirmation and pay to submit your application.
+          </p>
+        )}
       </div>
     </div>
+  );
+}
+
+/** The single consent tick that gates paying (and therefore submitting). */
+function ConsentCheck({
+  checked, onChange,
+}: { checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label className="flex items-start gap-2 rounded-lg border border-ink-100 dark:border-ink-800 bg-white/60 dark:bg-ink-900/40 px-4 py-3 cursor-pointer">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="mt-0.5 rounded border-ink-300 dark:border-ink-600 text-brand focus:ring-brand/30"
+      />
+      <span className="text-[13px] text-ink-700 dark:text-ink-200">
+        I confirm that all information provided is accurate, and I understand that my
+        application is submitted as soon as my payment is confirmed.
+        <span className="block text-[12px] text-ink-500 dark:text-ink-400 mt-0.5">
+          Review the summary below first — paying is your last chance to correct anything.
+        </span>
+      </span>
+    </label>
   );
 }
 
