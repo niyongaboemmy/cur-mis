@@ -825,6 +825,69 @@ function CrudPanel({ entity, canWrite }: { entity: EntityCfg; canWrite: boolean 
   })
   const sourceRows = lookupsQs.data ?? {}
 
+  /**
+   * Choices each filter dropdown should offer, honouring the `filterBy`
+   * cascade the entity declares (Faculty → Department → Program).
+   *
+   * Two rules, and the second is the one that makes the bar feel right:
+   *  - parent chosen → keep only the rows pointing at it (departments of
+   *    that faculty);
+   *  - parent NOT chosen but itself narrowed → keep only the rows pointing
+   *    at what the parent is narrowed to. So picking a faculty alone
+   *    narrows Programs as well, through the departments of that faculty,
+   *    without forcing the user to choose a department first.
+   *
+   * Filters are declared parent-before-child, so one pass resolves the
+   * whole chain.
+   */
+  const filterChoices = useMemo(() => {
+    const out: Record<string, any[]> = {}
+    for (const f of entity.filters ?? []) {
+      const all = (sourceRows[f.selectFrom.slug] ?? []) as any[]
+      const link = f.filterBy
+      if (!link) { out[f.key] = all; continue }
+
+      const parent = (entity.filters ?? []).find((p) => p.key === link.parentKey)
+      const parentVal = filterValues[link.parentKey]
+
+      if (parentVal !== undefined && parentVal !== '') {
+        out[f.key] = all.filter((r) => String(r[link.relatedRowKey] ?? '') === String(parentVal))
+        continue
+      }
+      if (parent) {
+        const parentAll = (sourceRows[parent.selectFrom.slug] ?? []) as any[]
+        const parentVisible = out[parent.key] ?? parentAll
+        if (parentVisible.length !== parentAll.length) {
+          const allowed = new Set(parentVisible.map((r: any) => String(r[parent.selectFrom.valueKey] ?? '')))
+          out[f.key] = all.filter((r) => allowed.has(String(r[link.relatedRowKey] ?? '')))
+          continue
+        }
+      }
+      out[f.key] = all
+    }
+    return out
+  }, [entity.filters, sourceRows, filterValues])
+
+  /** Changing a filter clears every filter downstream of it, so a stale
+   *  department can never sit under a newly-picked faculty. */
+  const setFilterCascading = (key: string, value: string) => {
+    setFilterValues((prev) => {
+      const next = { ...prev, [key]: value }
+      let changed = [key]
+      while (changed.length) {
+        const round: string[] = []
+        for (const f of entity.filters ?? []) {
+          if (f.filterBy && changed.includes(f.filterBy.parentKey) && next[f.key]) {
+            next[f.key] = ''
+            round.push(f.key)
+          }
+        }
+        changed = round
+      }
+      return next
+    })
+  }
+
   const lookups = useMemo(() => {
     const m: Record<string, Map<any, string>> = {}
     for (const f of entity.fields) {
@@ -1280,19 +1343,25 @@ function CrudPanel({ entity, canWrite }: { entity: EntityCfg; canWrite: boolean 
             )}
           </div>
           {entity.filters?.map((filter) => {
-            const opts = sourceRows[filter.selectFrom.slug] ?? []
+            const opts = filterChoices[filter.key] ?? sourceRows[filter.selectFrom.slug] ?? []
+            // Nothing to choose from once the parent's selection excludes
+            // everything — say so rather than offering an empty menu.
+            const empty = opts.length === 0
             return (
               <select
                 key={filter.key}
                 value={filterValues[filter.key] ?? ''}
+                disabled={empty}
                 onChange={(e) => {
                   setPage(1)
-                  setFilterValues((prev) => ({ ...prev, [filter.key]: e.target.value }))
+                  setFilterCascading(filter.key, e.target.value)
                 }}
                 className="h-8 rounded-md bg-ink-50 dark:bg-ink-800/40 border border-transparent focus:border-primary-300 focus:bg-white focus:ring-2 focus:ring-primary-100 dark:focus:ring-primary-900/40 focus:outline-none text-[12.5px] px-2.5 max-w-[200px] truncate"
                 title={`Filter by ${filter.label}`}
               >
-                <option value="">All {filter.label.toLowerCase()}</option>
+                <option value="">
+                  {empty ? `No ${filter.label.toLowerCase()}` : `All ${filter.label.toLowerCase()}`}
+                </option>
                 {opts.map((it: any) => (
                   <option key={String(it[filter.selectFrom.valueKey])} value={String(it[filter.selectFrom.valueKey])}>
                     {String(it[filter.selectFrom.labelKey] ?? '')}
