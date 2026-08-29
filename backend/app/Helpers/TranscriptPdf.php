@@ -47,7 +47,8 @@ class TranscriptPdf
      */
     public static function buildHtml(array $student, array $rows): string
     {
-        $groups = self::groupByLevel($rows);
+        $groups   = self::groupByLevel($rows);
+        $semMap   = self::semesterMap($groups);
 
         if (!$groups) {
             $pages = self::pageHtml(
@@ -64,11 +65,11 @@ class TranscriptPdf
                 $totals = self::levelTotals($list);
                 $isLast = $level === $lastKey;
                 $pages .= self::pageHtml(
-                    self::bioHtml($student, self::levelLine($level)),
+                    self::bioHtml($student, self::levelLine($level, $semMap[$level] ?? [])),
                     self::tableHtml($list, $totals),
                     self::closingHtml(
                         self::summaryHtml($totals),
-                        self::semesterNote($level),
+                        self::semesterNote($semMap[$level] ?? []),
                         $isLast ? $award : ''
                     ),
                     false,
@@ -401,6 +402,27 @@ HTML;
             return (int)$a <=> (int)$b;
         });
 
+        // Within a sheet, the registrar's transcripts list the first
+        // semester's modules before the second's — so order by the semester
+        // the code carries, then by code so the result is stable. (The signed
+        // copies are not consistently ordered inside a semester block: page 1
+        // ascends by code, page 2 descends, which is manual entry order and
+        // not reproducible from data. Code order is the deterministic choice;
+        // populate `module_programs.module_order` if the registry wants an
+        // explicit sequence instead.)
+        foreach ($groups as &$list) {
+            usort($list, static function (array $x, array $y): int {
+                $sx = self::semesterDigit($x['module_code'] ?? '') ?? 9;
+                $sy = self::semesterDigit($y['module_code'] ?? '') ?? 9;
+                return $sx <=> $sy
+                    ?: strcmp(
+                        strtoupper((string)preg_replace('/\s+/', '', (string)($x['module_code'] ?? ''))),
+                        strtoupper((string)preg_replace('/\s+/', '', (string)($y['module_code'] ?? '')))
+                    );
+            });
+        }
+        unset($list);
+
         return $groups;
     }
 
@@ -448,30 +470,71 @@ HTML;
      * pair is derived from the level of study: level 1 is semesters 1 & 2,
      * level 2 is 3 & 4, and so on.
      */
-    private static function levelLine(mixed $level): string
+    /** @param array<int,int> $sems semester numbers this sheet covers */
+    private static function levelLine(mixed $level, array $sems = []): string
     {
         $qual = htmlspecialchars(getenv('TRANSCRIPT_QUALIFICATION_LEVEL') ?: '8');
-        $sem  = self::semesters($level);
-        return $sem === null
-            ? "LEVEL: {$qual}"
-            : "LEVEL: {$qual} S{$sem[0]} &amp; S{$sem[1]}*";
+        if (!$sems) return "LEVEL: {$qual}";
+        return "LEVEL: {$qual} " . implode(' &amp; ', array_map(static fn ($s) => "S{$s}", $sems)) . '*';
     }
 
-    private static function semesterNote(mixed $level): string
+    /** @param array<int,int> $sems */
+    private static function semesterNote(array $sems): string
     {
-        $sem = self::semesters($level);
-        return $sem === null
-            ? ''
-            : "<div class=\"note row\">* Semester {$sem[0]} and Semester {$sem[1]}</div>";
+        if (!$sems) return '';
+        $words = array_map(static fn ($s) => "Semester {$s}", $sems);
+        $last  = array_pop($words);
+        $text  = $words ? implode(', ', $words) . ' and ' . $last : $last;
+        return "<div class=\"note row\">* {$text}</div>";
     }
 
-    /** @return array{0:int,1:int}|null */
-    private static function semesters(mixed $level): ?array
+    /**
+     * Semester digit a module code carries: CUR codes read
+     * <SUBJECT><level><?><semester><sequence>, so "STSK 1312" is level 1
+     * semester 1 and "ENGS 1321" is level 1 semester 2. Null when the code
+     * has no usable 4-digit block.
+     */
+    private static function semesterDigit(mixed $code): ?int
     {
-        if ($level === null || $level === 'unclassified' || !is_numeric($level)) return null;
-        $l = (int)$level;
-        if ($l < 1) return null;
-        return [$l * 2 - 1, $l * 2];
+        if (!preg_match('/(\d{4})/', (string)$code, $m)) return null;
+        $d = (int)$m[1][2];
+        return ($d === 1 || $d === 2) ? $d : null;
+    }
+
+    /**
+     * Which semester numbers each level's sheet covers.
+     *
+     * A level does NOT always span two semesters: this programme teaches
+     * level 3 in semester 5 only and level 4 in semester 6 only, then two
+     * semesters again at level 5 — exactly what the registrar's signed
+     * transcripts print. Assuming `level × 2` mislabelled every sheet from
+     * level 3 onward. So the semesters are counted, not assumed: walk the
+     * levels in order and give each one as many consecutive semester slots
+     * as it has distinct semester digits among its module codes.
+     *
+     * A level whose codes carry no usable digit falls back to two slots,
+     * which is the conventional shape and the previous behaviour.
+     *
+     * @param  array<array-key,array<int,array<string,mixed>>> $groups
+     * @return array<array-key,array<int,int>>
+     */
+    private static function semesterMap(array $groups): array
+    {
+        $map  = [];
+        $next = 1;
+        foreach ($groups as $key => $list) {
+            if ($key === 'unclassified') { $map[$key] = []; continue; }
+            $digits = [];
+            foreach ($list as $r) {
+                $d = self::semesterDigit($r['module_code'] ?? '');
+                if ($d !== null) $digits[$d] = true;
+            }
+            $slots = $digits ? count($digits) : 2;
+            ksort($digits);
+            $map[$key] = [];
+            for ($i = 0; $i < $slots; $i++) $map[$key][] = $next++;
+        }
+        return $map;
     }
 
     /** Trim a band boundary to how a human writes it: 79.00 → 79, 49.99 → 49.99. */
