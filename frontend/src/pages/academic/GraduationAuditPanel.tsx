@@ -566,7 +566,10 @@ export function StudentAuditModal({ row, onClose }: { row: AuditModalTarget | nu
       ...exportRows.map((r) => headers.map((h) => r[h] ?? '')),
     ]
     const ws = XLSX.utils.aoa_to_sheet(aoa)
-    ws['!cols'] = [{ wch: 16 }, { wch: 12 }, { wch: 46 }, { wch: 8 }, { wch: 8 }, { wch: 9 }, { wch: 13 }, { wch: 14 }]
+    // One width per key in exportRows — the last covers Status, whose longest
+    // label is 'Awaiting marks'. A short list here leaves the trailing column
+    // at Excel's ~8-char default, where that label truncates.
+    ws['!cols'] = [{ wch: 16 }, { wch: 12 }, { wch: 46 }, { wch: 8 }, { wch: 8 }, { wch: 9 }, { wch: 13 }, { wch: 14 }, { wch: 16 }]
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Curriculum audit')
     XLSX.writeFile(wb, `audit_${row?.regnumber ?? 'student'}.xlsx`)
