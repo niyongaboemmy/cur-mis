@@ -1040,10 +1040,19 @@ class AcademicsManagementController extends BaseController
 
             try {
                 // 1) Upsert module catalog row (cached per-import).
-                if (!isset($moduleIdByCode[strtolower($code)])) {
+                // Match on the code's IDENTITY, not its literal text. MySQL's
+                // TRIM strips spaces only — not the tabs and non-breaking
+                // spaces these spreadsheets carry — so `TRIM(code) = ?` kept
+                // missing existing rows and every re-import added another copy
+                // of the same course (nine "CCU8111"s on live before this).
+                $ident = strtoupper(preg_replace('/\s+/u', '', $code) ?? $code);
+                $code  = trim((string)preg_replace('/\s+/u', ' ', $code));
+                if (!isset($moduleIdByCode[$ident])) {
                     $existing = $moduleModel->db()->fetchOne(
-                        "SELECT * FROM `modules` WHERE TRIM(`module_code`) = ? LIMIT 1",
-                        [$code],
+                        "SELECT * FROM `modules`
+                          WHERE UPPER(REPLACE(REPLACE(REPLACE(`module_code`, CHAR(9), ''), CHAR(10), ''), ' ', '')) = ?
+                          LIMIT 1",
+                        [$ident],
                     );
                     if ($existing) {
                         $patch = [];
@@ -1060,7 +1069,7 @@ class AcademicsManagementController extends BaseController
                             $moduleModel->update((int)$existing['module_id'], $patch);
                             $modulesUpdated++;
                         }
-                        $moduleIdByCode[strtolower($code)] = (int)$existing['module_id'];
+                        $moduleIdByCode[$ident] = (int)$existing['module_id'];
                     } else {
                         $newId = $moduleModel->create([
                             'module_code'    => $code,
@@ -1069,11 +1078,11 @@ class AcademicsManagementController extends BaseController
                             'level'          => $levelId ?? 0,
                             'department'     => $departmentId ?? 0,
                         ]);
-                        $moduleIdByCode[strtolower($code)] = (int)$newId;
+                        $moduleIdByCode[$ident] = (int)$newId;
                         $modulesCreated++;
                     }
                 }
-                $moduleId = $moduleIdByCode[strtolower($code)];
+                $moduleId = $moduleIdByCode[$ident];
 
                 // 2) Link to program with the order from the file.
                 $existingLink = $moduleModel->db()->fetchOne(
