@@ -231,7 +231,22 @@
            bg-ink-50 dark:bg-ink-900/40
            border-b border-ink-100 dark:border-ink-700;
   }
-  .data-table thead th { @apply px-4 py-3 font-medium; }
+  /* The header stays put while the rows scroll. `sticky` resolves against
+     the nearest scrolling ancestor, so this only takes effect inside a
+     `.table-scroll` (or any other scroll container) and is a harmless no-op
+     everywhere else. The background must sit on the `th` itself — a colour
+     on the `tr` does not paint under a sticky cell, and a translucent one
+     lets the scrolled rows show through. */
+  .data-table thead th {
+    @apply px-4 py-3 font-medium sticky top-0 z-20 bg-ink-50 dark:bg-ink-900;
+  }
+
+  /* Table viewport: header pinned, body scrolls. Tall enough to stay usable
+     on a laptop, and never shorter than a screenful of rows. */
+  .table-scroll {
+    @apply overflow-auto;
+    max-height: max(26rem, calc(100vh - 20rem));
+  }
   .data-table tbody td { @apply px-4 py-3 align-middle; }
   .data-table tbody tr {
     @apply border-t border-ink-100 dark:border-ink-700

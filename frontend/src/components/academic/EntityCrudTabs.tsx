@@ -1446,7 +1446,7 @@ function CrudPanel({ entity, canWrite }: { entity: EntityCfg; canWrite: boolean 
         </div>
       ) : (
         <>
-          <div className="overflow-x-auto">
+          <div className="table-scroll">
             <table className="data-table">
               <thead>
                 <tr>
