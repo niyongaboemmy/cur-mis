@@ -45,6 +45,22 @@ class MarksTemplateExcel
      */
     public static function build(array $module, array $term, array $maxes, array $roster): Spreadsheet
     {
+        // Building the sheet — not just writing it — trips PhpSpreadsheet's
+        // PHP 8.3 "Increment on non-numeric string" deprecations. With
+        // display_errors on they are echoed here, long before stream() gets a
+        // chance to guard the response, and the download then arrives with
+        // `Deprecated: …` ahead of the zip header. Swallow them at the source.
+        ob_start();
+        try {
+            return self::compose($module, $term, $maxes, $roster);
+        } finally {
+            ob_end_clean();
+        }
+    }
+
+    /** @see self::build() — kept separate so the buffer guard wraps every path. */
+    private static function compose(array $module, array $term, array $maxes, array $roster): Spreadsheet
+    {
         $book  = new Spreadsheet();
         $sheet = $book->getActiveSheet();
         $sheet->setTitle('Marks');
@@ -121,17 +137,39 @@ class MarksTemplateExcel
     /** Stream the workbook as a download and end the request. */
     public static function stream(Spreadsheet $book, string $filename): never
     {
-        // PhpSpreadsheet writes to php://output; anything already buffered
-        // would be prepended to the zip container and corrupt the file.
+        // Anything already buffered would be prepended to the zip container
+        // and corrupt the file.
         if (ob_get_length()) {
+            ob_end_clean();
+        }
+
+        // PhpSpreadsheet trips "Increment on non-numeric string" deprecations
+        // on PHP 8.3 while writing. With display_errors on (any dev box) they
+        // are emitted mid-zip, and no spreadsheet application will open the
+        // result. So write to a temp file with that noise buffered away and
+        // send only the bytes — same guard as StudentIdCardHelper::stream().
+        $tmp = tempnam(sys_get_temp_dir(), 'marks_');
+        if ($tmp === false) {
+            throw new \RuntimeException('Could not create a temp file for the marks template.');
+        }
+
+        ob_start();
+        try {
+            (new Xlsx($book))->save($tmp);
+        } catch (\Throwable $e) {
+            @unlink($tmp);
+            throw $e;
+        } finally {
             ob_end_clean();
         }
 
         header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         header("Content-Disposition: attachment; filename=\"{$filename}\"");
         header('Cache-Control: max-age=0');
+        header('Content-Length: ' . (string) filesize($tmp));
 
-        (new Xlsx($book))->save('php://output');
+        readfile($tmp);
+        @unlink($tmp);
         exit;
     }
 }
