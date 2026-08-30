@@ -667,16 +667,7 @@ export function MarksEditor({
 
     const next: Record<string, RowDraft> = {}
     for (const r of roster) {
-      next[r.regnumber] = {
-        cats:    toStr(r.cat_marks) || sumComponents(r),
-        cat1:    toStr(r.cat1),
-        cat2:    toStr(r.cat2),
-        cat3:    toStr(r.cat3),
-        partial: toStr(r.partial_exam),
-        exam1:   toStr(r.exam_1st_sitting),
-        exam2:   toStr(r.exam_2nd_sitting),
-        remarks: r.remarks ?? '',
-      }
+      next[r.regnumber] = seedDraft(r)
     }
     setDrafts(next)
 
@@ -711,21 +702,10 @@ export function MarksEditor({
         )
         if (cur && !isEmpty) continue
         if (r.mark_id !== null) {
-          next[r.regnumber] = {
-            // Seed the CAT total from what was actually recorded: the stored
-            // aggregate when there is one, else the sum of any components.
-            cats:    toStr(r.cat_marks) || sumComponents(r),
-            cat1:    toStr(r.cat1),
-            cat2:    toStr(r.cat2),
-            cat3:    toStr(r.cat3),
-            partial: toStr(r.partial_exam),
-            exam1:   toStr(r.exam_1st_sitting) || toStr(r.exam_marks),
-            exam2:   toStr(r.exam_2nd_sitting),
-            remarks: r.remarks ?? '',
-          }
+          next[r.regnumber] = seedDraft(r)
           changed = true
         } else if (!cur) {
-          next[r.regnumber] = { cats: '', cat1: '', cat2: '', cat3: '', partial: '', exam1: '', exam2: '', remarks: '' }
+          next[r.regnumber] = emptyDraft()
           changed = true
         }
       }
@@ -764,6 +744,12 @@ export function MarksEditor({
      * their aggregate columns, and the breakdown honestly stays blank. */
     const legacyRow = (r: MarksRosterRow): Row | null => {
       if (r.mark_id === null) return null
+      // Only rows recorded as an aggregate. One carrying a CUR breakdown is
+      // computed from it and must not be reported as imported — the exam
+      // fallback now fills exam1 on every row, so this can no longer be
+      // inferred from the drafts being empty.
+      if (num(r.cat1) !== null || num(r.cat2) !== null ||
+          num(r.cat3) !== null || num(r.partial_exam) !== null) return null
       const lCats  = num(r.cat_marks)
       const lExam  = num(r.exam_marks)
       const lTotal = num(r.total)
@@ -788,13 +774,20 @@ export function MarksEditor({
         map[r.regnumber] = legacyRow(r) ?? blank()
         continue
       }
+      // An untouched imported row keeps showing exactly what was recorded for
+      // it — including a stored total that the legacy data does not always
+      // derive from cat + exam. Once the user types, the row is computed from
+      // what they typed, so the figures always answer to the visible inputs.
+      if (sameDraft(seedDraft(r), d)) {
+        const saved = legacyRow(r)
+        if (saved) { map[r.regnumber] = saved; continue }
+      }
       const c1 = num(d.cat1), c2 = num(d.cat2), c3 = num(d.cat3), pe = num(d.partial)
       const e1 = num(d.exam1), e2 = num(d.exam2)
-      const hasAny = [c1, c2, c3, pe, e1, e2].some((x) => x !== null)
+      // `cats` counts too: it is the column the sheet actually asks for, and
+      // leaving it out meant typing a CAT into a blank row computed nothing.
+      const hasAny = [c1, c2, c3, pe, e1, e2].some((x) => x !== null) || num(d.cats) !== null
       if (!hasAny) {
-        // No components typed or saved — show the legacy figures if the row has
-        // them. Once any component IS entered the computed values win, so a row
-        // being re-keyed into the CUR template never shows stale legacy totals.
         map[r.regnumber] = legacyRow(r) ?? blank()
         continue
       }
@@ -836,16 +829,11 @@ export function MarksEditor({
     for (const r of roster) {
       if (r.is_exempted) { out[r.regnumber] = false; continue }
       const d = drafts[r.regnumber]; if (!d) { out[r.regnumber] = false; continue }
-      const same =
-        toStr(r.cat_marks)        === d.cats &&
-        toStr(r.cat1)             === d.cat1 &&
-        toStr(r.cat2)             === d.cat2 &&
-        toStr(r.cat3)             === d.cat3 &&
-        toStr(r.partial_exam)     === d.partial &&
-        toStr(r.exam_1st_sitting) === d.exam1 &&
-        toStr(r.exam_2nd_sitting) === d.exam2 &&
-        (r.remarks ?? '')         === d.remarks
-      out[r.regnumber] = !same
+      // Compared against the same seed the drafts were built from. Comparing
+      // against the raw columns instead marked every imported row dirty the
+      // moment the exam fallback started filling the exam column — 285 rows
+      // "unsaved" on a sheet nobody had touched.
+      out[r.regnumber] = !sameDraft(seedDraft(r), d)
     }
     return out
   }, [drafts, roster])
@@ -1640,29 +1628,27 @@ export function MarksEditor({
               {/* min-width covers the fixed component columns plus the wide
                   Remarks column below, so Remarks keeps its room instead of
                   being squeezed to a few unreadable characters. */}
-              <table className="w-full text-left text-[12.5px] min-w-[1850px]">
+              <table className="w-full text-left text-[12.5px] min-w-[1760px]">
+                {/* One row of headers: the sheet records one CAT and one exam,
+                    so there is no longer a sitting split to span. */}
                 <thead className="sticky top-0 z-10">
                   <tr className="bg-sky-50 dark:bg-ink-800 border-b border-ink-100 dark:border-ink-700">
-                    <th rowSpan={2} className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase border-r border-ink-100 dark:border-ink-700">No</th>
-                    <th rowSpan={2} className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase border-r border-ink-100 dark:border-ink-700">First Name</th>
-                    <th rowSpan={2} className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase border-r border-ink-100 dark:border-ink-700">Surname</th>
-                    <th rowSpan={2} className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase border-r border-ink-100 dark:border-ink-700">Sex</th>
-                    <th rowSpan={2} className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase border-r border-ink-100 dark:border-ink-700">Reg #</th>
-                    <th rowSpan={2} className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase border-r border-ink-100 dark:border-ink-700">Program</th>
-                    <th rowSpan={2} className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase border-r border-ink-100 dark:border-ink-700">Option</th>
-                    {/* One CAT column, out of 60 — how CUR records marks and
-                        what the upload template asks for. */}
-                    <th rowSpan={2} className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase text-center border-r border-ink-100 dark:border-ink-700">CAT<br/><span className="font-normal text-ink-400">/{maxes.cats}</span></th>
-                    <th colSpan={2} className="px-2 py-1.5 font-bold text-ink-500 text-[10px] uppercase text-center border-r border-ink-100 dark:border-ink-700">Final Exam /{maxes.final}</th>
-                    <th rowSpan={2} className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase text-center border-r border-ink-100 dark:border-ink-700 bg-amber-50 dark:bg-amber-500/10">Final Mark<br/><span className="font-normal text-ink-400">/{maxes.cats + maxes.final}</span></th>
-                    <th rowSpan={2} className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase text-center border-r border-ink-100 dark:border-ink-700 bg-amber-50 dark:bg-amber-500/10">Tot %</th>
-                    <th rowSpan={2} className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase text-center border-r border-ink-100 dark:border-ink-700 bg-amber-50 dark:bg-amber-500/10">Grade</th>
-                    <th rowSpan={2} className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase text-center border-r border-ink-100 dark:border-ink-700 bg-amber-50 dark:bg-amber-500/10">Decision</th>
-                    <th rowSpan={2} className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase w-[300px] min-w-[300px]">Remarks</th>
-                  </tr>
-                  <tr className="bg-sky-50 dark:bg-ink-800 border-b border-ink-100 dark:border-ink-700">
-                    <th className="px-2 py-1.5 font-semibold text-ink-500 text-[10px] uppercase text-center border-r border-ink-100 dark:border-ink-700">1st sitting</th>
-                    <th className="px-2 py-1.5 font-semibold text-ink-500 text-[10px] uppercase text-center border-r border-ink-100 dark:border-ink-700">2nd / Special</th>
+                    <th className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase border-r border-ink-100 dark:border-ink-700">No</th>
+                    <th className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase border-r border-ink-100 dark:border-ink-700">First Name</th>
+                    <th className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase border-r border-ink-100 dark:border-ink-700">Surname</th>
+                    <th className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase border-r border-ink-100 dark:border-ink-700">Sex</th>
+                    <th className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase border-r border-ink-100 dark:border-ink-700">Reg #</th>
+                    <th className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase border-r border-ink-100 dark:border-ink-700">Program</th>
+                    <th className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase border-r border-ink-100 dark:border-ink-700">Option</th>
+                    {/* One CAT column and one EXAM column, out of 60 and 40 —
+                        how CUR records marks and what the template asks for. */}
+                    <th className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase text-center border-r border-ink-100 dark:border-ink-700">CAT<br/><span className="font-normal text-ink-400">/{maxes.cats}</span></th>
+                    <th className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase text-center border-r border-ink-100 dark:border-ink-700">Exam<br/><span className="font-normal text-ink-400">/{maxes.final}</span></th>
+                    <th className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase text-center border-r border-ink-100 dark:border-ink-700 bg-amber-50 dark:bg-amber-500/10">Final Mark<br/><span className="font-normal text-ink-400">/{maxes.cats + maxes.final}</span></th>
+                    <th className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase text-center border-r border-ink-100 dark:border-ink-700 bg-amber-50 dark:bg-amber-500/10">Tot %</th>
+                    <th className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase text-center border-r border-ink-100 dark:border-ink-700 bg-amber-50 dark:bg-amber-500/10">Grade</th>
+                    <th className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase text-center border-r border-ink-100 dark:border-ink-700 bg-amber-50 dark:bg-amber-500/10">Decision</th>
+                    <th className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase w-[300px] min-w-[300px]">Remarks</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-ink-100 dark:divide-ink-700">
@@ -1723,11 +1709,12 @@ export function MarksEditor({
                             <NumCell cellId={`${i}:0`} value={d.cats} max={maxes.cats} disabled={rowDisabled} onChange={(v) => setCell(r.regnumber, 'cats', v)} />
                           )}
                         </td>
+                        {/* The one exam mark. `exam2` is still carried in the
+                            draft and saved, so any second-sitting value on a
+                            row survives editing here — it is entered through
+                            Revaluations, not on this sheet. */}
                         <td className="px-1 py-1 text-center border-r border-ink-100 dark:border-ink-700">
                           <NumCell cellId={`${i}:1`} value={d.exam1} max={maxes.final} disabled={rowDisabled} onChange={(v) => setCell(r.regnumber, 'exam1', v)} />
-                        </td>
-                        <td className="px-1 py-1 text-center border-r border-ink-100 dark:border-ink-700">
-                          <NumCell cellId={`${i}:2`} value={d.exam2} max={maxes.final} disabled={rowDisabled} onChange={(v) => setCell(r.regnumber, 'exam2', v)} />
                         </td>
                         {/* CAT + exam, out of maxSum — NOT the exam mark on its
                             own, which is what the two sitting columns to the
@@ -2498,8 +2485,37 @@ function sumComponents(r: MarksRosterRow): string {
   return String(+parts.reduce((a, b) => a + b, 0).toFixed(2))
 }
 
+/**
+ * The draft a row starts from: what has actually been recorded for it.
+ *
+ * Both aggregates fall back to the legacy columns. Every mark in the database
+ * lives in `cat_marks` / `exam_marks` — `exam_1st_sitting` is unused on every
+ * row — so without the exam fallback the exam column renders empty on rows
+ * that plainly carry an exam mark.
+ *
+ * Hydration, backfill AND the dirty check all seed from here. That is the
+ * point of it being one function: seed and comparison cannot drift, so a row
+ * that has only been displayed can never be counted as edited.
+ */
+function seedDraft(r: MarksRosterRow): RowDraft {
+  return {
+    cats:    toStr(r.cat_marks) || sumComponents(r),
+    cat1:    toStr(r.cat1),
+    cat2:    toStr(r.cat2),
+    cat3:    toStr(r.cat3),
+    partial: toStr(r.partial_exam),
+    exam1:   toStr(r.exam_1st_sitting) || toStr(r.exam_marks),
+    exam2:   toStr(r.exam_2nd_sitting),
+    remarks: r.remarks ?? '',
+  }
+}
+
+// `cats` is compared like every other field. Leaving it out made an upload
+// that corrects only the CAT mark register as "unchanged" and get skipped —
+// and the template asks for exactly two marks, one of which is the CAT.
 function sameDraft(a: RowDraft, b: RowDraft): boolean {
-  return a.cat1 === b.cat1 && a.cat2 === b.cat2 && a.cat3 === b.cat3 &&
+  return a.cats === b.cats &&
+         a.cat1 === b.cat1 && a.cat2 === b.cat2 && a.cat3 === b.cat3 &&
          a.partial === b.partial && a.exam1 === b.exam1 && a.exam2 === b.exam2 &&
          a.remarks === b.remarks
 }
