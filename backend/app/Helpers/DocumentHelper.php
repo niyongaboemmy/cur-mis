@@ -96,6 +96,10 @@ class DocumentHelper
 
     public static function buildAdmissionLetter(array $s, bool $preview = false): string
     {
+        // Signed by whoever currently holds the office — set at System
+        // settings → Signatories, not baked into this file.
+        $registrar = htmlspecialchars(Signatories::academicRegistrar(), ENT_QUOTES);
+
         $header     = self::headerHtml();
         $pageCss    = PdfLayout::pageCss(44, 28);
         $fullName   = strtoupper(trim(($s['fname'] ?? '') . ' ' . ($s['lname'] ?? '')));
@@ -194,7 +198,7 @@ class DocumentHelper
           <p class="para">Yours sincerely,</p>
 
           <div class="sign">
-            <p class="bold">MUTAYOMBA Sylvestre</p>
+            <p class="bold">{$registrar}</p>
             <p>Academic Registrar</p>
           </div>
 
@@ -226,6 +230,10 @@ class DocumentHelper
 
     public static function buildVisaLetter(array $s, bool $preview = false): string
     {
+        // Signed by whoever currently holds the office — set at System
+        // settings → Signatories, not baked into this file.
+        $registrar = htmlspecialchars(Signatories::academicRegistrar(), ENT_QUOTES);
+
         $header     = self::headerHtml();
         $pageCss    = PdfLayout::pageCss(44, 28);
         $fullName   = strtoupper(trim(($s['fname'] ?? '') . ' ' . ($s['lname'] ?? '')));
@@ -294,7 +302,7 @@ class DocumentHelper
           <p class="re-line">Re: Recommendation for {$fullName}</p>
 
           <p class="para">
-            I, the undersigned, <strong>MUTAYOMBA Sylvestre</strong>, Academic Registrar of the
+            I, the undersigned, <strong>{$registrar}</strong>, Academic Registrar of the
             Catholic University of Rwanda (CUR), hereby recommend {$fullName},
             a {$nationalId} citizen with passport number: <strong>{$nationalId}</strong>.
           </p>
@@ -509,6 +517,10 @@ class DocumentHelper
 
     public static function buildEnglishProficiencyCertificate(array $s, bool $preview = false): string
     {
+        // Signed by whoever currently holds the office — set at System
+        // settings → Signatories, not baked into this file.
+        $registrar = htmlspecialchars(Signatories::academicRegistrar(), ENT_QUOTES);
+
         $header    = self::headerHtml();
         $pageCss   = PdfLayout::pageCss(30, 20);
         $fullName  = strtoupper(trim(($s['fname'] ?? '') . ' ' . ($s['lname'] ?? '')));
@@ -576,7 +588,7 @@ class DocumentHelper
             <p class="date-line">Done at {$issueLoc} on {$today}</p>
 
             <div class="sign-block">
-              <p class="sign-name">MUTAYOMBA Sylvestre</p>
+              <p class="sign-name">{$registrar}</p>
               <p class="sign-title">Academic Registrar</p>
             </div>
 
@@ -611,6 +623,10 @@ class DocumentHelper
 
     public static function buildCompletedModulesReport(array $s, array $modules, bool $preview = false): string
     {
+        // Signed by whoever currently holds the office — set at System
+        // settings → Signatories, not baked into this file.
+        $registrar = htmlspecialchars(Signatories::academicRegistrar(), ENT_QUOTES);
+
         $header     = self::headerHtml();
         $pageCss    = PdfLayout::pageCss(40, 28);
         $fullName   = strtoupper(trim(($s['fname'] ?? '') . ' ' . ($s['lname'] ?? '')));
@@ -797,7 +813,7 @@ class DocumentHelper
           <div class="sign-block">
             <p>Done at {$issueLoc}: {$today}</p>
             <br>
-            <p class="sign-name">MUTAYOMBA Sylvestre</p>
+            <p class="sign-name">{$registrar}</p>
             <p>Academic Registrar</p>
           </div>
 

@@ -8,6 +8,7 @@ use Core\Request;
 use Core\Response;
 use App\Models\AcademicYearModel;
 use App\Models\AcademicTermModel;
+use App\Helpers\Signatories;
 use App\Models\SettingModel;
 
 class SystemBasicsController extends BaseController
@@ -231,6 +232,56 @@ class SystemBasicsController extends BaseController
             'application_fee_mapped_fee_structure_id' => $structureId ?: null,
             'application_fee_credit_on_enrollment'    => $autoCredit,
         ], 'Fee mapping settings saved.');
+    }
+
+    /**
+     * GET /api/system/signatories
+     * Admin — who signs issued documents. Returns the value actually in force,
+     * so the form shows what a transcript would print right now rather than an
+     * empty box when no row has been saved yet.
+     */
+    public function getSignatories(Request $request, Response $response): never
+    {
+        $this->success($response, [
+            'settings' => [
+                Signatories::REGISTRAR_KEY => Signatories::academicRegistrar(),
+            ],
+            'defaults' => [
+                Signatories::REGISTRAR_KEY => Signatories::REGISTRAR_DEFAULT,
+            ],
+        ], 'Signatories fetched.');
+    }
+
+    /**
+     * POST /api/system/signatories
+     * Admin — set the Academic Registrar's name used across issued documents.
+     */
+    public function saveSignatories(Request $request, Response $response): never
+    {
+        $data = $request->body();
+        $name = trim((string) ($data[Signatories::REGISTRAR_KEY] ?? ''));
+
+        // Blank is not "clear it": every document carries this line, and an
+        // empty signature block is worse than a stale name. Ask instead.
+        if ($name === '') {
+            $this->error($response, "The Academic Registrar's name is required.", 422);
+        }
+        if (mb_strlen($name) > 120) {
+            $this->error($response, "The Academic Registrar's name is too long (120 characters max).", 422);
+        }
+
+        $this->upsertSetting(
+            Signatories::REGISTRAR_KEY,
+            $name,
+            'Name printed above "Academic Registrar" on transcripts, certificates and letters.',
+        );
+        // The reader memoises per request; drop it so this same request, and
+        // the response below, report the value just saved.
+        Signatories::forget();
+
+        $this->success($response, [
+            'settings' => [Signatories::REGISTRAR_KEY => Signatories::academicRegistrar()],
+        ], 'Signatories saved.');
     }
 
     protected function upsertSetting(string $key, string $value, string $description): void

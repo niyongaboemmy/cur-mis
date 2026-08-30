@@ -26,6 +26,17 @@ export interface FeeMappingResponse {
   fee_structures: FeeStructureOption[]
 }
 
+/** Names printed on issued documents. */
+export interface Signatories {
+  academic_registrar_name: string
+}
+
+export interface SignatoriesResponse {
+  settings: Signatories
+  /** What the system falls back to when nothing has been saved. */
+  defaults: Signatories
+}
+
 export const systemService = {
   getBasics: (signal?: AbortSignal) =>
     api.get<SystemBasics>('/api/system/basics', {}, signal),
@@ -53,4 +64,12 @@ export const systemService = {
     application_fee_mapped_fee_structure_id: number
     application_fee_credit_on_enrollment:    number
   }) => api.post<FeeMappingSettings>('/api/system/fee-mapping', d),
+
+  /** Admin — who signs issued documents. Returns the value in force. */
+  getSignatories: (signal?: AbortSignal) =>
+    api.get<SignatoriesResponse>('/api/system/signatories', {}, signal),
+
+  /** Admin — set the Academic Registrar's name (requires MANAGE_SETTINGS). */
+  saveSignatories: (d: Signatories) =>
+    api.put<{ settings: Signatories }>('/api/system/signatories', d),
 }

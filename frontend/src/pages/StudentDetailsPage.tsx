@@ -5561,13 +5561,15 @@ function TClassificationCard({
   );
 }
 
-/** "Level 2 — Semesters 3 & 4"; level 1 is semesters 1 & 2, level 2 is 3 & 4, … */
+/** The catalogue name for a level, e.g. "Level 8, Semester 5". */
 function tLevelLabel(level: string, name?: string): string {
   if (level === "unclassified") return "Level not recorded";
   const n = Number(level);
-  // `level` is a `levels.id`; the heading reads the catalogue name, and the
-  // semester pair is still derived from the numeric level of study.
-  return `${name || `Level ${n}`} — Semesters ${n * 2 - 1} & ${n * 2}`;
+  // Just the catalogue name. It already states the semester, so the derived
+  // "— Semesters 5 & 6" that used to follow it only ever restated the level
+  // in different words, and contradicted the name whenever the two disagreed.
+  // Stray whitespace before punctuation comes from the stored name.
+  return (name || `Level ${n}`).replace(/\s+([,;:])/g, "$1").trim();
 }
 
 /** Credits and weighted average for one level, matching the PDF's TOTAL row. */

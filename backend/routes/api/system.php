@@ -36,3 +36,19 @@ $router->group('/api/system', function ($router) {
     $router->get('/fee-mapping', [SystemBasicsController::class, 'getFeeMappingSettings']);
     $router->post('/fee-mapping', [SystemBasicsController::class, 'saveFeeMappingSettings']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_SETTINGS)]);
+
+// Who signs issued documents — the Academic Registrar's name printed on
+// transcripts, certificates and letters. Reading it is enough to render the
+// admin form, so the GET follows VIEW_SETTINGS; changing whose name goes on
+// every document a student receives is MANAGE_SETTINGS.
+$router->group('/api/system', function ($router) {
+    $router->get('/signatories', [SystemBasicsController::class, 'getSignatories']);
+}, [AuthMiddleware::class, new MaybePermissionMiddleware([
+    Permissions::VIEW_SETTINGS,
+    Permissions::MANAGE_SETTINGS,
+])]);
+
+$router->group('/api/system', function ($router) {
+    $router->post('/signatories', [SystemBasicsController::class, 'saveSignatories']);
+    $router->put('/signatories',  [SystemBasicsController::class, 'saveSignatories']);
+}, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_SETTINGS)]);
