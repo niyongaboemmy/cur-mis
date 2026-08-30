@@ -1654,7 +1654,7 @@ export function MarksEditor({
                         what the upload template asks for. */}
                     <th rowSpan={2} className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase text-center border-r border-ink-100 dark:border-ink-700">CAT<br/><span className="font-normal text-ink-400">/{maxes.cats}</span></th>
                     <th colSpan={2} className="px-2 py-1.5 font-bold text-ink-500 text-[10px] uppercase text-center border-r border-ink-100 dark:border-ink-700">Final Exam /{maxes.final}</th>
-                    <th rowSpan={2} className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase text-center border-r border-ink-100 dark:border-ink-700 bg-amber-50 dark:bg-amber-500/10">Final Mark</th>
+                    <th rowSpan={2} className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase text-center border-r border-ink-100 dark:border-ink-700 bg-amber-50 dark:bg-amber-500/10">Final Mark<br/><span className="font-normal text-ink-400">/{maxes.cats + maxes.final}</span></th>
                     <th rowSpan={2} className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase text-center border-r border-ink-100 dark:border-ink-700 bg-amber-50 dark:bg-amber-500/10">Tot %</th>
                     <th rowSpan={2} className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase text-center border-r border-ink-100 dark:border-ink-700 bg-amber-50 dark:bg-amber-500/10">Grade</th>
                     <th rowSpan={2} className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase text-center border-r border-ink-100 dark:border-ink-700 bg-amber-50 dark:bg-amber-500/10">Decision</th>
@@ -1729,8 +1729,11 @@ export function MarksEditor({
                         <td className="px-1 py-1 text-center border-r border-ink-100 dark:border-ink-700">
                           <NumCell cellId={`${i}:2`} value={d.exam2} max={maxes.final} disabled={rowDisabled} onChange={(v) => setCell(r.regnumber, 'exam2', v)} />
                         </td>
+                        {/* CAT + exam, out of maxSum — NOT the exam mark on its
+                            own, which is what the two sitting columns to the
+                            left already show. */}
                         <td className="px-2 py-2 text-center font-semibold bg-amber-50/50 dark:bg-amber-500/5 border-r border-ink-100 dark:border-ink-700">
-                          {isExempted ? '—' : (c?.finalMark ?? '—')}
+                          {isExempted ? '—' : (c?.total ?? '—')}
                         </td>
                         <td className="px-2 py-2 text-center font-semibold bg-amber-50/50 dark:bg-amber-500/5 border-r border-ink-100 dark:border-ink-700">
                           {isExempted
