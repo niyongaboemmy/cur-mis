@@ -1445,76 +1445,10 @@ export function MarksEditor({
             disabled={isLocked}
             canWrite={canWrite}
             canConfirm={canConfirm}
-            workflow={workflow}
             onWorkflow={(a) => wf.mutate(a)}
             wfPending={wf.isPending}
             maxes={maxes}
             setMaxes={setMaxes}
-          />
-
-          {/* Say plainly when the sheet is not on the term that was asked for,
-              and when the rows on it predate the CUR component template — both
-              are otherwise silent surprises about whose marks these are. */}
-          {(redirectedTerm || otherMarkTerms.length > 0 || legacyCount > 0) && (
-            <div className="card p-3 flex items-start gap-2 text-[12.5px] text-ink-600 dark:text-ink-300">
-              <AlertCircle className="w-4 h-4 mt-px shrink-0 text-sky-500" />
-              <div className="space-y-0.5">
-                {redirectedTerm && (
-                  <p>
-                    No marks are recorded for this module in the term you picked, so the sheet is
-                    showing <span className="font-semibold">{redirectedTerm.label}</span>, where its
-                    marks actually live.
-                  </p>
-                )}
-                {otherMarkTerms.length > 0 && (
-                  <p>
-                    This module also holds marks in{' '}
-                    {otherMarkTerms.map((t, n) => (
-                      <span key={t.id}>
-                        {n > 0 ? ', ' : ''}
-                        <button
-                          type="button"
-                          className="font-semibold text-brand hover:underline"
-                          onClick={() => setTermId(t.id)}
-                        >
-                          {t.label}
-                        </button>{' '}
-                        ({t.mark_count})
-                      </span>
-                    ))}
-                    . Switch term to see them.
-                  </p>
-                )}
-                {legacyCount > 0 && (
-                  <p>
-                    {legacyCount} of {roster.length} row{roster.length === 1 ? '' : 's'} are imported
-                    marks: only a CAT total and a final exam mark were recorded, so the
-                    CAT1–Partial breakdown is blank for them.
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Manual student picker — adds students to the marks sheet on the fly */}
-          <StudentPicker
-            disabled={isLocked}
-            existingRegs={new Set(roster.map((r) => r.regnumber))}
-            onPick={(s) => {
-              setExtras((prev) => ({ ...prev, [s.regnumber]: s }))
-              setDrafts((prev) => prev[s.regnumber] ? prev : ({
-                ...prev,
-                [s.regnumber]: { cats: '', cat1: '', cat2: '', cat3: '', partial: '', exam1: '', exam2: '', remarks: '' },
-              }))
-            }}
-            onRemove={(reg) => {
-              setExtras((prev) => {
-                const next = { ...prev }
-                delete next[reg]
-                return next
-              })
-            }}
-            extrasCount={Object.keys(extras).length}
           />
 
           {/* Roster filters — find a student fast, or isolate marks entered in
@@ -1603,7 +1537,7 @@ export function MarksEditor({
             <div className="card p-8 text-center text-ink-400">
               No registered or eligible students were auto-detected for this module. Use
               <span className="font-medium"> Pick students </span>
-              above to add a roster manually, or register students under
+              below to add a roster manually, or register students under
               <span className="font-mono"> Modules → Registrations</span>.
             </div>
           ) : visibleRoster.length === 0 ? (
@@ -1623,8 +1557,10 @@ export function MarksEditor({
               )}
             </div>
           ) : (
-            /* Roster table — CUR template */
-            <div className="card overflow-auto max-h-[640px]">
+            /* Roster table — CUR template. Height follows the viewport rather
+               than a fixed 640px, so the space freed above the table turns into
+               visible rows instead of blank page. */
+            <div className="card table-scroll">
               {/* min-width covers the fixed component columns plus the wide
                   Remarks column below, so Remarks keeps its room instead of
                   being squeezed to a few unreadable characters. */}
@@ -1774,6 +1710,83 @@ export function MarksEditor({
             </div>
           )}
 
+          {/* Say plainly when the sheet is not on the term that was asked for,
+              and when the rows on it predate the CUR component template — both
+              are otherwise silent surprises about whose marks these are.
+              Rendered after the roster: it explains the rows rather than being
+              needed to read them, and three stacked notice cards above the
+              table pushed the first student off the screen. */}
+          {(redirectedTerm || otherMarkTerms.length > 0 || legacyCount > 0) && (
+            <div className="card p-3 flex items-start gap-2 text-[12.5px] text-ink-600 dark:text-ink-300">
+              <AlertCircle className="w-4 h-4 mt-px shrink-0 text-sky-500" />
+              <div className="space-y-0.5">
+                {redirectedTerm && (
+                  <p>
+                    No marks are recorded for this module in the term you picked, so the sheet is
+                    showing <span className="font-semibold">{redirectedTerm.label}</span>, where its
+                    marks actually live.
+                  </p>
+                )}
+                {otherMarkTerms.length > 0 && (
+                  <p>
+                    This module also holds marks in{' '}
+                    {otherMarkTerms.map((t, n) => (
+                      <span key={t.id}>
+                        {n > 0 ? ', ' : ''}
+                        <button
+                          type="button"
+                          className="font-semibold text-brand hover:underline"
+                          onClick={() => setTermId(t.id)}
+                        >
+                          {t.label}
+                        </button>{' '}
+                        ({t.mark_count})
+                      </span>
+                    ))}
+                    . Switch term to see them.
+                  </p>
+                )}
+                {legacyCount > 0 && (
+                  <p>
+                    {legacyCount} of {roster.length} row{roster.length === 1 ? '' : 's'} are imported
+                    marks: only a CAT total and a final exam mark were recorded, so the
+                    CAT1–Partial breakdown is blank for them.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Manual student picker — adds students to the marks sheet on the fly */}
+          <StudentPicker
+            disabled={isLocked}
+            existingRegs={new Set(roster.map((r) => r.regnumber))}
+            onPick={(s) => {
+              setExtras((prev) => ({ ...prev, [s.regnumber]: s }))
+              setDrafts((prev) => prev[s.regnumber] ? prev : ({
+                ...prev,
+                [s.regnumber]: { cats: '', cat1: '', cat2: '', cat3: '', partial: '', exam1: '', exam2: '', remarks: '' },
+              }))
+            }}
+            onRemove={(reg) => {
+              setExtras((prev) => {
+                const next = { ...prev }
+                delete next[reg]
+                return next
+              })
+            }}
+            extrasCount={Object.keys(extras).length}
+          />
+
+          {/* Reference, not input: the bands the Grade column is read off,
+              and who submitted or confirmed the sheet. */}
+          <MarkSheetNotes
+            scale={scale}
+            status={status}
+            workflow={workflow}
+            canConfirm={canConfirm}
+          />
+
           {/* Lecturer footer */}
           <div className="card p-3 flex flex-wrap items-center gap-x-6 gap-y-1 text-[13px]">
             <div>
@@ -1811,7 +1824,7 @@ function meaningful(v: unknown): string | null {
  * what the components are out of — now live in one block.
  */
 function ModuleHeaderCard({
-  compact, moduleH, summary, status, disabled, canWrite, canConfirm, workflow,
+  compact, moduleH, summary, status, disabled, canWrite, canConfirm,
   onWorkflow, wfPending, maxes, setMaxes,
 }: {
   compact:  boolean
@@ -1821,7 +1834,6 @@ function ModuleHeaderCard({
   disabled: boolean
   canWrite: boolean
   canConfirm: boolean
-  workflow?: MarksWorkflow
   onWorkflow: (a: 'open_claims' | 'submit' | 'confirm' | 'reset') => void
   wfPending: boolean
   maxes:    { cat1: number; cat2: number; cat3: number; partial: number; cats: number; final: number }
@@ -1830,7 +1842,6 @@ function ModuleHeaderCard({
   // Maxes are configuration set once a term, not per-session data — collapsed
   // by default so they stop eating a full row above the roster.
   const [maxesOpen, setMaxesOpen] = useState(false)
-  const scale = useGradingScale()
   const { levelName } = useLevels()
 
   const statusLabel: Record<MarksWorkflowStatus, string> = {
@@ -1867,16 +1878,16 @@ function ModuleHeaderCard({
     <div className="card divide-y divide-ink-100 dark:divide-ink-700">
       {/* ── Identity ───────────────────────────────────────────────────── */}
       {!compact && (
-        <div className="p-4 flex items-start justify-between gap-3 flex-wrap">
+        <div className="px-4 py-2.5 flex items-start justify-between gap-3 flex-wrap">
           <div className="min-w-0">
             <div className="flex items-baseline gap-2 flex-wrap">
               <span className="font-mono text-[13px] font-bold text-brand">{moduleH.module_code}</span>
-              <h2 className="text-[17px] font-bold text-ink-900 dark:text-white truncate">
+              <h2 className="text-[15px] font-bold text-ink-900 dark:text-white truncate">
                 {moduleH.module_name}
               </h2>
             </div>
             {facts.length > 0 && (
-              <div className="text-[12.5px] text-ink-500 mt-0.5">{facts.join(' · ')}</div>
+              <div className="text-[12px] text-ink-500 mt-0.5">{facts.join(' · ')}</div>
             )}
           </div>
           <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold shrink-0 ${statusTone[status]}`}>
@@ -1885,131 +1896,154 @@ function ModuleHeaderCard({
         </div>
       )}
 
-      {/* ── Progress: the four numbers plus how far the sheet has got ──── */}
-      <div className="p-4 flex items-center gap-5 flex-wrap">
-        <div className="flex items-center gap-5 flex-wrap">
-          <HeaderStat label="Roster"   value={total} />
-          <HeaderStat label="Recorded" value={recorded} tone={recorded > 0 ? 'good' : undefined} />
-          <HeaderStat label="Unmarked" value={unmarked} tone={unmarked > 0 ? 'warn' : undefined} />
-          <HeaderStat label="Class avg" value={`${summary?.avg_pct ?? 0}%`} />
+      {/* ── Progress: the four numbers as one line, not four tiles ─────── */}
+      <div className="px-4 py-2 flex items-center gap-x-4 gap-y-1.5 flex-wrap text-[12.5px]">
+        <div className="flex items-center gap-3 text-ink-500 shrink-0">
+          <span><b className="text-ink-900 dark:text-white">{total}</b> roster</span>
+          <span className="text-ink-300">·</span>
+          <span><b className={recorded > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-ink-900 dark:text-white'}>{recorded}</b> recorded</span>
+          <span className="text-ink-300">·</span>
+          <span><b className={unmarked > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-ink-900 dark:text-white'}>{unmarked}</b> unmarked</span>
+          <span className="text-ink-300">·</span>
+          <span><b className="text-ink-900 dark:text-white">{summary?.avg_pct ?? 0}%</b> avg</span>
         </div>
-        <div className="flex-1 min-w-[160px]">
-          <div className="flex justify-between text-[11px] text-ink-500 mb-1">
-            <span>Marking progress</span>
-            <span className="font-semibold">{pctDone}%</span>
-          </div>
-          <div className="h-1.5 rounded-full bg-ink-100 dark:bg-ink-700 overflow-hidden">
+        <div className="flex-1 min-w-[140px] flex items-center gap-2">
+          <div className="h-1.5 flex-1 rounded-full bg-ink-100 dark:bg-ink-700 overflow-hidden">
             <div
               className={`h-full rounded-full transition-all ${pctDone === 100 ? 'bg-emerald-500' : 'bg-brand'}`}
               style={{ width: `${pctDone}%` }}
             />
           </div>
+          <span className="text-[11px] font-semibold text-ink-500 shrink-0">{pctDone}% marked</span>
         </div>
       </div>
 
-      {/* ── Mark maxes, collapsed ──────────────────────────────────────── */}
-      <div className="px-4 py-2.5">
-        <button
-          type="button"
-          onClick={() => setMaxesOpen((o) => !o)}
-          className="w-full flex items-center gap-2 text-[12.5px] text-ink-600 dark:text-ink-300 hover:text-brand transition-colors"
-        >
-          <ChevronLeft className={`w-3.5 h-3.5 transition-transform ${maxesOpen ? '-rotate-90' : 'rotate-180'}`} />
-          <span className="font-semibold">Mark maxes</span>
-          <span className="text-ink-400">
-            CAT1 {maxes.cat1} · CAT2 {maxes.cat2} · CAT3 {maxes.cat3} · Partial {maxes.partial} · CATs {maxes.cats} · Final {maxes.final}
-          </span>
-          <span className="ml-auto text-ink-500">
-            Total <span className="font-semibold text-ink-800 dark:text-white">{maxes.cats + maxes.final}</span>
-          </span>
-        </button>
+      {/* ── Maxes and workflow share one row ───────────────────────────── */}
+      <div className="px-4 py-2">
+        <div className="flex items-center gap-x-3 gap-y-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setMaxesOpen((o) => !o)}
+            className="flex items-center gap-1.5 text-[12px] text-ink-600 dark:text-ink-300 hover:text-brand transition-colors shrink-0"
+            title="Set what each column is marked out of"
+          >
+            <ChevronLeft className={`w-3.5 h-3.5 transition-transform ${maxesOpen ? '-rotate-90' : 'rotate-180'}`} />
+            <span className="font-semibold">Maxes</span>
+            {/* The two columns the sheet actually records; the component
+                breakdown stays in the panel below. */}
+            <span className="text-ink-400">
+              CAT {maxes.cats} · Exam {maxes.final} · Total {maxes.cats + maxes.final}
+            </span>
+          </button>
+
+          {!compact && (
+            <div className="ml-auto flex items-center gap-2 flex-wrap">
+              {canWrite && (
+                <>
+                  <button
+                    className="btn-ghost btn-sm"
+                    disabled={wfPending || status === 'claims_open' || status === 'submitted' || status === 'confirmed'}
+                    onClick={() => onWorkflow('open_claims')}
+                    title="Open the 15-day claims window for students to query their marks"
+                  >
+                    <FileCheck className="w-3.5 h-3.5" /> Open claims
+                  </button>
+                  <button
+                    className="btn-ghost btn-sm"
+                    disabled={wfPending || status === 'submitted' || status === 'confirmed'}
+                    onClick={() => onWorkflow('submit')}
+                    title="Submit to faculty & close claims"
+                  >
+                    <SendHorizontal className="w-3.5 h-3.5" /> Submit & close
+                  </button>
+                </>
+              )}
+
+              {/* Confirming and re-opening are registry-only. Rendered separately
+                  from the recorder actions above so a lecturer never sees a
+                  button that would 403 — the backend rejects these regardless. */}
+              {canConfirm && (
+                <>
+                  <button
+                    className="btn-ghost btn-sm"
+                    disabled={wfPending || status !== 'submitted'}
+                    onClick={() => onWorkflow('confirm')}
+                    title="Confirm and send to options — this locks the sheet"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Confirm & send
+                  </button>
+                  <button
+                    className="btn-ghost btn-sm"
+                    disabled={wfPending || status === 'draft'}
+                    onClick={() => onWorkflow('reset')}
+                    title="Re-open editing for this module"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" /> Re-open
+                  </button>
+                </>
+              )}
+
+              {disabled && (
+                <span className="inline-flex items-center gap-1 text-[12px] text-ink-500">
+                  <Lock className="w-3 h-3" /> Read-only
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+
         {maxesOpen && (
           <div className="flex flex-wrap items-center gap-3 text-[13px] pt-3">
+            <MaxField label="CATs"    value={maxes.cats}    onChange={(v) => setMaxes({ ...maxes, cats: v })} disabled={disabled} />
+            <MaxField label="Final"   value={maxes.final}   onChange={(v) => setMaxes({ ...maxes, final: v })} disabled={disabled} />
+            <span className="text-[11.5px] text-ink-400">Component breakdown (historical rows only):</span>
             <MaxField label="CAT1"    value={maxes.cat1}    onChange={(v) => setMaxes({ ...maxes, cat1: v })} disabled={disabled} />
             <MaxField label="CAT2"    value={maxes.cat2}    onChange={(v) => setMaxes({ ...maxes, cat2: v })} disabled={disabled} />
             <MaxField label="CAT3"    value={maxes.cat3}    onChange={(v) => setMaxes({ ...maxes, cat3: v })} disabled={disabled} />
             <MaxField label="Partial" value={maxes.partial} onChange={(v) => setMaxes({ ...maxes, partial: v })} disabled={disabled} />
-            <MaxField label="CATs"    value={maxes.cats}    onChange={(v) => setMaxes({ ...maxes, cats: v })} disabled={disabled} />
-            <MaxField label="Final"   value={maxes.final}   onChange={(v) => setMaxes({ ...maxes, final: v })} disabled={disabled} />
           </div>
         )}
-
-        {/* The bands the Grade column is read off — configured by the registry
-            at /academic/grading-scale, not hardcoded here. */}
-        <div className="flex flex-wrap items-center gap-1.5 pt-2 text-[11px] text-ink-500">
-          <span className="font-semibold uppercase tracking-wide">Grading scale</span>
-          {scale.bands.map((b) => (
-            <span
-              key={b.id}
-              className="rounded border border-ink-200 px-1.5 py-0.5 dark:border-ink-700"
-              title={b.description ?? undefined}
-            >
-              <span className="font-bold text-ink-700 dark:text-ink-200">{b.grade}</span>{' '}
-              {Number(b.min_marks)}–{Number(b.max_marks)}
-            </span>
-          ))}
-        </div>
       </div>
+    </div>
+  )
+}
 
-      {/* ── Workflow ───────────────────────────────────────────────────── */}
-      {!compact && (
-      <div className="p-3 flex flex-wrap items-center gap-2">
-        {canWrite && (
-          <>
-            <button
-              className="btn-ghost btn-sm"
-              disabled={wfPending || status === 'claims_open' || status === 'submitted' || status === 'confirmed'}
-              onClick={() => onWorkflow('open_claims')}
-              title="Open the 15-day claims window for students to query their marks"
-            >
-              <FileCheck className="w-3.5 h-3.5" /> Open claims
-            </button>
-            <button
-              className="btn-ghost btn-sm"
-              disabled={wfPending || status === 'submitted' || status === 'confirmed'}
-              onClick={() => onWorkflow('submit')}
-              title="Submit to faculty & close claims"
-            >
-              <SendHorizontal className="w-3.5 h-3.5" /> Submit & close claims
-            </button>
-          </>
-        )}
-
-        {/* Confirming and re-opening are registry-only. Rendered separately from
-            the recorder actions above so a lecturer never sees a button that
-            would 403 — the backend rejects these regardless of what shows. */}
-        {canConfirm && (
-          <>
-            <button
-              className="btn-ghost btn-sm"
-              disabled={wfPending || status !== 'submitted'}
-              onClick={() => onWorkflow('confirm')}
-              title="Confirm and send to options — this locks the sheet"
-            >
-              <CheckCircle2 className="w-3.5 h-3.5" /> Confirm & send to options
-            </button>
-            <button
-              className="btn-ghost btn-sm ml-auto"
-              disabled={wfPending || status === 'draft'}
-              onClick={() => onWorkflow('reset')}
-              title="Re-open editing for this module"
-            >
-              <RotateCcw className="w-3.5 h-3.5" /> Re-open for editing
-            </button>
-          </>
-        )}
-
-        {disabled && (
-          <span className="inline-flex items-center gap-1 text-[12px] text-ink-500">
-            <Lock className="w-3 h-3" /> Read-only
+/**
+ * Everything that explains the sheet rather than being used to fill it in:
+ * grading bands, which term the rows came from, and who locked it. It sits
+ * BELOW the roster so the marks start near the top of the page — this used to
+ * push the first student under the fold on a laptop.
+ */
+function MarkSheetNotes({
+  scale, status, workflow, canConfirm,
+}: {
+  scale: ReturnType<typeof useGradingScale>
+  status: MarksWorkflowStatus
+  workflow?: MarksWorkflow
+  canConfirm: boolean
+}) {
+  const audit = status === 'confirmed' || status === 'submitted'
+  return (
+    <div className="card px-4 py-2.5 space-y-1.5">
+      {/* The bands the Grade column is read off — configured by the registry
+          at /academic/grading-scale, not hardcoded here. */}
+      <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-ink-500">
+        <span className="font-semibold uppercase tracking-wide">Grading scale</span>
+        {scale.bands.map((b) => (
+          <span
+            key={b.id}
+            className="rounded border border-ink-200 px-1.5 py-0.5 dark:border-ink-700"
+            title={b.description ?? undefined}
+          >
+            <span className="font-bold text-ink-700 dark:text-ink-200">{b.grade}</span>{' '}
+            {Number(b.min_marks)}–{Number(b.max_marks)}
           </span>
-        )}
+        ))}
       </div>
-      )}
 
       {/* A locked sheet is a dead end unless you know who to ask. */}
-      {!compact && (status === 'confirmed' || status === 'submitted') && (
-        <div className="px-4 py-2.5 text-[12px] text-ink-500 flex flex-wrap gap-x-4 gap-y-1">
+      {audit && (
+        <div className="text-[12px] text-ink-500 flex flex-wrap gap-x-4 gap-y-1">
           {status === 'confirmed' && workflow?.confirmed_at && (
             <span>
               <span className="font-semibold text-ink-600 dark:text-ink-300">Confirmed</span>{' '}
