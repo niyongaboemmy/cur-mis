@@ -36,6 +36,7 @@ import BarChart, { type BarDatum } from "@/components/dashboard/BarChart";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import StudentExportModal from "@/components/admin/StudentExportModal";
 import BulkUploadModal from "@/components/admin/BulkUploadModal";
+import DocumentCompletionBadge from "@/components/admin/DocumentCompletionBadge";
 import { academicsMgmtService } from "@/services/academicsMgmtService";
 import type { Student } from "@/types/academic";
 import ProfileChangeReviewPanel from '@/components/students/ProfileChangeReviewPanel'
@@ -1170,6 +1171,7 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
                       currentDir={sort_dir}
                       onSort={handleSort}
                     />
+                    <th className="text-sm font-semibold text-ink-700 dark:text-ink-300 px-4">Documents</th>
                     <th className="w-[60px]"></th>
                   </tr>
                 </thead>
@@ -1353,6 +1355,9 @@ function StudentRow({
         )}
       </td>
       <td>{s.nationality || "—"}</td>
+      <td className="px-4">
+        <DocumentCompletionBadge status="not-started" />
+      </td>
       <td className="text-right pr-4">
         <div className="inline-flex items-center gap-2">
           <Link

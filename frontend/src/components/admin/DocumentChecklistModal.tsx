@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { CheckCircle2, XCircle, Loader2 } from 'lucide-react'
+import { CheckCircle2, XCircle, Loader2, AlertCircle } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 
 interface DocumentItem {
@@ -8,6 +8,11 @@ interface DocumentItem {
   verified: boolean | null
   verified_at?: string
   verified_by?: string
+}
+
+interface MissingDocument {
+  id: string
+  name: string
 }
 
 interface DocumentChecklistModalProps {
@@ -59,6 +64,9 @@ export default function DocumentChecklistModal({
   onSave,
 }: DocumentChecklistModalProps) {
   const [documents, setDocuments] = useState<DocumentItem[]>([])
+  const [missingDocuments, setMissingDocuments] = useState<MissingDocument[]>([])
+  const [newMissingDoc, setNewMissingDoc] = useState('')
+  const [allCompleted, setAllCompleted] = useState(false)
   const [saving, setSaving] = useState(false)
   const programmeKey = programme.toUpperCase().replace(/\s+/g, '')
 
@@ -91,6 +99,20 @@ export default function DocumentChecklistModal({
     )
   }
 
+  const addMissingDocument = () => {
+    if (newMissingDoc.trim()) {
+      setMissingDocuments([
+        ...missingDocuments,
+        { id: `missing-${Date.now()}`, name: newMissingDoc.trim() }
+      ])
+      setNewMissingDoc('')
+    }
+  }
+
+  const removeMissingDocument = (id: string) => {
+    setMissingDocuments(missingDocuments.filter((d) => d.id !== id))
+  }
+
   const handleSave = async () => {
     setSaving(true)
     try {
@@ -107,6 +129,7 @@ export default function DocumentChecklistModal({
 
   const completedCount = documents.filter((d) => d.verified === true).length
   const progress = Math.round((completedCount / documents.length) * 100)
+  const isAllVerified = completedCount === documents.length && missingDocuments.length === 0
 
   return (
     <Modal open={open} onClose={onClose} title={`Document Checklist - ${studentName}`} size="lg">
@@ -191,7 +214,7 @@ export default function DocumentChecklistModal({
         </div>
 
         {/* Legend */}
-        <div className="flex flex-wrap gap-4 text-xs pt-2 border-t border-ink-200 dark:border-ink-700">
+        <div className="flex flex-wrap gap-4 text-xs pt-2 border-t border-ink-200 dark:border-ink-700 pb-4">
           <div className="flex items-center gap-2">
             <div className="w-4 h-4 rounded-full bg-emerald-500" />
             <span className="text-ink-600 dark:text-ink-400">Verified</span>
@@ -205,6 +228,85 @@ export default function DocumentChecklistModal({
             <span className="text-ink-600 dark:text-ink-400">Not checked</span>
           </div>
         </div>
+
+        {/* Missing Documents Section */}
+        <div className="space-y-3 border-t border-ink-200 dark:border-ink-700 pt-4">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+            <h3 className="text-sm font-semibold text-ink-900 dark:text-white">Additional Missing Documents</h3>
+          </div>
+
+          {/* Add missing document input */}
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newMissingDoc}
+              onChange={(e) => setNewMissingDoc(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && addMissingDocument()}
+              placeholder="Type document name and press Enter..."
+              className="input flex-1 text-sm"
+            />
+            <button
+              onClick={addMissingDocument}
+              className="btn-secondary btn-sm px-3"
+              disabled={!newMissingDoc.trim()}
+            >
+              Add
+            </button>
+          </div>
+
+          {/* Missing documents list */}
+          {missingDocuments.length > 0 && (
+            <div className="space-y-2">
+              {missingDocuments.map((doc) => (
+                <div
+                  key={doc.id}
+                  className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800"
+                >
+                  <span className="text-sm text-amber-900 dark:text-amber-300">{doc.name}</span>
+                  <button
+                    onClick={() => removeMissingDocument(doc.id)}
+                    className="text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300"
+                    title="Remove"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Completion Status */}
+        {isAllVerified && (
+          <div className="space-y-3 border-t border-ink-200 dark:border-ink-700 pt-4">
+            <div className="p-4 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border-2 border-emerald-300 dark:border-emerald-700">
+              <div className="flex items-center gap-3">
+                <CheckCircle2 className="w-6 h-6 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-300">
+                    ✓ All Documents Complete
+                  </p>
+                  <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-0.5">
+                    This student's document verification is complete and can be marked as inactive.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <label className="flex items-center gap-3 p-3 rounded-lg bg-ink-50 dark:bg-ink-800 border border-ink-200 dark:border-ink-700 cursor-pointer hover:bg-ink-100 dark:hover:bg-ink-700">
+              <input
+                type="checkbox"
+                checked={allCompleted}
+                onChange={(e) => setAllCompleted(e.target.checked)}
+                className="w-4 h-4 rounded cursor-pointer"
+              />
+              <span className="text-sm font-medium text-ink-900 dark:text-white">
+                Mark all documents as completed
+              </span>
+            </label>
+          </div>
+        )}
 
         {/* Actions */}
         <div className="flex gap-2 justify-end pt-2 border-t border-ink-200 dark:border-ink-700">
