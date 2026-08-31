@@ -99,6 +99,7 @@ import CountrySelect from "@/components/ui/CountrySelect";
 import LocationSelect from "@/components/ui/LocationSelect";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { useLevels } from "@/hooks/useLevels";
+import DocumentChecklistModal from "@/components/admin/DocumentChecklistModal";
 import {
   COUNTRY_BY_NAME,
   COUNTRY_BY_NATIONALITY,
@@ -157,6 +158,7 @@ export default function StudentDetailsPage({
     setSp(next, { replace: true });
   };
   const [isEditing, setIsEditing] = useState(false);
+  const [showDocumentChecklist, setShowDocumentChecklist] = useState(false);
 
   const canManageStudents = usePermission(PERMISSIONS.MANAGE_STUDENTS);
 
@@ -262,6 +264,13 @@ export default function StudentDetailsPage({
                   <FileOutput className="w-3.5 h-3.5" />
                   <span>Generate Documents</span>
                 </button>
+                <button
+                  onClick={() => setShowDocumentChecklist(true)}
+                  className="btn-secondary btn-sm flex items-center gap-1.5 h-7 px-2.5"
+                >
+                  <CheckCircle className="w-3.5 h-3.5" />
+                  <span>Document Checklist</span>
+                </button>
               </>
             )}
           </div>
@@ -356,6 +365,17 @@ export default function StudentDetailsPage({
           onClose={() => setIsEditing(false)}
         />
       )}
+
+      <DocumentChecklistModal
+        open={showDocumentChecklist}
+        onClose={() => setShowDocumentChecklist(false)}
+        studentId={student.regnumber || student.index_number || String(student.id)}
+        studentName={`${student.fname} ${student.lname}`}
+        programme={String(student.programme_name || (student.application as any)?.program_name || "Not specified")}
+        onSave={() => {
+          toast.success("Document checklist saved successfully");
+        }}
+      />
     </div>
   );
 }
