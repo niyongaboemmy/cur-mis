@@ -305,23 +305,23 @@ export default function AdmissionFeesPanel({
                 </span>
               ) : (
                 <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                  {/* Pay Now Button */}
-                  <button className="btn-primary" onClick={() => payNow()}>
-                    <CreditCard className="w-4 h-4" />
-                    {isValidator ? 'Open payment page' : `Pay ${fmt(bill.balance)} RWF`}
-                  </button>
-
-                  {/* Bank Slip Button (Applicant Only) */}
+                  {/* Bank Slip Button (Applicant Only) - Primary alternative */}
                   {!isValidator && (
                     <button
-                      className="btn-secondary"
+                      className="btn-primary"
                       onClick={() => setShowBankSlipModal(true)}
-                      title="View and manage bank slips"
+                      title="Upload or manage bank slip payment"
                     >
                       <FileText className="w-4 h-4" />
                       Bank Slip
                     </button>
                   )}
+
+                  {/* Pay Now Button */}
+                  <button className={isValidator ? "btn-primary" : "btn-secondary"} onClick={() => payNow()}>
+                    <CreditCard className="w-4 h-4" />
+                    {isValidator ? 'Open payment page' : `Pay ${fmt(bill.balance)} RWF`}
+                  </button>
 
                   {/* Bordereau Button (Student Only) */}
                   {!isValidator && (
