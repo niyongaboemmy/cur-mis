@@ -16,6 +16,8 @@ import {
   ChevronUp,
   Receipt,
   CalendarDays,
+  FileText,
+  X,
 } from "lucide-react";
 import { myLedgerService, paymentCalendarService } from "@/services/financeService";
 import { useSystemStore } from "@/store/systemStore";
@@ -75,6 +77,7 @@ export default function MyFinancePage() {
   const [invoiceTab, setInvoiceTab] = useState<InvoiceTab>("all");
   const [showHistory, setShowHistory] = useState(false);
   const [showUssdModal, setShowUssdModal] = useState(false);
+  const [showBankSlipModal, setShowBankSlipModal] = useState(false);
   const [payLoading, setPayLoading] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
 
@@ -245,18 +248,27 @@ export default function MyFinancePage() {
                     {payError}
                   </p>
                 )}
-                <button
-                  onClick={handlePayNow}
-                  disabled={payLoading || !yearId}
-                  className="btn btn-primary flex items-center gap-2 px-5"
-                >
-                  {payLoading ? (
-                    <Loader2 size={15} className="animate-spin" />
-                  ) : (
-                    <Smartphone size={15} />
-                  )}
-                  Pay via Mobile Money
-                </button>
+                <div className="flex flex-col gap-2">
+                  <button
+                    onClick={handlePayNow}
+                    disabled={payLoading || !yearId}
+                    className="btn btn-primary flex items-center gap-2 px-5"
+                  >
+                    {payLoading ? (
+                      <Loader2 size={15} className="animate-spin" />
+                    ) : (
+                      <Smartphone size={15} />
+                    )}
+                    Pay via Mobile Money
+                  </button>
+                  <button
+                    onClick={() => setShowBankSlipModal(true)}
+                    className="btn btn-secondary flex items-center gap-2 px-5"
+                  >
+                    <FileText size={15} />
+                    Bank Slip
+                  </button>
+                </div>
                 <button
                   onClick={() => setShowUssdModal(true)}
                   className="text-[12px] text-ink-400 dark:text-ink-500 hover:text-primary-600 dark:hover:text-primary-400 flex items-center gap-1 transition-colors"
@@ -910,6 +922,37 @@ function MyPaymentCalendarWidget({ yearId }: { yearId: number }) {
             </div>
           )}
         </>
+      )}
+
+      {/* Bank Slip Modal */}
+      {showBankSlipModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 dark:bg-black/70 backdrop-blur-sm p-4">
+          <div className="w-[60%] h-[90vh] max-h-[90vh] bg-white dark:bg-ink-800 rounded-xl shadow-2xl flex flex-col">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-ink-100 dark:border-ink-700 shrink-0">
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-green-600" />
+                <h2 className="text-sm font-semibold text-ink-800 dark:text-white">Bank Slip Management</h2>
+              </div>
+              <button
+                onClick={() => setShowBankSlipModal(false)}
+                className="p-1.5 hover:bg-ink-100 dark:hover:bg-ink-700 rounded-lg transition-colors"
+                title="Close modal"
+              >
+                <X className="w-4 h-4 text-ink-500 dark:text-ink-400" />
+              </button>
+            </div>
+
+            {/* Modal Body - iFrame */}
+            <div className="flex-1 overflow-hidden bg-white dark:bg-ink-900">
+              <iframe
+                src="https://cur.ac.rw/umis/finance/bank_slip/index.php"
+                className="w-full h-full border-none"
+                title="Bank Slip Portal"
+              />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
