@@ -4262,25 +4262,6 @@ function DocumentsTab({
           label="Total"
           value={documents.length + (offer ? 1 : 0)}
         />
-
-        {/* Document Checklist Card - Visible to Registry Staff */}
-        {!selfMode && onOpenChecklist && (
-          <button
-            onClick={onOpenChecklist}
-            className="card p-4 bg-yellow-50 dark:bg-yellow-900/20 border-2 border-yellow-200 dark:border-yellow-700 hover:bg-yellow-100 dark:hover:bg-yellow-900/30 transition-colors flex flex-col items-center justify-center text-center w-full h-full"
-          >
-            <div className="flex items-center justify-center mb-2">
-              <CheckCircle className="w-6 h-6 text-yellow-600 dark:text-yellow-400" />
-            </div>
-            <h3 className="text-xs font-semibold text-yellow-900 dark:text-yellow-300">
-              Document<br />Checklist
-            </h3>
-            <p className="text-[10px] text-yellow-700 dark:text-yellow-400 mt-1">
-              Verify docs
-            </p>
-          </button>
-        )}
-
         <SummaryCard
           tone="emerald"
           icon={ShieldCheck}
@@ -4300,6 +4281,37 @@ function DocumentsTab({
           value={counts.rejected ?? 0}
         />
       </div>
+
+      {/* Document Checklist Card - Full Width */}
+      {!selfMode && onOpenChecklist && (
+        <button
+          onClick={onOpenChecklist}
+          className="card p-4 bg-yellow-50 dark:bg-yellow-900/20 border-2 border-yellow-200 dark:border-yellow-700 hover:bg-yellow-100 dark:hover:bg-yellow-900/30 transition-colors flex items-center gap-4 w-full text-left"
+        >
+          <div className="flex items-center justify-center flex-shrink-0">
+            <div className="w-12 h-12 rounded-lg bg-yellow-200 dark:bg-yellow-900/40 flex items-center justify-center">
+              <CheckCircle className="w-6 h-6 text-yellow-600 dark:text-yellow-400" />
+            </div>
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-sm font-semibold text-yellow-900 dark:text-yellow-300">
+              Document Checklist
+            </h3>
+            <p className="text-xs text-yellow-700 dark:text-yellow-400 mt-0.5">
+              Verify and track student document completion
+            </p>
+          </div>
+          <div className="flex-shrink-0">
+            <button
+              onClick={onOpenChecklist}
+              className="btn-primary btn-sm flex items-center gap-2 whitespace-nowrap"
+            >
+              <CheckCircle className="w-4 h-4" />
+              Open Checklist
+            </button>
+          </div>
+        </button>
+      )}
 
       {offer && <AdmissionLetterRow offer={offer} studentId={studentId} />}
 
