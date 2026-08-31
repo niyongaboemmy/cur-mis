@@ -6,6 +6,7 @@ import {
   BarChart3, TrendingDown, Wallet, Banknote, ArrowRight,
   Clock, XCircle, AlertCircle, Activity,
   Settings2, BookOpenCheck, ShieldCheck, GitMerge, ExternalLink, X,
+  FileText,
 } from "lucide-react";
 import {
   financeReportService, balanceService, billingService,
@@ -41,6 +42,7 @@ export default function FinanceOverviewPage() {
 
   const [payStudent, setPayStudent] = useState<BillingSummary | null>(null);
   const [showFinanceModal, setShowFinanceModal] = useState(false);
+  const [showBankSlipModal, setShowBankSlipModal] = useState(false);
 
   const yearId = resolveYearId(selectedYearLabel, basics);
   const activeYear = basics?.years?.find((y: any) => y.id === yearId) || (basics?.active_year as any);
@@ -361,6 +363,18 @@ export default function FinanceOverviewPage() {
             <h3 className="text-sm font-semibold text-ink-800 dark:text-white">Students Billing Form</h3>
             <p className="text-[11px] text-ink-500 text-center">Various payments and sponsors</p>
           </button>
+
+          {/* Bank Slip Button */}
+          <button
+            onClick={() => setShowBankSlipModal(true)}
+            className="card p-4 flex flex-col items-center justify-center gap-3 hover:shadow-md transition-all hover:scale-105 cursor-pointer bg-gradient-to-br from-green-50/50 to-green-100/50 dark:from-green-900/20 dark:to-green-900/30 border-green-200 dark:border-green-800"
+          >
+            <div className="w-12 h-12 rounded-xl bg-green-600 text-white flex items-center justify-center">
+              <FileText className="w-5 h-5" />
+            </div>
+            <h3 className="text-sm font-semibold text-ink-800 dark:text-white">Bank Slip</h3>
+            <p className="text-[11px] text-ink-500 text-center">Upload and manage</p>
+          </button>
         </div>
       )}
 
@@ -602,6 +616,37 @@ export default function FinanceOverviewPage() {
                 src="https://cur.ac.rw/umis/finance/index.php"
                 className="w-full h-full border-none"
                 title="Finance Portal"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bank Slip Modal */}
+      {showBankSlipModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 dark:bg-black/70 backdrop-blur-sm p-4">
+          <div className="w-[60%] h-[90vh] max-h-[90vh] bg-white dark:bg-ink-800 rounded-xl shadow-2xl flex flex-col">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-ink-100 dark:border-ink-700 shrink-0">
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-green-600" />
+                <h2 className="text-sm font-semibold text-ink-800 dark:text-white">Bank Slip Management</h2>
+              </div>
+              <button
+                onClick={() => setShowBankSlipModal(false)}
+                className="p-1.5 hover:bg-ink-100 dark:hover:bg-ink-700 rounded-lg transition-colors"
+                title="Close modal"
+              >
+                <X className="w-4 h-4 text-ink-500 dark:text-ink-400" />
+              </button>
+            </div>
+
+            {/* Modal Body - iFrame */}
+            <div className="flex-1 overflow-hidden bg-white dark:bg-ink-900">
+              <iframe
+                src="https://cur.ac.rw/umis/finance/bank_slip/index.php"
+                className="w-full h-full border-none"
+                title="Bank Slip Portal"
               />
             </div>
           </div>
