@@ -17,7 +17,6 @@ import {
   Eye,
   Download,
   Upload,
-  FileText,
 } from "lucide-react";
 import {
   studentService,
@@ -1378,26 +1377,15 @@ function StudentRow({
         />
       </td>
       <td className="text-right pr-4">
-        <div className="inline-flex items-center gap-2">
-          <Link
-            to={`/students/${s.id}?tab=documents`}
-            state={{ fromSearch: searchParams?.toString() }}
-            className="btn-secondary btn-sm px-3 py-1.5 rounded-md text-ink-600 dark:text-ink-300 hover:text-brand inline-flex items-center gap-1.5 whitespace-nowrap"
-            title="View Student Documents"
-          >
-            <FileText className="w-3.5 h-3.5" />
-            <span>Documents</span>
-          </Link>
-          <Link
-            to={`/students/${s.id}`}
-            state={{ fromSearch: searchParams?.toString() }}
-            className="btn-secondary btn-sm px-3 py-1.5 rounded-md text-ink-600 dark:text-ink-300 hover:text-brand inline-flex items-center gap-1.5 whitespace-nowrap"
-            title="View Student"
-          >
-            <Eye className="w-3.5 h-3.5" />
-            <span>View</span>
-          </Link>
-        </div>
+        <Link
+          to={`/students/${s.id}`}
+          state={{ fromSearch: searchParams?.toString() }}
+          className="btn-secondary btn-sm px-3 py-1.5 rounded-md text-ink-600 dark:text-ink-300 hover:text-brand inline-flex items-center gap-1.5 whitespace-nowrap"
+          title="View Student"
+        >
+          <Eye className="w-3.5 h-3.5" />
+          <span>View</span>
+        </Link>
       </td>
     </tr>
   );
