@@ -644,7 +644,7 @@ export default function FinanceOverviewPage() {
             {/* Modal Body - iFrame */}
             <div className="flex-1 overflow-hidden bg-white dark:bg-ink-900">
               <iframe
-                src="https://cur.ac.rw/umis/finance/bank_slip/index.php"
+                src="https://cur.ac.rw/umis/finance/bank_slip/index.php?tab=finance"
                 className="w-full h-full border-none"
                 title="Bank Slip Portal"
               />
