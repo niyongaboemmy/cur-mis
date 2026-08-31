@@ -4371,16 +4371,9 @@ function AdmissionLetterRow({
           href={url}
           target="_blank"
           rel="noreferrer"
-          className="btn-secondary btn-sm flex items-center gap-1.5"
-        >
-          <Eye className="w-3.5 h-3.5" /> View
-        </a>
-        <a
-          href={url}
-          download={fileName}
           className="btn-primary btn-sm flex items-center gap-1.5"
         >
-          <Download className="w-3.5 h-3.5" /> Download
+          <Eye className="w-3.5 h-3.5" /> View
         </a>
       </div>
     </div>
