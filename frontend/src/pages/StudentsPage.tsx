@@ -1285,6 +1285,16 @@ function StudentRow({
     open();
   };
 
+  // Determine document status based on student data
+  const getDocumentStatus = (): 'verified' | 'rejected' | 'pending' => {
+    const verification = (s as any)?.verification_status;
+    if (verification === 'verified' || verification === 'approved') return 'verified';
+    if (verification === 'rejected' || verification === 'declined') return 'rejected';
+    return 'pending';
+  };
+
+  const documentStatus = getDocumentStatus();
+
   return (
     <tr
       onClick={onRowClick}
@@ -1356,7 +1366,7 @@ function StudentRow({
       </td>
       <td>{s.nationality || "—"}</td>
       <td className="px-4">
-        <DocumentCompletionBadge status="not-started" />
+        <DocumentCompletionBadge status={documentStatus} />
       </td>
       <td className="text-right pr-4">
         <div className="inline-flex items-center gap-2">
