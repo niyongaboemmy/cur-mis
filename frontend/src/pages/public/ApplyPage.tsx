@@ -138,6 +138,7 @@ const MODE_OF_STUDY_OPTIONS = [
   'Day',
   'Evening',
   'Weekend',
+  'Holiday',
   'Distance Learning',
 ] as const;
 
