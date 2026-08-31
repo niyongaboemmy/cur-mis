@@ -1366,7 +1366,16 @@ function StudentRow({
       </td>
       <td>{s.nationality || "—"}</td>
       <td className="px-4">
-        <DocumentCompletionBadge status={documentStatus} />
+        <DocumentCompletionBadge
+          status={documentStatus}
+          onClick={() => {
+            if (documentStatus === 'pending') {
+              navigate(`/students/${s.id}?tab=documents`, {
+                state: { fromSearch: searchParams?.toString() },
+              });
+            }
+          }}
+        />
       </td>
       <td className="text-right pr-4">
         <div className="inline-flex items-center gap-2">

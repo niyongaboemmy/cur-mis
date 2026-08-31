@@ -346,7 +346,7 @@ export default function StudentDetailsPage({
         )}
         {tab === "attendance" && <AttendanceTab student={student} selfMode={selfMode} />}
         {tab === "documents" && (
-          <DocumentsTab student={student} selfMode={selfMode} />
+          <DocumentsTab student={student} selfMode={selfMode} onOpenChecklist={() => setShowDocumentChecklist(true)} />
         )}
         {tab === "curriculum" && (
           <ProgramCurriculumTab student={student} selfMode={selfMode} />
@@ -4185,9 +4185,11 @@ function DocumentUploadSection() {
 function DocumentsTab({
   student,
   selfMode = false,
+  onOpenChecklist,
 }: {
   student: any;
   selfMode?: boolean;
+  onOpenChecklist?: () => void;
 }) {
   const studentId = student.id;
 
@@ -4279,6 +4281,34 @@ function DocumentsTab({
           value={counts.rejected ?? 0}
         />
       </div>
+
+      {/* Document Checklist Card - Visible to Registry Staff */}
+      {!selfMode && onOpenChecklist && (
+        <div className="card p-5 border-2 border-primary-200 dark:border-primary-800 bg-primary-50/50 dark:bg-primary-900/10">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-lg bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center">
+                <CheckCircle className="w-6 h-6 text-primary-600 dark:text-primary-400" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-ink-900 dark:text-white">
+                  Document Checklist
+                </h3>
+                <p className="text-xs text-ink-500 dark:text-ink-400 mt-0.5">
+                  Verify and track student document completion
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={onOpenChecklist}
+              className="btn-primary btn-sm flex items-center gap-2 whitespace-nowrap"
+            >
+              <CheckCircle className="w-4 h-4" />
+              Open Checklist
+            </button>
+          </div>
+        </div>
+      )}
 
       {offer && <AdmissionLetterRow offer={offer} studentId={studentId} />}
 
