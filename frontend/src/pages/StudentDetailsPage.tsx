@@ -4280,7 +4280,7 @@ function DocumentsTab({
         />
       </div>
 
-      {offer && <AdmissionLetterRow offer={offer} />}
+      {offer && <AdmissionLetterRow offer={offer} studentId={studentId} />}
 
       {documents.length === 0 && !applicationId ? (
         <div className="card p-8 text-center text-ink-500 text-sm">
@@ -4322,6 +4322,7 @@ function DocumentsTab({
  */
 function AdmissionLetterRow({
   offer,
+  studentId,
 }: {
   offer: {
     letter_token: string;
@@ -4329,8 +4330,11 @@ function AdmissionLetterRow({
     letter_sent_at?: string | null;
     application_number?: string | null;
   };
+  studentId?: number;
 }) {
-  const url = studentService.admissionLetterUrl(offer.letter_token);
+  const url = studentId
+    ? `https://cur.ac.rw/umis/documents/all_certificate/generate_document.php?type=admission_letter&student_id=${studentId}&file_name=Admission_Letter_FORMAT.pdf`
+    : studentService.admissionLetterUrl(offer.letter_token);
   const fileName = `admission-letter-${offer.application_number ?? "student"}.pdf`;
   const sent = offer.letter_sent_at
     ? new Date(offer.letter_sent_at).toLocaleDateString()
