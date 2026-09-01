@@ -152,14 +152,14 @@ export function AdminDashboardHeader() {
   const { selectedYear, isViewingCurrent } = useAdminYearSelection()
 
   return (
-    <div className="bg-gradient-to-r from-primary-50 to-primary-100 dark:from-primary-900/20 dark:to-primary-900/10 border border-primary-200 dark:border-primary-800 rounded-lg p-4 mb-4">
-      <div className="flex items-center justify-between">
-        <div>
+    <div className="bg-gradient-to-r from-primary-50 to-primary-100 dark:from-primary-900/20 dark:to-primary-900/10 border border-primary-200 dark:border-primary-800 rounded-lg p-6 mb-4">
+      <div className="flex items-center justify-between gap-6">
+        <div className="flex-1">
           <h1 className="text-2xl font-bold text-ink-900 dark:text-white">
             Admin Dashboard
           </h1>
           {!isViewingCurrent && (
-            <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+            <p className="text-sm text-amber-700 dark:text-amber-300 mt-2">
               🔍 Viewing {selectedYear?.name} (historical data)
             </p>
           )}
