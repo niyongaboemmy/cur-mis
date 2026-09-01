@@ -40,7 +40,7 @@ export default function AdminYearSelector({
   if (compact) {
     return (
       <div className={`flex items-center gap-2 ${className}`}>
-        <Shield className="w-4 h-4 text-primary-600" title="Admin view" />
+        <Shield className="w-4 h-4 text-primary-600" />
         <select
           value={selectedYearId || ''}
           onChange={(e) => setYear(e.target.value ? parseInt(e.target.value) : null)}
@@ -127,7 +127,7 @@ export default function AdminYearSelector({
       {/* Status */}
       <div className="p-3 rounded-lg bg-ink-50 dark:bg-ink-800">
         <p className="text-xs text-ink-600 dark:text-ink-400">
-          <strong>Current view:</strong> {years.find(y => y.id === selectedYearId)?.name || 'Loading...'}
+          <strong>Current view:</strong> {years.find((year: any) => year.id === selectedYearId)?.name || 'Loading...'}
         </p>
         {!isViewingCurrent && (
           <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
@@ -138,7 +138,7 @@ export default function AdminYearSelector({
 
       {/* Show current year info */}
       <div className="text-xs text-ink-500 dark:text-ink-400 pt-2 border-t border-ink-200 dark:border-ink-700">
-        <p><strong>Current Academic Year:</strong> {years.find(y => y.id === currentYearId)?.name}</p>
+        <p><strong>Current Academic Year:</strong> {years.find((year: any) => year.id === currentYearId)?.name}</p>
       </div>
     </div>
   )

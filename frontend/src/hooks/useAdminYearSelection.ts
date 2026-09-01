@@ -53,9 +53,10 @@ export function useAdminYearSelection() {
         body: JSON.stringify({ academic_year_id: academicYearId }),
       })
       if (!res.ok) throw new Error('Failed to set admin year')
-      return res.json()
+      const data = await res.json()
+      return data
     },
-    onSuccess: (data) => {
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin-selected-year'] })
       qc.invalidateQueries({ queryKey: ['admin-dashboard-stats'] })
       toast.success(`Admin view switched to selected year`)

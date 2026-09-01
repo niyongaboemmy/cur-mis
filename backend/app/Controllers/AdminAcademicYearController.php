@@ -1,8 +1,11 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Controllers;
 
-use CodeIgniter\HTTP\ResponseInterface;
+use Core\Request;
+use Core\Response;
 use App\Models\AcademicYear;
 
 /**
@@ -17,12 +20,12 @@ class AdminAcademicYearController extends BaseController
      * GET /api/admin/academic-years
      * Admin only
      */
-    public function getAllYears()
+    public function getAllYears(Request $request, Response $response): never
     {
         try {
             // Check if user is admin
-            if (!$this->isAdmin()) {
-                return $this->respond(['error' => 'Unauthorized - Admin access required'], 403);
+            if (!$this->isAdmin($request)) {
+                $this->error($response, 'Unauthorized - Admin access required', 403);
             }
 
             $academicYearModel = new AcademicYear();
@@ -32,16 +35,15 @@ class AdminAcademicYearController extends BaseController
 
             $currentYear = $academicYearModel->where('is_current', 1)->first();
 
-            return $this->respond([
-                'success' => true,
+            $this->success($response, [
                 'academic_years' => $years,
                 'current_academic_year_id' => $currentYear?->id,
                 'current_academic_year' => $currentYear
             ]);
 
         } catch (\Exception $e) {
-            log_message('error', 'Error getting academic years: ' . $e->getMessage());
-            return $this->respond(['error' => 'Failed to get academic years'], 500);
+            error_log('Error getting academic years: ' . $e->getMessage());
+            $this->error($response, 'Failed to get academic years', 500);
         }
     }
 
@@ -49,15 +51,22 @@ class AdminAcademicYearController extends BaseController
      * Get admin's current year selection (separate from module preferences)
      * GET /api/admin/me/selected-year
      */
-    public function getAdminSelectedYear()
+    public function getAdminSelectedYear(Request $request, Response $response): never
     {
         try {
-            if (!$this->isAdmin()) {
-                return $this->respond(['error' => 'Unauthorized'], 403);
+            if (!$this->isAdmin($request)) {
+                $this->error($response, 'Unauthorized', 403);
             }
 
-            $userId = auth()->id();
-            $selectedYearId = session()->get("admin_year_selection_{$userId}");
+            $user = (array)($request->param('_auth_user') ?? []);
+            $userId = (int)($user['id'] ?? 0);
+
+            // Start session if not started
+            if (session_status() === PHP_SESSION_NONE) {
+                session_start();
+            }
+
+            $selectedYearId = $_SESSION["admin_year_selection_{$userId}"] ?? null;
 
             $academicYearModel = new AcademicYear();
             $selectedYear = null;
@@ -71,8 +80,7 @@ class AdminAcademicYearController extends BaseController
                 $selectedYear = $currentYear;
             }
 
-            return $this->respond([
-                'success' => true,
+            $this->success($response, [
                 'selected_academic_year_id' => $selectedYear->id,
                 'selected_academic_year' => $selectedYear,
                 'current_academic_year_id' => $currentYear->id,
@@ -82,8 +90,8 @@ class AdminAcademicYearController extends BaseController
             ]);
 
         } catch (\Exception $e) {
-            log_message('error', 'Error getting admin year: ' . $e->getMessage());
-            return $this->respond(['error' => 'Failed to get admin year'], 500);
+            error_log('Error getting admin year: ' . $e->getMessage());
+            $this->error($response, 'Failed to get admin year', 500);
         }
     }
 
@@ -92,15 +100,15 @@ class AdminAcademicYearController extends BaseController
      * POST /api/admin/me/selected-year
      * Body: { academic_year_id: 123 }
      */
-    public function setAdminSelectedYear()
+    public function setAdminSelectedYear(Request $request, Response $response): never
     {
         try {
-            if (!$this->isAdmin()) {
-                return $this->respond(['error' => 'Unauthorized'], 403);
+            if (!$this->isAdmin($request)) {
+                $this->error($response, 'Unauthorized', 403);
             }
 
-            $data = $this->request->getJSON();
-            $academicYearId = $data?->academic_year_id;
+            $data = $request->body();
+            $academicYearId = $data['academic_year_id'] ?? null;
 
             // Validate year exists
             if ($academicYearId) {
@@ -108,27 +116,30 @@ class AdminAcademicYearController extends BaseController
                 $academicYear = $academicYearModel->find($academicYearId);
 
                 if (!$academicYear) {
-                    return $this->respond([
-                        'error' => 'Invalid academic year ID',
-                        'academic_year_id' => $academicYearId
-                    ], 400);
+                    $this->error($response, 'Invalid academic year ID', 400, ['academic_year_id' => $academicYearId]);
                 }
             }
 
-            $userId = auth()->id();
-            session()->set("admin_year_selection_{$userId}", $academicYearId);
+            $user = (array)($request->param('_auth_user') ?? []);
+            $userId = (int)($user['id'] ?? 0);
 
-            log_message('info', "Admin {$userId} switched view to year {$academicYearId}");
+            // Start session if not started
+            if (session_status() === PHP_SESSION_NONE) {
+                session_start();
+            }
 
-            return $this->respond([
-                'success' => true,
+            $_SESSION["admin_year_selection_{$userId}"] = $academicYearId;
+
+            error_log("Admin {$userId} switched view to year {$academicYearId}");
+
+            $this->success($response, [
                 'selected_academic_year_id' => $academicYearId,
                 'message' => 'Admin year selection updated'
             ]);
 
         } catch (\Exception $e) {
-            log_message('error', 'Error setting admin year: ' . $e->getMessage());
-            return $this->respond(['error' => 'Failed to set admin year'], 500);
+            error_log('Error setting admin year: ' . $e->getMessage());
+            $this->error($response, 'Failed to set admin year', 500);
         }
     }
 
@@ -136,26 +147,30 @@ class AdminAcademicYearController extends BaseController
      * Reset admin to current year
      * DELETE /api/admin/me/selected-year
      */
-    public function resetAdminYear()
+    public function resetAdminYear(Request $request, Response $response): never
     {
         try {
-            if (!$this->isAdmin()) {
-                return $this->respond(['error' => 'Unauthorized'], 403);
+            if (!$this->isAdmin($request)) {
+                $this->error($response, 'Unauthorized', 403);
             }
 
-            $userId = auth()->id();
-            session()->remove("admin_year_selection_{$userId}");
+            $user = (array)($request->param('_auth_user') ?? []);
+            $userId = (int)($user['id'] ?? 0);
 
-            log_message('info', "Admin {$userId} reset view to current year");
+            // Start session if not started
+            if (session_status() === PHP_SESSION_NONE) {
+                session_start();
+            }
 
-            return $this->respond([
-                'success' => true,
-                'message' => 'Reset to current academic year'
-            ]);
+            unset($_SESSION["admin_year_selection_{$userId}"]);
+
+            error_log("Admin {$userId} reset view to current year");
+
+            $this->success($response, ['message' => 'Reset to current academic year']);
 
         } catch (\Exception $e) {
-            log_message('error', 'Error resetting admin year: ' . $e->getMessage());
-            return $this->respond(['error' => 'Failed to reset admin year'], 500);
+            error_log('Error resetting admin year: ' . $e->getMessage());
+            $this->error($response, 'Failed to reset admin year', 500);
         }
     }
 
@@ -164,15 +179,22 @@ class AdminAcademicYearController extends BaseController
      * GET /api/admin/dashboard-stats
      * Shows data for the year admin is currently viewing
      */
-    public function getDashboardStats()
+    public function getDashboardStats(Request $request, Response $response): never
     {
         try {
-            if (!$this->isAdmin()) {
-                return $this->respond(['error' => 'Unauthorized'], 403);
+            if (!$this->isAdmin($request)) {
+                $this->error($response, 'Unauthorized', 403);
             }
 
-            $userId = auth()->id();
-            $selectedYearId = session()->get("admin_year_selection_{$userId}");
+            $user = (array)($request->param('_auth_user') ?? []);
+            $userId = (int)($user['id'] ?? 0);
+
+            // Start session if not started
+            if (session_status() === PHP_SESSION_NONE) {
+                session_start();
+            }
+
+            $selectedYearId = $_SESSION["admin_year_selection_{$userId}"] ?? null;
 
             $academicYearModel = new AcademicYear();
             if (!$selectedYearId) {
@@ -190,36 +212,31 @@ class AdminAcademicYearController extends BaseController
                 'academic_year_id' => $selectedYearId
             ];
 
-            return $this->respond([
-                'success' => true,
+            $this->success($response, [
                 'stats' => $stats,
                 'academic_year_id' => $selectedYearId
             ]);
 
         } catch (\Exception $e) {
-            log_message('error', 'Error getting dashboard stats: ' . $e->getMessage());
-            return $this->respond(['error' => 'Failed to get stats'], 500);
+            error_log('Error getting dashboard stats: ' . $e->getMessage());
+            $this->error($response, 'Failed to get stats', 500);
         }
     }
 
     /**
      * Check if user is admin
      */
-    private function isAdmin()
+    private function isAdmin(Request $request): bool
     {
-        $user = auth()->user();
-        if (!$user) {
+        $user = (array)($request->param('_auth_user') ?? []);
+        if (empty($user) || empty($user['id'])) {
             return false;
         }
 
         // Check if user has admin role
         $adminRoles = ['administrator', 'superadmin', 'admin'];
-        $userRole = $user->role_id ?? null;
+        $userRole = $user['role'] ?? null;
 
-        // This depends on your permission/role system
-        // Adjust based on your actual implementation
-        return in_array(strtolower($userRole), $adminRoles)
-            || auth()->hasPermission('VIEW_ALL_DATA')
-            || auth()->hasPermission('MANAGE_SYSTEM');
+        return in_array(strtolower($userRole ?? ''), $adminRoles);
     }
 }
