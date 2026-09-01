@@ -48,6 +48,9 @@ export const portalService = {
   getLevels: (signal?: AbortSignal) =>
     api.get<Array<{ id: number; name: string }>>('/api/portal/levels', {}, signal),
 
+  getProgrammeTypes: (signal?: AbortSignal) =>
+    api.get<Array<{ id: number; name: string; display_name: string }>>('/api/portal/programme-types', {}, signal),
+
   getFacultyRequirements: (facultyId: number, signal?: AbortSignal) =>
     api.get<{ academic_year: { id: number; label: string }; faculty_id: number; requirements: AdmissionRequirement[] }>(`/api/portal/faculties/${facultyId}/requirements`, {}, signal),
 
