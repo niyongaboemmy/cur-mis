@@ -596,11 +596,12 @@ export default function ApplicationsListPage() {
                             </button>
                           )}
                           <button
+                            type="button"
                             onClick={() => setEditingApp(a)}
-                            className="btn-secondary btn-sm"
                             title="Edit applicant information"
+                            className="icon-btn text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20"
                           >
-                            <Edit2 className="w-3 h-3" /> Edit
+                            <Edit2 className="w-3.5 h-3.5" />
                           </button>
                           <Link to={`/admin/admissions/applications/${a.id}`} className="btn-secondary btn-sm">
                             View <ChevronRight className="w-3 h-3" />
