@@ -9,7 +9,7 @@ import { StudentApplication } from '@/types/admission';
 interface ApplicationEditModalProps {
   open: boolean;
   onClose: () => void;
-  application: StudentApplication | null;
+  application?: any;
 }
 
 export default function ApplicationEditModal({

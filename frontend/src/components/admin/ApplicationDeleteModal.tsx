@@ -8,7 +8,7 @@ import { StudentApplication } from '@/types/admission';
 interface ApplicationDeleteModalProps {
   open: boolean;
   onClose: () => void;
-  application: StudentApplication | null;
+  application?: any;
 }
 
 export default function ApplicationDeleteModal({
