@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { X, Loader2, AlertTriangle, Save } from 'lucide-react';
+import { Loader2, AlertTriangle, Save } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { applicantService } from '@/services/admissionService';
 import Modal from '@/components/ui/Modal';

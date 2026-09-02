@@ -3,7 +3,6 @@ import { Loader2, AlertTriangle, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import Modal from '@/components/ui/Modal';
-import { StudentApplication } from '@/types/admission';
 
 interface ApplicationDeleteModalProps {
   open: boolean;
