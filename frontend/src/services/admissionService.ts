@@ -628,7 +628,7 @@ export const applicantService = {
     }>(`/api/applicant/application/${id}/timeline`, {}, signal),
 
   updateApplication: (id: number, data: Partial<StudentApplication>) =>
-    api.put<null>(`/api/applicant/application/${id}`, data),
+    api.put<null>(`/api/admin/applications/${id}`, data),
 
   draftApplication: (data: { faculty_id: number; department_id: number; intake: string }) =>
     api.post<{ id: number; application_number: string }>('/api/applicant/application/draft', data),

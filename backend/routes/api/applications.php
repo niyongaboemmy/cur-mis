@@ -109,6 +109,7 @@ $router->group('/api/admin', function ($router) {
         $router->get('/:id',          [ApplicationAdminController::class, 'show']);
         $router->get('/:id/payment-slip', [ApplicationAdminController::class, 'downloadPaymentSlip']);
         $router->get('/:id/photo',        [ApplicationAdminController::class, 'downloadApplicantPhoto']);
+        $router->put('/:id',          [ApplicationAdminController::class, 'updateApplication']);
         $router->delete('/:id',       [ApplicationAdminController::class, 'deleteApplication']);
         $router->post('/:id/status', [ApplicationAdminController::class, 'updateStatus']);
         $router->post('/:id/notes',   [ApplicationAdminController::class, 'addNote']);

@@ -226,6 +226,65 @@ class ApplicationAdminController extends BaseController
      * PATCH /api/admin/applications/:id/status
      * Manually transition application status.
      */
+    /**
+     * PUT /api/admin/applications/:id
+     *
+     * Update application data (personal info, campus, mode of study, level, intake).
+     * Called by admin when editing applicant information via the edit modal.
+     */
+    public function updateApplication(Request $request, Response $response): never
+    {
+        $id          = (int)$request->param('id');
+        $application = $this->appModel->find($id);
+        $authUser    = $request->param('_auth_user');
+        $actorId     = (int)($authUser['id'] ?? 0);
+
+        if (!$application) {
+            $this->error($response, 'Application not found.', 404);
+        }
+
+        $data = $request->body();
+
+        // Whitelist editable fields (prevent updating status, sensitive fields)
+        $allowedFields = [
+            'first_name',
+            'last_name',
+            'email',
+            'phone',
+            'campus_id',
+            'mode_of_study',
+            'level_id',
+            'intake',
+        ];
+
+        $updateData = [];
+        foreach ($allowedFields as $field) {
+            if (array_key_exists($field, $data)) {
+                $updateData[$field] = $data[$field];
+            }
+        }
+
+        if (empty($updateData)) {
+            $this->error($response, 'No valid fields to update.', 422);
+        }
+
+        // Update the application
+        $this->appModel->update($id, $updateData);
+
+        // Log the update
+        SystemLogService::log(
+            'UPDATE',
+            'ADMISSIONS',
+            "Application ID {$id} edited by admin.",
+            $id,
+            'student_application',
+            $updateData,
+            (array) $authUser ?: null
+        );
+
+        $this->success($response, $updateData, 'Application updated successfully.');
+    }
+
     public function updateStatus(Request $request, Response $response): never
     {
         $id          = (int)$request->param('id');
