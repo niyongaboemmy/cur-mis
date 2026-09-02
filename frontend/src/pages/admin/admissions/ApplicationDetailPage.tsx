@@ -329,6 +329,17 @@ export default function ApplicationDetailPage() {
       toast.error(e?.response?.data?.message ?? "Failed to issue offer"),
   });
 
+  const acceptOffer = useMutation({
+    mutationFn: () => applicationAdminService.acceptOfferByAppId(appId),
+    onSuccess: () => {
+      toast.success("Offer accepted. Applicant can now proceed with payment.");
+      qc.invalidateQueries({ queryKey: ["admin", "applications", appId] });
+      qc.invalidateQueries({ queryKey: ["admin", "applications"] });
+    },
+    onError: (e: any) =>
+      toast.error(e?.response?.data?.message ?? "Failed to accept offer"),
+  });
+
   const addNote = useMutation({
     mutationFn: (n: string) =>
       applicationAdminService.addNote(appId, { notes: n }),
@@ -1248,26 +1259,64 @@ export default function ApplicationDetailPage() {
 
           {activeStep === 3 && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-              {/* The real thing: the applicant's Registration and CURSU bills,
-                  priced from the published fee structures and settled through
-                  Urubuto Pay. This replaced a "Simulate registration fee
-                  payment?" button that moved the application forward without any
-                  money changing hands. */}
-              <AdmissionFeesPanel
-                mode="validator"
-                applicationId={appId}
-                canManage={canManage}
-              />
-
-              {maxStep >= 4 && (
-                <div className="flex justify-center">
+              {status === ApplicationStatus.OFFERED ? (
+                <section className="card p-8 text-center">
+                  <CheckCircle2 className="w-16 h-16 text-amber-500/20 mx-auto mb-4" />
+                  <h3 className="text-xl font-black text-ink-900 dark:text-white mb-2">
+                    Accept Admission Offer
+                  </h3>
+                  <p className="text-ink-500 text-[14px] mb-8 max-w-sm mx-auto">
+                    Please accept the admission offer to proceed with payment of
+                    admission fees.
+                  </p>
                   <button
-                    className="btn-secondary"
-                    onClick={() => setActiveStep(4)}
+                    className="btn-primary py-3 px-8 text-[14px] flex items-center justify-center gap-2 mx-auto shadow-xl shadow-brand/20"
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          "Accept this admission offer? The applicant will then need to pay admission fees.",
+                        )
+                      ) {
+                        acceptOffer.mutate();
+                      }
+                    }}
+                    disabled={acceptOffer.isPending}
                   >
-                    Proceed to Step 4 <ChevronRight className="w-4 h-4 ml-2" />
+                    {acceptOffer.isPending ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" /> Accepting...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-5 h-5" /> Accept Offer
+                      </>
+                    )}
                   </button>
-                </div>
+                </section>
+              ) : (
+                <>
+                  {/* The real thing: the applicant's Registration and CURSU bills,
+                      priced from the published fee structures and settled through
+                      Urubuto Pay. This replaced a "Simulate registration fee
+                      payment?" button that moved the application forward without any
+                      money changing hands. */}
+                  <AdmissionFeesPanel
+                    mode="validator"
+                    applicationId={appId}
+                    canManage={canManage}
+                  />
+
+                  {maxStep >= 4 && (
+                    <div className="flex justify-center">
+                      <button
+                        className="btn-secondary"
+                        onClick={() => setActiveStep(4)}
+                      >
+                        Proceed to Step 4 <ChevronRight className="w-4 h-4 ml-2" />
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
