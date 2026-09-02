@@ -6,6 +6,7 @@ namespace App\Controllers;
 
 use Core\Request;
 use Core\Response;
+use Core\Database;
 
 /**
  * Programme Types Controller
@@ -14,26 +15,16 @@ use Core\Response;
 class ProgrammeTypeController extends BaseController
 {
     /**
-     * Get all active programme types
      * GET /api/portal/programme-types
-     * Public endpoint - no authentication required
+     * Returns all active programme types for the application wizard.
      */
     public function getAllTypes(Request $request, Response $response): never
     {
-        try {
-            $db = \Config\Database::connect();
-            $types = $db->table('programme_types')
-                ->where('is_active', 1)
-                ->orderBy('id', 'ASC')
-                ->select('id, name, display_name')
-                ->get()
-                ->getResultArray();
+        $db = Database::getInstance();
+        $types = $db->fetchAll(
+            "SELECT id, name, display_name FROM `programme_types` WHERE is_active = 1 ORDER BY id ASC"
+        );
 
-            $this->success($response, $types);
-
-        } catch (\Exception $e) {
-            error_log('Error getting programme types: ' . $e->getMessage());
-            $this->error($response, 'Failed to get programme types', 500);
-        }
+        $this->success($response, $types, 'Programme types fetched successfully.');
     }
 }
