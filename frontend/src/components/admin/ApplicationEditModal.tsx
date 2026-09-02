@@ -75,72 +75,68 @@ export default function ApplicationEditModal({
               <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">
                 First Name
               </label>
-              <input
-                type="text"
-                className="input mt-1"
-                value={formData.first_name || ''}
-                onChange={(e) => handleChange('first_name', e.target.value)}
-              />
-              <div className="flex items-center gap-1 mt-1">
-                <span className="text-[11px] text-ink-500">Current:</span>
-                <span className={`text-[11px] font-medium ${hasChanges('first_name') ? 'text-amber-600 dark:text-amber-400' : 'text-ink-600 dark:text-ink-400'}`}>
-                  {application?.first_name || '—'}
-                </span>
-                {hasChanges('first_name') && <Check className="w-3 h-3 text-amber-600" />}
+              <div className="relative mt-1">
+                <input
+                  type="text"
+                  className="input"
+                  placeholder={`Current: ${application?.first_name || 'Not set'}`}
+                  value={formData.first_name || ''}
+                  onChange={(e) => handleChange('first_name', e.target.value)}
+                />
+                {hasChanges('first_name') && (
+                  <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-600" />
+                )}
               </div>
             </div>
             <div>
               <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">
                 Last Name
               </label>
-              <input
-                type="text"
-                className="input mt-1"
-                value={formData.last_name || ''}
-                onChange={(e) => handleChange('last_name', e.target.value)}
-              />
-              <div className="flex items-center gap-1 mt-1">
-                <span className="text-[11px] text-ink-500">Current:</span>
-                <span className={`text-[11px] font-medium ${hasChanges('last_name') ? 'text-amber-600 dark:text-amber-400' : 'text-ink-600 dark:text-ink-400'}`}>
-                  {application?.last_name || '—'}
-                </span>
-                {hasChanges('last_name') && <Check className="w-3 h-3 text-amber-600" />}
+              <div className="relative mt-1">
+                <input
+                  type="text"
+                  className="input"
+                  placeholder={`Current: ${application?.last_name || 'Not set'}`}
+                  value={formData.last_name || ''}
+                  onChange={(e) => handleChange('last_name', e.target.value)}
+                />
+                {hasChanges('last_name') && (
+                  <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-600" />
+                )}
               </div>
             </div>
             <div>
               <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">
                 Email
               </label>
-              <input
-                type="email"
-                className="input mt-1"
-                value={formData.email || ''}
-                onChange={(e) => handleChange('email', e.target.value)}
-              />
-              <div className="flex items-center gap-1 mt-1">
-                <span className="text-[11px] text-ink-500">Current:</span>
-                <span className={`text-[11px] font-medium ${hasChanges('email') ? 'text-amber-600 dark:text-amber-400' : 'text-ink-600 dark:text-ink-400'}`}>
-                  {application?.email || '—'}
-                </span>
-                {hasChanges('email') && <Check className="w-3 h-3 text-amber-600" />}
+              <div className="relative mt-1">
+                <input
+                  type="email"
+                  className="input"
+                  placeholder={`Current: ${application?.email || 'Not set'}`}
+                  value={formData.email || ''}
+                  onChange={(e) => handleChange('email', e.target.value)}
+                />
+                {hasChanges('email') && (
+                  <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-600" />
+                )}
               </div>
             </div>
             <div>
               <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">
                 Phone
               </label>
-              <input
-                type="tel"
-                className="input mt-1"
-                value={formData.phone || ''}
-                onChange={(e) => handleChange('phone', e.target.value)}
-              />
-              <div className="flex items-center gap-1 mt-1">
-                <span className="text-[11px] text-ink-500">Current:</span>
-                <span className={`text-[11px] font-medium ${hasChanges('phone') ? 'text-amber-600 dark:text-amber-400' : 'text-ink-600 dark:text-ink-400'}`}>
-                  {application?.phone || '—'}
-                </span>
-                {hasChanges('phone') && <Check className="w-3 h-3 text-amber-600" />}
+              <div className="relative mt-1">
+                <input
+                  type="tel"
+                  className="input"
+                  placeholder={`Current: ${application?.phone || 'Not set'}`}
+                  value={formData.phone || ''}
+                  onChange={(e) => handleChange('phone', e.target.value)}
+                />
+                {hasChanges('phone') && (
+                  <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-600" />
+                )}
               </div>
             </div>
           </div>
@@ -156,78 +152,74 @@ export default function ApplicationEditModal({
               <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">
                 Campus ID
               </label>
-              <input
-                type="number"
-                className="input mt-1"
-                value={(formData as any).campus_id || ''}
-                onChange={(e) => handleChange('campus_id' as any, parseInt(e.target.value))}
-              />
-              <div className="flex items-center gap-1 mt-1">
-                <span className="text-[11px] text-ink-500">Current:</span>
-                <span className={`text-[11px] font-medium ${hasChanges('campus_id') ? 'text-amber-600 dark:text-amber-400' : 'text-ink-600 dark:text-ink-400'}`}>
-                  {(application as any)?.campus_id || '—'}
-                </span>
-                {hasChanges('campus_id') && <Check className="w-3 h-3 text-amber-600" />}
+              <div className="relative mt-1">
+                <input
+                  type="number"
+                  className="input"
+                  placeholder={`Current: ${(application as any)?.campus_id || 'Not set'}`}
+                  value={(formData as any).campus_id || ''}
+                  onChange={(e) => handleChange('campus_id' as any, parseInt(e.target.value))}
+                />
+                {hasChanges('campus_id') && (
+                  <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-600" />
+                )}
               </div>
             </div>
             <div>
               <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">
-                Mode of Study ID
+                Mode of Study
               </label>
-              <select
-                className="input mt-1"
-                value={(formData as any).mode_of_study || ''}
-                onChange={(e) => handleChange('mode_of_study' as any, parseInt(e.target.value))}
-              >
-                <option value="">Select Mode</option>
-                <option value={1}>Day</option>
-                <option value={2}>Evening</option>
-                <option value={3}>Weekend</option>
-                <option value={4}>Holiday</option>
-                <option value={5}>Distance Learning</option>
-              </select>
-              <div className="flex items-center gap-1 mt-1">
-                <span className="text-[11px] text-ink-500">Current:</span>
-                <span className={`text-[11px] font-medium ${hasChanges('mode_of_study') ? 'text-amber-600 dark:text-amber-400' : 'text-ink-600 dark:text-ink-400'}`}>
-                  {getModeOfStudyLabel((application as any)?.mode_of_study)}
-                </span>
-                {hasChanges('mode_of_study') && <Check className="w-3 h-3 text-amber-600" />}
+              <div className="relative mt-1">
+                <select
+                  className="input appearance-none pr-8"
+                  title={`Current: ${getModeOfStudyLabel((application as any)?.mode_of_study)}`}
+                  value={(formData as any).mode_of_study || ''}
+                  onChange={(e) => handleChange('mode_of_study' as any, parseInt(e.target.value))}
+                >
+                  <option value="" disabled>Current: {getModeOfStudyLabel((application as any)?.mode_of_study)}</option>
+                  <option value={1}>Day</option>
+                  <option value={2}>Evening</option>
+                  <option value={3}>Weekend</option>
+                  <option value={4}>Holiday</option>
+                  <option value={5}>Distance Learning</option>
+                </select>
+                {hasChanges('mode_of_study') && (
+                  <Check className="absolute right-8 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-600" />
+                )}
               </div>
             </div>
             <div>
               <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">
                 Level ID
               </label>
-              <input
-                type="number"
-                className="input mt-1"
-                value={(formData as any).level_id || ''}
-                onChange={(e) => handleChange('level_id' as any, parseInt(e.target.value))}
-              />
-              <div className="flex items-center gap-1 mt-1">
-                <span className="text-[11px] text-ink-500">Current:</span>
-                <span className={`text-[11px] font-medium ${hasChanges('level_id') ? 'text-amber-600 dark:text-amber-400' : 'text-ink-600 dark:text-ink-400'}`}>
-                  {(application as any)?.level_id || '—'}
-                </span>
-                {hasChanges('level_id') && <Check className="w-3 h-3 text-amber-600" />}
+              <div className="relative mt-1">
+                <input
+                  type="number"
+                  className="input"
+                  placeholder={`Current: ${(application as any)?.level_id || 'Not set'}`}
+                  value={(formData as any).level_id || ''}
+                  onChange={(e) => handleChange('level_id' as any, parseInt(e.target.value))}
+                />
+                {hasChanges('level_id') && (
+                  <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-600" />
+                )}
               </div>
             </div>
             <div>
               <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">
                 Intake
               </label>
-              <input
-                type="text"
-                className="input mt-1"
-                value={formData.intake || ''}
-                onChange={(e) => handleChange('intake', e.target.value)}
-              />
-              <div className="flex items-center gap-1 mt-1">
-                <span className="text-[11px] text-ink-500">Current:</span>
-                <span className={`text-[11px] font-medium ${hasChanges('intake') ? 'text-amber-600 dark:text-amber-400' : 'text-ink-600 dark:text-ink-400'}`}>
-                  {application?.intake || '—'}
-                </span>
-                {hasChanges('intake') && <Check className="w-3 h-3 text-amber-600" />}
+              <div className="relative mt-1">
+                <input
+                  type="text"
+                  className="input"
+                  placeholder={`Current: ${application?.intake || 'Not set'}`}
+                  value={formData.intake || ''}
+                  onChange={(e) => handleChange('intake', e.target.value)}
+                />
+                {hasChanges('intake') && (
+                  <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-600" />
+                )}
               </div>
             </div>
           </div>
