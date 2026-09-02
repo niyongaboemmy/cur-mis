@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Loader2, AlertTriangle, Save, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -21,6 +21,13 @@ export default function ApplicationEditModal({
   const [formData, setFormData] = useState<Partial<StudentApplication>>(
     application || {}
   );
+
+  // Update formData when application prop changes
+  useEffect(() => {
+    if (application) {
+      setFormData({ ...application });
+    }
+  }, [application, open]);
 
   // Update form data when application changes
   const handleChange = (field: keyof StudentApplication, value: any) => {
@@ -79,7 +86,6 @@ export default function ApplicationEditModal({
                 <input
                   type="text"
                   className="input"
-                  placeholder={`Current: ${application?.first_name || 'Not set'}`}
                   value={formData.first_name || ''}
                   onChange={(e) => handleChange('first_name', e.target.value)}
                 />
@@ -96,7 +102,6 @@ export default function ApplicationEditModal({
                 <input
                   type="text"
                   className="input"
-                  placeholder={`Current: ${application?.last_name || 'Not set'}`}
                   value={formData.last_name || ''}
                   onChange={(e) => handleChange('last_name', e.target.value)}
                 />
@@ -113,7 +118,6 @@ export default function ApplicationEditModal({
                 <input
                   type="email"
                   className="input"
-                  placeholder={`Current: ${application?.email || 'Not set'}`}
                   value={formData.email || ''}
                   onChange={(e) => handleChange('email', e.target.value)}
                 />
@@ -130,7 +134,6 @@ export default function ApplicationEditModal({
                 <input
                   type="tel"
                   className="input"
-                  placeholder={`Current: ${application?.phone || 'Not set'}`}
                   value={formData.phone || ''}
                   onChange={(e) => handleChange('phone', e.target.value)}
                 />
@@ -156,9 +159,8 @@ export default function ApplicationEditModal({
                 <input
                   type="number"
                   className="input"
-                  placeholder={`Current: ${(application as any)?.campus_id || 'Not set'}`}
                   value={(formData as any).campus_id || ''}
-                  onChange={(e) => handleChange('campus_id' as any, parseInt(e.target.value))}
+                  onChange={(e) => handleChange('campus_id' as any, parseInt(e.target.value) || '')}
                 />
                 {hasChanges('campus_id') && (
                   <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-600" />
@@ -172,11 +174,10 @@ export default function ApplicationEditModal({
               <div className="relative mt-1">
                 <select
                   className="input appearance-none pr-8"
-                  title={`Current: ${getModeOfStudyLabel((application as any)?.mode_of_study)}`}
                   value={(formData as any).mode_of_study || ''}
-                  onChange={(e) => handleChange('mode_of_study' as any, parseInt(e.target.value))}
+                  onChange={(e) => handleChange('mode_of_study' as any, parseInt(e.target.value) || '')}
                 >
-                  <option value="" disabled>Current: {getModeOfStudyLabel((application as any)?.mode_of_study)}</option>
+                  <option value="">Select Mode</option>
                   <option value={1}>Day</option>
                   <option value={2}>Evening</option>
                   <option value={3}>Weekend</option>
@@ -196,9 +197,8 @@ export default function ApplicationEditModal({
                 <input
                   type="number"
                   className="input"
-                  placeholder={`Current: ${(application as any)?.level_id || 'Not set'}`}
                   value={(formData as any).level_id || ''}
-                  onChange={(e) => handleChange('level_id' as any, parseInt(e.target.value))}
+                  onChange={(e) => handleChange('level_id' as any, parseInt(e.target.value) || '')}
                 />
                 {hasChanges('level_id') && (
                   <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-600" />
@@ -213,7 +213,6 @@ export default function ApplicationEditModal({
                 <input
                   type="text"
                   className="input"
-                  placeholder={`Current: ${application?.intake || 'Not set'}`}
                   value={formData.intake || ''}
                   onChange={(e) => handleChange('intake', e.target.value)}
                 />
