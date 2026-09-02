@@ -50,6 +50,8 @@ import AdmissionFeesPanel from "@/components/admission/AdmissionFeesPanel";
 import { PERMISSIONS } from "@/constants";
 import { usePermission } from "@/utils/permissions";
 import { useLevels } from "@/hooks/useLevels";
+import ApplicationEditModal from "@/components/admin/ApplicationEditModal";
+import ApplicationDeleteModal from "@/components/admin/ApplicationDeleteModal";
 
 const STATUS_OPTIONS: ApplicationStatus[] = [
   ApplicationStatus.SUBMITTED,
@@ -238,6 +240,8 @@ export default function ApplicationDetailPage() {
   const [activeStep, setActiveStep] = useState(1);
   const [selectedLevelId, setSelectedLevelId] = useState<number>(1);
   const [photoLightboxOpen, setPhotoLightboxOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
   const appQ = useQuery({
     queryKey: ["admin", "applications", appId],
@@ -495,7 +499,21 @@ export default function ApplicationDetailPage() {
             <p className="text-[10px] uppercase tracking-widest font-black text-ink-400">
               Application Options
             </p>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+              <button
+                className="btn-secondary btn-sm"
+                onClick={() => setIsEditModalOpen(true)}
+                title="Edit applicant information"
+              >
+                Edit
+              </button>
+              <button
+                className="btn-secondary btn-sm !text-red-600 hover:!bg-red-50 dark:hover:!bg-red-900/10"
+                onClick={() => setIsDeleteModalOpen(true)}
+                title="Delete application and request resubmission"
+              >
+                Delete
+              </button>
               <select
                 className="input py-1.5 text-[12px] w-40"
                 value={status}
@@ -1671,6 +1689,18 @@ export default function ApplicationDetailPage() {
         onClose={() => setPhotoLightboxOpen(false)}
         url={applicationAdminService.photoUrl(appId, (app as any).applicant_photo_id ?? null)}
         caption={`${app.first_name ?? ''} ${app.last_name ?? ''}`.trim() || app.application_number}
+      />
+
+      <ApplicationEditModal
+        open={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        application={appData}
+      />
+
+      <ApplicationDeleteModal
+        open={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        application={appData}
       />
     </div>
   );
