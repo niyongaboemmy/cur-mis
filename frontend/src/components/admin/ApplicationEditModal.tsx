@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, AlertTriangle, Save } from 'lucide-react';
+import { Loader2, AlertTriangle, Save, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { applicantService } from '@/services/admissionService';
 import Modal from '@/components/ui/Modal';
@@ -45,6 +45,21 @@ export default function ApplicationEditModal({
     },
   });
 
+  const getModeOfStudyLabel = (id: number | undefined) => {
+    const modes: Record<number, string> = {
+      1: 'Day',
+      2: 'Evening',
+      3: 'Weekend',
+      4: 'Holiday',
+      5: 'Distance Learning',
+    };
+    return modes[id || 0] || 'Not set';
+  };
+
+  const hasChanges = (field: string) => {
+    return formData[field as keyof StudentApplication] !== application?.[field];
+  };
+
   if (!application) return null;
 
   return (
@@ -66,6 +81,13 @@ export default function ApplicationEditModal({
                 value={formData.first_name || ''}
                 onChange={(e) => handleChange('first_name', e.target.value)}
               />
+              <div className="flex items-center gap-1 mt-1">
+                <span className="text-[11px] text-ink-500">Current:</span>
+                <span className={`text-[11px] font-medium ${hasChanges('first_name') ? 'text-amber-600 dark:text-amber-400' : 'text-ink-600 dark:text-ink-400'}`}>
+                  {application?.first_name || '—'}
+                </span>
+                {hasChanges('first_name') && <Check className="w-3 h-3 text-amber-600" />}
+              </div>
             </div>
             <div>
               <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">
@@ -77,6 +99,13 @@ export default function ApplicationEditModal({
                 value={formData.last_name || ''}
                 onChange={(e) => handleChange('last_name', e.target.value)}
               />
+              <div className="flex items-center gap-1 mt-1">
+                <span className="text-[11px] text-ink-500">Current:</span>
+                <span className={`text-[11px] font-medium ${hasChanges('last_name') ? 'text-amber-600 dark:text-amber-400' : 'text-ink-600 dark:text-ink-400'}`}>
+                  {application?.last_name || '—'}
+                </span>
+                {hasChanges('last_name') && <Check className="w-3 h-3 text-amber-600" />}
+              </div>
             </div>
             <div>
               <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">
@@ -88,6 +117,13 @@ export default function ApplicationEditModal({
                 value={formData.email || ''}
                 onChange={(e) => handleChange('email', e.target.value)}
               />
+              <div className="flex items-center gap-1 mt-1">
+                <span className="text-[11px] text-ink-500">Current:</span>
+                <span className={`text-[11px] font-medium ${hasChanges('email') ? 'text-amber-600 dark:text-amber-400' : 'text-ink-600 dark:text-ink-400'}`}>
+                  {application?.email || '—'}
+                </span>
+                {hasChanges('email') && <Check className="w-3 h-3 text-amber-600" />}
+              </div>
             </div>
             <div>
               <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">
@@ -99,6 +135,13 @@ export default function ApplicationEditModal({
                 value={formData.phone || ''}
                 onChange={(e) => handleChange('phone', e.target.value)}
               />
+              <div className="flex items-center gap-1 mt-1">
+                <span className="text-[11px] text-ink-500">Current:</span>
+                <span className={`text-[11px] font-medium ${hasChanges('phone') ? 'text-amber-600 dark:text-amber-400' : 'text-ink-600 dark:text-ink-400'}`}>
+                  {application?.phone || '—'}
+                </span>
+                {hasChanges('phone') && <Check className="w-3 h-3 text-amber-600" />}
+              </div>
             </div>
           </div>
         </section>
@@ -119,6 +162,13 @@ export default function ApplicationEditModal({
                 value={(formData as any).campus_id || ''}
                 onChange={(e) => handleChange('campus_id' as any, parseInt(e.target.value))}
               />
+              <div className="flex items-center gap-1 mt-1">
+                <span className="text-[11px] text-ink-500">Current:</span>
+                <span className={`text-[11px] font-medium ${hasChanges('campus_id') ? 'text-amber-600 dark:text-amber-400' : 'text-ink-600 dark:text-ink-400'}`}>
+                  {(application as any)?.campus_id || '—'}
+                </span>
+                {hasChanges('campus_id') && <Check className="w-3 h-3 text-amber-600" />}
+              </div>
             </div>
             <div>
               <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">
@@ -136,6 +186,13 @@ export default function ApplicationEditModal({
                 <option value={4}>Holiday</option>
                 <option value={5}>Distance Learning</option>
               </select>
+              <div className="flex items-center gap-1 mt-1">
+                <span className="text-[11px] text-ink-500">Current:</span>
+                <span className={`text-[11px] font-medium ${hasChanges('mode_of_study') ? 'text-amber-600 dark:text-amber-400' : 'text-ink-600 dark:text-ink-400'}`}>
+                  {getModeOfStudyLabel((application as any)?.mode_of_study)}
+                </span>
+                {hasChanges('mode_of_study') && <Check className="w-3 h-3 text-amber-600" />}
+              </div>
             </div>
             <div>
               <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">
@@ -147,6 +204,13 @@ export default function ApplicationEditModal({
                 value={(formData as any).level_id || ''}
                 onChange={(e) => handleChange('level_id' as any, parseInt(e.target.value))}
               />
+              <div className="flex items-center gap-1 mt-1">
+                <span className="text-[11px] text-ink-500">Current:</span>
+                <span className={`text-[11px] font-medium ${hasChanges('level_id') ? 'text-amber-600 dark:text-amber-400' : 'text-ink-600 dark:text-ink-400'}`}>
+                  {(application as any)?.level_id || '—'}
+                </span>
+                {hasChanges('level_id') && <Check className="w-3 h-3 text-amber-600" />}
+              </div>
             </div>
             <div>
               <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">
@@ -158,6 +222,13 @@ export default function ApplicationEditModal({
                 value={formData.intake || ''}
                 onChange={(e) => handleChange('intake', e.target.value)}
               />
+              <div className="flex items-center gap-1 mt-1">
+                <span className="text-[11px] text-ink-500">Current:</span>
+                <span className={`text-[11px] font-medium ${hasChanges('intake') ? 'text-amber-600 dark:text-amber-400' : 'text-ink-600 dark:text-ink-400'}`}>
+                  {application?.intake || '—'}
+                </span>
+                {hasChanges('intake') && <Check className="w-3 h-3 text-amber-600" />}
+              </div>
             </div>
           </div>
         </section>
