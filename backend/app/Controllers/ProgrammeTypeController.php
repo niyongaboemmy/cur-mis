@@ -21,9 +21,21 @@ class ProgrammeTypeController extends BaseController
     public function getAllTypes(Request $request, Response $response): never
     {
         $db = Database::getInstance();
-        $types = $db->fetchAll(
-            "SELECT id, name, display_name FROM `programme_types` WHERE is_active = 1 ORDER BY id ASC"
-        );
+
+        try {
+            $types = $db->fetchAll(
+                "SELECT id, name, display_name FROM `programme_types` WHERE is_active = 1 ORDER BY id ASC"
+            );
+        } catch (\Exception $e) {
+            // Fallback if table doesn't exist (migration not run)
+            $types = [
+                ['id' => 1, 'name' => 'day', 'display_name' => 'Day'],
+                ['id' => 2, 'name' => 'evening', 'display_name' => 'Evening'],
+                ['id' => 3, 'name' => 'weekend', 'display_name' => 'Weekend'],
+                ['id' => 4, 'name' => 'holiday', 'display_name' => 'Holiday'],
+                ['id' => 5, 'name' => 'distance_learning', 'display_name' => 'Distance Learning'],
+            ];
+        }
 
         $this->success($response, $types, 'Programme types fetched successfully.');
     }
