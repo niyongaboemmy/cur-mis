@@ -6,7 +6,7 @@ import {
   Files, Search, ChevronRight, ArrowLeft, ArrowRight, Filter,
   CheckCircle2, Clock, Sparkles, AlertCircle, GraduationCap, FileText,
   Download, FileSpreadsheet, StickyNote, X, MessageSquarePlus,
-  EyeOff, RotateCcw, Upload, Banknote,
+  EyeOff, RotateCcw, Upload, Banknote, Edit2,
 } from 'lucide-react'
 import { applicationAdminService, intakeService } from '@/services/admissionService'
 import { ApplicationStatus, ApplicationPendingNote } from '@/types/admission'
@@ -16,6 +16,7 @@ import ApplicationsDashboard from './ApplicationsDashboard'
 import { useAuthStore } from '@/store/authStore'
 import SharedBulkUploadModal from '@/components/admin/BulkUploadModal'
 import DateRangeFilter, { type DateRangeValue } from '@/components/ui/DateRangeFilter'
+import ApplicationEditModal from '@/components/admin/ApplicationEditModal'
 
 // On the admin side we relabel `submitted` → `Pending` so the queue
 // is framed as "awaiting review" rather than the raw state-machine name.
@@ -103,6 +104,8 @@ export default function ApplicationsListPage() {
   const [activeTab, setActiveTab] = useState<'list' | 'dashboard'>('list')
   // Submission date window, shared by the list, the stat tiles and the exports.
   const [dateRange, setDateRange] = useState<DateRangeValue>({ from: '', to: '' })
+  // Edit modal state
+  const [editingApp, setEditingApp] = useState<any>(null)
 
   const intakesQ = useQuery({ queryKey: ['admin', 'intakes'], queryFn: () => intakeService.list() })
   const intakes = intakesQ.data?.data ?? []
@@ -592,6 +595,13 @@ export default function ApplicationsListPage() {
                               <EyeOff className="w-3.5 h-3.5" />
                             </button>
                           )}
+                          <button
+                            onClick={() => setEditingApp(a)}
+                            className="btn-secondary btn-sm"
+                            title="Edit applicant information"
+                          >
+                            <Edit2 className="w-3 h-3" /> Edit
+                          </button>
                           <Link to={`/admin/admissions/applications/${a.id}`} className="btn-secondary btn-sm">
                             View <ChevronRight className="w-3 h-3" />
                           </Link>
@@ -609,6 +619,12 @@ export default function ApplicationsListPage() {
           </section>
         </>
       )}
+
+      <ApplicationEditModal
+        open={!!editingApp}
+        onClose={() => setEditingApp(null)}
+        application={editingApp}
+      />
 
       <PendingNotesModal
         applicationId={notesAppId}
