@@ -52,17 +52,6 @@ export default function ApplicationEditModal({
     },
   });
 
-  const getModeOfStudyLabel = (id: number | undefined) => {
-    const modes: Record<number, string> = {
-      1: 'Day',
-      2: 'Evening',
-      3: 'Weekend',
-      4: 'Holiday',
-      5: 'Distance Learning',
-    };
-    return modes[id || 0] || 'Not set';
-  };
-
   const hasChanges = (field: string) => {
     return formData[field as keyof StudentApplication] !== application?.[field];
   };
