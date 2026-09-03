@@ -406,10 +406,10 @@ export default function WelcomePage() {
                 variants={fadeUp}
                 initial="hidden"
                 animate="visible"
-                className="text-[32px] md:text-[40px] font-semibold text-white tracking-tight leading-tight"
+                className="text-[32px] md:text-[40px] font-bold italic text-white tracking-tight leading-tight"
               >
                 {greeting},<br />
-                <span className="text-gold-300">{firstName}.</span>
+                <span className="text-gold-300 font-bold italic">{firstName}.</span>
               </motion.h1>
 
               <motion.p
