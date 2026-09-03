@@ -680,11 +680,21 @@ export default function ApplicationDetailsView({
                   } as any,
                 ]}
                 onUpload={async ({ document_type_id, file }) => {
-                  await applicantService.uploadDocument({ document_type_id, file });
-                  // Keep modal open so user can review other rejected documents
-                  setTimeout(() => {
-                    setReuploadDoc(null);
-                  }, 1500);
+                  try {
+                    // Delete existing rejected document first
+                    if (reuploadDoc.document_id) {
+                      await applicantService.deleteDocument(reuploadDoc.document_id);
+                    }
+                    // Upload new document
+                    await applicantService.uploadDocument({ document_type_id, file });
+                    // Keep modal open so user can review other rejected documents
+                    setTimeout(() => {
+                      setReuploadDoc(null);
+                    }, 1500);
+                  } catch (error) {
+                    console.error('Upload error:', error);
+                    throw error;
+                  }
                 }}
                 invalidateKeys={[
                   ["applicant", "application", application.id],
