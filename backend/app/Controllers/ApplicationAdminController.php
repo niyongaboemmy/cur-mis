@@ -281,58 +281,70 @@ class ApplicationAdminController extends BaseController
         }
 
         // Update the application
-        $this->appModel->update($id, $updateData);
+        try {
+            $this->appModel->update($id, $updateData);
+        } catch (\Throwable $e) {
+            $this->error($response, 'Failed to update application: ' . $e->getMessage(), 500);
+        }
 
         // Fetch updated application with all details and joined names
         $db = \Core\Database::getInstance();
-        $updatedApp = $db->fetchOne("
-            SELECT
-                sa.id,
-                sa.application_number,
-                sa.first_name,
-                sa.last_name,
-                sa.email,
-                sa.phone,
-                sa.gender,
-                sa.birthdate,
-                sa.address,
-                sa.nationality,
-                sa.country_of_residence,
-                sa.prev_school,
-                sa.prev_qualification,
-                sa.prev_grade,
-                sa.combination,
-                sa.graduation_year,
-                sa.sponsorship,
-                sa.status,
-                sa.document_status,
-                sa.intake,
-                sa.campus_id,
-                c.name AS campus_name,
-                sa.mode_of_study,
-                pt.display_name AS mode_of_study_name,
-                sa.level_id,
-                lvl.name AS level_name,
-                sa.faculty_id,
-                f.fac_name AS faculty_name,
-                sa.department_id,
-                d.dep_name AS department_name,
-                sa.program_id,
-                p.name AS program_name,
-                sa.academic_year_id,
-                ay.year AS academic_year,
-                sa.created_at,
-                sa.updated_at
-            FROM student_applications sa
-            LEFT JOIN campus c ON sa.campus_id = c.id
-            LEFT JOIN programme_types pt ON sa.mode_of_study = pt.id
-            LEFT JOIN levels lvl ON sa.level_id = lvl.id
-            LEFT JOIN faculty f ON sa.faculty_id = f.fac_id
-            LEFT JOIN departements d ON sa.department_id = d.dep_id
-            LEFT JOIN programs p ON sa.program_id = p.id
-            LEFT JOIN academic_years ay ON sa.academic_year_id = ay.id
-            WHERE sa.id = ?
-        ", [$id]);
+        try {
+            $updatedApp = $db->fetchOne("
+                SELECT
+                    sa.id,
+                    sa.application_number,
+                    sa.first_name,
+                    sa.last_name,
+                    sa.email,
+                    sa.phone,
+                    sa.gender,
+                    sa.birthdate,
+                    sa.address,
+                    sa.nationality,
+                    sa.country_of_residence,
+                    sa.prev_school,
+                    sa.prev_qualification,
+                    sa.prev_grade,
+                    sa.combination,
+                    sa.graduation_year,
+                    sa.sponsorship,
+                    sa.status,
+                    sa.document_status,
+                    sa.intake,
+                    sa.campus_id,
+                    c.name AS campus_name,
+                    sa.mode_of_study,
+                    pt.display_name AS mode_of_study_name,
+                    sa.level_id,
+                    lvl.name AS level_name,
+                    sa.faculty_id,
+                    f.fac_name AS faculty_name,
+                    sa.department_id,
+                    d.dep_name AS department_name,
+                    sa.program_id,
+                    p.name AS program_name,
+                    sa.academic_year_id,
+                    ay.year AS academic_year,
+                    sa.created_at,
+                    sa.updated_at
+                FROM student_applications sa
+                LEFT JOIN campus c ON sa.campus_id = c.id
+                LEFT JOIN programme_types pt ON sa.mode_of_study = pt.id
+                LEFT JOIN levels lvl ON sa.level_id = lvl.id
+                LEFT JOIN faculty f ON sa.faculty_id = f.fac_id
+                LEFT JOIN departements d ON sa.department_id = d.dep_id
+                LEFT JOIN programs p ON sa.program_id = p.id
+                LEFT JOIN academic_years ay ON sa.academic_year_id = ay.id
+                WHERE sa.id = ?
+            ", [$id]);
+        } catch (\Throwable $e) {
+            $this->error($response, 'Failed to fetch updated application: ' . $e->getMessage(), 500);
+        }
+
+        if (!$updatedApp) {
+            $this->error($response, 'Application not found after update.', 404);
+        }
 
         // Log the update
         SystemLogService::log(
