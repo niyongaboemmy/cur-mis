@@ -683,7 +683,13 @@ class ApplicantProfileController extends BaseController
         $alreadyAutoSubmitted = ($application['status'] ?? '') === 'submitted'
             && (int)($application['auto_submitted'] ?? 0) === 1;
 
-        if ($application['status'] !== 'draft' && !$alreadyAutoSubmitted) {
+        // Allow resubmission if application was rejected or changes were requested
+        $canResubmit = in_array($application['status'] ?? '', [
+            'documents_rejected',
+            'requested_changes'
+        ], true);
+
+        if ($application['status'] !== 'draft' && !$alreadyAutoSubmitted && !$canResubmit) {
             $this->error($response, 'Application is already submitted.', 422);
         }
 
@@ -1370,11 +1376,40 @@ class ApplicantProfileController extends BaseController
         $profile   = $request->param('_applicant_profile');
         $profileId = (int)$profile['id'];
         $appId     = (int)$profile['application_id'];
+        $authUser  = $request->param('_auth_user');
+        $email     = (string)($authUser['email'] ?? '');
 
+        // Support multi-application access: allow upload if the document is for:
+        // 1. The profile's linked application, OR
+        // 2. An application with the same email
+        // First, try the profile's linked application
         $application = $this->appModel->find($appId);
+
+        // If profile's app doesn't exist, try fetching from request body or parameter
+        // This handles the case where applicant is uploading to a different application
+        if (!$application && !empty($email)) {
+            // Fetch application by email to support multi-application access
+            $application = $this->db->fetchOne(
+                "SELECT * FROM `student_applications` WHERE email = ? LIMIT 1",
+                [$email]
+            );
+        }
+
         if (!$application) {
             $this->error($response, 'Application not found.', 404);
         }
+
+        // Verify applicant has access to this application
+        $belongsToApplicant =
+            ((int)($profile['application_id'] ?? 0) === (int)$application['id']) ||
+            (($application['email'] ?? '') === $email);
+
+        if (!$belongsToApplicant) {
+            $this->error($response, 'Application not found.', 404);
+        }
+
+        // Update appId to the actual application we're uploading to
+        $appId = (int)$application['id'];
 
         $allowedStatuses = ['draft', 'submitted', 'documents_under_review', 'documents_rejected', 'requested_changes'];
         if (!in_array($application['status'], $allowedStatuses, true)) {
