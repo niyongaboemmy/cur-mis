@@ -61,8 +61,8 @@ export default function ApplicationEditModal({
         <input
           type={type}
           className="input"
-          value={formData[field] || ''}
-          onChange={(e) => handleChange(field, type === 'number' ? parseInt(e.target.value) || '' : e.target.value)}
+          value={(formData as any)[field] || ''}
+          onChange={(e) => handleChange(field as keyof StudentApplication, type === 'number' ? parseInt(e.target.value) || '' : e.target.value)}
         />
         {hasChanges(field) && (
           <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-600" />
@@ -195,8 +195,7 @@ export default function ApplicationEditModal({
         <div className="p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 flex items-start gap-3">
           <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
           <div className="text-[12px] text-amber-700 dark:text-amber-300">
-            <p className="font-medium">Editing will update the application immediately.</p>
-            <p className="mt-1">Changes are logged and cannot be undone. Verify before saving.</p>
+            <p className="font-medium"></p>
           </div>
         </div>
 
