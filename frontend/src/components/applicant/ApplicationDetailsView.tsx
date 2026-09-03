@@ -22,8 +22,6 @@ import {
   Hash,
   Award,
   Sparkles,
-  Upload,
-  Send,
   Loader2,
 } from "lucide-react";
 import { applicantService } from "@/services/admissionService";
@@ -361,95 +359,136 @@ export default function ApplicationDetailsView({
 
           {/* Documents */}
           <Card>
-            <div className="flex items-center justify-between gap-4 mb-2">
-              <SectionHeader
-                title="Required Documents"
-                sub="Upload status and verification."
-                icon={FileText}
-              />
-              {isRejected && allRejectedReuploaded && (
-                <button
-                  onClick={() => setResubmitDialog(true)}
-                  disabled={resubmitMutation.isPending}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-[12px] font-bold uppercase tracking-widest transition-colors shrink-0"
-                >
-                  {resubmitMutation.isPending ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Send className="w-4 h-4" />
-                  )}
-                  Resubmit
-                </button>
-              )}
-            </div>
-            <div className="space-y-3 mt-4">
-              {checklist.length === 0 ? (
-                <p className="text-[12px] text-ink-400 text-center py-6">
-                  No documents required for this program.
-                </p>
-              ) : (
-                checklist.map((item: any) => (
-                  <div
-                    key={item.document_type_id}
-                    className="p-3 rounded-xl border border-ink-100 dark:border-ink-800 flex items-center justify-between gap-4"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div
-                        className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-                          item.uploaded
-                            ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600"
-                            : "bg-ink-50 dark:bg-ink-800 text-ink-400"
-                        }`}
-                      >
-                        <FileText className="w-4 h-4" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-[13px] font-bold text-ink-900 dark:text-white truncate flex items-center gap-2">
-                          {item.document_type_name}
-                          {item.is_required && (
-                            <span className="text-[10px] text-red-500 font-bold uppercase tracking-widest">
-                              Required
-                            </span>
-                          )}
+            {isRejected ? (
+              // When documents are rejected, show upload interface (like registration)
+              <>
+                <SectionHeader
+                  title="Required Documents"
+                  sub="Upload your required attachments."
+                  icon={FileText}
+                />
+                <div className="mt-6 space-y-4">
+                  {/* Status messages */}
+                  {hasRejectedDocs && (
+                    <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/30 rounded-lg flex gap-3">
+                      <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-[13px] font-bold text-red-900 dark:text-red-200">
+                          Documents Rejected
                         </p>
-                        {item.uploaded ? (
-                          <p className="text-[11px] text-ink-500 truncate">
-                            {item.file_original_name}
-                          </p>
-                        ) : (
-                          <p className="text-[11px] text-amber-600 font-medium italic">
-                            Not uploaded yet
-                          </p>
-                        )}
+                        <p className="text-[12px] text-red-800 dark:text-red-300 mt-1">
+                          Please review and re-upload the documents below. Once you've replaced all rejected documents, your application will automatically be resubmitted for review.
+                        </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      {item.uploaded && (
-                        <>
-                          <StatusPillSmall status={item.verification_status} />
-                          <button
-                            onClick={() => setPreviewDoc(item)}
-                            className="p-1.5 rounded-lg hover:bg-ink-100 dark:hover:bg-ink-700 text-ink-500 transition-colors"
-                            title="Preview document"
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                          </button>
-                          {item.verification_status === 'rejected' && (
-                            <button
-                              onClick={() => setReuploadDoc(item)}
-                              className="p-1.5 rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/30 text-amber-600 transition-colors"
-                              title="Re-upload this document"
-                            >
-                              <Upload className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </>
-                      )}
+                  )}
+
+                  {allRejectedReuploaded && (
+                    <div className="p-4 bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-900/30 rounded-lg flex gap-3">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-[13px] font-bold text-emerald-900 dark:text-emerald-200">
+                          All Rejected Documents Replaced
+                        </p>
+                        <p className="text-[12px] text-emerald-800 dark:text-emerald-300 mt-1">
+                          Your application will be automatically resubmitted for review.
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                ))
-              )}
-            </div>
+                  )}
+
+                  {/* Document uploader (like registration step) */}
+                  <DocumentsUploader
+                    requirements={checklist}
+                    uploaded={
+                      (checklist)
+                        .filter((i: any) => i.uploaded)
+                        .map((i: any) => ({
+                          id: i.document_id,
+                          document_type_id: i.document_type_id,
+                          file_original_name: i.file_original_name,
+                          verification_status: i.verification_status,
+                          file_mime: i.file_mime,
+                        })) as any
+                    }
+                    onUpload={async ({ document_type_id, file }) => {
+                      await applicantService.uploadDocument({ document_type_id, file });
+                    }}
+                    invalidateKeys={[["applicant", "application", application.id]]}
+                  />
+                </div>
+              </>
+            ) : (
+              // Normal view for non-rejected applications
+              <>
+                <div className="flex items-center justify-between gap-4 mb-2">
+                  <SectionHeader
+                    title="Required Documents"
+                    sub="Upload status and verification."
+                    icon={FileText}
+                  />
+                </div>
+                <div className="space-y-3 mt-4">
+                  {checklist.length === 0 ? (
+                    <p className="text-[12px] text-ink-400 text-center py-6">
+                      No documents required for this program.
+                    </p>
+                  ) : (
+                    checklist.map((item: any) => (
+                      <div
+                        key={item.document_type_id}
+                        className="p-3 rounded-xl border border-ink-100 dark:border-ink-800 flex items-center justify-between gap-4"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div
+                            className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                              item.uploaded
+                                ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600"
+                                : "bg-ink-50 dark:bg-ink-800 text-ink-400"
+                            }`}
+                          >
+                            <FileText className="w-4 h-4" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-[13px] font-bold text-ink-900 dark:text-white truncate flex items-center gap-2">
+                              {item.document_type_name}
+                              {item.is_required && (
+                                <span className="text-[10px] text-red-500 font-bold uppercase tracking-widest">
+                                  Required
+                                </span>
+                              )}
+                            </p>
+                            {item.uploaded ? (
+                              <p className="text-[11px] text-ink-500 truncate">
+                                {item.file_original_name}
+                              </p>
+                            ) : (
+                              <p className="text-[11px] text-amber-600 font-medium italic">
+                                Not uploaded yet
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {item.uploaded && (
+                            <>
+                              <StatusPillSmall status={item.verification_status} />
+                              <button
+                                onClick={() => setPreviewDoc(item)}
+                                className="p-1.5 rounded-lg hover:bg-ink-100 dark:hover:bg-ink-700 text-ink-500 transition-colors"
+                                title="Preview document"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </>
+            )}
           </Card>
 
           {/* Payment */}
