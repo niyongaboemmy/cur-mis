@@ -1580,15 +1580,35 @@ class ApplicantProfileController extends BaseController
         try {
             $client   = new FileServerClient();
             $uploaded = $client->upload($file);
-        } catch (\RuntimeException $e) {
-            $this->error($response, $e->getMessage(), 422);
+        } catch (\Exception $e) {
+            // Provide more detailed error messages for rejected document re-uploads
+            $errorMsg = $e->getMessage();
+
+            // Check if this is a re-upload scenario and provide helpful context
+            if (in_array($application['status'], ['documents_rejected', 'requested_changes'], true)) {
+                if (strpos($errorMsg, 'Invalid file type') !== false) {
+                    $this->error($response, 'Invalid file format for re-upload. Please ensure the file is in one of the allowed formats: PDF, JPEG, PNG, or WebP.', 422);
+                } elseif (strpos($errorMsg, 'exceeds') !== false) {
+                    $this->error($response, 'Your re-uploaded document is too large. The maximum file size is 5 MB. Please compress your file and try again.', 422);
+                } elseif (strpos($errorMsg, 'Could not reach') !== false) {
+                    $this->error($response, 'We are currently experiencing technical difficulties uploading your document. Please try again in a few moments.', 500);
+                }
+            }
+
+            // Fall back to generic error message
+            $this->error($response, $errorMsg ?: 'Failed to upload document. Please try again.', 422);
+        }
+
+        // Verify upload was successful
+        if (empty($uploaded['id'])) {
+            $this->error($response, 'Upload failed: No file ID returned from storage. Please try again.', 500);
         }
 
         $docId = $this->docModel->upsertForProfile($profileId, $docTypeId, [
             'file_server_id'      => $uploaded['id'],
-            'file_original_name'  => $uploaded['original_name'],
-            'file_size'           => $uploaded['size'],
-            'file_mime'           => $uploaded['mime'],
+            'file_original_name'  => $uploaded['original_name'] ?? $file['name'] ?? 'document',
+            'file_size'           => $uploaded['size'] ?? filesize($file['tmp_name'] ?? '') ?? 0,
+            'file_mime'           => $uploaded['mime'] ?? 'application/octet-stream',
             'verification_status' => 'pending',
             'verified_by'         => null,
             'verified_at'         => null,

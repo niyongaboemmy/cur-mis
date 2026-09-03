@@ -81,7 +81,21 @@ function Row({
       toast.success(`${requirement.document_type_name ?? 'Document'} uploaded successfully`)
       onDone()
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Upload failed'),
+    onError: (e: any) => {
+      const errorMessage = e?.response?.data?.message ?? 'Upload failed'
+      // Provide specific feedback for common issues
+      if (errorMessage.includes('Invalid file type')) {
+        toast.error('Invalid file format. Please use PDF, JPEG, PNG, or WebP.')
+      } else if (errorMessage.includes('exceeds') || errorMessage.includes('too large')) {
+        toast.error('File is too large. Maximum size is 5 MB.')
+      } else if (errorMessage.includes('Could not reach') || errorMessage.includes('technical')) {
+        toast.error('Upload service is temporarily unavailable. Please try again in a moment.')
+      } else if (errorMessage.includes('ERROR') || errorMessage === 'ERROR') {
+        toast.error('Upload failed. Please check the file format and size, then try again.')
+      } else {
+        toast.error(errorMessage)
+      }
+    },
   })
 
   const handleFiles = (files: FileList | null) => {
@@ -97,8 +111,8 @@ function Row({
       }
     }
 
-    if (f.size > 10 * 1024 * 1024) {
-      toast.error('File size exceeds the 10MB limit.')
+    if (f.size > 5 * 1024 * 1024) {
+      toast.error('File size exceeds the 5 MB limit. Please compress your file and try again.')
       return
     }
     upload.mutate(f)

@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document Upload Storage & Acceptance Guide</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 2rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #1a73e8;
+            border-bottom: 3px solid #1a73e8;
+            padding-bottom: 1rem;
+        }
+        h2 {
+            color: #1a73e8;
+            margin-top: 2rem;
+        }
+        .section {
+            margin-bottom: 2rem;
+            padding: 1.5rem;
+            background: #f9f9f9;
+            border-left: 4px solid #1a73e8;
+            border-radius: 4px;
+        }
+        .code-block {
+            background: #263238;
+            color: #aed581;
+            padding: 1rem;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 0.75rem;
+            text-align: left;
+        }
+        th {
+            background: #1a73e8;
+            color: white;
+        }
+        tr:nth-child(even) {
+            background: #f5f5f5;
+        }
+        .status-ok {
+            color: #188038;
+            font-weight: bold;
+        }
+        .status-info {
+            color: #1a73e8;
+            font-weight: bold;
+        }
+        .warning {
+            background: #fff3cd;
+            border-left-color: #ffc107;
+            color: #856404;
+        }
+        .success {
+            background: #d4edda;
+            border-left-color: #28a745;
+            color: #155724;
+        }
+        .error-box {
+            background: #f8d7da;
+            border-left-color: #dc3545;
+            color: #721c24;
+        }
+        ul, ol {
+            margin: 1rem 0;
+            padding-left: 2rem;
+        }
+        li {
+            margin: 0.5rem 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📁 Document Upload Storage & Acceptance Guide</h1>
+
+        <div class="section success">
+            <h3>✅ Current System Status</h3>
+            <p>The document upload system is <strong>fully functional</strong> and accepts documents through a dedicated file server.</p>
+        </div>
+
+        <h2>1. Storage Location</h2>
+        <div class="section">
+            <p><strong>Primary Storage Path:</strong></p>
+            <div class="code-block">/file-server/storage/uploads/</div>
+
+            <p><strong>Metadata Tracking:</strong></p>
+            <div class="code-block">/file-server/storage/uploads/metadata.json</div>
+
+            <p><strong>File Structure:</strong></p>
+            <ul>
+                <li>Files are stored with UUID-based names</li>
+                <li>Original filename and metadata preserved in metadata.json</li>
+                <li>Each file gets a unique ID (UUID v4)</li>
+                <li>Example: <code>a1b2c3d4-e5f6-7890-abcd-ef1234567890.pdf</code></li>
+            </ul>
+        </div>
+
+        <h2>2. Accepted File Types</h2>
+        <div class="section">
+            <p><strong>MIME Types Accepted:</strong></p>
+            <table>
+                <tr>
+                    <th>File Type</th>
+                    <th>MIME Type</th>
+                    <th>Extensions</th>
+                    <th>Max Size</th>
+                </tr>
+                <tr>
+                    <td>PDF Documents</td>
+                    <td><code>application/pdf</code></td>
+                    <td>.pdf</td>
+                    <td rowspan="4">5 MB per file</td>
+                </tr>
+                <tr>
+                    <td>JPEG Images</td>
+                    <td><code>image/jpeg</code></td>
+                    <td>.jpg, .jpeg</td>
+                </tr>
+                <tr>
+                    <td>PNG Images</td>
+                    <td><code>image/png</code></td>
+                    <td>.png</td>
+                </tr>
+                <tr>
+                    <td>WebP Images</td>
+                    <td><code>image/webp</code></td>
+                    <td>.webp</td>
+                </tr>
+            </table>
+        </div>
+
+        <h2>3. Allowed File Extensions</h2>
+        <div class="section">
+            <p><strong>System-wide Allowed Extensions:</strong></p>
+            <div class="code-block">pdf, jpg, jpeg, png, webp</div>
+
+            <p><strong>Faculty-Specific Requirements:</strong></p>
+            <p>Each faculty can configure which document types are required. The allowed extensions can vary by document type. Check the <strong>admission_requirements</strong> table for faculty-specific configurations.</p>
+
+            <div class="warning">
+                <strong>⚠️ Important:</strong> Additional file-type restrictions are configurable per document type in the database table <code>document_types</code> with the column <code>allowed_extensions</code>
+            </div>
+        </div>
+
+        <h2>4. Upload Validation Process</h2>
+        <div class="section">
+            <p>When a document is uploaded, the following checks occur:</p>
+            <ol>
+                <li><strong>File Size Validation</strong>
+                    <ul>
+                        <li>Maximum: 5 MB per file</li>
+                        <li>PHP max upload: 50 MB (configured in file-server/.env)</li>
+                    </ul>
+                </li>
+                <li><strong>MIME Type Validation</strong>
+                    <ul>
+                        <li>Uses actual file content detection (not client-supplied type)</li>
+                        <li>Only 4 MIME types allowed: PDF, JPEG, PNG, WebP</li>
+                    </ul>
+                </li>
+                <li><strong>File Extension Validation</strong>
+                    <ul>
+                        <li>Checked against requirement-specific allowed_extensions</li>
+                        <li>Faculty-based document requirements enforced</li>
+                    </ul>
+                </li>
+                <li><strong>Document Type Validation</strong>
+                    <ul>
+                        <li>Document type must be required for applicant's faculty</li>
+                        <li>International applicants can always upload visa documents</li>
+                    </ul>
+                </li>
+            </ol>
+        </div>
+
+        <h2>5. Application Status Restrictions</h2>
+        <div class="section">
+            <p><strong>Documents can only be uploaded when application status is one of:</strong></p>
+            <table>
+                <tr>
+                    <th>Status</th>
+                    <th>Description</th>
+                </tr>
+                <tr>
+                    <td><code>draft</code></td>
+                    <td>Initial application - not yet submitted</td>
+                </tr>
+                <tr>
+                    <td><code>submitted</code></td>
+                    <td>Application submitted - documents being prepared</td>
+                </tr>
+                <tr>
+                    <td><code>documents_under_review</code></td>
+                    <td>Admin is reviewing documents</td>
+                </tr>
+                <tr>
+                    <td><code>documents_rejected</code></td>
+                    <td>Can re-upload rejected documents</td>
+                </tr>
+                <tr>
+                    <td><code>requested_changes</code></td>
+                    <td>Can re-upload after changes requested</td>
+                </tr>
+            </table>
+        </div>
+
+        <h2>6. Database Storage</h2>
+        <div class="section">
+            <p><strong>Application Documents Table:</strong></p>
+            <div class="code-block">student_applications.id
+application_documents (linked by application_id)</div>
+
+            <p><strong>Document Record Fields:</strong></p>
+            <ul>
+                <li><code>id</code> - Document record ID in database</li>
+                <li><code>application_id</code> - Related application</li>
+                <li><code>document_type_id</code> - Type of document (e.g., passport, diploma)</li>
+                <li><code>file_server_id</code> - UUID of file in file-server storage</li>
+                <li><code>file_original_name</code> - Original filename uploaded</li>
+                <li><code>file_size</code> - File size in bytes</li>
+                <li><code>file_mime</code> - MIME type</li>
+                <li><code>verification_status</code> - pending | verified | rejected</li>
+                <li><code>verification_comment</code> - Feedback on rejection</li>
+            </ul>
+        </div>
+
+        <h2>7. Troubleshooting Upload Errors</h2>
+        <div class="section">
+            <p><strong>Common Error: "ERROR" in feedback</strong></p>
+            <div class="error-box">
+                <p>This typically indicates one of the following issues:</p>
+                <ol>
+                    <li><strong>Invalid File Type:</strong> Only PDF, JPEG, PNG, WebP are allowed</li>
+                    <li><strong>File Too Large:</strong> Maximum 5 MB per file</li>
+                    <li><strong>Wrong Document Type:</strong> Document type not required for your faculty</li>
+                    <li><strong>Wrong Application Status:</strong> Cannot upload at current stage</li>
+                    <li><strong>File Server Unavailable:</strong> Storage service is down</li>
+                </ol>
+            </div>
+
+            <p><strong>Solutions:</strong></p>
+            <ul>
+                <li>Convert file to PDF or JPEG</li>
+                <li>Compress image files to under 5 MB</li>
+                <li>Verify you're uploading the correct document type</li>
+                <li>Wait until next application stage if currently in an upload-restricted status</li>
+                <li>Contact support if file server errors persist</li>
+            </ul>
+        </div>
+
+        <h2>8. API Endpoints</h2>
+        <div class="section">
+            <p><strong>Upload Endpoint:</strong></p>
+            <div class="code-block">POST /api/applicant/documents</div>
+
+            <p><strong>Parameters:</strong></p>
+            <ul>
+                <li><code>document_type_id</code> - Document type ID (required)</li>
+                <li><code>document</code> - File upload (required)</li>
+            </ul>
+
+            <p><strong>Response:</strong></p>
+            <div class="code-block">{
+  "id": 123,
+  "document_type_id": 5,
+  "file_server_id": "uuid-here",
+  "file_original_name": "passport.pdf",
+  "verification_status": "pending"
+}</div>
+        </div>
+
+        <h2>9. File Server Configuration</h2>
+        <div class="section">
+            <p><strong>Configuration File:</strong></p>
+            <div class="code-block">/file-server/.env</div>
+
+            <p><strong>Key Settings:</strong></p>
+            <ul>
+                <li><code>FILE_SERVER_KEY</code> - API key for authentication</li>
+                <li><code>MAX_UPLOAD_SIZE</code> - 50M (server max)</li>
+                <li><code>STORAGE_PATH</code> - /file-server/storage/uploads/</li>
+            </ul>
+        </div>
+
+        <h2>10. Security Features</h2>
+        <div class="section">
+            <div class="success">
+                <ul>
+                    <li>✅ MIME type validation based on file content (not extension)</li>
+                    <li>✅ File size limits enforced (5 MB per file)</li>
+                    <li>✅ UUID-based storage prevents file collisions</li>
+                    <li>✅ Metadata tracking for audit trail</li>
+                    <li>✅ API key authentication for file server</li>
+                    <li>✅ Multi-application access controlled by email verification</li>
+                    <li>✅ Document re-upload support with verification status tracking</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="section info">
+            <h3>For Developers</h3>
+            <p><strong>Key Classes:</strong></p>
+            <ul>
+                <li><code>FileServerClient</code> - Handles file uploads to file-server</li>
+                <li><code>Storage</code> - Manages file storage and metadata (file-server/core/Storage.php)</li>
+                <li><code>ApplicantProfileController::uploadDocument()</code> - Backend upload handler</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>
