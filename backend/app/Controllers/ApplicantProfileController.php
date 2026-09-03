@@ -769,7 +769,10 @@ class ApplicantProfileController extends BaseController
         $this->appModel->update($appId, $updateData);
 
         if (!$alreadyAutoSubmitted) {
-            $this->service->logStatusChange($appId, 'draft', 'submitted', null, 'applicant', 'Application submitted.');
+            // Log status change from the current status to 'submitted'
+            // (could be from 'draft', 'documents_rejected', or 'requested_changes')
+            $fromStatus = $application['status'] ?? 'draft';
+            $this->service->logStatusChange($appId, $fromStatus, 'submitted', null, 'applicant', 'Application submitted.');
         }
 
         // Send a "thank you / submitted successfully" confirmation email,
