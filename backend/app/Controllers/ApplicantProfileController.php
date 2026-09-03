@@ -816,6 +816,7 @@ class ApplicantProfileController extends BaseController
     /**
      * POST /api/applicant/application/:id/resubmit
      * Resubmit an application after documents have been rejected.
+     * Simply delegates to submitApplication since it already handles resubmission.
      */
     public function resubmitApplication(Request $request, Response $response): never
     {
@@ -826,13 +827,18 @@ class ApplicantProfileController extends BaseController
             $this->error($response, 'Application ID is required.', 400);
         }
 
-        // Verify applicant owns this application
-        if ((int)$profile['application_id'] !== $appId) {
+        // Verify applicant owns this application (from profile or by querying)
+        $application = $this->appModel->find($appId);
+        if (!$application) {
             $this->error($response, 'Application not found.', 404);
         }
 
-        $application = $this->appModel->find($appId);
-        if (!$application) {
+        $email = (string)($request->param('_auth_user')['email'] ?? '');
+        $applicantOwnsApp =
+            ((int)$profile['application_id'] === $appId) ||
+            (($application['email'] ?? '') === $email);
+
+        if (!$applicantOwnsApp) {
             $this->error($response, 'Application not found.', 404);
         }
 
@@ -856,46 +862,56 @@ class ApplicantProfileController extends BaseController
             );
         }
 
-        // Update application status to submitted
-        $updateData = [
-            'status'       => 'submitted',
-            'submitted_at' => date('Y-m-d H:i:s'),
-        ];
+        try {
+            // Update application status to submitted
+            $updateData = [
+                'status'       => 'submitted',
+                'submitted_at' => date('Y-m-d H:i:s'),
+            ];
 
-        $this->appModel->update($appId, $updateData);
+            $this->appModel->update($appId, $updateData);
 
-        // Log status change
-        $fromStatus = $application['status'] ?? 'draft';
-        $this->service->logStatusChange($appId, $fromStatus, 'submitted', null, 'applicant', 'Application resubmitted after document rejection.');
+            // Log status change - use the actual current status as the from status
+            $fromStatus = $application['status'] ?? 'draft';
+            $this->service->logStatusChange($appId, $fromStatus, 'submitted', null, 'applicant', 'Application resubmitted after document rejection.');
 
-        // Send resubmission confirmation email
-        $appRow = $this->appModel->find($appId) ?: [];
-        $programName = '';
-        if (!empty($appRow['program_id'])) {
-            $opt = $this->db->fetchOne("SELECT name FROM `options` WHERE id = ? LIMIT 1", [(int)$appRow['program_id']]);
-            $programName = (string)($opt['name'] ?? '');
+            // Refresh application data after update
+            $appRow = $this->appModel->find($appId) ?: [];
+            if (!$appRow) {
+                $this->error($response, 'Failed to update application.', 500);
+            }
+
+            // Send resubmission confirmation email
+            $programName = '';
+            if (!empty($appRow['program_id'])) {
+                $opt = $this->db->fetchOne("SELECT name FROM `options` WHERE id = ? LIMIT 1", [(int)$appRow['program_id']]);
+                $programName = (string)($opt['name'] ?? '');
+            }
+            if ($programName === '' && !empty($appRow['department_id'])) {
+                $dep = $this->db->fetchOne("SELECT dep_name FROM `departements` WHERE dep_id = ? LIMIT 1", [(int)$appRow['department_id']]);
+                $programName = (string)($dep['dep_name'] ?? '');
+            }
+
+            $htmlBody = \App\Helpers\EmailTemplateHelper::applicationSubmittedTemplate(
+                (string)($appRow['first_name'] ?? ''),
+                (string)($appRow['application_number'] ?? ''),
+                $programName,
+                (string)($appRow['intake'] ?? '')
+            );
+            $subject  = 'Application Resubmitted — Catholic University of Rwanda';
+            $textBody = "Dear " . ($appRow['first_name'] ?? 'Applicant') . ", your resubmitted application to the Catholic University of Rwanda has been received. Application number: " . ($appRow['application_number'] ?? '') . ". For queries, contact admissions@cur.ac.rw or +250 788 351 906.";
+
+            $mailService = new \App\Services\MailService();
+            $mailService->send((string)($appRow['email'] ?? ''), $subject, $htmlBody, $textBody);
+
+            $this->success($response, [
+                'status'             => 'submitted',
+                'application_number' => $appRow['application_number'] ?? null,
+            ], 'Application resubmitted successfully. A confirmation email has been sent.');
+        } catch (\Exception $e) {
+            error_log('Resubmit error: ' . $e->getMessage());
+            $this->error($response, 'An error occurred while resubmitting your application. Please try again.', 500);
         }
-        if ($programName === '' && !empty($appRow['department_id'])) {
-            $dep = $this->db->fetchOne("SELECT dep_name FROM `departements` WHERE dep_id = ? LIMIT 1", [(int)$appRow['department_id']]);
-            $programName = (string)($dep['dep_name'] ?? '');
-        }
-
-        $htmlBody = \App\Helpers\EmailTemplateHelper::applicationSubmittedTemplate(
-            $appRow['first_name'] ?? '',
-            $appRow['application_number'] ?? '',
-            $programName,
-            $appRow['intake'] ?? ''
-        );
-        $subject  = 'Application Resubmitted — Catholic University of Rwanda';
-        $textBody = "Dear {$appRow['first_name']}, your resubmitted application to the Catholic University of Rwanda has been received. Application number: " . ($appRow['application_number'] ?? '') . ". For queries, contact admissions@cur.ac.rw or +250 788 351 906.";
-
-        $mailService = new \App\Services\MailService();
-        $mailService->send($appRow['email'] ?? '', $subject, $htmlBody, $textBody);
-
-        $this->success($response, [
-            'status'             => 'submitted',
-            'application_number' => $appRow['application_number'] ?? null,
-        ], 'Application resubmitted successfully. A confirmation email has been sent.');
     }
 
     /**

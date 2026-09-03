@@ -88,7 +88,8 @@ export default function ApplicationDetailsView({
 
   const isRejected = application.status === "documents_rejected" || application.status === "requested_changes";
   const hasRejectedDocs = checklist.some((doc: any) => doc.verification_status === "rejected");
-  const allRejectedReuploaded = !checklist.some(
+  // All rejected documents must have uploads AND at least one must exist
+  const allRejectedReuploaded = hasRejectedDocs && !checklist.some(
     (doc: any) => doc.verification_status === "rejected" && !doc.uploaded
   );
 
@@ -366,7 +367,7 @@ export default function ApplicationDetailsView({
                 sub="Upload status and verification."
                 icon={FileText}
               />
-              {isRejected && allRejectedReuploaded && hasRejectedDocs && (
+              {isRejected && allRejectedReuploaded && (
                 <button
                   onClick={() => setResubmitDialog(true)}
                   disabled={resubmitMutation.isPending}
