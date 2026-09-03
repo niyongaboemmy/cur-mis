@@ -248,23 +248,33 @@ class ApplicationAdminController extends BaseController
 
         // Whitelist editable fields (prevent updating status, sensitive fields)
         $allowedFields = [
+            // Personal Information
             'first_name',
             'last_name',
             'email',
             'phone',
             'gender',
             'birthdate',
-            'address',
-            'nationality',
-            'country_of_residence',
+            'reference_phone',
+            // Academic Background
             'prev_school',
             'prev_qualification',
             'prev_grade',
-            'campus_id',
-            'mode_of_study',
-            'level_id',
+            'combination',
+            'graduation_year',
+            // Sponsorship
+            'sponsorship',
+            'sponsor_name',
+            // Address
+            'address',
+            'nationality',
+            'country_of_residence',
+            // Academic Placement
             'faculty_id',
             'department_id',
+            'campus_id',
+            'level_id',
+            'mode_of_study',
             'intake',
         ];
 
@@ -295,39 +305,12 @@ class ApplicationAdminController extends BaseController
         try {
             $updatedApp = $db->fetchOne("
                 SELECT
-                    sa.id,
-                    sa.application_number,
-                    sa.first_name,
-                    sa.last_name,
-                    sa.email,
-                    sa.phone,
-                    sa.gender,
-                    sa.birthdate,
-                    sa.address,
-                    sa.nationality,
-                    sa.country_of_residence,
-                    sa.prev_school,
-                    sa.prev_qualification,
-                    sa.prev_grade,
-                    sa.combination,
-                    sa.graduation_year,
-                    sa.sponsorship,
-                    sa.status,
-                    sa.document_status,
-                    sa.intake,
-                    sa.campus_id,
-                    sa.mode_of_study,
-                    sa.level_id,
-                    sa.faculty_id,
-                    sa.department_id,
-                    sa.academic_year_id,
-                    sa.created_at,
-                    sa.updated_at,
+                    sa.*,
                     f.fac_name AS faculty_name,
                     d.dep_name AS department_name,
                     lvl.name AS level_name,
                     pt.display_name AS mode_of_study_name,
-                    ay.year AS academic_year
+                    ay.label AS academic_year
                 FROM student_applications sa
                 LEFT JOIN faculty f ON sa.faculty_id = f.fac_id
                 LEFT JOIN departements d ON sa.department_id = d.dep_id

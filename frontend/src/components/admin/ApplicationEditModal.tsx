@@ -203,6 +203,47 @@ export default function ApplicationEditModal({
                 onChange={(e) => handleChange('prev_grade' as any, e.target.value)}
               />
             </div>
+            <div>
+              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">Combination (A-level)</label>
+              <input
+                type="text"
+                className="input mt-1"
+                value={(formData as any).combination || ''}
+                onChange={(e) => handleChange('combination' as any, e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">Graduation Year</label>
+              <input
+                type="number"
+                className="input mt-1"
+                value={(formData as any).graduation_year || ''}
+                onChange={(e) => handleChange('graduation_year' as any, parseInt(e.target.value) || '')}
+              />
+            </div>
+            <div>
+              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">Sponsorship</label>
+              <select
+                className="input appearance-none pr-8 mt-1"
+                value={(formData as any).sponsorship || ''}
+                onChange={(e) => handleChange('sponsorship' as any, e.target.value)}
+              >
+                <option value="">Select Sponsorship</option>
+                <option value="government">Government</option>
+                <option value="self">Self</option>
+                <option value="private">Private</option>
+                <option value="scholarship">Scholarship</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">Sponsor Name</label>
+              <input
+                type="text"
+                className="input mt-1"
+                value={(formData as any).sponsor_name || ''}
+                onChange={(e) => handleChange('sponsor_name' as any, e.target.value)}
+              />
+            </div>
           </div>
         </section>
 
