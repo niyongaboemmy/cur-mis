@@ -1666,8 +1666,27 @@ class ApplicantProfileController extends BaseController
 
         $document = $this->docModel->find($id);
 
-        // Verify document exists and belongs to the authenticated applicant's profile
-        if (!$document || (int)$document['applicant_profile_id'] !== (int)$profile['id']) {
+        // Verify document exists and belongs to the authenticated applicant's application
+        // Both applicant_profile_id and application_id may be NULL for legacy documents,
+        // so we verify using application_id which is guaranteed to match the profile
+        if (!$document) {
+            $this->error($response, 'Document not found.', 404);
+        }
+
+        $profileAppId = (int)($profile['application_id'] ?? 0);
+        $docAppId = (int)($document['application_id'] ?? 0);
+
+        // If application_id is set, verify it matches; otherwise fall back to applicant_profile_id
+        if ($profileAppId > 0 && $docAppId > 0) {
+            if ($docAppId !== $profileAppId) {
+                $this->error($response, 'Document not found.', 404);
+            }
+        } elseif ((int)($document['applicant_profile_id'] ?? 0) > 0) {
+            if ((int)$document['applicant_profile_id'] !== (int)$profile['id']) {
+                $this->error($response, 'Document not found.', 404);
+            }
+        } else {
+            // Neither verification method available
             $this->error($response, 'Document not found.', 404);
         }
 
