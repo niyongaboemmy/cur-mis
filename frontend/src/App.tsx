@@ -125,6 +125,9 @@ import TeacherCalendarPage from "@/pages/teacher/TeacherCalendarPage";
 import TeacherExamsPage from "@/pages/teacher/TeacherExamsPage";
 import TeacherExamAttendancePage from "@/pages/teacher/TeacherExamAttendancePage";
 
+// Registrar
+import RegistrarReportPage from "@/pages/registrar/RegistrarReportPage";
+
 // Finance
 import FinanceHub from "@/pages/finance/FinanceHub";
 import FinanceOverviewPage from "@/pages/finance/FinanceOverviewPage";
@@ -958,6 +961,9 @@ function App() {
                   </Route>
                 </Route>
               </Route>
+
+              {/* ── Registrar ── */}
+              <Route path="/registrar/report" element={<RegistrarReportPage />} />
 
               {/* ── Exams ── */}
               <Route
