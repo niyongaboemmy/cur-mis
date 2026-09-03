@@ -383,7 +383,6 @@ export default function ApplicationDetailsView({
               ) : (
                 checklist.map((item: any) => {
                   const isRejectedDoc = item.verification_status === 'rejected';
-                  const needsUpload = !item.uploaded || isRejectedDoc;
 
                   return (
                     <div
@@ -427,7 +426,7 @@ export default function ApplicationDetailsView({
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0">
-                        {item.uploaded && !isRejected && (
+                        {item.uploaded && !isRejectedDoc && (
                           <>
                             <StatusPillSmall status={item.verification_status} />
                             <button
@@ -440,7 +439,7 @@ export default function ApplicationDetailsView({
                           </>
                         )}
 
-                        {isRejected && needsUpload && (
+                        {isRejectedDoc && (
                           <button
                             onClick={() => setReuploadDoc(item)}
                             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[12px] font-bold uppercase tracking-wider transition-colors"
