@@ -923,15 +923,23 @@ class ApplicantProfileController extends BaseController
     {
         $appId = (int)$request->param('id');
         $profile = $request->param('_applicant_profile');
+        $authUser = $request->param('_auth_user');
+        $email = (string)($authUser['email'] ?? '');
 
-        // Verify the application belongs to the authenticated applicant
-        if ((int)($profile['application_id'] ?? 0) !== $appId) {
-            $this->error($response, 'Application not found.', 404);
-        }
-
+        // Verify the application belongs to the authenticated applicant by checking:
+        // 1. Application matches the profile's linked application, OR
+        // 2. Application email matches the authenticaed user's email
         $application = $this->appModel->getWithDetails($appId);
 
         if (!$application) {
+            $this->error($response, 'Application not found.', 404);
+        }
+
+        $belongsToApplicant =
+            ((int)($profile['application_id'] ?? 0) === $appId) ||
+            (($application['email'] ?? '') === $email);
+
+        if (!$belongsToApplicant) {
             $this->error($response, 'Application not found.', 404);
         }
 
