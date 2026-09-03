@@ -17,6 +17,11 @@ export interface User {
     code: string | null;
     location: string | null;
   }>;
+  /** Current one-time passcode on the users table. Null when none is set. */
+  otp_code?: string | null;
+  otp_expires_at?: string | null;
+  /** Server-computed: 'active' (unexpired), 'expired', or 'none'. */
+  otp_status?: 'active' | 'expired' | 'none';
 }
 
 export interface UserListResponse {

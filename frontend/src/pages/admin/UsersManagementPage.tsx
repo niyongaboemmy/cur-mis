@@ -24,6 +24,7 @@ import {
   Building2,
   Trash2,
   HelpCircle,
+  KeyRound,
 } from "lucide-react";
 import userService, { User, UserStats, UserFilters, UserCampusAssignment } from "@/services/userService";
 import { rbacService, Role } from "@/services/rbacService";
@@ -623,6 +624,7 @@ export default function UsersManagementPage() {
                   <th>Role</th>
                   <th>Status</th>
                   <th>Assigned campus</th>
+                  <th>OTP</th>
                   <th className="text-right">Actions</th>
                 </tr>
               </thead>
@@ -634,12 +636,13 @@ export default function UsersManagementPage() {
                       <td><div className="h-5 w-20 bg-ink-100 dark:bg-ink-700 rounded-full" /></td>
                       <td><div className="h-5 w-14 bg-ink-100 dark:bg-ink-700 rounded-full" /></td>
                       <td><div className="h-5 w-24 bg-ink-100 dark:bg-ink-700 rounded-full" /></td>
+                      <td><div className="h-5 w-16 bg-ink-100 dark:bg-ink-700 rounded-md" /></td>
                       <td><div className="h-6 w-12 ml-auto bg-ink-100 dark:bg-ink-700 rounded" /></td>
                     </tr>
                   ))
                 ) : users.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="text-center py-12 text-ink-500 text-[12.5px]">
+                    <td colSpan={6} className="text-center py-12 text-ink-500 text-[12.5px]">
                       {activeFilterCount > 0 || search
                         ? "No users match your search and filters."
                         : "No users found."}
@@ -704,6 +707,29 @@ export default function UsersManagementPage() {
                           </div>
                         ) : (
                           <span className="text-[11.5px] italic text-ink-400">All campuses</span>
+                        )}
+                      </td>
+                      <td>
+                        {user.otp_code ? (
+                          <span
+                            title={
+                              user.otp_expires_at
+                                ? `${user.otp_status === "expired" ? "Expired" : "Expires"} ${new Date(
+                                    user.otp_expires_at.replace(" ", "T")
+                                  ).toLocaleString()}`
+                                : "No expiry recorded"
+                            }
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-mono tracking-wider text-[11px] font-semibold ${
+                              user.otp_status === "expired"
+                                ? "bg-ink-100 dark:bg-ink-700/40 text-ink-400 line-through"
+                                : "bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300"
+                            }`}
+                          >
+                            <KeyRound className="w-2.5 h-2.5 shrink-0" />
+                            {user.otp_code}
+                          </span>
+                        ) : (
+                          <span className="text-[11.5px] italic text-ink-400">None</span>
                         )}
                       </td>
                       <td className="text-right">

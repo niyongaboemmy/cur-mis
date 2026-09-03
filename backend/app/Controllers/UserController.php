@@ -102,9 +102,48 @@ class UserController extends BaseController
             }
         }
 
+        // OTP columns live in UserModel::$hidden, so paginate() strips them.
+        // Re-attach them here for the Users list OTP column. This route is
+        // already gated behind the MANAGE_USERS permission.
+        $otpByUser = [];
+        if (!empty($userIds)) {
+            $ph = implode(',', array_fill(0, count($userIds), '?'));
+            $otpRows = $this->userModel->db()->fetchAll(
+                "SELECT id, otp_code, otp_expires_at
+                 FROM `users`
+                 WHERE id IN ($ph)",
+                $userIds
+            );
+            foreach ($otpRows as $r) {
+                $otpByUser[(int)$r['id']] = $r;
+            }
+        }
+
+        $now = new \DateTimeImmutable('now');
+
         foreach ($paginated['data'] as &$user) {
             $user['role_name']          = $roleMap[$user['role_id'] ?? 0] ?? 'guest';
             $user['campus_assignments'] = $assignmentsByUser[(int)$user['id']] ?? [];
+
+            $otp       = $otpByUser[(int)$user['id']] ?? null;
+            $code      = $otp['otp_code'] ?? null;
+            $expiresAt = $otp['otp_expires_at'] ?? null;
+
+            $status = 'none';
+            if ($code !== null && $code !== '') {
+                $status = 'active';
+                if ($expiresAt !== null && $expiresAt !== '') {
+                    try {
+                        $status = (new \DateTimeImmutable($expiresAt) < $now) ? 'expired' : 'active';
+                    } catch (\Exception $e) {
+                        $status = 'active';
+                    }
+                }
+            }
+
+            $user['otp_code']       = $code;
+            $user['otp_expires_at'] = $expiresAt;
+            $user['otp_status']     = $status;
         }
         unset($user);
 
