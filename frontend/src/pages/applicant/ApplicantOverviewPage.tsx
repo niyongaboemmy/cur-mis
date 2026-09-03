@@ -133,7 +133,6 @@ export default function ApplicantOverviewPage() {
                   <Plus className="w-3.5 h-3.5" /> New Application
                 </a>
               ) : null}
-              <FinanceBillingButton />
             </div>
           </div>
 
@@ -1174,35 +1173,6 @@ function TabBtn({
   );
 }
 
-function FinanceBillingButton() {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <>
-      <button
-        onClick={() => setOpen(true)}
-        className="btn-secondary inline-flex items-center gap-1.5 whitespace-nowrap"
-      >
-        <Building2 className="w-3.5 h-3.5" /> Special Payment
-      </button>
-      <Modal
-        open={open}
-        onClose={() => setOpen(false)}
-        title="Special Payment"
-        size="xl"
-      >
-        <div className="h-[70vh] w-full">
-          <iframe
-            src="https://cur.ac.rw/umis/finance/bank_slip/index.php"
-            title="Special Payment"
-            className="w-full h-full border-0 rounded-lg"
-            style={{ width: '97%', marginLeft: 'auto', marginRight: 'auto' }}
-          />
-        </div>
-      </Modal>
-    </>
-  );
-}
 
 /* ──────────────────────────────────────────────────────────────────────
  * Application progress stepper (Task 1.10).
