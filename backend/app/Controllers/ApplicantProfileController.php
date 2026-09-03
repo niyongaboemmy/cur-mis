@@ -922,6 +922,13 @@ class ApplicantProfileController extends BaseController
     public function getApplicationDetails(Request $request, Response $response): never
     {
         $appId = (int)$request->param('id');
+        $profile = $request->param('_applicant_profile');
+
+        // Verify the application belongs to the authenticated applicant
+        if ((int)($profile['application_id'] ?? 0) !== $appId) {
+            $this->error($response, 'Application not found.', 404);
+        }
+
         $application = $this->appModel->getWithDetails($appId);
 
         if (!$application) {
