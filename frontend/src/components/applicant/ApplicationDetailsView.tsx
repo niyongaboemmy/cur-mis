@@ -625,13 +625,13 @@ export default function ApplicationDetailsView({
           size="lg"
         >
           <div className="space-y-4">
-            <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/30 rounded-lg">
-              <p className="text-[13px] text-amber-900 dark:text-amber-200">
-                <strong>This document was rejected.</strong> Please review the feedback below and upload a corrected version.
+            <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-900/30 rounded-lg">
+              <p className="text-[13px] text-blue-900 dark:text-blue-200">
+                <strong>This document needs to be re-uploaded.</strong> You can upload a new file or a corrected version.
               </p>
               {reuploadDoc.verification_comment && (
-                <p className="text-[12px] text-amber-800 dark:text-amber-300 mt-2 italic">
-                  Feedback: "{reuploadDoc.verification_comment}"
+                <p className="text-[12px] text-blue-800 dark:text-blue-300 mt-2 italic">
+                  Admin Feedback: "{reuploadDoc.verification_comment}"
                 </p>
               )}
             </div>

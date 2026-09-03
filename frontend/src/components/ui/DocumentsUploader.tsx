@@ -156,9 +156,9 @@ function Row({
               )}
 
               {existing?.verification_comment && (
-                <div className="mt-2 p-2 rounded-lg bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20">
-                  <p className="text-[11px] font-bold text-red-700 dark:text-red-400 uppercase tracking-tighter">Feedback / Correction Required:</p>
-                  <p className="text-[12px] text-red-600 dark:text-red-300 mt-0.5">{existing.verification_comment}</p>
+                <div className="mt-2 p-2 rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/20">
+                  <p className="text-[11px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-tighter">Admin Feedback:</p>
+                  <p className="text-[12px] text-amber-600 dark:text-amber-300 mt-0.5">{existing.verification_comment}</p>
                 </div>
               )}
             </div>
