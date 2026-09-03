@@ -13,7 +13,7 @@ export default function RegistrarReportPage() {
           <span className="w-8 h-8 rounded-lg bg-brand/10 flex items-center justify-center">
             <FileText className="w-4 h-4 text-brand" />
           </span>
-          Registrar Report
+          Academic Reports
         </h2>
         <p className="text-[13px] text-ink-500 mt-0.5 ml-10">
           Academic registrar documents and reports
@@ -24,7 +24,7 @@ export default function RegistrarReportPage() {
       <RegistrarReportModal
         open={reportOpen}
         onClose={() => setReportOpen(false)}
-        reportUrl="/registrar-reports"
+        reportUrl="https://cur.ac.rw/umis/documents/registrar_report/index.php"
       />
     </div>
   );

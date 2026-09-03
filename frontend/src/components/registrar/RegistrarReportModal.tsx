@@ -9,7 +9,7 @@ interface RegistrarReportModalProps {
 export default function RegistrarReportModal({
   open,
   onClose,
-  reportUrl = '/registrar-reports',
+  reportUrl = 'https://cur.ac.rw/umis/documents/registrar_report/index.php',
 }: RegistrarReportModalProps) {
   if (!open) return null;
 
@@ -26,7 +26,7 @@ export default function RegistrarReportModal({
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-ink-100 dark:border-ink-700">
           <h2 className="text-lg font-bold text-ink-900 dark:text-white">
-            Registrar Report - Academic Documents
+            Academic Reports
           </h2>
           <button
             onClick={onClose}
@@ -41,7 +41,7 @@ export default function RegistrarReportModal({
         <div className="flex-1 overflow-hidden">
           <iframe
             src={reportUrl}
-            title="Registrar Report - Academic Documents"
+            title="Academic Reports"
             className="w-full h-full border-0"
             allow="fullscreen"
           />

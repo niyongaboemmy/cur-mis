@@ -295,12 +295,12 @@ const QUICK_ACTIONS: QA[] = [
     hideForRoles: ["student", "applicant"],
   },
 
-  // Registrar Report — visible to all authenticated users
+  // Academic Reports — visible to all authenticated users
   {
     to: "https://cur.ac.rw/umis/documents/registrar_report/index.php",
     icon: FileText,
-    label: "Registrar Report",
-    sub: "Academic registrar documents",
+    label: "Academic Reports",
+    sub: "Academic documents and reports",
     accent:
       "bg-accent-lilac text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
     // No permissions or roles required — visible to every authenticated user
@@ -485,7 +485,7 @@ export default function WelcomePage() {
                   const Icon = action.icon;
                   const isExternal = action.to.startsWith("http");
                   const isDocumentsModal = action.label === "More Documents";
-                  const isRegistrarModal = action.label === "Registrar Report";
+                  const isRegistrarModal = action.label === "Academic Reports";
                   const isFinancePortalModal = action.label === "Finance Portal";
 
                   if (isDocumentsModal || isRegistrarModal || isFinancePortalModal) {
@@ -645,7 +645,7 @@ export default function WelcomePage() {
         </div>
       )}
 
-      {/* Registrar Report Modal */}
+      {/* Academic Reports Modal */}
       {showRegistrarModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <motion.div
@@ -657,7 +657,7 @@ export default function WelcomePage() {
             {/* Modal Header */}
             <div className="flex items-center justify-between p-6 border-b border-ink-200 dark:border-ink-800">
               <h2 className="text-[18px] font-semibold text-ink-900 dark:text-white">
-                Registrar Report
+                Academic Reports
               </h2>
               <button
                 onClick={() => setShowRegistrarModal(false)}
@@ -671,7 +671,7 @@ export default function WelcomePage() {
             <div className="flex-1 overflow-hidden">
               <iframe
                 src="https://cur.ac.rw/umis/documents/registrar_report/index.php"
-                title="Registrar Report"
+                title="Academic Reports"
                 className="w-full h-full border-0"
               />
             </div>

@@ -307,7 +307,7 @@ const NAV_TREE: NavNode[] = [
       },
       {
         to: "/registrar/report",
-        label: "Registrar Report",
+        label: "Academic Reports",
         permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES],
       },
       // { to: "/hr/attendance", label: "Attendance",         permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },
@@ -481,7 +481,7 @@ const NAV_TREE: NavNode[] = [
       },
       {
         to: "/registrar/report",
-        label: "Registrar Report",
+        label: "Academic Reports",
         permissions: [PERMISSIONS.MANAGE_ACADEMICS],
       },
     ],
@@ -673,7 +673,7 @@ const NAV_TREE: NavNode[] = [
       },
       {
         to: "/registrar/report",
-        label: "Registrar Report",
+        label: "Academic Reports",
         permissions: [PERMISSIONS.VIEW_FINANCE],
       },
     ],
