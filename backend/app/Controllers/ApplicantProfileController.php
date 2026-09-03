@@ -1663,10 +1663,12 @@ class ApplicantProfileController extends BaseController
     {
         $id      = (int)$request->param('id');
         $profile = $request->param('_applicant_profile');
-        
+
         $document = $this->docModel->find($id);
-        
-        if (!$document || (int)$document['applicant_profile_id'] !== (int)$profile['id']) {
+
+        if (!$document
+            || (int)$document['applicant_profile_id'] !== (int)$profile['id']
+            || (int)$document['application_id'] !== (int)$profile['application_id']) {
             $this->error($response, 'Document not found.', 404);
         }
 

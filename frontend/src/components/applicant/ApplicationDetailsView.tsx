@@ -21,6 +21,7 @@ import {
   Hash,
   Award,
   Sparkles,
+  Upload,
 } from "lucide-react";
 import { applicantService } from "@/services/admissionService";
 import {
@@ -35,6 +36,8 @@ import {
   countryFlag,
 } from "@/data/countries";
 import DocumentPreviewModal from "../ui/DocumentPreviewModal";
+import DocumentsUploader from "../ui/DocumentsUploader";
+import Modal from "../ui/Modal";
 import { useLevels } from "@/hooks/useLevels";
 
 interface ApplicationDetailsViewProps {
@@ -48,6 +51,7 @@ export default function ApplicationDetailsView({
   onBack,
 }: ApplicationDetailsViewProps) {
   const [previewDoc, setPreviewDoc] = useState<any>(null);
+  const [reuploadDoc, setReuploadDoc] = useState<any>(null);
   const { levelName } = useLevels();
   const detailsQ = useQuery({
     queryKey: ["applicant", "application", application.id],
@@ -380,16 +384,26 @@ export default function ApplicationDetailsView({
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-3 shrink-0">
+                    <div className="flex items-center gap-2 shrink-0">
                       {item.uploaded && (
                         <>
                           <StatusPillSmall status={item.verification_status} />
                           <button
                             onClick={() => setPreviewDoc(item)}
                             className="p-1.5 rounded-lg hover:bg-ink-100 dark:hover:bg-ink-700 text-ink-500 transition-colors"
+                            title="Preview document"
                           >
                             <Eye className="w-3.5 h-3.5" />
                           </button>
+                          {item.verification_status === 'rejected' && (
+                            <button
+                              onClick={() => setReuploadDoc(item)}
+                              className="p-1.5 rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/30 text-amber-600 transition-colors"
+                              title="Re-upload this document"
+                            >
+                              <Upload className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </>
                       )}
                     </div>
@@ -562,6 +576,54 @@ export default function ApplicationDetailsView({
           }
           mimeType={previewDoc.file_mime}
         />
+      )}
+
+      {reuploadDoc && (
+        <Modal
+          open={!!reuploadDoc}
+          onClose={() => setReuploadDoc(null)}
+          title={`Re-upload: ${reuploadDoc.document_type_name}`}
+          size="lg"
+        >
+          <div className="space-y-4">
+            <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/30 rounded-lg">
+              <p className="text-[13px] text-amber-900 dark:text-amber-200">
+                <strong>This document was rejected.</strong> Please review the feedback below and upload a corrected version.
+              </p>
+              {reuploadDoc.verification_comment && (
+                <p className="text-[12px] text-amber-800 dark:text-amber-300 mt-2 italic">
+                  Feedback: "{reuploadDoc.verification_comment}"
+                </p>
+              )}
+            </div>
+            <DocumentsUploader
+              requirements={[
+                {
+                  ...reuploadDoc,
+                  document_type_id: reuploadDoc.document_type_id,
+                  is_required: true,
+                } as any,
+              ]}
+              uploaded={[
+                {
+                  id: reuploadDoc.document_id,
+                  document_type_id: reuploadDoc.document_type_id,
+                  file_original_name: reuploadDoc.file_original_name,
+                  verification_status: reuploadDoc.verification_status,
+                  file_mime: reuploadDoc.file_mime,
+                } as any,
+              ]}
+              onUpload={async ({ document_type_id, file }) => {
+                await applicantService.uploadDocument({ document_type_id, file });
+                setReuploadDoc(null);
+              }}
+              invalidateKeys={[
+                ["applicant", "application", application.id],
+                ["applicant", "documents"],
+              ]}
+            />
+          </div>
+        </Modal>
       )}
     </div>
   );
