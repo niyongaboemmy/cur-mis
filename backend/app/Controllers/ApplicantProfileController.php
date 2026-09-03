@@ -1681,27 +1681,47 @@ class ApplicantProfileController extends BaseController
 
         $document = $this->docModel->find($id);
 
-        // Verify document exists and belongs to the authenticated applicant's application
-        // Both applicant_profile_id and application_id may be NULL for legacy documents,
-        // so we verify using application_id which is guaranteed to match the profile
+        // Verify document exists
         if (!$document) {
             $this->error($response, 'Document not found.', 404);
         }
 
-        $profileAppId = (int)($profile['application_id'] ?? 0);
-        $docAppId = (int)($document['application_id'] ?? 0);
+        // Verify document belongs to the authenticated applicant's application(s)
+        // An applicant can access a document if it belongs to ANY of their applications
+        // (identified by email or profile link). We use the same logic as getApplication:
+        // - Documents in the profile's linked application, OR
+        // - Documents in applications with the same email
+        $authUser = $request->param('_auth_user');
+        $email = (string)($authUser['email'] ?? '');
 
-        // If application_id is set, verify it matches; otherwise fall back to applicant_profile_id
-        if ($profileAppId > 0 && $docAppId > 0) {
-            if ($docAppId !== $profileAppId) {
-                $this->error($response, 'Document not found.', 404);
+        // Check if document belongs to this applicant
+        $docAppId = (int)($document['application_id'] ?? 0);
+        $profileAppId = (int)($profile['application_id'] ?? 0);
+
+        // Verify using application_id (primary) or applicant_profile_id (fallback)
+        $hasAccess = false;
+
+        // Try application_id match first
+        if ($profileAppId > 0 && $docAppId > 0 && $docAppId === $profileAppId) {
+            $hasAccess = true;
+        }
+
+        // Fallback to applicant_profile_id
+        if (!$hasAccess && (int)($document['applicant_profile_id'] ?? 0) > 0) {
+            if ((int)$document['applicant_profile_id'] === (int)$profile['id']) {
+                $hasAccess = true;
             }
-        } elseif ((int)($document['applicant_profile_id'] ?? 0) > 0) {
-            if ((int)$document['applicant_profile_id'] !== (int)$profile['id']) {
-                $this->error($response, 'Document not found.', 404);
+        }
+
+        // If we couldn't verify via IDs, check if document's application email matches
+        if (!$hasAccess && $docAppId > 0 && !empty($email)) {
+            $app = $this->appModel->find($docAppId);
+            if ($app && ($app['email'] ?? '') === $email) {
+                $hasAccess = true;
             }
-        } else {
-            // Neither verification method available
+        }
+
+        if (!$hasAccess) {
             $this->error($response, 'Document not found.', 404);
         }
 
