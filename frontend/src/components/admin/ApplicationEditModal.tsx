@@ -152,7 +152,7 @@ export default function ApplicationEditModal({
                 onChange={(e) => handleChange('faculty_id' as any, parseInt(e.target.value) || '')}
               />
               {application?.faculty_name && (
-                <p className="text-[11px] text-ink-500 dark:text-ink-400 mt-1">{application.faculty_name}</p>
+                <p className="text-[11px] text-red-600 dark:text-red-400 font-semibold mt-1">{application.faculty_name}</p>
               )}
             </div>
             <div>
@@ -164,7 +164,7 @@ export default function ApplicationEditModal({
                 onChange={(e) => handleChange('department_id' as any, parseInt(e.target.value) || '')}
               />
               {application?.department_name && (
-                <p className="text-[11px] text-ink-500 dark:text-ink-400 mt-1">{application.department_name}</p>
+                <p className="text-[11px] text-red-600 dark:text-red-400 font-semibold mt-1">{application.department_name}</p>
               )}
             </div>
             <div>
@@ -259,6 +259,9 @@ export default function ApplicationEditModal({
                 value={(formData as any).campus_id || ''}
                 onChange={(e) => handleChange('campus_id' as any, parseInt(e.target.value) || '')}
               />
+              {application?.campus_name && (
+                <p className="text-[11px] text-red-600 dark:text-red-400 font-semibold mt-1">{application.campus_name}</p>
+              )}
             </div>
             <div>
               <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">Level ID</label>
@@ -269,7 +272,7 @@ export default function ApplicationEditModal({
                 onChange={(e) => handleChange('level_id' as any, parseInt(e.target.value) || '')}
               />
               {application?.level_name && (
-                <p className="text-[11px] text-ink-500 dark:text-ink-400 mt-1">{application.level_name}</p>
+                <p className="text-[11px] text-red-600 dark:text-red-400 font-semibold mt-1">{application.level_name}</p>
               )}
             </div>
             <div>
