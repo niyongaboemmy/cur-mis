@@ -814,6 +814,91 @@ class ApplicantProfileController extends BaseController
     }
 
     /**
+     * POST /api/applicant/application/:id/resubmit
+     * Resubmit an application after documents have been rejected.
+     */
+    public function resubmitApplication(Request $request, Response $response): never
+    {
+        $profile = $request->param('_applicant_profile');
+        $appId = (int)$request->param('id');
+
+        if (!$appId) {
+            $this->error($response, 'Application ID is required.', 400);
+        }
+
+        // Verify applicant owns this application
+        if ((int)$profile['application_id'] !== $appId) {
+            $this->error($response, 'Application not found.', 404);
+        }
+
+        $application = $this->appModel->find($appId);
+        if (!$application) {
+            $this->error($response, 'Application not found.', 404);
+        }
+
+        // Only allow resubmission if application was rejected or changes were requested
+        $canResubmit = in_array($application['status'] ?? '', [
+            'documents_rejected',
+            'requested_changes'
+        ], true);
+
+        if (!$canResubmit) {
+            $this->error($response, 'This application cannot be resubmitted at this stage.', 422);
+        }
+
+        // Verify all required documents are uploaded
+        $missing = $this->missingRequiredDocuments($application);
+        if ($missing !== []) {
+            $this->error(
+                $response,
+                'Please upload all required documents before resubmitting: ' . implode(', ', $missing) . '.',
+                422
+            );
+        }
+
+        // Update application status to submitted
+        $updateData = [
+            'status'       => 'submitted',
+            'submitted_at' => date('Y-m-d H:i:s'),
+        ];
+
+        $this->appModel->update($appId, $updateData);
+
+        // Log status change
+        $fromStatus = $application['status'] ?? 'draft';
+        $this->service->logStatusChange($appId, $fromStatus, 'submitted', null, 'applicant', 'Application resubmitted after document rejection.');
+
+        // Send resubmission confirmation email
+        $appRow = $this->appModel->find($appId) ?: [];
+        $programName = '';
+        if (!empty($appRow['program_id'])) {
+            $opt = $this->db->fetchOne("SELECT name FROM `options` WHERE id = ? LIMIT 1", [(int)$appRow['program_id']]);
+            $programName = (string)($opt['name'] ?? '');
+        }
+        if ($programName === '' && !empty($appRow['department_id'])) {
+            $dep = $this->db->fetchOne("SELECT dep_name FROM `departements` WHERE dep_id = ? LIMIT 1", [(int)$appRow['department_id']]);
+            $programName = (string)($dep['dep_name'] ?? '');
+        }
+
+        $htmlBody = \App\Helpers\EmailTemplateHelper::applicationSubmittedTemplate(
+            $appRow['first_name'] ?? '',
+            $appRow['application_number'] ?? '',
+            $programName,
+            $appRow['intake'] ?? ''
+        );
+        $subject  = 'Application Resubmitted — Catholic University of Rwanda';
+        $textBody = "Dear {$appRow['first_name']}, your resubmitted application to the Catholic University of Rwanda has been received. Application number: " . ($appRow['application_number'] ?? '') . ". For queries, contact admissions@cur.ac.rw or +250 788 351 906.";
+
+        $mailService = new \App\Services\MailService();
+        $mailService->send($appRow['email'] ?? '', $subject, $htmlBody, $textBody);
+
+        $this->success($response, [
+            'status'             => 'submitted',
+            'application_number' => $appRow['application_number'] ?? null,
+        ], 'Application resubmitted successfully. A confirmation email has been sent.');
+    }
+
+    /**
      * POST /api/applicant/application/verify
      */
     public function verifyApplication(Request $request, Response $response): never

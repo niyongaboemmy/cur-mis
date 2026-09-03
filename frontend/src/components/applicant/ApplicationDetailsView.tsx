@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import toast from "react-hot-toast";
 import {
   FileText,
   MapPin,
@@ -22,6 +23,8 @@ import {
   Award,
   Sparkles,
   Upload,
+  Send,
+  Loader2,
 } from "lucide-react";
 import { applicantService } from "@/services/admissionService";
 import {
@@ -52,7 +55,10 @@ export default function ApplicationDetailsView({
 }: ApplicationDetailsViewProps) {
   const [previewDoc, setPreviewDoc] = useState<any>(null);
   const [reuploadDoc, setReuploadDoc] = useState<any>(null);
+  const [resubmitDialog, setResubmitDialog] = useState(false);
   const { levelName } = useLevels();
+  const qc = useQueryClient();
+
   const detailsQ = useQuery({
     queryKey: ["applicant", "application", application.id],
     queryFn: () => applicantService.getApplicationDetails(application.id),
@@ -66,6 +72,24 @@ export default function ApplicationDetailsView({
   const checklist = (app as any).document_checklist ?? [];
   const statusLog = ((app as any).status_log ?? []).filter(
     (log: any) => log.to_status !== "draft",
+  );
+
+  const resubmitMutation = useMutation({
+    mutationFn: () => applicantService.resubmitApplication(application.id),
+    onSuccess: () => {
+      toast.success("Application resubmitted successfully");
+      setResubmitDialog(false);
+      qc.invalidateQueries({ queryKey: ["applicant", "applications"] });
+      qc.invalidateQueries({ queryKey: ["applicant", "application", application.id] });
+    },
+    onError: (e: any) =>
+      toast.error(e?.response?.data?.message ?? "Failed to resubmit application"),
+  });
+
+  const isRejected = application.status === "documents_rejected" || application.status === "requested_changes";
+  const hasRejectedDocs = checklist.some((doc: any) => doc.verification_status === "rejected");
+  const allRejectedReuploaded = !checklist.some(
+    (doc: any) => doc.verification_status === "rejected" && !doc.uploaded
   );
 
   return (
@@ -342,6 +366,20 @@ export default function ApplicationDetailsView({
                 sub="Upload status and verification."
                 icon={FileText}
               />
+              {isRejected && allRejectedReuploaded && hasRejectedDocs && (
+                <button
+                  onClick={() => setResubmitDialog(true)}
+                  disabled={resubmitMutation.isPending}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-[12px] font-bold uppercase tracking-widest transition-colors shrink-0"
+                >
+                  {resubmitMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4" />
+                  )}
+                  Resubmit
+                </button>
+              )}
             </div>
             <div className="space-y-3 mt-4">
               {checklist.length === 0 ? (
@@ -625,6 +663,51 @@ export default function ApplicationDetailsView({
           </div>
         </Modal>
       )}
+
+      {/* Resubmit confirmation modal */}
+      <Modal
+        open={resubmitDialog}
+        onClose={() => setResubmitDialog(false)}
+        title="Resubmit Application"
+        size="lg"
+        footer={
+          <>
+            <button
+              className="btn-secondary"
+              onClick={() => setResubmitDialog(false)}
+              disabled={resubmitMutation.isPending}
+            >
+              Cancel
+            </button>
+            <button
+              className="btn-primary"
+              onClick={() => resubmitMutation.mutate()}
+              disabled={resubmitMutation.isPending}
+            >
+              {resubmitMutation.isPending && (
+                <Loader2 className="w-4 h-4 animate-spin mr-2 inline" />
+              )}
+              Confirm Resubmission
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-[14px] text-ink-700 dark:text-ink-300 leading-relaxed">
+            You have successfully re-uploaded all rejected documents. Clicking "Confirm Resubmission" will send your application back to the admissions office for review.
+          </p>
+          <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-900/30 rounded-lg">
+            <p className="text-[12px] font-bold text-emerald-900 dark:text-emerald-200 uppercase tracking-widest">
+              What happens next:
+            </p>
+            <ul className="mt-2 space-y-1.5 text-[12px] text-emerald-800 dark:text-emerald-300 list-disc list-inside">
+              <li>Your application will be marked as submitted for re-review</li>
+              <li>The admissions office will examine your re-uploaded documents</li>
+              <li>You'll receive an email with the outcome</li>
+            </ul>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

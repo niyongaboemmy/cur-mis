@@ -708,6 +708,10 @@ export const applicantService = {
       currency:           string
       application_number: string
     }>('/api/applicant/application/bills/checkout', feeType ? { fee_type: feeType } : {}, signal),
+
+  /** Resubmit application after documents have been re-uploaded following rejection */
+  resubmitApplication: (id: number) =>
+    api.post<{ status: string }>(`/api/applicant/application/${id}/resubmit`, {}),
 }
 
 /* ───────────────────────────────────────────────────────────────

@@ -1193,7 +1193,7 @@ function FinanceBillingButton() {
       >
         <div className="h-[70vh] w-full">
           <iframe
-            src="https://cur.ac.rw/umis/finance/billing/student/login.php"
+            src="https://cur.ac.rw/umis/finance/bank_slip/index.php"
             title="Special Payment"
             className="w-full h-full border-0 rounded-lg"
             style={{ width: '97%', marginLeft: 'auto', marginRight: 'auto' }}
