@@ -79,6 +79,8 @@ function Row({
     mutationFn: (file: File) => onUpload({ document_type_id: requirement.document_type_id, file }),
     onSuccess: () => {
       toast.success(`${requirement.document_type_name ?? 'Document'} uploaded successfully`)
+      // Don't close the uploader - let user review and potentially upload more
+      // onDone() will be called when user closes the modal
       onDone()
     },
     onError: (e: any) => {

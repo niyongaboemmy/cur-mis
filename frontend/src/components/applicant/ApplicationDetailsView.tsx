@@ -621,46 +621,73 @@ export default function ApplicationDetailsView({
         <Modal
           open={!!reuploadDoc}
           onClose={() => setReuploadDoc(null)}
-          title={`Re-upload: ${reuploadDoc.document_type_name}`}
+          title={`Review & Replace: ${reuploadDoc.document_type_name}`}
           size="lg"
         >
           <div className="space-y-4">
             <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-900/30 rounded-lg">
               <p className="text-[13px] text-blue-900 dark:text-blue-200">
-                <strong>This document needs to be re-uploaded.</strong> You can upload a new file or a corrected version.
+                <strong>Review your document.</strong> If this is not the correct file, please replace it below. Once you've replaced all rejected documents, your application will automatically be resubmitted for review.
               </p>
               {reuploadDoc.verification_comment && (
-                <p className="text-[12px] text-blue-800 dark:text-blue-300 mt-2 italic">
-                  Admin Feedback: "{reuploadDoc.verification_comment}"
+                <p className="text-[12px] text-blue-800 dark:text-blue-300 mt-2 italic font-medium">
+                  Why it was returned: "{reuploadDoc.verification_comment}"
                 </p>
               )}
             </div>
-            <DocumentsUploader
-              requirements={[
-                {
-                  ...reuploadDoc,
-                  document_type_id: reuploadDoc.document_type_id,
-                  is_required: true,
-                } as any,
-              ]}
-              uploaded={[
-                {
-                  id: reuploadDoc.document_id,
-                  document_type_id: reuploadDoc.document_type_id,
-                  file_original_name: reuploadDoc.file_original_name,
-                  verification_status: reuploadDoc.verification_status,
-                  file_mime: reuploadDoc.file_mime,
-                } as any,
-              ]}
-              onUpload={async ({ document_type_id, file }) => {
-                await applicantService.uploadDocument({ document_type_id, file });
-                setReuploadDoc(null);
-              }}
-              invalidateKeys={[
-                ["applicant", "application", application.id],
-                ["applicant", "documents"],
-              ]}
-            />
+
+            {/* Show current document if available */}
+            {reuploadDoc.uploaded && (
+              <div className="p-3 rounded-lg border border-ink-200 dark:border-ink-700 bg-ink-50 dark:bg-ink-800/30">
+                <p className="text-[11px] font-bold text-ink-500 uppercase tracking-widest mb-2">Current Document</p>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <FileText className="w-4 h-4 text-ink-400 shrink-0" />
+                    <p className="text-[12px] text-ink-700 dark:text-ink-300 truncate">{reuploadDoc.file_original_name}</p>
+                  </div>
+                  <button
+                    onClick={() => setPreviewDoc(reuploadDoc)}
+                    className="text-[11px] font-medium text-brand hover:underline shrink-0"
+                  >
+                    View
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="p-3 rounded-lg border border-emerald-200 dark:border-emerald-900/40 bg-emerald-50 dark:bg-emerald-900/10">
+              <p className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-widest mb-2">Replace With New File</p>
+              <p className="text-[12px] text-emerald-800 dark:text-emerald-300 mb-3">Upload the correct document. Once all rejected documents are replaced, your application will be automatically resubmitted.</p>
+              <DocumentsUploader
+                requirements={[
+                  {
+                    ...reuploadDoc,
+                    document_type_id: reuploadDoc.document_type_id,
+                    is_required: true,
+                  } as any,
+                ]}
+                uploaded={[
+                  {
+                    id: reuploadDoc.document_id,
+                    document_type_id: reuploadDoc.document_type_id,
+                    file_original_name: reuploadDoc.file_original_name,
+                    verification_status: reuploadDoc.verification_status,
+                    file_mime: reuploadDoc.file_mime,
+                  } as any,
+                ]}
+                onUpload={async ({ document_type_id, file }) => {
+                  await applicantService.uploadDocument({ document_type_id, file });
+                  // Keep modal open so user can review other rejected documents
+                  setTimeout(() => {
+                    setReuploadDoc(null);
+                  }, 1500);
+                }}
+                invalidateKeys={[
+                  ["applicant", "application", application.id],
+                  ["applicant", "documents"],
+                ]}
+              />
+            </div>
           </div>
         </Modal>
       )}

@@ -905,6 +905,33 @@ function EditApplicationModal({
       toast.error(e?.response?.data?.message ?? "Failed to update"),
   });
 
+  // Auto-submit documents when all rejected ones are replaced
+  const checkAndAutoSubmitDocuments = async () => {
+    if (!app) return;
+
+    const checklist = (app as any).document_checklist ?? [];
+    const rejectedDocs = checklist.filter((doc: any) => doc.verification_status === 'rejected');
+
+    // If there are rejected docs, check if all have been replaced
+    if (rejectedDocs.length > 0) {
+      const allRejectedReplaced = rejectedDocs.every((doc: any) =>
+        doc.uploaded && doc.verification_status !== 'rejected'
+      );
+
+      // If all rejected docs have been replaced, auto-submit
+      if (allRejectedReplaced && app.status === 'documents_rejected') {
+        try {
+          await applicantService.resubmitApplication(appId);
+          toast.success('All documents replaced! Application resubmitted for review.');
+          onSuccess();
+        } catch (error) {
+          // Silently fail - user can manually submit if needed
+          console.log('Auto-submit skipped');
+        }
+      }
+    }
+  };
+
   if (!app || !form) return null;
 
   return (
@@ -1141,9 +1168,13 @@ function EditApplicationModal({
                   file_mime: i.file_mime,
                 })) as any
             }
-            onUpload={({ document_type_id, file }) =>
-              applicantService.uploadDocument({ document_type_id, file })
-            }
+            onUpload={async ({ document_type_id, file }) => {
+              await applicantService.uploadDocument({ document_type_id, file });
+              // Check and auto-submit documents if all rejected ones are replaced
+              setTimeout(() => {
+                checkAndAutoSubmitDocuments();
+              }, 500);
+            }}
             invalidateKeys={[["applicant", "application", appId]]}
           />
         </div>
