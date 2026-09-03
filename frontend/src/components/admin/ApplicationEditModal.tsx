@@ -71,6 +71,27 @@ export default function ApplicationEditModal({
     </div>
   );
 
+  const SelectField = ({ label, field, options }: any) => (
+    <div>
+      <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">{label}</label>
+      <div className="relative mt-1">
+        <select
+          className="input appearance-none pr-8"
+          value={(formData as any)[field] || ''}
+          onChange={(e) => handleChange(field as keyof StudentApplication, e.target.value)}
+        >
+          <option value="">Select {label}</option>
+          {options.map((opt: any) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
+        {hasChanges(field) && (
+          <Check className="absolute right-8 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-600" />
+        )}
+      </div>
+    </div>
+  );
+
   const DisplayField = ({ label, value }: any) => (
     <div className="p-3 rounded-lg bg-ink-50 dark:bg-ink-800/30 border border-ink-100 dark:border-ink-700">
       <p className="text-[11px] text-ink-500 dark:text-ink-400 uppercase tracking-wide font-medium">{label}</p>
@@ -101,8 +122,12 @@ export default function ApplicationEditModal({
             <InputField label="Last Name" field="last_name" />
             <InputField label="Email" field="email" type="email" />
             <InputField label="Phone" field="phone" type="tel" />
-            <DisplayField label="Gender" value={application?.gender} />
-            <DisplayField label="Birthdate" value={application?.birthdate} />
+            <SelectField label="Gender" field="gender" options={[
+              { value: 'M', label: 'Male' },
+              { value: 'F', label: 'Female' },
+              { value: 'Other', label: 'Other' }
+            ]} />
+            <InputField label="Birthdate" field="birthdate" type="date" />
           </div>
         </section>
 
@@ -115,9 +140,9 @@ export default function ApplicationEditModal({
             <DisplayField label="Program" value={application?.program_name} />
             <DisplayField label="Academic Year" value={application?.academic_year} />
             <InputField label="Intake" field="intake" />
-            <DisplayField label="Previous School" value={application?.prev_school} />
-            <DisplayField label="Previous Qualification" value={application?.prev_qualification} />
-            <DisplayField label="Previous Grade" value={application?.prev_grade} />
+            <InputField label="Previous School" field="prev_school" />
+            <InputField label="Previous Qualification" field="prev_qualification" />
+            <InputField label="Previous Grade" field="prev_grade" />
           </div>
         </section>
 
@@ -186,8 +211,11 @@ export default function ApplicationEditModal({
         <section>
           <h3 className="text-[14px] font-bold text-ink-900 dark:text-white mb-4">Address Information</h3>
           <div className="grid grid-cols-2 gap-4">
-            <DisplayField label="Address" value={application?.address} />
-            <DisplayField label="Nationality" value={application?.nationality} />
+            <div className="col-span-2">
+              <InputField label="Address" field="address" />
+            </div>
+            <InputField label="Nationality" field="nationality" />
+            <InputField label="Country of Residence" field="country_of_residence" />
           </div>
         </section>
 
