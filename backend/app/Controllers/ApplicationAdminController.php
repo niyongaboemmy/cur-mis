@@ -316,25 +316,23 @@ class ApplicationAdminController extends BaseController
                     sa.document_status,
                     sa.intake,
                     sa.campus_id,
-                    c.name AS campus_name,
                     sa.mode_of_study,
-                    pt.display_name AS mode_of_study_name,
                     sa.level_id,
-                    lvl.name AS level_name,
                     sa.faculty_id,
-                    f.fac_name AS faculty_name,
                     sa.department_id,
-                    d.dep_name AS department_name,
                     sa.academic_year_id,
-                    ay.year AS academic_year,
                     sa.created_at,
-                    sa.updated_at
+                    sa.updated_at,
+                    f.fac_name AS faculty_name,
+                    d.dep_name AS department_name,
+                    lvl.name AS level_name,
+                    pt.display_name AS mode_of_study_name,
+                    ay.year AS academic_year
                 FROM student_applications sa
-                LEFT JOIN campus c ON sa.campus_id = c.id
-                LEFT JOIN programme_types pt ON sa.mode_of_study = pt.id
-                LEFT JOIN levels lvl ON sa.level_id = lvl.id
                 LEFT JOIN faculty f ON sa.faculty_id = f.fac_id
                 LEFT JOIN departements d ON sa.department_id = d.dep_id
+                LEFT JOIN levels lvl ON sa.level_id = lvl.id
+                LEFT JOIN programme_types pt ON sa.mode_of_study = pt.id
                 LEFT JOIN academic_years ay ON sa.academic_year_id = ay.id
                 WHERE sa.id = ?
             ", [$id]);

@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
-import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
-import { Loader2, AlertTriangle, Save, Check } from 'lucide-react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Loader2, Save } from 'lucide-react';
 import toast from 'react-hot-toast';
-import axios from 'axios';
 import { applicantService } from '@/services/admissionService';
 import Modal from '@/components/ui/Modal';
 import { StudentApplication } from '@/types/admission';
@@ -22,43 +21,6 @@ export default function ApplicationEditModal({
   const [formData, setFormData] = useState<Partial<StudentApplication>>(
     application || {}
   );
-
-  // Fetch lookup data
-  const { data: faculties = [] } = useQuery({
-    queryKey: ['faculties'],
-    queryFn: async () => {
-      const res = await axios.get('/api/portal/faculties');
-      return (res.data?.data || []).map((f: any) => ({ value: f.id, label: f.faculty_name }));
-    },
-    enabled: open,
-  });
-
-  const { data: departments = [] } = useQuery({
-    queryKey: ['departments', (formData as any).faculty_id],
-    queryFn: async () => {
-      const res = await axios.get(`/api/portal/faculties/${(formData as any).faculty_id}/departments`);
-      return (res.data?.data || []).map((d: any) => ({ value: d.id, label: d.department_name }));
-    },
-    enabled: open && !!(formData as any).faculty_id,
-  });
-
-  const { data: levels = [] } = useQuery({
-    queryKey: ['levels'],
-    queryFn: async () => {
-      const res = await axios.get('/api/portal/levels');
-      return (res.data?.data || []).map((l: any) => ({ value: l.id, label: l.level_name }));
-    },
-    enabled: open,
-  });
-
-  const { data: campuses = [] } = useQuery({
-    queryKey: ['campuses'],
-    queryFn: async () => {
-      const res = await axios.get('/api/portal/campuses');
-      return (res.data?.data || []).map((c: any) => ({ value: c.id, label: c.campus_name }));
-    },
-    enabled: open,
-  });
 
   useEffect(() => {
     if (application) {
@@ -88,128 +50,27 @@ export default function ApplicationEditModal({
     },
   });
 
-  const hasChanges = (field: string) => {
-    return formData[field as keyof StudentApplication] !== application?.[field];
-  };
-
-  const InputField = ({ label, field, type = 'text' }: any) => (
-    <div>
-      <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">{label}</label>
-      <div className="relative mt-1">
-        <input
-          type={type}
-          className="input"
-          value={(formData as any)[field] || ''}
-          onChange={(e) => handleChange(field as keyof StudentApplication, type === 'number' ? parseInt(e.target.value) || '' : e.target.value)}
-        />
-        {hasChanges(field) && (
-          <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-600" />
-        )}
-      </div>
-    </div>
-  );
-
-  const [searchInputs, setSearchInputs] = useState<Record<string, string>>({});
-
-  const SelectField = ({ label, field, options }: any) => {
-    const searchValue = searchInputs[field] || '';
-    const currentValue = (formData as any)[field];
-
-    // Filter options by search or id match
-    const filteredOptions = options.filter((opt: any) => {
-      if (searchValue === '') return true;
-      // Match by ID if search is numeric
-      if (!isNaN(Number(searchValue))) {
-        return opt.value.toString() === searchValue;
-      }
-      // Match by label text
-      return opt.label.toLowerCase().includes(searchValue.toLowerCase());
-    });
-
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const value = e.target.value;
-      setSearchInputs(prev => ({ ...prev, [field]: value }));
-
-      // Auto-select if searching by ID and found match
-      if (!isNaN(Number(value)) && value !== '') {
-        const match = options.find((opt: any) => opt.value.toString() === value);
-        if (match) {
-          handleChange(field as keyof StudentApplication, match.value as any);
-        }
-      }
-    };
-
-    const handleOptionSelect = (value: any) => {
-      handleChange(field as keyof StudentApplication, value as any);
-      setSearchInputs(prev => ({ ...prev, [field]: '' }));
-    };
-
-    return (
-      <div>
-        <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">{label}</label>
-        <div className="relative mt-1">
-          <input
-            type="text"
-            className="input"
-            placeholder="Type ID or name..."
-            value={searchValue}
-            onChange={handleInputChange}
-          />
-
-          {searchValue && filteredOptions.length > 0 && (
-            <div className="absolute top-full left-0 right-0 mt-1 border border-ink-200 dark:border-ink-700 rounded bg-white dark:bg-ink-900 shadow-lg z-10 max-h-48 overflow-y-auto">
-              {filteredOptions.map((opt: any) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => handleOptionSelect(opt.value)}
-                  className="w-full text-left px-3 py-2 hover:bg-blue-50 dark:hover:bg-blue-900/30 text-sm text-ink-900 dark:text-white border-b border-ink-100 dark:border-ink-800 last:border-b-0"
-                >
-                  <span className="font-medium">#{opt.value}</span> {opt.label}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {searchValue && filteredOptions.length === 0 && (
-            <div className="absolute top-full left-0 right-0 mt-1 border border-red-200 dark:border-red-900 rounded bg-red-50 dark:bg-red-900/20 shadow-lg z-10 p-3">
-              <p className="text-sm text-red-700 dark:text-red-300">No matching {label.toLowerCase()} found</p>
-            </div>
-          )}
-
-          {currentValue && !searchValue && (
-            <div className="text-[11px] text-ink-500 dark:text-ink-400 mt-1">
-              ID: {currentValue} • {options.find((o: any) => o.value === currentValue)?.label}
-            </div>
-          )}
-
-          {hasChanges(field) && (
-            <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-600" />
-          )}
-        </div>
-      </div>
-    );
-  };
-
-  const DisplayField = ({ label, value }: any) => (
-    <div className="p-3 rounded-lg bg-ink-50 dark:bg-ink-800/30 border border-ink-100 dark:border-ink-700">
-      <p className="text-[11px] text-ink-500 dark:text-ink-400 uppercase tracking-wide font-medium">{label}</p>
-      <p className="text-[13px] text-ink-900 dark:text-white font-medium mt-1">{value || '—'}</p>
-    </div>
-  );
-
   if (!application) return null;
 
   return (
-    <Modal open={open} onClose={onClose} title="Edit Application" size="xl">
+    <Modal open={open} onClose={onClose} title="Edit Application" size="lg">
       <div className="space-y-6 max-h-[70vh] overflow-y-auto">
         {/* Application Summary */}
         <section>
           <h3 className="text-[14px] font-bold text-ink-900 dark:text-white mb-4">Application Summary</h3>
           <div className="grid grid-cols-3 gap-3">
-            <DisplayField label="Application #" value={application?.application_number} />
-            <DisplayField label="Status" value={application?.status} />
-            <DisplayField label="Document Status" value={application?.document_status} />
+            <div className="p-3 rounded-lg bg-ink-50 dark:bg-ink-800/30 border border-ink-100 dark:border-ink-700">
+              <p className="text-[11px] text-ink-500 dark:text-ink-400 uppercase tracking-wide font-medium">Application #</p>
+              <p className="text-[13px] text-ink-900 dark:text-white font-medium mt-1">{application?.application_number}</p>
+            </div>
+            <div className="p-3 rounded-lg bg-ink-50 dark:bg-ink-800/30 border border-ink-100 dark:border-ink-700">
+              <p className="text-[11px] text-ink-500 dark:text-ink-400 uppercase tracking-wide font-medium">Status</p>
+              <p className="text-[13px] text-ink-900 dark:text-white font-medium mt-1">{application?.status}</p>
+            </div>
+            <div className="p-3 rounded-lg bg-ink-50 dark:bg-ink-800/30 border border-ink-100 dark:border-ink-700">
+              <p className="text-[11px] text-ink-500 dark:text-ink-400 uppercase tracking-wide font-medium">Document Status</p>
+              <p className="text-[13px] text-ink-900 dark:text-white font-medium mt-1">{application?.document_status}</p>
+            </div>
           </div>
         </section>
 
@@ -217,16 +78,64 @@ export default function ApplicationEditModal({
         <section>
           <h3 className="text-[14px] font-bold text-ink-900 dark:text-white mb-4">Personal Information</h3>
           <div className="grid grid-cols-2 gap-4">
-            <InputField label="First Name" field="first_name" />
-            <InputField label="Last Name" field="last_name" />
-            <InputField label="Email" field="email" type="email" />
-            <InputField label="Phone" field="phone" type="tel" />
-            <SelectField label="Gender" field="gender" options={[
-              { value: 'M', label: 'Male' },
-              { value: 'F', label: 'Female' },
-              { value: 'Other', label: 'Other' }
-            ]} />
-            <InputField label="Birthdate" field="birthdate" type="date" />
+            <div>
+              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">First Name</label>
+              <input
+                type="text"
+                className="input mt-1"
+                value={(formData as any).first_name || ''}
+                onChange={(e) => handleChange('first_name' as any, e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">Last Name</label>
+              <input
+                type="text"
+                className="input mt-1"
+                value={(formData as any).last_name || ''}
+                onChange={(e) => handleChange('last_name' as any, e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">Email</label>
+              <input
+                type="email"
+                className="input mt-1"
+                value={(formData as any).email || ''}
+                onChange={(e) => handleChange('email' as any, e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">Phone</label>
+              <input
+                type="tel"
+                className="input mt-1"
+                value={(formData as any).phone || ''}
+                onChange={(e) => handleChange('phone' as any, e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">Gender</label>
+              <select
+                className="input appearance-none pr-8 mt-1"
+                value={(formData as any).gender || ''}
+                onChange={(e) => handleChange('gender' as any, e.target.value)}
+              >
+                <option value="">Select Gender</option>
+                <option value="M">Male</option>
+                <option value="F">Female</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">Birthdate</label>
+              <input
+                type="date"
+                className="input mt-1"
+                value={(formData as any).birthdate || ''}
+                onChange={(e) => handleChange('birthdate' as any, e.target.value)}
+              />
+            </div>
           </div>
         </section>
 
@@ -234,44 +143,109 @@ export default function ApplicationEditModal({
         <section>
           <h3 className="text-[14px] font-bold text-ink-900 dark:text-white mb-4">Academic Information</h3>
           <div className="grid grid-cols-2 gap-4">
-            <SelectField label="Faculty" field="faculty_id" options={faculties} />
-            <SelectField label="Department" field="department_id" options={departments} />
-            <DisplayField label="Academic Year" value={application?.academic_year} />
-            <InputField label="Intake" field="intake" />
-            <InputField label="Previous School" field="prev_school" />
-            <InputField label="Previous Qualification" field="prev_qualification" />
-            <InputField label="Previous Grade" field="prev_grade" />
+            <div>
+              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">Faculty ID</label>
+              <input
+                type="number"
+                className="input mt-1"
+                value={(formData as any).faculty_id || ''}
+                onChange={(e) => handleChange('faculty_id' as any, parseInt(e.target.value) || '')}
+              />
+              {application?.faculty_name && (
+                <p className="text-[11px] text-ink-500 dark:text-ink-400 mt-1">{application.faculty_name}</p>
+              )}
+            </div>
+            <div>
+              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">Department ID</label>
+              <input
+                type="number"
+                className="input mt-1"
+                value={(formData as any).department_id || ''}
+                onChange={(e) => handleChange('department_id' as any, parseInt(e.target.value) || '')}
+              />
+              {application?.department_name && (
+                <p className="text-[11px] text-ink-500 dark:text-ink-400 mt-1">{application.department_name}</p>
+              )}
+            </div>
+            <div>
+              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">Intake</label>
+              <input
+                type="text"
+                className="input mt-1"
+                value={(formData as any).intake || ''}
+                onChange={(e) => handleChange('intake' as any, e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">Previous School</label>
+              <input
+                type="text"
+                className="input mt-1"
+                value={(formData as any).prev_school || ''}
+                onChange={(e) => handleChange('prev_school' as any, e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">Previous Qualification</label>
+              <input
+                type="text"
+                className="input mt-1"
+                value={(formData as any).prev_qualification || ''}
+                onChange={(e) => handleChange('prev_qualification' as any, e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">Previous Grade</label>
+              <input
+                type="text"
+                className="input mt-1"
+                value={(formData as any).prev_grade || ''}
+                onChange={(e) => handleChange('prev_grade' as any, e.target.value)}
+              />
+            </div>
           </div>
         </section>
 
-        {/* Programme Selection (Editable) */}
+        {/* Programme Selection */}
         <section>
           <h3 className="text-[14px] font-bold text-ink-900 dark:text-white mb-4">Programme Selection</h3>
           <div className="grid grid-cols-2 gap-4">
-            <SelectField label="Campus" field="campus_id" options={campuses} />
+            <div>
+              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">Campus ID</label>
+              <input
+                type="number"
+                className="input mt-1"
+                value={(formData as any).campus_id || ''}
+                onChange={(e) => handleChange('campus_id' as any, parseInt(e.target.value) || '')}
+              />
+            </div>
+            <div>
+              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">Level ID</label>
+              <input
+                type="number"
+                className="input mt-1"
+                value={(formData as any).level_id || ''}
+                onChange={(e) => handleChange('level_id' as any, parseInt(e.target.value) || '')}
+              />
+              {application?.level_name && (
+                <p className="text-[11px] text-ink-500 dark:text-ink-400 mt-1">{application.level_name}</p>
+              )}
+            </div>
             <div>
               <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">Mode of Study</label>
-              <div className="relative mt-1">
-                <select
-                  className="input appearance-none pr-8"
-                  value={(formData as any).mode_of_study || ''}
-                  onChange={(e) => handleChange('mode_of_study' as any, parseInt(e.target.value) || '')}
-                >
-                  <option value="">Select Mode</option>
-                  <option value={1}>Day</option>
-                  <option value={2}>Evening</option>
-                  <option value={3}>Weekend</option>
-                  <option value={4}>Holiday</option>
-                  <option value={5}>Distance Learning</option>
-                </select>
-                {hasChanges('mode_of_study') && (
-                  <Check className="absolute right-8 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-600" />
-                )}
-              </div>
-              <p className="text-[11px] text-ink-500 dark:text-ink-400 mt-1">Current: {application?.mode_of_study_name}</p>
+              <select
+                className="input appearance-none pr-8 mt-1"
+                value={(formData as any).mode_of_study || ''}
+                onChange={(e) => handleChange('mode_of_study' as any, parseInt(e.target.value) || '')}
+              >
+                <option value="">Select Mode</option>
+                <option value={1}>Day</option>
+                <option value={2}>Evening</option>
+                <option value={3}>Weekend</option>
+                <option value={4}>Holiday</option>
+                <option value={5}>Distance Learning</option>
+              </select>
             </div>
-            <SelectField label="Level" field="level_id" options={levels} />
-            <DisplayField label="Sponsorship" value={application?.sponsorship} />
           </div>
         </section>
 
@@ -280,20 +254,34 @@ export default function ApplicationEditModal({
           <h3 className="text-[14px] font-bold text-ink-900 dark:text-white mb-4">Address Information</h3>
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
-              <InputField label="Address" field="address" />
+              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">Address</label>
+              <input
+                type="text"
+                className="input mt-1"
+                value={(formData as any).address || ''}
+                onChange={(e) => handleChange('address' as any, e.target.value)}
+              />
             </div>
-            <InputField label="Nationality" field="nationality" />
-            <InputField label="Country of Residence" field="country_of_residence" />
+            <div>
+              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">Nationality</label>
+              <input
+                type="text"
+                className="input mt-1"
+                value={(formData as any).nationality || ''}
+                onChange={(e) => handleChange('nationality' as any, e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">Country of Residence</label>
+              <input
+                type="text"
+                className="input mt-1"
+                value={(formData as any).country_of_residence || ''}
+                onChange={(e) => handleChange('country_of_residence' as any, e.target.value)}
+              />
+            </div>
           </div>
         </section>
-
-        {/* Warning */}
-        <div className="p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 flex items-start gap-3">
-          <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
-          <div className="text-[12px] text-amber-700 dark:text-amber-300">
-            <p className="font-medium"></p>
-          </div>
-        </div>
 
         {/* Actions */}
         <div className="flex items-center justify-end gap-3 pt-4 border-t border-ink-100 dark:border-ink-800 sticky bottom-0 bg-white dark:bg-ink-900">
