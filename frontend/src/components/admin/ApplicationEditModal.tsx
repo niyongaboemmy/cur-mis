@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { Loader2, AlertTriangle, Save, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
+import axios from 'axios';
 import { applicantService } from '@/services/admissionService';
 import Modal from '@/components/ui/Modal';
 import { StudentApplication } from '@/types/admission';
@@ -21,6 +22,52 @@ export default function ApplicationEditModal({
   const [formData, setFormData] = useState<Partial<StudentApplication>>(
     application || {}
   );
+
+  // Fetch lookup data
+  const { data: faculties = [] } = useQuery({
+    queryKey: ['faculties'],
+    queryFn: async () => {
+      const res = await axios.get('/api/portal/faculties');
+      return (res.data?.data || []).map((f: any) => ({ value: f.id, label: f.faculty_name }));
+    },
+    enabled: open,
+  });
+
+  const { data: departments = [] } = useQuery({
+    queryKey: ['departments', (formData as any).faculty_id],
+    queryFn: async () => {
+      const res = await axios.get(`/api/portal/faculties/${(formData as any).faculty_id}/departments`);
+      return (res.data?.data || []).map((d: any) => ({ value: d.id, label: d.department_name }));
+    },
+    enabled: open && !!(formData as any).faculty_id,
+  });
+
+  const { data: programs = [] } = useQuery({
+    queryKey: ['programs'],
+    queryFn: async () => {
+      const res = await axios.get('/api/portal/programs');
+      return (res.data?.data || []).map((p: any) => ({ value: p.id, label: p.program_name }));
+    },
+    enabled: open,
+  });
+
+  const { data: levels = [] } = useQuery({
+    queryKey: ['levels'],
+    queryFn: async () => {
+      const res = await axios.get('/api/portal/levels');
+      return (res.data?.data || []).map((l: any) => ({ value: l.id, label: l.level_name }));
+    },
+    enabled: open,
+  });
+
+  const { data: campuses = [] } = useQuery({
+    queryKey: ['campuses'],
+    queryFn: async () => {
+      const res = await axios.get('/api/portal/campuses');
+      return (res.data?.data || []).map((c: any) => ({ value: c.id, label: c.campus_name }));
+    },
+    enabled: open,
+  });
 
   useEffect(() => {
     if (application) {
@@ -78,7 +125,10 @@ export default function ApplicationEditModal({
         <select
           className="input appearance-none pr-8"
           value={(formData as any)[field] || ''}
-          onChange={(e) => handleChange(field as keyof StudentApplication, e.target.value)}
+          onChange={(e) => {
+            const value = e.target.value;
+            handleChange(field as keyof StudentApplication, value ? parseInt(value) : '');
+          }}
         >
           <option value="">Select {label}</option>
           {options.map((opt: any) => (
@@ -135,9 +185,9 @@ export default function ApplicationEditModal({
         <section>
           <h3 className="text-[14px] font-bold text-ink-900 dark:text-white mb-4">Academic Information</h3>
           <div className="grid grid-cols-2 gap-4">
-            <DisplayField label="Faculty" value={application?.faculty_name} />
-            <DisplayField label="Department" value={application?.department_name} />
-            <DisplayField label="Program" value={application?.program_name} />
+            <SelectField label="Faculty" field="faculty_id" options={faculties} />
+            <SelectField label="Department" field="department_id" options={departments} />
+            <SelectField label="Program" field="program_id" options={programs} />
             <DisplayField label="Academic Year" value={application?.academic_year} />
             <InputField label="Intake" field="intake" />
             <InputField label="Previous School" field="prev_school" />
@@ -150,22 +200,7 @@ export default function ApplicationEditModal({
         <section>
           <h3 className="text-[14px] font-bold text-ink-900 dark:text-white mb-4">Programme Selection</h3>
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">Campus</label>
-              <div className="relative mt-1">
-                <input
-                  type="number"
-                  className="input"
-                  placeholder={application?.campus_name || 'Campus ID'}
-                  value={(formData as any).campus_id || ''}
-                  onChange={(e) => handleChange('campus_id' as any, parseInt(e.target.value) || '')}
-                />
-                {hasChanges('campus_id') && (
-                  <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-600" />
-                )}
-              </div>
-              <p className="text-[11px] text-ink-500 dark:text-ink-400 mt-1">Current: {application?.campus_name}</p>
-            </div>
+            <SelectField label="Campus" field="campus_id" options={campuses} />
             <div>
               <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">Mode of Study</label>
               <div className="relative mt-1">
@@ -187,22 +222,7 @@ export default function ApplicationEditModal({
               </div>
               <p className="text-[11px] text-ink-500 dark:text-ink-400 mt-1">Current: {application?.mode_of_study_name}</p>
             </div>
-            <div>
-              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">Level</label>
-              <div className="relative mt-1">
-                <input
-                  type="number"
-                  className="input"
-                  placeholder={application?.level_name || 'Level ID'}
-                  value={(formData as any).level_id || ''}
-                  onChange={(e) => handleChange('level_id' as any, parseInt(e.target.value) || '')}
-                />
-                {hasChanges('level_id') && (
-                  <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-600" />
-                )}
-              </div>
-              <p className="text-[11px] text-ink-500 dark:text-ink-400 mt-1">Current: {application?.level_name}</p>
-            </div>
+            <SelectField label="Level" field="level_id" options={levels} />
             <DisplayField label="Sponsorship" value={application?.sponsorship} />
           </div>
         </section>
