@@ -265,7 +265,6 @@ class ApplicationAdminController extends BaseController
             'level_id',
             'faculty_id',
             'department_id',
-            'program_id',
             'intake',
         ];
 
@@ -326,8 +325,6 @@ class ApplicationAdminController extends BaseController
                     f.fac_name AS faculty_name,
                     sa.department_id,
                     d.dep_name AS department_name,
-                    sa.program_id,
-                    p.name AS program_name,
                     sa.academic_year_id,
                     ay.year AS academic_year,
                     sa.created_at,
@@ -338,7 +335,6 @@ class ApplicationAdminController extends BaseController
                 LEFT JOIN levels lvl ON sa.level_id = lvl.id
                 LEFT JOIN faculty f ON sa.faculty_id = f.fac_id
                 LEFT JOIN departements d ON sa.department_id = d.dep_id
-                LEFT JOIN programs p ON sa.program_id = p.id
                 LEFT JOIN academic_years ay ON sa.academic_year_id = ay.id
                 WHERE sa.id = ?
             ", [$id]);

@@ -42,15 +42,6 @@ export default function ApplicationEditModal({
     enabled: open && !!(formData as any).faculty_id,
   });
 
-  const { data: programs = [] } = useQuery({
-    queryKey: ['programs'],
-    queryFn: async () => {
-      const res = await axios.get('/api/portal/programs');
-      return (res.data?.data || []).map((p: any) => ({ value: p.id, label: p.program_name }));
-    },
-    enabled: open,
-  });
-
   const { data: levels = [] } = useQuery({
     queryKey: ['levels'],
     queryFn: async () => {
@@ -245,7 +236,6 @@ export default function ApplicationEditModal({
           <div className="grid grid-cols-2 gap-4">
             <SelectField label="Faculty" field="faculty_id" options={faculties} />
             <SelectField label="Department" field="department_id" options={departments} />
-            <SelectField label="Program" field="program_id" options={programs} />
             <DisplayField label="Academic Year" value={application?.academic_year} />
             <InputField label="Intake" field="intake" />
             <InputField label="Previous School" field="prev_school" />
