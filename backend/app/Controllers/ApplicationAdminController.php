@@ -272,7 +272,11 @@ class ApplicationAdminController extends BaseController
         $updateData = [];
         foreach ($allowedFields as $field) {
             if (array_key_exists($field, $data)) {
-                $updateData[$field] = $data[$field];
+                $value = $data[$field];
+                // Skip empty strings for optional fields, but allow 0 and false
+                if ($value !== '' || in_array($field, ['campus_id', 'level_id', 'faculty_id', 'department_id', 'program_id', 'mode_of_study'])) {
+                    $updateData[$field] = $value;
+                }
             }
         }
 
