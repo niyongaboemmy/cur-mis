@@ -22,14 +22,12 @@ export default function ApplicationEditModal({
     application || {}
   );
 
-  // Update formData when application prop changes
   useEffect(() => {
     if (application) {
       setFormData({ ...application });
     }
   }, [application, open]);
 
-  // Update form data when application changes
   const handleChange = (field: keyof StudentApplication, value: any) => {
     setFormData((prev) => ({
       ...prev,
@@ -56,98 +54,84 @@ export default function ApplicationEditModal({
     return formData[field as keyof StudentApplication] !== application?.[field];
   };
 
+  const InputField = ({ label, field, type = 'text' }: any) => (
+    <div>
+      <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">{label}</label>
+      <div className="relative mt-1">
+        <input
+          type={type}
+          className="input"
+          value={formData[field] || ''}
+          onChange={(e) => handleChange(field, type === 'number' ? parseInt(e.target.value) || '' : e.target.value)}
+        />
+        {hasChanges(field) && (
+          <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-600" />
+        )}
+      </div>
+    </div>
+  );
+
+  const DisplayField = ({ label, value }: any) => (
+    <div className="p-3 rounded-lg bg-ink-50 dark:bg-ink-800/30 border border-ink-100 dark:border-ink-700">
+      <p className="text-[11px] text-ink-500 dark:text-ink-400 uppercase tracking-wide font-medium">{label}</p>
+      <p className="text-[13px] text-ink-900 dark:text-white font-medium mt-1">{value || '—'}</p>
+    </div>
+  );
+
   if (!application) return null;
 
   return (
-    <Modal open={open} onClose={onClose} title="Edit Application" size="lg">
-      <div className="space-y-6">
-        {/* Personal Info */}
+    <Modal open={open} onClose={onClose} title="Edit Application" size="xl">
+      <div className="space-y-6 max-h-[70vh] overflow-y-auto">
+        {/* Application Summary */}
         <section>
-          <h3 className="text-[14px] font-bold text-ink-900 dark:text-white mb-4">
-            Personal Information
-          </h3>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">
-                First Name
-              </label>
-              <div className="relative mt-1">
-                <input
-                  type="text"
-                  className="input"
-                  value={formData.first_name || ''}
-                  onChange={(e) => handleChange('first_name', e.target.value)}
-                />
-                {hasChanges('first_name') && (
-                  <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-600" />
-                )}
-              </div>
-            </div>
-            <div>
-              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">
-                Last Name
-              </label>
-              <div className="relative mt-1">
-                <input
-                  type="text"
-                  className="input"
-                  value={formData.last_name || ''}
-                  onChange={(e) => handleChange('last_name', e.target.value)}
-                />
-                {hasChanges('last_name') && (
-                  <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-600" />
-                )}
-              </div>
-            </div>
-            <div>
-              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">
-                Email
-              </label>
-              <div className="relative mt-1">
-                <input
-                  type="email"
-                  className="input"
-                  value={formData.email || ''}
-                  onChange={(e) => handleChange('email', e.target.value)}
-                />
-                {hasChanges('email') && (
-                  <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-600" />
-                )}
-              </div>
-            </div>
-            <div>
-              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">
-                Phone
-              </label>
-              <div className="relative mt-1">
-                <input
-                  type="tel"
-                  className="input"
-                  value={formData.phone || ''}
-                  onChange={(e) => handleChange('phone', e.target.value)}
-                />
-                {hasChanges('phone') && (
-                  <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-600" />
-                )}
-              </div>
-            </div>
+          <h3 className="text-[14px] font-bold text-ink-900 dark:text-white mb-4">Application Summary</h3>
+          <div className="grid grid-cols-3 gap-3">
+            <DisplayField label="Application #" value={application?.application_number} />
+            <DisplayField label="Status" value={application?.status} />
+            <DisplayField label="Document Status" value={application?.document_status} />
           </div>
         </section>
 
-        {/* Programme Info */}
+        {/* Personal Information */}
         <section>
-          <h3 className="text-[14px] font-bold text-ink-900 dark:text-white mb-4">
-            Programme Selection
-          </h3>
+          <h3 className="text-[14px] font-bold text-ink-900 dark:text-white mb-4">Personal Information</h3>
+          <div className="grid grid-cols-2 gap-4">
+            <InputField label="First Name" field="first_name" />
+            <InputField label="Last Name" field="last_name" />
+            <InputField label="Email" field="email" type="email" />
+            <InputField label="Phone" field="phone" type="tel" />
+            <DisplayField label="Gender" value={application?.gender} />
+            <DisplayField label="Birthdate" value={application?.birthdate} />
+          </div>
+        </section>
+
+        {/* Academic Information */}
+        <section>
+          <h3 className="text-[14px] font-bold text-ink-900 dark:text-white mb-4">Academic Information</h3>
+          <div className="grid grid-cols-2 gap-4">
+            <DisplayField label="Faculty" value={application?.faculty_name} />
+            <DisplayField label="Department" value={application?.department_name} />
+            <DisplayField label="Program" value={application?.program_name} />
+            <DisplayField label="Academic Year" value={application?.academic_year} />
+            <InputField label="Intake" field="intake" />
+            <DisplayField label="Previous School" value={application?.prev_school} />
+            <DisplayField label="Previous Qualification" value={application?.prev_qualification} />
+            <DisplayField label="Previous Grade" value={application?.prev_grade} />
+          </div>
+        </section>
+
+        {/* Programme Selection (Editable) */}
+        <section>
+          <h3 className="text-[14px] font-bold text-ink-900 dark:text-white mb-4">Programme Selection</h3>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">
-                Campus ID
-              </label>
+              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">Campus</label>
               <div className="relative mt-1">
                 <input
                   type="number"
                   className="input"
+                  placeholder={application?.campus_name || 'Campus ID'}
                   value={(formData as any).campus_id || ''}
                   onChange={(e) => handleChange('campus_id' as any, parseInt(e.target.value) || '')}
                 />
@@ -155,11 +139,10 @@ export default function ApplicationEditModal({
                   <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-600" />
                 )}
               </div>
+              <p className="text-[11px] text-ink-500 dark:text-ink-400 mt-1">Current: {application?.campus_name}</p>
             </div>
             <div>
-              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">
-                Mode of Study
-              </label>
+              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">Mode of Study</label>
               <div className="relative mt-1">
                 <select
                   className="input appearance-none pr-8"
@@ -177,15 +160,15 @@ export default function ApplicationEditModal({
                   <Check className="absolute right-8 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-600" />
                 )}
               </div>
+              <p className="text-[11px] text-ink-500 dark:text-ink-400 mt-1">Current: {application?.mode_of_study_name}</p>
             </div>
             <div>
-              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">
-                Level ID
-              </label>
+              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">Level</label>
               <div className="relative mt-1">
                 <input
                   type="number"
                   className="input"
+                  placeholder={application?.level_name || 'Level ID'}
                   value={(formData as any).level_id || ''}
                   onChange={(e) => handleChange('level_id' as any, parseInt(e.target.value) || '')}
                 />
@@ -193,23 +176,18 @@ export default function ApplicationEditModal({
                   <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-600" />
                 )}
               </div>
+              <p className="text-[11px] text-ink-500 dark:text-ink-400 mt-1">Current: {application?.level_name}</p>
             </div>
-            <div>
-              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">
-                Intake
-              </label>
-              <div className="relative mt-1">
-                <input
-                  type="text"
-                  className="input"
-                  value={formData.intake || ''}
-                  onChange={(e) => handleChange('intake', e.target.value)}
-                />
-                {hasChanges('intake') && (
-                  <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-600" />
-                )}
-              </div>
-            </div>
+            <DisplayField label="Sponsorship" value={application?.sponsorship} />
+          </div>
+        </section>
+
+        {/* Address Information */}
+        <section>
+          <h3 className="text-[14px] font-bold text-ink-900 dark:text-white mb-4">Address Information</h3>
+          <div className="grid grid-cols-2 gap-4">
+            <DisplayField label="Address" value={application?.address} />
+            <DisplayField label="Nationality" value={application?.nationality} />
           </div>
         </section>
 
@@ -223,7 +201,7 @@ export default function ApplicationEditModal({
         </div>
 
         {/* Actions */}
-        <div className="flex items-center justify-end gap-3 pt-4 border-t border-ink-100 dark:border-ink-800">
+        <div className="flex items-center justify-end gap-3 pt-4 border-t border-ink-100 dark:border-ink-800 sticky bottom-0 bg-white dark:bg-ink-900">
           <button
             type="button"
             onClick={onClose}
