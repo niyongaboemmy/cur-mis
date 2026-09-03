@@ -436,6 +436,6 @@ export const graduandService = {
     Object.entries(params).forEach(([k, v]) => {
       if (v !== undefined && v !== null && v !== '') qs.append(k, String(v))
     })
-    return `${base}/api/graduands/completion/export?${qs.toString()}`
+    return `${base}/graduands/completion/export?${qs.toString()}`
   },
 }

@@ -408,7 +408,7 @@ export const budgetExecutionService = {
     const token = useAuthStore.getState().token ?? "";
     const base = import.meta.env.VITE_API_URL ?? "";
     const dept = departmentId ? `&department_id=${departmentId}` : "";
-    const url = `${base}/api/finance/budget-execution/export?academic_year_id=${academicYearId}&format=${format}${dept}&token=${token}`;
+    const url = `${base}/finance/budget-execution/export?academic_year_id=${academicYearId}&format=${format}${dept}&token=${token}`;
     const a = document.createElement("a");
     a.href = url;
     a.download = "";
@@ -455,7 +455,7 @@ export const budgetPlanService = {
   download: (academicYearId: number): void => {
     const token = useAuthStore.getState().token ?? "";
     const base = import.meta.env.VITE_API_URL ?? "";
-    const url = `${base}/api/finance/budget-plan/export?academic_year_id=${academicYearId}&token=${token}`;
+    const url = `${base}/finance/budget-plan/export?academic_year_id=${academicYearId}&token=${token}`;
     const a = document.createElement("a");
     a.href = url;
     a.download = "";
@@ -467,7 +467,7 @@ export const budgetPlanService = {
   downloadTemplate: (academicYearId: number): void => {
     const token = useAuthStore.getState().token ?? "";
     const base = import.meta.env.VITE_API_URL ?? "";
-    const url = `${base}/api/finance/budget-plan/template?academic_year_id=${academicYearId}&token=${token}`;
+    const url = `${base}/finance/budget-plan/template?academic_year_id=${academicYearId}&token=${token}`;
     const a = document.createElement("a");
     a.href = url;
     a.download = "";
@@ -668,7 +668,7 @@ export const exportService = {
     const token = useAuthStore.getState().token ?? "";
     const base = import.meta.env.VITE_API_URL ?? "";
     const year = academicYearId ? `&academic_year_id=${academicYearId}` : "";
-    const url = `${base}/api/finance/reports/export?type=${type}${year}&token=${token}`;
+    const url = `${base}/finance/reports/export?type=${type}${year}&token=${token}`;
     const a = document.createElement("a");
     a.href = url;
     a.download = "";

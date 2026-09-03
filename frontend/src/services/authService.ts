@@ -52,7 +52,7 @@ export const authService = {
     const token = useAuthStore.getState().token
     const base  = import.meta.env.VITE_API_URL ?? ''
     const v     = photoValue ? `&v=${encodeURIComponent(photoValue)}` : ''
-    return `${base}/api/auth/me/photo?token=${token}${v}`
+    return `${base}/auth/me/photo?token=${token}${v}`
   },
 
   /** Upload (or replace) the authenticated user's profile photo. */
