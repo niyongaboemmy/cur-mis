@@ -15,6 +15,7 @@ import {
   ShieldAlert,
   ArrowRight,
   X,
+  FileText,
 } from "lucide-react";
 
 type KpiFilter = "all" | "expected" | "collected" | "bursary" | "pending" | "partial" | "overdue";
@@ -26,6 +27,7 @@ import { useSystemStore } from "@/store/systemStore";
 import { formatRWF } from "@/utils/formatCurrency";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import Pagination from "@/components/ui/Pagination";
+import StudentBillingFormModal from "@/components/finance/StudentBillingFormModal";
 import type { BillingSummary } from "@/types/finance";
 
 export default function StudentBillingPage() {
@@ -34,6 +36,7 @@ export default function StudentBillingPage() {
 
   const [yearId, setYearId] = useState<string | number>("");
   const [semester, setSemester] = useState<string | number>("");
+  const [billingFormOpen, setBillingFormOpen] = useState(false);
 
   // For billing, we use intake years from student table, not the global academic year
   // Don't auto-select a year — let user choose from available intake cohorts
@@ -299,6 +302,13 @@ export default function StudentBillingPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <button
+            className="btn-ghost btn-sm flex items-center gap-1.5 px-3 border border-ink-200 dark:border-ink-700 text-ink-600 dark:text-ink-300"
+            onClick={() => setBillingFormOpen(true)}
+          >
+            <FileText className="w-3.5 h-3.5" />
+            Billing Form
+          </button>
           <button
             className="btn-ghost btn-sm flex items-center gap-1.5 px-3 border border-ink-200 dark:border-ink-700 text-ink-600 dark:text-ink-300"
             onClick={handleExport}
@@ -772,6 +782,13 @@ export default function StudentBillingPage() {
           </div>
         )}
       </div>
+
+      {/* Billing Form Modal */}
+      <StudentBillingFormModal
+        open={billingFormOpen}
+        onClose={() => setBillingFormOpen(false)}
+        formUrl="/billing-form"
+      />
     </div>
   );
 }
