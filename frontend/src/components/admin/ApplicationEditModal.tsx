@@ -118,29 +118,87 @@ export default function ApplicationEditModal({
     </div>
   );
 
-  const SelectField = ({ label, field, options }: any) => (
-    <div>
-      <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">{label}</label>
-      <div className="relative mt-1">
-        <select
-          className="input appearance-none pr-8"
-          value={(formData as any)[field] || ''}
-          onChange={(e) => {
-            const value = e.target.value;
-            handleChange(field as keyof StudentApplication, value ? parseInt(value) : '');
-          }}
-        >
-          <option value="">Select {label}</option>
-          {options.map((opt: any) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
-        {hasChanges(field) && (
-          <Check className="absolute right-8 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-600" />
-        )}
+  const [searchInputs, setSearchInputs] = useState<Record<string, string>>({});
+
+  const SelectField = ({ label, field, options }: any) => {
+    const searchValue = searchInputs[field] || '';
+    const currentValue = (formData as any)[field];
+
+    // Filter options by search or id match
+    const filteredOptions = options.filter((opt: any) => {
+      if (searchValue === '') return true;
+      // Match by ID if search is numeric
+      if (!isNaN(Number(searchValue))) {
+        return opt.value.toString() === searchValue;
+      }
+      // Match by label text
+      return opt.label.toLowerCase().includes(searchValue.toLowerCase());
+    });
+
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const value = e.target.value;
+      setSearchInputs(prev => ({ ...prev, [field]: value }));
+
+      // Auto-select if searching by ID and found match
+      if (!isNaN(Number(value)) && value !== '') {
+        const match = options.find((opt: any) => opt.value.toString() === value);
+        if (match) {
+          handleChange(field as keyof StudentApplication, match.value as any);
+        }
+      }
+    };
+
+    const handleOptionSelect = (value: any) => {
+      handleChange(field as keyof StudentApplication, value as any);
+      setSearchInputs(prev => ({ ...prev, [field]: '' }));
+    };
+
+    return (
+      <div>
+        <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">{label}</label>
+        <div className="relative mt-1">
+          <input
+            type="text"
+            className="input"
+            placeholder="Type ID or name..."
+            value={searchValue}
+            onChange={handleInputChange}
+          />
+
+          {searchValue && filteredOptions.length > 0 && (
+            <div className="absolute top-full left-0 right-0 mt-1 border border-ink-200 dark:border-ink-700 rounded bg-white dark:bg-ink-900 shadow-lg z-10 max-h-48 overflow-y-auto">
+              {filteredOptions.map((opt: any) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => handleOptionSelect(opt.value)}
+                  className="w-full text-left px-3 py-2 hover:bg-blue-50 dark:hover:bg-blue-900/30 text-sm text-ink-900 dark:text-white border-b border-ink-100 dark:border-ink-800 last:border-b-0"
+                >
+                  <span className="font-medium">#{opt.value}</span> {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {searchValue && filteredOptions.length === 0 && (
+            <div className="absolute top-full left-0 right-0 mt-1 border border-red-200 dark:border-red-900 rounded bg-red-50 dark:bg-red-900/20 shadow-lg z-10 p-3">
+              <p className="text-sm text-red-700 dark:text-red-300">No matching {label.toLowerCase()} found</p>
+            </div>
+          )}
+
+          {currentValue && !searchValue && (
+            <div className="text-[11px] text-ink-500 dark:text-ink-400 mt-1">
+              ID: {currentValue} • {options.find((o: any) => o.value === currentValue)?.label}
+            </div>
+          )}
+
+          {hasChanges(field) && (
+            <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-600" />
+          )}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const DisplayField = ({ label, value }: any) => (
     <div className="p-3 rounded-lg bg-ink-50 dark:bg-ink-800/30 border border-ink-100 dark:border-ink-700">
