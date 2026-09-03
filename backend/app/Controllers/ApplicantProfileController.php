@@ -1666,9 +1666,8 @@ class ApplicantProfileController extends BaseController
 
         $document = $this->docModel->find($id);
 
-        if (!$document
-            || (int)$document['applicant_profile_id'] !== (int)$profile['id']
-            || (int)$document['application_id'] !== (int)$profile['application_id']) {
+        // Verify document exists and belongs to the authenticated applicant's profile
+        if (!$document || (int)$document['applicant_profile_id'] !== (int)$profile['id']) {
             $this->error($response, 'Document not found.', 404);
         }
 
