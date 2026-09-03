@@ -1060,9 +1060,9 @@ function ApplicantWelcome({ firstName }: { firstName: string }) {
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="text-[13.5px] font-semibold text-ink-900 dark:text-white leading-tight">
-                    Ask for Help with Fee
+                    Special Payment
                   </p>
-                  <p className="text-[11.5px] text-ink-500 truncate mt-0.5">Get assistance with billing</p>
+                  <p className="text-[11.5px] text-ink-500 truncate mt-0.5">Make special payment requests</p>
                 </div>
                 <ArrowRight className="w-3.5 h-3.5 text-ink-300 shrink-0 group-hover:text-brand group-hover:translate-x-0.5 transition-all" />
               </button>
