@@ -33,4 +33,25 @@ $router->group(['prefix' => '/api/hr'], function ($router) {
         'middlewares' => ['auth']
     ]);
 
+    // ── Leave Approval Routes ─────────────────────────────────────────────────
+    $router->get('/leave/approvals/queue', 'Controllers\LeaveApprovalController::queue', [
+        'middlewares' => ['auth']
+    ]);
+
+    $router->get('/leave/requests/:id/progress', 'Controllers\LeaveApprovalController::progress', [
+        'middlewares' => ['auth']
+    ]);
+
+    $router->post('/leave/approvals/:id/decide', 'Controllers\LeaveApprovalController::decide', [
+        'middlewares' => ['auth']
+    ]);
+
+    $router->get('/leave/types/:id/stages', 'Controllers\LeaveApprovalController::stages', [
+        'middlewares' => ['auth', 'can:MANAGE_LEAVE_REQUESTS']
+    ]);
+
+    $router->post('/leave/types/:id/stages', 'Controllers\LeaveApprovalController::saveStages', [
+        'middlewares' => ['auth', 'can:MANAGE_LEAVE_REQUESTS']
+    ]);
+
 });

@@ -42,6 +42,7 @@ import LeaveApprovalQueuePage from "@/pages/hr/LeaveApprovalQueuePage";
 import NotificationsPage from "@/pages/NotificationsPage";
 import AppraisalPage from "@/pages/hr/AppraisalPage";
 import HRImportExportPage from "@/pages/hr/HRImportExportPage";
+import SupervisorLeaveApprovalDashboard from "@/pages/hr/SupervisorLeaveApprovalDashboard";
 
 // Academic
 import AcademicSettingsPage from "@/pages/academic/AcademicSettingsPage";
@@ -437,6 +438,10 @@ function App() {
                 <Route
                   path="/hr/leave/approvals"
                   element={<LeaveApprovalQueuePage />}
+                />
+                <Route
+                  path="/hr/leave/supervisor-approvals"
+                  element={<SupervisorLeaveApprovalDashboard />}
                 />
               </Route>
 
