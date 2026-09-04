@@ -25,6 +25,7 @@ import {
   Loader2,
   AlertCircle,
   ExternalLink,
+  UploadCloud,
 } from "lucide-react";
 import { applicantService } from "@/services/admissionService";
 import {
@@ -39,7 +40,6 @@ import {
   countryFlag,
 } from "@/data/countries";
 import DocumentPreviewModal from "../ui/DocumentPreviewModal";
-import DocumentsUploader from "../ui/DocumentsUploader";
 import Modal from "../ui/Modal";
 import { useLevels } from "@/hooks/useLevels";
 
@@ -793,48 +793,51 @@ export default function ApplicationDetailsView({
               </div>
             )}
 
-            <div className="p-3 rounded-lg border border-emerald-200 dark:border-emerald-900/40 bg-emerald-50 dark:bg-emerald-900/10">
-              <p className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-widest mb-2">Replace With New File</p>
-              <p className="text-[12px] text-emerald-800 dark:text-emerald-300 mb-3">Upload the correct document. Once all rejected documents are replaced, your application will be automatically resubmitted.</p>
-              <DocumentsUploader
-                requirements={[
-                  {
-                    ...reuploadDoc,
-                    document_type_id: reuploadDoc.document_type_id,
-                    is_required: true,
-                  } as any,
-                ]}
-                uploaded={[
-                  {
-                    id: reuploadDoc.document_id,
-                    document_type_id: reuploadDoc.document_type_id,
-                    file_original_name: reuploadDoc.file_original_name,
-                    verification_status: reuploadDoc.verification_status,
-                    file_mime: reuploadDoc.file_mime,
-                  } as any,
-                ]}
-                onUpload={async ({ document_type_id, file }) => {
-                  try {
-                    // Delete existing rejected document first
-                    if (reuploadDoc.document_id) {
-                      await applicantService.deleteDocument(reuploadDoc.document_id);
-                    }
-                    // Upload new document
-                    await applicantService.uploadDocument({ document_type_id, file });
-                    // Keep modal open so user can review other rejected documents
-                    setTimeout(() => {
-                      setReuploadDoc(null);
-                    }, 1500);
-                  } catch (error) {
-                    console.error('Upload error:', error);
-                    throw error;
-                  }
-                }}
-                invalidateKeys={[
-                  ["applicant", "application", application.id],
-                  ["applicant", "documents"],
-                ]}
-              />
+            <div className="p-4 rounded-lg border border-emerald-200 dark:border-emerald-900/40 bg-emerald-50 dark:bg-emerald-900/10">
+              <p className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-widest mb-3">Upload New File</p>
+              <label className="block">
+                <div className="relative border-2 border-dashed border-emerald-300 dark:border-emerald-700 rounded-lg p-6 hover:bg-emerald-100 dark:hover:bg-emerald-900/20 transition-colors cursor-pointer text-center">
+                  <input
+                    type="file"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+
+                      try {
+                        toast.loading('Uploading document...');
+                        // Delete existing rejected document first
+                        if (reuploadDoc.document_id) {
+                          await applicantService.deleteDocument(reuploadDoc.document_id);
+                        }
+                        // Upload new document
+                        await applicantService.uploadDocument({
+                          document_type_id: reuploadDoc.document_type_id,
+                          file
+                        });
+                        toast.success('Document uploaded successfully!');
+                        // Invalidate queries to refresh the list
+                        qc.invalidateQueries({ queryKey: ["applicant", "application", application.id] });
+                        qc.invalidateQueries({ queryKey: ["applicant", "documents"] });
+                        // Close modal after brief delay
+                        setTimeout(() => {
+                          setReuploadDoc(null);
+                        }, 1000);
+                      } catch (error: any) {
+                        toast.error(error?.response?.data?.message || 'Upload failed');
+                        console.error('Upload error:', error);
+                      }
+                    }}
+                  />
+                  <UploadCloud className="w-8 h-8 text-emerald-600 dark:text-emerald-400 mx-auto mb-2" />
+                  <p className="text-[13px] font-bold text-emerald-900 dark:text-emerald-100">
+                    Click to upload or drag and drop
+                  </p>
+                  <p className="text-[11px] text-emerald-700 dark:text-emerald-300 mt-1">
+                    PDF, JPEG, PNG (Max 5 MB)
+                  </p>
+                </div>
+              </label>
             </div>
           </div>
         </Modal>
