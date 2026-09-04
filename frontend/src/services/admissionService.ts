@@ -682,13 +682,13 @@ export const applicantService = {
   downloadUrl: (id: number) => {
     const token = useAuthStore.getState().token;
     const base = import.meta.env.VITE_API_URL ?? "";
-    return `${base}/api/applicant/documents/${id}/download?token=${token}`;
+    return `${base}/applicant/documents/${id}/download?token=${token}`;
   },
 
   paymentSlipUrl: (applicationId: number) => {
     const token = useAuthStore.getState().token;
     const base = import.meta.env.VITE_API_URL ?? "";
-    return `${base}/api/applicant/application/${applicationId}/payment-slip?token=${token}`;
+    return `${base}/applicant/application/${applicationId}/payment-slip?token=${token}`;
   },
 
   respondToOffer: (id: number, data: { response: 'accepted' | 'declined'; notes?: string }) =>
