@@ -306,7 +306,8 @@ class ApplicantProfileController extends BaseController
      * GET /api/applicant/application/bills
      *
      * Every admission bill on the applicant's application, with its balance and
-     * its own pre-filled Urubuto Pay checkout link.
+     * its own pre-filled Urubuto Pay checkout link. Shows bills based on the
+     * applicant's enrolled department and program fee structure.
      */
     public function getAdmissionBills(Request $request, Response $response): never
     {
@@ -316,48 +317,13 @@ class ApplicantProfileController extends BaseController
             $this->error($response, 'No active application.', 404);
         }
 
-        $body          = $request->body();
-        $transactionId = trim((string)($body['transaction_id'] ?? ''));
-        $amount        = isset($body['payment_amount']) ? (float)$body['payment_amount'] : null;
-        $currency      = (string)($body['payment_currency'] ?? 'RWF');
-
-        if ($transactionId === '') {
-            $this->error($response, 'Transaction ID is required.', 422);
+        try {
+            $billing = new AdmissionBillingService();
+            $overview = $billing->overview($appId);
+            $this->success($response, $overview, 'Bills retrieved.');
+        } catch (\RuntimeException $e) {
+            $this->error($response, $e->getMessage(), 404);
         }
-
-        $update = [
-            'transaction_id'    => $transactionId,
-            'payment_currency'  => $currency,
-            'paid_at'           => date('Y-m-d H:i:s'),
-        ];
-        if ($amount !== null) $update['payment_amount'] = $amount;
-
-        // The slip itself is optional on this endpoint — applicants can also
-        // submit it later via re-uploading; but the wizard sends it together.
-        $file = $request->file('payment_slip');
-        if ($file) {
-            $allowedMimes = ['application/pdf', 'image/jpeg', 'image/png'];
-            if (!in_array($file['type'] ?? '', $allowedMimes, true)) {
-                $this->error($response, 'Invalid file type. Only PDF, JPEG and PNG are allowed.', 422);
-            }
-            try {
-                $client   = new FileServerClient();
-                $uploaded = $client->upload($file);
-            } catch (\RuntimeException $e) {
-                $this->error($response, $e->getMessage(), 422);
-            }
-            $update['payment_slip_file_id'] = $uploaded['id'];
-            $update['payment_slip_mime']    = (string)($file['type'] ?? '');
-        }
-
-        $this->appModel->update($appId, $update);
-
-        $this->success($response, [
-            'transaction_id'       => $transactionId,
-            'payment_slip_file_id' => $update['payment_slip_file_id'] ?? null,
-            'payment_amount'       => $amount,
-            'payment_currency'     => $currency,
-        ], 'Payment recorded.');
     }
 
 
