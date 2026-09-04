@@ -240,6 +240,25 @@ export default function AdmissionFeesPanel({
 
   return (
     <section className={`card p-6 space-y-5 ${className}`}>
+      {/* Unpaid Amount Alert for Applicants */}
+      {!isValidator && summary && summary.balance > 0 && (
+        <div className="p-4 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1">
+              <p className="text-[13px] font-semibold text-amber-900 dark:text-amber-100">
+                Admission Fee Outstanding
+              </p>
+              <p className="text-[12px] text-amber-700 dark:text-amber-200 mt-1">
+                You have an unpaid balance. Complete payment below to receive your registration number and proceed to enrollment.
+              </p>
+            </div>
+            <p className="text-[24px] font-black tabular-nums text-amber-600 dark:text-amber-400 shrink-0">
+              {fmt(summary.balance)} RWF
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-wrap items-start justify-between gap-4">
         <Header
           title="Admission fees"
@@ -305,10 +324,30 @@ export default function AdmissionFeesPanel({
                 </span>
               ) : (
                 <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                  {/* Bank Slip Button (Applicant Only) - Primary alternative */}
+                  {/* Pay via Urubuto - Primary button for applicants */}
                   {!isValidator && (
                     <button
-                      className="btn-primary"
+                      className="btn-primary font-semibold"
+                      onClick={() => payNow()}
+                      title="Pay via Urubuto (MTN MoMo / Airtel Money)"
+                    >
+                      <CreditCard className="w-4 h-4" />
+                      Pay {fmt(bill.balance)} RWF
+                    </button>
+                  )}
+
+                  {/* Validator: Open payment page */}
+                  {isValidator && (
+                    <button className="btn-primary" onClick={() => payNow()}>
+                      <CreditCard className="w-4 h-4" />
+                      Open payment page
+                    </button>
+                  )}
+
+                  {/* Bank Slip Button (Applicant Only) */}
+                  {!isValidator && (
+                    <button
+                      className="btn-secondary"
                       onClick={() => setShowBankSlipModal(true)}
                       title="Upload or manage bank slip payment"
                     >
@@ -316,12 +355,6 @@ export default function AdmissionFeesPanel({
                       Bank Slip
                     </button>
                   )}
-
-                  {/* Pay Now Button */}
-                  <button className={isValidator ? "btn-primary" : "btn-secondary"} onClick={() => payNow()}>
-                    <CreditCard className="w-4 h-4" />
-                    {isValidator ? 'Open payment page' : `Pay ${fmt(bill.balance)} RWF`}
-                  </button>
 
                   {/* Bordereau Button (Student Only) */}
                   {!isValidator && (
