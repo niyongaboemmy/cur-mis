@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import {
   AlertCircle, BadgeCheck, CheckCircle2, Copy, CreditCard, ExternalLink,
-  Loader2, Receipt, ReceiptText, ShieldCheck, Wallet, BanknoteIcon, Upload, Lock, LockOpen, FileText, X,
+  Loader2, Receipt, ReceiptText, ShieldCheck, Wallet, Lock, LockOpen, FileText, X,
 } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 import BordereauPaymentForm from './BordereauPaymentForm'
@@ -356,35 +356,6 @@ export default function AdmissionFeesPanel({
                     </button>
                   )}
 
-                  {/* Bordereau Button (Student Only) */}
-                  {!isValidator && (
-                    <button
-                      className="btn-secondary"
-                      onClick={() => setShowBordereauForm(true)}
-                      title="Paid via bank transfer? Submit your receipt number for verification"
-                    >
-                      <BanknoteIcon className="w-4 h-4" />
-                      Bordereau
-                    </button>
-                  )}
-
-                  {/* Upload Slip Button (Student Only) */}
-                  {!isValidator && (
-                    <label className="btn-secondary cursor-pointer">
-                      <Upload className="w-4 h-4" />
-                      Upload Slip
-                      <input
-                        type="file"
-                        accept=".pdf,.jpg,.jpeg,.png"
-                        className="hidden"
-                        onChange={(e) => {
-                          if (e.target.files?.[0]) {
-                            toast.success('Payment slip uploaded. Finance will review within 24 hours.')
-                          }
-                        }}
-                      />
-                    </label>
-                  )}
 
                   {/* Confirm Offline Button (Finance Only) */}
                   {isValidator && canManage && (
