@@ -86,16 +86,8 @@ SET @sql = IF(@has_qr = 0,
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 -- ── 3. Create leave attachment table ────────────────────────────────────────
--- Drop and recreate if exists to ensure clean schema
-SET @table_exists = (
-  SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'leave_request_attachments'
-);
-
-IF @table_exists > 0 THEN
-  ALTER TABLE `leave_request_attachments` DROP FOREIGN KEY `fk_lra_request`;
-  DROP TABLE `leave_request_attachments`;
-END IF;
+-- Drop table if exists (safe for re-run)
+DROP TABLE IF EXISTS `leave_request_attachments`;
 
 CREATE TABLE `leave_request_attachments` (
   `id`                    INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -113,16 +105,8 @@ CREATE TABLE `leave_request_attachments` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Supporting documents for leave requests';
 
 -- ── 4. Create leave request notifications table ──────────────────────────────
-SET @ln_exists = (
-  SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES
-  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'leave_notifications'
-);
-
-IF @ln_exists > 0 THEN
-  ALTER TABLE `leave_notifications` DROP FOREIGN KEY `fk_ln_request`;
-  ALTER TABLE `leave_notifications` DROP FOREIGN KEY `fk_ln_recipient`;
-  DROP TABLE `leave_notifications`;
-END IF;
+-- Drop table if exists (safe for re-run)
+DROP TABLE IF EXISTS `leave_notifications`;
 
 CREATE TABLE `leave_notifications` (
   `id`                    INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -156,22 +140,15 @@ INSERT IGNORE INTO `leave_types` (`name`, `slug`, `description`, `max_days_per_y
 -- Get leave type IDs
 SET @leave_type_id = (SELECT `id` FROM `leave_types` WHERE `slug` = 'annual' LIMIT 1);
 
--- Only insert if stages don't exist for this leave type
-SET @stage_count = (SELECT COUNT(*) FROM `leave_approval_stages` WHERE `leave_type_id` = @leave_type_id);
+-- Insert stages using INSERT IGNORE (safe for re-run)
+INSERT IGNORE INTO `leave_approval_stages` (`leave_type_id`, `stage_order`, `stage_key`, `stage_label`, `required_permission_slug`, `is_final_approval`, `sla_hours`)
+VALUES (@leave_type_id, 1, 'supervisor_review', 'Supervisor Review', 'APPROVE_LEAVE_SUPERVISOR', 0, 48);
 
-IF @stage_count = 0 THEN
-  -- Stage 1: Supervisor Review
-  INSERT INTO `leave_approval_stages` (`leave_type_id`, `stage_order`, `stage_key`, `stage_label`, `required_permission_slug`, `is_final_approval`, `sla_hours`)
-  VALUES (@leave_type_id, 1, 'supervisor_review', 'Supervisor Review', 'APPROVE_LEAVE_SUPERVISOR', 0, 48);
+INSERT IGNORE INTO `leave_approval_stages` (`leave_type_id`, `stage_order`, `stage_key`, `stage_label`, `required_permission_slug`, `is_final_approval`, `sla_hours`)
+VALUES (@leave_type_id, 2, 'hr_recommendation', 'HR Recommendation', 'APPROVE_LEAVE_HR', 0, 48);
 
-  -- Stage 2: HR Recommendation
-  INSERT INTO `leave_approval_stages` (`leave_type_id`, `stage_order`, `stage_key`, `stage_label`, `required_permission_slug`, `is_final_approval`, `sla_hours`)
-  VALUES (@leave_type_id, 2, 'hr_recommendation', 'HR Recommendation', 'APPROVE_LEAVE_HR', 0, 48);
-
-  -- Stage 3: Final Authorization
-  INSERT INTO `leave_approval_stages` (`leave_type_id`, `stage_order`, `stage_key`, `stage_label`, `required_permission_slug`, `is_final_approval`, `sla_hours`)
-  VALUES (@leave_type_id, 3, 'final_authorization', 'Final Authorization', 'APPROVE_LEAVE_FINAL', 1, 24);
-END IF;
+INSERT IGNORE INTO `leave_approval_stages` (`leave_type_id`, `stage_order`, `stage_key`, `stage_label`, `required_permission_slug`, `is_final_approval`, `sla_hours`)
+VALUES (@leave_type_id, 3, 'final_authorization', 'Final Authorization', 'APPROVE_LEAVE_FINAL', 1, 24);
 
 -- ── 7. Create view for leave request summary (Excel export) ──────────────────
 DROP VIEW IF EXISTS `v_leave_request_summary`;
