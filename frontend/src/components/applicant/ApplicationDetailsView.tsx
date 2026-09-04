@@ -23,6 +23,8 @@ import {
   Award,
   Sparkles,
   Loader2,
+  AlertCircle,
+  ExternalLink,
 } from "lucide-react";
 import { applicantService } from "@/services/admissionService";
 import {
@@ -580,6 +582,53 @@ export default function ApplicationDetailsView({
               )}
             </div>
           </Card>
+
+          {/* Unpaid Admission Fees - Only show if status is offer_accepted */}
+          {app.status === "offer_accepted" && (
+            <Card>
+              <div className="flex items-start justify-between gap-4 mb-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center shrink-0">
+                    <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[14px] font-bold text-ink-900 dark:text-white">
+                      Admission Fees Outstanding
+                    </p>
+                    <p className="text-[12px] text-ink-500 dark:text-ink-400 mt-0.5">
+                      Complete payment to proceed to enrollment
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/30 mb-4">
+                <p className="text-[11px] uppercase tracking-widest text-amber-700 dark:text-amber-300 font-bold mb-1">
+                  Amount Due
+                </p>
+                <p className="text-[28px] font-black text-amber-600 dark:text-amber-400 tabular-nums">
+                  –
+                </p>
+                <p className="text-[12px] text-amber-700 dark:text-amber-300 mt-2">
+                  Amount will be shown once billing is finalized by the finance office.
+                </p>
+              </div>
+
+              <a
+                href="https://urubutopay.rw/pay-now?origin=internal"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-primary w-full inline-flex items-center justify-center gap-2"
+              >
+                <CreditCard className="w-4 h-4" />
+                Pay via Urubuto (MTN MoMo / Airtel Money)
+                <ExternalLink className="w-4 h-4" />
+              </a>
+              <p className="text-[11px] text-ink-500 dark:text-ink-400 mt-3 text-center">
+                You'll be redirected to the Urubuto payment gateway
+              </p>
+            </Card>
+          )}
 
           {/* Merit info */}
           {(app.merit_score != null || app.merit_rank != null) && (
