@@ -233,7 +233,7 @@ export const applicationAdminService = {
   paymentSlipUrl: (id: number) => {
     const token = useAuthStore.getState().token;
     const base = import.meta.env.VITE_API_URL ?? "";
-    return `${base}/admin/applications/${id}/payment-slip?token=${token}`;
+    return `${base}/api/admin/applications/${id}/payment-slip?token=${token}`;
   },
 
   /** Inline-streamable URL for the applicant's profile photo. Pass the
@@ -244,7 +244,7 @@ export const applicationAdminService = {
     const token = useAuthStore.getState().token;
     const base  = import.meta.env.VITE_API_URL ?? "";
     const v     = `&v=${encodeURIComponent(String(photoCacheKey))}`;
-    return `${base}/admin/applications/${id}/photo?token=${token}${v}`;
+    return `${base}/api/admin/applications/${id}/photo?token=${token}${v}`;
   },
 
   exportUrl: (queryString: string) => {
@@ -259,14 +259,14 @@ export const applicationAdminService = {
     }
     const finalQs = params.toString();
     const sep = finalQs ? "&" : "";
-    return `${base}/admin/applications/export?${finalQs}${sep}token=${token}`;
+    return `${base}/api/admin/applications/export?${finalQs}${sep}token=${token}`;
   },
 
   /** Task 1.12 — bulk applicant upload. */
   bulkUploadTemplateUrl: () => {
     const token = useAuthStore.getState().token;
     const base  = import.meta.env.VITE_API_URL ?? '';
-    return `${base}/admin/applications/bulk-upload-template?token=${token}`;
+    return `${base}/api/admin/applications/bulk-upload-template?token=${token}`;
   },
 
   /** Task 1.14 — applicant statistics report. */
@@ -342,7 +342,7 @@ export const verificationService = {
   downloadUrl: (applicationId: number, documentId: number) => {
     const token = useAuthStore.getState().token;
     const base = import.meta.env.VITE_API_URL ?? "";
-    return `${base}/admin/verifications/${applicationId}/documents/${documentId}/download?token=${token}`;
+    return `${base}/api/admin/verifications/${applicationId}/documents/${documentId}/download?token=${token}`;
   },
 }
 
@@ -411,13 +411,13 @@ export const offerService = {
 
     const token = useAuthStore.getState().token
     const base  = import.meta.env.VITE_API_URL ?? ''
-    return `${base}/admin/admissions/offers/${offerId}/letter?token=${token}`
+    return `${base}/api/admin/admissions/offers/${offerId}/letter?token=${token}`
   },
 
   /** Returns absolute URL for applicant PDF download via token (no JWT). */
   letterPublicUrl: (letterToken: string) => {
     const base = import.meta.env.VITE_API_URL ?? ''
-    return `${base}/portal/admission-letter?token=${letterToken}`
+    return `${base}/api/portal/admission-letter?token=${letterToken}`
   },
 }
 
@@ -682,13 +682,13 @@ export const applicantService = {
   downloadUrl: (id: number) => {
     const token = useAuthStore.getState().token;
     const base = import.meta.env.VITE_API_URL ?? "";
-    return `${base}/applicant/documents/${id}/download?token=${token}`;
+    return `${base}/api/applicant/documents/${id}/download?token=${token}`;
   },
 
   paymentSlipUrl: (applicationId: number) => {
     const token = useAuthStore.getState().token;
     const base = import.meta.env.VITE_API_URL ?? "";
-    return `${base}/applicant/application/${applicationId}/payment-slip?token=${token}`;
+    return `${base}/api/applicant/application/${applicationId}/payment-slip?token=${token}`;
   },
 
   respondToOffer: (id: number, data: { response: 'accepted' | 'declined'; notes?: string }) =>
