@@ -804,8 +804,8 @@ export default function ApplicationDetailsView({
                       const file = e.target.files?.[0];
                       if (!file) return;
 
+                      const toastId = toast.loading('Uploading document...');
                       try {
-                        toast.loading('Uploading document...');
                         // Delete existing rejected document first
                         if (reuploadDoc.document_id) {
                           await applicantService.deleteDocument(reuploadDoc.document_id);
@@ -815,6 +815,7 @@ export default function ApplicationDetailsView({
                           document_type_id: reuploadDoc.document_type_id,
                           file
                         });
+                        toast.dismiss(toastId);
                         toast.success('Document uploaded successfully!');
                         // Invalidate queries to refresh the list
                         qc.invalidateQueries({ queryKey: ["applicant", "application", application.id] });
@@ -822,9 +823,11 @@ export default function ApplicationDetailsView({
                         // Close modal after brief delay
                         setTimeout(() => {
                           setReuploadDoc(null);
-                        }, 1000);
+                        }, 1500);
                       } catch (error: any) {
-                        toast.error(error?.response?.data?.message || 'Upload failed');
+                        toast.dismiss(toastId);
+                        const errorMessage = error?.response?.data?.message || error?.message || 'Upload failed';
+                        toast.error(errorMessage);
                         console.error('Upload error:', error);
                       }
                     }}

@@ -1485,7 +1485,7 @@ class ApplicantProfileController extends BaseController
         // Update appId to the actual application we're uploading to
         $appId = (int)$application['id'];
 
-        $allowedStatuses = ['draft', 'submitted', 'documents_under_review', 'documents_rejected', 'requested_changes'];
+        $allowedStatuses = ['draft', 'submitted', 'documents_under_review', 'documents_rejected', 'requested_changes', 'offer_accepted'];
         if (!in_array($application['status'], $allowedStatuses, true)) {
             $this->error($response, 'Documents cannot be uploaded at this stage of the application.', 422);
         }
