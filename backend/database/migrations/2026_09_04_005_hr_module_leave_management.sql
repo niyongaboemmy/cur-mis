@@ -86,7 +86,18 @@ SET @sql = IF(@has_qr = 0,
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 -- ── 3. Create leave attachment table ────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS `leave_request_attachments` (
+-- Drop and recreate if exists to ensure clean schema
+SET @table_exists = (
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'leave_request_attachments'
+);
+
+IF @table_exists > 0 THEN
+  ALTER TABLE `leave_request_attachments` DROP FOREIGN KEY `fk_lra_request`;
+  DROP TABLE `leave_request_attachments`;
+END IF;
+
+CREATE TABLE `leave_request_attachments` (
   `id`                    INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `leave_request_id`      INT UNSIGNED NOT NULL,
   `file_id`               VARCHAR(255) NOT NULL,
@@ -102,7 +113,18 @@ CREATE TABLE IF NOT EXISTS `leave_request_attachments` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Supporting documents for leave requests';
 
 -- ── 4. Create leave request notifications table ──────────────────────────────
-CREATE TABLE IF NOT EXISTS `leave_notifications` (
+SET @ln_exists = (
+  SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'leave_notifications'
+);
+
+IF @ln_exists > 0 THEN
+  ALTER TABLE `leave_notifications` DROP FOREIGN KEY `fk_ln_request`;
+  ALTER TABLE `leave_notifications` DROP FOREIGN KEY `fk_ln_recipient`;
+  DROP TABLE `leave_notifications`;
+END IF;
+
+CREATE TABLE `leave_notifications` (
   `id`                    INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `leave_request_id`      INT UNSIGNED NOT NULL,
   `recipient_id`          INT UNSIGNED NOT NULL,
