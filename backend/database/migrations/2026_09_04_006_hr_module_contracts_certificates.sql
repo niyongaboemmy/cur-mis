@@ -38,7 +38,8 @@ INSERT IGNORE INTO `contract_types` (`name`, `code`, `description`, `default_dur
   ('Full-Time Indefinite', 'FULLTIME_IND', 'Permanent full-time employment', NULL, 30, 50);
 
 -- ── 3. Create employee contracts table ──────────────────────────────────────
-CREATE TABLE IF NOT EXISTS `employee_contracts` (
+DROP TABLE IF EXISTS `employee_contracts`;
+CREATE TABLE `employee_contracts` (
   `id`                    INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `user_id`               INT UNSIGNED NOT NULL,
   `contract_type_id`      INT UNSIGNED NOT NULL,
@@ -46,8 +47,6 @@ CREATE TABLE IF NOT EXISTS `employee_contracts` (
   `start_date`            DATE NOT NULL,
   `end_date`              DATE NULL COMMENT "NULL means indefinite/active contract",
   `position_title`        VARCHAR(150) NOT NULL,
-  `department_id`         INT UNSIGNED NOT NULL,
-  `faculty_id`            INT UNSIGNED NULL,
   `employment_level`      VARCHAR(50) NULL COMMENT "e.g., Senior, Middle, Junior",
   `reporting_to_id`       INT UNSIGNED NULL COMMENT "Direct supervisor",
   `salary_grade`          VARCHAR(20) NULL,
@@ -65,8 +64,6 @@ CREATE TABLE IF NOT EXISTS `employee_contracts` (
   PRIMARY KEY (`id`),
   CONSTRAINT `fk_ec_user` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_ec_type` FOREIGN KEY (`contract_type_id`) REFERENCES `contract_types`(`id`) ON DELETE RESTRICT,
-  CONSTRAINT `fk_ec_department` FOREIGN KEY (`department_id`) REFERENCES `departments`(`id`) ON DELETE RESTRICT,
-  CONSTRAINT `fk_ec_faculty` FOREIGN KEY (`faculty_id`) REFERENCES `faculties`(`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_ec_reporting_to` FOREIGN KEY (`reporting_to_id`) REFERENCES `users`(`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_ec_approved_by` FOREIGN KEY (`approved_by`) REFERENCES `users`(`id`) ON DELETE SET NULL,
   KEY `idx_ec_user` (`user_id`),
@@ -77,7 +74,8 @@ CREATE TABLE IF NOT EXISTS `employee_contracts` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Employee contract records';
 
 -- ── 4. Create contract notifications/reminders ──────────────────────────────
-CREATE TABLE IF NOT EXISTS `contract_notifications` (
+DROP TABLE IF EXISTS `contract_notifications`;
+CREATE TABLE `contract_notifications` (
   `id`                    INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `contract_id`           INT UNSIGNED NOT NULL,
   `notification_type`     ENUM("Renewal Due", "Expiry", "Termination", "Renewal Approved", "Renewal Rejected") NOT NULL,
@@ -121,7 +119,8 @@ INSERT IGNORE INTO `certificate_types` (`name`, `code`, `description`, `requires
   ('Character Certificate', 'CHARACTER_CERT', 'Character certificate from employer', 1);
 
 -- ── 7. Create certificate requests table ────────────────────────────────────
-CREATE TABLE IF NOT EXISTS `certificate_requests` (
+DROP TABLE IF EXISTS `certificate_requests`;
+CREATE TABLE `certificate_requests` (
   `id`                    INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `user_id`               INT UNSIGNED NOT NULL,
   `certificate_type_id`   INT UNSIGNED NOT NULL,
@@ -149,7 +148,8 @@ CREATE TABLE IF NOT EXISTS `certificate_requests` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Employee certificate requests and tracking';
 
 -- ── 8. Create certificate tracking/audit table ─────────────────────────────
-CREATE TABLE IF NOT EXISTS `certificate_audit` (
+DROP TABLE IF EXISTS `certificate_audit`;
+CREATE TABLE `certificate_audit` (
   `id`                    INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `certificate_request_id` INT UNSIGNED NOT NULL,
   `action`                VARCHAR(50) NOT NULL COMMENT "e.g., Generated, Printed, Collected, Voided",
@@ -171,23 +171,25 @@ SELECT
   ec.`id` AS contract_id,
   u.`full_name` AS employee_name,
   u.`username` AS staff_id,
-  d.`name` AS department,
+  ec.`position_title`,
   ct.`name` AS contract_type,
   ec.`start_date`,
   ec.`end_date`,
   ec.`renewal_due_date`,
   ec.`status`,
-  DATEDIFF(ec.`end_date`, CURDATE()) AS days_until_expiry,
+  CASE
+    WHEN ec.`end_date` IS NULL THEN NULL
+    ELSE DATEDIFF(ec.`end_date`, CURDATE())
+  END AS days_until_expiry,
   CASE
     WHEN ec.`end_date` IS NULL THEN 'Indefinite'
     WHEN DATEDIFF(ec.`end_date`, CURDATE()) < 0 THEN 'EXPIRED'
-    WHEN DATEDIFF(ec.`renewal_due_date`, CURDATE()) <= 0 THEN 'RENEWAL DUE'
+    WHEN ec.`renewal_due_date` IS NOT NULL AND DATEDIFF(ec.`renewal_due_date`, CURDATE()) <= 0 THEN 'RENEWAL DUE'
     WHEN DATEDIFF(ec.`end_date`, CURDATE()) <= 30 THEN 'EXPIRING SOON'
     ELSE 'ACTIVE'
   END AS renewal_status
 FROM `employee_contracts` ec
 JOIN `users` u ON u.`id` = ec.`user_id`
 JOIN `contract_types` ct ON ct.`id` = ec.`contract_type_id`
-JOIN `departments` d ON d.`id` = ec.`department_id`
 WHERE ec.`status` IN ('Active', 'Approved')
-ORDER BY ec.`renewal_due_date` ASC;
+ORDER BY ec.`renewal_due_date` ASC NULLS LAST;
