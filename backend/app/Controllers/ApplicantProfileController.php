@@ -1047,6 +1047,8 @@ class ApplicantProfileController extends BaseController
         foreach ($documents as $doc) {
             $uploadedMap[(int)$doc['document_type_id']] = [
                 'id'                  => (int)$doc['id'],
+                'application_id'      => (int)$doc['application_id'],
+                'applicant_profile_id' => (int)($doc['applicant_profile_id'] ?? $profile['id']),
                 'file_original_name'  => $doc['file_original_name'],
                 'file_size'           => $doc['file_size'],
                 'verification_status' => $doc['verification_status'],
@@ -1093,12 +1095,14 @@ class ApplicantProfileController extends BaseController
                 'notes'               => $req['notes'],
                 'sort_order'          => $req['sort_order'],
                 'uploaded'            => $uploaded !== null,
-                'document_id'         => $uploaded['id']                  ?? null,
-                'file_original_name'  => $uploaded['file_original_name']  ?? null,
-                'verification_status' => $uploaded['verification_status'] ?? null,
-                'uploaded_at'         => $uploaded['uploaded_at']         ?? null,
+                'document_id'         => $uploaded['id']                      ?? null,
+                'application_id'      => $uploaded['application_id']          ?? null,
+                'applicant_profile_id' => $uploaded['applicant_profile_id']   ?? null,
+                'file_original_name'  => $uploaded['file_original_name']      ?? null,
+                'verification_status' => $uploaded['verification_status']     ?? null,
+                'uploaded_at'         => $uploaded['uploaded_at']             ?? null,
                 'verification_comment'     => $uploaded['verification_comment']     ?? null,
-                'file_mime'           => $uploaded['file_mime']           ?? null,
+                'file_mime'           => $uploaded['file_mime']               ?? null,
             ];
         }, $requirements);
 
