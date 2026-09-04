@@ -49,6 +49,8 @@ interface ApplicationDetailsViewProps {
   onBack?: () => void;
 }
 
+const fmtNumber = (n: number) => new Intl.NumberFormat('en-US').format(Math.round(n));
+
 export default function ApplicationDetailsView({
   application,
   onBack,
@@ -73,6 +75,14 @@ export default function ApplicationDetailsView({
   const statusLog = ((app as any).status_log ?? []).filter(
     (log: any) => log.to_status !== "draft",
   );
+
+  const billsQ = useQuery({
+    queryKey: ["admission-bills", "applicant"],
+    queryFn: ({ signal }) => applicantService.getAdmissionBills(signal),
+    enabled: application.status === "offer_accepted",
+  });
+
+  const billsData = billsQ.data?.data;
 
   const resubmitMutation = useMutation({
     mutationFn: () => applicantService.resubmitApplication(application.id),
@@ -602,31 +612,98 @@ export default function ApplicationDetailsView({
                 </div>
               </div>
 
-              <div className="p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/30 mb-4">
-                <p className="text-[11px] uppercase tracking-widest text-amber-700 dark:text-amber-300 font-bold mb-1">
-                  Amount Due
-                </p>
-                <p className="text-[28px] font-black text-amber-600 dark:text-amber-400 tabular-nums">
-                  –
-                </p>
-                <p className="text-[12px] text-amber-700 dark:text-amber-300 mt-2">
-                  Amount will be shown once billing is finalized by the finance office.
-                </p>
-              </div>
+              {billsQ.isLoading ? (
+                <div className="p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/30 mb-4 flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-amber-600" />
+                  <p className="text-[12px] text-amber-700 dark:text-amber-300">Loading billing information...</p>
+                </div>
+              ) : billsData ? (
+                <>
+                  {/* Amount Summary */}
+                  <div className="p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/30 mb-4">
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-end gap-4">
+                        <div>
+                          <p className="text-[11px] uppercase tracking-widest text-amber-700 dark:text-amber-300 font-bold">
+                            Total Amount Due
+                          </p>
+                          <p className="text-[26px] font-black text-amber-600 dark:text-amber-400 tabular-nums mt-1">
+                            {fmtNumber(billsData.summary?.total_due ?? 0)} RWF
+                          </p>
+                        </div>
+                      </div>
 
-              <a
-                href="https://urubutopay.rw/pay-now?origin=internal"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="btn-primary w-full inline-flex items-center justify-center gap-2"
-              >
-                <CreditCard className="w-4 h-4" />
-                Pay via Urubuto (MTN MoMo / Airtel Money)
-                <ExternalLink className="w-4 h-4" />
-              </a>
-              <p className="text-[11px] text-ink-500 dark:text-ink-400 mt-3 text-center">
-                You'll be redirected to the Urubuto payment gateway
-              </p>
+                      <div className="border-t border-amber-200 dark:border-amber-800 pt-3 space-y-2">
+                        <div className="flex justify-between items-center text-[12px]">
+                          <span className="text-amber-800 dark:text-amber-200">Total Amount</span>
+                          <span className="font-semibold text-amber-900 dark:text-amber-100">{fmtNumber(billsData.summary?.total_due ?? 0)} RWF</span>
+                        </div>
+                        <div className="flex justify-between items-center text-[12px]">
+                          <span className="text-emerald-700 dark:text-emerald-300">Amount Paid</span>
+                          <span className="font-semibold text-emerald-900 dark:text-emerald-100">{fmtNumber(billsData.summary?.total_paid ?? 0)} RWF</span>
+                        </div>
+                        {billsData.summary?.balance > 0 && (
+                          <div className="flex justify-between items-center text-[12px] pt-1 border-t border-amber-200 dark:border-amber-800">
+                            <span className="text-amber-700 dark:text-amber-300 font-bold">Remaining Balance</span>
+                            <span className="font-black text-amber-600 dark:text-amber-400">{fmtNumber(billsData.summary?.balance ?? 0)} RWF</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bills breakdown */}
+                  {billsData.bills && billsData.bills.length > 0 && (
+                    <div className="mb-4 rounded-lg border border-ink-100 dark:border-ink-700 divide-y divide-ink-100 dark:divide-ink-700 overflow-hidden">
+                      {billsData.bills.map((bill: any) => (
+                        <div key={bill.id} className="p-3 flex justify-between items-center text-[12px]">
+                          <div className="min-w-0">
+                            <p className="font-medium text-ink-900 dark:text-white">{bill.label}</p>
+                            <p className="text-ink-500 dark:text-ink-400 text-[11px] mt-0.5">{fmtNumber(bill.amount_due)} {bill.currency}</p>
+                          </div>
+                          <div className="text-right shrink-0 ml-4">
+                            <span className={`text-[11px] font-semibold px-2 py-1 rounded ${
+                              bill.status === 'paid'
+                                ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
+                                : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'
+                            }`}>
+                              {bill.status === 'paid' ? 'Paid' : 'Pending'}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {billsData.summary?.balance > 0 ? (
+                    <a
+                      href="https://urubutopay.rw/pay-now?origin=internal"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn-primary w-full inline-flex items-center justify-center gap-2"
+                    >
+                      <CreditCard className="w-4 h-4" />
+                      Pay {fmtNumber(billsData.summary.balance)} RWF via Urubuto
+                      <ExternalLink className="w-4 h-4" />
+                    </a>
+                  ) : (
+                    <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-900/30">
+                      <p className="text-[13px] font-semibold text-emerald-700 dark:text-emerald-300 text-center">
+                        ✓ All admission fees paid
+                      </p>
+                    </div>
+                  )}
+                  <p className="text-[11px] text-ink-500 dark:text-ink-400 mt-3 text-center">
+                    You'll be redirected to the Urubuto payment gateway
+                  </p>
+                </>
+              ) : (
+                <div className="p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/30 mb-4">
+                  <p className="text-[12px] text-amber-700 dark:text-amber-300">
+                    Billing information not yet available. Please check back soon or contact the finance office.
+                  </p>
+                </div>
+              )}
             </Card>
           )}
 
