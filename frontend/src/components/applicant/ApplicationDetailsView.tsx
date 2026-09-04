@@ -438,7 +438,7 @@ export default function ApplicationDetailsView({
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0">
-                        {item.uploaded && !isRejectedDoc && (
+                        {item.uploaded && (
                           <>
                             <StatusPillSmall status={item.verification_status} />
                             <button
@@ -451,13 +451,22 @@ export default function ApplicationDetailsView({
                           </>
                         )}
 
-                        {isRejectedDoc && (
+                        {item.uploaded || !item.is_required ? (
                           <button
                             onClick={() => setReuploadDoc(item)}
                             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[12px] font-bold uppercase tracking-wider transition-colors"
                           >
-                            ☁ Upload
+                            ☁ {item.uploaded ? 'Replace' : 'Upload'}
                           </button>
+                        ) : (
+                          item.is_required && !item.uploaded && (
+                            <button
+                              onClick={() => setReuploadDoc(item)}
+                              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[12px] font-bold uppercase tracking-wider transition-colors"
+                            >
+                              ☁ Upload
+                            </button>
+                          )
                         )}
                       </div>
                     </div>
