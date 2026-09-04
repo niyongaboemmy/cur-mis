@@ -181,4 +181,45 @@ $router->group(['prefix' => '/api/hr'], function ($router) {
         'middlewares' => ['auth', 'can:MANAGE_HR_EMPLOYEES']
     ]);
 
+    // ── Analytics Routes ─────────────────────────────────────────────────────
+    $router->get('/employees/by-department', 'Controllers\HRAnalyticsController::getEmployeesByDepartment', [
+        'middlewares' => ['auth', 'can:VIEW_HR_EMPLOYEES']
+    ]);
+
+    $router->get('/leave/by-type', 'Controllers\HRAnalyticsController::getLeaveUsageByType', [
+        'middlewares' => ['auth', 'can:VIEW_LEAVE_REQUESTS']
+    ]);
+
+    $router->get('/payroll/trends', 'Controllers\HRAnalyticsController::getPayrollTrends', [
+        'middlewares' => ['auth', 'can:VIEW_PAYROLL']
+    ]);
+
+    $router->get('/leave/approval-metrics', 'Controllers\HRAnalyticsController::getLeaveApprovalMetrics', [
+        'middlewares' => ['auth', 'can:VIEW_LEAVE_REQUESTS']
+    ]);
+
+    $router->get('/analytics/contract-metrics', 'Controllers\HRAnalyticsController::getContractMetrics', [
+        'middlewares' => ['auth', 'can:VIEW_HR_EMPLOYEES']
+    ]);
+
+    $router->get('/analytics/payroll-metrics', 'Controllers\HRAnalyticsController::getPayrollMetrics', [
+        'middlewares' => ['auth', 'can:VIEW_PAYROLL']
+    ]);
+
+    $router->get('/analytics/salary-distribution', 'Controllers\HRAnalyticsController::getSalaryDistribution', [
+        'middlewares' => ['auth', 'can:VIEW_PAYROLL']
+    ]);
+
+    $router->get('/analytics/headcount-trend', 'Controllers\HRAnalyticsController::getHeadcountTrend', [
+        'middlewares' => ['auth', 'can:VIEW_HR_EMPLOYEES']
+    ]);
+
+    $router->get('/analytics/contract-expiry-by-dept', 'Controllers\HRAnalyticsController::getContractExpiryByDepartment', [
+        'middlewares' => ['auth', 'can:MANAGE_HR_EMPLOYEES']
+    ]);
+
+    $router->get('/analytics/leave-balance-overview', 'Controllers\HRAnalyticsController::getLeaveBalanceOverview', [
+        'middlewares' => ['auth', 'can:VIEW_LEAVE_REQUESTS']
+    ]);
+
 });
