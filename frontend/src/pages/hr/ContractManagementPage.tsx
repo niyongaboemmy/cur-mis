@@ -37,7 +37,6 @@ interface ContractSummary {
 export default function ContractManagementPage() {
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [summary, setSummary] = useState<ContractSummary | null>(null);
-  const [contractTypes, setContractTypes] = useState<ContractType[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [activeFilter, setActiveFilter] = useState<'all' | 'active' | 'renewal' | 'expiring' | 'expired'>('all');
@@ -48,7 +47,6 @@ export default function ContractManagementPage() {
   useEffect(() => {
     fetchContracts();
     fetchSummary();
-    fetchContractTypes();
   }, []);
 
   const fetchContracts = async () => {
@@ -74,15 +72,6 @@ export default function ContractManagementPage() {
     }
   };
 
-  const fetchContractTypes = async () => {
-    try {
-      const response = await fetch('/api/hr/contracts/types');
-      const data = await response.json();
-      setContractTypes(data.data);
-    } catch (error) {
-      // Silent fail
-    }
-  };
 
   const handleRenewContract = async () => {
     if (!selectedContract || !renewData.new_end_date) {

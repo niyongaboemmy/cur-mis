@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircle, XCircle, AlertCircle, FileText, Download } from 'lucide-react';
+import { CheckCircle, XCircle, AlertCircle, FileText } from 'lucide-react';
 import Toast from '../../components/common/Toast';
 
 interface LeaveRequest {
@@ -54,7 +54,6 @@ interface ProgressStep {
 
 export default function SupervisorLeaveApprovalDashboard() {
   const [activeView, setActiveView] = useState<'queue' | 'details'>('queue');
-  const [selectedRequest, setSelectedRequest] = useState<number | null>(null);
   const [queue, setQueue] = useState<LeaveRequest[]>([]);
   const [progress, setProgress] = useState<ProgressView | null>(null);
   const [isLoading, setIsLoading] = useState(false);

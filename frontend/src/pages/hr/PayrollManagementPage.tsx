@@ -46,7 +46,6 @@ export default function PayrollManagementPage() {
   const [activeTab, setActiveTab] = useState<'structures' | 'payroll'>('structures');
   const [structures, setStructures] = useState<SalaryStructure[]>([]);
   const [payrollRuns, setPayrollRuns] = useState<PayrollRun[]>([]);
-  const [componentTypes, setComponentTypes] = useState<ComponentType[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [editingStructure, setEditingStructure] = useState<SalaryStructure | null>(null);
@@ -60,7 +59,6 @@ export default function PayrollManagementPage() {
     } else {
       fetchPayrollRuns();
     }
-    fetchComponentTypes();
   }, [activeTab]);
 
   const fetchStructures = async () => {

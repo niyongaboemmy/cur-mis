@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { Users, TrendingUp, Clock, AlertCircle, CheckCircle, DollarSign } from 'lucide-react';
+import Toast from '@/components/common/Toast';
 
 interface DashboardMetrics {
   total_employees: number;
