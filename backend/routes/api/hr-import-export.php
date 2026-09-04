@@ -13,7 +13,7 @@ declare(strict_types=1);
  * - GET /api/hr/export/:type - Export HR data to Excel/CSV
  */
 
-$router->group(['prefix' => '/api/hr'], function ($router) {
+$router->group('/api/hr', function ($router) {
 
     // ── Import Template Download ──────────────────────────────────────────────
     $router->get('/import/template/:type', 'Controllers\HRImportExportController::downloadTemplate');
