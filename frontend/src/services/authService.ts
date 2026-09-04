@@ -12,35 +12,35 @@ export interface LoginResponse {
 
 export const authService = {
   login: (data: Record<string, string>) => 
-    api.post<LoginResponse>('/api/auth/login', data),
+    api.post<LoginResponse>('/auth/login', data),
 
   verifyOtp: (data: { email: string; otp: string }) =>
-    api.post<LoginResponse>('/api/auth/verify-otp', data),
+    api.post<LoginResponse>('/auth/verify-otp', data),
 
   resendOtp: (email: string) =>
-    api.post<null>('/api/auth/resend-otp', { email }),
+    api.post<null>('/auth/resend-otp', { email }),
 
   registerApplicantAccount: (data: Record<string, string>) =>
-    api.post<LoginResponse>('/api/auth/register-applicant-account', data),
+    api.post<LoginResponse>('/auth/register-applicant-account', data),
 
   forgotPassword: (email: string) =>
-    api.post<{ email: string }>('/api/auth/forgot-password', { email }),
+    api.post<{ email: string }>('/auth/forgot-password', { email }),
 
   verifyResetOtp: (data: { email: string; otp: string }) =>
-    api.post<{ token: string }>('/api/auth/verify-reset-otp', data),
+    api.post<{ token: string }>('/auth/verify-reset-otp', data),
 
   resetPassword: (data: Record<string, string>) =>
-    api.post<null>('/api/auth/reset-password', data),
+    api.post<null>('/auth/reset-password', data),
 
   /** Authenticated self-service password change. */
   changePassword: (data: { current_password: string; new_password: string }) =>
-    api.post<null>('/api/auth/change-password', data),
+    api.post<null>('/auth/change-password', data),
 
-  me: () => api.get<AuthUser>('/api/auth/me'),
+  me: () => api.get<AuthUser>('/auth/me'),
 
   /** Self-service profile update — full_name / email / username / phone. */
   updateMe: (data: { full_name: string; email: string; username: string; phone?: string }) =>
-    api.put<AuthUser>('/api/auth/me', data),
+    api.put<AuthUser>('/auth/me', data),
 
   /** Direct URL for the authenticated user's profile photo.
    *  Legacy photo values are served straight from the old CUR photo store. */
@@ -52,14 +52,14 @@ export const authService = {
     const token = useAuthStore.getState().token
     const base  = import.meta.env.VITE_API_URL ?? ''
     const v     = photoValue ? `&v=${encodeURIComponent(photoValue)}` : ''
-    return `${base}/api/auth/me/photo?token=${token}${v}`
+    return `${base}/auth/me/photo?token=${token}${v}`
   },
 
   /** Upload (or replace) the authenticated user's profile photo. */
   uploadMyPhoto: (file: File) => {
     const form = new FormData()
     form.append('photo', file)
-    return api.upload<{ photo: string }>('/api/auth/me/photo', form)
+    return api.upload<{ photo: string }>('/auth/me/photo', form)
   },
 
   /**
@@ -68,5 +68,5 @@ export const authService = {
    * auth store can be refreshed from either response identically.
    */
   deleteMyPhoto: () =>
-    api.delete<{ photo: null }>('/api/auth/me/photo'),
+    api.delete<{ photo: null }>('/auth/me/photo'),
 }

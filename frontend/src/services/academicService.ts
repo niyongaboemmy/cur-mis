@@ -18,10 +18,10 @@ export interface CreateTermPayload {
 export const academicService = {
   /* ── Years ───────────────────────────────────────────────────── */
   listYears: (signal?: AbortSignal) =>
-    api.get<AcademicYear[]>('/api/academic/years', {}, signal),
+    api.get<AcademicYear[]>('/academic/years', {}, signal),
 
   createYear: (data: CreateYearPayload) =>
-    api.post<{ id: number }>('/api/academic/years', data),
+    api.post<{ id: number }>('/academic/years', data),
 
   updateYear: (id: number, data: Partial<CreateYearPayload>) =>
     api.put<null>(`/api/academic/years/${id}`, data),
@@ -34,10 +34,10 @@ export const academicService = {
 
   /* ── Terms ───────────────────────────────────────────────────── */
   listTerms: (signal?: AbortSignal) =>
-    api.get<AcademicTerm[]>('/api/academic/terms', {}, signal),
+    api.get<AcademicTerm[]>('/academic/terms', {}, signal),
 
   createTerm: (data: CreateTermPayload) =>
-    api.post<{ id: number }>('/api/academic/terms', data),
+    api.post<{ id: number }>('/academic/terms', data),
 
   updateTerm: (id: number, data: Partial<CreateTermPayload>) =>
     api.put<null>(`/api/academic/terms/${id}`, data),

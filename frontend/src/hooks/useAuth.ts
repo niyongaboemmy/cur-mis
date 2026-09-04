@@ -21,7 +21,7 @@ export function useLogin(options?: { onSuccess?: (response: any) => void }) {
 
   return useMutation({
     mutationFn: (data: LoginRequest) =>
-      api.post<AuthTokenResponse>('/api/auth/login', data),
+      api.post<AuthTokenResponse>('/auth/login', data),
 
     onSuccess: (response) => {
       if (response.success) {
@@ -66,7 +66,7 @@ export function useVerifyOtp(options?: { onSuccess?: (response: any) => void }) 
 
   return useMutation({
     mutationFn: (data: VerifyOtpRequest) =>
-      api.post<AuthTokenResponse>('/api/auth/verify-otp', data),
+      api.post<AuthTokenResponse>('/auth/verify-otp', data),
 
     onSuccess: (response) => {
       if (response.success && response.data) {
@@ -102,7 +102,7 @@ export function useVerifyOtp(options?: { onSuccess?: (response: any) => void }) 
 export function useResendOtp() {
   return useMutation({
     mutationFn: (email: string) =>
-      api.post('/api/auth/resend-otp', { email }),
+      api.post('/auth/resend-otp', { email }),
     onSuccess: (response) => {
       if (response.success) {
         toast.success(response.message || 'New code sent!')
@@ -123,7 +123,7 @@ export function useResendOtp() {
 export function useForgotPassword() {
   return useMutation({
     mutationFn: (data: ForgotPasswordRequest) =>
-      api.post('/api/auth/forgot-password', data),
+      api.post('/auth/forgot-password', data),
     onSuccess: (response) => {
       if (response.success) {
         toast.success(response.message || 'Verification code sent!')
@@ -144,7 +144,7 @@ export function useForgotPassword() {
 export function useVerifyResetOtp() {
   return useMutation({
     mutationFn: (data: { email: string; otp: string }) =>
-      api.post<{ token: string }>('/api/auth/verify-reset-otp', data),
+      api.post<{ token: string }>('/auth/verify-reset-otp', data),
     onSuccess: (response) => {
       if (response.success) {
         toast.success(response.message || 'Code verified!')
@@ -167,7 +167,7 @@ export function useResetPassword() {
 
   return useMutation({
     mutationFn: (data: ResetPasswordRequest) =>
-      api.post('/api/auth/reset-password', data),
+      api.post('/auth/reset-password', data),
     onSuccess: (response) => {
       if (response.success) {
         toast.success('Password reset successfully! You can now log in.')
@@ -189,7 +189,7 @@ export function useLogout() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: () => api.post('/api/auth/logout'),
+    mutationFn: () => api.post('/auth/logout'),
     onSettled: () => {
       logout()
       queryClient.clear()
@@ -204,7 +204,7 @@ export function useCurrentUser() {
 
   const query = useQuery({
     queryKey: ['auth', 'me'],
-    queryFn:  () => api.get<any>('/api/auth/me'),
+    queryFn:  () => api.get<any>('/auth/me'),
     enabled:  isAuthenticated,
     staleTime: 1000 * 60 * 5,
   })

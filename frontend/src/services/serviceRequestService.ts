@@ -20,7 +20,7 @@ export const serviceRequestService = {
     form.append('service_slug', serviceSlug)
     Object.entries(fields).forEach(([key, value]) => form.append(key, value))
     Object.entries(files).forEach(([key, file]) => form.append(key, file))
-    return api.upload<ServiceRequestSummary>('/api/service-requests', form)
+    return api.upload<ServiceRequestSummary>('/service-requests', form)
   },
 
   resubmit: (id: number, fields: Record<string, string>, files: Record<string, File>) => {
@@ -31,7 +31,7 @@ export const serviceRequestService = {
   },
 
   myRequests: (signal?: AbortSignal) =>
-    api.get<ServiceRequestSummary[]>('/api/service-requests/mine', {}, signal),
+    api.get<ServiceRequestSummary[]>('/service-requests/mine', {}, signal),
 
   getCheckoutLink: (id: number) =>
     api.get<{ checkout_url: string; amount: number; currency: string }>(`/api/service-requests/${id}/checkout-link`),
@@ -58,7 +58,7 @@ export const serviceRequestService = {
   },
 
   track: (requestCode: string, identifier: string, signal?: AbortSignal) =>
-    api.get<ServiceRequestTrackResult>('/api/services/track', { request_code: requestCode, identifier }, signal),
+    api.get<ServiceRequestTrackResult>('/services/track', { request_code: requestCode, identifier }, signal),
 
   getProgress: (id: number, signal?: AbortSignal) =>
     api.get<RequestProgress>(`/api/service-requests/${id}/progress`, {}, signal),

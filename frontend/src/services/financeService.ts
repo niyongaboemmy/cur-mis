@@ -73,10 +73,10 @@ export const feeStructureService = {
       is_active?: 0 | 1;
     },
     signal?: AbortSignal,
-  ) => api.get<FeeStructure[]>("/api/finance/structures", params ?? {}, signal),
+  ) => api.get<FeeStructure[]>("/finance/structures", params ?? {}, signal),
 
   create: (data: CreateFeeStructurePayload) =>
-    api.post<{ id: number }>("/api/finance/structures", data),
+    api.post<{ id: number }>("/finance/structures", data),
 
   update: (
     id: number,
@@ -86,7 +86,7 @@ export const feeStructureService = {
   delete: (id: number) => api.delete<null>(`/api/finance/structures/${id}`),
 
   bulkImport: (data: { rows: any[] }) =>
-    api.post<{ created: number; updated: number; skipped: number; failed: any[] }>("/api/finance/structures/bulk-import", data),
+    api.post<{ created: number; updated: number; skipped: number; failed: any[] }>("/finance/structures/bulk-import", data),
 };
 
 // ─── Student Ledger & Invoice Generation ─────────────────────────────────────
@@ -98,19 +98,19 @@ export const ledgerService = {
     signal?: AbortSignal,
   ) =>
     api.get<StudentLedger>(
-      "/api/finance/students/invoices",
+      "/finance/students/invoices",
       { student_id: studentId, ...params },
       signal,
     ),
 
   generateInvoices: (studentId: string, data: GenerateInvoicesPayload) =>
-    api.post<GenerateInvoicesResult>("/api/finance/students/generate", {
+    api.post<GenerateInvoicesResult>("/finance/students/generate", {
       student_id: studentId,
       ...data,
     }),
 
   createInvoice: (data: CreateInvoicePayload) =>
-    api.post<{ id: number }>("/api/finance/invoices", data),
+    api.post<{ id: number }>("/finance/invoices", data),
 
   updateInvoice: (
     id: number,
@@ -136,7 +136,7 @@ export const paymentService = {
     signal?: AbortSignal,
   ) =>
     api.get<PaginatedResponse<FeePayment>>(
-      "/api/finance/payments",
+      "/finance/payments",
       params ?? {},
       signal,
     ),
@@ -169,10 +169,10 @@ export const paymentService = {
         channels: string[];
         services: { service_code: string; service_name: string }[];
       };
-    }>("/api/finance/online-payments", params ?? {}, signal),
+    }>("/finance/online-payments", params ?? {}, signal),
 
   record: (data: RecordPaymentPayload & { payment_sub_method?: string }) =>
-    api.post<RecordPaymentResult>("/api/finance/payments", data),
+    api.post<RecordPaymentResult>("/finance/payments", data),
 
   getReceipt: (paymentId: number, signal?: AbortSignal) =>
     api.get<ReceiptData>(
@@ -189,7 +189,7 @@ export const paymentService = {
 
   getPendingCount: (signal?: AbortSignal) =>
     api.get<{ count: number }>(
-      "/api/finance/payments/pending-count",
+      "/finance/payments/pending-count",
       {},
       signal,
     ),
@@ -211,17 +211,17 @@ export const bursaryService = {
     signal?: AbortSignal,
   ) =>
     api.get<PaginatedResponse<FeeBursary>>(
-      "/api/finance/bursaries",
+      "/finance/bursaries",
       params ?? {},
       signal,
     ),
 
   create: (data: CreateBursaryPayload) =>
-    api.post<{ id: number }>("/api/finance/bursaries", data),
+    api.post<{ id: number }>("/finance/bursaries", data),
 
   bulkCreate: (data: CreateBursaryBulkPayload) =>
     api.post<{ created: number; skipped: number; total_input: number }>(
-      "/api/finance/bursaries/bulk",
+      "/finance/bursaries/bulk",
       data,
     ),
 
@@ -241,35 +241,35 @@ export const bursaryService = {
 export const financeReportService = {
   getSummary: (academicYearId: number, signal?: AbortSignal) =>
     api.get<FinanceSummary>(
-      "/api/finance/summary",
+      "/finance/summary",
       { academic_year_id: academicYearId },
       signal,
     ),
 
   getRevenueByType: (academicYearId: number, signal?: AbortSignal) =>
     api.get<RevenueByType[]>(
-      "/api/finance/reports/revenue",
+      "/finance/reports/revenue",
       { academic_year_id: academicYearId },
       signal,
     ),
 
   getOutstanding: (limit?: number, signal?: AbortSignal) =>
     api.get<FeeInvoice[]>(
-      "/api/finance/reports/outstanding",
+      "/finance/reports/outstanding",
       limit ? { limit } : {},
       signal,
     ),
 
   getProjection: (academicYearId: number, signal?: AbortSignal) =>
     api.get<IncomeProjection>(
-      "/api/finance/reports/projection",
+      "/finance/reports/projection",
       { academic_year_id: academicYearId },
       signal,
     ),
 
   getMonthlyCollections: (academicYearId: number, signal?: AbortSignal) =>
     api.get<MonthlyCollection[]>(
-      "/api/finance/reports/monthly",
+      "/finance/reports/monthly",
       { academic_year_id: academicYearId },
       signal,
     ),
@@ -280,7 +280,7 @@ export const financeReportService = {
 export const balanceService = {
   get: (academicYearId: number, signal?: AbortSignal) =>
     api.get<AccountBalance>(
-      "/api/finance/balance",
+      "/finance/balance",
       { academic_year_id: academicYearId },
       signal,
     ),
@@ -298,7 +298,7 @@ export const billingService = {
     balance_filter?: 'collected' | 'bursary' | 'pending' | 'partial' | 'overdue';
     page?: number;
     per_page?: number;
-  }) => api.get<BillingSummary[]>("/api/finance/billing/summary", params as Record<string, unknown>),
+  }) => api.get<BillingSummary[]>("/finance/billing/summary", params as Record<string, unknown>),
 
   bulkGenerate: (data: {
     academic_year_id: number;
@@ -310,7 +310,7 @@ export const billingService = {
     // No timeout — bulk generation can process hundreds of students and routinely
     // exceeds the global 15 s API_TIMEOUT.
     apiClient.post<{ data: { processed_students: number; total_created: number; total_skipped: number; total_updated?: number } }>(
-      "/api/finance/billing/bulk-generate", data, { timeout: 0 }
+      "/finance/billing/bulk-generate", data, { timeout: 0 }
     ).then((r) => r.data),
 };
 
@@ -329,16 +329,16 @@ export const expenseService = {
     signal?: AbortSignal,
   ) =>
     api.get<PaginatedResponse<Expense>>(
-      "/api/finance/expenses",
+      "/finance/expenses",
       params ?? {},
       signal,
     ),
 
   listCategories: (signal?: AbortSignal) =>
-    api.get<ExpenseCategory[]>("/api/finance/expenses/categories", {}, signal),
+    api.get<ExpenseCategory[]>("/finance/expenses/categories", {}, signal),
 
   createCategory: (data: { name: string; description?: string }) =>
-    api.post<{ id: number }>("/api/finance/expenses/categories", data),
+    api.post<{ id: number }>("/finance/expenses/categories", data),
 
   updateCategory: (id: number, data: { name?: string; description?: string }) =>
     api.put<null>(`/api/finance/expenses/categories/${id}`, data),
@@ -347,7 +347,7 @@ export const expenseService = {
     api.delete<null>(`/api/finance/expenses/categories/${id}`),
 
   create: (data: CreateExpensePayload) =>
-    api.post<{ id: number }>("/api/finance/expenses", data),
+    api.post<{ id: number }>("/finance/expenses", data),
 
   update: (id: number, data: Partial<CreateExpensePayload>) =>
     api.put<null>(`/api/finance/expenses/${id}`, data),
@@ -360,13 +360,13 @@ export const expenseService = {
 export const budgetService = {
   list: (academicYearId: number, signal?: AbortSignal) =>
     api.get<ExpenseBudget[]>(
-      "/api/finance/budgets",
+      "/finance/budgets",
       { academic_year_id: academicYearId },
       signal,
     ),
 
   save: (data: SaveBudgetPayload) =>
-    api.post<null>("/api/finance/budgets", data),
+    api.post<null>("/finance/budgets", data),
 };
 
 // ─── Budget Execution (Phase 4) ────────────────────────────────────────────────
@@ -378,7 +378,7 @@ export const budgetExecutionService = {
     signal?: AbortSignal,
   ) =>
     api.get<BudgetExecutionRow[]>(
-      "/api/finance/budget-execution",
+      "/finance/budget-execution",
       { academic_year_id: academicYearId, department_id: departmentId ?? undefined },
       signal,
     ),
@@ -390,7 +390,7 @@ export const budgetExecutionService = {
     signal?: AbortSignal,
   ) =>
     api.get<BudgetExecutionCompareResult>(
-      "/api/finance/budget-execution/compare",
+      "/finance/budget-execution/compare",
       { year_a: yearA, year_b: yearB, department_id: departmentId ?? undefined },
       signal,
     ),
@@ -408,7 +408,7 @@ export const budgetExecutionService = {
     const token = useAuthStore.getState().token ?? "";
     const base = import.meta.env.VITE_API_URL ?? "";
     const dept = departmentId ? `&department_id=${departmentId}` : "";
-    const url = `${base}/api/finance/budget-execution/export?academic_year_id=${academicYearId}&format=${format}${dept}&token=${token}`;
+    const url = `${base}/finance/budget-execution/export?academic_year_id=${academicYearId}&format=${format}${dept}&token=${token}`;
     const a = document.createElement("a");
     a.href = url;
     a.download = "";
@@ -423,13 +423,13 @@ export const budgetExecutionService = {
 export const budgetPlanService = {
   get: (academicYearId: number, signal?: AbortSignal) =>
     api.get<BudgetPlan>(
-      "/api/finance/budget-plan",
+      "/finance/budget-plan",
       { academic_year_id: academicYearId },
       signal,
     ),
 
   create: (data: CreateBudgetPlanPayload) =>
-    api.post<{ id: number }>("/api/finance/budget-plan", data),
+    api.post<{ id: number }>("/finance/budget-plan", data),
 
   update: (id: number, data: UpdateBudgetPlanPayload) =>
     api.put<null>(`/api/finance/budget-plan/${id}`, data),
@@ -455,7 +455,7 @@ export const budgetPlanService = {
   download: (academicYearId: number): void => {
     const token = useAuthStore.getState().token ?? "";
     const base = import.meta.env.VITE_API_URL ?? "";
-    const url = `${base}/api/finance/budget-plan/export?academic_year_id=${academicYearId}&token=${token}`;
+    const url = `${base}/finance/budget-plan/export?academic_year_id=${academicYearId}&token=${token}`;
     const a = document.createElement("a");
     a.href = url;
     a.download = "";
@@ -467,7 +467,7 @@ export const budgetPlanService = {
   downloadTemplate: (academicYearId: number): void => {
     const token = useAuthStore.getState().token ?? "";
     const base = import.meta.env.VITE_API_URL ?? "";
-    const url = `${base}/api/finance/budget-plan/template?academic_year_id=${academicYearId}&token=${token}`;
+    const url = `${base}/finance/budget-plan/template?academic_year_id=${academicYearId}&token=${token}`;
     const a = document.createElement("a");
     a.href = url;
     a.download = "";
@@ -487,7 +487,7 @@ export const clearanceService = {
     signal?: AbortSignal,
   ) =>
     api.get<ClearanceResult>(
-      "/api/finance/clearance",
+      "/finance/clearance",
       {
         student_id: studentId,
         academic_year_id: academicYearId,
@@ -501,7 +501,7 @@ export const clearanceService = {
     academic_year_id: number;
     semester?: number | null;
     notes?: string;
-  }) => api.post<StudentClearance>("/api/finance/clearance", data),
+  }) => api.post<StudentClearance>("/finance/clearance", data),
 
   getBulk: (
     academicYearId: number,
@@ -509,7 +509,7 @@ export const clearanceService = {
     signal?: AbortSignal,
   ) =>
     api.get<PaginatedResponse<StudentClearance>>(
-      "/api/finance/clearance/bulk",
+      "/finance/clearance/bulk",
       {
         academic_year_id: academicYearId,
         ...params,
@@ -519,7 +519,7 @@ export const clearanceService = {
 
   runBulk: (academicYearId: number) =>
     api.post<{ total: number; cleared: number; not_cleared: number }>(
-      "/api/finance/clearance/bulk",
+      "/finance/clearance/bulk",
       { academic_year_id: academicYearId },
     ),
 
@@ -530,7 +530,7 @@ export const clearanceService = {
     signal?: AbortSignal,
   ) =>
     api.get<import("@/types/finance").ExamEligibility>(
-      "/api/finance/clearance/exam-eligibility",
+      "/finance/clearance/exam-eligibility",
       { student_id: studentId, academic_year_id: academicYearId, semester },
       signal,
     ),
@@ -542,7 +542,7 @@ export const clearanceService = {
     signal?: AbortSignal,
   ) =>
     api.get<ClearanceReport>(
-      "/api/finance/clearance/report",
+      "/finance/clearance/report",
       { academic_year_id: academicYearId, fee_structure_id: feeStructureId, period },
       signal,
     ),
@@ -553,7 +553,7 @@ export const clearanceService = {
 export const sponsorService = {
   list: (params?: { is_active?: boolean; academic_year_id?: number }, signal?: AbortSignal) =>
     api.get<Sponsor[]>(
-      "/api/finance/sponsors",
+      "/finance/sponsors",
       { 
         ...(params?.is_active ? { is_active: 1 } : {}),
         ...(params?.academic_year_id ? { academic_year_id: params.academic_year_id } : {}),
@@ -562,7 +562,7 @@ export const sponsorService = {
     ),
 
   create: (data: CreateSponsorPayload) =>
-    api.post<{ id: number }>("/api/finance/sponsors", data),
+    api.post<{ id: number }>("/finance/sponsors", data),
 
   update: (id: number, data: Partial<CreateSponsorPayload>) =>
     api.put<null>(`/api/finance/sponsors/${id}`, data),
@@ -573,13 +573,13 @@ export const sponsorService = {
 export const overrideService = {
   list: (studentId: string, academicYearId: number, signal?: AbortSignal) =>
     api.get<StudentFeeOverride[]>(
-      "/api/finance/overrides",
+      "/finance/overrides",
       { student_id: studentId, academic_year_id: academicYearId },
       signal,
     ),
 
   create: (data: CreateOverridePayload) =>
-    api.post<null>("/api/finance/overrides", data),
+    api.post<null>("/finance/overrides", data),
 
   delete: (id: number) => api.delete<null>(`/api/finance/overrides/${id}`),
 };
@@ -598,13 +598,13 @@ export const refundService = {
     signal?: AbortSignal,
   ) =>
     api.get<PaginatedResponse<FeeRefund>>(
-      "/api/finance/refunds",
+      "/finance/refunds",
       params ?? {},
       signal,
     ),
 
   create: (data: CreateRefundPayload) =>
-    api.post<{ id: number }>("/api/finance/refunds", data),
+    api.post<{ id: number }>("/finance/refunds", data),
 
   process: (id: number, academicYearId: number, notes?: string) =>
     api.patch<null>(`/api/finance/refunds/${id}/process`, {
@@ -623,7 +623,7 @@ export const myLedgerService = {
     params?: { academic_year_id?: number; semester?: 1 | 2 },
     signal?: AbortSignal,
   ) =>
-    api.get<StudentLedger>("/api/finance/my/invoices", params ?? {}, signal),
+    api.get<StudentLedger>("/finance/my/invoices", params ?? {}, signal),
 
   /**
    * The student's own fines. Not year-filtered: a fine stays owed until it is
@@ -631,7 +631,7 @@ export const myLedgerService = {
    * went unnoticed in the first place.
    */
   getMyFines: (signal?: AbortSignal) =>
-    api.get<MyFinesResponse>("/api/finance/my/fines", {}, signal),
+    api.get<MyFinesResponse>("/finance/my/fines", {}, signal),
 
   getMyClearance: (
     academicYearId: number,
@@ -639,7 +639,7 @@ export const myLedgerService = {
     signal?: AbortSignal,
   ) =>
     api.get<ClearanceResult>(
-      "/api/finance/my/clearance",
+      "/finance/my/clearance",
       {
         academic_year_id: academicYearId,
         ...(semester != null ? { semester } : {}),
@@ -649,13 +649,13 @@ export const myLedgerService = {
 
   getPaymentLink: (signal?: AbortSignal) =>
     api.get<{ checkout_url: string; amount_due: number; currency: string }>(
-      "/api/payment/checkout-link",
+      "/payment/checkout-link",
       {},
       signal,
     ),
 
   getMobileHistory: (signal?: AbortSignal) =>
-    api.get<MobilePaymentRecord[]>("/api/payment/history", {}, signal),
+    api.get<MobilePaymentRecord[]>("/payment/history", {}, signal),
 };
 
 // ─── CSV Export ───────────────────────────────────────────────────────────────
@@ -668,7 +668,7 @@ export const exportService = {
     const token = useAuthStore.getState().token ?? "";
     const base = import.meta.env.VITE_API_URL ?? "";
     const year = academicYearId ? `&academic_year_id=${academicYearId}` : "";
-    const url = `${base}/api/finance/reports/export?type=${type}${year}&token=${token}`;
+    const url = `${base}/finance/reports/export?type=${type}${year}&token=${token}`;
     const a = document.createElement("a");
     a.href = url;
     a.download = "";
@@ -682,10 +682,10 @@ export const exportService = {
 
 export const feeTypeService = {
   list: (signal?: AbortSignal) =>
-    api.get<FeeTypeRecord[]>("/api/finance/fee-types", {}, signal),
+    api.get<FeeTypeRecord[]>("/finance/fee-types", {}, signal),
 
   create: (data: CreateFeeTypePayload) =>
-    api.post<{ id: number }>("/api/finance/fee-types", data),
+    api.post<{ id: number }>("/finance/fee-types", data),
 
   update: (id: number, data: UpdateFeeTypePayload) =>
     api.put<null>(`/api/finance/fee-types/${id}`, data),
@@ -816,13 +816,13 @@ export const finesService = {
     signal?: AbortSignal,
   ) =>
     api.get<{ data: Fine[]; total: number; per_page: number; current_page: number; last_page: number; summary: FinesSummary }>(
-      '/api/fines',
+      '/fines',
       params ?? {},
       signal,
     ),
 
   create: (data: CreateFinePayload) =>
-    api.post<{ id: number; invoice_id: number; invoice_number: string }>('/api/fines', data),
+    api.post<{ id: number; invoice_id: number; invoice_number: string }>('/fines', data),
 
   update: (id: number, data: Partial<Pick<CreateFinePayload, 'reason' | 'notes' | 'fine_type' | 'amount'>>) =>
     api.put<null>(`/api/fines/${id}`, data),
@@ -849,20 +849,20 @@ export const overdueAlertService = {
     signal?: AbortSignal,
   ) =>
     api.get<{ data: OverdueAlert[]; total: number; per_page: number; current_page: number; last_page: number }>(
-      '/api/fines/alerts',
+      '/fines/alerts',
       params ?? {},
       signal,
     ),
 
   getOverdueInvoices: (params?: { limit?: number }, signal?: AbortSignal) =>
     api.get<{ invoices: OverdueInvoice[]; stats: OverdueStats }>(
-      '/api/fines/alerts/overdue',
+      '/fines/alerts/overdue',
       params ?? {},
       signal,
     ),
 
   sendAlerts: (data: SendAlertsPayload) =>
-    api.post<SendAlertsResult>('/api/fines/alerts/send', data),
+    api.post<SendAlertsResult>('/fines/alerts/send', data),
 };
 
 // ── Application Fee Reconciliation ────────────────────────────────────────────
@@ -915,14 +915,14 @@ export const appFeeReconciliationService = {
     signal?: AbortSignal,
   ) =>
     api.get<AppFeeReconciliationResponse>(
-      '/api/finance/reports/application-fee-reconciliation',
+      '/finance/reports/application-fee-reconciliation',
       params,
       signal,
     ),
 
   runPending: (data: { academic_year_id: number }) =>
     api.post<RunPendingResult>(
-      '/api/finance/reports/application-fee-reconciliation/run-pending',
+      '/finance/reports/application-fee-reconciliation/run-pending',
       data,
     ),
 };
@@ -988,16 +988,16 @@ export const paymentCalendarService = {
   list: (
     params?: { academic_year_id?: number; faculty_id?: number; is_active?: 0 | 1 },
     signal?: AbortSignal,
-  ) => api.get<PaymentCalendarDocument[]>("/api/finance/payment-calendar", params ?? {}, signal),
+  ) => api.get<PaymentCalendarDocument[]>("/finance/payment-calendar", params ?? {}, signal),
 
   get: (id: number, signal?: AbortSignal) =>
     api.get<PaymentCalendarDocument>(`/api/finance/payment-calendar/${id}`, {}, signal),
 
   listMine: (params?: { academic_year_id?: number }, signal?: AbortSignal) =>
-    api.get<PaymentCalendarDocument[]>("/api/finance/my/payment-calendar", params ?? {}, signal),
+    api.get<PaymentCalendarDocument[]>("/finance/my/payment-calendar", params ?? {}, signal),
 
   create: (data: CreatePaymentCalendarDocumentPayload) =>
-    api.post<PaymentCalendarDocument>("/api/finance/payment-calendar", data),
+    api.post<PaymentCalendarDocument>("/finance/payment-calendar", data),
 
   update: (id: number, data: UpdatePaymentCalendarDocumentPayload) =>
     api.put<PaymentCalendarDocument>(`/api/finance/payment-calendar/${id}`, data),
@@ -1043,10 +1043,10 @@ export const pgIntlFeeStructureService = {
       is_active?: 0 | 1
     },
     signal?: AbortSignal,
-  ) => api.get<PgIntlFeeStructure[]>("/api/finance/pg-intl-structures", params ?? {}, signal),
+  ) => api.get<PgIntlFeeStructure[]>("/finance/pg-intl-structures", params ?? {}, signal),
 
   create: (data: CreatePgIntlFeeStructurePayload) =>
-    api.post<{ id: number }>("/api/finance/pg-intl-structures", data),
+    api.post<{ id: number }>("/finance/pg-intl-structures", data),
 
   update: (id: number, data: UpdatePgIntlFeeStructurePayload) =>
     api.put<null>(`/api/finance/pg-intl-structures/${id}`, data),
@@ -1072,7 +1072,7 @@ export const financeStudentDirectoryService = {
     signal?: AbortSignal,
   ) =>
     api.get<PaginatedResponse<FinanceStudentDirectoryRow>>(
-      "/api/finance/students",
+      "/finance/students",
       params ?? {},
       signal,
     ),

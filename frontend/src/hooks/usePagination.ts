@@ -21,7 +21,7 @@ interface UsePaginationReturn extends PaginationState {
  *
  * const pagination = usePagination({ sortKey: 'created_at', sortDir: 'desc' })
  * const { data }   = useQuery(['users', pagination.toParams()], () =>
- *   api.get('/api/users', pagination.toParams()),
+ *   api.get('/users', pagination.toParams()),
  * )
  */
 export function usePagination(defaults: Partial<PaginationState> = {}): UsePaginationReturn {

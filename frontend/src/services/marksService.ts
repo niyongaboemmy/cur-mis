@@ -340,10 +340,10 @@ const apiBase = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '')
 
 export const marksService = {
   markableModules: (params: { academic_term_id?: number | string } = {}) =>
-    api.get<MarkableModule[]>('/api/marks/markable-modules', params as Record<string, unknown>),
+    api.get<MarkableModule[]>('/marks/markable-modules', params as Record<string, unknown>),
 
   list: (params: { module_id: number; academic_term_id: number }) =>
-    api.get<MarksListResponse>('/api/marks', params as Record<string, unknown>),
+    api.get<MarksListResponse>('/marks', params as Record<string, unknown>),
 
   /**
    * Download the blank marks workbook for one (module, term).
@@ -354,7 +354,7 @@ export const marksService = {
    * it would prove nothing.
    */
   downloadTemplate: async (moduleId: number | string, termId: number | string) => {
-    const res = await apiClient.get('/api/marks/template', {
+    const res = await apiClient.get('/marks/template', {
       params: { module_id: moduleId, academic_term_id: termId },
       responseType: 'blob',
     }).catch(async (e: any) => {
@@ -377,14 +377,14 @@ export const marksService = {
   },
 
   save: (payload: SaveMarksPayload) =>
-    api.put<{ saved: number }>('/api/marks', payload),
+    api.put<{ saved: number }>('/marks', payload),
 
   workflow: (payload: {
     module_id:        number
     academic_term_id: number
     action:           'open_claims' | 'submit' | 'confirm' | 'reset'
   }) =>
-    api.post<{ status: MarksWorkflowStatus }>('/api/marks/workflow', payload),
+    api.post<{ status: MarksWorkflowStatus }>('/marks/workflow', payload),
 
   remove: (id: number | string) =>
     api.delete<void>(`/api/marks/${id}`),
@@ -436,14 +436,14 @@ export const marksService = {
   },
 
   myMarks: (params: { academic_year_id?: number | string } = {}) =>
-    api.get<MyMarksResponse>('/api/marks/my', params as Record<string, unknown>),
+    api.get<MyMarksResponse>('/marks/my', params as Record<string, unknown>),
 
   /** Direct URL for the transcript download (rarely used — prefer downloadTranscript). */
   myTranscriptUrl: (params: { academic_year_id?: number | string } = {}) => {
     const qs = new URLSearchParams()
     if (params.academic_year_id) qs.set('academic_year_id', String(params.academic_year_id))
     const q = qs.toString()
-    return `${apiBase}/api/marks/my/transcript${q ? `?${q}` : ''}`
+    return `${apiBase}/marks/my/transcript${q ? `?${q}` : ''}`
   },
 
   /**
@@ -456,7 +456,7 @@ export const marksService = {
       option: { id: number; name: string; code?: string | null }
       modules: TranscriptModuleRow[]
       summary: { total: number; printing: number; hidden: number; ruled: number }
-    }>('/api/marks/transcript-modules', { option_id: optionId }),
+    }>('/marks/transcript-modules', { option_id: optionId }),
 
   /** `visible`: 'show' | 'hide' | null (null hands the module back to the curriculum rule). */
   setTranscriptModule: (body: {
@@ -464,11 +464,11 @@ export const marksService = {
     module_ident: string
     visible: 'show' | 'hide' | null
     note?: string
-  }) => api.post('/api/marks/transcript-modules', body),
+  }) => api.post('/marks/transcript-modules', body),
 
   /** Fetch the transcript as a blob (carries auth header) and trigger a browser download. */
   downloadTranscript: async (params: { academic_year_id?: number | string } = {}) => {
-    const res = await apiClient.get('/api/marks/my/transcript', {
+    const res = await apiClient.get('/marks/my/transcript', {
       params,
       responseType: 'blob',
     })

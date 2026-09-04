@@ -27,13 +27,13 @@ export const moduleCatalogService = {
       q?:          string
     } = {},
     signal?: AbortSignal,
-  ) => api.get<PaginatedResponse<Module>>('/api/modules', params, signal),
+  ) => api.get<PaginatedResponse<Module>>('/modules', params, signal),
 
   show: (id: number, signal?: AbortSignal) =>
     api.get<Module>(`/api/modules/${id}`, {}, signal),
 
   create: (data: CreateModulePayload) =>
-    api.post<Module>('/api/modules', data),
+    api.post<Module>('/modules', data),
 
   update: (id: number, data: Partial<CreateModulePayload>) =>
     api.put<Module>(`/api/modules/${id}`, data),
@@ -47,16 +47,16 @@ export const moduleScheduleService = {
   list: (
     params: { term_id?: number; module_id?: number; room_id?: number; staff_id?: number } = {},
     signal?: AbortSignal,
-  ) => api.get<ModuleScheduleRow[]>('/api/modules/schedules', params, signal),
+  ) => api.get<ModuleScheduleRow[]>('/modules/schedules', params, signal),
 
   checkConflicts: (data: SchedulePayload) =>
     api.post<{ conflicts: ScheduleConflict[] }>(
-      '/api/modules/schedules/check-conflicts',
+      '/modules/schedules/check-conflicts',
       data,
     ),
 
   create: (data: SchedulePayload) =>
-    api.post<{ id: number }>('/api/modules/schedules', data),
+    api.post<{ id: number }>('/modules/schedules', data),
 
   update: (id: number, data: SchedulePayload) =>
     api.put<null>(`/api/modules/schedules/${id}`, data),
@@ -70,13 +70,13 @@ export const moduleAssignmentService = {
   list: (
     params: { term_id?: number; staff_id?: number; module_id?: number } = {},
     signal?: AbortSignal,
-  ) => api.get<ModuleAssignment[]>('/api/modules/assignments', params, signal),
+  ) => api.get<ModuleAssignment[]>('/modules/assignments', params, signal),
 
   workload: (term_id: number, signal?: AbortSignal) =>
-    api.get<WorkloadRow[]>('/api/modules/assignments/workload', { term_id }, signal),
+    api.get<WorkloadRow[]>('/modules/assignments/workload', { term_id }, signal),
 
   create: (data: AssignmentPayload) =>
-    api.post<{ id: number }>('/api/modules/assignments', data),
+    api.post<{ id: number }>('/modules/assignments', data),
 
   update: (id: number, data: Partial<AssignmentPayload>) =>
     api.put<null>(`/api/modules/assignments/${id}`, data),
@@ -90,10 +90,10 @@ export const moduleRegistrationService = {
   list: (
     params: { term_id?: number; module_id?: number; regnumber?: string; status?: string } = {},
     signal?: AbortSignal,
-  ) => api.get<ModuleRegistration[]>('/api/modules/registrations', params, signal),
+  ) => api.get<ModuleRegistration[]>('/modules/registrations', params, signal),
 
   create: (data: RegistrationPayload) =>
-    api.post<{ id: number }>('/api/modules/registrations', data),
+    api.post<{ id: number }>('/modules/registrations', data),
 
   bulkRegister: (data: {
     module_id: number
@@ -101,7 +101,7 @@ export const moduleRegistrationService = {
     student_regnumbers: string[]
     force?: boolean
   }) => api.post<{ created: number; skipped: number; errors: Array<{ regnumber: string; reason: string }> }>(
-    '/api/modules/registrations/bulk', data
+    '/modules/registrations/bulk', data
   ),
 
   update: (id: number, data: Partial<RegistrationPayload>) =>
@@ -132,10 +132,10 @@ export interface MyExamRow {
 
 export const myModulesService = {
   eligible: (term_id: number, signal?: AbortSignal) =>
-    api.get<Module[]>('/api/modules/my/eligible', { term_id }, signal),
+    api.get<Module[]>('/modules/my/eligible', { term_id }, signal),
 
   registrations: (params: { term_id?: number } = {}, signal?: AbortSignal) =>
-    api.get<ModuleRegistration[]>('/api/modules/my/registrations', params, signal),
+    api.get<ModuleRegistration[]>('/modules/my/registrations', params, signal),
 
   /**
    * Student-facing exam timetable: every module the user is registered to,
@@ -143,10 +143,10 @@ export const myModulesService = {
    * still surface (with `exam_id: null`). Backed by /api/modules/my/exams.
    */
   exams: (params: { term_id?: number } = {}, signal?: AbortSignal) =>
-    api.get<MyExamRow[]>('/api/modules/my/exams', params, signal),
+    api.get<MyExamRow[]>('/modules/my/exams', params, signal),
 
   register: (data: SelfRegisterPayload) =>
-    api.post<{ id: number }>('/api/modules/my/register', data),
+    api.post<{ id: number }>('/modules/my/register', data),
 
   drop: (id: number) =>
     api.post<null>(`/api/modules/my/drop/${id}`),

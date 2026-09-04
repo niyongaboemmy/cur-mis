@@ -15,16 +15,16 @@ import type { AcademicYear } from '@/types/academic'
  * ─────────────────────────────────────────────────────────────── */
 export const portalService = {
   getActiveYear: (signal?: AbortSignal) =>
-    api.get<AcademicYear>('/api/portal/active-year', {}, signal),
+    api.get<AcademicYear>('/portal/active-year', {}, signal),
 
   getIntakes: (signal?: AbortSignal) =>
-    api.get<{ id: number; name: string }[]>('/api/portal/intakes', {}, signal),
+    api.get<{ id: number; name: string }[]>('/portal/intakes', {}, signal),
 
   getFaculties: (signal?: AbortSignal) =>
-    api.get<Faculty[]>('/api/portal/faculties', {}, signal),
+    api.get<Faculty[]>('/portal/faculties', {}, signal),
 
   getFacultyDepartments: (facultyId: number, signal?: AbortSignal) =>
-    api.get<PortalDepartment[]>(`/api/portal/faculties/${facultyId}/departments`, {}, signal),
+    api.get<PortalDepartment[]>(`/portal/faculties/${facultyId}/departments`, {}, signal),
 
   getPrograms: (params: { campus_id?: number } = {}, signal?: AbortSignal) =>
     api.get<Array<{
@@ -43,19 +43,19 @@ export const portalService = {
         code:     string | null
         location: string | null
       }>
-    }>>('/api/portal/programs', params, signal),
+    }>>('/portal/programs', params, signal),
 
   getLevels: (signal?: AbortSignal) =>
-    api.get<Array<{ id: number; name: string }>>('/api/portal/levels', {}, signal),
+    api.get<Array<{ id: number; name: string }>>('/portal/levels', {}, signal),
 
   getProgrammeTypes: (signal?: AbortSignal) =>
-    api.get<Array<{ id: number; name: string; display_name: string }>>('/api/portal/programme-types', {}, signal),
+    api.get<Array<{ id: number; name: string; display_name: string }>>('/portal/programme-types', {}, signal),
 
   getFacultyRequirements: (facultyId: number, signal?: AbortSignal) =>
-    api.get<{ academic_year: { id: number; label: string }; faculty_id: number; requirements: AdmissionRequirement[] }>(`/api/portal/faculties/${facultyId}/requirements`, {}, signal),
+    api.get<{ academic_year: { id: number; label: string }; faculty_id: number; requirements: AdmissionRequirement[] }>(`/portal/faculties/${facultyId}/requirements`, {}, signal),
 
   getDocumentTypes: (signal?: AbortSignal) =>
-    api.get<DocumentType[]>('/api/portal/document-types', {}, signal),
+    api.get<DocumentType[]>('/portal/document-types', {}, signal),
 
   /**
    * Pre-flight uniqueness check for the apply wizard's personal step —
@@ -68,14 +68,14 @@ export const portalService = {
     api.post<{
       available: boolean
       fields: Partial<Record<'phone' | 'email' | 'national_id', { taken: boolean; message: string | null }>>
-    }>('/api/portal/check-identity', data, signal),
+    }>('/portal/check-identity', data, signal),
 
   submitApplication: (data: Record<string, unknown>) =>
-    api.post<{ id: number; application_number: string }>('/api/portal/applications', data),
+    api.post<{ id: number; application_number: string }>('/portal/applications', data),
 
   trackApplication: (appNumber: string, signal?: AbortSignal) =>
     api.get<StudentApplication & { documents: ApplicationDocument[]; status_log?: ApplicationStatusLog[] }>(
-      `/api/portal/applications/${appNumber}`, {}, signal,
+      `/portal/applications/${appNumber}`, {}, signal,
     ),
 
   /** Multipart upload — backend proxies to the file-server internally. */
@@ -89,11 +89,11 @@ export const portalService = {
       document_type_name: string
       verification_status: 'pending' | 'verified' | 'rejected'
       document_status: string
-    }>(`/api/portal/applications/${appNumber}/documents`, form)
+    }>(`/portal/applications/${appNumber}/documents`, form)
   },
 
   respondToOffer: (appNumber: string, data: { response: 'accept' | 'decline'; notes?: string }) =>
-    api.post<null>(`/api/portal/applications/${appNumber}/respond`, data),
+    api.post<null>(`/portal/applications/${appNumber}/respond`, data),
 }
 
 /* ───────────────────────────────────────────────────────────────
@@ -101,10 +101,10 @@ export const portalService = {
  * permission: MANAGE_ADMISSION_REQUIREMENTS
  * ─────────────────────────────────────────────────────────────── */
 export const documentTypeService = {
-  list:   (signal?: AbortSignal) => api.get<DocumentType[]>('/api/admin/document-types', {}, signal),
-  create: (d: Partial<DocumentType>) => api.post<{ id: number }>('/api/admin/document-types', d),
-  update: (id: number, d: Partial<DocumentType>) => api.put<null>(`/api/admin/document-types/${id}`, d),
-  remove: (id: number) => api.delete<null>(`/api/admin/document-types/${id}`),
+  list:   (signal?: AbortSignal) => api.get<DocumentType[]>('/admin/document-types', {}, signal),
+  create: (d: Partial<DocumentType>) => api.post<{ id: number }>('/admin/document-types', d),
+  update: (id: number, d: Partial<DocumentType>) => api.put<null>(`/admin/document-types/${id}`, d),
+  remove: (id: number) => api.delete<null>(`/admin/document-types/${id}`),
 }
 
 /* ───────────────────────────────────────────────────────────────
@@ -112,22 +112,22 @@ export const documentTypeService = {
  * ─────────────────────────────────────────────────────────────── */
 export const admissionRequirementService = {
   list: (params: { faculty_id?: number } = {}, signal?: AbortSignal) =>
-    api.get<AdmissionRequirement[]>('/api/admin/admission-requirements', params, signal),
+    api.get<AdmissionRequirement[]>('/admin/admission-requirements', params, signal),
 
   getForFaculty: (facultyId: number, signal?: AbortSignal) =>
     api.get<{
       faculty:         { id: number; name: string; code: string }
       requirements:    AdmissionRequirement[]
       available_types: DocumentType[]
-    }>(`/api/admin/admission-requirements/faculty/${facultyId}`, {}, signal),
+    }>(`/admin/admission-requirements/faculty/${facultyId}`, {}, signal),
 
   create: (d: Partial<AdmissionRequirement>) =>
-    api.post<{ id: number }>('/api/admin/admission-requirements', d),
+    api.post<{ id: number }>('/admin/admission-requirements', d),
 
   update: (id: number, d: Partial<AdmissionRequirement>) =>
-    api.put<null>(`/api/admin/admission-requirements/${id}`, d),
+    api.put<null>(`/admin/admission-requirements/${id}`, d),
 
-  remove: (id: number) => api.delete<null>(`/api/admin/admission-requirements/${id}`),
+  remove: (id: number) => api.delete<null>(`/admin/admission-requirements/${id}`),
 }
 
 /* ───────────────────────────────────────────────────────────────
@@ -143,7 +143,7 @@ export const applicationAdminService = {
     // Inject the global topbar campus scope (no-op when caller already
     // set campus_id, so the dashboard's per-tile drill-downs still win).
     const scoped = withCampusScope({ ...rest, search: q ?? rest.search });
-    return api.get<PaginatedResponse<StudentApplication>>('/api/admin/applications', scoped, signal);
+    return api.get<PaginatedResponse<StudentApplication>>('/admin/applications', scoped, signal);
   },
   
   /** Dashboard aggregates. Takes the same submission window as list() so
@@ -160,7 +160,7 @@ export const applicationAdminService = {
       trend: any[];
       recent: any[]; 
       total: number 
-    }>('/api/admin/applications/stats', params, signal),
+    }>('/admin/applications/stats', params, signal),
 
   show: (id: number, signal?: AbortSignal) =>
     api.get<{ 
@@ -170,25 +170,25 @@ export const applicationAdminService = {
       merit_criteria?: MeritCriteria | null;
       merit_listing?: MeritListRow | null;
     }>(
-      `/api/admin/applications/${id}`, {}, signal,
+      `/admin/applications/${id}`, {}, signal,
     ),
 
   updateStatus: (id: number, data: { status: ApplicationStatus; notes?: string }) =>
-    api.patch<null>(`/api/admin/applications/${id}/status`, data),
+    api.patch<null>(`/admin/applications/${id}/status`, data),
 
   addNote: (id: number, data: { notes: string }) =>
-    api.post<null>(`/api/admin/applications/${id}/notes`, data),
+    api.post<null>(`/admin/applications/${id}/notes`, data),
 
   listPendingNotes: (id: number, signal?: AbortSignal) =>
     api.get<{ notes: ApplicationPendingNote[]; count: number }>(
-      `/api/admin/applications/${id}/pending-notes`,
+      `/admin/applications/${id}/pending-notes`,
       {},
       signal,
     ),
 
   addPendingNote: (id: number, data: { note: string }) =>
     api.post<{ notes: ApplicationPendingNote[]; count: number }>(
-      `/api/admin/applications/${id}/pending-notes`,
+      `/admin/applications/${id}/pending-notes`,
       data,
     ),
 
@@ -198,16 +198,16 @@ export const applicationAdminService = {
    * postgraduate row alongside.
    */
   hide:    (id: number, data: { reason?: string } = {}) =>
-    api.patch<{ is_hidden: 1 }>(`/api/admin/applications/${id}/hide`, data),
+    api.patch<{ is_hidden: 1 }>(`/admin/applications/${id}/hide`, data),
   restore: (id: number) =>
-    api.patch<{ is_hidden: 0 }>(`/api/admin/applications/${id}/restore`),
+    api.patch<{ is_hidden: 0 }>(`/admin/applications/${id}/restore`),
 
   /** Task 1.11 — credit-transfer exemption-letter workflow. */
   setExemptionStatus: (id: number, data: {
     action: 'received_registry' | 'received_finance' | 'confirmed' | 'pending'
     entry_level_override?: string
   }) =>
-    api.patch<{ exemption_letter_status: string }>(`/api/admin/applications/${id}/exemption-status`, data),
+    api.patch<{ exemption_letter_status: string }>(`/admin/applications/${id}/exemption-status`, data),
 
   returningCheck: (id: number, signal?: AbortSignal) =>
     api.get<{
@@ -225,15 +225,15 @@ export const applicationAdminService = {
         current_level:   string | null
         student_state:   string | null
       }>
-    }>(`/api/admin/applications/${id}/returning-check`, {}, signal),
+    }>(`/admin/applications/${id}/returning-check`, {}, signal),
 
   acceptOfferByAppId: (id: number) =>
-    api.post<{ offer_id: number }>(`/api/admin/applications/${id}/accept-offer`),
+    api.post<{ offer_id: number }>(`/admin/applications/${id}/accept-offer`),
 
   paymentSlipUrl: (id: number) => {
     const token = useAuthStore.getState().token;
     const base = import.meta.env.VITE_API_URL ?? "";
-    return `${base}/api/admin/applications/${id}/payment-slip?token=${token}`;
+    return `${base}/admin/applications/${id}/payment-slip?token=${token}`;
   },
 
   /** Inline-streamable URL for the applicant's profile photo. Pass the
@@ -244,7 +244,7 @@ export const applicationAdminService = {
     const token = useAuthStore.getState().token;
     const base  = import.meta.env.VITE_API_URL ?? "";
     const v     = `&v=${encodeURIComponent(String(photoCacheKey))}`;
-    return `${base}/api/admin/applications/${id}/photo?token=${token}${v}`;
+    return `${base}/admin/applications/${id}/photo?token=${token}${v}`;
   },
 
   exportUrl: (queryString: string) => {
@@ -259,14 +259,14 @@ export const applicationAdminService = {
     }
     const finalQs = params.toString();
     const sep = finalQs ? "&" : "";
-    return `${base}/api/admin/applications/export?${finalQs}${sep}token=${token}`;
+    return `${base}/admin/applications/export?${finalQs}${sep}token=${token}`;
   },
 
   /** Task 1.12 — bulk applicant upload. */
   bulkUploadTemplateUrl: () => {
     const token = useAuthStore.getState().token;
     const base  = import.meta.env.VITE_API_URL ?? '';
-    return `${base}/api/admin/applications/bulk-upload-template?token=${token}`;
+    return `${base}/admin/applications/bulk-upload-template?token=${token}`;
   },
 
   /** Task 1.14 — applicant statistics report. */
@@ -290,7 +290,7 @@ export const applicationAdminService = {
         withdrawn_count: number
       }>
       totals: { total: number; new_count: number; accepted_count: number; enrolled_count: number; withdrawn_count: number }
-    }>(`/api/admin/applications/statistics`, withCampusScope(params), signal),
+    }>(`/admin/applications/statistics`, withCampusScope(params), signal),
 
   /** Dry-run preview — parses the CSV server-side and returns per-row
    *  validation (missing required fields, duplicates, invalid values)
@@ -299,7 +299,7 @@ export const applicationAdminService = {
     const form = new FormData();
     form.append('file', file);
     return api.upload<import('./studentService').BulkValidateResponse>(
-      `/api/admin/applications/bulk-validate`,
+      `/admin/applications/bulk-validate`,
       form,
     );
   },
@@ -313,7 +313,7 @@ export const applicationAdminService = {
     return api.upload<{
       inserted: number;
       errors: Array<{ row: number; message: string }>;
-    }>(`/api/admin/applications/bulk-upload`, form);
+    }>(`/admin/applications/bulk-upload`, form);
   },
 }
 
@@ -323,26 +323,26 @@ export const applicationAdminService = {
  * ─────────────────────────────────────────────────────────────── */
 export const verificationService = {
   getPendingApplications: (signal?: AbortSignal) =>
-    api.get<PaginatedResponse<StudentApplication>>('/api/admin/verifications', {}, signal),
+    api.get<PaginatedResponse<StudentApplication>>('/admin/verifications', {}, signal),
 
   getApplicationDocuments: (applicationId: number, signal?: AbortSignal) =>
-    api.get<{ application: StudentApplication; documents: ApplicationDocument[] }>(`/api/admin/verifications/${applicationId}/documents`, {}, signal),
+    api.get<{ application: StudentApplication; documents: ApplicationDocument[] }>(`/admin/verifications/${applicationId}/documents`, {}, signal),
 
   verifyDocument: (applicationId: number, documentId: number, data: { verification_status: 'verified' | 'rejected'; comment?: string }) =>
-    api.patch<null>(`/api/admin/verifications/${applicationId}/documents/${documentId}`, data),
+    api.patch<null>(`/admin/verifications/${applicationId}/documents/${documentId}`, data),
 
   /** Request document changes (sends email for all rejected documents) */
   requestDocumentChanges: (
     applicationId: number,
     data: { message?: string; document_ids?: number[]; document_type_ids?: number[] } = {},
   ) =>
-    api.post<null>(`/api/admin/verifications/${applicationId}/request-changes`, data),
+    api.post<null>(`/admin/verifications/${applicationId}/request-changes`, data),
 
   /** Returns the raw file server URL/redirect */
   downloadUrl: (applicationId: number, documentId: number) => {
     const token = useAuthStore.getState().token;
     const base = import.meta.env.VITE_API_URL ?? "";
-    return `${base}/api/admin/verifications/${applicationId}/documents/${documentId}/download?token=${token}`;
+    return `${base}/admin/verifications/${applicationId}/documents/${documentId}/download?token=${token}`;
   },
 }
 
@@ -352,19 +352,19 @@ export const verificationService = {
  * ─────────────────────────────────────────────────────────────── */
 export const meritService = {
   getCriteria: (params: { department_id: number; intake: string; academic_year_id: number }, signal?: AbortSignal) =>
-    api.get<MeritCriteria | null>('/api/admin/merit/criteria', params, signal),
+    api.get<MeritCriteria | null>('/admin/merit/criteria', params, signal),
 
   saveCriteria: (d: MeritCriteria) =>
-    api.post<{ id: number }>('/api/admin/merit/criteria', d),
+    api.post<{ id: number }>('/admin/merit/criteria', d),
 
   generate: (d: { department_id: number; intake: string; academic_year_id: number }) =>
-    api.post<{ generated: number }>('/api/admin/merit/generate', d),
+    api.post<{ generated: number }>('/admin/merit/generate', d),
 
   getMeritList: (params: { department_id: number; intake: string; academic_year_id: number }, signal?: AbortSignal) =>
-    api.get<PaginatedResponse<MeritListRow>>('/api/admin/merit/list', params, signal),
+    api.get<PaginatedResponse<MeritListRow>>('/admin/merit/list', params, signal),
 
   publish: (d: { department_id: number; intake: string; academic_year_id: number }) =>
-    api.patch<null>('/api/admin/merit/publish', d),
+    api.patch<null>('/admin/merit/publish', d),
 }
 
 /* ───────────────────────────────────────────────────────────────
@@ -373,28 +373,28 @@ export const meritService = {
  * ─────────────────────────────────────────────────────────────── */
 export const offerService = {
   list: (params: { status?: string; department_id?: number; intake?: string; enrolled_only?: '0' | '1' } = {}, signal?: AbortSignal) =>
-    api.get<PaginatedResponse<AdmissionOffer>>('/api/admin/admissions/offers', params, signal),
+    api.get<PaginatedResponse<AdmissionOffer>>('/admin/admissions/offers', params, signal),
 
   create: (d: { application_id: number; expires_at: string; notes?: string }) =>
-    api.post<{ id: number; offer_letter_reference: string }>('/api/admin/admissions/offers', d),
+    api.post<{ id: number; offer_letter_reference: string }>('/admin/admissions/offers', d),
 
   bulkCreate: (d: { department_id: number; intake: string; academic_year_id: number; expires_at: string }) =>
-    api.post<{ created: number }>('/api/admin/admissions/offers/bulk', d),
+    api.post<{ created: number }>('/admin/admissions/offers/bulk', d),
 
   getDetails: (offerId: number, signal?: AbortSignal) =>
-    api.get<AdmissionOffer>(`/api/admin/admissions/offers/${offerId}`, {}, signal),
+    api.get<AdmissionOffer>(`/admin/admissions/offers/${offerId}`, {}, signal),
 
   initiateEnrollment: (offerId: number) =>
-    api.post<{ student_id: number }>(`/api/admin/admissions/offers/${offerId}/enroll`),
+    api.post<{ student_id: number }>(`/admin/admissions/offers/${offerId}/enroll`),
 
   initiateEnrollmentByAppId: (appId: number, data?: { level_id: number }) =>
-    api.post<{ student_id: number }>(`/api/admin/applications/${appId}/enroll`, data || {}),
+    api.post<{ student_id: number }>(`/admin/applications/${appId}/enroll`, data || {}),
 
   sendLetter: (offerId: number) =>
-    api.post<{ sent_to: string; letter_token: string; download_url: string }>(`/api/admin/admissions/offers/${offerId}/send-letter`),
+    api.post<{ sent_to: string; letter_token: string; download_url: string }>(`/admin/admissions/offers/${offerId}/send-letter`),
 
   bulkSendLetters: (d: { department_id: number; intake: string; academic_year_id: number }) =>
-    api.post<{ total: number; sent: number; errors: string[] }>('/api/admin/admissions/letters/bulk-send', d),
+    api.post<{ total: number; sent: number; errors: string[] }>('/admin/admissions/letters/bulk-send', d),
 
   /** Returns absolute URL for PDF download (admin, JWT-authenticated). */
   letterPdfUrl: (offerId: number, studentId?: number | null) => {
@@ -411,13 +411,13 @@ export const offerService = {
 
     const token = useAuthStore.getState().token
     const base  = import.meta.env.VITE_API_URL ?? ''
-    return `${base}/api/admin/admissions/offers/${offerId}/letter?token=${token}`
+    return `${base}/admin/admissions/offers/${offerId}/letter?token=${token}`
   },
 
   /** Returns absolute URL for applicant PDF download via token (no JWT). */
   letterPublicUrl: (letterToken: string) => {
     const base = import.meta.env.VITE_API_URL ?? ''
-    return `${base}/api/portal/admission-letter?token=${letterToken}`
+    return `${base}/portal/admission-letter?token=${letterToken}`
   },
 }
 
@@ -427,14 +427,14 @@ export const offerService = {
  * ─────────────────────────────────────────────────────────────── */
 export const manualAdmissionService = {
   admit: (d: { application_id: number; reason?: string; notes?: string; expires_at?: string }) =>
-    api.post<{ offer_id: number; offer_letter_reference: string; expires_at: string }>('/api/admin/admissions/manual-admit', d),
+    api.post<{ offer_id: number; offer_letter_reference: string; expires_at: string }>('/admin/admissions/manual-admit', d),
 }
 
 /* ───────────────────────────────────────────────────────────────
  * Admission billing — the Registration / CURSU fees an admitted
  * applicant settles between the offer and the registration number.
  * Same shape on both ends: the applicant reads their own bills from
- * /api/applicant/*, a validator reads anyone's from /api/admin/*.
+ * /applicant/*, a validator reads anyone's from /admin/*.
  * ─────────────────────────────────────────────────────────────── */
 
 export interface AdmissionBill {
@@ -511,25 +511,25 @@ export interface AdmissionBillingOverview {
 /** Validator side — permission: MANAGE_STUDENT_APPLICATIONS */
 export const admissionBillingService = {
   list: (appId: number, signal?: AbortSignal) =>
-    api.get<AdmissionBillingOverview>(`/api/admin/applications/${appId}/bills`, {}, signal),
+    api.get<AdmissionBillingOverview>(`/admin/applications/${appId}/bills`, {}, signal),
 
   /** Raise the bills. Omit fee_types to bill everything configured. */
   bill: (appId: number, feeTypes?: string[]) =>
     api.post<{ billed: AdmissionBill[]; skipped: Array<{ fee_type: string; reason: string }>; summary: AdmissionBillingOverview['summary'] }>(
-      `/api/admin/applications/${appId}/bills`,
+      `/admin/applications/${appId}/bills`,
       feeTypes?.length ? { fee_types: feeTypes } : {},
     ),
 
   /** Record a payment that arrived outside the gateway (bank transfer, cash). */
   confirmPayment: (appId: number, billId: number, data: { amount: number; reference: string; notes?: string }) =>
     api.post<{ payment_id: number; receipt_number: string; summary: AdmissionBillingOverview['summary'] }>(
-      `/api/admin/applications/${appId}/bills/${billId}/confirm`,
+      `/admin/applications/${appId}/bills/${billId}/confirm`,
       data,
     ),
 
   checkout: (appId: number, feeType?: string, signal?: AbortSignal) =>
     api.get<{ checkout_url: string; payer_code: string; service_code: string | null; application_number: string }>(
-      `/api/admin/applications/${appId}/bills/checkout`,
+      `/admin/applications/${appId}/bills/checkout`,
       feeType ? { fee_type: feeType } : {},
       signal,
     ),
@@ -544,20 +544,20 @@ export const applicantService = {
       profile: ApplicantProfile;
       user: { email: string; full_name: string; username: string };
       application?: StudentApplication;
-    }>('/api/applicant/profile', {}, signal),
+    }>('/applicant/profile', {}, signal),
 
   updateProfile: (d: Partial<ApplicantProfile>) =>
-    api.put<null>('/api/applicant/profile', d),
+    api.put<null>('/applicant/profile', d),
 
   uploadPhoto: (file: File) => {
     const form = new FormData()
     form.append('photo', file)
-    return api.upload<{ profile_photo_id: string; url: string | null }>('/api/applicant/profile/photo', form)
+    return api.upload<{ profile_photo_id: string; url: string | null }>('/applicant/profile/photo', form)
   },
 
   /** Remove the applicant's profile photo. */
   deletePhoto: () =>
-    api.delete<{ profile_photo_id: null }>('/api/applicant/profile/photo'),
+    api.delete<{ profile_photo_id: null }>('/applicant/profile/photo'),
 
   // Note: there is deliberately no "I already paid" call here. UrubutoPay is
   // the only accepted channel for the application fee, so the only thing that
@@ -578,7 +578,7 @@ export const applicantService = {
       application_number: string
       /** True only on a local dev backend — enables the simulate-payment shortcut. */
       dev_mode:           boolean
-    }>('/api/applicant/application/payment/checkout', {}, signal),
+    }>('/applicant/application/payment/checkout', {}, signal),
 
   /** Urubuto Pay — poll whether the application fee has been confirmed. */
   getPaymentStatus: (signal?: AbortSignal) =>
@@ -591,7 +591,7 @@ export const applicantService = {
       application_number: string | null
       status:             string | null
       dev_mode:           boolean
-    }>('/api/applicant/application/payment/status', {}, signal),
+    }>('/applicant/application/payment/status', {}, signal),
 
   /**
    * Dev only — mark the application fee paid without the gateway. The backend
@@ -604,13 +604,13 @@ export const applicantService = {
       transaction_id: string
       paid_at:        string
       simulated:      boolean
-    }>('/api/applicant/application/payment/simulate', {}),
+    }>('/applicant/application/payment/simulate', {}),
 
   listApplications: (signal?: AbortSignal) =>
-    api.get<StudentApplication[]>('/api/applicant/application', {}, signal),
+    api.get<StudentApplication[]>('/applicant/application', {}, signal),
 
   getApplicationDetails: (id: number, signal?: AbortSignal) =>
-    api.get<StudentApplication & { document_checklist?: AdmissionRequirement[]; status_log?: ApplicationStatusLog[] }>(`/api/applicant/application/${id}`, {}, signal),
+    api.get<StudentApplication & { document_checklist?: AdmissionRequirement[]; status_log?: ApplicationStatusLog[] }>(`/applicant/application/${id}`, {}, signal),
 
   /** Task 1.10 — lean timeline endpoint for the visual progress stepper. */
   getApplicationTimeline: (id: number, signal?: AbortSignal) =>
@@ -625,42 +625,42 @@ export const applicantService = {
         created_at:  string
         actor_name:  string | null
       }>
-    }>(`/api/applicant/application/${id}/timeline`, {}, signal),
+    }>(`/applicant/application/${id}/timeline`, {}, signal),
 
   updateApplication: (id: number, data: Partial<StudentApplication>) =>
-    api.post<StudentApplication>(`/api/applicant/application/${id}`, data),
+    api.post<StudentApplication>(`/applicant/application/${id}`, data),
 
   draftApplication: (data: { faculty_id: number; department_id: number; intake: string }) =>
-    api.post<{ id: number; application_number: string }>('/api/applicant/application/draft', data),
+    api.post<{ id: number; application_number: string }>('/applicant/application/draft', data),
 
   submitApplication: (data: Record<string, unknown>) =>
-    api.post<{ status: string }>('/api/applicant/application/submit', data),
+    api.post<{ status: string }>('/applicant/application/submit', data),
 
   verifyApplication: (data: { code: string }) =>
-    api.post<null>('/api/applicant/application/verify', data),
+    api.post<null>('/applicant/application/verify', data),
 
   resendVerificationCode: () =>
-    api.post<null>('/api/applicant/application/resend-code', {}),
+    api.post<null>('/applicant/application/resend-code', {}),
 
   /* Academic records */
   listAcademicRecords: (signal?: AbortSignal) =>
-    api.get<AcademicRecord[]>('/api/applicant/academic-records', {}, signal),
+    api.get<AcademicRecord[]>('/applicant/academic-records', {}, signal),
 
   addAcademicRecord: (d: Omit<AcademicRecord, 'id' | 'applicant_profile_id'> & { document_id?: number | null }) =>
-    api.post<{ id: number }>('/api/applicant/academic-records', d),
+    api.post<{ id: number }>('/applicant/academic-records', d),
 
   updateAcademicRecord: (id: number, d: Partial<AcademicRecord> & { document_id?: number | null }) =>
-    api.put<null>(`/api/applicant/academic-records/${id}`, d),
+    api.put<null>(`/applicant/academic-records/${id}`, d),
 
   deleteAcademicRecord: (id: number) =>
-    api.delete<null>(`/api/applicant/academic-records/${id}`),
+    api.delete<null>(`/applicant/academic-records/${id}`),
 
   setPrimaryRecord: (id: number) =>
-    api.post<null>(`/api/applicant/academic-records/${id}/set-primary`),
+    api.post<null>(`/applicant/academic-records/${id}/set-primary`),
 
   /* Documents */
   listDocuments: (signal?: AbortSignal) =>
-    api.get<{ documents: ApplicationDocument[] }>('/api/applicant/documents', {}, signal),
+    api.get<{ documents: ApplicationDocument[] }>('/applicant/documents', {}, signal),
 
   /** Multipart upload — backend proxies to the file-server internally. */
   uploadDocument: (data: { document_type_id: number; file: File }) => {
@@ -673,11 +673,11 @@ export const applicantService = {
       document_type_name: string
       verification_status: 'pending' | 'verified' | 'rejected'
       document_status: string
-    }>('/api/applicant/documents', form)
+    }>('/applicant/documents', form)
   },
 
   deleteDocument: (id: number) =>
-    api.delete<null>(`/api/applicant/documents/${id}`),
+    api.delete<null>(`/applicant/documents/${id}`),
 
   downloadUrl: (id: number) => {
     const token = useAuthStore.getState().token;
@@ -692,11 +692,11 @@ export const applicantService = {
   },
 
   respondToOffer: (id: number, data: { response: 'accepted' | 'declined'; notes?: string }) =>
-    api.post<{ status: string }>(`/api/applicant/application/${id}/respond`, data),
+    api.post<{ status: string }>(`/applicant/application/${id}/respond`, data),
 
   /** Admission fees (Registration, CURSU …) raised after the offer. */
   getAdmissionBills: (signal?: AbortSignal) =>
-    api.get<AdmissionBillingOverview>('/api/applicant/application/bills', {}, signal),
+    api.get<AdmissionBillingOverview>('/applicant/application/bills', {}, signal),
 
   /** Fresh checkout link for one bill, or for the whole balance when omitted. */
   getAdmissionBillCheckout: (feeType?: string, signal?: AbortSignal) =>
@@ -707,11 +707,11 @@ export const applicantService = {
       amount:             number | null
       currency:           string
       application_number: string
-    }>('/api/applicant/application/bills/checkout', feeType ? { fee_type: feeType } : {}, signal),
+    }>('/applicant/application/bills/checkout', feeType ? { fee_type: feeType } : {}, signal),
 
   /** Resubmit application after documents have been re-uploaded following rejection */
   resubmitApplication: (id: number) =>
-    api.post<{ status: string }>(`/api/applicant/application/${id}/resubmit`, {}),
+    api.post<{ status: string }>(`/applicant/application/${id}/resubmit`, {}),
 }
 
 /* ───────────────────────────────────────────────────────────────
@@ -719,9 +719,9 @@ export const applicantService = {
  * permission: MANAGE_ADMISSIONS
  * ─────────────────────────────────────────────────────────────── */
 export const intakeService = {
-  list:   (signal?: AbortSignal) => api.get<any[]>('/api/admin/intakes', {}, signal),
-  create: (d: any) => api.post<any>('/api/admin/intakes', d),
-  update: (id: number, d: any) => api.put<any>(`/api/admin/intakes/${id}`, d),
-  remove: (id: number) => api.delete<null>(`/api/admin/intakes/${id}`),
-  toggle: (id: number) => api.patch<any>(`/api/admin/intakes/${id}/toggle`),
+  list:   (signal?: AbortSignal) => api.get<any[]>('/admin/intakes', {}, signal),
+  create: (d: any) => api.post<any>('/admin/intakes', d),
+  update: (id: number, d: any) => api.put<any>(`/admin/intakes/${id}`, d),
+  remove: (id: number) => api.delete<null>(`/admin/intakes/${id}`),
+  toggle: (id: number) => api.patch<any>(`/admin/intakes/${id}/toggle`),
 }

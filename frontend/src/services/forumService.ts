@@ -90,8 +90,8 @@ export const FORUM_AUDIENCE_LABELS: Record<ForumAudience, string> = {
 }
 
 export const forumService = {
-  categories: () => api.get<ForumCategory[]>('/api/forums/categories'),
-  createCategory: (payload: CategoryInput) => api.post<ForumCategory>('/api/forums/categories', payload),
+  categories: () => api.get<ForumCategory[]>('/forums/categories'),
+  createCategory: (payload: CategoryInput) => api.post<ForumCategory>('/forums/categories', payload),
   updateCategory: (id: number, payload: Partial<CategoryInput>) => api.put<ForumCategory>(`/api/forums/categories/${id}`, payload),
   deleteCategory: (id: number) => api.delete<void>(`/api/forums/categories/${id}`),
 
@@ -132,12 +132,12 @@ export const forumService = {
   uploadAttachment: (file: File) => {
     const form = new FormData()
     form.append('file', file)
-    return api.upload<ForumUpload>('/api/forums/upload', form)
+    return api.upload<ForumUpload>('/forums/upload', form)
   },
 
   /** Absolute, token-bearing URL for an attachment or avatar (usable in <img src>). */
   fileUrl: (fileId: string) => {
     const token = useAuthStore.getState().token ?? ''
-    return `${FORUM_API}/api/forums/file/${encodeURIComponent(fileId)}?token=${encodeURIComponent(token)}`
+    return `${FORUM_API}/forums/file/${encodeURIComponent(fileId)}?token=${encodeURIComponent(token)}`
   },
 }

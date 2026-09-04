@@ -45,10 +45,10 @@ export default function HRDashboardPage() {
     setIsLoading(true);
     try {
       const [metricsRes, deptRes, leaveRes, payrollRes] = await Promise.all([
-        fetch('/api/hr/contracts/summary'),
-        fetch('/api/hr/employees/by-department'),
-        fetch('/api/hr/leave/by-type'),
-        fetch('/api/hr/payroll/trends'),
+        fetch('/hr/contracts/summary'),
+        fetch('/hr/employees/by-department'),
+        fetch('/hr/leave/by-type'),
+        fetch('/hr/payroll/trends'),
       ]);
 
       if (metricsRes.ok) {

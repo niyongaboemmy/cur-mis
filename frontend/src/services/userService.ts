@@ -149,7 +149,7 @@ const userService = {
     if (!user.photo) return null;
     const token = useAuthStore.getState().token;
     const base  = import.meta.env.VITE_API_URL ?? "";
-    return `${base}/api/users/${user.id}/photo?token=${token}&v=${encodeURIComponent(user.photo)}`;
+    return `${base}/users/${user.id}/photo?token=${token}&v=${encodeURIComponent(user.photo)}`;
   },
 };
 

@@ -77,7 +77,7 @@ export default function HRImportExportPage() {
       formData.append('file', file);
       formData.append('import_type', importType);
 
-      const response = await fetch('/api/hr/import/validate', {
+      const response = await fetch('/hr/import/validate', {
         method: 'POST',
         body: formData,
       });
@@ -115,7 +115,7 @@ export default function HRImportExportPage() {
       formData.append('file', file);
       formData.append('import_type', importType);
 
-      const response = await fetch('/api/hr/import/process', {
+      const response = await fetch('/hr/import/process', {
         method: 'POST',
         body: formData,
       });

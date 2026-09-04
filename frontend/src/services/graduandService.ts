@@ -354,16 +354,16 @@ export const graduandService = {
     params: { academic_year_id?: number; std_option?: string | number; current_level?: number; page?: number; per_page?: number } = {},
     signal?: AbortSignal,
   ) =>
-    api.get<EligibilityListResponse>('/api/graduands/eligibility', params as Record<string, unknown>, signal),
+    api.get<EligibilityListResponse>('/graduands/eligibility', params as Record<string, unknown>, signal),
 
   list: (
     params: { status?: GraduandStatus; academic_year_id?: number; page?: number; per_page?: number } = {},
     signal?: AbortSignal,
   ) =>
-    api.get<GraduandListResponse>('/api/graduands', params as Record<string, unknown>, signal),
+    api.get<GraduandListResponse>('/graduands', params as Record<string, unknown>, signal),
 
   add: (payload: { student_id: number; academic_year_id?: number; degree_class?: DegreeClass }) =>
-    api.post<{ id: number }>('/api/graduands', payload),
+    api.post<{ id: number }>('/graduands', payload),
 
   approve: (id: number) =>
     api.put<null>(`/api/graduands/${id}/approve`, {}),
@@ -380,7 +380,7 @@ export const graduandService = {
   /** Cohort audit: who started on or before a date, and what's outstanding. */
   completionList: (params: CompletionListParams, signal?: AbortSignal) =>
     apiClient
-      .get<ApiResponse<CompletionListResponse>>('/api/graduands/completion', {
+      .get<ApiResponse<CompletionListResponse>>('/graduands/completion', {
         params, signal, timeout: AUDIT_TIMEOUT,
       })
       .then((r) => r.data),
@@ -392,7 +392,7 @@ export const graduandService = {
   /** Students who have a mark for every module their program requires — the
    *  pool the graduation list is built from, with any lifecycle record. */
   readyList: (params: ReadyListParams = {}, signal?: AbortSignal) =>
-    api.get<ReadyListResponse>('/api/graduands/ready', params as Record<string, unknown>, signal),
+    api.get<ReadyListResponse>('/graduands/ready', params as Record<string, unknown>, signal),
 
   /** Move a selection of finished students to a status in one request. Creates
    *  the `graduands` record where none exists, so a waiting student can go
@@ -405,12 +405,12 @@ export const graduandService = {
     ceremony_number?: string
   }) =>
     api.post<{ updated: number; skipped: number; status: GraduandStatus }>(
-      '/api/graduands/bulk-status', payload,
+      '/graduands/bulk-status', payload,
     ),
 
   /** Why this environment shows zeros — read-only counts, safe on production. */
   completionDiagnostics: (signal?: AbortSignal) =>
-    api.get<CompletionDiagnostics>('/api/graduands/completion/diagnostics', {}, signal),
+    api.get<CompletionDiagnostics>('/graduands/completion/diagnostics', {}, signal),
 
   /** Recompute one batch of the `graduation_audit` snapshot.
    *
@@ -420,7 +420,7 @@ export const graduandService = {
   rebuildCompletion: (afterId = 0, limit = 2000) =>
     apiClient
       .post<ApiResponse<RebuildBatch>>(
-        '/api/graduands/completion/rebuild',
+        '/graduands/completion/rebuild',
         { after_id: afterId, limit },
         { timeout: AUDIT_TIMEOUT },
       )
@@ -436,6 +436,6 @@ export const graduandService = {
     Object.entries(params).forEach(([k, v]) => {
       if (v !== undefined && v !== null && v !== '') qs.append(k, String(v))
     })
-    return `${base}/api/graduands/completion/export?${qs.toString()}`
+    return `${base}/graduands/completion/export?${qs.toString()}`
   },
 }

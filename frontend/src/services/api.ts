@@ -40,7 +40,7 @@ apiClient.interceptors.response.use(
     // that is otherwise perfectly valid — which is exactly what the header
     // notification poll did. A real 401 on anything the user actually asked
     // for still logs out normally.
-    const isBackgroundPoll = error.config?.url?.includes('/api/notifications') ||
+    const isBackgroundPoll = error.config?.url?.includes('/notifications') ||
                              error.config?.url?.includes('/messages/unread-count');
 
     if (error.response?.status === 401 && !isAuthPath && !isBackgroundPoll) {

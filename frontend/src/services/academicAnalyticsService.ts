@@ -125,7 +125,7 @@ export interface AnalyticsFilterParams {
 
 /* ── Service ───────────────────────────────────────────────────────────── */
 
-const BASE = '/api/academic-analytics'
+const BASE = '/academic-analytics'
 
 export const academicAnalyticsService = {
   overview: (params: Pick<AnalyticsFilterParams, 'academic_year_id'> = {}, signal?: AbortSignal) =>

@@ -90,7 +90,7 @@ export default function ExemptionLetterModal({
           console.warn('⚠️ Invalid department ID:', studentDepartmentId, '→', deptId);
         }
 
-        const url = new URL('/api/documents/exemption-letter/modules', window.location.origin);
+        const url = new URL('/documents/exemption-letter/modules', window.location.origin);
         url.searchParams.append('per_page', '1000');
         if (deptId && !isNaN(deptId)) {
           url.searchParams.append('department', String(deptId));

@@ -39,37 +39,37 @@ export interface SignatoriesResponse {
 
 export const systemService = {
   getBasics: (signal?: AbortSignal) =>
-    api.get<SystemBasics>('/api/system/basics', {}, signal),
+    api.get<SystemBasics>('/system/basics', {}, signal),
 
   /** Public — readable from the apply page and login page without auth. */
   getGuidanceVideos: (signal?: AbortSignal) =>
-    api.get<GuidanceVideos>('/api/portal/guidance-videos', {}, signal),
+    api.get<GuidanceVideos>('/portal/guidance-videos', {}, signal),
 
   /** Admin — persist the two URLs (requires MANAGE_SETTINGS). */
   saveGuidanceVideos: (d: GuidanceVideos) =>
-    api.put<GuidanceVideos>('/api/system/guidance-videos', d),
+    api.put<GuidanceVideos>('/system/guidance-videos', d),
 
   /** Public — returns the live application fee amount (no auth required). */
   getPublicApplicationFee: (signal?: AbortSignal) =>
     api.get<{ amount: number; mapped_fee_type: string | null; academic_year_id: number | null }>(
-      '/api/portal/application-fee', {}, signal
+      '/portal/application-fee', {}, signal
     ),
 
   /** Admin — fetch application fee mapping settings + available fee types. */
   getFeeMappingSettings: (signal?: AbortSignal) =>
-    api.get<FeeMappingResponse>('/api/system/fee-mapping', {}, signal),
+    api.get<FeeMappingResponse>('/system/fee-mapping', {}, signal),
 
   /** Admin — save application fee mapping settings. */
   saveFeeMappingSettings: (d: {
     application_fee_mapped_fee_structure_id: number
     application_fee_credit_on_enrollment:    number
-  }) => api.post<FeeMappingSettings>('/api/system/fee-mapping', d),
+  }) => api.post<FeeMappingSettings>('/system/fee-mapping', d),
 
   /** Admin — who signs issued documents. Returns the value in force. */
   getSignatories: (signal?: AbortSignal) =>
-    api.get<SignatoriesResponse>('/api/system/signatories', {}, signal),
+    api.get<SignatoriesResponse>('/system/signatories', {}, signal),
 
   /** Admin — set the Academic Registrar's name (requires MANAGE_SETTINGS). */
   saveSignatories: (d: Signatories) =>
-    api.put<{ settings: Signatories }>('/api/system/signatories', d),
+    api.put<{ settings: Signatories }>('/system/signatories', d),
 }

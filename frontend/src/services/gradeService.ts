@@ -37,12 +37,12 @@ export interface GpaResult {
 
 export const gradeService = {
   // Grading scale
-  listScales: () => api.get<GradingBand[]>('/api/grades/scales'),
-  createScale: (payload: GradingBandInput) => api.post<GradingBand>('/api/grades/scales', payload),
+  listScales: () => api.get<GradingBand[]>('/grades/scales'),
+  createScale: (payload: GradingBandInput) => api.post<GradingBand>('/grades/scales', payload),
   updateScale: (id: number, payload: GradingBandInput) => api.put<GradingBand>(`/api/grades/scales/${id}`, payload),
   removeScale: (id: number) => api.delete<void>(`/api/grades/scales/${id}`),
 
   // GPA
   gpaById: (studentId: number | string) => api.get<GpaResult>(`/api/grades/gpa/by-id/${studentId}`),
-  myGpa:   () => api.get<GpaResult>('/api/grades/my-gpa'),
+  myGpa:   () => api.get<GpaResult>('/grades/my-gpa'),
 }

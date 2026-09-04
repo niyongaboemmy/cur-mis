@@ -12,7 +12,7 @@ export interface NavGroup {
 
 const navigationService = {
   getStructure: async (signal?: AbortSignal) => {
-    const response = await api.get<NavGroup[]>("/api/navigation", {}, signal);
+    const response = await api.get<NavGroup[]>("/navigation", {}, signal);
     return response.data || [];
   },
 };

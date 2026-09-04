@@ -64,7 +64,7 @@ export default function PayrollManagementPage() {
   const fetchStructures = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('/api/hr/payroll/structures');
+      const response = await fetch('/hr/payroll/structures');
       const data = await response.json();
       setStructures(data.data);
     } catch (error) {
@@ -77,7 +77,7 @@ export default function PayrollManagementPage() {
   const fetchPayrollRuns = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('/api/hr/payroll/runs');
+      const response = await fetch('/hr/payroll/runs');
       const data = await response.json();
       setPayrollRuns(data.data);
     } catch (error) {
@@ -89,7 +89,7 @@ export default function PayrollManagementPage() {
 
   const fetchComponentTypes = async () => {
     try {
-      const response = await fetch('/api/hr/payroll/component-types');
+      const response = await fetch('/hr/payroll/component-types');
       const data = await response.json();
       setComponentTypes(data.data);
     } catch (error) {
@@ -99,7 +99,7 @@ export default function PayrollManagementPage() {
 
   const handleSaveStructure = async (formData: any) => {
     try {
-      const response = await fetch('/api/hr/payroll/structures', {
+      const response = await fetch('/hr/payroll/structures', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
@@ -123,7 +123,7 @@ export default function PayrollManagementPage() {
     }
 
     try {
-      const response = await fetch('/api/hr/payroll/runs', {
+      const response = await fetch('/hr/payroll/runs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newPayroll)

@@ -449,13 +449,13 @@ export const studentService = {
     signal?: AbortSignal,
   ) =>
     api.get<PaginatedResponse<Student>>(
-      '/api/students',
+      '/students',
       withGlobalScopes(params),
       signal,
     ),
 
   stats: (params: { acc_year?: string; campus?: string | number; category?: string } = {}, signal?: AbortSignal) =>
-    api.get<StudentStats>('/api/students/stats', withGlobalScopes(params), signal),
+    api.get<StudentStats>('/students/stats', withGlobalScopes(params), signal),
 
   /** Propose a change to an identity field, with evidence, for the registry
    *  to approve (migration 147). Tier-1 fields save straight through
@@ -470,18 +470,18 @@ export const studentService = {
     if (payload.reason)   form.append('reason', payload.reason)
     if (payload.document) form.append('document', payload.document)
     return api.upload<{ id: number; fields: string[] }>(
-      '/api/students/me/profile-change-requests',
+      '/students/me/profile-change-requests',
       form,
     )
   },
 
   /** The student's own change-request history. */
   myProfileChangeRequests: (signal?: AbortSignal) =>
-    api.get<ProfileChangeRequest[]>('/api/students/me/profile-change-requests', {}, signal),
+    api.get<ProfileChangeRequest[]>('/students/me/profile-change-requests', {}, signal),
 
   /** The registry's review queue. */
   listProfileChangeRequests: (status = 'pending', signal?: AbortSignal) =>
-    api.get<ProfileChangeRequest[]>('/api/students/profile-change-requests', { status }, signal),
+    api.get<ProfileChangeRequest[]>('/students/profile-change-requests', { status }, signal),
 
   decideProfileChangeRequest: (id: number, decision: 'approved' | 'rejected', note?: string) =>
     api.post<{ status: string }>(`/api/students/profile-change-requests/${id}/decide`, { decision, note }),
@@ -538,7 +538,7 @@ export const studentService = {
    *  before the user makes it. */
   filterOptions: (params: StudentListParams = {}, signal?: AbortSignal) =>
     api.get<StudentFilterOptions>(
-      '/api/students/filter-options',
+      '/students/filter-options',
       withGlobalScopes(params),
       signal,
     ),
@@ -557,7 +557,7 @@ export const studentService = {
   bulkUploadTemplateUrl: () => {
     const token = useAuthStore.getState().token
     const base  = import.meta.env.VITE_API_URL ?? ''
-    return `${base}/api/students/bulk-upload-template?token=${token}`
+    return `${base}/students/bulk-upload-template?token=${token}`
   },
 
   /** Dry-run preview — parses the CSV server-side and returns one row
@@ -595,18 +595,18 @@ export const studentService = {
    *  picker. Groups + ordering are returned exactly as the backend
    *  declared them so the UI stays canonical. */
   exportColumns: () =>
-    api.get<{ groups: ExportColumnGroup[] }>('/api/students/export-columns'),
+    api.get<{ groups: ExportColumnGroup[] }>('/students/export-columns'),
 
   /** Fetch every export template visible to the caller — system
    *  templates first, then their own saved ones. */
   listExportTemplates: () =>
-    api.get<{ templates: ExportTemplate[] }>('/api/students/export-templates'),
+    api.get<{ templates: ExportTemplate[] }>('/students/export-templates'),
 
   /** Save a new export template (or update an existing one matching the
    *  user + name pair) using the given ordered column list. */
   saveExportTemplate: (name: string, columns: string[]) =>
     api.post<{ id: number; name: string; columns: string[] }>(
-      '/api/students/export-templates',
+      '/students/export-templates',
       { name, columns },
     ),
 
@@ -654,7 +654,7 @@ export const studentService = {
       search.set(k, String(v))
     }
     if (token) search.set('token', token)
-    return `${base}/api/students/export?${search.toString()}`
+    return `${base}/students/export?${search.toString()}`
   },
 
   /** Trigger the browser's native download flow for an export URL. A plain
@@ -771,7 +771,7 @@ export const studentService = {
   meVisaDocumentUrl: () => {
     const token = useAuthStore.getState().token
     const base  = import.meta.env.VITE_API_URL ?? ''
-    return `${base}/api/students/me/visa/document?token=${token}`
+    return `${base}/students/me/visa/document?token=${token}`
   },
 
   /** Admin equivalent — tokenized download URL for any student's current
@@ -779,14 +779,14 @@ export const studentService = {
   visaDocumentUrl: (studentId: number | string) => {
     const token = useAuthStore.getState().token
     const base  = import.meta.env.VITE_API_URL ?? ''
-    return `${base}/api/students/${studentId}/visa/document?token=${token}`
+    return `${base}/students/${studentId}/visa/document?token=${token}`
   },
 
   /** Self-service: tokenized download URL for one of the caller's own documents. */
   meDocumentDownloadUrl: (documentId: number | string) => {
     const token = useAuthStore.getState().token
     const base  = import.meta.env.VITE_API_URL ?? ''
-    return `${base}/api/students/me/documents/${documentId}/download?token=${token}`
+    return `${base}/students/me/documents/${documentId}/download?token=${token}`
   },
 
   /** Self-service: curriculum + marks view for the authenticated student. */
@@ -794,7 +794,7 @@ export const studentService = {
     api.get<ProgramModulesResponse>(`/api/students/me/program-modules`, {}, signal),
 
   create: (data: StudentPayload) =>
-    api.post<{ id: number }>('/api/students', data),
+    api.post<{ id: number }>('/students', data),
 
   update: (id: number | string, data: StudentPayload | StudentPatch) =>
     api.put<void>(`/api/students/${id}`, data),
@@ -812,13 +812,13 @@ export const studentService = {
    *  since the token alone authorizes the download (no JWT required). */
   admissionLetterUrl: (letterToken: string) => {
     const base = import.meta.env.VITE_API_URL ?? ''
-    return `${base}/api/portal/admission-letter?token=${encodeURIComponent(letterToken)}`
+    return `${base}/portal/admission-letter?token=${encodeURIComponent(letterToken)}`
   },
 
   documentDownloadUrl: (id: number | string, documentId: number | string) => {
     const token = useAuthStore.getState().token
     const base  = import.meta.env.VITE_API_URL ?? ''
-    return `${base}/api/students/${id}/documents/${documentId}/download?token=${token}`
+    return `${base}/students/${id}/documents/${documentId}/download?token=${token}`
   },
 
   /** Curriculum view: every module in the student's program with their marks. */
@@ -829,7 +829,7 @@ export const studentService = {
   programModulesExportUrl: (id: number | string) => {
     const token = useAuthStore.getState().token
     const base  = import.meta.env.VITE_API_URL ?? ''
-    return `${base}/api/students/${id}/program-modules/export?token=${token}`
+    return `${base}/students/${id}/program-modules/export?token=${token}`
   },
 
   /** Record an exemption mark for a module the student didn't sit. */
@@ -908,7 +908,7 @@ export const studentService = {
       /** Legacy keys kept for backwards-compatibility with older callers. */
       students: any[]
       count:    number
-    }>('/api/students/international', q, signal)
+    }>('/students/international', q, signal)
   },
 
   /** Tokenized download URL for the international-students CSV export.
@@ -929,7 +929,7 @@ export const studentService = {
       search.set(k, String(v))
     }
     if (token) search.set('token', token)
-    return `${base}/api/students/international/export?${search.toString()}`
+    return `${base}/students/international/export?${search.toString()}`
   },
 
   listVisaRecords: (id: number | string, signal?: AbortSignal) =>
@@ -970,7 +970,7 @@ export const studentService = {
     const token = useAuthStore.getState().token
     const base  = import.meta.env.VITE_API_URL ?? ''
     const v     = cacheKey != null ? `&v=${encodeURIComponent(photoValue)}` : ''
-    return `${base}/api/students/${id}/photo?token=${token}${v}`
+    return `${base}/students/${id}/photo?token=${token}${v}`
   },
 
   /** Replace the profile photo. Server expects a multipart form with field `photo`. */
@@ -989,7 +989,7 @@ export const studentService = {
     const token = useAuthStore.getState().token
     const base  = import.meta.env.VITE_API_URL ?? ''
     const v     = cacheKey != null ? `&v=${encodeURIComponent(photoValue)}` : ''
-    return `${base}/api/students/me/photo?token=${token}${v}`
+    return `${base}/students/me/photo?token=${token}${v}`
   },
 
   /** Self-service photo upload — students update their own profile picture. */

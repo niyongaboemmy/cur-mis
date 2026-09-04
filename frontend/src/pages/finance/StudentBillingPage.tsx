@@ -98,7 +98,7 @@ export default function StudentBillingPage() {
 
   const yearsQ = useQuery({
     queryKey: ["finance", "billing", "intake-years"],
-    queryFn: () => api.get<any>("/api/finance/billing/intake-years"),
+    queryFn: () => api.get<any>("/finance/billing/intake-years"),
   });
   // getIntakeYears() returns a flat array, so the payload is one level up from
   // the paginated dropdowns below (faculties/departments/options), which nest
@@ -116,7 +116,7 @@ export default function StudentBillingPage() {
 
   const facultiesQ = useQuery({
     queryKey: ["faculties"],
-    queryFn: () => api.get<any>("/api/academics-management/faculties"),
+    queryFn: () => api.get<any>("/academics-management/faculties"),
   });
   const faculties = facultiesQ.data?.data?.data ?? [];
 
@@ -124,7 +124,7 @@ export default function StudentBillingPage() {
     queryKey: ["departments", facultyId],
     queryFn: () =>
       api.get<any>(
-        "/api/academics-management/departments",
+        "/academics-management/departments",
         facultyId ? { fac_id: facultyId } : {},
       ),
   });
@@ -135,7 +135,7 @@ export default function StudentBillingPage() {
     queryKey: ["options", deptId],
     queryFn: () =>
       api.get<any>(
-        "/api/academics-management/options",
+        "/academics-management/options",
         deptId ? { department_id: deptId } : {},
       ),
   });
@@ -160,7 +160,7 @@ export default function StudentBillingPage() {
     queryFn: () => {
       // If no year selected, fetch without yearId to show all active students
       if (!yearId) {
-        return api.get<any>('/api/finance/billing/all-students', {
+        return api.get<any>('/finance/billing/all-students', {
           semester: semester ? Number(semester) : undefined,
           faculty_id: facultyId ? Number(facultyId) : undefined,
           department_id: deptId ? Number(deptId) : undefined,
@@ -173,7 +173,7 @@ export default function StudentBillingPage() {
       // If year selected, filter by that year. Sent as-is rather than through
       // Number(): a cohort with no `academic_years` row is identified by its
       // intake label ("2023-2024"), which Number() would turn into NaN.
-      return api.get<any>('/api/finance/billing/all-students', {
+      return api.get<any>('/finance/billing/all-students', {
         academic_year_id: yearId,
         semester: semester ? Number(semester) : undefined,
         faculty_id: facultyId ? Number(facultyId) : undefined,
@@ -277,7 +277,7 @@ export default function StudentBillingPage() {
       ...(debouncedKeyword && { keyword: debouncedKeyword }),
     });
     window.open(
-      `${apiClient.defaults.baseURL}/api/finance/billing/export?${params.toString()}`,
+      `${apiClient.defaults.baseURL}/finance/billing/export?${params.toString()}`,
       "_blank",
     );
   };

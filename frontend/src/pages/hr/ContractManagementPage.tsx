@@ -52,7 +52,7 @@ export default function ContractManagementPage() {
   const fetchContracts = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('/api/hr/contracts');
+      const response = await fetch('/hr/contracts');
       const data = await response.json();
       setContracts(data.data);
     } catch (error) {
@@ -64,7 +64,7 @@ export default function ContractManagementPage() {
 
   const fetchSummary = async () => {
     try {
-      const response = await fetch('/api/hr/contracts/summary');
+      const response = await fetch('/hr/contracts/summary');
       const data = await response.json();
       setSummary(data.data);
     } catch (error) {

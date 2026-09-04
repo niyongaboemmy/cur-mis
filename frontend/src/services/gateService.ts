@@ -80,7 +80,7 @@ export interface GateStatsResult {
 
 export const gateService = {
   verify: (payload: GateVerifyPayload, signal?: AbortSignal) =>
-    api.post<GateVerifyResult>('/api/gate/verify', payload, signal),
+    api.post<GateVerifyResult>('/gate/verify', payload, signal),
 
   studentStatus: (regnumber: string, signal?: AbortSignal) =>
     api.get<{
@@ -106,14 +106,14 @@ export const gateService = {
     signal?: AbortSignal,
   ) =>
     api.get<PaginatedResponse<GateLog>>(
-      '/api/gate/logs',
+      '/gate/logs',
       params as Record<string, unknown>,
       signal,
     ),
 
   recentLogs: (params?: { limit?: number; gate?: string }, signal?: AbortSignal) =>
-    api.get<GateLog[]>('/api/gate/logs/recent', params as Record<string, unknown>, signal),
+    api.get<GateLog[]>('/gate/logs/recent', params as Record<string, unknown>, signal),
 
   getStats: (gate?: string, signal?: AbortSignal) =>
-    api.get<GateStatsResult>('/api/gate/stats', gate ? { gate } : undefined, signal),
+    api.get<GateStatsResult>('/gate/stats', gate ? { gate } : undefined, signal),
 }

@@ -58,15 +58,15 @@ export interface TranscriptDispatchPayload {
 export const transcriptService = {
   /** Admin: list all requests */
   list: (params: TranscriptListParams = {}, signal?: AbortSignal) =>
-    api.get<TranscriptListResponse>('/api/transcripts', params as Record<string, unknown>, signal),
+    api.get<TranscriptListResponse>('/transcripts', params as Record<string, unknown>, signal),
 
   /** Student: own requests */
   myRequests: (signal?: AbortSignal) =>
-    api.get<TranscriptRequest[]>('/api/transcripts/my', {}, signal),
+    api.get<TranscriptRequest[]>('/transcripts/my', {}, signal),
 
   /** Student: submit new request */
   create: (payload: TranscriptCreatePayload) =>
-    api.post<{ id: number }>('/api/transcripts/my', payload),
+    api.post<{ id: number }>('/transcripts/my', payload),
 
   /** Admin: approve or reject */
   review: (id: number, payload: TranscriptReviewPayload) =>

@@ -603,7 +603,7 @@ export default function GlobalSearch() {
   const deepSearchQuery = useQuery({
     queryKey: ["global-search", debouncedQuery],
     queryFn: ({ signal }) =>
-      api.get<DeepSearchResponse>("/api/search", { q: debouncedQuery }, signal),
+      api.get<DeepSearchResponse>("/search", { q: debouncedQuery }, signal),
     enabled: debouncedQuery.trim().length >= 2,
     staleTime: 15_000,
   });

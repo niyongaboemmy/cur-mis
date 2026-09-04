@@ -116,7 +116,7 @@ export function useAdminAcademicYears() {
   return useQuery({
     queryKey: ['admin-academic-years'],
     queryFn: async () => {
-      const res = await fetch('/api/admin/academic-years')
+      const res = await fetch('/admin/academic-years')
       if (!res.ok) throw new Error('Failed to fetch academic years')
       return res.json()
     },

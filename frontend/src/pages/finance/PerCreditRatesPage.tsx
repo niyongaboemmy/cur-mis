@@ -34,8 +34,8 @@ const EMPTY: FormState = { academic_year_id: '', faculty_id: '', department_ids:
 
 // Service for per-credit rates
 const perCreditRateService = {
-  list: (params?: any) => api.get('/api/finance/per-credit-rates', { params }),
-  create: (data: any) => api.post('/api/finance/per-credit-rates', data),
+  list: (params?: any) => api.get('/finance/per-credit-rates', { params }),
+  create: (data: any) => api.post('/finance/per-credit-rates', data),
   update: (id: number, data: any) => api.put(`/api/finance/per-credit-rates/${id}`, data),
   delete: (id: number) => api.delete(`/api/finance/per-credit-rates/${id}`),
 }

@@ -308,16 +308,16 @@ export const hrService = {
   listEmployees: (
     params: HrListParams = {},
     signal?: AbortSignal,
-  ) => api.get<PaginatedResponse<HrEmployee>>('/api/employees', params as Record<string, unknown>, signal),
+  ) => api.get<PaginatedResponse<HrEmployee>>('/employees', params as Record<string, unknown>, signal),
 
   stats: (signal?: AbortSignal) =>
-    api.get<HrStats>('/api/employees/stats', {}, signal),
+    api.get<HrStats>('/employees/stats', {}, signal),
 
   showEmployee: (id: number | string, signal?: AbortSignal) =>
     api.get<HrEmployee>(`/api/employees/${id}`, {}, signal),
 
   createEmployee: (data: HrEmployeePayload) =>
-    api.post<{ id: number }>('/api/employees', data),
+    api.post<{ id: number }>('/employees', data),
 
   updateEmployee: (id: number | string, data: HrEmployeePayload) =>
     api.put<void>(`/api/employees/${id}`, data),
@@ -334,17 +334,17 @@ export const hrService = {
   /* ── Payroll ─────────────────────────────────────────────────────────── */
 
   payrollList: (params: PayrollListParams = {}, signal?: AbortSignal) =>
-    api.get<PayrollListResponse>('/api/hr/payroll', params as Record<string, unknown>, signal),
+    api.get<PayrollListResponse>('/hr/payroll', params as Record<string, unknown>, signal),
 
   payrollSlips: (empId: number | string, params?: { from_year?: number; from_month?: number; to_year?: number; to_month?: number }, signal?: AbortSignal) =>
     api.get<PayrollSlipsResponse>(`/api/hr/payroll/${empId}/slips`, params as Record<string, unknown>, signal),
 
   /** Self-service: the logged-in user's own payslip history (no permission needed). */
   payrollMySlips: (params?: { from_year?: number; from_month?: number; to_year?: number; to_month?: number }, signal?: AbortSignal) =>
-    api.get<MyPayrollSlipsResponse>('/api/me/payroll', (params ?? {}) as Record<string, unknown>, signal),
+    api.get<MyPayrollSlipsResponse>('/me/payroll', (params ?? {}) as Record<string, unknown>, signal),
 
   payrollUpsert: (data: PayrollEntry) =>
-    api.post<PayrollEntry>('/api/hr/payroll', data),
+    api.post<PayrollEntry>('/hr/payroll', data),
 
   payrollDelete: (id: number) =>
     api.delete<void>(`/api/hr/payroll/${id}`),
@@ -353,20 +353,20 @@ export const hrService = {
     api.patch<void>(`/api/hr/payroll/${id}/status`, { status }),
 
   payrollCopyPeriod: (params: { from_year: number; from_month: number; to_year: number; to_month: number }) =>
-    api.post<{ copied: number; skipped: number; period: string }>('/api/hr/payroll/copy-period', params),
+    api.post<{ copied: number; skipped: number; period: string }>('/hr/payroll/copy-period', params),
 
   payrollImportExcel: (params: { period_year: number; period_month: number; rows?: unknown[] }) =>
     api.post<{ period: string; inserted: number; skipped: number; detail: { row: string; status: string; legacy_found?: boolean; gross?: number; paye?: number; net?: number; reason?: string }[] }>(
-      '/api/hr/payroll/import-excel', params
+      '/hr/payroll/import-excel', params
     ),
 
   /* ── Salary payments ─────────────────────────────────────────────────── */
 
   listPayments: (params?: { period_year?: number; period_month?: number; emp_id?: number; payroll_id?: number }, signal?: AbortSignal) =>
-    api.get<SalaryPayment[]>('/api/hr/payroll/payments', (params ?? {}) as Record<string, unknown>, signal),
+    api.get<SalaryPayment[]>('/hr/payroll/payments', (params ?? {}) as Record<string, unknown>, signal),
 
   processPayment: (data: ProcessPaymentPayload) =>
-    api.post<{ id: number }>('/api/hr/payroll/payments', data),
+    api.post<{ id: number }>('/hr/payroll/payments', data),
 
   cancelPayment: (id: number) =>
     api.delete<void>(`/api/hr/payroll/payments/${id}`),
@@ -419,16 +419,16 @@ export const hrService = {
   /* ── Payroll Config ──────────────────────────────────────────────────── */
 
   getPayrollConfig: (signal?: AbortSignal) =>
-    api.get<PayrollConfig>('/api/hr/config', {}, signal),
+    api.get<PayrollConfig>('/hr/config', {}, signal),
 
   updatePayrollConfig: (data: Partial<PayrollConfig>) =>
-    api.put<{ updated: number }>('/api/hr/config', data),
+    api.put<{ updated: number }>('/hr/config', data),
 
   listCustomDeductions: (signal?: AbortSignal) =>
-    api.get<CustomDeduction[]>('/api/hr/config/deductions', {}, signal),
+    api.get<CustomDeduction[]>('/hr/config/deductions', {}, signal),
 
   addCustomDeduction: (data: { label: string; description?: string; employee_rate: number; employer_rate: number }) =>
-    api.post<CustomDeduction>('/api/hr/config/deductions', data),
+    api.post<CustomDeduction>('/hr/config/deductions', data),
 
   updateCustomDeduction: (id: number, data: { label: string; description?: string; employee_rate: number; employer_rate: number; is_active: number }) =>
     api.put<CustomDeduction>(`/api/hr/config/deductions/${id}`, data),
@@ -439,13 +439,13 @@ export const hrService = {
   /* ── Appraisals ─────────────────────────────────────────────────────── */
 
   appraisalStats: (signal?: AbortSignal) =>
-    api.get<AppraisalStats>('/api/appraisals/stats', {}, signal),
+    api.get<AppraisalStats>('/appraisals/stats', {}, signal),
 
   listAppraisalPeriods: (params?: { status?: string; year?: number }, signal?: AbortSignal) =>
-    api.get<AppraisalPeriod[]>('/api/appraisals/periods', (params ?? {}) as Record<string, unknown>, signal),
+    api.get<AppraisalPeriod[]>('/appraisals/periods', (params ?? {}) as Record<string, unknown>, signal),
 
   createAppraisalPeriod: (data: AppraisalPeriodPayload) =>
-    api.post<AppraisalPeriod>('/api/appraisals/periods', data),
+    api.post<AppraisalPeriod>('/appraisals/periods', data),
 
   updateAppraisalPeriod: (id: number, data: AppraisalPeriodPayload) =>
     api.put<AppraisalPeriod>(`/api/appraisals/periods/${id}`, data),
@@ -472,7 +472,7 @@ export const hrService = {
     api.delete<void>(`/api/appraisals/periods/${periodId}/criteria/${cid}`),
 
   listAppraisals: (params?: { period_id?: number; employee_id?: number; status?: string }, signal?: AbortSignal) =>
-    api.get<Appraisal[]>('/api/appraisals', (params ?? {}) as Record<string, unknown>, signal),
+    api.get<Appraisal[]>('/appraisals', (params ?? {}) as Record<string, unknown>, signal),
 
   showAppraisal: (id: number, signal?: AbortSignal) =>
     api.get<Appraisal>(`/api/appraisals/${id}`, {}, signal),
@@ -489,13 +489,13 @@ export const hrService = {
   /* ── Leave Management ───────────────────────────────────────────────── */
 
   leaveStats: (signal?: AbortSignal) =>
-    api.get<LeaveStats>('/api/hr/leave/stats', {}, signal),
+    api.get<LeaveStats>('/hr/leave/stats', {}, signal),
 
   leaveTypes: (signal?: AbortSignal) =>
-    api.get<LeaveType[]>('/api/hr/leave/types', {}, signal),
+    api.get<LeaveType[]>('/hr/leave/types', {}, signal),
 
   createLeaveType: (data: LeaveTypePayload) =>
-    api.post<LeaveType>('/api/hr/leave/types', data),
+    api.post<LeaveType>('/hr/leave/types', data),
 
   // POST, not PUT — the backend registers this route as POST /types/:id.
   updateLeaveType: (id: number, data: LeaveTypePayload) =>
@@ -511,19 +511,19 @@ export const hrService = {
 
   /** Every leave type with its chain, for the chain editor's type picker. */
   leaveTypesWithChains: (signal?: AbortSignal) =>
-    api.get<LeaveType[]>('/api/hr/leave/types', {}, signal),
+    api.get<LeaveType[]>('/hr/leave/types', {}, signal),
 
   saveLeaveApprovalChain: (leaveTypeId: number, stages: LeaveApprovalStagePayload[]) =>
     api.post<LeaveApprovalStage[]>(`/api/hr/leave/types/${leaveTypeId}/stages`, { stages }),
 
   leaveRequests: (params: LeaveRequestParams = {}, signal?: AbortSignal) =>
-    api.get<PaginatedResponse<LeaveRequest>>('/api/hr/leave/requests', params as Record<string, unknown>, signal),
+    api.get<PaginatedResponse<LeaveRequest>>('/hr/leave/requests', params as Record<string, unknown>, signal),
 
   showLeaveRequest: (id: number, signal?: AbortSignal) =>
     api.get<LeaveRequest>(`/api/hr/leave/requests/${id}`, {}, signal),
 
   submitLeaveRequest: (data: LeaveRequestPayload) =>
-    api.post<LeaveRequest>('/api/hr/leave/requests', data),
+    api.post<LeaveRequest>('/hr/leave/requests', data),
 
   /* ── Stage decisions ────────────────────────────────────────────────
      Every one of these advances the request through its configured approval
@@ -550,24 +550,24 @@ export const hrService = {
   /* ── Reviewer queue — only what is parked at a stage you can decide ── */
 
   leaveApprovalQueue: (signal?: AbortSignal) =>
-    api.get<LeaveRequest[]>('/api/hr/leave/approvals/queue', {}, signal),
+    api.get<LeaveRequest[]>('/hr/leave/approvals/queue', {}, signal),
 
   decideLeave: (id: number, decision: LeaveDecision, comment?: string) =>
     api.post<LeaveRequest>(`/api/hr/leave/approvals/${id}/decide`, { decision, comment: comment ?? '' }),
 
   leaveBalances: (params: LeaveBalanceParams = {}, signal?: AbortSignal) =>
-    api.get<LeaveBalance[]>('/api/hr/leave/balances', params as Record<string, unknown>, signal),
+    api.get<LeaveBalance[]>('/hr/leave/balances', params as Record<string, unknown>, signal),
 
   upsertLeaveBalance: (data: UpsertLeaveBalancePayload) =>
-    api.post<void>('/api/hr/leave/balances', data),
+    api.post<void>('/hr/leave/balances', data),
 
   /* ── Self-service leave (any staff) ─────────────────────────────────── */
 
   myLeaveRequests: (signal?: AbortSignal) =>
-    api.get<MyLeaveRequest[]>('/api/hr/leave/my-requests', {}, signal),
+    api.get<MyLeaveRequest[]>('/hr/leave/my-requests', {}, signal),
 
   submitMyLeaveRequest: (data: MyLeaveRequestPayload) =>
-    api.post<MyLeaveRequest>('/api/hr/leave/my-requests', data),
+    api.post<MyLeaveRequest>('/hr/leave/my-requests', data),
 
   resubmitMyLeaveRequest: (id: number, data: MyLeaveRequestResubmitPayload) =>
     api.post<MyLeaveRequest>(`/api/hr/leave/my-requests/${id}/resubmit`, data),

@@ -50,7 +50,7 @@ export const bordereauService = {
    */
   async getSubmissionStatus(applicationId: number): Promise<BordereauSubmissionStatus> {
     const response = await fetch(
-      `${API_BASE_URL}/api/applicant/bordereau/${applicationId}/status`,
+      `${API_BASE_URL}/applicant/bordereau/${applicationId}/status`,
       { credentials: 'include' }
     )
     if (!response.ok) throw new Error(`Status: ${response.status}`)
@@ -75,7 +75,7 @@ export const bordereauService = {
     attempt: number
     remaining_attempts: number
   }> {
-    const response = await fetch(`${API_BASE_URL}/api/applicant/bordereau/submit`, {
+    const response = await fetch(`${API_BASE_URL}/applicant/bordereau/submit`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -99,7 +99,7 @@ export const bordereauService = {
     submissions: PendingBordereauSubmission[]
   }> {
     const response = await fetch(
-      `${API_BASE_URL}/api/finance/bordereau/pending?role=${role}`,
+      `${API_BASE_URL}/finance/bordereau/pending?role=${role}`,
       { credentials: 'include' }
     )
     if (!response.ok) throw new Error(`Status: ${response.status}`)
@@ -119,7 +119,7 @@ export const bordereauService = {
     formData.append('submission_id', submissionId.toString())
 
     const response = await fetch(
-      `${API_BASE_URL}/api/finance/bordereau/${submissionId}/approve`,
+      `${API_BASE_URL}/finance/bordereau/${submissionId}/approve`,
       {
         method: 'POST',
         body: formData,
@@ -145,7 +145,7 @@ export const bordereauService = {
     application_id: number
   }> {
     const response = await fetch(
-      `${API_BASE_URL}/api/finance/bordereau/${submissionId}/reject`,
+      `${API_BASE_URL}/finance/bordereau/${submissionId}/reject`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -172,7 +172,7 @@ export const bordereauService = {
     last_submission_date: string
   }> {
     const response = await fetch(
-      `${API_BASE_URL}/api/finance/bordereau/dashboard-stats`,
+      `${API_BASE_URL}/finance/bordereau/dashboard-stats`,
       { credentials: 'include' }
     )
     if (!response.ok) throw new Error(`Status: ${response.status}`)

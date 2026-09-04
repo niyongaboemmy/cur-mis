@@ -327,7 +327,7 @@ export interface ExamAttendanceInput {
 
 export const teacherService = {
   summary: (termId?: number, signal?: AbortSignal) =>
-    api.get<TeacherSummary>('/api/teacher/summary', termId ? { term_id: termId } : undefined, signal),
+    api.get<TeacherSummary>('/teacher/summary', termId ? { term_id: termId } : undefined, signal),
 
   /**
    * Assigned modules. Only SCHEDULED modules are returned unless
@@ -345,7 +345,7 @@ export const teacherService = {
     signal?: AbortSignal,
   ) =>
     api.get<TeacherCourse[]>(
-      '/api/teacher/courses',
+      '/teacher/courses',
       {
         ...(termId ? { term_id: termId } : {}),
         ...(includeUnscheduled ? { scheduled: 0 } : {}),
@@ -425,7 +425,7 @@ export const teacherService = {
 
   students: (params: TeacherStudentQuery = {}, signal?: AbortSignal) =>
     api.get<TeacherStudent[]>(
-      '/api/teacher/students',
+      '/teacher/students',
       Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== '')),
       signal,
     ),
@@ -433,16 +433,16 @@ export const teacherService = {
   /** Intakes / classes / modes actually present in my classes, with counts. */
   studentFilters: (termId?: number, signal?: AbortSignal) =>
     api.get<TeacherStudentFilters>(
-      '/api/teacher/student-filters',
+      '/teacher/student-filters',
       termId ? { term_id: termId } : undefined,
       signal,
     ),
 
   calendar: (params?: { from?: string; to?: string; term_id?: number }, signal?: AbortSignal) =>
-    api.get<TeacherCalendar>('/api/teacher/calendar', params, signal),
+    api.get<TeacherCalendar>('/teacher/calendar', params, signal),
 
   exams: (signal?: AbortSignal) =>
-    api.get<TeacherExam[]>('/api/teacher/exams', undefined, signal),
+    api.get<TeacherExam[]>('/teacher/exams', undefined, signal),
 
   examAttendance: (examId: number, signal?: AbortSignal) =>
     api.get<ExamAttendanceSheet>(`/api/teacher/exams/${examId}/attendance`, undefined, signal),

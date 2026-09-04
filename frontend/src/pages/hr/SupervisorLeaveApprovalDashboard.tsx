@@ -73,7 +73,7 @@ export default function SupervisorLeaveApprovalDashboard() {
   const fetchQueue = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('/api/hr/leave/approvals/queue');
+      const response = await fetch('/hr/leave/approvals/queue');
       const data = await response.json();
 
       if (!response.ok) {
