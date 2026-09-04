@@ -1,4 +1,4 @@
--- ──────────────────────────────────────────────────────────────────────────────
+-- ==================================================================================
 -- Migration: HR Module Redesign - Contracts & Certificates
 -- Date: 2026-09-04
 --
@@ -9,10 +9,22 @@
 -- - Certificate request and approval workflow
 --
 -- Idempotent — safe to re-run.
--- ──────────────────────────────────────────────────────────────────────────────
+-- ==================================================================================
+
+SET FOREIGN_KEY_CHECKS = 0;
+SET NAMES utf8mb4;
+
+-- ── 0. Drop dependent tables first (reverse dependency order) ──────────────
+DROP TABLE IF EXISTS `certificate_audit`;
+DROP TABLE IF EXISTS `certificate_requests`;
+DROP TABLE IF EXISTS `certificate_types`;
+DROP TABLE IF EXISTS `contract_notifications`;
+DROP TABLE IF EXISTS `employee_contracts`;
+DROP TABLE IF EXISTS `contract_types`;
+DROP VIEW IF EXISTS `v_contract_expiry_summary`;
 
 -- ── 1. Create contract types table ──────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS `contract_types` (
+CREATE TABLE `contract_types` (
   `id`                    INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `name`                  VARCHAR(100) NOT NULL UNIQUE,
   `code`                  VARCHAR(20) NOT NULL UNIQUE COMMENT "e.g., PROBATION, TEMPORAL, PARTTIME, FULLTIME",
@@ -38,7 +50,6 @@ INSERT IGNORE INTO `contract_types` (`name`, `code`, `description`, `default_dur
   ('Full-Time Indefinite', 'FULLTIME_IND', 'Permanent full-time employment', NULL, 30, 50);
 
 -- ── 3. Create employee contracts table ──────────────────────────────────────
-DROP TABLE IF EXISTS `employee_contracts`;
 CREATE TABLE `employee_contracts` (
   `id`                    INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `user_id`               INT UNSIGNED NOT NULL,
@@ -74,7 +85,6 @@ CREATE TABLE `employee_contracts` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Employee contract records';
 
 -- ── 4. Create contract notifications/reminders ──────────────────────────────
-DROP TABLE IF EXISTS `contract_notifications`;
 CREATE TABLE `contract_notifications` (
   `id`                    INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `contract_id`           INT UNSIGNED NOT NULL,
@@ -94,7 +104,7 @@ CREATE TABLE `contract_notifications` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Contract expiry and renewal notifications';
 
 -- ── 5. Create certificate types table ───────────────────────────────────────
-CREATE TABLE IF NOT EXISTS `certificate_types` (
+CREATE TABLE `certificate_types` (
   `id`                    INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `name`                  VARCHAR(100) NOT NULL UNIQUE,
   `code`                  VARCHAR(20) NOT NULL UNIQUE COMMENT "e.g., SALARY_CERT, SERVICE_CERT",
@@ -119,7 +129,6 @@ INSERT IGNORE INTO `certificate_types` (`name`, `code`, `description`, `requires
   ('Character Certificate', 'CHARACTER_CERT', 'Character certificate from employer', 1);
 
 -- ── 7. Create certificate requests table ────────────────────────────────────
-DROP TABLE IF EXISTS `certificate_requests`;
 CREATE TABLE `certificate_requests` (
   `id`                    INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `user_id`               INT UNSIGNED NOT NULL,
@@ -148,7 +157,6 @@ CREATE TABLE `certificate_requests` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Employee certificate requests and tracking';
 
 -- ── 8. Create certificate tracking/audit table ─────────────────────────────
-DROP TABLE IF EXISTS `certificate_audit`;
 CREATE TABLE `certificate_audit` (
   `id`                    INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `certificate_request_id` INT UNSIGNED NOT NULL,
@@ -165,7 +173,6 @@ CREATE TABLE `certificate_audit` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Audit trail for certificate generation and collection';
 
 -- ── 9. Create view for contract expiry summary ─────────────────────────────
-DROP VIEW IF EXISTS `v_contract_expiry_summary`;
 CREATE VIEW `v_contract_expiry_summary` AS
 SELECT
   ec.`id` AS contract_id,
@@ -192,4 +199,6 @@ FROM `employee_contracts` ec
 JOIN `users` u ON u.`id` = ec.`user_id`
 JOIN `contract_types` ct ON ct.`id` = ec.`contract_type_id`
 WHERE ec.`status` IN ('Active', 'Approved')
-ORDER BY ec.`renewal_due_date` ASC NULLS LAST;
+ORDER BY ec.`renewal_due_date` ASC;
+
+SET FOREIGN_KEY_CHECKS = 1;
