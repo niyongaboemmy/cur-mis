@@ -152,4 +152,33 @@ $router->group(['prefix' => '/api/hr'], function ($router) {
         'middlewares' => ['auth', 'can:MANAGE_HR_EMPLOYEES']
     ]);
 
+    // ── Report Routes ────────────────────────────────────────────────────────
+    $router->get('/reports/employee-master-list', 'Controllers\ReportController::generateEmployeeMasterListPDF', [
+        'middlewares' => ['auth', 'can:VIEW_HR_EMPLOYEES']
+    ]);
+
+    $router->get('/reports/payroll/:payrollRunId', 'Controllers\ReportController::generatePayrollSummaryPDF', [
+        'middlewares' => ['auth', 'can:VIEW_PAYROLL']
+    ]);
+
+    $router->get('/reports/leave/:leaveRequestId', 'Controllers\ReportController::generateLeaveRequestPDF', [
+        'middlewares' => ['auth', 'can:VIEW_LEAVE_REQUESTS']
+    ]);
+
+    $router->post('/reports/salary-certificate', 'Controllers\ReportController::generateSalaryCertificatePDF', [
+        'middlewares' => ['auth']
+    ]);
+
+    $router->get('/reports/service-certificate/:userId', 'Controllers\ReportController::generateServiceCertificatePDF', [
+        'middlewares' => ['auth']
+    ]);
+
+    $router->get('/reports/contract/:contractId', 'Controllers\ReportController::generateContractSummaryPDF', [
+        'middlewares' => ['auth', 'can:VIEW_HR_EMPLOYEES']
+    ]);
+
+    $router->get('/reports/dashboard', 'Controllers\ReportController::generateHRDashboardReportPDF', [
+        'middlewares' => ['auth', 'can:MANAGE_HR_EMPLOYEES']
+    ]);
+
 });
