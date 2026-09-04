@@ -405,7 +405,7 @@ export default function AdmissionFeesPanel({
           </button>
           <button
             onClick={() => {
-              window.location.href = '/dashboard'
+              window.location.href = mode === 'applicant' ? '/applicant' : '/dashboard'
             }}
             className="btn-primary flex-1 inline-flex items-center justify-center gap-2"
           >
