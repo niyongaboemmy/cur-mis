@@ -43,6 +43,7 @@ import NotificationsPage from "@/pages/NotificationsPage";
 import AppraisalPage from "@/pages/hr/AppraisalPage";
 import HRImportExportPage from "@/pages/hr/HRImportExportPage";
 import SupervisorLeaveApprovalDashboard from "@/pages/hr/SupervisorLeaveApprovalDashboard";
+import PayrollManagementPage from "@/pages/hr/PayrollManagementPage";
 
 // Academic
 import AcademicSettingsPage from "@/pages/academic/AcademicSettingsPage";
@@ -403,6 +404,7 @@ function App() {
               >
                 <Route path="/hr/payroll" element={<PayrollPage />} />
                 <Route path="/hr/payroll/:id" element={<PayrollSlipPage />} />
+                <Route path="/hr/payroll-management" element={<PayrollManagementPage />} />
                 <Route path="/hr/payments" element={<PaymentsPage />} />
               </Route>
 

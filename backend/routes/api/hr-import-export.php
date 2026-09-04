@@ -54,4 +54,53 @@ $router->group(['prefix' => '/api/hr'], function ($router) {
         'middlewares' => ['auth', 'can:MANAGE_LEAVE_REQUESTS']
     ]);
 
+    // ── Payroll Routes ───────────────────────────────────────────────────────
+    $router->get('/payroll/structures', 'Controllers\PayrollController::getStructures', [
+        'middlewares' => ['auth', 'can:VIEW_PAYROLL']
+    ]);
+
+    $router->get('/payroll/structures/:id', 'Controllers\PayrollController::getStructure', [
+        'middlewares' => ['auth', 'can:VIEW_PAYROLL']
+    ]);
+
+    $router->post('/payroll/structures', 'Controllers\PayrollController::saveStructure', [
+        'middlewares' => ['auth', 'can:MANAGE_PAYROLL']
+    ]);
+
+    $router->get('/payroll/employee/:userId/salary', 'Controllers\PayrollController::getEmployeeSalary', [
+        'middlewares' => ['auth', 'can:VIEW_PAYROLL']
+    ]);
+
+    $router->post('/payroll/employee/:userId/salary', 'Controllers\PayrollController::assignEmployeeSalary', [
+        'middlewares' => ['auth', 'can:MANAGE_PAYROLL']
+    ]);
+
+    $router->get('/payroll/runs', 'Controllers\PayrollController::getPayrollRuns', [
+        'middlewares' => ['auth', 'can:VIEW_PAYROLL']
+    ]);
+
+    $router->get('/payroll/runs/:id', 'Controllers\PayrollController::getPayrollRun', [
+        'middlewares' => ['auth', 'can:VIEW_PAYROLL']
+    ]);
+
+    $router->post('/payroll/runs', 'Controllers\PayrollController::createPayrollRun', [
+        'middlewares' => ['auth', 'can:MANAGE_PAYROLL']
+    ]);
+
+    $router->post('/payroll/runs/:id/process', 'Controllers\PayrollController::processPayrollRun', [
+        'middlewares' => ['auth', 'can:MANAGE_PAYROLL']
+    ]);
+
+    $router->post('/payroll/runs/:id/approve', 'Controllers\PayrollController::approvePayrollRun', [
+        'middlewares' => ['auth', 'can:MANAGE_PAYROLL']
+    ]);
+
+    $router->post('/payroll/runs/:id/mark-paid', 'Controllers\PayrollController::markPayrollPaid', [
+        'middlewares' => ['auth', 'can:MANAGE_PAYROLL']
+    ]);
+
+    $router->get('/payroll/component-types', 'Controllers\PayrollController::getComponentTypes', [
+        'middlewares' => ['auth']
+    ]);
+
 });
