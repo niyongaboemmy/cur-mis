@@ -103,4 +103,53 @@ $router->group(['prefix' => '/api/hr'], function ($router) {
         'middlewares' => ['auth']
     ]);
 
+    // ── Contract Routes ──────────────────────────────────────────────────────
+    $router->get('/contracts', 'Controllers\ContractController::getContracts', [
+        'middlewares' => ['auth', 'can:VIEW_HR_EMPLOYEES']
+    ]);
+
+    $router->get('/contracts/:id', 'Controllers\ContractController::getContract', [
+        'middlewares' => ['auth', 'can:VIEW_HR_EMPLOYEES']
+    ]);
+
+    $router->post('/contracts', 'Controllers\ContractController::saveContract', [
+        'middlewares' => ['auth', 'can:MANAGE_HR_EMPLOYEES']
+    ]);
+
+    $router->post('/contracts/:id/approve', 'Controllers\ContractController::approveContract', [
+        'middlewares' => ['auth', 'can:MANAGE_HR_EMPLOYEES']
+    ]);
+
+    $router->post('/contracts/:id/renew', 'Controllers\ContractController::renewContract', [
+        'middlewares' => ['auth', 'can:MANAGE_HR_EMPLOYEES']
+    ]);
+
+    $router->post('/contracts/:id/terminate', 'Controllers\ContractController::terminateContract', [
+        'middlewares' => ['auth', 'can:MANAGE_HR_EMPLOYEES']
+    ]);
+
+    $router->get('/contracts/types', 'Controllers\ContractController::getContractTypes', [
+        'middlewares' => ['auth']
+    ]);
+
+    $router->get('/contracts/renewal/pending', 'Controllers\ContractController::getPendingRenewals', [
+        'middlewares' => ['auth', 'can:MANAGE_HR_EMPLOYEES']
+    ]);
+
+    $router->get('/contracts/expired', 'Controllers\ContractController::getExpiredContracts', [
+        'middlewares' => ['auth', 'can:MANAGE_HR_EMPLOYEES']
+    ]);
+
+    $router->get('/contracts/employee/:userId', 'Controllers\ContractController::getEmployeeContract', [
+        'middlewares' => ['auth', 'can:VIEW_HR_EMPLOYEES']
+    ]);
+
+    $router->get('/contracts/employee/:userId/history', 'Controllers\ContractController::getEmployeeContractHistory', [
+        'middlewares' => ['auth', 'can:VIEW_HR_EMPLOYEES']
+    ]);
+
+    $router->get('/contracts/summary', 'Controllers\ContractController::getContractSummary', [
+        'middlewares' => ['auth', 'can:MANAGE_HR_EMPLOYEES']
+    ]);
+
 });

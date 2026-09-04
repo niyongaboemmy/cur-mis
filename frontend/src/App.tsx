@@ -44,6 +44,7 @@ import AppraisalPage from "@/pages/hr/AppraisalPage";
 import HRImportExportPage from "@/pages/hr/HRImportExportPage";
 import SupervisorLeaveApprovalDashboard from "@/pages/hr/SupervisorLeaveApprovalDashboard";
 import PayrollManagementPage from "@/pages/hr/PayrollManagementPage";
+import ContractManagementPage from "@/pages/hr/ContractManagementPage";
 
 // Academic
 import AcademicSettingsPage from "@/pages/academic/AcademicSettingsPage";
@@ -457,6 +458,7 @@ function App() {
               >
                 <Route path="/hr/settings" element={<HrSettingsPage />} />
                 <Route path="/hr/import-export" element={<HRImportExportPage />} />
+                <Route path="/hr/contracts" element={<ContractManagementPage />} />
               </Route>
 
               {/* ── Notification centre — self-scoped, so authentication is
