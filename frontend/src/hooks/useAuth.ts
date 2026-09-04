@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { api } from '@/services/api'
 import { useAuthStore } from '@/store/authStore'
+import { useSystemStore } from '@/store/systemStore'
 import type { 
   LoginRequest, 
   AuthTokenResponse, 
@@ -192,6 +193,7 @@ export function useLogout() {
     mutationFn: () => api.post('/auth/logout'),
     onSettled: () => {
       logout()
+      useSystemStore.getState().clear()
       queryClient.clear()
       navigate('/login')
       toast.success('Logged out.')

@@ -41,6 +41,7 @@ import {
 import UserDropdown from "@/components/layout/UserDropdown";
 import MessageNotificationBell from "@/components/layout/MessageNotificationBell";
 import NotificationBell from "@/components/layout/NotificationBell";
+import AcademicContextSwitcher from "@/components/layout/AcademicContextSwitcher";
 import CampusFilterSwitcher from "@/components/layout/CampusFilterSwitcher";
 import CategoryFilterSwitcher from "@/components/layout/CategoryFilterSwitcher";
 
@@ -1615,10 +1616,10 @@ export default function MainLayout() {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Academic year + term selectors moved out of the topbar to
-                Settings → they crowded the row and were rarely changed
-                day-to-day. Campus scope stays — it actively governs every
-                page's data. */}
+            {/* Academic year + term context — scopes every page's data to
+                the chosen year/term (persisted, forwarded on every request,
+                refetches the whole cache on change). */}
+            {user?.role !== "applicant" && <AcademicContextSwitcher />}
             {user?.role !== "applicant" && <CampusFilterSwitcher />}
             {user?.role !== "applicant" && <CategoryFilterSwitcher />}
             <NotificationBell />

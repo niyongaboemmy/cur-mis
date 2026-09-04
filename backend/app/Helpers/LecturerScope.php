@@ -200,10 +200,7 @@ final class LecturerScope
             // Offerings carry no term, so attribute them to the current term —
             // that is the term the rest of the portal reads for enrolment,
             // attendance and marks.
-            $cur = $db->fetchOne(
-                "SELECT id, academic_year_id, label FROM `academic_terms`
-                  WHERE is_current = 1 ORDER BY id ASC LIMIT 1"
-            ) ?: null;
+            $cur   = \App\Helpers\AcademicContext::term();
             $curId = $cur ? (int)$cur['id'] : 0;
 
             // Respect an explicit term filter: a timetable-derived course only

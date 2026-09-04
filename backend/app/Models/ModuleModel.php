@@ -459,11 +459,8 @@ class ModuleModel extends BaseModel
 
         if (empty($modulesByDept)) return [];
 
-        // Get the active academic year (or current year)
-        $activeYear = $this->db->fetchOne(
-            "SELECT id FROM academic_years WHERE is_current = 1 LIMIT 1"
-        );
-        $yearId = $activeYear ? (int)$activeYear['id'] : null;
+        // Academic year in context (topnav override, else the current year)
+        $yearId = \App\Helpers\AcademicContext::yearId();
 
         if (!$yearId) return [];
 

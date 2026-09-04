@@ -61,10 +61,7 @@ class TimetableController extends BaseController
         // Default to the active term so the page opens on something useful
         // rather than the whole history of every term ever scheduled.
         if ($termId <= 0) {
-            $active = $this->db->fetchOne(
-                'SELECT id FROM `academic_terms` WHERE is_current = 1 ORDER BY id DESC LIMIT 1'
-            );
-            $termId = (int) ($active['id'] ?? 0);
+            $termId = (int) (\App\Helpers\AcademicContext::termId() ?? 0);
         }
 
         $where    = [];

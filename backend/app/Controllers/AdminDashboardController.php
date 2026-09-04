@@ -155,7 +155,7 @@ class AdminDashboardController extends BaseController
         $academics['pass_rate']           = $graded > 0 ? round(((int)($marksRow['passed'] ?? 0) / $graded) * 100, 1) : 0.0;
 
         // ── Finance (current academic year + all-time) ─────────────────────
-        $curYear = (int)$safe(fn() => $db->fetchOne("SELECT id FROM academic_years WHERE is_current = 1 ORDER BY id DESC LIMIT 1")['id'] ?? 0);
+        $curYear = (int)(\App\Helpers\AcademicContext::yearId() ?? 0);
         $finance = [
             'currency'           => 'RWF',
             'revenue_all'        => $revenueTotal,
