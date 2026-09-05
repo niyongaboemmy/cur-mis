@@ -22,9 +22,21 @@ if (php_sapi_name() === 'cli') {
 $request_uri = $_SERVER['REQUEST_URI'] ?? '/';
 $request_method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
-// Don't strip the /api prefix - the backend router expects the full path
-// The backend routes are defined as /api/portal/intakes, /api/finance/*, etc
-// So we leave the REQUEST_URI intact for proper routing
+// Extract the original API path from REQUEST_URI
+// Input: /umis/api/portal/intakes → Extract: /api/portal/intakes
+if (preg_match('#/umis(/api/.*)$#', $request_uri, $matches)) {
+    $api_path = $matches[1];
+} elseif (preg_match('#/cur-mis(/api/.*)$#', $request_uri, $matches)) {
+    $api_path = $matches[1];
+} else {
+    $api_path = $request_uri;
+}
+
+// Pass the original API path to the backend via query parameter
+// so the Request class can use it instead of trying to parse the rewritten URL
+if (!isset($_GET['_original_path'])) {
+    $_GET['_original_path'] = $api_path;
+}
 
 // Debug logging (remove in production after verifying)
 error_log(sprintf(
