@@ -7,8 +7,10 @@ RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 
 # Route /api/* requests to api-router.php
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
 RewriteCond %{REQUEST_URI} ^/umis/api/
-RewriteRule ^api/(.*)$ api-router.php [QSA,L]
+RewriteRule ^(.*)$ api-router.php [QSA,L]
 
 # Route all other non-file/non-dir requests to index.html (SPA routing)
 RewriteRule ^ index.html [QSA,L]
