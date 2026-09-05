@@ -32,8 +32,12 @@ if (preg_match('#/umis(/api/.*)$#', $request_uri, $matches)) {
     $api_path = $request_uri;
 }
 
-// Pass the original API path to the backend via query parameter
-// so the Request class can use it instead of trying to parse the rewritten URL
+// Set REQUEST_URI and PATH_INFO to the extracted API path
+// This ensures the backend Request class correctly identifies the path
+$_SERVER['REQUEST_URI'] = $api_path;
+$_SERVER['PATH_INFO'] = $api_path;
+
+// Also pass via query parameter as backup for the Request class
 if (!isset($_GET['_original_path'])) {
     $_GET['_original_path'] = $api_path;
 }
