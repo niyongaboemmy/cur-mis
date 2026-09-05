@@ -2,6 +2,13 @@
 
 declare(strict_types=1);
 
+use App\Controllers\HRImportExportController;
+use App\Controllers\LeaveApprovalController;
+use App\Controllers\PayrollController;
+use App\Controllers\ContractController;
+use App\Controllers\ReportController;
+use App\Controllers\HRAnalyticsController;
+
 /**
  * HR Import & Export API Routes
  *
@@ -16,209 +23,209 @@ declare(strict_types=1);
 $router->group('/api/hr', function ($router) {
 
     // ── Import Template Download ──────────────────────────────────────────────
-    $router->get('/import/template/:type', 'Controllers\HRImportExportController::downloadTemplate');
+    $router->get('/import/template/:type', [HRImportExportController::class, 'downloadTemplate']);
 
     // ── Import Validation ─────────────────────────────────────────────────────
-    $router->post('/import/validate', 'Controllers\HRImportExportController::validateImport', [
+    $router->post('/import/validate', [HRImportExportController::class, 'validateImport'], [
         'middlewares' => ['auth']
     ]);
 
     // ── Process Import ────────────────────────────────────────────────────────
-    $router->post('/import/process', 'Controllers\HRImportExportController::processImport', [
+    $router->post('/import/process', [HRImportExportController::class, 'processImport'], [
         'middlewares' => ['auth', 'can:MANAGE_HR_MODULE']
     ]);
 
     // ── Export Data ───────────────────────────────────────────────────────────
-    $router->get('/export/:type', 'Controllers\HRImportExportController::exportData', [
+    $router->get('/export/:type', [HRImportExportController::class, 'exportData'], [
         'middlewares' => ['auth']
     ]);
 
     // ── Leave Approval Routes ─────────────────────────────────────────────────
-    $router->get('/leave/approvals/queue', 'Controllers\LeaveApprovalController::queue', [
+    $router->get('/leave/approvals/queue', [LeaveApprovalController::class, 'queue'], [
         'middlewares' => ['auth']
     ]);
 
-    $router->get('/leave/requests/:id/progress', 'Controllers\LeaveApprovalController::progress', [
+    $router->get('/leave/requests/:id/progress', [LeaveApprovalController::class, 'progress'], [
         'middlewares' => ['auth']
     ]);
 
-    $router->post('/leave/approvals/:id/decide', 'Controllers\LeaveApprovalController::decide', [
+    $router->post('/leave/approvals/:id/decide', [LeaveApprovalController::class, 'decide'], [
         'middlewares' => ['auth']
     ]);
 
-    $router->get('/leave/types/:id/stages', 'Controllers\LeaveApprovalController::stages', [
+    $router->get('/leave/types/:id/stages', [LeaveApprovalController::class, 'stages'], [
         'middlewares' => ['auth', 'can:MANAGE_LEAVE_REQUESTS']
     ]);
 
-    $router->post('/leave/types/:id/stages', 'Controllers\LeaveApprovalController::saveStages', [
+    $router->post('/leave/types/:id/stages', [LeaveApprovalController::class, 'saveStages'], [
         'middlewares' => ['auth', 'can:MANAGE_LEAVE_REQUESTS']
     ]);
 
     // ── Payroll Routes ───────────────────────────────────────────────────────
-    $router->get('/payroll/structures', 'Controllers\PayrollController::getStructures', [
+    $router->get('/payroll/structures', [PayrollController::class, 'getStructures'], [
         'middlewares' => ['auth', 'can:VIEW_PAYROLL']
     ]);
 
-    $router->get('/payroll/structures/:id', 'Controllers\PayrollController::getStructure', [
+    $router->get('/payroll/structures/:id', [PayrollController::class, 'getStructure'], [
         'middlewares' => ['auth', 'can:VIEW_PAYROLL']
     ]);
 
-    $router->post('/payroll/structures', 'Controllers\PayrollController::saveStructure', [
+    $router->post('/payroll/structures', [PayrollController::class, 'saveStructure'], [
         'middlewares' => ['auth', 'can:MANAGE_PAYROLL']
     ]);
 
-    $router->get('/payroll/employee/:userId/salary', 'Controllers\PayrollController::getEmployeeSalary', [
+    $router->get('/payroll/employee/:userId/salary', [PayrollController::class, 'getEmployeeSalary'], [
         'middlewares' => ['auth', 'can:VIEW_PAYROLL']
     ]);
 
-    $router->post('/payroll/employee/:userId/salary', 'Controllers\PayrollController::assignEmployeeSalary', [
+    $router->post('/payroll/employee/:userId/salary', [PayrollController::class, 'assignEmployeeSalary'], [
         'middlewares' => ['auth', 'can:MANAGE_PAYROLL']
     ]);
 
-    $router->get('/payroll/runs', 'Controllers\PayrollController::getPayrollRuns', [
+    $router->get('/payroll/runs', [PayrollController::class, 'getPayrollRuns'], [
         'middlewares' => ['auth', 'can:VIEW_PAYROLL']
     ]);
 
-    $router->get('/payroll/runs/:id', 'Controllers\PayrollController::getPayrollRun', [
+    $router->get('/payroll/runs/:id', [PayrollController::class, 'getPayrollRun'], [
         'middlewares' => ['auth', 'can:VIEW_PAYROLL']
     ]);
 
-    $router->post('/payroll/runs', 'Controllers\PayrollController::createPayrollRun', [
+    $router->post('/payroll/runs', [PayrollController::class, 'createPayrollRun'], [
         'middlewares' => ['auth', 'can:MANAGE_PAYROLL']
     ]);
 
-    $router->post('/payroll/runs/:id/process', 'Controllers\PayrollController::processPayrollRun', [
+    $router->post('/payroll/runs/:id/process', [PayrollController::class, 'processPayrollRun'], [
         'middlewares' => ['auth', 'can:MANAGE_PAYROLL']
     ]);
 
-    $router->post('/payroll/runs/:id/approve', 'Controllers\PayrollController::approvePayrollRun', [
+    $router->post('/payroll/runs/:id/approve', [PayrollController::class, 'approvePayrollRun'], [
         'middlewares' => ['auth', 'can:MANAGE_PAYROLL']
     ]);
 
-    $router->post('/payroll/runs/:id/mark-paid', 'Controllers\PayrollController::markPayrollPaid', [
+    $router->post('/payroll/runs/:id/mark-paid', [PayrollController::class, 'markPayrollPaid'], [
         'middlewares' => ['auth', 'can:MANAGE_PAYROLL']
     ]);
 
-    $router->get('/payroll/component-types', 'Controllers\PayrollController::getComponentTypes', [
+    $router->get('/payroll/component-types', [PayrollController::class, 'getComponentTypes'], [
         'middlewares' => ['auth']
     ]);
 
     // ── Contract Routes ──────────────────────────────────────────────────────
-    $router->get('/contracts', 'Controllers\ContractController::getContracts', [
+    $router->get('/contracts', [ContractController::class, 'getContracts'], [
         'middlewares' => ['auth', 'can:VIEW_HR_EMPLOYEES']
     ]);
 
-    $router->get('/contracts/:id', 'Controllers\ContractController::getContract', [
+    $router->get('/contracts/:id', [ContractController::class, 'getContract'], [
         'middlewares' => ['auth', 'can:VIEW_HR_EMPLOYEES']
     ]);
 
-    $router->post('/contracts', 'Controllers\ContractController::saveContract', [
+    $router->post('/contracts', [ContractController::class, 'saveContract'], [
         'middlewares' => ['auth', 'can:MANAGE_HR_EMPLOYEES']
     ]);
 
-    $router->post('/contracts/:id/approve', 'Controllers\ContractController::approveContract', [
+    $router->post('/contracts/:id/approve', [ContractController::class, 'approveContract'], [
         'middlewares' => ['auth', 'can:MANAGE_HR_EMPLOYEES']
     ]);
 
-    $router->post('/contracts/:id/renew', 'Controllers\ContractController::renewContract', [
+    $router->post('/contracts/:id/renew', [ContractController::class, 'renewContract'], [
         'middlewares' => ['auth', 'can:MANAGE_HR_EMPLOYEES']
     ]);
 
-    $router->post('/contracts/:id/terminate', 'Controllers\ContractController::terminateContract', [
+    $router->post('/contracts/:id/terminate', [ContractController::class, 'terminateContract'], [
         'middlewares' => ['auth', 'can:MANAGE_HR_EMPLOYEES']
     ]);
 
-    $router->get('/contracts/types', 'Controllers\ContractController::getContractTypes', [
+    $router->get('/contracts/types', [ContractController::class, 'getContractTypes'], [
         'middlewares' => ['auth']
     ]);
 
-    $router->get('/contracts/renewal/pending', 'Controllers\ContractController::getPendingRenewals', [
+    $router->get('/contracts/renewal/pending', [ContractController::class, 'getPendingRenewals'], [
         'middlewares' => ['auth', 'can:MANAGE_HR_EMPLOYEES']
     ]);
 
-    $router->get('/contracts/expired', 'Controllers\ContractController::getExpiredContracts', [
+    $router->get('/contracts/expired', [ContractController::class, 'getExpiredContracts'], [
         'middlewares' => ['auth', 'can:MANAGE_HR_EMPLOYEES']
     ]);
 
-    $router->get('/contracts/employee/:userId', 'Controllers\ContractController::getEmployeeContract', [
+    $router->get('/contracts/employee/:userId', [ContractController::class, 'getEmployeeContract'], [
         'middlewares' => ['auth', 'can:VIEW_HR_EMPLOYEES']
     ]);
 
-    $router->get('/contracts/employee/:userId/history', 'Controllers\ContractController::getEmployeeContractHistory', [
+    $router->get('/contracts/employee/:userId/history', [ContractController::class, 'getEmployeeContractHistory'], [
         'middlewares' => ['auth', 'can:VIEW_HR_EMPLOYEES']
     ]);
 
-    $router->get('/contracts/summary', 'Controllers\ContractController::getContractSummary', [
+    $router->get('/contracts/summary', [ContractController::class, 'getContractSummary'], [
         'middlewares' => ['auth', 'can:MANAGE_HR_EMPLOYEES']
     ]);
 
     // ── Report Routes ────────────────────────────────────────────────────────
-    $router->get('/reports/employee-master-list', 'Controllers\ReportController::generateEmployeeMasterListPDF', [
+    $router->get('/reports/employee-master-list', [ReportController::class, 'generateEmployeeMasterListPDF'], [
         'middlewares' => ['auth', 'can:VIEW_HR_EMPLOYEES']
     ]);
 
-    $router->get('/reports/payroll/:payrollRunId', 'Controllers\ReportController::generatePayrollSummaryPDF', [
+    $router->get('/reports/payroll/:payrollRunId', [ReportController::class, 'generatePayrollSummaryPDF'], [
         'middlewares' => ['auth', 'can:VIEW_PAYROLL']
     ]);
 
-    $router->get('/reports/leave/:leaveRequestId', 'Controllers\ReportController::generateLeaveRequestPDF', [
+    $router->get('/reports/leave/:leaveRequestId', [ReportController::class, 'generateLeaveRequestPDF'], [
         'middlewares' => ['auth', 'can:VIEW_LEAVE_REQUESTS']
     ]);
 
-    $router->post('/reports/salary-certificate', 'Controllers\ReportController::generateSalaryCertificatePDF', [
+    $router->post('/reports/salary-certificate', [ReportController::class, 'generateSalaryCertificatePDF'], [
         'middlewares' => ['auth']
     ]);
 
-    $router->get('/reports/service-certificate/:userId', 'Controllers\ReportController::generateServiceCertificatePDF', [
+    $router->get('/reports/service-certificate/:userId', [ReportController::class, 'generateServiceCertificatePDF'], [
         'middlewares' => ['auth']
     ]);
 
-    $router->get('/reports/contract/:contractId', 'Controllers\ReportController::generateContractSummaryPDF', [
+    $router->get('/reports/contract/:contractId', [ReportController::class, 'generateContractSummaryPDF'], [
         'middlewares' => ['auth', 'can:VIEW_HR_EMPLOYEES']
     ]);
 
-    $router->get('/reports/dashboard', 'Controllers\ReportController::generateHRDashboardReportPDF', [
+    $router->get('/reports/dashboard', [ReportController::class, 'generateHRDashboardReportPDF'], [
         'middlewares' => ['auth', 'can:MANAGE_HR_EMPLOYEES']
     ]);
 
     // ── Analytics Routes ─────────────────────────────────────────────────────
-    $router->get('/employees/by-department', 'Controllers\HRAnalyticsController::getEmployeesByDepartment', [
+    $router->get('/employees/by-department', [HRAnalyticsController::class, 'getEmployeesByDepartment'], [
         'middlewares' => ['auth', 'can:VIEW_HR_EMPLOYEES']
     ]);
 
-    $router->get('/leave/by-type', 'Controllers\HRAnalyticsController::getLeaveUsageByType', [
+    $router->get('/leave/by-type', [HRAnalyticsController::class, 'getLeaveUsageByType'], [
         'middlewares' => ['auth', 'can:VIEW_LEAVE_REQUESTS']
     ]);
 
-    $router->get('/payroll/trends', 'Controllers\HRAnalyticsController::getPayrollTrends', [
+    $router->get('/payroll/trends', [HRAnalyticsController::class, 'getPayrollTrends'], [
         'middlewares' => ['auth', 'can:VIEW_PAYROLL']
     ]);
 
-    $router->get('/leave/approval-metrics', 'Controllers\HRAnalyticsController::getLeaveApprovalMetrics', [
+    $router->get('/leave/approval-metrics', [HRAnalyticsController::class, 'getLeaveApprovalMetrics'], [
         'middlewares' => ['auth', 'can:VIEW_LEAVE_REQUESTS']
     ]);
 
-    $router->get('/analytics/contract-metrics', 'Controllers\HRAnalyticsController::getContractMetrics', [
+    $router->get('/analytics/contract-metrics', [HRAnalyticsController::class, 'getContractMetrics'], [
         'middlewares' => ['auth', 'can:VIEW_HR_EMPLOYEES']
     ]);
 
-    $router->get('/analytics/payroll-metrics', 'Controllers\HRAnalyticsController::getPayrollMetrics', [
+    $router->get('/analytics/payroll-metrics', [HRAnalyticsController::class, 'getPayrollMetrics'], [
         'middlewares' => ['auth', 'can:VIEW_PAYROLL']
     ]);
 
-    $router->get('/analytics/salary-distribution', 'Controllers\HRAnalyticsController::getSalaryDistribution', [
+    $router->get('/analytics/salary-distribution', [HRAnalyticsController::class, 'getSalaryDistribution'], [
         'middlewares' => ['auth', 'can:VIEW_PAYROLL']
     ]);
 
-    $router->get('/analytics/headcount-trend', 'Controllers\HRAnalyticsController::getHeadcountTrend', [
+    $router->get('/analytics/headcount-trend', [HRAnalyticsController::class, 'getHeadcountTrend'], [
         'middlewares' => ['auth', 'can:VIEW_HR_EMPLOYEES']
     ]);
 
-    $router->get('/analytics/contract-expiry-by-dept', 'Controllers\HRAnalyticsController::getContractExpiryByDepartment', [
+    $router->get('/analytics/contract-expiry-by-dept', [HRAnalyticsController::class, 'getContractExpiryByDepartment'], [
         'middlewares' => ['auth', 'can:MANAGE_HR_EMPLOYEES']
     ]);
 
-    $router->get('/analytics/leave-balance-overview', 'Controllers\HRAnalyticsController::getLeaveBalanceOverview', [
+    $router->get('/analytics/leave-balance-overview', [HRAnalyticsController::class, 'getLeaveBalanceOverview'], [
         'middlewares' => ['auth', 'can:VIEW_LEAVE_REQUESTS']
     ]);
 
