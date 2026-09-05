@@ -1,6 +1,6 @@
-# 🚀 DEPLOY NOW - Three Simple Options
+# 🚀 API ROUTING FIX - DEPLOY NOW
 
-Your billing system fix is **100% complete and tested**. Here's how to deploy it RIGHT NOW.
+Your API routing fix is **100% complete and tested**. Here's how to deploy it RIGHT NOW.
 
 ---
 
@@ -8,171 +8,232 @@ Your billing system fix is **100% complete and tested**. Here's how to deploy it
 
 | Component | Status |
 |-----------|--------|
-| Code | ✅ Complete (commit 4e102cf + 4 more) |
-| Build | ✅ Passing (TypeScript, no errors) |
-| Tests | ✅ Verified locally |
+| Code | ✅ Complete (commit 42ddb8a + 7 more) |
+| Frontend Build | ✅ Complete and ready |
+| Backend Routes | ✅ Already working |
+| API Router | ✅ Deployed to public/ |
+| .htaccess | ✅ Configured in public/ |
 | Git | ✅ All changes on main branch |
-| Documentation | ✅ Complete guides provided |
+| Documentation | ✅ Complete deployment guides |
 | **Deployment** | ⏳ **Ready - Pick an option below** |
 
 ---
 
-## ⚡ OPTION 1: GitHub Actions (Automatic) - 2 minutes
+## ⚡ OPTION 1: Via Git on Production - 1 minute
 
-**Best for**: Immediate automated deployment
-
-**Steps**:
-1. Have your cPanel password ready
-2. Go to GitHub: `https://github.com/niyongaboemmy/cur-mis/settings/secrets/actions`
-3. Click `CPANEL_PASS` → Update secret → Enter password
-4. Go to: `https://github.com/niyongaboemmy/cur-mis/actions`
-5. Click latest failed workflow run
-6. Click "Re-run failed jobs"
-7. ✅ Done! Deploys in 2-5 minutes
-
-**Result**: Automatic GitHub Actions deployment, future pushes auto-deploy too
-
----
-
-## ⚡ OPTION 2: PowerShell Script - 2-5 minutes
-
-**Best for**: Direct deployment if you have cPanel password
+**Best for**: Simplest method, immediate deployment
 
 **Steps**:
-```powershell
-# Open PowerShell and run:
-cd C:\xamppP\htdocs\cur-mis
-.\deploy-to-cpanel.ps1 -CpanelPassword "your_password"
+```bash
+# SSH into production server
+ssh user@cur.ac.rw
+
+# Navigate to application directory
+cd /home/user/public_html/umis
+
+# Pull latest code from main branch
+git pull origin main
 ```
 
-**What it does**:
-- Uploads frontend build to cPanel
-- Extracts files to production
-- Verifies deployment
-- Shows completion status
+**That's it!** ✅ Files are deployed instantly.
 
-**Result**: Files live immediately, no GitHub Actions needed
+**Result**: All changes live immediately, including:
+- ✅ `public/.htaccess` - URL rewriting configured
+- ✅ `public/api-router.php` - API routing active  
+- ✅ Frontend build - Latest React app
 
 ---
 
-## ⚡ OPTION 3: Manual cPanel Upload - 10 minutes
+## ⚡ OPTION 2: Manual FTP/SFTP - 3-5 minutes
 
-**Best for**: No script needed, fully manual control
+**Best for**: No SSH access, using FTP upload
+
+**Steps**:
+1. Download repo: https://github.com/niyongaboemmy/cur-mis/archive/refs/heads/main.zip
+2. Extract the zip locally
+3. Connect via FTP to `/home/user/public_html/umis/`
+4. Upload these critical files:
+   ```
+   public/.htaccess          → umis/.htaccess
+   public/api-router.php     → umis/api-router.php
+   public/index.html         → umis/index.html
+   public/assets/*           → umis/assets/
+   ```
+5. Set permissions (if FTP allows):
+   ```bash
+   chmod 644 umis/.htaccess
+   chmod 644 umis/api-router.php
+   ```
+
+**Result**: Files live once FTP upload completes
+
+---
+
+## ⚡ OPTION 3: cPanel File Manager - 5-10 minutes
+
+**Best for**: Using cPanel web interface only
 
 **Steps**:
 1. Log into cPanel: `https://cur.ac.rw:2083/`
-2. Click **File Manager** → Navigate to `/home/curac/public_html/umis/`
-3. Upload: `frontend-manual-deploy.zip`
-4. Right-click zip → **Extract** to same folder
-5. Delete the zip
-6. Hard refresh: `https://cur.ac.rw/umis/finance/billing` (Ctrl+Shift+R)
+2. Click **File Manager**
+3. Navigate to `/home/user/public_html/umis/`
+4. Download files from GitHub locally:
+   - https://github.com/niyongaboemmy/cur-mis/blob/main/public/.htaccess
+   - https://github.com/niyongaboemmy/cur-mis/blob/main/public/api-router.php
+5. In File Manager, upload:
+   - `.htaccess` file
+   - `api-router.php` file
+6. Once uploaded, right-click each → **Properties** → Set to 644 permissions
+7. Clear browser cache and refresh
 
-**Result**: Files live immediately
+**Result**: Files live once uploaded
 
 ---
 
 ## 🎯 Pick Your Deployment Method
 
-| Method | Time | Skill | Password Required | Automation |
-|--------|------|-------|-------------------|-----------|
-| GitHub Actions | 2-5 min | Easy | Yes | Future pushes auto-deploy |
-| PowerShell | 2-5 min | Medium | Yes | One-time manual |
-| Manual cPanel | 10 min | Easy | No | One-time manual |
+| Method | Time | Access Required | Complexity |
+|--------|------|-----------------|-----------|
+| Git Pull | 1 min | SSH access | Easiest |
+| FTP Upload | 3-5 min | FTP credentials | Easy |
+| cPanel Manager | 5-10 min | cPanel access | Easy |
 
 ---
 
 ## ✅ After Deployment - Verify It Worked
 
-1. Open: `https://cur.ac.rw/umis/finance/billing`
-2. Hard refresh: `Ctrl+Shift+R`
+Open terminal and test:
+```bash
+# Test API health
+curl https://cur.ac.rw/umis/api/health
+# Expected: {"success":true,"message":"API is healthy",...}
+
+# Test guidance videos endpoint  
+curl https://cur.ac.rw/umis/api/portal/guidance-videos
+# Expected: JSON with video URLs
+
+# Test intakes endpoint
+curl https://cur.ac.rw/umis/api/portal/intakes
+# Expected: JSON array of intakes
+```
+
+Then in browser:
+1. Open: `https://cur.ac.rw/umis/login`
+2. Press F12 (DevTools)
 3. Check:
-   - ✓ Student list appears (not blank)
-   - ✓ Opening balances show
-   - ✓ Click student → modal opens
-   - ✓ "Generate Invoice" button visible
-   - ✓ "Download Bill PDF" button visible
+   - ✓ No 404 errors in Console
+   - ✓ Login page loads normally
+   - ✓ No red error messages
 
 ---
 
 ## 📋 What's Being Deployed
 
-**Backend Fixes** (Commit 4e102cf):
-- ✅ Fixed table name: `student_opening_balance` → `student_opening_balances`
-- ✅ Fixed JOINs: `s.id` → `s.regnumber` (correct foreign key)
-- ✅ Fixed enum values: `'completed'` → `'confirmed'`
-- ✅ Fixed column name: `amount_applied` → `amount`
-- ✅ Fixed fan-out bug (multiple rows multiplying totals)
-- ✅ Added NULL guards for defensive programming
-- ✅ Fixed student self-service endpoint auth pattern
+**API Router** (Commit 95054e5):
+- ✅ `public/api-router.php` - Routes /api/* requests to backend
+- ✅ Extracts original API path from REQUEST_URI
+- ✅ Sets proper server variables for backend routing
 
-**Frontend Enhancements** (Commits 674a71e, 047a590):
-- ✅ "Generate Invoice" button in student modal
-- ✅ "Download Bill PDF" button in student modal
-- ✅ Fixed TypeScript types and build errors
-- ✅ Fixed routing to use real API endpoints
+**.htaccess Configuration** (Commit 95054e5):
+- ✅ Rewrites `/umis/api/*` to `api-router.php`
+- ✅ Forwards other requests to SPA (`index.html`)
+- ✅ Sets proper MIME types for assets
+- ✅ Configures caching headers
+
+**Frontend Build** (Commit 7bcab3d):
+- ✅ Complete React app built and minified
+- ✅ Assets optimized and cached
+- ✅ Already handles API errors gracefully
+
+**Backend** (No changes):
+- ✅ Routes already exist and working
+- ✅ Controllers ready to serve requests
+- ✅ Just needs API router to reach them
 
 ---
 
 ## 🗂️ Files Ready for Deployment
 
+All in the `public/` directory:
+
 ```
-✅ frontend-manual-deploy.zip (1.3 MB)
-   └─ Complete frontend build, ready to extract
+✅ public/.htaccess
+   └─ URL rewriting rules for API and SPA
 
-✅ deploy-to-cpanel.ps1
-   └─ PowerShell script for automated upload
+✅ public/api-router.php  
+   └─ API request router
 
-✅ All documentation files
-   └─ Step-by-step guides for all options
+✅ public/index.html
+   └─ Frontend SPA entry point
+
+✅ public/assets/*
+   └─ JavaScript, CSS, images (minified & cached)
+
+✅ Documentation
+   └─ DEPLOYMENT_CHECKLIST.md
+   └─ API_ROUTING_FIX_SUMMARY.md
 ```
 
 ---
 
-## 🚨 If You Choose GitHub Actions
+## 🚀 Which Option to Choose?
 
-GitHub secret `CPANEL_PASS` must be set to your cPanel password.
+**Option 1 (Git Pull)** ← **RECOMMENDED**
+- Fastest and simplest
+- Requires SSH access
+- Everything done in 1 command
 
-**How to find it** (if already set):
-- Go to: `https://github.com/niyongaboemmy/cur-mis/settings/secrets/actions`
-- Look for `CPANEL_PASS`
-- If not there, create it
+**Option 2 (FTP Upload)**
+- Works from any computer
+- Requires FTP client
+- Upload just 2 files plus assets
 
-**How to update it**:
-- Click on `CPANEL_PASS`
-- Click "Update secret"
-- Enter your current cPanel password
-- Save
-
-**Re-run the workflow**:
-- Go to: `https://github.com/niyongaboemmy/cur-mis/actions`
-- Click on failed "Deploy — Frontend" workflow
-- Click "Re-run failed jobs"
-- Watch the workflow complete (2-5 minutes)
+**Option 3 (cPanel File Manager)**
+- No extra tools needed
+- Slower upload
+- Best if you only have cPanel access
 
 ---
 
 ## 📞 Troubleshooting
 
-**GitHub Actions still failing?**
-- Check cPanel password is correct
-- Verify GitHub secret is updated
-- Check GitHub Actions logs for exact error
+**Still getting 404 errors after deployment?**
 
-**PowerShell script error?**
-- Make sure you're in the right directory: `C:\xamppP\htdocs\cur-mis`
-- Install curl if missing: `choco install curl`
-- Use correct password format (no special quotes)
+1. Verify files are in place:
+   ```bash
+   ls -la /home/user/public_html/umis/.htaccess
+   ls -la /home/user/public_html/umis/api-router.php
+   ```
 
-**Manual cPanel upload stuck?**
-- Check file size (zip should be ~1.3 MB)
-- Wait for upload to complete fully (100%)
-- Try extract again if it fails
+2. Check file permissions:
+   ```bash
+   chmod 644 /home/user/public_html/umis/.htaccess
+   chmod 644 /home/user/public_html/umis/api-router.php
+   ```
 
-**Billing page still not showing changes?**
-- Hard refresh: `Ctrl+Shift+R` (clears browser cache)
-- Clear browser cache completely
-- Wait 30 seconds for server cache to update
-- Try incognito/private window
+3. Clear PHP cache:
+   - Log into cPanel
+   - Restart PHP if available
+   - Or wait 5 minutes for cache to clear
+
+4. Check server error log:
+   ```bash
+   tail -f /home/user/public_html/error_log
+   ```
+
+5. Verify mod_rewrite is enabled:
+   - Contact hosting provider if unsure
+   - Or check cPanel → Select PHP Version → Extensions
+
+**Login page still not loading?**
+- Clear browser cache: `Ctrl+Shift+Delete`
+- Hard refresh: `Ctrl+F5`
+- Try in private/incognito window
+- Try different browser
+
+**Got permission denied when deploying?**
+- Use `sudo` if needed: `sudo git pull origin main`
+- Or use FTP/cPanel instead of SSH
 
 ---
 
@@ -180,66 +241,61 @@ GitHub secret `CPANEL_PASS` must be set to your cPanel password.
 
 | Step | Time |
 |------|------|
-| Deploy (any method) | 2-10 min |
-| Files propagate | 30 sec |
+| Deploy via git | 1 min |
+| Deploy via FTP | 3-5 min |
+| Deploy via cPanel | 5-10 min |
+| Files propagate | 10 sec |
 | Browser cache clear | 1 min |
 | Verification | 2 min |
-| **Total** | **~5-15 min** |
+| **Total** | **3-15 min** |
 
 ---
 
-## 🎉 What Happens Next
+## 🎉 After Deployment
 
-After successful deployment:
-
-✅ Billing page loads at `https://cur.ac.rw/umis/finance/billing`  
-✅ Student list displays correctly (SQL bugs fixed)  
-✅ Opening balances are accurate  
-✅ Invoice generation works  
-✅ Bill PDF downloads work  
-✅ All financial data is correct  
-
-**Users will be able to**:
-- View their billing status
-- Generate invoices
-- Download bill PDFs
-- See accurate opening balances
-- Access all finance features
+✅ API endpoints work at `/umis/api/*`  
+✅ Login page loads without 404 errors  
+✅ No errors in browser console  
+✅ All frontend/backend communication working  
+✅ Users can log in and use the system  
 
 ---
 
-## 🔄 Next Steps After Deployment
+## 🔄 Next Steps After Successful Deployment
 
-1. **Verify it works** (follow checklist above)
-2. **Cleanup** (optional):
-   - Delete old bypass files from server: `display-students.php`, `billing-students.php`
-   - These are no longer used
-3. **Communication**:
-   - Inform users billing page is now live
-   - Test account access
-   - Monitor for any issues
+1. **Verify it works** (run curl tests above)
+2. **Test in browser** (open login page)
+3. **Monitor logs** (watch for errors for 1 hour)
+4. **Inform stakeholders** (system is now fully operational)
+5. **Optional**: Run HR module migration when ready
 
 ---
 
 ## 📚 Complete Documentation
 
-All guides are in the repo root:
-- `BILLING_SYSTEM_FIX_COMPLETE.md` — Complete implementation details
-- `GITHUB_ACTIONS_TRIGGER_GUIDE.md` — Detailed GitHub Actions guide
-- `FRONTEND_DEPLOYMENT_MANUAL.md` — Manual cPanel upload steps
-- `GITHUB_SECRET_SETUP.md` — How to setup credentials
-- `deploy-to-cpanel.ps1` — PowerShell deployment script
-- `DEPLOY_NOW.md` — This quick start guide
+All guides are on the GitHub main branch:
+- `DEPLOY_NOW.md` — This quick start (what you're reading)
+- `DEPLOYMENT_CHECKLIST.md` — Complete verification steps
+- `API_ROUTING_FIX_SUMMARY.md` — Technical summary
+- `API_ROUTING_FIX_SUMMARY.md` — Troubleshooting guide
 
 ---
 
 ## 🚀 Ready to Deploy?
 
-**Choose your option above and execute it now!**
+**Choose your deployment method above and execute now!**
 
-All code is tested, committed, and ready.  
-Choose Option 1, 2, or 3 and you're done in minutes.
+Recommended: **Option 1 (Git Pull)** - Fastest & easiest
 
-**Questions?** Check the detailed documentation files listed above.
+```bash
+cd /home/user/public_html/umis
+git pull origin main
+```
 
-**Let's go!** 🎯
+That's literally all you need! ✅
+
+---
+
+**Questions?** Check the documentation or contact support.
+
+**Let's deploy!** 🎯
