@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { Users, TrendingUp, Clock, AlertCircle, CheckCircle, DollarSign } from 'lucide-react';
-import Toast from '@/components/common/Toast';
 
 interface DashboardMetrics {
   total_employees: number;
@@ -174,7 +173,7 @@ export default function HRDashboardPage() {
                         outerRadius={100}
                         label
                       >
-                        {departmentData.map((entry, index) => (
+                        {departmentData.map((_, index) => (
                           <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                       </Pie>

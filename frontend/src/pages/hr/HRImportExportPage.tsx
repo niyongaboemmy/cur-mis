@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Download, Upload, AlertCircle, CheckCircle, Loader } from 'lucide-react';
-import Toast from '../../components/common/Toast';
+import toast from 'react-hot-toast';
 
 interface ValidationResult {
   valid: boolean;
@@ -25,7 +25,6 @@ export default function HRImportExportPage() {
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
   const importTypes = [
     { value: 'employees', label: 'Employee Master List' },
@@ -50,9 +49,9 @@ export default function HRImportExportPage() {
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
 
-      setToast({ message: 'Template downloaded successfully', type: 'success' });
+      toast.success('Template downloaded successfully');
     } catch (error) {
-      setToast({ message: 'Failed to download template', type: 'error' });
+      toast.error('Failed to download template');
     }
   };
 
@@ -67,7 +66,7 @@ export default function HRImportExportPage() {
 
   const handleValidate = async () => {
     if (!file) {
-      setToast({ message: 'Please select a file', type: 'error' });
+      toast.error('Please select a file');
       return;
     }
 
@@ -85,19 +84,19 @@ export default function HRImportExportPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        setToast({ message: data.message || 'Validation failed', type: 'error' });
+        toast.error(data.message || 'Validation failed');
         return;
       }
 
       setValidationResult(data.data);
 
       if (data.data.valid) {
-        setToast({ message: 'File validated successfully', type: 'success' });
+        toast.success('File validated successfully');
       } else {
-        setToast({ message: `Found ${data.data.errors.length} validation errors`, type: 'error' });
+        toast.error(`Found ${data.data.errors.length} validation errors`);
       }
     } catch (error) {
-      setToast({ message: 'Validation failed', type: 'error' });
+      toast.error('Validation failed');
     } finally {
       setIsValidating(false);
     }
@@ -105,7 +104,7 @@ export default function HRImportExportPage() {
 
   const handleProcessImport = async () => {
     if (!file) {
-      setToast({ message: 'Please select a file', type: 'error' });
+      toast.error('Please select a file');
       return;
     }
 
@@ -123,24 +122,21 @@ export default function HRImportExportPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        setToast({ message: data.message || 'Import failed', type: 'error' });
+        toast.error(data.message || 'Import failed');
         return;
       }
 
       setImportResult(data.data);
 
       if (data.data.success) {
-        setToast({
-          message: `Import completed: ${data.data.imported} imported, ${data.data.updated} updated`,
-          type: 'success'
-        });
+        toast.success(`Import completed: ${data.data.imported} imported, ${data.data.updated} updated`);
         setFile(null);
         setValidationResult(null);
       } else {
-        setToast({ message: 'Import failed', type: 'error' });
+        toast.error('Import failed');
       }
     } catch (error) {
-      setToast({ message: 'Import failed', type: 'error' });
+      toast.error('Import failed');
     } finally {
       setIsImporting(false);
     }
@@ -161,22 +157,14 @@ export default function HRImportExportPage() {
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
 
-      setToast({ message: 'Data exported successfully', type: 'success' });
+      toast.success('Data exported successfully');
     } catch (error) {
-      setToast({ message: 'Export failed', type: 'error' });
+      toast.error('Export failed');
     }
   };
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {toast && (
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          onClose={() => setToast(null)}
-        />
-      )}
-
       <div className="max-w-6xl mx-auto px-4 py-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">HR Import & Export</h1>

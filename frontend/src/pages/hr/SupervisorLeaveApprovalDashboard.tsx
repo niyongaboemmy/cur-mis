@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { CheckCircle, XCircle, AlertCircle, FileText } from 'lucide-react';
-import Toast from '../../components/common/Toast';
+import { useState, useEffect } from 'react';
+import { CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 interface LeaveRequest {
   id: number;
@@ -57,7 +57,6 @@ export default function SupervisorLeaveApprovalDashboard() {
   const [queue, setQueue] = useState<LeaveRequest[]>([]);
   const [progress, setProgress] = useState<ProgressView | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [decision, setDecision] = useState<{ action: 'approve' | 'reject' | 'changes' | null; comment: string }>({
     action: null,
     comment: ''
@@ -77,13 +76,13 @@ export default function SupervisorLeaveApprovalDashboard() {
       const data = await response.json();
 
       if (!response.ok) {
-        setToast({ message: data.message || 'Failed to load queue', type: 'error' });
+        toast.error(data.message || 'Failed to load queue');
         return;
       }
 
       setQueue(data.data);
     } catch (error) {
-      setToast({ message: 'Failed to load approval queue', type: 'error' });
+      toast.error('Failed to load approval queue');
     } finally {
       setIsLoading(false);
     }
@@ -96,14 +95,14 @@ export default function SupervisorLeaveApprovalDashboard() {
       const data = await response.json();
 
       if (!response.ok) {
-        setToast({ message: 'Failed to load request details', type: 'error' });
+        toast.error('Failed to load request details');
         return;
       }
 
       setProgress(data.data);
       setActiveView('details');
     } catch (error) {
-      setToast({ message: 'Failed to load request details', type: 'error' });
+      toast.error('Failed to load request details');
     } finally {
       setIsLoading(false);
     }
@@ -111,12 +110,12 @@ export default function SupervisorLeaveApprovalDashboard() {
 
   const handleDecision = async () => {
     if (!progress || !decision.action) {
-      setToast({ message: 'Please select an action', type: 'error' });
+      toast.error('Please select an action');
       return;
     }
 
     if (decision.action !== 'approve' && !decision.comment.trim()) {
-      setToast({ message: 'Please provide a reason', type: 'error' });
+      toast.error('Please provide a reason');
       return;
     }
 
@@ -140,24 +139,20 @@ export default function SupervisorLeaveApprovalDashboard() {
       const data = await response.json();
 
       if (!response.ok) {
-        setToast({ message: data.message || 'Failed to record decision', type: 'error' });
+        toast.error(data.message || 'Failed to record decision');
         return;
       }
 
-      setToast({
-        message: `Leave request ${decision.action}d successfully`,
-        type: 'success'
-      });
+      toast.success(`Leave request ${decision.action}d successfully`);
 
       // Refresh queue and go back
       await fetchQueue();
       setActiveView('queue');
-      setSelectedRequest(null);
       setProgress(null);
       setDecision({ action: null, comment: '' });
 
     } catch (error) {
-      setToast({ message: 'Failed to record decision', type: 'error' });
+      toast.error('Failed to record decision');
     } finally {
       setIsSubmitting(false);
     }
@@ -173,34 +168,9 @@ export default function SupervisorLeaveApprovalDashboard() {
     return colors[status] || 'bg-gray-50 border-gray-200';
   };
 
-  const getStatusBadge = (state: string) => {
-    const styles: Record<string, any> = {
-      'completed': { bg: 'bg-green-100', text: 'text-green-800', icon: CheckCircle },
-      'current': { bg: 'bg-yellow-100', text: 'text-yellow-800', icon: AlertCircle },
-      'pending': { bg: 'bg-gray-100', text: 'text-gray-800', icon: FileText },
-      'rejected': { bg: 'bg-red-100', text: 'text-red-800', icon: XCircle },
-      'changes_requested': { bg: 'bg-orange-100', text: 'text-orange-800', icon: AlertCircle }
-    };
-    const style = styles[state] || styles['pending'];
-    const Icon = style.icon;
-    return (
-      <div className={`inline-flex items-center gap-1 px-2 py-1 rounded ${style.bg} ${style.text} text-xs font-medium`}>
-        <Icon className="w-3 h-3" />
-        {state.replace('_', ' ')}
-      </div>
-    );
-  };
-
   if (activeView === 'queue') {
     return (
       <div className="min-h-screen bg-gray-50 p-8">
-        {toast && (
-          <Toast
-            message={toast.message}
-            type={toast.type}
-            onClose={() => setToast(null)}
-          />
-        )}
 
         <div className="max-w-7xl mx-auto">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Leave Approval Queue</h1>
@@ -224,7 +194,6 @@ export default function SupervisorLeaveApprovalDashboard() {
                 <div
                   key={request.id}
                   onClick={() => {
-                    setSelectedRequest(request.id);
                     fetchProgress(request.id);
                   }}
                   className={`border-l-4 rounded-lg p-4 bg-white shadow hover:shadow-lg transition cursor-pointer ${getStageColor(
@@ -292,13 +261,6 @@ export default function SupervisorLeaveApprovalDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
-      {toast && (
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          onClose={() => setToast(null)}
-        />
-      )}
 
       <div className="max-w-4xl mx-auto">
         <button

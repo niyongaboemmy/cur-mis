@@ -45,7 +45,6 @@ import HRImportExportPage from "@/pages/hr/HRImportExportPage";
 import SupervisorLeaveApprovalDashboard from "@/pages/hr/SupervisorLeaveApprovalDashboard";
 import PayrollManagementPage from "@/pages/hr/PayrollManagementPage";
 import ContractManagementPage from "@/pages/hr/ContractManagementPage";
-import HRDashboardPage from "@/pages/hr/HRDashboardPage";
 
 // Academic
 import AcademicSettingsPage from "@/pages/academic/AcademicSettingsPage";

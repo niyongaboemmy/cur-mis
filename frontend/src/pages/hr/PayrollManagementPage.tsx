@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Download, CheckCircle, AlertCircle, DollarSign } from 'lucide-react';
-import Toast from '../../components/common/Toast';
+import { useState, useEffect } from 'react';
+import { Plus, Edit2, Download, CheckCircle, AlertCircle, DollarSign } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 interface SalaryStructure {
   id: number;
@@ -35,31 +35,20 @@ interface PayrollRun {
   created_at: string;
 }
 
-interface ComponentType {
-  id: number;
-  name: string;
-  code: string;
-  component_type: string;
-}
-
 export default function PayrollManagementPage() {
-  const [activeTab, setActiveTab] = useState<'structures' | 'payroll'>('structures');
   const [structures, setStructures] = useState<SalaryStructure[]>([]);
   const [payrollRuns, setPayrollRuns] = useState<PayrollRun[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
-  const [editingStructure, setEditingStructure] = useState<SalaryStructure | null>(null);
-  const [showStructureForm, setShowStructureForm] = useState(false);
   const [showPayrollForm, setShowPayrollForm] = useState(false);
   const [newPayroll, setNewPayroll] = useState({ payroll_month: '', start_date: '', end_date: '' });
+  const [activeTab, setActiveTab] = useState<'structures' | 'runs'>('structures');
+  const [showStructureForm, setShowStructureForm] = useState(false);
+  const [editingStructure, setEditingStructure] = useState<SalaryStructure | null>(null);
 
   useEffect(() => {
-    if (activeTab === 'structures') {
-      fetchStructures();
-    } else {
-      fetchPayrollRuns();
-    }
-  }, [activeTab]);
+    fetchStructures();
+    fetchPayrollRuns();
+  }, []);
 
   const fetchStructures = async () => {
     setIsLoading(true);
@@ -68,7 +57,7 @@ export default function PayrollManagementPage() {
       const data = await response.json();
       setStructures(data.data);
     } catch (error) {
-      setToast({ message: 'Failed to load salary structures', type: 'error' });
+      toast.error('Failed to load salary structures');
     } finally {
       setIsLoading(false);
     }
@@ -81,44 +70,16 @@ export default function PayrollManagementPage() {
       const data = await response.json();
       setPayrollRuns(data.data);
     } catch (error) {
-      setToast({ message: 'Failed to load payroll runs', type: 'error' });
+      toast.error('Failed to load payroll runs');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const fetchComponentTypes = async () => {
-    try {
-      const response = await fetch('/hr/payroll/component-types');
-      const data = await response.json();
-      setComponentTypes(data.data);
-    } catch (error) {
-      // Silent fail for component types
-    }
-  };
-
-  const handleSaveStructure = async (formData: any) => {
-    try {
-      const response = await fetch('/hr/payroll/structures', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
-      });
-
-      if (!response.ok) throw new Error('Failed to save structure');
-
-      setToast({ message: 'Salary structure saved successfully', type: 'success' });
-      setShowStructureForm(false);
-      setEditingStructure(null);
-      fetchStructures();
-    } catch (error) {
-      setToast({ message: 'Failed to save salary structure', type: 'error' });
-    }
-  };
 
   const handleCreatePayroll = async () => {
     if (!newPayroll.payroll_month || !newPayroll.start_date || !newPayroll.end_date) {
-      setToast({ message: 'All fields are required', type: 'error' });
+      toast.error('All fields are required');
       return;
     }
 
@@ -131,12 +92,12 @@ export default function PayrollManagementPage() {
 
       if (!response.ok) throw new Error('Failed to create payroll run');
 
-      setToast({ message: 'Payroll run created', type: 'success' });
+      toast.success('Payroll run created');
       setShowPayrollForm(false);
       setNewPayroll({ payroll_month: '', start_date: '', end_date: '' });
       fetchPayrollRuns();
     } catch (error) {
-      setToast({ message: 'Failed to create payroll run', type: 'error' });
+      toast.error('Failed to create payroll run');
     }
   };
 
@@ -148,10 +109,10 @@ export default function PayrollManagementPage() {
 
       if (!response.ok) throw new Error('Failed to process payroll');
 
-      setToast({ message: 'Payroll processed successfully', type: 'success' });
+      toast.success('Payroll processed successfully');
       fetchPayrollRuns();
     } catch (error) {
-      setToast({ message: 'Failed to process payroll', type: 'error' });
+      toast.error('Failed to process payroll');
     }
   };
 
@@ -163,10 +124,10 @@ export default function PayrollManagementPage() {
 
       if (!response.ok) throw new Error('Failed to approve payroll');
 
-      setToast({ message: 'Payroll approved', type: 'success' });
+      toast.success('Payroll approved');
       fetchPayrollRuns();
     } catch (error) {
-      setToast({ message: 'Failed to approve payroll', type: 'error' });
+      toast.error('Failed to approve payroll');
     }
   };
 
@@ -188,7 +149,6 @@ export default function PayrollManagementPage() {
   if (activeTab === 'structures') {
     return (
       <div className="min-h-screen bg-gray-50 p-8">
-        {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
         <div className="max-w-7xl mx-auto">
           <div className="flex justify-between items-center mb-8">
@@ -278,7 +238,6 @@ export default function PayrollManagementPage() {
   // Payroll Runs Tab
   return (
     <div className="min-h-screen bg-gray-50 p-8">
-      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
       <div className="max-w-7xl mx-auto">
         <div className="flex justify-between items-center mb-8">

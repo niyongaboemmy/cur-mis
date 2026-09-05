@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, Edit2, CheckCircle, AlertCircle, Clock, XCircle, Calendar } from 'lucide-react';
-import Toast from '../../components/common/Toast';
+import toast from 'react-hot-toast';
 
 interface Contract {
   id: number;
@@ -19,13 +19,6 @@ interface Contract {
   renewal_status: string;
 }
 
-interface ContractType {
-  id: number;
-  name: string;
-  code: string;
-  default_duration_days: number;
-  renewal_notice_days: number;
-}
 
 interface ContractSummary {
   active_contracts: number;
@@ -38,7 +31,6 @@ export default function ContractManagementPage() {
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [summary, setSummary] = useState<ContractSummary | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [activeFilter, setActiveFilter] = useState<'all' | 'active' | 'renewal' | 'expiring' | 'expired'>('all');
   const [selectedContract, setSelectedContract] = useState<Contract | null>(null);
   const [showRenewModal, setShowRenewModal] = useState(false);
@@ -56,7 +48,7 @@ export default function ContractManagementPage() {
       const data = await response.json();
       setContracts(data.data);
     } catch (error) {
-      setToast({ message: 'Failed to load contracts', type: 'error' });
+      toast.error('Failed to load contracts');
     } finally {
       setIsLoading(false);
     }
@@ -75,7 +67,7 @@ export default function ContractManagementPage() {
 
   const handleRenewContract = async () => {
     if (!selectedContract || !renewData.new_end_date) {
-      setToast({ message: 'Please enter new end date', type: 'error' });
+      toast.error('Please enter new end date');
       return;
     }
 
@@ -88,14 +80,14 @@ export default function ContractManagementPage() {
 
       if (!response.ok) throw new Error('Failed to renew contract');
 
-      setToast({ message: 'Contract renewed successfully', type: 'success' });
+      toast.success('Contract renewed successfully');
       setShowRenewModal(false);
       setSelectedContract(null);
       setRenewData({ new_end_date: '' });
       fetchContracts();
       fetchSummary();
     } catch (error) {
-      setToast({ message: 'Failed to renew contract', type: 'error' });
+      toast.error('Failed to renew contract');
     }
   };
 
@@ -131,7 +123,6 @@ export default function ContractManagementPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
-      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
       <div className="max-w-7xl mx-auto">
         {/* Header */}
