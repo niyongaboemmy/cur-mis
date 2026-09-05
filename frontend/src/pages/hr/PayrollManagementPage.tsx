@@ -41,9 +41,6 @@ export default function PayrollManagementPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [showPayrollForm, setShowPayrollForm] = useState(false);
   const [newPayroll, setNewPayroll] = useState({ payroll_month: '', start_date: '', end_date: '' });
-  const [activeTab, setActiveTab] = useState<'structures' | 'runs'>('structures');
-  const [showStructureForm, setShowStructureForm] = useState(false);
-  const [editingStructure, setEditingStructure] = useState<SalaryStructure | null>(null);
 
   useEffect(() => {
     fetchStructures();
@@ -103,7 +100,7 @@ export default function PayrollManagementPage() {
 
   const handleProcessPayroll = async (runId: number) => {
     try {
-      const response = await fetch(`/api/hr/payroll/runs/${runId}/process`, {
+      const response = await fetch(`/hr/payroll/runs/${runId}/process`, {
         method: 'POST'
       });
 
@@ -118,7 +115,7 @@ export default function PayrollManagementPage() {
 
   const handleApprovePayroll = async (runId: number) => {
     try {
-      const response = await fetch(`/api/hr/payroll/runs/${runId}/approve`, {
+      const response = await fetch(`/hr/payroll/runs/${runId}/approve`, {
         method: 'POST'
       });
 
@@ -146,96 +143,6 @@ export default function PayrollManagementPage() {
     return `px-3 py-1 rounded-full text-sm font-medium ${colors[status] || 'bg-gray-100 text-gray-800'}`;
   };
 
-  if (activeTab === 'structures') {
-    return (
-      <div className="min-h-screen bg-gray-50 p-8">
-
-        <div className="max-w-7xl mx-auto">
-          <div className="flex justify-between items-center mb-8">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Salary Structures</h1>
-              <p className="text-gray-600 mt-2">Manage salary components and structures</p>
-            </div>
-            <button
-              onClick={() => {
-                setEditingStructure(null);
-                setShowStructureForm(true);
-              }}
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center gap-2"
-            >
-              <Plus className="w-5 h-5" />
-              New Structure
-            </button>
-          </div>
-
-          {isLoading ? (
-            <div className="text-center py-12">
-              <div className="inline-block animate-spin">
-                <div className="w-8 h-8 border-4 border-gray-200 border-t-blue-600 rounded-full"></div>
-              </div>
-            </div>
-          ) : (
-            <div className="grid gap-6">
-              {structures.map((structure) => (
-                <div key={structure.id} className="bg-white rounded-lg shadow-lg p-6">
-                  <div className="flex justify-between items-start mb-4">
-                    <div>
-                      <h2 className="text-xl font-bold text-gray-900">{structure.name}</h2>
-                      {structure.description && (
-                        <p className="text-gray-600 text-sm mt-1">{structure.description}</p>
-                      )}
-                    </div>
-                    <button
-                      onClick={() => {
-                        setEditingStructure(structure);
-                        setShowStructureForm(true);
-                      }}
-                      className="text-blue-600 hover:text-blue-800"
-                    >
-                      <Edit2 className="w-5 h-5" />
-                    </button>
-                  </div>
-
-                  {structure.basic_salary_min || structure.basic_salary_max ? (
-                    <div className="mb-4 p-3 bg-gray-50 rounded">
-                      <p className="text-sm text-gray-600">
-                        Basic Salary Range: {structure.basic_salary_min ? formatCurrency(structure.basic_salary_min) : 'N/A'} - {structure.basic_salary_max ? formatCurrency(structure.basic_salary_max) : 'N/A'}
-                      </p>
-                    </div>
-                  ) : null}
-
-                  <div className="space-y-3">
-                    <h3 className="font-medium text-gray-900">Components:</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {structure.components.map((comp) => (
-                        <div key={comp.id} className="bg-gray-50 p-3 rounded border border-gray-200">
-                          <div className="flex justify-between items-center">
-                            <div>
-                              <p className="font-medium text-gray-900">{comp.component_name}</p>
-                              <p className="text-xs text-gray-600">{comp.component_type}</p>
-                            </div>
-                            <div className="text-right">
-                              {comp.is_percentage ? (
-                                <p className="font-bold text-gray-900">{comp.percentage}%</p>
-                              ) : (
-                                <p className="font-bold text-gray-900">{formatCurrency(comp.fixed_amount)}</p>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // Payroll Runs Tab
   return (
     <div className="min-h-screen bg-gray-50 p-8">
 
