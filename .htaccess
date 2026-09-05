@@ -12,8 +12,8 @@
     # Route ALL /api/* requests to api-router.php
     # This handles: /umis/api/*, /cur-mis/api/*, etc.
     # (api-router.php reads REQUEST_URI itself — no _route param needed.)
-    RewriteCond %{REQUEST_URI} /api/
-    RewriteRule ^(.*)api/(.*)$ /api-router.php [QSA,L]
+    RewriteCond %{REQUEST_URI} ^/umis/api/
+    RewriteRule ^umis/api/(.*)$ /api-router.php [QSA,L]
 
     # Route /cur-mis/api/* to api-router.php (for local development)
     RewriteRule ^cur-mis/api/(.*)$ cur-mis/api-router.php?_route=$1 [QSA,L]

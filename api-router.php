@@ -28,10 +28,11 @@ $request_method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
 // Debug logging (remove in production after verifying)
 error_log(sprintf(
-    '[API Router] %s %s from %s',
+    '[API Router] %s %s from %s | REQUEST_URI=%s',
     $request_method,
     $request_uri,
-    $_SERVER['REMOTE_ADDR'] ?? 'unknown'
+    $_SERVER['REMOTE_ADDR'] ?? 'unknown',
+    $_SERVER['REQUEST_URI'] ?? 'undefined'
 ));
 
 // Try multiple backend entry points to handle different server configs
