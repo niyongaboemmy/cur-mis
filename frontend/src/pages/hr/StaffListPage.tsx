@@ -8,7 +8,6 @@ import {
   Loader2,
   Mail,
   Phone,
-  Calendar,
   BadgeCheck,
   ArrowLeft,
   ArrowRight,

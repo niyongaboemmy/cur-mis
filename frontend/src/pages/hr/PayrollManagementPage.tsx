@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Edit2, Download, CheckCircle, AlertCircle, DollarSign } from 'lucide-react';
+import { Plus, Download, CheckCircle, AlertCircle, DollarSign } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface SalaryStructure {
@@ -36,29 +36,14 @@ interface PayrollRun {
 }
 
 export default function PayrollManagementPage() {
-  const [structures, setStructures] = useState<SalaryStructure[]>([]);
   const [payrollRuns, setPayrollRuns] = useState<PayrollRun[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showPayrollForm, setShowPayrollForm] = useState(false);
   const [newPayroll, setNewPayroll] = useState({ payroll_month: '', start_date: '', end_date: '' });
 
   useEffect(() => {
-    fetchStructures();
     fetchPayrollRuns();
   }, []);
-
-  const fetchStructures = async () => {
-    setIsLoading(true);
-    try {
-      const response = await fetch('/hr/payroll/structures');
-      const data = await response.json();
-      setStructures(data.data);
-    } catch (error) {
-      toast.error('Failed to load salary structures');
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const fetchPayrollRuns = async () => {
     setIsLoading(true);
