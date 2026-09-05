@@ -371,7 +371,7 @@ CREATE TABLE IF NOT EXISTS `certificate_requests` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- =========================================================================
--- PHASE 7: DATA POPULATION (13 salary components, 5 contract types, 5 certificate types)
+-- PHASE 7: COLUMN ENHANCEMENTS (no data insertion)
 -- =========================================================================
 
 -- Ensure salary_component_types has all required columns (add missing if needed)
@@ -379,130 +379,22 @@ ALTER TABLE `salary_component_types` ADD COLUMN IF NOT EXISTS `formula` varchar(
 ALTER TABLE `salary_component_types` ADD COLUMN IF NOT EXISTS `sort_order` int(11) DEFAULT 0;
 ALTER TABLE `salary_component_types` ADD COLUMN IF NOT EXISTS `component_type` enum('Earnings','Deduction','Statutory') DEFAULT 'Earnings';
 
--- Insert 13 Salary Component Types
-INSERT INTO `salary_component_types` (`code`, `name`, `description`, `component_type`, `is_taxable`, `is_mandatory`, `sort_order`, `is_active`, `formula`, `created_at`, `updated_at`) VALUES
-('BASIC', 'Basic Salary', 'Base salary', 'Earnings', 1, 1, 1, 1, NULL, NOW(), NOW()) ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `description`=VALUES(`description`), `component_type`=VALUES(`component_type`), `updated_at`=NOW();
-
-INSERT INTO `salary_component_types` (`code`, `name`, `description`, `component_type`, `is_taxable`, `is_mandatory`, `sort_order`, `is_active`, `formula`, `created_at`, `updated_at`) VALUES
-('HOUSING', 'Housing Allowance', 'Housing allowance', 'Earnings', 1, 0, 2, 1, NULL, NOW(), NOW()) ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `description`=VALUES(`description`), `component_type`=VALUES(`component_type`), `updated_at`=NOW();
-
-INSERT INTO `salary_component_types` (`code`, `name`, `description`, `component_type`, `is_taxable`, `is_mandatory`, `sort_order`, `is_active`, `formula`, `created_at`, `updated_at`) VALUES
-('TRANSPORT', 'Transport Allowance', 'Transport allowance', 'Earnings', 1, 0, 3, 1, NULL, NOW(), NOW()) ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `description`=VALUES(`description`), `component_type`=VALUES(`component_type`), `updated_at`=NOW();
-
-INSERT INTO `salary_component_types` (`code`, `name`, `description`, `component_type`, `is_taxable`, `is_mandatory`, `sort_order`, `is_active`, `formula`, `created_at`, `updated_at`) VALUES
-('MEALS', 'Meals Allowance', 'Meals allowance', 'Earnings', 0, 0, 4, 1, NULL, NOW(), NOW()) ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `description`=VALUES(`description`), `component_type`=VALUES(`component_type`), `updated_at`=NOW();
-
-INSERT INTO `salary_component_types` (`code`, `name`, `description`, `component_type`, `is_taxable`, `is_mandatory`, `sort_order`, `is_active`, `formula`, `created_at`, `updated_at`) VALUES
-('TELEPHONE', 'Telephone Allowance', 'Telephone allowance', 'Earnings', 0, 0, 5, 1, NULL, NOW(), NOW()) ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `description`=VALUES(`description`), `component_type`=VALUES(`component_type`), `updated_at`=NOW();
-
-INSERT INTO `salary_component_types` (`code`, `name`, `description`, `component_type`, `is_taxable`, `is_mandatory`, `sort_order`, `is_active`, `formula`, `created_at`, `updated_at`) VALUES
-('UTILITIES', 'Utilities Allowance', 'Utilities allowance', 'Earnings', 0, 0, 6, 1, NULL, NOW(), NOW()) ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `description`=VALUES(`description`), `component_type`=VALUES(`component_type`), `updated_at`=NOW();
-
-INSERT INTO `salary_component_types` (`code`, `name`, `description`, `component_type`, `is_taxable`, `is_mandatory`, `sort_order`, `is_active`, `formula`, `created_at`, `updated_at`) VALUES
-('INSURANCE', 'Insurance', 'Health insurance', 'Deduction', 0, 0, 7, 1, NULL, NOW(), NOW()) ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `description`=VALUES(`description`), `component_type`=VALUES(`component_type`), `updated_at`=NOW();
-
-INSERT INTO `salary_component_types` (`code`, `name`, `description`, `component_type`, `is_taxable`, `is_mandatory`, `sort_order`, `is_active`, `formula`, `created_at`, `updated_at`) VALUES
-('PENSION', 'Pension Contribution', 'Pension fund', 'Deduction', 0, 1, 8, 1, NULL, NOW(), NOW()) ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `description`=VALUES(`description`), `component_type`=VALUES(`component_type`), `updated_at`=NOW();
-
-INSERT INTO `salary_component_types` (`code`, `name`, `description`, `component_type`, `is_taxable`, `is_mandatory`, `sort_order`, `is_active`, `formula`, `created_at`, `updated_at`) VALUES
-('WELLNESS', 'Wellness Fund', 'Wellness fund', 'Deduction', 0, 0, 9, 1, NULL, NOW(), NOW()) ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `description`=VALUES(`description`), `component_type`=VALUES(`component_type`), `updated_at`=NOW();
-
-INSERT INTO `salary_component_types` (`code`, `name`, `description`, `component_type`, `is_taxable`, `is_mandatory`, `sort_order`, `is_active`, `formula`, `created_at`, `updated_at`) VALUES
-('CHILDREN_ALLOWANCE', 'Children Allowance', 'Children allowance', 'Earnings', 1, 0, 10, 1, NULL, NOW(), NOW()) ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `description`=VALUES(`description`), `component_type`=VALUES(`component_type`), `updated_at`=NOW();
-
-INSERT INTO `salary_component_types` (`code`, `name`, `description`, `component_type`, `is_taxable`, `is_mandatory`, `sort_order`, `is_active`, `formula`, `created_at`, `updated_at`) VALUES
-('PERFORMANCE_BONUS', 'Performance Bonus', 'Performance bonus', 'Earnings', 1, 0, 11, 1, NULL, NOW(), NOW()) ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `description`=VALUES(`description`), `component_type`=VALUES(`component_type`), `updated_at`=NOW();
-
-INSERT INTO `salary_component_types` (`code`, `name`, `description`, `component_type`, `is_taxable`, `is_mandatory`, `sort_order`, `is_active`, `formula`, `created_at`, `updated_at`) VALUES
-('LEAVE_SETTLEMENT', 'Leave Settlement', 'Leave settlement', 'Earnings', 1, 0, 12, 1, NULL, NOW(), NOW()) ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `description`=VALUES(`description`), `component_type`=VALUES(`component_type`), `updated_at`=NOW();
-
-INSERT INTO `salary_component_types` (`code`, `name`, `description`, `component_type`, `is_taxable`, `is_mandatory`, `sort_order`, `is_active`, `formula`, `created_at`, `updated_at`) VALUES
-('OTHER', 'Other', 'Other components', 'Earnings', 1, 0, 13, 1, NULL, NOW(), NOW()) ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `description`=VALUES(`description`), `component_type`=VALUES(`component_type`), `updated_at`=NOW();
-
 -- Ensure contract_types table has all required columns
-ALTER TABLE `contract_types` ADD COLUMN IF NOT EXISTS `code` varchar(20) NOT NULL UNIQUE;
+ALTER TABLE `contract_types` ADD COLUMN IF NOT EXISTS `code` varchar(20) DEFAULT NULL UNIQUE;
 ALTER TABLE `contract_types` ADD COLUMN IF NOT EXISTS `default_duration_days` int(11) DEFAULT NULL;
 ALTER TABLE `contract_types` ADD COLUMN IF NOT EXISTS `renewal_notice_days` int(11) DEFAULT 30;
 ALTER TABLE `contract_types` ADD COLUMN IF NOT EXISTS `sort_order` int(11) DEFAULT 0;
 
--- Insert 5 Contract Types
-INSERT INTO `contract_types` (`code`, `name`, `description`, `default_duration_days`, `is_renewable`, `renewal_notice_days`, `sort_order`, `is_active`, `created_at`, `updated_at`) VALUES
-('PROBATION', 'Probation 90 Days', 'Probation contract for 90 days', 90, 0, 30, 1, 1, NOW(), NOW()) ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `description`=VALUES(`description`), `updated_at`=NOW();
-
-INSERT INTO `contract_types` (`code`, `name`, `description`, `default_duration_days`, `is_renewable`, `renewal_notice_days`, `sort_order`, `is_active`, `created_at`, `updated_at`) VALUES
-('TEMPORAL_3M', 'Temporal 3 Months', 'Temporal contract for 3 months', 90, 1, 30, 2, 1, NOW(), NOW()) ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `description`=VALUES(`description`), `updated_at`=NOW();
-
-INSERT INTO `contract_types` (`code`, `name`, `description`, `default_duration_days`, `is_renewable`, `renewal_notice_days`, `sort_order`, `is_active`, `created_at`, `updated_at`) VALUES
-('TEMPORAL_1Y', 'Temporal 1 Year', 'Temporal contract for 1 year', 365, 1, 30, 3, 1, NOW(), NOW()) ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `description`=VALUES(`description`), `updated_at`=NOW();
-
-INSERT INTO `contract_types` (`code`, `name`, `description`, `default_duration_days`, `is_renewable`, `renewal_notice_days`, `sort_order`, `is_active`, `created_at`, `updated_at`) VALUES
-('PARTTIME', 'Part-time', 'Part-time employment contract', NULL, 1, 30, 4, 1, NOW(), NOW()) ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `description`=VALUES(`description`), `updated_at`=NOW();
-
-INSERT INTO `contract_types` (`code`, `name`, `description`, `default_duration_days`, `is_renewable`, `renewal_notice_days`, `sort_order`, `is_active`, `created_at`, `updated_at`) VALUES
-('FULLTIME_INDEFINITE', 'Full-time Indefinite', 'Full-time indefinite employment contract', NULL, 0, 0, 5, 1, NOW(), NOW()) ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `description`=VALUES(`description`), `updated_at`=NOW();
-
 -- Ensure certificate_types table has all required columns
-ALTER TABLE `certificate_types` ADD COLUMN IF NOT EXISTS `code` varchar(20) NOT NULL UNIQUE;
+ALTER TABLE `certificate_types` ADD COLUMN IF NOT EXISTS `code` varchar(20) DEFAULT NULL UNIQUE;
 ALTER TABLE `certificate_types` ADD COLUMN IF NOT EXISTS `requires_approval` tinyint(1) DEFAULT 1;
 ALTER TABLE `certificate_types` ADD COLUMN IF NOT EXISTS `sort_order` int(11) DEFAULT 0;
-
--- Insert 5 Certificate Types
-INSERT INTO `certificate_types` (`code`, `name`, `description`, `requires_approval`, `is_active`, `sort_order`, `created_at`, `updated_at`) VALUES
-('SALARY_CERT', 'Salary Certificate', 'Certificate confirming employee salary', 1, 1, 1, NOW(), NOW()) ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `description`=VALUES(`description`), `updated_at`=NOW();
-
-INSERT INTO `certificate_types` (`code`, `name`, `description`, `requires_approval`, `is_active`, `sort_order`, `created_at`, `updated_at`) VALUES
-('SERVICE_CERT', 'Service Certificate', 'Certificate confirming years of service', 1, 1, 2, NOW(), NOW()) ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `description`=VALUES(`description`), `updated_at`=NOW();
-
-INSERT INTO `certificate_types` (`code`, `name`, `description`, `requires_approval`, `is_active`, `sort_order`, `created_at`, `updated_at`) VALUES
-('PROMOTION', 'Promotions Certificate', 'Certificate confirming employee promotion', 1, 1, 3, NOW(), NOW()) ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `description`=VALUES(`description`), `updated_at`=NOW();
-
-INSERT INTO `certificate_types` (`code`, `name`, `description`, `requires_approval`, `is_active`, `sort_order`, `created_at`, `updated_at`) VALUES
-('DISCIPLINARY', 'Disciplinary Certificate', 'Certificate relating to disciplinary action', 1, 1, 4, NOW(), NOW()) ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `description`=VALUES(`description`), `updated_at`=NOW();
-
-INSERT INTO `certificate_types` (`code`, `name`, `description`, `requires_approval`, `is_active`, `sort_order`, `created_at`, `updated_at`) VALUES
-('OTHER', 'Other Certificate', 'Other certificate types', 0, 1, 5, NOW(), NOW()) ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `description`=VALUES(`description`), `updated_at`=NOW();
-
--- =========================================================================
--- PHASE 8: INTEGRATION WITH HR_EMPLOYEES (15 employees)
--- =========================================================================
-
--- Create employee profiles for all hr_employees
-INSERT IGNORE INTO `employee_profiles` (user_id, gender, nationality, created_at, updated_at)
-SELECT he.id, 'M', 'Rwandan', NOW(), NOW()
-FROM `hr_employees` he
-WHERE he.id NOT IN (SELECT user_id FROM `employee_profiles`)
-LIMIT 15;
-
--- Create financial info for all hr_employees
-INSERT IGNORE INTO `employee_financial_info` (user_id, rssb_number, tax_number, bank_name, created_at, updated_at)
-SELECT he.id, he.rssb_number, NULL, he.bank, NOW(), NOW()
-FROM `hr_employees` he
-WHERE he.id NOT IN (SELECT user_id FROM `employee_financial_info`)
-LIMIT 15;
-
--- Create leave balances (15 employees × 6 leave types = 90 records)
-INSERT IGNORE INTO `leave_balances` (employee_id, leave_type_id, year, total_days, used_days, created_at, updated_at)
-SELECT he.id, lt.id, YEAR(NOW()), lt.days_allowed, 0, NOW(), NOW()
-FROM `hr_employees` he
-CROSS JOIN `leave_types` lt
-WHERE lt.id <= 6
-AND he.id NOT IN (SELECT DISTINCT employee_id FROM `leave_balances` WHERE YEAR = YEAR(NOW()));
-
--- Create contracts for all hr_employees (active contracts)
-INSERT IGNORE INTO `employee_contracts` (
-  user_id, contract_type_id, start_date, position_title, status, created_at, updated_at
-)
-SELECT he.id, ct.id, he.start_date, he.position, 'Active', NOW(), NOW()
-FROM `hr_employees` he
-CROSS JOIN `contract_types` ct
-WHERE ct.code = 'FULLTIME_INDEFINITE'
-AND he.id NOT IN (SELECT DISTINCT user_id FROM `employee_contracts` WHERE status = 'Active')
-LIMIT 15;
 
 -- =========================================================================
 -- VERIFICATION QUERIES (run these to verify successful migration)
 -- =========================================================================
 
+SELECT 'Tables Created' as status;
 SELECT 'leave_approval_history' as table_name, COUNT(*) as count FROM leave_approval_history;
 SELECT 'employee_profiles' as table_name, COUNT(*) as count FROM employee_profiles;
 SELECT 'employee_financial_info' as table_name, COUNT(*) as count FROM employee_financial_info;
@@ -524,11 +416,6 @@ SET FOREIGN_KEY_CHECKS = 1;
 
 -- =========================================================================
 -- MIGRATION COMPLETE
--- All HR module tables, columns, and initial data have been successfully created
--- Expected counts:
--- - salary_component_types: 13
--- - contract_types: 5
--- - certificate_types: 5
--- - leave_balances: 90+ (15 employees × 6 leave types)
--- - employee_contracts: 15+
+-- All HR module tables and columns have been successfully created/enhanced
+-- Data from existing tables (salary_component_types, contract_types, certificate_types, etc.) will be used
 -- =========================================================================
