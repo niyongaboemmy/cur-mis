@@ -2,26 +2,6 @@ import { useState, useEffect } from 'react';
 import { Plus, Download, CheckCircle, AlertCircle, DollarSign } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-interface SalaryStructure {
-  id: number;
-  name: string;
-  description: string;
-  applicable_level: string;
-  basic_salary_min: number;
-  basic_salary_max: number;
-  components: SalaryComponent[];
-}
-
-interface SalaryComponent {
-  id: number;
-  component_name: string;
-  component_code: string;
-  component_type: string;
-  percentage: number | null;
-  fixed_amount: number | null;
-  is_percentage: boolean;
-}
-
 interface PayrollRun {
   id: number;
   payroll_month: string;
