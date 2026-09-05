@@ -484,17 +484,22 @@ function AllTab({ stats }: { stats: HrStats | null }) {
               <table className="data-table">
                 <thead>
                   <tr>
-                    <SortableHeader label="Employee" field="full_name" currentSort={sort_by} currentDir={sort_dir} onSort={handleSort} />
-                    <SortableHeader label="Code" field="emp_code" currentSort={sort_by} currentDir={sort_dir} onSort={handleSort} />
-                    <SortableHeader label="Department / Role" field="department" currentSort={sort_by} currentDir={sort_dir} onSort={handleSort} />
-                    <SortableHeader label="Contract" field="contract_type" currentSort={sort_by} currentDir={sort_dir} onSort={handleSort} />
-                    <SortableHeader label="Contact" field="email" currentSort={sort_by} currentDir={sort_dir} onSort={handleSort} />
-                    <SortableHeader label="Status" field="status" currentSort={sort_by} currentDir={sort_dir} onSort={handleSort} />
+                    <th className="w-12">NO</th>
+                    <SortableHeader label="NAMES" field="full_name" currentSort={sort_by} currentDir={sort_dir} onSort={handleSort} />
+                    <SortableHeader label="GENDER" field="gender" currentSort={sort_by} currentDir={sort_dir} onSort={handleSort} />
+                    <SortableHeader label="DEPARTMENT OR FACULTY" field="department" currentSort={sort_by} currentDir={sort_dir} onSort={handleSort} />
+                    <SortableHeader label="DEGREE" field="degree" currentSort={sort_by} currentDir={sort_dir} onSort={handleSort} />
+                    <SortableHeader label="AREA OF SPECIALIZATION" field="area_of_specialization" currentSort={sort_by} currentDir={sort_dir} onSort={handleSort} />
+                    <SortableHeader label="EMAIL" field="email" currentSort={sort_by} currentDir={sort_dir} onSort={handleSort} />
+                    <SortableHeader label="PHONE NUMBER" field="phone_number" currentSort={sort_by} currentDir={sort_dir} onSort={handleSort} />
+                    <SortableHeader label="RSSB NUMBER" field="rssb_number" currentSort={sort_by} currentDir={sort_dir} onSort={handleSort} />
+                    <SortableHeader label="ACCOUNT NUMBER" field="bank_account_number" currentSort={sort_by} currentDir={sort_dir} onSort={handleSort} />
+                    <SortableHeader label="EQUIVALENCE FOR THOSE STUDIED ABROAD" field="foreign_degree_equivalence" currentSort={sort_by} currentDir={sort_dir} onSort={handleSort} />
                     <th className="w-20"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((e) => <EmployeeRow key={e.id} e={e} />)}
+                  {rows.map((e, idx) => <EmployeeRow key={e.id} e={e} index={idx + 1} />)}
                 </tbody>
               </table>
             </div>
@@ -506,7 +511,7 @@ function AllTab({ stats }: { stats: HrStats | null }) {
   )
 }
 
-function EmployeeRow({ e }: { e: HrEmployee }) {
+function EmployeeRow({ e, index }: { e: HrEmployee; index: number }) {
   const qc = useQueryClient()
   const canManage = useAnyPermission([PERMISSIONS.MANAGE_HR_EMPLOYEES, PERMISSIONS.VIEW_HR_EMPLOYEES])
   const [editOpen, setEditOpen] = useState(false)
@@ -529,6 +534,7 @@ function EmployeeRow({ e }: { e: HrEmployee }) {
 
   return (
     <tr>
+      <td className="text-center text-[12px] font-semibold">{index}</td>
       <td>
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-md bg-brand/10 text-brand dark:bg-brand/25 dark:text-gold-400 flex items-center justify-center font-semibold text-[12px] shrink-0">
@@ -536,31 +542,23 @@ function EmployeeRow({ e }: { e: HrEmployee }) {
           </div>
           <div className="min-w-0">
             <p className="font-semibold text-ink-900 dark:text-ink-100 truncate">{e.full_name}</p>
-            <p className="text-[11.5px] text-ink-500 truncate">
-              {e.gender === 'M' ? 'Male' : e.gender === 'F' ? 'Female' : '—'}
-            </p>
           </div>
         </div>
       </td>
-      <td><span className="font-mono text-[12px]">{e.emp_code}</span></td>
+      <td><span className="text-[12px]">{e.gender === 'M' ? 'Male' : e.gender === 'F' ? 'Female' : '—'}</span></td>
+      <td><span className="text-[12px]">{e.department || '—'}</span></td>
+      <td><span className="text-[12px]">{e.degree || '—'}</span></td>
+      <td><span className="text-[12px]">{e.area_of_specialization || '—'}</span></td>
       <td>
-        <div>
-          <p className="text-[13px] text-ink-800 dark:text-ink-100">{e.department || '—'}</p>
-          <p className="text-[11.5px] text-ink-500">{e.position || '—'}</p>
-        </div>
+        {e.email && <span className="text-[12px] flex items-center gap-1"><Mail className="w-3 h-3 shrink-0" /> {e.email}</span>}
+        {!e.email && <span className="text-[12px] text-ink-400">—</span>}
       </td>
+      <td><span className="text-[12px]">{e.phone_number || '—'}</span></td>
+      <td><span className="text-[12px] font-mono">{e.rssb_number || '—'}</span></td>
+      <td><span className="text-[12px] font-mono">{e.bank_account_number || '—'}</span></td>
+      <td><span className="text-[12px]">{e.foreign_degree_equivalence || '—'}</span></td>
       <td>
         <div className="flex flex-col gap-0.5">
-          <span className="text-[12.5px] text-ink-700 dark:text-ink-200">{e.contract_type || '—'}</span>
-          <span className="text-[11px] text-ink-500 flex items-center gap-1">
-            <Calendar className="w-3 h-3" />
-            {e.start_date || '—'} → {e.end_date || 'open'}
-          </span>
-        </div>
-      </td>
-      <td>
-        <div className="flex flex-col gap-0.5">
-          {e.email && <span className="text-[12.5px] flex items-center gap-1 text-ink-700 dark:text-ink-200"><Mail className="w-3 h-3 shrink-0" /> {e.email}</span>}
           {e.phone && <span className="text-[12px] flex items-center gap-1 text-ink-500"><Phone className="w-3 h-3 shrink-0" /> {e.phone}</span>}
           {!e.email && !e.phone && <span className="text-ink-400">—</span>}
         </div>
