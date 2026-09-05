@@ -34,7 +34,7 @@ $router->group('/api/hr', function ($router) {
 
     // ── Process Import ────────────────────────────────────────────────────────
     $router->post('/import/process', [HRImportExportController::class, 'processImport'], [
-        AuthMiddleware::class, CanMiddleware::class . ':MANAGE_HR_MODULE'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
     // ── Export Data ───────────────────────────────────────────────────────────
@@ -56,56 +56,56 @@ $router->group('/api/hr', function ($router) {
     ]);
 
     $router->get('/leave/types/:id/stages', [LeaveApprovalController::class, 'stages'], [
-        AuthMiddleware::class, CanMiddleware::class . ':MANAGE_LEAVE_REQUESTS'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
     $router->post('/leave/types/:id/stages', [LeaveApprovalController::class, 'saveStages'], [
-        AuthMiddleware::class, CanMiddleware::class . ':MANAGE_LEAVE_REQUESTS'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
     // ── Payroll Routes ───────────────────────────────────────────────────────
     $router->get('/payroll/structures', [PayrollController::class, 'getStructures'], [
-        AuthMiddleware::class, CanMiddleware::class . ':VIEW_PAYROLL'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
     $router->get('/payroll/structures/:id', [PayrollController::class, 'getStructure'], [
-        AuthMiddleware::class, CanMiddleware::class . ':VIEW_PAYROLL'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
     $router->post('/payroll/structures', [PayrollController::class, 'saveStructure'], [
-        AuthMiddleware::class, CanMiddleware::class . ':MANAGE_PAYROLL'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
     $router->get('/payroll/employee/:userId/salary', [PayrollController::class, 'getEmployeeSalary'], [
-        AuthMiddleware::class, CanMiddleware::class . ':VIEW_PAYROLL'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
     $router->post('/payroll/employee/:userId/salary', [PayrollController::class, 'assignEmployeeSalary'], [
-        AuthMiddleware::class, CanMiddleware::class . ':MANAGE_PAYROLL'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
     $router->get('/payroll/runs', [PayrollController::class, 'getPayrollRuns'], [
-        AuthMiddleware::class, CanMiddleware::class . ':VIEW_PAYROLL'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
     $router->get('/payroll/runs/:id', [PayrollController::class, 'getPayrollRun'], [
-        AuthMiddleware::class, CanMiddleware::class . ':VIEW_PAYROLL'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
     $router->post('/payroll/runs', [PayrollController::class, 'createPayrollRun'], [
-        AuthMiddleware::class, CanMiddleware::class . ':MANAGE_PAYROLL'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
     $router->post('/payroll/runs/:id/process', [PayrollController::class, 'processPayrollRun'], [
-        AuthMiddleware::class, CanMiddleware::class . ':MANAGE_PAYROLL'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
     $router->post('/payroll/runs/:id/approve', [PayrollController::class, 'approvePayrollRun'], [
-        AuthMiddleware::class, CanMiddleware::class . ':MANAGE_PAYROLL'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
     $router->post('/payroll/runs/:id/mark-paid', [PayrollController::class, 'markPayrollPaid'], [
-        AuthMiddleware::class, CanMiddleware::class . ':MANAGE_PAYROLL'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
     $router->get('/payroll/component-types', [PayrollController::class, 'getComponentTypes'], [
@@ -114,27 +114,27 @@ $router->group('/api/hr', function ($router) {
 
     // ── Contract Routes ──────────────────────────────────────────────────────
     $router->get('/contracts', [ContractController::class, 'getContracts'], [
-        AuthMiddleware::class, CanMiddleware::class . ':VIEW_HR_EMPLOYEES'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
     $router->get('/contracts/:id', [ContractController::class, 'getContract'], [
-        AuthMiddleware::class, CanMiddleware::class . ':VIEW_HR_EMPLOYEES'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
     $router->post('/contracts', [ContractController::class, 'saveContract'], [
-        AuthMiddleware::class, CanMiddleware::class . ':MANAGE_HR_EMPLOYEES'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
     $router->post('/contracts/:id/approve', [ContractController::class, 'approveContract'], [
-        AuthMiddleware::class, CanMiddleware::class . ':MANAGE_HR_EMPLOYEES'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
     $router->post('/contracts/:id/renew', [ContractController::class, 'renewContract'], [
-        AuthMiddleware::class, CanMiddleware::class . ':MANAGE_HR_EMPLOYEES'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
     $router->post('/contracts/:id/terminate', [ContractController::class, 'terminateContract'], [
-        AuthMiddleware::class, CanMiddleware::class . ':MANAGE_HR_EMPLOYEES'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
     $router->get('/contracts/types', [ContractController::class, 'getContractTypes'], [
@@ -142,36 +142,36 @@ $router->group('/api/hr', function ($router) {
     ]);
 
     $router->get('/contracts/renewal/pending', [ContractController::class, 'getPendingRenewals'], [
-        AuthMiddleware::class, CanMiddleware::class . ':MANAGE_HR_EMPLOYEES'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
     $router->get('/contracts/expired', [ContractController::class, 'getExpiredContracts'], [
-        AuthMiddleware::class, CanMiddleware::class . ':MANAGE_HR_EMPLOYEES'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
     $router->get('/contracts/employee/:userId', [ContractController::class, 'getEmployeeContract'], [
-        AuthMiddleware::class, CanMiddleware::class . ':VIEW_HR_EMPLOYEES'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
     $router->get('/contracts/employee/:userId/history', [ContractController::class, 'getEmployeeContractHistory'], [
-        AuthMiddleware::class, CanMiddleware::class . ':VIEW_HR_EMPLOYEES'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
     $router->get('/contracts/summary', [ContractController::class, 'getContractSummary'], [
-        AuthMiddleware::class, CanMiddleware::class . ':MANAGE_HR_EMPLOYEES'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
     // ── Report Routes ────────────────────────────────────────────────────────
     $router->get('/reports/employee-master-list', [ReportController::class, 'generateEmployeeMasterListPDF'], [
-        AuthMiddleware::class, CanMiddleware::class . ':VIEW_HR_EMPLOYEES'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
     $router->get('/reports/payroll/:payrollRunId', [ReportController::class, 'generatePayrollSummaryPDF'], [
-        AuthMiddleware::class, CanMiddleware::class . ':VIEW_PAYROLL'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
     $router->get('/reports/leave/:leaveRequestId', [ReportController::class, 'generateLeaveRequestPDF'], [
-        AuthMiddleware::class, CanMiddleware::class . ':VIEW_LEAVE_REQUESTS'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
     $router->post('/reports/salary-certificate', [ReportController::class, 'generateSalaryCertificatePDF'], [
@@ -183,52 +183,53 @@ $router->group('/api/hr', function ($router) {
     ]);
 
     $router->get('/reports/contract/:contractId', [ReportController::class, 'generateContractSummaryPDF'], [
-        AuthMiddleware::class, CanMiddleware::class . ':VIEW_HR_EMPLOYEES'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
     $router->get('/reports/dashboard', [ReportController::class, 'generateHRDashboardReportPDF'], [
-        AuthMiddleware::class, CanMiddleware::class . ':MANAGE_HR_EMPLOYEES'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
     // ── Analytics Routes ─────────────────────────────────────────────────────
     $router->get('/employees/by-department', [HRAnalyticsController::class, 'getEmployeesByDepartment'], [
-        AuthMiddleware::class, CanMiddleware::class . ':VIEW_HR_EMPLOYEES'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
     $router->get('/leave/by-type', [HRAnalyticsController::class, 'getLeaveUsageByType'], [
-        AuthMiddleware::class, CanMiddleware::class . ':VIEW_LEAVE_REQUESTS'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
     $router->get('/payroll/trends', [HRAnalyticsController::class, 'getPayrollTrends'], [
-        AuthMiddleware::class, CanMiddleware::class . ':VIEW_PAYROLL'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
     $router->get('/leave/approval-metrics', [HRAnalyticsController::class, 'getLeaveApprovalMetrics'], [
-        AuthMiddleware::class, CanMiddleware::class . ':VIEW_LEAVE_REQUESTS'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
     $router->get('/analytics/contract-metrics', [HRAnalyticsController::class, 'getContractMetrics'], [
-        AuthMiddleware::class, CanMiddleware::class . ':VIEW_HR_EMPLOYEES'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
     $router->get('/analytics/payroll-metrics', [HRAnalyticsController::class, 'getPayrollMetrics'], [
-        AuthMiddleware::class, CanMiddleware::class . ':VIEW_PAYROLL'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
     $router->get('/analytics/salary-distribution', [HRAnalyticsController::class, 'getSalaryDistribution'], [
-        AuthMiddleware::class, CanMiddleware::class . ':VIEW_PAYROLL'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
     $router->get('/analytics/headcount-trend', [HRAnalyticsController::class, 'getHeadcountTrend'], [
-        AuthMiddleware::class, CanMiddleware::class . ':VIEW_HR_EMPLOYEES'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
     $router->get('/analytics/contract-expiry-by-dept', [HRAnalyticsController::class, 'getContractExpiryByDepartment'], [
-        AuthMiddleware::class, CanMiddleware::class . ':MANAGE_HR_EMPLOYEES'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
     $router->get('/analytics/leave-balance-overview', [HRAnalyticsController::class, 'getLeaveBalanceOverview'], [
-        AuthMiddleware::class, CanMiddleware::class . ':VIEW_LEAVE_REQUESTS'
+        AuthMiddleware::class, CanMiddleware::class
     ]);
 
 });
+
