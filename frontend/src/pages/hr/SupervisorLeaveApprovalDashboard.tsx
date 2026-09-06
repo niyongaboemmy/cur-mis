@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { CheckCircle, XCircle, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { AxiosError } from 'axios';
+import { api } from '@/services/api';
 
 interface LeaveRequest {
   id: number;
@@ -72,17 +74,13 @@ export default function SupervisorLeaveApprovalDashboard() {
   const fetchQueue = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('/hr/leave/approvals/queue');
-      const data = await response.json();
-
-      if (!response.ok) {
-        toast.error(data.message || 'Failed to load queue');
-        return;
-      }
-
-      setQueue(data.data);
+      const res = await api.get<LeaveRequest[]>('/hr/leave/approvals/queue');
+      setQueue(res.data ?? []);
     } catch (error) {
-      toast.error('Failed to load approval queue');
+      const msg = error instanceof AxiosError
+        ? (error.response?.data?.message ?? 'Failed to load queue')
+        : 'Failed to load approval queue';
+      toast.error(msg);
     } finally {
       setIsLoading(false);
     }
@@ -91,15 +89,8 @@ export default function SupervisorLeaveApprovalDashboard() {
   const fetchProgress = async (requestId: number) => {
     setIsLoading(true);
     try {
-      const response = await fetch(`/api/hr/leave/requests/${requestId}/progress`);
-      const data = await response.json();
-
-      if (!response.ok) {
-        toast.error('Failed to load request details');
-        return;
-      }
-
-      setProgress(data.data);
+      const res = await api.get<ProgressView>(`/hr/leave/requests/${requestId}/progress`);
+      setProgress(res.data ?? null);
       setActiveView('details');
     } catch (error) {
       toast.error('Failed to load request details');
@@ -127,21 +118,10 @@ export default function SupervisorLeaveApprovalDashboard() {
         changes: 'changes_requested'
       };
 
-      const response = await fetch(`/api/hr/leave/approvals/${progress.id}/decide`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          decision: decisionMap[decision.action],
-          comment: decision.comment
-        })
+      await api.post(`/hr/leave/approvals/${progress.id}/decide`, {
+        decision: decisionMap[decision.action],
+        comment: decision.comment,
       });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        toast.error(data.message || 'Failed to record decision');
-        return;
-      }
 
       toast.success(`Leave request ${decision.action}d successfully`);
 
@@ -152,7 +132,10 @@ export default function SupervisorLeaveApprovalDashboard() {
       setDecision({ action: null, comment: '' });
 
     } catch (error) {
-      toast.error('Failed to record decision');
+      const msg = error instanceof AxiosError
+        ? (error.response?.data?.message ?? 'Failed to record decision')
+        : 'Failed to record decision';
+      toast.error(msg);
     } finally {
       setIsSubmitting(false);
     }

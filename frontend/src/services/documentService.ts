@@ -13,7 +13,7 @@ export type DocumentType =
   | 'degree_undergraduate'
 
 function base() {
-  return import.meta.env.VITE_API_URL ?? ''
+  return (import.meta.env.VITE_API_URL ?? '') + '/api'
 }
 
 function token() {

@@ -1,6 +1,22 @@
 import { useState } from 'react';
 import { Download, Upload, AlertCircle, CheckCircle, Loader } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { AxiosError } from 'axios';
+import { api, apiClient } from '@/services/api';
+
+const saveBlob = (blob: Blob, filename: string) => {
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(url);
+};
+
+const errMessage = (error: unknown, fallback: string) =>
+  error instanceof AxiosError ? (error.response?.data?.message ?? fallback) : fallback;
 
 interface ValidationResult {
   valid: boolean;
@@ -36,19 +52,8 @@ export default function HRImportExportPage() {
 
   const handleDownloadTemplate = async () => {
     try {
-      const response = await fetch(`/api/hr/import/template/${importType}`);
-      if (!response.ok) throw new Error('Failed to download template');
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `hr_template_${importType}.xlsx`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-
+      const res = await apiClient.get(`/hr/import/template/${importType}`, { responseType: 'blob' });
+      saveBlob(res.data, `hr_template_${importType}.xlsx`);
       toast.success('Template downloaded successfully');
     } catch (error) {
       toast.error('Failed to download template');
@@ -76,27 +81,16 @@ export default function HRImportExportPage() {
       formData.append('file', file);
       formData.append('import_type', importType);
 
-      const response = await fetch('/hr/import/validate', {
-        method: 'POST',
-        body: formData,
-      });
+      const res = await api.upload<ValidationResult>('/hr/import/validate', formData);
+      setValidationResult(res.data);
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        toast.error(data.message || 'Validation failed');
-        return;
-      }
-
-      setValidationResult(data.data);
-
-      if (data.data.valid) {
+      if (res.data?.valid) {
         toast.success('File validated successfully');
       } else {
-        toast.error(`Found ${data.data.errors.length} validation errors`);
+        toast.error(`Found ${res.data?.errors.length ?? 0} validation errors`);
       }
     } catch (error) {
-      toast.error('Validation failed');
+      toast.error(errMessage(error, 'Validation failed'));
     } finally {
       setIsValidating(false);
     }
@@ -114,29 +108,18 @@ export default function HRImportExportPage() {
       formData.append('file', file);
       formData.append('import_type', importType);
 
-      const response = await fetch('/hr/import/process', {
-        method: 'POST',
-        body: formData,
-      });
+      const res = await api.upload<ImportResult>('/hr/import/process', formData);
+      setImportResult(res.data);
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        toast.error(data.message || 'Import failed');
-        return;
-      }
-
-      setImportResult(data.data);
-
-      if (data.data.success) {
-        toast.success(`Import completed: ${data.data.imported} imported, ${data.data.updated} updated`);
+      if (res.data?.success) {
+        toast.success(`Import completed: ${res.data.imported} imported, ${res.data.updated} updated`);
         setFile(null);
         setValidationResult(null);
       } else {
         toast.error('Import failed');
       }
     } catch (error) {
-      toast.error('Import failed');
+      toast.error(errMessage(error, 'Import failed'));
     } finally {
       setIsImporting(false);
     }
@@ -144,19 +127,11 @@ export default function HRImportExportPage() {
 
   const handleExport = async () => {
     try {
-      const response = await fetch(`/api/hr/export/${importType}?format=xlsx`);
-      if (!response.ok) throw new Error('Export failed');
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `hr_export_${importType}_${new Date().toISOString().split('T')[0]}.xlsx`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-
+      const res = await apiClient.get(`/hr/export/${importType}`, {
+        params: { format: 'xlsx' },
+        responseType: 'blob',
+      });
+      saveBlob(res.data, `hr_export_${importType}_${new Date().toISOString().split('T')[0]}.xlsx`);
       toast.success('Data exported successfully');
     } catch (error) {
       toast.error('Export failed');

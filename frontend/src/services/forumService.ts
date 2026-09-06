@@ -1,7 +1,7 @@
 import { api } from '@/services/api'
 import { useAuthStore } from '@/store/authStore'
 
-const FORUM_API = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '')
+const FORUM_API = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '') + '/api'
 
 export type ForumAudience = 'all' | 'students' | 'staff' | 'faculty' | 'admin'
 

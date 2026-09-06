@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Edit2, CheckCircle, AlertCircle, Clock, XCircle, Calendar } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { api } from '@/services/api';
 
 interface Contract {
   id: number;
@@ -44,9 +45,8 @@ export default function ContractManagementPage() {
   const fetchContracts = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('/hr/contracts');
-      const data = await response.json();
-      setContracts(data.data);
+      const res = await api.get<Contract[]>('/hr/contracts');
+      setContracts(res.data ?? []);
     } catch (error) {
       toast.error('Failed to load contracts');
     } finally {
@@ -56,9 +56,8 @@ export default function ContractManagementPage() {
 
   const fetchSummary = async () => {
     try {
-      const response = await fetch('/hr/contracts/summary');
-      const data = await response.json();
-      setSummary(data.data);
+      const res = await api.get<ContractSummary>('/hr/contracts/summary');
+      setSummary(res.data ?? null);
     } catch (error) {
       // Silent fail
     }
@@ -72,13 +71,7 @@ export default function ContractManagementPage() {
     }
 
     try {
-      const response = await fetch(`/api/hr/contracts/${selectedContract.id}/renew`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(renewData)
-      });
-
-      if (!response.ok) throw new Error('Failed to renew contract');
+      await api.post(`/hr/contracts/${selectedContract.id}/renew`, renewData);
 
       toast.success('Contract renewed successfully');
       setShowRenewModal(false);

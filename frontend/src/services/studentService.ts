@@ -556,7 +556,7 @@ export const studentService = {
    *  (UTF-8 with BOM so Excel opens it correctly). */
   bulkUploadTemplateUrl: () => {
     const token = useAuthStore.getState().token
-    const base  = import.meta.env.VITE_API_URL ?? ''
+    const base  = (import.meta.env.VITE_API_URL ?? '') + '/api'
     return `${base}/students/bulk-upload-template?token=${token}`
   },
 
@@ -637,7 +637,7 @@ export const studentService = {
     format?:      ExportFormat
   }) => {
     const token = useAuthStore.getState().token
-    const base  = import.meta.env.VITE_API_URL ?? ''
+    const base  = (import.meta.env.VITE_API_URL ?? '') + '/api'
     const search = new URLSearchParams()
     if (params.template_id != null && params.template_id !== '') {
       search.set('template_id', String(params.template_id))
@@ -770,7 +770,7 @@ export const studentService = {
    *  Used by the synthetic Visa row in the Documents tab. */
   meVisaDocumentUrl: () => {
     const token = useAuthStore.getState().token
-    const base  = import.meta.env.VITE_API_URL ?? ''
+    const base  = (import.meta.env.VITE_API_URL ?? '') + '/api'
     return `${base}/students/me/visa/document?token=${token}`
   },
 
@@ -778,14 +778,14 @@ export const studentService = {
    *  visa document file. Requires VIEW_STUDENTS at the server. */
   visaDocumentUrl: (studentId: number | string) => {
     const token = useAuthStore.getState().token
-    const base  = import.meta.env.VITE_API_URL ?? ''
+    const base  = (import.meta.env.VITE_API_URL ?? '') + '/api'
     return `${base}/students/${studentId}/visa/document?token=${token}`
   },
 
   /** Self-service: tokenized download URL for one of the caller's own documents. */
   meDocumentDownloadUrl: (documentId: number | string) => {
     const token = useAuthStore.getState().token
-    const base  = import.meta.env.VITE_API_URL ?? ''
+    const base  = (import.meta.env.VITE_API_URL ?? '') + '/api'
     return `${base}/students/me/documents/${documentId}/download?token=${token}`
   },
 
@@ -811,13 +811,13 @@ export const studentService = {
    *  the student themselves and admin staff viewing a student's documents,
    *  since the token alone authorizes the download (no JWT required). */
   admissionLetterUrl: (letterToken: string) => {
-    const base = import.meta.env.VITE_API_URL ?? ''
+    const base = (import.meta.env.VITE_API_URL ?? '') + '/api'
     return `${base}/portal/admission-letter?token=${encodeURIComponent(letterToken)}`
   },
 
   documentDownloadUrl: (id: number | string, documentId: number | string) => {
     const token = useAuthStore.getState().token
-    const base  = import.meta.env.VITE_API_URL ?? ''
+    const base  = (import.meta.env.VITE_API_URL ?? '') + '/api'
     return `${base}/students/${id}/documents/${documentId}/download?token=${token}`
   },
 
@@ -828,7 +828,7 @@ export const studentService = {
   /** Direct CSV download URL for the curriculum + marks view. */
   programModulesExportUrl: (id: number | string) => {
     const token = useAuthStore.getState().token
-    const base  = import.meta.env.VITE_API_URL ?? ''
+    const base  = (import.meta.env.VITE_API_URL ?? '') + '/api'
     return `${base}/students/${id}/program-modules/export?token=${token}`
   },
 
@@ -922,7 +922,7 @@ export const studentService = {
     has_visa_document?: string
   } = {}) => {
     const token = useAuthStore.getState().token
-    const base  = import.meta.env.VITE_API_URL ?? ''
+    const base  = (import.meta.env.VITE_API_URL ?? '') + '/api'
     const search = new URLSearchParams()
     for (const [k, v] of Object.entries(params)) {
       if (v == null || v === '') continue
@@ -968,7 +968,7 @@ export const studentService = {
       return legacyPhotoUrl(photoValue)
     }
     const token = useAuthStore.getState().token
-    const base  = import.meta.env.VITE_API_URL ?? ''
+    const base  = (import.meta.env.VITE_API_URL ?? '') + '/api'
     const v     = cacheKey != null ? `&v=${encodeURIComponent(photoValue)}` : ''
     return `${base}/students/${id}/photo?token=${token}${v}`
   },
@@ -987,7 +987,7 @@ export const studentService = {
       return legacyPhotoUrl(photoValue)
     }
     const token = useAuthStore.getState().token
-    const base  = import.meta.env.VITE_API_URL ?? ''
+    const base  = (import.meta.env.VITE_API_URL ?? '') + '/api'
     const v     = cacheKey != null ? `&v=${encodeURIComponent(photoValue)}` : ''
     return `${base}/students/me/photo?token=${token}${v}`
   },

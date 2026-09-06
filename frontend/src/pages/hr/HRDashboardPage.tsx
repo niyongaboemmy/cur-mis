@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { Users, TrendingUp, Clock, AlertCircle, CheckCircle, DollarSign } from 'lucide-react';
+import { api } from '@/services/api';
 
 interface DashboardMetrics {
   total_employees: number;
@@ -43,32 +44,17 @@ export default function HRDashboardPage() {
   const fetchDashboardData = async () => {
     setIsLoading(true);
     try {
-      const [metricsRes, deptRes, leaveRes, payrollRes] = await Promise.all([
-        fetch('/hr/contracts/summary'),
-        fetch('/hr/employees/by-department'),
-        fetch('/hr/leave/by-type'),
-        fetch('/hr/payroll/trends'),
+      const [metricsRes, deptRes, leaveRes, payrollRes] = await Promise.allSettled([
+        api.get<DashboardMetrics>('/hr/contracts/summary'),
+        api.get<DepartmentData[]>('/hr/employees/by-department'),
+        api.get<LeaveData[]>('/hr/leave/by-type'),
+        api.get<PayrollData[]>('/hr/payroll/trends'),
       ]);
 
-      if (metricsRes.ok) {
-        const metricsData = await metricsRes.json();
-        setMetrics(metricsData.data);
-      }
-
-      if (deptRes.ok) {
-        const deptData = await deptRes.json();
-        setDepartmentData(deptData.data);
-      }
-
-      if (leaveRes.ok) {
-        const leaveResData = await leaveRes.json();
-        setLeaveData(leaveResData.data);
-      }
-
-      if (payrollRes.ok) {
-        const payrollResData = await payrollRes.json();
-        setPayrollData(payrollResData.data);
-      }
+      if (metricsRes.status === 'fulfilled') setMetrics(metricsRes.value.data ?? null);
+      if (deptRes.status === 'fulfilled') setDepartmentData(deptRes.value.data ?? []);
+      if (leaveRes.status === 'fulfilled') setLeaveData(leaveRes.value.data ?? []);
+      if (payrollRes.status === 'fulfilled') setPayrollData(payrollRes.value.data ?? []);
     } catch (error) {
       console.error('Failed to fetch dashboard data:', error);
     } finally {

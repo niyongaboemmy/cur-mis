@@ -3,7 +3,21 @@
 -- 'UNIVERSITY BUDGET 2024-2025' and 'UNIVERSITY BUDGET 2025-2026' Excel
 -- workbooks (template_docs/) into the schema created by migration 106.
 -- Source workbooks are reference-only and are removed after this import.
+--
+-- Wrapped in a stored procedure guarded on budget_plans.title so a re-run on a
+-- DB where the import already happened is a clean no-op instead of a duplicate-
+-- key error. MigrationService::splitStatements() is DELIMITER-aware.
 -- ══════════════════════════════════════════════════════════════════════════════
+
+DROP PROCEDURE IF EXISTS `_mig107_import_budget`;
+DELIMITER $$
+CREATE PROCEDURE `_mig107_import_budget`()
+BEGIN
+  IF EXISTS (SELECT 1 FROM `budget_plans`
+             WHERE `title` IN ('Financial Budget for Academic year 2024-2025',
+                               'Financial Budget for Academic year 2025-2026')) THEN
+    SELECT 'migration 107: budget plan data already imported — skipping' AS note;
+  ELSE
 
 INSERT INTO budget_plans (academic_year_id, title, student_count_budgeted) VALUES (1, 'Financial Budget for Academic year 2024-2025', 3997);
 SET @plan_2024 = LAST_INSERT_ID();
@@ -3152,4 +3166,11 @@ INSERT INTO budget_reference_rates (budget_plan_id, rate_group, label, value1, v
 INSERT INTO budget_reference_rates (budget_plan_id, rate_group, label, value1, value2, value3, sort_order) VALUES (@plan_2025, 'salary_structure', 'Administratif staff', 653976.130340004, NULL, NULL, 6);
 INSERT INTO budget_reference_rates (budget_plan_id, rate_group, label, value1, value2, value3, sort_order) VALUES (@plan_2025, 'salary_structure', 'Total Monthly Increase', 1547964.416054291, 1547964.41605429, NULL, 7);
 INSERT INTO budget_reference_rates (budget_plan_id, rate_group, label, value1, value2, value3, sort_order) VALUES (@plan_2025, 'salary_structure', 'Total annual increase in staff', 18575572.992651492, 18575573.0, NULL, 8);
+
+  END IF;
+END$$
+DELIMITER ;
+
+CALL `_mig107_import_budget`();
+DROP PROCEDURE `_mig107_import_budget`;
 

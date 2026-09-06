@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Download, CheckCircle, AlertCircle, DollarSign } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { api } from '@/services/api';
 
 interface PayrollRun {
   id: number;
@@ -28,9 +29,8 @@ export default function PayrollManagementPage() {
   const fetchPayrollRuns = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('/hr/payroll/runs');
-      const data = await response.json();
-      setPayrollRuns(data.data);
+      const res = await api.get<PayrollRun[]>('/hr/payroll/runs');
+      setPayrollRuns(res.data ?? []);
     } catch (error) {
       toast.error('Failed to load payroll runs');
     } finally {
@@ -46,13 +46,7 @@ export default function PayrollManagementPage() {
     }
 
     try {
-      const response = await fetch('/hr/payroll/runs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newPayroll)
-      });
-
-      if (!response.ok) throw new Error('Failed to create payroll run');
+      await api.post('/hr/payroll/runs', newPayroll);
 
       toast.success('Payroll run created');
       setShowPayrollForm(false);
@@ -65,11 +59,7 @@ export default function PayrollManagementPage() {
 
   const handleProcessPayroll = async (runId: number) => {
     try {
-      const response = await fetch(`/hr/payroll/runs/${runId}/process`, {
-        method: 'POST'
-      });
-
-      if (!response.ok) throw new Error('Failed to process payroll');
+      await api.post(`/hr/payroll/runs/${runId}/process`);
 
       toast.success('Payroll processed successfully');
       fetchPayrollRuns();
@@ -80,11 +70,7 @@ export default function PayrollManagementPage() {
 
   const handleApprovePayroll = async (runId: number) => {
     try {
-      const response = await fetch(`/hr/payroll/runs/${runId}/approve`, {
-        method: 'POST'
-      });
-
-      if (!response.ok) throw new Error('Failed to approve payroll');
+      await api.post(`/hr/payroll/runs/${runId}/approve`);
 
       toast.success('Payroll approved');
       fetchPayrollRuns();

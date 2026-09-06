@@ -232,7 +232,7 @@ export const applicationAdminService = {
 
   paymentSlipUrl: (id: number) => {
     const token = useAuthStore.getState().token;
-    const base = import.meta.env.VITE_API_URL ?? "";
+    const base = (import.meta.env.VITE_API_URL ?? "") + "/api";
     return `${base}/admin/applications/${id}/payment-slip?token=${token}`;
   },
 
@@ -242,14 +242,14 @@ export const applicationAdminService = {
   photoUrl: (id: number, photoCacheKey?: string | null) => {
     if (!photoCacheKey) return null;
     const token = useAuthStore.getState().token;
-    const base  = import.meta.env.VITE_API_URL ?? "";
+    const base  = (import.meta.env.VITE_API_URL ?? "") + "/api";
     const v     = `&v=${encodeURIComponent(String(photoCacheKey))}`;
     return `${base}/admin/applications/${id}/photo?token=${token}${v}`;
   },
 
   exportUrl: (queryString: string) => {
     const token = useAuthStore.getState().token;
-    const base = import.meta.env.VITE_API_URL ?? "";
+    const base = (import.meta.env.VITE_API_URL ?? "") + "/api";
     // Apply the global topbar campus scope to exports too, unless the
     // queryString already pins a campus_id.
     const params = new URLSearchParams(queryString);
@@ -265,7 +265,7 @@ export const applicationAdminService = {
   /** Task 1.12 — bulk applicant upload. */
   bulkUploadTemplateUrl: () => {
     const token = useAuthStore.getState().token;
-    const base  = import.meta.env.VITE_API_URL ?? '';
+    const base  = (import.meta.env.VITE_API_URL ?? '') + '/api';
     return `${base}/admin/applications/bulk-upload-template?token=${token}`;
   },
 
@@ -341,7 +341,7 @@ export const verificationService = {
   /** Returns the raw file server URL/redirect */
   downloadUrl: (applicationId: number, documentId: number) => {
     const token = useAuthStore.getState().token;
-    const base = import.meta.env.VITE_API_URL ?? "";
+    const base = (import.meta.env.VITE_API_URL ?? "") + "/api";
     return `${base}/admin/verifications/${applicationId}/documents/${documentId}/download?token=${token}`;
   },
 }
@@ -410,13 +410,13 @@ export const offerService = {
     if (legacyUrl) return legacyUrl
 
     const token = useAuthStore.getState().token
-    const base  = import.meta.env.VITE_API_URL ?? ''
+    const base  = (import.meta.env.VITE_API_URL ?? '') + '/api'
     return `${base}/admin/admissions/offers/${offerId}/letter?token=${token}`
   },
 
   /** Returns absolute URL for applicant PDF download via token (no JWT). */
   letterPublicUrl: (letterToken: string) => {
-    const base = import.meta.env.VITE_API_URL ?? ''
+    const base = (import.meta.env.VITE_API_URL ?? '') + '/api'
     return `${base}/portal/admission-letter?token=${letterToken}`
   },
 }
@@ -681,13 +681,13 @@ export const applicantService = {
 
   downloadUrl: (id: number) => {
     const token = useAuthStore.getState().token;
-    const base = import.meta.env.VITE_API_URL ?? "";
+    const base = (import.meta.env.VITE_API_URL ?? "") + "/api";
     return `${base}/applicant/documents/${id}/download?token=${token}`;
   },
 
   paymentSlipUrl: (applicationId: number) => {
     const token = useAuthStore.getState().token;
-    const base = import.meta.env.VITE_API_URL ?? "";
+    const base = (import.meta.env.VITE_API_URL ?? "") + "/api";
     return `${base}/applicant/application/${applicationId}/payment-slip?token=${token}`;
   },
 

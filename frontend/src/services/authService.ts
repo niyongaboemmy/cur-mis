@@ -50,7 +50,7 @@ export const authService = {
       return legacyPhotoUrl(photoValue)
     }
     const token = useAuthStore.getState().token
-    const base  = import.meta.env.VITE_API_URL ?? ''
+    const base  = (import.meta.env.VITE_API_URL ?? '') + '/api'
     const v     = photoValue ? `&v=${encodeURIComponent(photoValue)}` : ''
     return `${base}/auth/me/photo?token=${token}${v}`
   },

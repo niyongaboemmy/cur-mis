@@ -406,7 +406,7 @@ export const budgetExecutionService = {
     // token=... query param (required by AuthMiddleware for plain <a> downloads
     // that can't send an Authorization header) actually work.
     const token = useAuthStore.getState().token ?? "";
-    const base = import.meta.env.VITE_API_URL ?? "";
+    const base = (import.meta.env.VITE_API_URL ?? "") + "/api";
     const dept = departmentId ? `&department_id=${departmentId}` : "";
     const url = `${base}/finance/budget-execution/export?academic_year_id=${academicYearId}&format=${format}${dept}&token=${token}`;
     const a = document.createElement("a");
@@ -454,7 +454,7 @@ export const budgetPlanService = {
 
   download: (academicYearId: number): void => {
     const token = useAuthStore.getState().token ?? "";
-    const base = import.meta.env.VITE_API_URL ?? "";
+    const base = (import.meta.env.VITE_API_URL ?? "") + "/api";
     const url = `${base}/finance/budget-plan/export?academic_year_id=${academicYearId}&token=${token}`;
     const a = document.createElement("a");
     a.href = url;
@@ -466,7 +466,7 @@ export const budgetPlanService = {
 
   downloadTemplate: (academicYearId: number): void => {
     const token = useAuthStore.getState().token ?? "";
-    const base = import.meta.env.VITE_API_URL ?? "";
+    const base = (import.meta.env.VITE_API_URL ?? "") + "/api";
     const url = `${base}/finance/budget-plan/template?academic_year_id=${academicYearId}&token=${token}`;
     const a = document.createElement("a");
     a.href = url;
@@ -666,7 +666,7 @@ export const exportService = {
     academicYearId?: number,
   ): void => {
     const token = useAuthStore.getState().token ?? "";
-    const base = import.meta.env.VITE_API_URL ?? "";
+    const base = (import.meta.env.VITE_API_URL ?? "") + "/api";
     const year = academicYearId ? `&academic_year_id=${academicYearId}` : "";
     const url = `${base}/finance/reports/export?type=${type}${year}&token=${token}`;
     const a = document.createElement("a");

@@ -431,7 +431,7 @@ export const graduandService = {
    *  link, matching how the student curriculum export is served. */
   completionExportUrl: (params: CompletionListParams) => {
     const token = useAuthStore.getState().token
-    const base  = import.meta.env.VITE_API_URL ?? ''
+    const base  = (import.meta.env.VITE_API_URL ?? '') + '/api'
     const qs    = new URLSearchParams({ token: token ?? '' })
     Object.entries(params).forEach(([k, v]) => {
       if (v !== undefined && v !== null && v !== '') qs.append(k, String(v))

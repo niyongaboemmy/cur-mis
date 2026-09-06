@@ -27,7 +27,7 @@ export const logService = {
     api.get<string[]>('/logs/modules', undefined, signal),
 
   exportUrl: (filters: SystemLogFilters): string => {
-    const base   = (import.meta.env.VITE_API_URL ?? '') + '/logs/export'
+    const base   = (import.meta.env.VITE_API_URL ?? '') + '/api/logs/export'
     const params = new URLSearchParams()
     const token  = getToken()
 
