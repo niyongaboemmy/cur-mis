@@ -118,12 +118,12 @@ export default function CampusFilterSwitcher() {
   if (isLockedToOne && selected) {
     return (
       <div
-        className="inline-flex items-center gap-1.5 h-9 px-3 rounded-full border border-ink-200 dark:border-ink-700 bg-ink-50 dark:bg-ink-800/60 text-[12.5px] font-medium text-ink-600 dark:text-ink-300 cursor-not-allowed"
+        className="inline-flex items-center gap-1.5 h-9 px-2.5 rounded-lg border border-ink-200/80 dark:border-ink-700 bg-ink-50 dark:bg-ink-800/60 text-[12px] font-medium text-ink-600 dark:text-ink-300 whitespace-nowrap shrink-0 cursor-not-allowed"
         title={`Scope is locked to ${selected.name}`}
       >
-        <Building2 className="w-3.5 h-3.5 text-brand" />
-        <span className="max-w-[160px] truncate">{selected.name}</span>
-        <Lock className="w-3 h-3 text-ink-400" />
+        <Building2 className="w-4 h-4 text-brand shrink-0" />
+        <span className="max-w-[130px] truncate">{selected.name}</span>
+        <Lock className="w-3 h-3 text-ink-400 shrink-0" />
       </div>
     )
   }
@@ -154,12 +154,12 @@ export default function CampusFilterSwitcher() {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-1.5 h-9 px-3 rounded-full border border-ink-200 dark:border-ink-700 bg-white dark:bg-ink-800 hover:bg-ink-50 dark:hover:bg-ink-700/60 text-[12.5px] font-medium text-ink-700 dark:text-ink-200 transition-colors"
+        className="inline-flex items-center gap-1.5 h-9 px-2.5 rounded-lg border border-ink-200/80 dark:border-ink-700 bg-white dark:bg-ink-800 hover:border-primary-300 hover:text-primary-700 dark:hover:bg-ink-700/60 text-[12px] font-medium text-ink-700 dark:text-ink-200 whitespace-nowrap shrink-0 transition-colors"
         title="Scope every page to a specific campus"
       >
-        <Building2 className="w-3.5 h-3.5 text-brand" />
-        <span className="max-w-[140px] truncate">{label}</span>
-        <ChevronDown className="w-3 h-3 text-ink-400" />
+        <Building2 className="w-4 h-4 text-brand shrink-0" />
+        <span className="max-w-[120px] truncate">{label}</span>
+        <ChevronDown className="w-3.5 h-3.5 text-ink-400 shrink-0" />
       </button>
 
       {open && (

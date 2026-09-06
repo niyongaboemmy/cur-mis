@@ -125,17 +125,15 @@ export default function NotificationBell() {
         aria-label={total > 0 ? `Notifications (${total} unread)` : 'Notifications'}
         onClick={() => setOpen(v => !v)}
         className={cn(
-          'relative w-10 h-10 rounded-full border bg-white dark:bg-ink-800 text-ink-600 dark:text-ink-300',
-          'hover:text-primary-700 hover:border-primary-200 dark:hover:bg-ink-700 transition-colors',
-          'flex items-center justify-center',
+          'relative h-9 w-9 rounded-xl flex items-center justify-center transition-colors active:scale-95',
           open
-            ? 'border-primary-300 dark:border-primary-600 text-primary-700 dark:text-primary-300'
-            : 'border-ink-100 dark:border-ink-700',
+            ? 'bg-brand/10 text-brand dark:bg-brand/25 dark:text-gold-400'
+            : 'text-ink-500 hover:text-ink-900 hover:bg-ink-100 dark:text-ink-300 dark:hover:bg-ink-700 dark:hover:text-white',
         )}
       >
         <Bell className="w-[18px] h-[18px]" />
         {total > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center ring-2 ring-white dark:ring-ink-900 leading-none">
+          <span className="absolute top-0.5 right-0.5 min-w-[16px] h-[16px] px-1 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center ring-2 ring-[rgb(var(--bg-app))] dark:ring-ink-900 leading-none">
             {total > 99 ? '99+' : total}
           </span>
         )}
@@ -150,7 +148,7 @@ export default function NotificationBell() {
             exit={{ opacity: 0, scale: 0.95, y: -6 }}
             transition={{ duration: 0.15, ease: 'easeOut' }}
             className={cn(
-              'absolute right-0 top-12 z-50 w-[22rem] rounded-xl shadow-xl border',
+              'absolute right-0 top-[calc(100%+8px)] z-50 w-[min(22rem,calc(100vw-1.5rem))] rounded-xl shadow-xl border',
               'bg-white dark:bg-ink-800 border-ink-100 dark:border-ink-700',
               'flex flex-col overflow-hidden',
             )}

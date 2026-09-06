@@ -78,10 +78,10 @@ export default function AcademicContextSwitcher({
           onClick={resetToActive}
           title="Reset to the current academic year & term"
           aria-label="Reset academic context to active"
-          className="h-10 inline-flex items-center gap-1.5 px-2.5 rounded-full border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/30 text-[12px] font-medium text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors"
+          className="h-9 inline-flex items-center gap-1.5 px-2.5 rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/30 text-[12px] font-medium text-amber-700 dark:text-amber-300 whitespace-nowrap shrink-0 hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors"
         >
-          <RotateCcw className="w-3.5 h-3.5" />
-          <span className="hidden xl:inline">Reset</span>
+          <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+          <span className="hidden 2xl:inline">Reset</span>
         </button>
       )}
     </div>

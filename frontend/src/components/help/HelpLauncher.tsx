@@ -47,7 +47,11 @@ export default function HelpLauncher() {
         aria-label="Help"
         aria-expanded={open}
         title="Help & guides"
-        className="w-9 h-9 grid place-items-center rounded-full text-ink-500 dark:text-ink-300 hover:bg-ink-100 dark:hover:bg-ink-700 transition-colors"
+        className={`h-9 w-9 grid place-items-center rounded-xl transition-colors active:scale-95 ${
+          open
+            ? "bg-brand/10 text-brand dark:bg-brand/25 dark:text-gold-400"
+            : "text-ink-500 hover:text-ink-900 hover:bg-ink-100 dark:text-ink-300 dark:hover:bg-ink-700 dark:hover:text-white"
+        }`}
       >
         <HelpCircle className="w-[18px] h-[18px]" />
       </button>

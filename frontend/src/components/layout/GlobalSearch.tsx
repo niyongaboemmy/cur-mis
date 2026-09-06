@@ -566,10 +566,17 @@ const SEARCH_INDEX: SearchEntry[] = [
 export default function GlobalSearch({
   fluid = false,
   autoFocus = false,
+  onRequestCollapse,
 }: {
   /** Stretch to the container width instead of the fixed 280/400px track. */
   fluid?: boolean;
   autoFocus?: boolean;
+  /**
+   * When provided, the component is running as an expand-on-demand field:
+   * Escape (or an outside click while empty) asks the host to collapse it
+   * back to its trigger icon.
+   */
+  onRequestCollapse?: () => void;
 } = {}) {
   const navigate = useNavigate();
   const { user } = useAuthStore();
@@ -694,6 +701,7 @@ export default function GlobalSearch({
     } else if (e.key === "Escape") {
       setOpen(false);
       inputRef.current?.blur();
+      onRequestCollapse?.();
     }
   };
 
@@ -701,6 +709,7 @@ export default function GlobalSearch({
     setOpen(false);
     setQuery("");
     navigate(to);
+    onRequestCollapse?.();
   };
 
   // Reset active index when results change
@@ -714,15 +723,15 @@ export default function GlobalSearch({
       if (
         inputRef.current &&
         !inputRef.current.contains(e.target as Node) &&
-        panelRef.current &&
-        !panelRef.current.contains(e.target as Node)
+        (!panelRef.current || !panelRef.current.contains(e.target as Node))
       ) {
         setOpen(false);
+        if (!query.trim()) onRequestCollapse?.();
       }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, []);
+  }, [query, onRequestCollapse]);
 
   // Global shortcut: Cmd+K / Ctrl+K
   useEffect(() => {

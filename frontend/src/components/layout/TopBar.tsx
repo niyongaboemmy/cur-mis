@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Menu, Search, SlidersHorizontal, X } from "lucide-react";
+import { Menu, Search, SlidersHorizontal } from "lucide-react";
 import { cn } from "@/utils/helpers";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import GlobalSearch from "@/components/layout/GlobalSearch";
@@ -12,36 +12,44 @@ import MessageNotificationBell from "@/components/layout/MessageNotificationBell
 import HelpLauncher from "@/components/help/HelpLauncher";
 import UserDropdown from "@/components/layout/UserDropdown";
 
+/** Shared ghost icon-button styling so every control in the bar matches. */
+const iconBtn =
+  "grid place-items-center h-9 w-9 rounded-xl transition-colors active:scale-95 " +
+  "text-ink-500 hover:text-ink-900 hover:bg-ink-100 " +
+  "dark:text-ink-300 dark:hover:bg-ink-700 dark:hover:text-white";
+const iconBtnActive =
+  "bg-brand/10 text-brand hover:bg-brand/10 hover:text-brand " +
+  "dark:bg-brand/25 dark:text-gold-400";
+
 /**
- * Responsive application top bar.
+ * Application top bar.
  *
- * Breakpoint behaviour
- * ────────────────────
- *  • `< md`  — hamburger + current page title, a search *icon* that drops a
- *              full-width search sheet, and the essential actions (alerts,
- *              messages, help live behind the filters/▾ menu when space is
- *              tight; alerts + avatar always visible).
- *  • `md`    — inline global search appears.
- *  • `< xl`  — academic-year / term / campus / category selectors collapse
- *              into a single "Filters" popover so they never overflow.
- *  • `≥ xl`  — every selector sits inline, as designed.
+ * Layout
+ * ──────
+ *  • Left  — hamburger (mobile) + current page title (mobile).
+ *  • Right — a single, evenly-spaced action rail: search · scope filters ·
+ *            alerts · messages · help │ account.
  *
- * `scrolled` toggles a soft elevation shadow once the page content moves,
- * giving the sticky bar a sense of depth without a permanent hard border.
+ * Space-saving behaviour
+ * ──────────────────────
+ *  • Search is a 36px icon by default and expands into an overlaid field on
+ *    click (⌘K also opens it). It collapses on Escape, on pick, or on an
+ *    outside click while empty.
+ *  • Below `xl`, the four scope selectors (year · term · campus · category)
+ *    fold into one "Filters" popover so the rail never wraps.
+ *  • `scrolled` fades in a soft drop shadow once page content moves.
  */
 export default function TopBar({
   title,
   onOpenSidebar,
   scrolled,
-  showContextControls,
+  showSearch,
   showFilters,
 }: {
   title: string;
   onOpenSidebar: () => void;
   scrolled: boolean;
-  /** Applicants have no global search. */
-  showContextControls: boolean;
-  /** Only staff scope the app by year/term/campus/category. */
+  showSearch: boolean;
   showFilters: boolean;
 }) {
   const isXl = useMediaQuery("(min-width: 1280px)");
@@ -65,11 +73,18 @@ export default function TopBar({
     };
   }, [filtersOpen]);
 
-  // Collapse the mobile search sheet as soon as we grow into the inline search.
-  const isMd = useMediaQuery("(min-width: 768px)");
+  // ⌘K / Ctrl+K opens the search field (GlobalSearch itself focuses the input).
   useEffect(() => {
-    if (isMd) setSearchOpen(false);
-  }, [isMd]);
+    if (!showSearch) return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSearchOpen(true);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [showSearch]);
 
   return (
     <header
@@ -82,51 +97,37 @@ export default function TopBar({
           : "border-ink-100/70 dark:border-ink-800",
       )}
     >
-      <div className="h-16 flex items-center gap-1.5 sm:gap-3 px-3 sm:px-5 lg:px-8">
-        {/* ── Left cluster ─────────────────────────────────────────── */}
+      <div className="relative h-16 flex items-center gap-2 px-3 sm:px-4 lg:px-6">
+        {/* ── Left ─────────────────────────────────────────────────── */}
         <button
           onClick={onOpenSidebar}
-          className="lg:hidden grid place-items-center h-9 w-9 rounded-xl text-ink-500 hover:text-ink-900 hover:bg-ink-100 dark:text-ink-300 dark:hover:bg-ink-700 dark:hover:text-white transition-colors active:scale-95"
+          className={cn(iconBtn, "lg:hidden")}
           aria-label="Open navigation"
         >
           <Menu className="h-5 w-5" />
         </button>
 
-        <h1 className="lg:hidden min-w-0 truncate text-[14px] font-semibold text-ink-900 dark:text-white">
+        <h1 className="lg:hidden min-w-0 flex-1 truncate text-[14px] font-semibold text-ink-900 dark:text-white">
           {title}
         </h1>
 
-        {showContextControls && (
-          <div className="hidden md:block flex-1 max-w-[440px]">
-            <GlobalSearch />
-          </div>
-        )}
+        <div className="hidden lg:block flex-1" />
 
-        {/* Push the action cluster to the right on small screens. */}
-        <div className="flex-1 md:hidden" />
-
-        {/* ── Right cluster ────────────────────────────────────────── */}
-        <div className="flex items-center gap-0.5 sm:gap-1.5">
-          {showContextControls && (
+        {/* ── Right rail ───────────────────────────────────────────── */}
+        <div className="flex items-center gap-0.5 sm:gap-1">
+          {showSearch && (
             <button
-              onClick={() => setSearchOpen((v) => !v)}
-              className={cn(
-                "md:hidden grid place-items-center h-9 w-9 rounded-xl transition-colors active:scale-95",
-                searchOpen
-                  ? "bg-brand/10 text-brand dark:bg-brand/25 dark:text-gold-400"
-                  : "text-ink-500 hover:text-ink-900 hover:bg-ink-100 dark:text-ink-300 dark:hover:bg-ink-700 dark:hover:text-white",
-              )}
+              onClick={() => setSearchOpen(true)}
+              className={cn(iconBtn, searchOpen && iconBtnActive)}
               aria-label="Search"
-              aria-expanded={searchOpen}
             >
-              {searchOpen ? <X className="h-[18px] w-[18px]" /> : <Search className="h-[18px] w-[18px]" />}
+              <Search className="h-[18px] w-[18px]" />
             </button>
           )}
 
-          {/* Context selectors — inline on xl, popover below it. */}
           {showFilters &&
             (isXl ? (
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1 rounded-xl border border-ink-100 dark:border-ink-700/70 bg-ink-50/60 dark:bg-ink-800/50 p-1">
                 <AcademicContextSwitcher />
                 <CampusFilterSwitcher />
                 <CategoryFilterSwitcher />
@@ -135,12 +136,7 @@ export default function TopBar({
               <div ref={filtersRef} className="relative">
                 <button
                   onClick={() => setFiltersOpen((v) => !v)}
-                  className={cn(
-                    "grid place-items-center h-9 w-9 rounded-xl transition-colors active:scale-95",
-                    filtersOpen
-                      ? "bg-brand/10 text-brand dark:bg-brand/25 dark:text-gold-400"
-                      : "text-ink-500 hover:text-ink-900 hover:bg-ink-100 dark:text-ink-300 dark:hover:bg-ink-700 dark:hover:text-white",
-                  )}
+                  className={cn(iconBtn, filtersOpen && iconBtnActive)}
                   aria-label="Scope filters"
                   aria-expanded={filtersOpen}
                   title="Academic year, term & campus scope"
@@ -160,7 +156,7 @@ export default function TopBar({
                       <p className="px-1 pb-2 text-[10.5px] font-semibold uppercase tracking-wider text-ink-400">
                         Scope every page to
                       </p>
-                      <div className="flex flex-col gap-2">
+                      <div className="flex flex-col gap-2 [&_button]:w-full [&_button]:justify-start">
                         <AcademicContextSwitcher variant="stacked" />
                         <CampusFilterSwitcher />
                         <CategoryFilterSwitcher />
@@ -171,30 +167,39 @@ export default function TopBar({
               </div>
             ))}
 
+          <div className="mx-1 hidden sm:block h-6 w-px bg-ink-200/70 dark:bg-ink-700" />
+
           <NotificationBell />
           <MessageNotificationBell />
           <div className="hidden sm:block">
             <HelpLauncher />
           </div>
-          <div className="mx-0.5 hidden sm:block h-6 w-px bg-ink-200/70 dark:bg-ink-700" />
+
+          <div className="mx-1 h-6 w-px bg-ink-200/70 dark:bg-ink-700" />
+
           <UserDropdown />
         </div>
-      </div>
 
-      {/* ── Mobile search sheet ──────────────────────────────────── */}
-      <AnimatePresence>
-        {searchOpen && showContextControls && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.18, ease: "easeOut" }}
-            className="md:hidden overflow-visible px-3 pb-3"
-          >
-            <GlobalSearch fluid autoFocus />
-          </motion.div>
-        )}
-      </AnimatePresence>
+        {/* ── Expanding search field (overlays the rail while active) ── */}
+        <AnimatePresence>
+          {searchOpen && showSearch && (
+            <motion.div
+              initial={{ opacity: 0, scaleX: 0.9 }}
+              animate={{ opacity: 1, scaleX: 1 }}
+              exit={{ opacity: 0, scaleX: 0.9 }}
+              transition={{ duration: 0.16, ease: "easeOut" }}
+              style={{ transformOrigin: "right" }}
+              className="absolute inset-y-0 right-3 sm:right-4 lg:right-6 left-3 sm:left-auto z-40 my-auto h-10 sm:w-[380px] lg:w-[440px] flex items-center"
+            >
+              <GlobalSearch
+                fluid
+                autoFocus
+                onRequestCollapse={() => setSearchOpen(false)}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
     </header>
   );
 }

@@ -56,13 +56,13 @@ export default function AcademicTermSelector() {
         disabled={disabled}
         title={!selectedYearLabel ? "Select a year first" : "Academic term"}
         aria-label="Select academic term"
-        className="h-10 inline-flex items-center gap-2 px-3 rounded-full border border-ink-100 dark:border-ink-700 bg-white dark:bg-ink-800 text-[12.5px] font-medium text-ink-700 dark:text-ink-200 hover:text-primary-700 hover:border-primary-200 dark:hover:bg-ink-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        className="h-9 inline-flex items-center gap-1.5 px-2.5 rounded-lg border border-ink-200/80 dark:border-ink-700 bg-white dark:bg-ink-800 text-[12px] font-medium text-ink-700 dark:text-ink-200 whitespace-nowrap shrink-0 hover:text-primary-700 hover:border-primary-300 dark:hover:bg-ink-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        <Hash className="w-[16px] h-[16px] text-ink-500" />
-        <span className="hidden sm:inline">Term:</span>
+        <Hash className="w-4 h-4 text-ink-400 shrink-0" />
+        <span className="hidden 2xl:inline text-ink-400 font-normal">Term</span>
         <span>{displayLabel}</span>
         <ChevronDown
-          className={`w-3.5 h-3.5 text-ink-400 transition-transform ${isOpen ? "rotate-180" : ""}`}
+          className={`w-3.5 h-3.5 text-ink-400 shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`}
         />
       </button>
 

@@ -56,12 +56,12 @@ export default function CategoryFilterSwitcher() {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-1.5 h-9 px-3 rounded-full border border-ink-200 dark:border-ink-700 bg-white dark:bg-ink-800 hover:bg-ink-50 dark:hover:bg-ink-700/60 text-[12.5px] font-medium text-ink-700 dark:text-ink-200 transition-colors"
+        className="inline-flex items-center gap-1.5 h-9 px-2.5 rounded-lg border border-ink-200/80 dark:border-ink-700 bg-white dark:bg-ink-800 hover:border-primary-300 hover:text-primary-700 dark:hover:bg-ink-700/60 text-[12px] font-medium text-ink-700 dark:text-ink-200 whitespace-nowrap shrink-0 transition-colors"
         title="Scope every page to a student category"
       >
-        <GraduationCap className="w-3.5 h-3.5 text-brand" />
-        <span className="max-w-[140px] truncate">{selectedLabel}</span>
-        <ChevronDown className="w-3 h-3 text-ink-400" />
+        <GraduationCap className="w-4 h-4 text-brand shrink-0" />
+        <span className="max-w-[120px] truncate">{selectedLabel}</span>
+        <ChevronDown className="w-3.5 h-3.5 text-ink-400 shrink-0" />
       </button>
 
       {open && (

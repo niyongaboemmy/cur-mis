@@ -1588,7 +1588,7 @@ export default function MainLayout() {
           title={headerMeta.title}
           onOpenSidebar={openSidebar}
           scrolled={scrolled}
-          showContextControls={user?.role !== "applicant"}
+          showSearch={user?.role !== "applicant"}
           showFilters={
             !!user?.role &&
             user.role !== "applicant" &&

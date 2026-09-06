@@ -61,9 +61,9 @@ export default function UserDropdown() {
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2.5 py-1 pl-1 pr-2.5 rounded-md hover:bg-ink-100 dark:hover:bg-ink-700 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"
+        className="flex items-center gap-2 py-1 pl-1 pr-1 md:pr-2.5 rounded-xl hover:bg-ink-100 dark:hover:bg-ink-700 transition active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"
       >
-        <div className="h-9 w-9 rounded-full bg-primary-600 flex items-center justify-center text-white font-semibold text-[12px] overflow-hidden">
+        <div className="h-8 w-8 rounded-lg bg-primary-600 flex items-center justify-center text-white font-semibold text-[12px] overflow-hidden ring-2 ring-white/70 dark:ring-ink-800">
           {hasPhoto ? (
             <img
               src={photoSrc!}
@@ -84,7 +84,7 @@ export default function UserDropdown() {
           </p>
         </div>
         <ChevronDown
-          className={`h-4 w-4 text-ink-400 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
+          className={`hidden md:block h-4 w-4 text-ink-400 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
         />
       </button>
 
