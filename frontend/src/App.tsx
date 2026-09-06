@@ -45,6 +45,7 @@ import HRImportExportPage from "@/pages/hr/HRImportExportPage";
 import SupervisorLeaveApprovalDashboard from "@/pages/hr/SupervisorLeaveApprovalDashboard";
 import PayrollManagementPage from "@/pages/hr/PayrollManagementPage";
 import ContractManagementPage from "@/pages/hr/ContractManagementPage";
+import HrMonitoringDashboard from "@/pages/hr/HrMonitoringDashboard";
 
 // Academic
 import AcademicSettingsPage from "@/pages/academic/AcademicSettingsPage";
@@ -385,6 +386,7 @@ function App() {
                 }
               >
                 <Route path="/hr/appraisals" element={<AppraisalPage />} />
+                <Route path="/hr/monitoring" element={<HrMonitoringDashboard />} />
               </Route>
 
               {/* ── Payroll — the payroll endpoints are gated server-side on
