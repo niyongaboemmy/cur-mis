@@ -159,7 +159,7 @@ class ApplicationDocumentModel extends BaseModel
             return (string)$existing['id'];
         }
 
-        // If no applicationId provided, fetch from applicant_profile's application_id
+        // If no applicationId provided, try the applicant_profile's linked application.
         if (!$applicationId) {
             $profile = $this->db->fetchOne(
                 "SELECT application_id FROM `applicant_profiles` WHERE id = ?",
@@ -168,13 +168,12 @@ class ApplicationDocumentModel extends BaseModel
             $applicationId = (int)($profile['application_id'] ?? 0);
         }
 
-        // Ensure we have an application_id before inserting
-        if (!$applicationId) {
-            throw new \Exception('Application ID is required to upload documents.');
-        }
-
+        // A student who was never taken through the admissions portal has no
+        // application to attach the document to. `application_documents.application_id`
+        // is nullable (migration 156) precisely so these self-service uploads
+        // (StudentController::meUploadDocument) can still be stored.
         $data['applicant_profile_id'] = $profileId;
-        $data['application_id']       = $applicationId;
+        $data['application_id']       = $applicationId ?: null;
         $data['document_type_id']     = $documentTypeId;
         return $this->create($data);
     }
