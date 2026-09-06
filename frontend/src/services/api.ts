@@ -18,6 +18,15 @@ export const apiClient = axios.create({
 
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
+    // The web entry point sits at /umis/api/ (VITE_API_URL) and the backend
+    // router matches the FULL path, including the route files' own /api
+    // prefix — so the effective base is /umis/api/api. Normalise every
+    // relative request path to exactly one leading /api segment, so callers
+    // may pass either '/portal/intakes' or '/api/portal/intakes'.
+    if (config.url && config.url.startsWith('/') && !config.url.startsWith('/api/') && config.url !== '/api') {
+      config.url = '/api' + config.url
+    }
+
     const token = useAuthStore.getState().token
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
