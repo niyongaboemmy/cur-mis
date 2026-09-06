@@ -28,6 +28,7 @@ import AttendancePage from "@/pages/AttendancePage";
 
 // HR Management
 import StaffListPage from "@/pages/hr/StaffListPage";
+import AllStaffList from "@/pages/hr/AllStaffList";
 import StaffDetailPage from "@/pages/hr/StaffDetailPage";
 import HrAttendancePage from "@/pages/hr/HrAttendancePage";
 import HrDocumentsPage from "@/pages/hr/HrDocumentsPage";
@@ -365,7 +366,7 @@ function App() {
                   />
                 }
               >
-                <Route path="/hr/staff" element={<StaffListPage />} />
+                <Route path="/hr/staff" element={<AllStaffList />} />
                 <Route path="/hr/staff/:id" element={<StaffDetailPage />} />
                 <Route path="/hr/attendance" element={<HrAttendancePage />} />
                 <Route path="/hr/documents" element={<HrDocumentsPage />} />
