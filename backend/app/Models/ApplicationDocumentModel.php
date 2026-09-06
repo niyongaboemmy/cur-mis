@@ -159,6 +159,20 @@ class ApplicationDocumentModel extends BaseModel
             return (string)$existing['id'];
         }
 
+        // If no applicationId provided, fetch from applicant_profile's application_id
+        if (!$applicationId) {
+            $profile = $this->db->fetchOne(
+                "SELECT application_id FROM `applicant_profiles` WHERE id = ?",
+                [$profileId]
+            );
+            $applicationId = (int)($profile['application_id'] ?? 0);
+        }
+
+        // Ensure we have an application_id before inserting
+        if (!$applicationId) {
+            throw new \Exception('Application ID is required to upload documents.');
+        }
+
         $data['applicant_profile_id'] = $profileId;
         $data['application_id']       = $applicationId;
         $data['document_type_id']     = $documentTypeId;
