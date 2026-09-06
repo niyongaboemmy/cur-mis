@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Menu, Search, SlidersHorizontal } from "lucide-react";
+import { ArrowLeft, Menu, Search, SlidersHorizontal } from "lucide-react";
 import { cn } from "@/utils/helpers";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import GlobalSearch from "@/components/layout/GlobalSearch";
@@ -180,22 +180,31 @@ export default function TopBar({
           <UserDropdown />
         </div>
 
-        {/* ── Expanding search field (overlays the rail while active) ── */}
+        {/* ── Search takeover — opaque strip over the whole bar ──────── */}
         <AnimatePresence>
           {searchOpen && showSearch && (
             <motion.div
-              initial={{ opacity: 0, scaleX: 0.9 }}
-              animate={{ opacity: 1, scaleX: 1 }}
-              exit={{ opacity: 0, scaleX: 0.9 }}
-              transition={{ duration: 0.16, ease: "easeOut" }}
-              style={{ transformOrigin: "right" }}
-              className="absolute inset-y-0 right-3 sm:right-4 lg:right-6 left-3 sm:left-auto z-40 my-auto h-10 sm:w-[380px] lg:w-[440px] flex items-center"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.13, ease: "easeOut" }}
+              className="absolute inset-0 z-40 flex items-center gap-2 px-3 sm:px-4 lg:px-6 bg-[rgb(var(--bg-app))] dark:bg-ink-900"
             >
-              <GlobalSearch
-                fluid
-                autoFocus
-                onRequestCollapse={() => setSearchOpen(false)}
-              />
+              <button
+                onClick={() => setSearchOpen(false)}
+                className={cn(iconBtn, "shrink-0")}
+                aria-label="Close search"
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </button>
+              <div className="flex-1 min-w-0 max-w-[680px]">
+                <GlobalSearch
+                  fluid
+                  autoFocus
+                  solid
+                  onRequestCollapse={() => setSearchOpen(false)}
+                />
+              </div>
             </motion.div>
           )}
         </AnimatePresence>

@@ -29,6 +29,7 @@ import { PERMISSIONS } from "@/constants";
 import { isSuperadmin } from "@/utils/permissions";
 import { api } from "@/services/api";
 import { useDebounce } from "@/hooks/useDebounce";
+import { cn } from "@/utils/helpers";
 import { searchHelp, helpPath } from "@/data/help";
 
 /* ------------------------------------------------------------------ */
@@ -566,11 +567,14 @@ const SEARCH_INDEX: SearchEntry[] = [
 export default function GlobalSearch({
   fluid = false,
   autoFocus = false,
+  solid = false,
   onRequestCollapse,
 }: {
   /** Stretch to the container width instead of the fixed 280/400px track. */
   fluid?: boolean;
   autoFocus?: boolean;
+  /** Opaque, elevated input — for use as an expanded overlay field. */
+  solid?: boolean;
   /**
    * When provided, the component is running as an expand-on-demand field:
    * Escape (or an outside click while empty) asks the host to collapse it
@@ -803,7 +807,12 @@ export default function GlobalSearch({
         onKeyDown={handleKeyDown}
         placeholder="What do you want to find?"
         aria-label="Global search"
-        className="w-full h-10 rounded-full bg-ink-50/80 dark:bg-ink-800 border border-ink-100 dark:border-ink-700 pl-5 pr-11 text-[13.5px] placeholder-ink-400 focus:outline-none focus:border-primary-300 focus:ring-2 focus:ring-primary-100 dark:focus:ring-primary-900/40 transition"
+        className={cn(
+          "w-full h-10 rounded-full border pl-5 pr-11 text-[13.5px] placeholder-ink-400 focus:outline-none focus:border-primary-300 focus:ring-2 focus:ring-primary-100 dark:focus:ring-primary-900/40 transition",
+          solid
+            ? "bg-white dark:bg-ink-800 border-ink-200 dark:border-ink-600 shadow-sm"
+            : "bg-ink-50/80 dark:bg-ink-800 border-ink-100 dark:border-ink-700",
+        )}
       />
       {/* Shortcut hint */}
       {!query && (
