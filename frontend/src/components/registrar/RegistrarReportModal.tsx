@@ -22,7 +22,7 @@ export default function RegistrarReportModal({
       />
 
       {/* Modal content - Full screen iframe */}
-      <div className="relative w-full h-full max-w-7xl max-h-[95vh] flex flex-col bg-white dark:bg-ink-900 rounded-lg shadow-2xl">
+      <div className="relative w-[95%] h-[95vh] flex flex-col bg-white dark:bg-ink-900 rounded-lg shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-ink-100 dark:border-ink-700">
           <h2 className="text-lg font-bold text-ink-900 dark:text-white">
