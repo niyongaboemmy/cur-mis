@@ -13,8 +13,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # cPanel/WHM host (UAPI on :2083) — reseller's private WHM host.
-  CPANEL_URL: https://cyimo-whm-private.aos.rw:2083
+  # cPanel host (UAPI on :2083).
+  CPANEL_URL: https://cpanel.cur.ac.rw:2083
   CPANEL_USER: curac
   PRODUCTION_URL: https://cur.ac.rw/umis/finance/billing
 

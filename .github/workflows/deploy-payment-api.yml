@@ -24,9 +24,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # cPanel/WHM host (UAPI on :2083). Moved off cur.ac.rw:2083 — the account now
-  # lives on the reseller's private WHM host.
-  CPANEL_URL: https://cyimo-whm-private.aos.rw:2083
+  # cPanel host (UAPI on :2083).
+  CPANEL_URL: https://cpanel.cur.ac.rw:2083
   CPANEL_USER: curac
   # Base64-encoded staged PHP extractor. Placeholders DEPLOY_TOKEN and
   # DEPLOY_ZIP_NAME are replaced by sed at runtime. Avoids heredoc in YAML.
