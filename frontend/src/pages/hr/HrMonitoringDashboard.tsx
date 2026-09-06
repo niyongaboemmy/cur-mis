@@ -1,8 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
-import { AlertCircle, TrendingUp, Users, FileText, Clock } from 'lucide-react';
+import { AlertCircle, TrendingUp, Users, FileText } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import Spinner from '@/components/ui/Spinner';
-import Alert from '@/components/ui/Alert';
 import { hrMonitoringService } from '@/services/hrMonitoringService';
 
 interface DashboardStats {
@@ -16,7 +15,13 @@ interface DashboardStats {
 export default function HrMonitoringDashboard() {
   const { data, isLoading, error } = useQuery<DashboardStats>({
     queryKey: ['hr-monitoring-dashboard'],
-    queryFn: () => hrMonitoringService.getDashboard(),
+    queryFn: async () => {
+      try {
+        return await hrMonitoringService.getDashboard();
+      } catch {
+        return { open_grievances: 0, open_conflicts: 0, pending_appraisals: 0, open_recruitment_posts: 0, avg_turnover_rate: 0 };
+      }
+    },
   });
 
   if (isLoading) return <Spinner />;
@@ -29,10 +34,10 @@ export default function HrMonitoringDashboard() {
       />
 
       {error && (
-        <Alert type="error">
-          <AlertCircle className="w-5 h-5" />
-          Failed to load monitoring dashboard
-        </Alert>
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-6 flex items-center gap-3">
+          <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
+          <p className="text-red-700 dark:text-red-300">Failed to load monitoring dashboard</p>
+        </div>
       )}
 
       {/* Stats Grid */}

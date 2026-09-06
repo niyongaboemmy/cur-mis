@@ -1,9 +1,19 @@
 import { api } from './api';
 
+interface DashboardStats {
+  open_grievances: number;
+  open_conflicts: number;
+  pending_appraisals: number;
+  open_recruitment_posts: number;
+  avg_turnover_rate: number;
+}
+
 export const hrMonitoringService = {
   // Dashboard
-  getDashboard: () =>
-    api.get('/api/hr/monitoring/dashboard').then((res) => res.data),
+  getDashboard: async (): Promise<DashboardStats> => {
+    const res = await api.get('/api/hr/monitoring/dashboard');
+    return (res as any).data?.data || (res as any).data;
+  },
 
   // Performance Monitoring
   getAppraisals: (page = 1, perPage = 25) =>
