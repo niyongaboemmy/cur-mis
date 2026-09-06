@@ -1,6 +1,5 @@
 import {
   Home,
-  Menu,
   X,
   User as UserIcon,
   Settings,
@@ -38,16 +37,9 @@ import {
   useMemo,
   useState,
 } from "react";
-import UserDropdown from "@/components/layout/UserDropdown";
-import MessageNotificationBell from "@/components/layout/MessageNotificationBell";
-import NotificationBell from "@/components/layout/NotificationBell";
-import AcademicContextSwitcher from "@/components/layout/AcademicContextSwitcher";
-import CampusFilterSwitcher from "@/components/layout/CampusFilterSwitcher";
-import CategoryFilterSwitcher from "@/components/layout/CategoryFilterSwitcher";
+import TopBar from "@/components/layout/TopBar";
 
 import Logo from "@/components/brand/Logo";
-import GlobalSearch from "@/components/layout/GlobalSearch";
-import HelpLauncher from "@/components/help/HelpLauncher";
 // import AiChatWidget from "@/components/layout/AiChatWidget"; // re-enable when ANTHROPIC_API_KEY is set
 import { useCurrentUser } from "@/hooks/useAuth";
 import { useSystemBasics } from "@/hooks/useSystemBasics";
@@ -1287,6 +1279,7 @@ export default function MainLayout() {
     }
   });
   const [query, setQuery] = useState("");
+  const [scrolled, setScrolled] = useState(false);
 
   const initiallyOpen = useMemo<Set<string>>(() => {
     const set = new Set<string>();
@@ -1591,47 +1584,25 @@ export default function MainLayout() {
         vertical scrolling lives on <main> below via `overflow-y-auto`.
       */}
       <div className="flex-1 flex flex-col min-w-0 h-screen">
-        {/* Topbar — solid bg so the dropdown doesn't get trapped in a
-             backdrop-filter stacking context. z-30 keeps it above page content. */}
-        <header className="relative z-30 h-16 shrink-0 bg-[rgb(var(--bg-app))] dark:bg-ink-900 border-b border-ink-100 dark:border-ink-700 flex items-center justify-between gap-4 px-5 lg:px-8">
-          <div className="flex items-center gap-3 min-w-0">
-            <button
-              onClick={openSidebar}
-              className="lg:hidden icon-btn"
-              aria-label="Open sidebar"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
-            <div className="min-w-0 md:hidden">
-              <h1 className="text-[14px] font-medium text-ink-900 dark:text-white leading-tight truncate">
-                {headerMeta.title}
-              </h1>
-            </div>
-            {/* Global search — hidden for applicants */}
-            {user?.role !== "applicant" && (
-              <div className="hidden md:flex">
-                <GlobalSearch />
-              </div>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2">
-            {/* Academic year + term context — scopes every page's data to
-                the chosen year/term (persisted, forwarded on every request,
-                refetches the whole cache on change). */}
-            {user?.role !== "applicant" && <AcademicContextSwitcher />}
-            {user?.role !== "applicant" && <CampusFilterSwitcher />}
-            {user?.role !== "applicant" && <CategoryFilterSwitcher />}
-            <NotificationBell />
-            <MessageNotificationBell />
-            <HelpLauncher />
-            <UserDropdown />
-          </div>
-        </header>
+        <TopBar
+          title={headerMeta.title}
+          onOpenSidebar={openSidebar}
+          scrolled={scrolled}
+          showContextControls={user?.role !== "applicant"}
+          showFilters={
+            !!user?.role &&
+            user.role !== "applicant" &&
+            user.role !== "student"
+          }
+        />
 
         {/* Scrollable page content (fills remaining height) */}
         <motion.main
           key={location.pathname}
+          onScroll={(e) => {
+            const next = e.currentTarget.scrollTop > 4;
+            setScrolled((prev) => (prev === next ? prev : next));
+          }}
           initial={{ opacity: 0, y: 4 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.18 }}

@@ -563,7 +563,14 @@ const SEARCH_INDEX: SearchEntry[] = [
 /*  Component                                                            */
 /* ------------------------------------------------------------------ */
 
-export default function GlobalSearch() {
+export default function GlobalSearch({
+  fluid = false,
+  autoFocus = false,
+}: {
+  /** Stretch to the container width instead of the fixed 280/400px track. */
+  fluid?: boolean;
+  autoFocus?: boolean;
+} = {}) {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const [query, setQuery] = useState("");
@@ -767,7 +774,7 @@ export default function GlobalSearch() {
   );
 
   return (
-    <div className="relative w-[280px] lg:w-[400px]">
+    <div className={fluid ? "relative w-full" : "relative w-[280px] lg:w-[400px]"}>
       {/* Input */}
       {deepSearchQuery.isFetching ? (
         <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400 pointer-events-none animate-spin" />
@@ -777,6 +784,7 @@ export default function GlobalSearch() {
       <input
         ref={inputRef}
         type="text"
+        autoFocus={autoFocus}
         value={query}
         onChange={(e) => {
           setQuery(e.target.value);

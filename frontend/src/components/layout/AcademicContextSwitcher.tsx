@@ -23,7 +23,16 @@ import AcademicTermSelector from './AcademicTermSelector'
  * Hidden for applicants and students: they always see their real active
  * context and have nothing to switch.
  */
-export default function AcademicContextSwitcher() {
+export default function AcademicContextSwitcher({
+  variant = 'bar',
+}: {
+  /**
+   * `bar` — inline in the topnav, only shown from `lg` up (default).
+   * `stacked` — always visible, wraps freely; used inside the mobile
+   * "Filters" popover where horizontal space isn't a constraint.
+   */
+  variant?: 'bar' | 'stacked'
+}) {
   const queryClient = useQueryClient()
   const role = useAuthStore((s) => s.user?.role)
 
@@ -54,7 +63,13 @@ export default function AcademicContextSwitcher() {
   if (!role || role === 'applicant' || role === 'student') return null
 
   return (
-    <div className="hidden lg:flex items-center gap-1.5">
+    <div
+      className={
+        variant === 'stacked'
+          ? 'flex flex-wrap items-center gap-1.5'
+          : 'hidden lg:flex items-center gap-1.5'
+      }
+    >
       <AcademicYearSelector />
       <AcademicTermSelector />
       {isOverridden && (
