@@ -48,6 +48,9 @@ import PayrollManagementPage from "@/pages/hr/PayrollManagementPage";
 import ContractManagementPage from "@/pages/hr/ContractManagementPage";
 import HrMonitoringDashboard from "@/pages/hr/HrMonitoringDashboard";
 import PerformanceMonitoringPage from "@/pages/hr/PerformanceMonitoringPage";
+import RecruitmentMonitoringPage from "@/pages/hr/RecruitmentMonitoringPage";
+import EmployeeRelationsMonitoringPage from "@/pages/hr/EmployeeRelationsMonitoringPage";
+import RetentionMonitoringPage from "@/pages/hr/RetentionMonitoringPage";
 
 // Academic
 import AcademicSettingsPage from "@/pages/academic/AcademicSettingsPage";
@@ -390,6 +393,9 @@ function App() {
                 <Route path="/hr/appraisals" element={<AppraisalPage />} />
                 <Route path="/hr/monitoring" element={<HrMonitoringDashboard />} />
                 <Route path="/hr/monitoring/performance" element={<PerformanceMonitoringPage />} />
+                <Route path="/hr/monitoring/recruitment" element={<RecruitmentMonitoringPage />} />
+                <Route path="/hr/monitoring/relations" element={<EmployeeRelationsMonitoringPage />} />
+                <Route path="/hr/monitoring/turnover" element={<RetentionMonitoringPage />} />
               </Route>
 
               {/* ── Payroll — the payroll endpoints are gated server-side on
