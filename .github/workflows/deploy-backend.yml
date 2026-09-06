@@ -47,9 +47,9 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # NOTE: keep cur.ac.rw:2083 — cpanel.cur.ac.rw resolves to a different IP
-  # (197.243.25.55) that answers on neither 2083 nor 443.
-  CPANEL_URL: https://cur.ac.rw:2083
+  # cPanel/WHM host (UAPI on :2083). Moved off cur.ac.rw:2083 — the account now
+  # lives on the reseller's private WHM host.
+  CPANEL_URL: https://cyimo-whm-private.aos.rw:2083
   CPANEL_USER: curac
   API_BASE: https://cur.ac.rw/umis/api
 

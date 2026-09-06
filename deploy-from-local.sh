@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
 # deploy-from-local.sh — deploy frontend and/or backend to cPanel from a
-# machine that can actually reach cur.ac.rw:2083.
+# machine that can actually reach cyimo-whm-private.aos.rw:2083.
 #
 # WHY THIS EXISTS
 # The GitHub Actions deploy workflows fail with curl exit 28: the server's
@@ -23,7 +23,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
-CPANEL_URL="${CPANEL_URL:-https://cur.ac.rw:2083}"
+CPANEL_URL="${CPANEL_URL:-https://cyimo-whm-private.aos.rw:2083}"
 CPANEL_USER="${CPANEL_USER:-curac}"
 SITE_BASE="https://cur.ac.rw/umis"
 REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
