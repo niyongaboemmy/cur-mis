@@ -28,5 +28,5 @@ export const publicPhotoUrl = (relPath: string) => `${API}${relPath}`
 
 export const publicService = {
   verifyStudent: (code: string) =>
-    api.get<StudentVerifyResult>('/api/public/student-verify', { code }),
+    api.get<StudentVerifyResult>('/public/student-verify', { code }),
 }

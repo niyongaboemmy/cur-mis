@@ -27,18 +27,18 @@ export const documentService = {
    * browser-to-backend URL issues.
    */
   fetchPreview: (studentId: number, documentType: DocumentType) =>
-    api.get<{ html: string }>('/api/documents/preview', {
+    api.get<{ html: string }>('/documents/preview', {
       student_id: studentId,
       document_type: documentType,
     }),
 
   /** Token-bearing URL that streams a PDF — opens inline in the browser tab. */
   downloadUrl: (studentId: number, documentType: DocumentType): string =>
-    `${base()}/api/documents/download?student_id=${studentId}&document_type=${documentType}&token=${token()}`,
+    `${base()}/documents/download?student_id=${studentId}&document_type=${documentType}&token=${token()}`,
 
   /** Preview exemption letter via POST (accepts custom letter data). */
   previewExemptionLetter: (payload: any) =>
-    api.post<{ html: string }>('/api/documents/exemption-letter/preview', payload),
+    api.post<{ html: string }>('/documents/exemption-letter/preview', payload),
 
   /**
    * Download exemption letter PDF via POST with blob response.
@@ -47,7 +47,7 @@ export const documentService = {
   downloadExemptionLetter: async (payload: any) => {
     try {
       const response = await fetch(
-        `${base()}/api/documents/exemption-letter/download`,
+        `${base()}/documents/exemption-letter/download`,
         {
           method: 'POST',
           headers: {

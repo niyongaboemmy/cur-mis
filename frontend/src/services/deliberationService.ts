@@ -281,21 +281,21 @@ export interface FinalizeResult {
 
 export const deliberationService = {
   grid: (params: DeliberationParams = {}, signal?: AbortSignal) =>
-    api.get<DeliberationResponse>('/api/deliberation', params as Record<string, unknown>, signal),
+    api.get<DeliberationResponse>('/deliberation', params as Record<string, unknown>, signal),
 
   markFilters: (signal?: AbortSignal) =>
-    api.get<MarkFiltersResponse>('/api/deliberation/mark-filters', {}, signal),
+    api.get<MarkFiltersResponse>('/deliberation/mark-filters', {}, signal),
 
   markStudents: (params: MarkStudentsParams = {}, signal?: AbortSignal) =>
-    api.get<MarkStudentsResponse>('/api/deliberation/mark-students', params as Record<string, unknown>, signal),
+    api.get<MarkStudentsResponse>('/deliberation/mark-students', params as Record<string, unknown>, signal),
 
   studentMarks: (regnumber: string, signal?: AbortSignal) =>
-    api.get<StudentMarksResponse>('/api/deliberation/student-marks', { regnumber }, signal),
+    api.get<StudentMarksResponse>('/deliberation/student-marks', { regnumber }, signal),
 
   /** Unpaginated, one row per mark — the same filter the list is showing. */
   exportMarkStudents: (params: MarkStudentsParams = {}, signal?: AbortSignal) =>
     api.get<DeliberationExportResponse>(
-      '/api/deliberation/mark-students/export', params as Record<string, unknown>, signal),
+      '/deliberation/mark-students/export', params as Record<string, unknown>, signal),
 
   /**
    * Board approval — moves the marks to `confirmed`, which locks them against
@@ -303,13 +303,13 @@ export const deliberationService = {
    * to approve everything the current filter covers.
    */
   approveMarks: (payload: MarkStudentsParams & { regnumbers?: string[] }) =>
-    api.post<{ approved: number }>('/api/deliberation/approve-marks', payload),
+    api.post<{ approved: number }>('/deliberation/approve-marks', payload),
 
   listSessions: (params: { academic_year_id?: number } = {}, signal?: AbortSignal) =>
-    api.get<DeliberationSession[]>('/api/deliberation/sessions', params as Record<string, unknown>, signal),
+    api.get<DeliberationSession[]>('/deliberation/sessions', params as Record<string, unknown>, signal),
 
   createSession: (payload: CreateSessionPayload) =>
-    api.post<{ id: number }>('/api/deliberation/sessions', payload),
+    api.post<{ id: number }>('/deliberation/sessions', payload),
 
   updateSession: (id: number, payload: Partial<CreateSessionPayload>) =>
     api.put<null>(`/api/deliberation/sessions/${id}`, payload),

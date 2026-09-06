@@ -41,6 +41,10 @@ import MyLeavePage from "@/pages/hr/MyLeavePage";
 import LeaveApprovalQueuePage from "@/pages/hr/LeaveApprovalQueuePage";
 import NotificationsPage from "@/pages/NotificationsPage";
 import AppraisalPage from "@/pages/hr/AppraisalPage";
+import HRImportExportPage from "@/pages/hr/HRImportExportPage";
+import SupervisorLeaveApprovalDashboard from "@/pages/hr/SupervisorLeaveApprovalDashboard";
+import PayrollManagementPage from "@/pages/hr/PayrollManagementPage";
+import ContractManagementPage from "@/pages/hr/ContractManagementPage";
 
 // Academic
 import AcademicSettingsPage from "@/pages/academic/AcademicSettingsPage";
@@ -124,6 +128,9 @@ import TeacherStudentsPage from "@/pages/teacher/TeacherStudentsPage";
 import TeacherCalendarPage from "@/pages/teacher/TeacherCalendarPage";
 import TeacherExamsPage from "@/pages/teacher/TeacherExamsPage";
 import TeacherExamAttendancePage from "@/pages/teacher/TeacherExamAttendancePage";
+
+// Registrar
+import RegistrarReportPage from "@/pages/registrar/RegistrarReportPage";
 
 // Finance
 import FinanceHub from "@/pages/finance/FinanceHub";
@@ -398,6 +405,7 @@ function App() {
               >
                 <Route path="/hr/payroll" element={<PayrollPage />} />
                 <Route path="/hr/payroll/:id" element={<PayrollSlipPage />} />
+                <Route path="/hr/payroll-management" element={<PayrollManagementPage />} />
                 <Route path="/hr/payments" element={<PaymentsPage />} />
               </Route>
 
@@ -434,6 +442,10 @@ function App() {
                   path="/hr/leave/approvals"
                   element={<LeaveApprovalQueuePage />}
                 />
+                <Route
+                  path="/hr/leave/supervisor-approvals"
+                  element={<SupervisorLeaveApprovalDashboard />}
+                />
               </Route>
 
               {/* ── HR Management — manage only ── */}
@@ -445,6 +457,8 @@ function App() {
                 }
               >
                 <Route path="/hr/settings" element={<HrSettingsPage />} />
+                <Route path="/hr/import-export" element={<HRImportExportPage />} />
+                <Route path="/hr/contracts" element={<ContractManagementPage />} />
               </Route>
 
               {/* ── Notification centre — self-scoped, so authentication is
@@ -958,6 +972,9 @@ function App() {
                   </Route>
                 </Route>
               </Route>
+
+              {/* ── Registrar ── */}
+              <Route path="/registrar/report" element={<RegistrarReportPage />} />
 
               {/* ── Exams ── */}
               <Route

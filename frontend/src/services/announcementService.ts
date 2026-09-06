@@ -37,14 +37,14 @@ export const AUDIENCE_LABELS: Record<AnnouncementAudience, string> = {
 export const announcementService = {
   /** Personalised feed for the current user (active, non-expired, audience-matched). */
   feed: (signal?: AbortSignal) =>
-    api.get<Announcement[]>('/api/announcements', {}, signal),
+    api.get<Announcement[]>('/announcements', {}, signal),
 
   /** Full management list (requires MANAGE_ANNOUNCEMENTS). */
   list: (params: { audience?: string; is_active?: string | number; q?: string } = {}) =>
-    api.get<Announcement[]>('/api/announcements/manage', params as Record<string, unknown>),
+    api.get<Announcement[]>('/announcements/manage', params as Record<string, unknown>),
 
   create: (payload: AnnouncementInput) =>
-    api.post<Announcement>('/api/announcements', payload),
+    api.post<Announcement>('/announcements', payload),
 
   update: (id: number, payload: AnnouncementInput) =>
     api.put<Announcement>(`/api/announcements/${id}`, payload),

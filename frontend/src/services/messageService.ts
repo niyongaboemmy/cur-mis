@@ -13,25 +13,25 @@ import type { PaginatedResponse } from '@/types'
 
 export const messageService = {
   getConversations: (page = 1) =>
-    api.get<PaginatedResponse<Conversation>>('/api/messages/conversations', { page } as Record<string, unknown>),
+    api.get<PaginatedResponse<Conversation>>('/messages/conversations', { page } as Record<string, unknown>),
 
   getMessages: (id: number, page = 1) =>
     api.get<PaginatedResponse<Message>>(`/api/messages/conversations/${id}/messages`, { page } as Record<string, unknown>),
 
   createConversation: (payload: CreateConversationPayload) =>
-    api.post<{ conversation: Conversation; existing: boolean }>('/api/messages/conversations', payload),
+    api.post<{ conversation: Conversation; existing: boolean }>('/messages/conversations', payload),
 
   sendMessage: (id: number, payload: SendMessagePayload) =>
     api.post<Message>(`/api/messages/conversations/${id}/messages`, payload),
 
   getUnreadCount: () =>
-    api.get<UnreadCountResponse>('/api/messages/unread-count'),
+    api.get<UnreadCountResponse>('/messages/unread-count'),
 
   searchRecipients: (q: string) =>
     api.get<{
       users:       { id: number; full_name: string; email: string; role: string }[]
       role_groups: { id: string; label: string }[]
-    }>('/api/messages/recipients/search', { q } as Record<string, unknown>)
+    }>('/messages/recipients/search', { q } as Record<string, unknown>)
     .then(r => {
       const users: RecipientOption[]  = (r.data?.users       ?? []).map(u => ({ id: u.id,    label: u.full_name, type: 'user' as const }))
       const roles: RecipientOption[]  = (r.data?.role_groups ?? []).map(g => ({ id: g.id,    label: g.label,     type: 'role' as const }))
@@ -51,6 +51,6 @@ export const messageService = {
     const form = new FormData()
     form.append('file', file)
     form.append('message_id', String(messageId))
-    return api.upload<MessageAttachment>('/api/messages/attachments', form)
+    return api.upload<MessageAttachment>('/messages/attachments', form)
   },
 }

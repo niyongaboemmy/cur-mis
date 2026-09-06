@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import {
   Loader2, AlertCircle, CheckCircle2, XCircle, MessageCircle, Receipt,
-  Building2, User, Calendar, Inbox, Clock, Eye, EyeOff,
+  Building2, User, Calendar, Inbox, Clock, Eye, EyeOff, FileText, X,
 } from 'lucide-react'
 import { bordereauService } from '@/services/bordereauService'
 import Modal from '@/components/ui/Modal'
@@ -36,6 +36,7 @@ export default function BordereauVerificationPage() {
   const [actionType, setActionType] = useState<'approve' | 'reject' | null>(null)
   const [rejectionReason, setRejectionReason] = useState('')
   const [showRead, setShowRead] = useState(false)
+  const [showBankSlipModal, setShowBankSlipModal] = useState(false)
 
   const submissionsQ = useQuery({
     queryKey: ['bordereau-pending', userRole],
@@ -87,16 +88,25 @@ export default function BordereauVerificationPage() {
     <div className="max-w-7xl mx-auto space-y-6 pb-12">
       {/* Page header */}
       <div className="space-y-2">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center">
-            <Receipt className="w-5 h-5 text-primary-600" />
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center">
+              <Receipt className="w-5 h-5 text-primary-600" />
+            </div>
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-black text-ink-900 dark:text-white">
+                Bordereau Payment Verification
+              </h1>
+              <p className="text-sm text-ink-500">Review and approve student Bordereau payments</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-black text-ink-900 dark:text-white">
-              Bordereau Payment Verification
-            </h1>
-            <p className="text-sm text-ink-500">Review and approve student Bordereau payments</p>
-          </div>
+          <button
+            onClick={() => setShowBankSlipModal(true)}
+            className="btn-secondary flex items-center gap-2 whitespace-nowrap shrink-0"
+          >
+            <FileText className="w-4 h-4" />
+            Bank Slip
+          </button>
         </div>
       </div>
 
@@ -470,6 +480,37 @@ export default function BordereauVerificationPage() {
           </div>
         )}
       </Modal>
+
+      {/* Bank Slip Modal */}
+      {showBankSlipModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 dark:bg-black/70 backdrop-blur-sm p-4">
+          <div className="w-[60%] h-[90vh] max-h-[90vh] bg-white dark:bg-ink-800 rounded-xl shadow-2xl flex flex-col">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-ink-100 dark:border-ink-700 shrink-0">
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-green-600" />
+                <h2 className="text-sm font-semibold text-ink-800 dark:text-white">Bank Slip Management</h2>
+              </div>
+              <button
+                onClick={() => setShowBankSlipModal(false)}
+                className="p-1.5 hover:bg-ink-100 dark:hover:bg-ink-700 rounded-lg transition-colors"
+                title="Close modal"
+              >
+                <X className="w-4 h-4 text-ink-500 dark:text-ink-400" />
+              </button>
+            </div>
+
+            {/* Modal Body - iFrame */}
+            <div className="flex-1 overflow-hidden bg-white dark:bg-ink-900">
+              <iframe
+                src="https://cur.ac.rw/umis/finance/bank_slip/index.php?tab=registrar"
+                className="w-full h-full border-none"
+                title="Bank Slip Portal"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

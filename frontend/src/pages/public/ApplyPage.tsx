@@ -21,6 +21,8 @@ import {
   Hash,
   PlayCircle,
   Copy,
+  FileText,
+  X,
 } from "lucide-react";
 import Logo from "@/components/brand/Logo";
 import { portalService, applicantService } from "@/services/admissionService";
@@ -104,7 +106,7 @@ const schema = z.object({
   // Programs — step 3
   program_id:    numberId("Please select a program"),
   campus_id:     numberId("Please select a campus"),
-  mode_of_study: z.string().min(1, "Please select a mode of study"),
+  mode_of_study: numberId("Please select a mode of study"),
   level_id:      numberId("Please select a level"),
   intake:        z.string().min(1, "Please select an intake"),
 });
@@ -131,13 +133,6 @@ const ACADEMIC_FIELDS = [
 ] as const;
 
 const PROGRAM_FIELDS = ["program_id","campus_id","mode_of_study","level_id","intake"] as const;
-
-const MODE_OF_STUDY_OPTIONS = [
-  'Day',
-  'Evening',
-  'Weekend',
-  'Distance Learning',
-] as const;
 
 export default function ApplyPage() {
   const [step, setStep] = useState(1);
@@ -345,6 +340,10 @@ export default function ApplyPage() {
     queryFn: () => portalService.getLevels(),
   });
 
+  const modesQ = useQuery({
+    queryKey: ["portal", "programme-types"],
+    queryFn: () => portalService.getProgrammeTypes(),
+  });
 
   const draftM = useMutation({
     mutationFn: (data: {
@@ -352,7 +351,7 @@ export default function ApplyPage() {
       faculty_id?: number;
       department_id?: number;
       campus_id?: number;
-      mode_of_study?: string;
+      mode_of_study?: number;
       level_id?: number;
       intake: string;
     }) => applicantService.draftApplication(data as any),
@@ -641,6 +640,7 @@ export default function ApplyPage() {
 
   const programs   = programsQ.data?.data ?? [];
   const levels     = levelsQ.data?.data ?? [];
+  const modes      = modesQ.data?.data ?? [];
   const rawIntakes = intakesQ.data?.data ?? [];
   const intakes    = rawIntakes.filter(
     (it: any, idx: number, arr: any[]) => arr.findIndex((x: any) => x.name === it.name) === idx
@@ -771,6 +771,7 @@ export default function ApplyPage() {
             programs={programs}
             campuses={selectedProgramCampuses}
             levels={levels}
+            modes={modes}
             intakes={intakes}
           />
         )}
@@ -789,6 +790,7 @@ export default function ApplyPage() {
             programs={programs}
             campuses={selectedProgramCampuses}
             levels={levels}
+            modes={modes}
             paid={paid}
             onPaidChange={setPaid}
             confirmAccurate={confirmAccurate}
@@ -1402,7 +1404,7 @@ function AcademicInfoStep({ form }: { form: ReturnType<typeof useForm<FormValues
  * ──────────────────────────────────────────────────────────────────── */
 
 function ProgramsStep({
-  form, programs, campuses, levels, intakes,
+  form, programs, campuses, levels, modes, intakes,
 }: {
   form: ReturnType<typeof useForm<FormValues>>;
   programs: Array<{
@@ -1412,6 +1414,7 @@ function ProgramsStep({
   }>;
   campuses: Array<{ id: number; name: string; code: string | null; location: string | null }>;
   levels: Array<{ id: number; name: string }>;
+  modes: Array<{ id: number; name: string; display_name: string }>;
   intakes: Array<{ id: number; name: string }>;
 }) {
   const [search, setSearch] = useState('');
@@ -1529,11 +1532,14 @@ function ProgramsStep({
               </Field>
 
               <Field label="Mode of Study *" error={errors.mode_of_study?.message}>
-                <select className="input" {...form.register("mode_of_study")}>
+                <select
+                  className="input"
+                  {...form.register("mode_of_study", { valueAsNumber: true })}
+                >
                   <option value="">— select mode —</option>
-                  {MODE_OF_STUDY_OPTIONS.map((m) => (
-                    <option key={m} value={m}>{m}</option>
-                  ))}
+                  {(modes.map((m: any) => (
+                    <option key={m.id} value={m.id}>{m.display_name}</option>
+                  )))}
                 </select>
               </Field>
 
@@ -1579,7 +1585,7 @@ function ProgramsStep({
  * ──────────────────────────────────────────────────────────────────── */
 
 function PaymentStep({
-  form, fee, programs, campuses, levels,
+  form, fee, programs, campuses, levels, modes,
   paid, onPaidChange,
   confirmAccurate, onConfirmChange,
 }: {
@@ -1588,6 +1594,7 @@ function PaymentStep({
   programs: Array<{ id: number; name: string }>
   campuses: Array<{ id: number; name: string }>
   levels:   Array<{ id: number; name: string }>
+  modes:   Array<{ id: number; name: string; display_name: string }>
   paid: boolean
   onPaidChange: (v: boolean) => void
   confirmAccurate: boolean
@@ -1597,6 +1604,7 @@ function PaymentStep({
   const formatFee = new Intl.NumberFormat('en-US').format(fee);
 
   const [opened, setOpened] = useState(false);
+  const [showBankSlipModal, setShowBankSlipModal] = useState(false);
 
   // Load checkout details once when the step opens: merchant code, payer code
   // (= application number), the fixed fee, and the hosted-checkout URL.
@@ -1741,11 +1749,23 @@ function PaymentStep({
           <ConsentCheck checked={confirmAccurate} onChange={onConfirmChange} />
 
           <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+            {/* Bank Slip Button - Primary alternative */}
+            <button
+              type="button"
+              onClick={() => setShowBankSlipModal(true)}
+              disabled={!confirmAccurate}
+              className="btn-primary w-full sm:w-auto"
+              title={!confirmAccurate ? 'Tick the confirmation above first' : 'Upload or manage bank slip payment'}
+            >
+              <FileText className="w-4 h-4" /> Bank Slip
+            </button>
+
+            {/* Pay with Urubuto - Secondary */}
             <button
               type="button"
               onClick={payNow}
               disabled={checkoutQuery.isLoading || !confirmAccurate}
-              className="btn-primary w-full sm:w-auto"
+              className="btn-secondary w-full sm:w-auto"
               title={!confirmAccurate ? 'Tick the confirmation above first' : undefined}
             >
               {checkoutQuery.isLoading ? (
@@ -1831,7 +1851,7 @@ function PaymentStep({
           <ReviewSection title="Programs">
             <ReviewRow k="Program" v={programs.find((p) => p.id === Number(v.program_id))?.name} />
             <ReviewRow k="Campus"  v={campuses.find((c) => c.id === Number(v.campus_id))?.name} />
-            <ReviewRow k="Mode of study" v={v.mode_of_study} />
+            <ReviewRow k="Mode of study" v={modes.find((m) => m.id === Number(v.mode_of_study))?.display_name} />
             <ReviewRow k="Level"   v={levels.find((l) => l.id === Number(v.level_id))?.name} />
             <ReviewRow k="Intake"  v={v.intake} />
           </ReviewSection>
@@ -1865,6 +1885,37 @@ function PaymentStep({
           </p>
         )}
       </div>
+
+      {/* Bank Slip Modal */}
+      {showBankSlipModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 dark:bg-black/70 backdrop-blur-sm p-4">
+          <div className="w-[60%] h-[90vh] max-h-[90vh] bg-white dark:bg-ink-800 rounded-xl shadow-2xl flex flex-col">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-ink-100 dark:border-ink-700 shrink-0">
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-green-600" />
+                <h2 className="text-sm font-semibold text-ink-800 dark:text-white">Bank Slip Payment</h2>
+              </div>
+              <button
+                onClick={() => setShowBankSlipModal(false)}
+                className="p-1.5 hover:bg-ink-100 dark:hover:bg-ink-700 rounded-lg transition-colors"
+                title="Close modal"
+              >
+                <X className="w-4 h-4 text-ink-500 dark:text-ink-400" />
+              </button>
+            </div>
+
+            {/* Modal Body - iFrame */}
+            <div className="flex-1 overflow-hidden bg-white dark:bg-ink-900">
+              <iframe
+                src="https://cur.ac.rw/umis/finance/bank_slip/index.php"
+                className="w-full h-full border-none"
+                title="Bank Slip Portal"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

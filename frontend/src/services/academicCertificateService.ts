@@ -56,10 +56,10 @@ export const academicCertificateService = {
     } = {},
     signal?: AbortSignal,
   ) =>
-    api.get<CertificateListResponse>('/api/academic-certificates', params as Record<string, unknown>, signal),
+    api.get<CertificateListResponse>('/academic-certificates', params as Record<string, unknown>, signal),
 
   issue: (payload: CertificateIssuePayload) =>
-    api.post<{ id: number; certificate_number: string }>('/api/academic-certificates', payload),
+    api.post<{ id: number; certificate_number: string }>('/academic-certificates', payload),
 
   dispatch: (id: number, payload: { dispatch_date?: string; dispatch_notes?: string } = {}) =>
     api.put<null>(`/api/academic-certificates/${id}/dispatch`, payload),

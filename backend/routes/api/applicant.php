@@ -23,6 +23,7 @@ use App\Middleware\RateLimitMiddleware;
  *   POST   /api/applicant/profile/photo                    → uploadPhoto
  *   DELETE /api/applicant/profile/photo                    → deletePhoto
  *   GET    /api/applicant/application                      → getApplication
+ *   POST   /api/applicant/application/:id/resubmit         → resubmitApplication
  *   GET    /api/applicant/academic-records                 → listAcademicRecords
  *   POST   /api/applicant/academic-records                 → addAcademicRecord
  *   PUT    /api/applicant/academic-records/:id             → updateAcademicRecord
@@ -76,6 +77,7 @@ $router->group('/api/applicant', function ($router) {
     $router->get('/application/:id/timeline', [ApplicantProfileController::class, 'getApplicationTimeline']);
     $router->post('/application/:id',  [ApplicantProfileController::class, 'updateApplication']);
     $router->post('/application/:id/respond', [ApplicantProfileController::class, 'respondToOffer']);
+    $router->post('/application/:id/resubmit', [ApplicantProfileController::class, 'resubmitApplication']);
     $router->get('/application/:id/payment-slip', [ApplicantProfileController::class, 'downloadPaymentSlip']);
 
     // ── Academic records ──────────────────────────────────────────────────────

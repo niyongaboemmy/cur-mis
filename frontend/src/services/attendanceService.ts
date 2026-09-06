@@ -223,27 +223,27 @@ export const attendanceService = {
     date_from?:        string
     date_to?:          string
     mine?:             0 | 1
-  } = {}) => api.get<OverviewPayload>('/api/attendance/overview', params as Record<string, unknown>),
+  } = {}) => api.get<OverviewPayload>('/attendance/overview', params as Record<string, unknown>),
 
   teachableModules: (params: { academic_term_id?: number | string } = {}) =>
-    api.get<TeachableModule[]>('/api/attendance/teachable-modules', params as Record<string, unknown>),
+    api.get<TeachableModule[]>('/attendance/teachable-modules', params as Record<string, unknown>),
 
   /** Flat list of every module_offerings block — same data the Module
    *  scheduling page shows, but unfiltered so the attendance landing
    *  table can list every scheduled session at once. */
   scheduledBlocks: (params: { program_id?: number | string; mode?: string } = {}) =>
     api.get<ScheduledBlocksResponse>(
-      '/api/attendance/scheduled-blocks',
+      '/attendance/scheduled-blocks',
       params as Record<string, unknown>,
     ),
 
   listSessions: (params: SessionListParams = {}) =>
-    api.get<SessionListResponse>('/api/attendance/sessions', params as Record<string, unknown>),
+    api.get<SessionListResponse>('/attendance/sessions', params as Record<string, unknown>),
 
   /** Look up an existing session without creating one. */
   findSession: (params: { module_id: number; session_date: string; session_type?: SessionType }) =>
     api.get<{ session: AttendanceSession | null }>(
-      '/api/attendance/sessions/find',
+      '/attendance/sessions/find',
       params as Record<string, unknown>,
     ),
 
@@ -251,7 +251,7 @@ export const attendanceService = {
     api.get<SessionDetail>(`/api/attendance/sessions/${id}`),
 
   createSession: (payload: CreateSessionPayload) =>
-    api.post<{ id: number }>('/api/attendance/sessions', payload),
+    api.post<{ id: number }>('/attendance/sessions', payload),
 
   saveRecords: (id: number | string, payload: SaveRecordsPayload) =>
     api.put<{ saved: number }>(`/api/attendance/sessions/${id}/records`, payload),

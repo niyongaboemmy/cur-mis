@@ -72,7 +72,7 @@ export default function AcademicYearSelector() {
               <YearOption
                 label="All years"
                 selected={selectedYearLabel === ''}
-                onClick={() => { setSelected(''); setIsOpen(false) }}
+                onClick={() => { setSelected('', null); setIsOpen(false) }}
               />
               <div className="h-px bg-ink-100 dark:bg-ink-700 my-1" />
               {years.map((y) => (
@@ -81,7 +81,7 @@ export default function AcademicYearSelector() {
                   label={y.label}
                   badge={y.label === activeLabel ? 'Active' : undefined}
                   selected={y.label === selectedYearLabel}
-                  onClick={() => { setSelected(y.label); setIsOpen(false) }}
+                  onClick={() => { setSelected(y.label, y.id); setIsOpen(false) }}
                 />
               ))}
               {years.length === 0 && (

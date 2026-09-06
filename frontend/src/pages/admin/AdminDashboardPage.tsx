@@ -5,6 +5,7 @@ import { useCampusFilterStore } from '@/store/campusFilterStore'
 import { useCategoryFilterStore } from '@/store/categoryFilterStore'
 import { studentService, type StudentStats } from '@/services/studentService'
 import { ActiveTab } from '@/pages/StudentsPage'
+import { AdminDashboardHeader } from '@/components/AdminYearSelector'
 
 /**
  * Admin dashboard = the live Student Overview (active-student metrics, gender /
@@ -30,6 +31,7 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="max-w-[1400px] mx-auto space-y-5">
+      <AdminDashboardHeader />
       <ActiveTab
         stats={stats}
         loading={statsQ.isLoading}

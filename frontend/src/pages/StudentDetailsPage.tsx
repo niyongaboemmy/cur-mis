@@ -99,6 +99,7 @@ import CountrySelect from "@/components/ui/CountrySelect";
 import LocationSelect from "@/components/ui/LocationSelect";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { useLevels } from "@/hooks/useLevels";
+import DocumentChecklistModal from "@/components/admin/DocumentChecklistModal";
 import {
   COUNTRY_BY_NAME,
   COUNTRY_BY_NATIONALITY,
@@ -157,6 +158,7 @@ export default function StudentDetailsPage({
     setSp(next, { replace: true });
   };
   const [isEditing, setIsEditing] = useState(false);
+  const [showDocumentChecklist, setShowDocumentChecklist] = useState(false);
 
   const canManageStudents = usePermission(PERMISSIONS.MANAGE_STUDENTS);
 
@@ -262,6 +264,13 @@ export default function StudentDetailsPage({
                   <FileOutput className="w-3.5 h-3.5" />
                   <span>Generate Documents</span>
                 </button>
+                <button
+                  onClick={() => setShowDocumentChecklist(true)}
+                  className="btn-secondary btn-sm flex items-center gap-1.5 h-7 px-2.5"
+                >
+                  <CheckCircle className="w-3.5 h-3.5" />
+                  <span>Document Checklist</span>
+                </button>
               </>
             )}
           </div>
@@ -337,7 +346,7 @@ export default function StudentDetailsPage({
         )}
         {tab === "attendance" && <AttendanceTab student={student} selfMode={selfMode} />}
         {tab === "documents" && (
-          <DocumentsTab student={student} selfMode={selfMode} />
+          <DocumentsTab student={student} selfMode={selfMode} onOpenChecklist={() => setShowDocumentChecklist(true)} />
         )}
         {tab === "curriculum" && (
           <ProgramCurriculumTab student={student} selfMode={selfMode} />
@@ -356,6 +365,17 @@ export default function StudentDetailsPage({
           onClose={() => setIsEditing(false)}
         />
       )}
+
+      <DocumentChecklistModal
+        open={showDocumentChecklist}
+        onClose={() => setShowDocumentChecklist(false)}
+        studentId={student.regnumber || student.index_number || String(student.id)}
+        studentName={`${student.fname} ${student.lname}`}
+        programme={String(student.programme_name || (student.application as any)?.program_name || "Not specified")}
+        onSave={() => {
+          toast.success("Document checklist saved successfully");
+        }}
+      />
     </div>
   );
 }
@@ -4165,9 +4185,11 @@ function DocumentUploadSection() {
 function DocumentsTab({
   student,
   selfMode = false,
+  onOpenChecklist,
 }: {
   student: any;
   selfMode?: boolean;
+  onOpenChecklist?: () => void;
 }) {
   const studentId = student.id;
 
@@ -4260,7 +4282,38 @@ function DocumentsTab({
         />
       </div>
 
-      {offer && <AdmissionLetterRow offer={offer} />}
+      {/* Document Checklist Card - Full Width */}
+      {!selfMode && onOpenChecklist && (
+        <button
+          onClick={onOpenChecklist}
+          className="card p-4 bg-yellow-50 dark:bg-yellow-900/20 border-2 border-yellow-200 dark:border-yellow-700 hover:bg-yellow-100 dark:hover:bg-yellow-900/30 transition-colors flex items-center gap-4 w-full text-left"
+        >
+          <div className="flex items-center justify-center flex-shrink-0">
+            <div className="w-12 h-12 rounded-lg bg-yellow-200 dark:bg-yellow-900/40 flex items-center justify-center">
+              <CheckCircle className="w-6 h-6 text-yellow-600 dark:text-yellow-400" />
+            </div>
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-sm font-semibold text-yellow-900 dark:text-yellow-300">
+              Document Checklist
+            </h3>
+            <p className="text-xs text-yellow-700 dark:text-yellow-400 mt-0.5">
+              Verify and track student document completion
+            </p>
+          </div>
+          <div className="flex-shrink-0">
+            <button
+              onClick={onOpenChecklist}
+              className="btn-primary btn-sm flex items-center gap-2 whitespace-nowrap"
+            >
+              <CheckCircle className="w-4 h-4" />
+              Open Checklist
+            </button>
+          </div>
+        </button>
+      )}
+
+      {offer && <AdmissionLetterRow offer={offer} studentId={studentId} />}
 
       {documents.length === 0 && !applicationId ? (
         <div className="card p-8 text-center text-ink-500 text-sm">
@@ -4302,6 +4355,7 @@ function DocumentsTab({
  */
 function AdmissionLetterRow({
   offer,
+  studentId,
 }: {
   offer: {
     letter_token: string;
@@ -4309,8 +4363,11 @@ function AdmissionLetterRow({
     letter_sent_at?: string | null;
     application_number?: string | null;
   };
+  studentId?: number;
 }) {
-  const url = studentService.admissionLetterUrl(offer.letter_token);
+  const url = studentId
+    ? `https://cur.ac.rw/umis/documents/all_certificate/generate_document.php?type=admission_letter&student_id=${studentId}&file_name=Admission_Letter_FORMAT.pdf`
+    : studentService.admissionLetterUrl(offer.letter_token);
   const fileName = `admission-letter-${offer.application_number ?? "student"}.pdf`;
   const sent = offer.letter_sent_at
     ? new Date(offer.letter_sent_at).toLocaleDateString()
@@ -4347,16 +4404,9 @@ function AdmissionLetterRow({
           href={url}
           target="_blank"
           rel="noreferrer"
-          className="btn-secondary btn-sm flex items-center gap-1.5"
-        >
-          <Eye className="w-3.5 h-3.5" /> View
-        </a>
-        <a
-          href={url}
-          download={fileName}
           className="btn-primary btn-sm flex items-center gap-1.5"
         >
-          <Download className="w-3.5 h-3.5" /> Download
+          <Eye className="w-3.5 h-3.5" /> View
         </a>
       </div>
     </div>
@@ -5561,13 +5611,15 @@ function TClassificationCard({
   );
 }
 
-/** "Level 2 — Semesters 3 & 4"; level 1 is semesters 1 & 2, level 2 is 3 & 4, … */
+/** The catalogue name for a level, e.g. "Level 8, Semester 5". */
 function tLevelLabel(level: string, name?: string): string {
   if (level === "unclassified") return "Level not recorded";
   const n = Number(level);
-  // `level` is a `levels.id`; the heading reads the catalogue name, and the
-  // semester pair is still derived from the numeric level of study.
-  return `${name || `Level ${n}`} — Semesters ${n * 2 - 1} & ${n * 2}`;
+  // Just the catalogue name. It already states the semester, so the derived
+  // "— Semesters 5 & 6" that used to follow it only ever restated the level
+  // in different words, and contradicted the name whenever the two disagreed.
+  // Stray whitespace before punctuation comes from the stored name.
+  return (name || `Level ${n}`).replace(/\s+([,;:])/g, "$1").trim();
 }
 
 /** Credits and weighted average for one level, matching the PDF's TOTAL row. */

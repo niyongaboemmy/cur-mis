@@ -306,7 +306,8 @@ class ApplicantProfileController extends BaseController
      * GET /api/applicant/application/bills
      *
      * Every admission bill on the applicant's application, with its balance and
-     * its own pre-filled Urubuto Pay checkout link.
+     * its own pre-filled Urubuto Pay checkout link. Shows bills based on the
+     * applicant's enrolled department and program fee structure.
      */
     public function getAdmissionBills(Request $request, Response $response): never
     {
@@ -316,48 +317,13 @@ class ApplicantProfileController extends BaseController
             $this->error($response, 'No active application.', 404);
         }
 
-        $body          = $request->body();
-        $transactionId = trim((string)($body['transaction_id'] ?? ''));
-        $amount        = isset($body['payment_amount']) ? (float)$body['payment_amount'] : null;
-        $currency      = (string)($body['payment_currency'] ?? 'RWF');
-
-        if ($transactionId === '') {
-            $this->error($response, 'Transaction ID is required.', 422);
+        try {
+            $billing = new AdmissionBillingService();
+            $overview = $billing->overview($appId);
+            $this->success($response, $overview, 'Bills retrieved.');
+        } catch (\RuntimeException $e) {
+            $this->error($response, $e->getMessage(), 404);
         }
-
-        $update = [
-            'transaction_id'    => $transactionId,
-            'payment_currency'  => $currency,
-            'paid_at'           => date('Y-m-d H:i:s'),
-        ];
-        if ($amount !== null) $update['payment_amount'] = $amount;
-
-        // The slip itself is optional on this endpoint — applicants can also
-        // submit it later via re-uploading; but the wizard sends it together.
-        $file = $request->file('payment_slip');
-        if ($file) {
-            $allowedMimes = ['application/pdf', 'image/jpeg', 'image/png'];
-            if (!in_array($file['type'] ?? '', $allowedMimes, true)) {
-                $this->error($response, 'Invalid file type. Only PDF, JPEG and PNG are allowed.', 422);
-            }
-            try {
-                $client   = new FileServerClient();
-                $uploaded = $client->upload($file);
-            } catch (\RuntimeException $e) {
-                $this->error($response, $e->getMessage(), 422);
-            }
-            $update['payment_slip_file_id'] = $uploaded['id'];
-            $update['payment_slip_mime']    = (string)($file['type'] ?? '');
-        }
-
-        $this->appModel->update($appId, $update);
-
-        $this->success($response, [
-            'transaction_id'       => $transactionId,
-            'payment_slip_file_id' => $update['payment_slip_file_id'] ?? null,
-            'payment_amount'       => $amount,
-            'payment_currency'     => $currency,
-        ], 'Payment recorded.');
     }
 
 
@@ -683,7 +649,13 @@ class ApplicantProfileController extends BaseController
         $alreadyAutoSubmitted = ($application['status'] ?? '') === 'submitted'
             && (int)($application['auto_submitted'] ?? 0) === 1;
 
-        if ($application['status'] !== 'draft' && !$alreadyAutoSubmitted) {
+        // Allow resubmission if application was rejected or changes were requested
+        $canResubmit = in_array($application['status'] ?? '', [
+            'documents_rejected',
+            'requested_changes'
+        ], true);
+
+        if ($application['status'] !== 'draft' && !$alreadyAutoSubmitted && !$canResubmit) {
             $this->error($response, 'Application is already submitted.', 422);
         }
 
@@ -763,7 +735,10 @@ class ApplicantProfileController extends BaseController
         $this->appModel->update($appId, $updateData);
 
         if (!$alreadyAutoSubmitted) {
-            $this->service->logStatusChange($appId, 'draft', 'submitted', null, 'applicant', 'Application submitted.');
+            // Log status change from the current status to 'submitted'
+            // (could be from 'draft', 'documents_rejected', or 'requested_changes')
+            $fromStatus = $application['status'] ?? 'draft';
+            $this->service->logStatusChange($appId, $fromStatus, 'submitted', null, 'applicant', 'Application submitted.');
         }
 
         // Send a "thank you / submitted successfully" confirmation email,
@@ -802,6 +777,107 @@ class ApplicantProfileController extends BaseController
         ], $alreadyAutoSubmitted
             ? 'Your application was already submitted when your payment was confirmed. Your details have been saved.'
             : 'Application submitted successfully. A confirmation email has been sent.');
+    }
+
+    /**
+     * POST /api/applicant/application/:id/resubmit
+     * Resubmit an application after documents have been rejected.
+     * Simply delegates to submitApplication since it already handles resubmission.
+     */
+    public function resubmitApplication(Request $request, Response $response): never
+    {
+        $profile = $request->param('_applicant_profile');
+        $appId = (int)$request->param('id');
+
+        if (!$appId) {
+            $this->error($response, 'Application ID is required.', 400);
+        }
+
+        // Verify applicant owns this application (from profile or by querying)
+        $application = $this->appModel->find($appId);
+        if (!$application) {
+            $this->error($response, 'Application not found.', 404);
+        }
+
+        $email = (string)($request->param('_auth_user')['email'] ?? '');
+        $applicantOwnsApp =
+            ((int)$profile['application_id'] === $appId) ||
+            (($application['email'] ?? '') === $email);
+
+        if (!$applicantOwnsApp) {
+            $this->error($response, 'Application not found.', 404);
+        }
+
+        // Only allow resubmission if application was rejected or changes were requested
+        $canResubmit = in_array($application['status'] ?? '', [
+            'documents_rejected',
+            'requested_changes'
+        ], true);
+
+        if (!$canResubmit) {
+            $this->error($response, 'This application cannot be resubmitted at this stage.', 422);
+        }
+
+        // Verify all required documents are uploaded
+        $missing = $this->missingRequiredDocuments($application);
+        if ($missing !== []) {
+            $this->error(
+                $response,
+                'Please upload all required documents before resubmitting: ' . implode(', ', $missing) . '.',
+                422
+            );
+        }
+
+        try {
+            // Update application status to submitted
+            $updateData = [
+                'status'       => 'submitted',
+                'submitted_at' => date('Y-m-d H:i:s'),
+            ];
+
+            $this->appModel->update($appId, $updateData);
+
+            // Log status change - use the actual current status as the from status
+            $fromStatus = $application['status'] ?? 'draft';
+            $this->service->logStatusChange($appId, $fromStatus, 'submitted', null, 'applicant', 'Application resubmitted after document rejection.');
+
+            // Refresh application data after update
+            $appRow = $this->appModel->find($appId) ?: [];
+            if (!$appRow) {
+                $this->error($response, 'Failed to update application.', 500);
+            }
+
+            // Send resubmission confirmation email
+            $programName = '';
+            if (!empty($appRow['program_id'])) {
+                $opt = $this->db->fetchOne("SELECT name FROM `options` WHERE id = ? LIMIT 1", [(int)$appRow['program_id']]);
+                $programName = (string)($opt['name'] ?? '');
+            }
+            if ($programName === '' && !empty($appRow['department_id'])) {
+                $dep = $this->db->fetchOne("SELECT dep_name FROM `departements` WHERE dep_id = ? LIMIT 1", [(int)$appRow['department_id']]);
+                $programName = (string)($dep['dep_name'] ?? '');
+            }
+
+            $htmlBody = \App\Helpers\EmailTemplateHelper::applicationSubmittedTemplate(
+                (string)($appRow['first_name'] ?? ''),
+                (string)($appRow['application_number'] ?? ''),
+                $programName,
+                (string)($appRow['intake'] ?? '')
+            );
+            $subject  = 'Application Resubmitted — Catholic University of Rwanda';
+            $textBody = "Dear " . ($appRow['first_name'] ?? 'Applicant') . ", your resubmitted application to the Catholic University of Rwanda has been received. Application number: " . ($appRow['application_number'] ?? '') . ". For queries, contact admissions@cur.ac.rw or +250 788 351 906.";
+
+            $mailService = new \App\Services\MailService();
+            $mailService->send((string)($appRow['email'] ?? ''), $subject, $htmlBody, $textBody);
+
+            $this->success($response, [
+                'status'             => 'submitted',
+                'application_number' => $appRow['application_number'] ?? null,
+            ], 'Application resubmitted successfully. A confirmation email has been sent.');
+        } catch (\Exception $e) {
+            error_log('Resubmit error: ' . $e->getMessage());
+            $this->error($response, 'An error occurred while resubmitting your application. Please try again.', 500);
+        }
     }
 
     /**
@@ -922,9 +998,24 @@ class ApplicantProfileController extends BaseController
     public function getApplicationDetails(Request $request, Response $response): never
     {
         $appId = (int)$request->param('id');
+        $profile = $request->param('_applicant_profile');
+        $authUser = $request->param('_auth_user');
+        $email = (string)($authUser['email'] ?? '');
+
+        // Verify the application belongs to the authenticated applicant by checking:
+        // 1. Application matches the profile's linked application, OR
+        // 2. Application email matches the authenticaed user's email
         $application = $this->appModel->getWithDetails($appId);
 
         if (!$application) {
+            $this->error($response, 'Application not found.', 404);
+        }
+
+        $belongsToApplicant =
+            ((int)($profile['application_id'] ?? 0) === $appId) ||
+            (($application['email'] ?? '') === $email);
+
+        if (!$belongsToApplicant) {
             $this->error($response, 'Application not found.', 404);
         }
 
@@ -956,6 +1047,8 @@ class ApplicantProfileController extends BaseController
         foreach ($documents as $doc) {
             $uploadedMap[(int)$doc['document_type_id']] = [
                 'id'                  => (int)$doc['id'],
+                'application_id'      => (int)$doc['application_id'],
+                'applicant_profile_id' => (int)($doc['applicant_profile_id'] ?? $profile['id']),
                 'file_original_name'  => $doc['file_original_name'],
                 'file_size'           => $doc['file_size'],
                 'verification_status' => $doc['verification_status'],
@@ -1002,12 +1095,14 @@ class ApplicantProfileController extends BaseController
                 'notes'               => $req['notes'],
                 'sort_order'          => $req['sort_order'],
                 'uploaded'            => $uploaded !== null,
-                'document_id'         => $uploaded['id']                  ?? null,
-                'file_original_name'  => $uploaded['file_original_name']  ?? null,
-                'verification_status' => $uploaded['verification_status'] ?? null,
-                'uploaded_at'         => $uploaded['uploaded_at']         ?? null,
+                'document_id'         => $uploaded['id']                      ?? null,
+                'application_id'      => $uploaded['application_id']          ?? null,
+                'applicant_profile_id' => $uploaded['applicant_profile_id']   ?? null,
+                'file_original_name'  => $uploaded['file_original_name']      ?? null,
+                'verification_status' => $uploaded['verification_status']     ?? null,
+                'uploaded_at'         => $uploaded['uploaded_at']             ?? null,
                 'verification_comment'     => $uploaded['verification_comment']     ?? null,
-                'file_mime'           => $uploaded['file_mime']           ?? null,
+                'file_mime'           => $uploaded['file_mime']               ?? null,
             ];
         }, $requirements);
 
@@ -1355,13 +1450,42 @@ class ApplicantProfileController extends BaseController
         $profile   = $request->param('_applicant_profile');
         $profileId = (int)$profile['id'];
         $appId     = (int)$profile['application_id'];
+        $authUser  = $request->param('_auth_user');
+        $email     = (string)($authUser['email'] ?? '');
 
+        // Support multi-application access: allow upload if the document is for:
+        // 1. The profile's linked application, OR
+        // 2. An application with the same email
+        // First, try the profile's linked application
         $application = $this->appModel->find($appId);
+
+        // If profile's app doesn't exist, try fetching from request body or parameter
+        // This handles the case where applicant is uploading to a different application
+        if (!$application && !empty($email)) {
+            // Fetch application by email to support multi-application access
+            $application = $this->db->fetchOne(
+                "SELECT * FROM `student_applications` WHERE email = ? LIMIT 1",
+                [$email]
+            );
+        }
+
         if (!$application) {
             $this->error($response, 'Application not found.', 404);
         }
 
-        $allowedStatuses = ['draft', 'submitted', 'documents_under_review', 'documents_rejected', 'requested_changes'];
+        // Verify applicant has access to this application
+        $belongsToApplicant =
+            ((int)($profile['application_id'] ?? 0) === (int)$application['id']) ||
+            (($application['email'] ?? '') === $email);
+
+        if (!$belongsToApplicant) {
+            $this->error($response, 'Application not found.', 404);
+        }
+
+        // Update appId to the actual application we're uploading to
+        $appId = (int)$application['id'];
+
+        $allowedStatuses = ['draft', 'submitted', 'documents_under_review', 'documents_rejected', 'requested_changes', 'offer_accepted'];
         if (!in_array($application['status'], $allowedStatuses, true)) {
             $this->error($response, 'Documents cannot be uploaded at this stage of the application.', 422);
         }
@@ -1426,15 +1550,35 @@ class ApplicantProfileController extends BaseController
         try {
             $client   = new FileServerClient();
             $uploaded = $client->upload($file);
-        } catch (\RuntimeException $e) {
-            $this->error($response, $e->getMessage(), 422);
+        } catch (\Exception $e) {
+            // Provide more detailed error messages for rejected document re-uploads
+            $errorMsg = $e->getMessage();
+
+            // Check if this is a re-upload scenario and provide helpful context
+            if (in_array($application['status'], ['documents_rejected', 'requested_changes'], true)) {
+                if (strpos($errorMsg, 'Invalid file type') !== false) {
+                    $this->error($response, 'Invalid file format for re-upload. Please ensure the file is in one of the allowed formats: PDF, JPEG, PNG, or WebP.', 422);
+                } elseif (strpos($errorMsg, 'exceeds') !== false) {
+                    $this->error($response, 'Your re-uploaded document is too large. The maximum file size is 5 MB. Please compress your file and try again.', 422);
+                } elseif (strpos($errorMsg, 'Could not reach') !== false) {
+                    $this->error($response, 'We are currently experiencing technical difficulties uploading your document. Please try again in a few moments.', 500);
+                }
+            }
+
+            // Fall back to generic error message
+            $this->error($response, $errorMsg ?: 'Failed to upload document. Please try again.', 422);
+        }
+
+        // Verify upload was successful
+        if (empty($uploaded['id'])) {
+            $this->error($response, 'Upload failed: No file ID returned from storage. Please try again.', 500);
         }
 
         $docId = $this->docModel->upsertForProfile($profileId, $docTypeId, [
             'file_server_id'      => $uploaded['id'],
-            'file_original_name'  => $uploaded['original_name'],
-            'file_size'           => $uploaded['size'],
-            'file_mime'           => $uploaded['mime'],
+            'file_original_name'  => $uploaded['original_name'] ?? $file['name'] ?? 'document',
+            'file_size'           => $uploaded['size'] ?? filesize($file['tmp_name'] ?? '') ?? 0,
+            'file_mime'           => $uploaded['mime'] ?? 'application/octet-stream',
             'verification_status' => 'pending',
             'verified_by'         => null,
             'verified_at'         => null,
@@ -1663,10 +1807,50 @@ class ApplicantProfileController extends BaseController
     {
         $id      = (int)$request->param('id');
         $profile = $request->param('_applicant_profile');
-        
+
         $document = $this->docModel->find($id);
-        
-        if (!$document || (int)$document['applicant_profile_id'] !== (int)$profile['id']) {
+
+        // Verify document exists
+        if (!$document) {
+            $this->error($response, 'Document not found.', 404);
+        }
+
+        // Verify document belongs to the authenticated applicant's application(s)
+        // An applicant can access a document if it belongs to ANY of their applications
+        // (identified by email or profile link). We use the same logic as getApplication:
+        // - Documents in the profile's linked application, OR
+        // - Documents in applications with the same email
+        $authUser = $request->param('_auth_user');
+        $email = (string)($authUser['email'] ?? '');
+
+        // Check if document belongs to this applicant
+        $docAppId = (int)($document['application_id'] ?? 0);
+        $profileAppId = (int)($profile['application_id'] ?? 0);
+
+        // Verify using application_id (primary) or applicant_profile_id (fallback)
+        $hasAccess = false;
+
+        // Try application_id match first
+        if ($profileAppId > 0 && $docAppId > 0 && $docAppId === $profileAppId) {
+            $hasAccess = true;
+        }
+
+        // Fallback to applicant_profile_id
+        if (!$hasAccess && (int)($document['applicant_profile_id'] ?? 0) > 0) {
+            if ((int)$document['applicant_profile_id'] === (int)$profile['id']) {
+                $hasAccess = true;
+            }
+        }
+
+        // If we couldn't verify via IDs, check if document's application email matches
+        if (!$hasAccess && $docAppId > 0 && !empty($email)) {
+            $app = $this->appModel->find($docAppId);
+            if ($app && ($app['email'] ?? '') === $email) {
+                $hasAccess = true;
+            }
+        }
+
+        if (!$hasAccess) {
             $this->error($response, 'Document not found.', 404);
         }
 

@@ -1,0 +1,175 @@
+<title>HR Module SQL Migrations</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    line-height: 1.6;
+    color: #333;
+    margin: 0;
+    padding: 20px;
+    background: #f5f5f5;
+  }
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    background: white;
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
+  h1 { color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; }
+  h2 { color: #34495e; margin-top: 30px; padding-top: 20px; border-top: 1px solid #ecf0f1; }
+  h3 { color: #7f8c8d; margin-top: 20px; }
+  .migration-phase { background: #ecf0f1; padding: 15px; margin: 15px 0; border-left: 4px solid #3498db; border-radius: 4px; }
+  .migration { background: #f8f9fa; padding: 15px; margin: 10px 0; border-radius: 4px; border-left: 4px solid #27ae60; }
+  .migration.reset { border-left-color: #e74c3c; background: #fadbd8; }
+  table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+  th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+  th { background: #34495e; color: white; }
+  tr:hover { background: #f5f5f5; }
+  .code-block { background: #2c3e50; color: #ecf0f1; padding: 15px; border-radius: 4px; overflow-x: auto; font-family: 'Courier New', monospace; font-size: 13px; line-height: 1.4; margin: 15px 0; }
+  .status { display: inline-block; padding: 5px 10px; border-radius: 3px; font-size: 12px; font-weight: bold; }
+  .status.required { background: #27ae60; color: white; }
+  .status.optional { background: #f39c12; color: white; }
+  .important { background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 15px 0; border-radius: 4px; }
+  .success { background: #d4edda; border-left: 4px solid #28a745; padding: 15px; margin: 15px 0; border-radius: 4px; }
+  ul { line-height: 1.8; }
+</style>
+
+<div class="container">
+  <h1>🗄️ HR Module SQL Migrations</h1>
+  <p><strong>Last Updated:</strong> 2026-09-04 | <strong>System:</strong> CUR-MIS</p>
+
+  <h2>📋 Migration Execution Order</h2>
+
+  <div class="important">
+    <strong>⚠️ IMPORTANT:</strong> Migrations MUST be executed in exact order shown. Executing out of order causes foreign key constraint errors.
+  </div>
+
+  <table>
+    <tr>
+      <th>Phase</th>
+      <th>Migration File</th>
+      <th>Status</th>
+      <th>Purpose</th>
+    </tr>
+    <tr>
+      <td><strong>Reset</strong></td>
+      <td>2026_09_04_000_reset_hr_module.sql</td>
+      <td><span class="status optional">OPTIONAL</span></td>
+      <td>Safely drops all HR tables (only if starting fresh)</td>
+    </tr>
+    <tr>
+      <td rowspan="2"><strong>Phase 1</strong><br>Hierarchy</td>
+      <td>2026_09_04_001_leave_supervisor_hierarchy.sql</td>
+      <td><span class="status required">REQUIRED</span></td>
+      <td>Creates leave_approval_stages (3-level workflow)</td>
+    </tr>
+    <tr>
+      <td>2026_09_04_002_assign_supervisors_organizational_hierarchy.sql</td>
+      <td><span class="status required">REQUIRED</span></td>
+      <td>Links employees to supervisors</td>
+    </tr>
+    <tr>
+      <td><strong>Phase 2</strong><br>Employees</td>
+      <td>2026_09_04_003_hr_module_enhanced_employees.sql</td>
+      <td><span class="status required">REQUIRED</span></td>
+      <td>Adds HR fields to users table + profiles, qualifications, financial info</td>
+    </tr>
+    <tr>
+      <td><strong>Phase 3</strong><br>Payroll</td>
+      <td>2026_09_04_004_hr_module_payroll_salary.sql</td>
+      <td><span class="status required">REQUIRED</span></td>
+      <td>Creates salary structures, components, payroll runs (13 component types)</td>
+    </tr>
+    <tr>
+      <td><strong>Phase 4</strong><br>Leave</td>
+      <td>2026_09_04_005_hr_module_leave_management.sql</td>
+      <td><span class="status required">REQUIRED</span></td>
+      <td>Creates leave management (8 leave types, 3-stage approval)</td>
+    </tr>
+    <tr>
+      <td><strong>Phase 5</strong><br>Contracts</td>
+      <td>2026_09_04_006_hr_module_contracts_certificates.sql</td>
+      <td><span class="status required">REQUIRED</span></td>
+      <td>Creates contracts (5 types) and certificates (5 types)</td>
+    </tr>
+    <tr>
+      <td><strong>Phase 6</strong><br>Legacy Data</td>
+      <td>2026_09_04_007_migrate_employees_to_users.sql</td>
+      <td><span class="status optional">OPTIONAL</span></td>
+      <td>Migrates legacy employees table (only if needed)</td>
+    </tr>
+    <tr>
+      <td rowspan="2"><strong>Phase 7</strong><br>Integration</td>
+      <td>2026_09_04_008_hr_module_integrate_hr_employees.sql</td>
+      <td><span class="status required">REQUIRED</span></td>
+      <td>Integrates 15 hr_employees into HR module</td>
+    </tr>
+    <tr>
+      <td>2026_09_04_009_populate_hr_data_from_hr_employees.sql</td>
+      <td><span class="status required">REQUIRED</span></td>
+      <td>Populates leave balances (120), contracts, profiles</td>
+    </tr>
+  </table>
+
+  <h2>🔄 Quick Execution</h2>
+
+  <h3>MySQL CLI (Fastest)</h3>
+  <div class="code-block">
+cd backend/database/migrations
+mysql -u root -p cur_mis < 2026_09_04_001_leave_supervisor_hierarchy.sql
+mysql -u root -p cur_mis < 2026_09_04_002_assign_supervisors_organizational_hierarchy.sql
+mysql -u root -p cur_mis < 2026_09_04_003_hr_module_enhanced_employees.sql
+mysql -u root -p cur_mis < 2026_09_04_004_hr_module_payroll_salary.sql
+mysql -u root -p cur_mis < 2026_09_04_005_hr_module_leave_management.sql
+mysql -u root -p cur_mis < 2026_09_04_006_hr_module_contracts_certificates.sql
+mysql -u root -p cur_mis < 2026_09_04_008_hr_module_integrate_hr_employees.sql
+mysql -u root -p cur_mis < 2026_09_04_009_populate_hr_data_from_hr_employees.sql
+  </div>
+
+  <h3>phpMyAdmin (Safest)</h3>
+  <div class="code-block">
+1. Log into phpMyAdmin
+2. Select 'cur_mis' database
+3. Click SQL tab
+4. Copy-paste each migration SQL file (in order above)
+5. Click Go
+6. Repeat for all 8 migrations
+  </div>
+
+  <h2>✅ Verification Query</h2>
+  <div class="code-block">
+SELECT 'leave_balances' as table_name, COUNT(*) as count FROM leave_balances
+UNION ALL SELECT 'employee_profiles', COUNT(*) FROM employee_profiles
+UNION ALL SELECT 'employee_contracts', COUNT(*) FROM employee_contracts
+UNION ALL SELECT 'contract_types', COUNT(*) FROM contract_types
+UNION ALL SELECT 'certificate_types', COUNT(*) FROM certificate_types
+UNION ALL SELECT 'salary_component_types', COUNT(*) FROM salary_component_types;
+
+-- Expected:
+-- leave_balances: 120 (15 employees × 8 types)
+-- employee_profiles: 15
+-- employee_contracts: 15
+-- contract_types: 5
+-- certificate_types: 5
+-- salary_component_types: 13
+  </div>
+
+  <h2>📊 Data Summary</h2>
+  <ul>
+    <li><strong>Employees:</strong> 15 (from hr_employees table)</li>
+    <li><strong>Leave Types:</strong> 8 (Annual, Sick, Maternity, Paternity, Bereavement, Training, Mission, Short Absence)</li>
+    <li><strong>Salary Components:</strong> 13 (BASIC, HOUSING, TRANSPORT, MEALS, TELEPHONE, UTILITIES, INSURANCE, PENSION, WELLNESS, CHILDREN_ALLOWANCE, PERFORMANCE_BONUS, LEAVE_SETTLEMENT, OTHER)</li>
+    <li><strong>Contract Types:</strong> 5 (Probation 90d, Temporal 3M, Temporal 1Y, Part-time, Full-time Indefinite)</li>
+    <li><strong>Certificate Types:</strong> 5 (Salary Certificate, Service Certificate, Promotions, Disciplinary, Other)</li>
+    <li><strong>Approval Stages:</strong> 3 (Supervisor 48h, HR 48h, Final 24h)</li>
+  </ul>
+
+  <h2>✨ All Migrations Status</h2>
+  <div class="success">
+    <strong>✅ ALL 9 MIGRATIONS COMPLETED</strong>
+    <p>HR module is fully implemented and production-ready with 15 employees integrated.</p>
+  </div>
+</div>

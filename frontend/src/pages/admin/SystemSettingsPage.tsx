@@ -1,10 +1,11 @@
 import { useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Settings, Video, Landmark, Coins } from 'lucide-react'
+import { Settings, Video, Landmark, Coins, PenLine } from 'lucide-react'
 import { systemService } from '@/services/systemService'
 import type { AcademicTerm, AcademicYear } from '@/types/academic'
 import GuidanceVideosPanel from '@/components/admin/GuidanceVideosPanel'
+import SignatoriesPanel from '@/components/admin/SignatoriesPanel'
 import FeeMappingPanel from '@/pages/finance/FeeMappingPanel'
 import { PERMISSIONS } from '@/constants/permissions'
 import { usePermission } from '@/utils/permissions'
@@ -12,8 +13,8 @@ import { cn } from '@/utils/helpers'
 
 /**
  * System settings — the home for the three endpoints VIEW_SETTINGS and
- * MANAGE_SETTINGS actually guard: /api/system/basics, /api/system/guidance-videos
- * and /api/system/fee-mapping.
+ * MANAGE_SETTINGS actually guard: /api/system/basics, /api/system/guidance-videos,
+ * /api/system/fee-mapping and /api/system/signatories.
  *
  * Before this page the two slugs granted nothing navigable: guidance videos sat
  * as an ungated tab inside Academic settings and fee mapping was mounted inside
@@ -36,6 +37,9 @@ export default function SystemSettingsPage() {
     const all: TabDef[] = [
       { slug: 'institution', label: 'Institution', icon: Landmark, render: () => <InstitutionPanel /> },
       { slug: 'guidance-videos', label: 'Guidance videos', icon: Video, render: () => <GuidanceVideosPanel /> },
+      // Readable with VIEW_SETTINGS so the current officeholder can be checked
+      // without the grant to change it; the field itself is disabled without.
+      { slug: 'signatories', label: 'Signatories', icon: PenLine, render: () => <SignatoriesPanel /> },
       // Fee mapping has no read-only mode, so it is limited to the write grant.
       { slug: 'fee-mapping', label: 'Application fee mapping', icon: Coins, permission: PERMISSIONS.MANAGE_SETTINGS, render: () => <FeeMappingPanel /> },
     ]

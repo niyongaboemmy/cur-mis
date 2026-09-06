@@ -95,18 +95,18 @@ export interface PaginatedList<T> {
 
 export const serviceRequestReportService = {
   getOverview: (days = 30, signal?: AbortSignal) =>
-    api.get<ServiceRequestReportOverview>('/api/service-requests/reports/overview', { days }, signal),
+    api.get<ServiceRequestReportOverview>('/service-requests/reports/overview', { days }, signal),
 
   getList: (filter: ReportFilter, page: number, perPage = 15, signal?: AbortSignal) =>
     api.get<PaginatedList<ServiceRequestListRow>>(
-      '/api/service-requests/reports/list',
+      '/service-requests/reports/list',
       { filter, page, per_page: perPage },
       signal,
     ),
 
   /** Auth is a bearer JWT, so a plain link/window.open won't carry it — fetch as a blob and save it. */
   exportCsv: async (filter: ReportFilter) => {
-    const response = await apiClient.get('/api/service-requests/reports/export', {
+    const response = await apiClient.get('/service-requests/reports/export', {
       params: { filter },
       responseType: 'blob',
     })

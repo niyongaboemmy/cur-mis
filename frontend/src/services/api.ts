@@ -1,6 +1,7 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '@/store/authStore'
+import { useSystemStore, selectSelectedYearId } from '@/store/systemStore'
 import { API_TIMEOUT } from '@/constants'
 import { ApiResponse } from '@/types'
 
@@ -21,6 +22,18 @@ apiClient.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
+
+    // Mirror the globally-selected academic context (topnav year/term
+    // switcher) onto every request. The backend's AcademicContext helper
+    // reads these and falls back to the DB active year/term when absent, so
+    // omitting them = "use the real active context".
+    try {
+      const st = useSystemStore.getState()
+      const yearId = selectSelectedYearId(st)
+      if (yearId != null) config.headers['X-Academic-Year-Id'] = String(yearId)
+      if (st.selectedTermId != null) config.headers['X-Academic-Term-Id'] = String(st.selectedTermId)
+    } catch { /* store not ready — fall back to server-side active context */ }
+
     return config
   },
   (error) => Promise.reject(error),
@@ -40,7 +53,7 @@ apiClient.interceptors.response.use(
     // that is otherwise perfectly valid — which is exactly what the header
     // notification poll did. A real 401 on anything the user actually asked
     // for still logs out normally.
-    const isBackgroundPoll = error.config?.url?.includes('/api/notifications') ||
+    const isBackgroundPoll = error.config?.url?.includes('/notifications') ||
                              error.config?.url?.includes('/messages/unread-count');
 
     if (error.response?.status === 401 && !isAuthPath && !isBackgroundPoll) {

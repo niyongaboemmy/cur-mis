@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import toast from "react-hot-toast";
 import {
   FileText,
   MapPin,
@@ -21,6 +22,10 @@ import {
   Hash,
   Award,
   Sparkles,
+  Loader2,
+  AlertCircle,
+  ExternalLink,
+  UploadCloud,
 } from "lucide-react";
 import { applicantService } from "@/services/admissionService";
 import {
@@ -35,6 +40,7 @@ import {
   countryFlag,
 } from "@/data/countries";
 import DocumentPreviewModal from "../ui/DocumentPreviewModal";
+import Modal from "../ui/Modal";
 import { useLevels } from "@/hooks/useLevels";
 
 interface ApplicationDetailsViewProps {
@@ -43,12 +49,18 @@ interface ApplicationDetailsViewProps {
   onBack?: () => void;
 }
 
+const fmtNumber = (n: number) => new Intl.NumberFormat('en-US').format(Math.round(n));
+
 export default function ApplicationDetailsView({
   application,
   onBack,
 }: ApplicationDetailsViewProps) {
   const [previewDoc, setPreviewDoc] = useState<any>(null);
+  const [reuploadDoc, setReuploadDoc] = useState<any>(null);
+  const [resubmitDialog, setResubmitDialog] = useState(false);
   const { levelName } = useLevels();
+  const qc = useQueryClient();
+
   const detailsQ = useQuery({
     queryKey: ["applicant", "application", application.id],
     queryFn: () => applicantService.getApplicationDetails(application.id),
@@ -63,6 +75,29 @@ export default function ApplicationDetailsView({
   const statusLog = ((app as any).status_log ?? []).filter(
     (log: any) => log.to_status !== "draft",
   );
+
+  const billsQ = useQuery({
+    queryKey: ["admission-bills", "applicant"],
+    queryFn: ({ signal }) => applicantService.getAdmissionBills(signal),
+    enabled: application.status === "offer_accepted",
+  });
+
+  const billsData = billsQ.data?.data;
+
+  const resubmitMutation = useMutation({
+    mutationFn: () => applicantService.resubmitApplication(application.id),
+    onSuccess: () => {
+      toast.success("Application resubmitted successfully");
+      setResubmitDialog(false);
+      qc.invalidateQueries({ queryKey: ["applicant", "applications"] });
+      qc.invalidateQueries({ queryKey: ["applicant", "application", application.id] });
+    },
+    onError: (e: any) =>
+      toast.error(e?.response?.data?.message ?? "Failed to resubmit application"),
+  });
+
+  const isRejected = application.status === "documents_rejected" || application.status === "requested_changes";
+  const hasRejectedDocs = checklist.some((doc: any) => doc.verification_status === "rejected");
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
@@ -332,69 +367,111 @@ export default function ApplicationDetailsView({
 
           {/* Documents */}
           <Card>
-            <div className="flex items-center justify-between gap-4 mb-2">
-              <SectionHeader
-                title="Required Documents"
-                sub="Upload status and verification."
-                icon={FileText}
-              />
-            </div>
-            <div className="space-y-3 mt-4">
+            <SectionHeader
+              title="Required Documents"
+              sub={isRejected ? "Upload your required attachments." : "Upload status and verification."}
+              icon={FileText}
+            />
+
+            {isRejected && hasRejectedDocs && (
+              <div className="mt-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/30 rounded-lg flex gap-3">
+                <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-[13px] font-bold text-red-900 dark:text-red-200">
+                    Documents Rejected
+                  </p>
+                  <p className="text-[12px] text-red-800 dark:text-red-300 mt-1">
+                    Please review and re-upload the documents below. Once you've replaced all rejected documents, your application will automatically be resubmitted for review.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-3 mt-6">
               {checklist.length === 0 ? (
                 <p className="text-[12px] text-ink-400 text-center py-6">
                   No documents required for this program.
                 </p>
               ) : (
-                checklist.map((item: any) => (
-                  <div
-                    key={item.document_type_id}
-                    className="p-3 rounded-xl border border-ink-100 dark:border-ink-800 flex items-center justify-between gap-4"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div
-                        className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-                          item.uploaded
-                            ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600"
-                            : "bg-ink-50 dark:bg-ink-800 text-ink-400"
-                        }`}
-                      >
-                        <FileText className="w-4 h-4" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-[13px] font-bold text-ink-900 dark:text-white truncate flex items-center gap-2">
-                          {item.document_type_name}
-                          {item.is_required && (
-                            <span className="text-[10px] text-red-500 font-bold uppercase tracking-widest">
-                              Required
-                            </span>
+                checklist.map((item: any) => {
+                  const isRejectedDoc = item.verification_status === 'rejected';
+
+                  return (
+                    <div
+                      key={item.document_type_id}
+                      className="p-4 rounded-xl border border-ink-100 dark:border-ink-800 flex items-center justify-between gap-4"
+                    >
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                            item.uploaded
+                              ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600"
+                              : "bg-ink-50 dark:bg-ink-800 text-ink-400"
+                          }`}
+                        >
+                          <FileText className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[14px] font-bold text-ink-900 dark:text-white flex items-center gap-2 flex-wrap">
+                            {item.document_type_name}
+                            {item.is_required && (
+                              <span className="text-[9px] text-red-500 font-bold uppercase tracking-widest bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded">
+                                Required
+                              </span>
+                            )}
+                            {isRejected && isRejectedDoc && (
+                              <span className="text-[9px] text-red-500 font-bold uppercase tracking-widest bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded">
+                                Rejected
+                              </span>
+                            )}
+                          </p>
+                          {item.uploaded ? (
+                            <p className="text-[12px] text-ink-500 mt-0.5">
+                              {item.file_original_name}
+                            </p>
+                          ) : (
+                            <p className="text-[12px] text-amber-600 font-medium italic mt-0.5">
+                              Not uploaded yet
+                            </p>
                           )}
-                        </p>
-                        {item.uploaded ? (
-                          <p className="text-[11px] text-ink-500 truncate">
-                            {item.file_original_name}
-                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        {item.uploaded && (
+                          <>
+                            <StatusPillSmall status={item.verification_status} />
+                            <button
+                              onClick={() => setPreviewDoc(item)}
+                              className="p-1.5 rounded-lg hover:bg-ink-100 dark:hover:bg-ink-700 text-ink-500 transition-colors"
+                              title="Preview document"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        )}
+
+                        {item.uploaded || !item.is_required ? (
+                          <button
+                            onClick={() => setReuploadDoc(item)}
+                            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[12px] font-bold uppercase tracking-wider transition-colors"
+                          >
+                            ☁ {item.uploaded ? 'Replace' : 'Upload'}
+                          </button>
                         ) : (
-                          <p className="text-[11px] text-amber-600 font-medium italic">
-                            Not uploaded yet
-                          </p>
+                          item.is_required && !item.uploaded && (
+                            <button
+                              onClick={() => setReuploadDoc(item)}
+                              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[12px] font-bold uppercase tracking-wider transition-colors"
+                            >
+                              ☁ Upload
+                            </button>
+                          )
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-3 shrink-0">
-                      {item.uploaded && (
-                        <>
-                          <StatusPillSmall status={item.verification_status} />
-                          <button
-                            onClick={() => setPreviewDoc(item)}
-                            className="p-1.5 rounded-lg hover:bg-ink-100 dark:hover:bg-ink-700 text-ink-500 transition-colors"
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </Card>
@@ -525,6 +602,120 @@ export default function ApplicationDetailsView({
             </div>
           </Card>
 
+          {/* Unpaid Admission Fees - Only show if status is offer_accepted */}
+          {app.status === "offer_accepted" && (
+            <Card>
+              <div className="flex items-start justify-between gap-4 mb-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center shrink-0">
+                    <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[14px] font-bold text-ink-900 dark:text-white">
+                      Admission Fees Outstanding
+                    </p>
+                    <p className="text-[12px] text-ink-500 dark:text-ink-400 mt-0.5">
+                      Complete payment to proceed to enrollment
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {billsQ.isLoading ? (
+                <div className="p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/30 mb-4 flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-amber-600" />
+                  <p className="text-[12px] text-amber-700 dark:text-amber-300">Loading billing information...</p>
+                </div>
+              ) : billsData ? (
+                <>
+                  {/* Amount Summary */}
+                  <div className="p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/30 mb-4">
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-end gap-4">
+                        <div>
+                          <p className="text-[11px] uppercase tracking-widest text-amber-700 dark:text-amber-300 font-bold">
+                            Total Amount Due
+                          </p>
+                          <p className="text-[26px] font-black text-amber-600 dark:text-amber-400 tabular-nums mt-1">
+                            {fmtNumber(billsData.summary?.total_due ?? 0)} RWF
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="border-t border-amber-200 dark:border-amber-800 pt-3 space-y-2">
+                        <div className="flex justify-between items-center text-[12px]">
+                          <span className="text-amber-800 dark:text-amber-200">Total Amount</span>
+                          <span className="font-semibold text-amber-900 dark:text-amber-100">{fmtNumber(billsData.summary?.total_due ?? 0)} RWF</span>
+                        </div>
+                        <div className="flex justify-between items-center text-[12px]">
+                          <span className="text-emerald-700 dark:text-emerald-300">Amount Paid</span>
+                          <span className="font-semibold text-emerald-900 dark:text-emerald-100">{fmtNumber(billsData.summary?.total_paid ?? 0)} RWF</span>
+                        </div>
+                        {billsData.summary?.balance > 0 && (
+                          <div className="flex justify-between items-center text-[12px] pt-1 border-t border-amber-200 dark:border-amber-800">
+                            <span className="text-amber-700 dark:text-amber-300 font-bold">Remaining Balance</span>
+                            <span className="font-black text-amber-600 dark:text-amber-400">{fmtNumber(billsData.summary?.balance ?? 0)} RWF</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bills breakdown */}
+                  {billsData.bills && billsData.bills.length > 0 && (
+                    <div className="mb-4 rounded-lg border border-ink-100 dark:border-ink-700 divide-y divide-ink-100 dark:divide-ink-700 overflow-hidden">
+                      {billsData.bills.map((bill: any) => (
+                        <div key={bill.id} className="p-3 flex justify-between items-center text-[12px]">
+                          <div className="min-w-0">
+                            <p className="font-medium text-ink-900 dark:text-white">{bill.label}</p>
+                            <p className="text-ink-500 dark:text-ink-400 text-[11px] mt-0.5">{fmtNumber(bill.amount_due)} {bill.currency}</p>
+                          </div>
+                          <div className="text-right shrink-0 ml-4">
+                            <span className={`text-[11px] font-semibold px-2 py-1 rounded ${
+                              bill.status === 'paid'
+                                ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
+                                : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'
+                            }`}>
+                              {bill.status === 'paid' ? 'Paid' : 'Pending'}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {billsData.summary?.balance > 0 ? (
+                    <a
+                      href="https://urubutopay.rw/pay-now?origin=internal"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn-primary w-full inline-flex items-center justify-center gap-2"
+                    >
+                      <CreditCard className="w-4 h-4" />
+                      Pay {fmtNumber(billsData.summary.balance)} RWF via Urubuto
+                      <ExternalLink className="w-4 h-4" />
+                    </a>
+                  ) : (
+                    <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-900/30">
+                      <p className="text-[13px] font-semibold text-emerald-700 dark:text-emerald-300 text-center">
+                        ✓ All admission fees paid
+                      </p>
+                    </div>
+                  )}
+                  <p className="text-[11px] text-ink-500 dark:text-ink-400 mt-3 text-center">
+                    You'll be redirected to the Urubuto payment gateway
+                  </p>
+                </>
+              ) : (
+                <div className="p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/30 mb-4">
+                  <p className="text-[12px] text-amber-700 dark:text-amber-300">
+                    Billing information not yet available. Please check back soon or contact the finance office.
+                  </p>
+                </div>
+              )}
+            </Card>
+          )}
+
           {/* Merit info */}
           {(app.merit_score != null || app.merit_rank != null) && (
             <Card>
@@ -563,6 +754,142 @@ export default function ApplicationDetailsView({
           mimeType={previewDoc.file_mime}
         />
       )}
+
+      {reuploadDoc && (
+        <Modal
+          open={!!reuploadDoc}
+          onClose={() => setReuploadDoc(null)}
+          title={`Review & Replace: ${reuploadDoc.document_type_name}`}
+          size="lg"
+        >
+          <div className="space-y-4">
+            <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-900/30 rounded-lg">
+              <p className="text-[13px] text-blue-900 dark:text-blue-200">
+                <strong>Review your document.</strong> If this is not the correct file, please replace it below. Once you've replaced all rejected documents, your application will automatically be resubmitted for review.
+              </p>
+              {reuploadDoc.verification_comment && (
+                <p className="text-[12px] text-blue-800 dark:text-blue-300 mt-2 italic font-medium">
+                  Why it was returned: "{reuploadDoc.verification_comment}"
+                </p>
+              )}
+            </div>
+
+            {/* Show current document if available */}
+            {reuploadDoc.uploaded && (
+              <div className="p-3 rounded-lg border border-ink-200 dark:border-ink-700 bg-ink-50 dark:bg-ink-800/30">
+                <p className="text-[11px] font-bold text-ink-500 uppercase tracking-widest mb-2">Current Document</p>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <FileText className="w-4 h-4 text-ink-400 shrink-0" />
+                    <p className="text-[12px] text-ink-700 dark:text-ink-300 truncate">{reuploadDoc.file_original_name}</p>
+                  </div>
+                  <button
+                    onClick={() => setPreviewDoc(reuploadDoc)}
+                    className="text-[11px] font-medium text-brand hover:underline shrink-0"
+                  >
+                    View
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="p-4 rounded-lg border border-emerald-200 dark:border-emerald-900/40 bg-emerald-50 dark:bg-emerald-900/10">
+              <p className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-widest mb-3">Upload New File</p>
+              <label className="block">
+                <div className="relative border-2 border-dashed border-emerald-300 dark:border-emerald-700 rounded-lg p-6 hover:bg-emerald-100 dark:hover:bg-emerald-900/20 transition-colors cursor-pointer text-center">
+                  <input
+                    type="file"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+
+                      const toastId = toast.loading('Uploading document...');
+                      try {
+                        // Delete existing rejected document first
+                        if (reuploadDoc.document_id) {
+                          await applicantService.deleteDocument(reuploadDoc.document_id);
+                        }
+                        // Upload new document
+                        await applicantService.uploadDocument({
+                          document_type_id: reuploadDoc.document_type_id,
+                          file
+                        });
+                        toast.dismiss(toastId);
+                        toast.success('Document uploaded successfully!');
+                        // Invalidate queries to refresh the list
+                        qc.invalidateQueries({ queryKey: ["applicant", "application", application.id] });
+                        qc.invalidateQueries({ queryKey: ["applicant", "documents"] });
+                        // Close modal after brief delay
+                        setTimeout(() => {
+                          setReuploadDoc(null);
+                        }, 1500);
+                      } catch (error: any) {
+                        toast.dismiss(toastId);
+                        const errorMessage = error?.response?.data?.message || error?.message || 'Upload failed';
+                        toast.error(errorMessage);
+                        console.error('Upload error:', error);
+                      }
+                    }}
+                  />
+                  <UploadCloud className="w-8 h-8 text-emerald-600 dark:text-emerald-400 mx-auto mb-2" />
+                  <p className="text-[13px] font-bold text-emerald-900 dark:text-emerald-100">
+                    Click to upload or drag and drop
+                  </p>
+                  <p className="text-[11px] text-emerald-700 dark:text-emerald-300 mt-1">
+                    PDF, JPEG, PNG (Max 5 MB)
+                  </p>
+                </div>
+              </label>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Resubmit confirmation modal */}
+      <Modal
+        open={resubmitDialog}
+        onClose={() => setResubmitDialog(false)}
+        title="Resubmit Application"
+        size="lg"
+        footer={
+          <>
+            <button
+              className="btn-secondary"
+              onClick={() => setResubmitDialog(false)}
+              disabled={resubmitMutation.isPending}
+            >
+              Cancel
+            </button>
+            <button
+              className="btn-primary"
+              onClick={() => resubmitMutation.mutate()}
+              disabled={resubmitMutation.isPending}
+            >
+              {resubmitMutation.isPending && (
+                <Loader2 className="w-4 h-4 animate-spin mr-2 inline" />
+              )}
+              Confirm Resubmission
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-[14px] text-ink-700 dark:text-ink-300 leading-relaxed">
+            You have successfully re-uploaded all rejected documents. Clicking "Confirm Resubmission" will send your application back to the admissions office for review.
+          </p>
+          <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-900/30 rounded-lg">
+            <p className="text-[12px] font-bold text-emerald-900 dark:text-emerald-200 uppercase tracking-widest">
+              What happens next:
+            </p>
+            <ul className="mt-2 space-y-1.5 text-[12px] text-emerald-800 dark:text-emerald-300 list-disc list-inside">
+              <li>Your application will be marked as submitted for re-review</li>
+              <li>The admissions office will examine your re-uploaded documents</li>
+              <li>You'll receive an email with the outcome</li>
+            </ul>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

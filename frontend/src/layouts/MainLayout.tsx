@@ -41,6 +41,7 @@ import {
 import UserDropdown from "@/components/layout/UserDropdown";
 import MessageNotificationBell from "@/components/layout/MessageNotificationBell";
 import NotificationBell from "@/components/layout/NotificationBell";
+import AcademicContextSwitcher from "@/components/layout/AcademicContextSwitcher";
 import CampusFilterSwitcher from "@/components/layout/CampusFilterSwitcher";
 import CategoryFilterSwitcher from "@/components/layout/CategoryFilterSwitcher";
 
@@ -305,6 +306,11 @@ const NAV_TREE: NavNode[] = [
         label: "Payroll Settings",
         permissions: [PERMISSIONS.MANAGE_HR_EMPLOYEES],
       },
+      {
+        to: "/registrar/report",
+        label: "Academic Reports",
+        permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES],
+      },
       // { to: "/hr/attendance", label: "Attendance",         permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },
       // { to: "/hr/documents",  label: "Documents",        permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES] },
     ],
@@ -473,6 +479,11 @@ const NAV_TREE: NavNode[] = [
           PERMISSIONS.MANAGE_ACADEMIC_TERMS,
         ],
         hideForRoles: ["student", "applicant"],
+      },
+      {
+        to: "/registrar/report",
+        label: "Academic Reports",
+        permissions: [PERMISSIONS.MANAGE_ACADEMICS],
       },
     ],
   },
@@ -660,6 +671,11 @@ const NAV_TREE: NavNode[] = [
         to: "/finance/overdue-alerts",
         label: "Overdue Alerts",
         permissions: [PERMISSIONS.SEND_FEE_ALERTS, PERMISSIONS.MANAGE_FINANCE],
+      },
+      {
+        to: "/registrar/report",
+        label: "Academic Reports",
+        permissions: [PERMISSIONS.VIEW_FINANCE],
       },
     ],
   },
@@ -1600,10 +1616,10 @@ export default function MainLayout() {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Academic year + term selectors moved out of the topbar to
-                Settings → they crowded the row and were rarely changed
-                day-to-day. Campus scope stays — it actively governs every
-                page's data. */}
+            {/* Academic year + term context — scopes every page's data to
+                the chosen year/term (persisted, forwarded on every request,
+                refetches the whole cache on change). */}
+            {user?.role !== "applicant" && <AcademicContextSwitcher />}
             {user?.role !== "applicant" && <CampusFilterSwitcher />}
             {user?.role !== "applicant" && <CategoryFilterSwitcher />}
             <NotificationBell />

@@ -116,20 +116,20 @@ export const studentIdService = {
     api.get<{
       data: StudentIdRosterRow[]
       pagination: { current_page: number; per_page: number; total: number; last_page: number }
-    }>('/api/student-ids', filters as Record<string, unknown>, signal),
+    }>('/student-ids', filters as Record<string, unknown>, signal),
 
   /** Issue cards for a selection. Partial failures come back in `failed`. */
   batchIssue: (studentIds: number[], validityYears = 4) =>
     api.post<{
       issued: { student_id: number; card_id: number; barcode: string }[]
       failed: { student_id: number; reason: string }[]
-    }>('/api/student-ids/batch-issue', { student_ids: studentIds, validity_years: validityYears }),
+    }>('/student-ids/batch-issue', { student_ids: studentIds, validity_years: validityYears }),
 
   history: (studentId: number | string) =>
     api.get<StudentIdHistory>(`/api/student-ids/by-student/${studentId}`),
 
   issue: (studentId: number | string, validityYears = 4) =>
-    api.post<StudentIdCard>('/api/student-ids/issue', { student_id: studentId, validity_years: validityYears }),
+    api.post<StudentIdCard>('/student-ids/issue', { student_id: studentId, validity_years: validityYears }),
 
   revoke: (cardId: number) =>
     api.delete<void>(`/api/student-ids/${cardId}`),
@@ -146,7 +146,7 @@ export const studentIdService = {
   /** One PDF holding every selected student's active card. */
   batchCards: async (studentIds: number[]) => {
     const res = await apiClient.post(
-      '/api/student-ids/batch-print',
+      '/student-ids/batch-print',
       { student_ids: studentIds },
       { responseType: 'blob' },
     ).catch(rethrowBlobError)

@@ -9,21 +9,15 @@
     # CRITICAL: Pass through api-router.php itself (do NOT route to frontend)
     RewriteRule ^api-router\.php$ - [L]
 
-    # Route ALL /api/* requests to api-router.php
+    # Route ALL /api/* requests to api-router.php FIRST (highest priority)
     # This handles: /umis/api/*, /cur-mis/api/*, etc.
-    # (api-router.php reads REQUEST_URI itself — no _route param needed.)
-    RewriteCond %{REQUEST_URI} /api/
-    RewriteRule ^(.*)api/(.*)$ /api-router.php [QSA,L]
+    RewriteRule ^umis/api/(.*)$ /api-router.php [QSA,L]
+    RewriteRule ^cur-mis/api/(.*)$ cur-mis/api-router.php [QSA,L]
 
-    # Route /cur-mis/api/* to api-router.php (for local development)
-    RewriteRule ^cur-mis/api/(.*)$ cur-mis/api-router.php?_route=$1 [QSA,L]
-
-    # Route /umis/* to React frontend (all other requests)
-    RewriteCond %{REQUEST_URI} ^/umis/
-    RewriteRule ^umis/.*$ umis/frontend/dist/index.html [QSA,L]
+    # Route /umis/* to React frontend (all other requests that aren't files/dirs)
+    RewriteRule ^umis/.*$ umis/index.html [QSA,L]
 
     # Route /cur-mis/* to React frontend (for local development)
-    RewriteCond %{REQUEST_URI} ^/cur-mis/
     RewriteRule ^cur-mis/.*$ cur-mis/frontend/dist/index.html [QSA,L]
 </IfModule>
 

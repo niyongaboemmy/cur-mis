@@ -15,11 +15,11 @@ export interface GradingScaleUpsertPayload {
 
 export const gradingScaleService = {
   list: (signal?: AbortSignal) =>
-    api.get<GradingScaleRow[]>('/api/grading-scales', {}, signal),
+    api.get<GradingScaleRow[]>('/grading-scales', {}, signal),
 
   upsert: (payload: GradingScaleUpsertPayload) =>
-    api.put<null>('/api/grading-scales', payload),
+    api.put<null>('/grading-scales', payload),
 
   reset: () =>
-    api.post<null>('/api/grading-scales/reset', {}),
+    api.post<null>('/grading-scales/reset', {}),
 }

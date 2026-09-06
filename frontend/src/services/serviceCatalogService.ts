@@ -31,22 +31,22 @@ export interface ServiceDocumentType {
 
 export const serviceCatalogService = {
   getPublicList: (signal?: AbortSignal) =>
-    api.get<ServiceCatalogPublic[]>('/api/services', {}, signal),
+    api.get<ServiceCatalogPublic[]>('/services', {}, signal),
 
   listDocumentTypes: (signal?: AbortSignal) =>
-    api.get<ServiceDocumentType[]>('/api/admin/service-catalog/document-types', {}, signal),
+    api.get<ServiceDocumentType[]>('/admin/service-catalog/document-types', {}, signal),
 
   getPublicDetail: (slug: string, signal?: AbortSignal) =>
     api.get<ServiceCatalogDetail>(`/api/services/${slug}`, {}, signal),
 
   listAdmin: (signal?: AbortSignal) =>
-    api.get<ServiceCatalogAdmin[]>('/api/admin/service-catalog', {}, signal),
+    api.get<ServiceCatalogAdmin[]>('/admin/service-catalog', {}, signal),
 
   getAdmin: (id: number, signal?: AbortSignal) =>
     api.get<ServiceCatalogAdmin>(`/api/admin/service-catalog/${id}`, {}, signal),
 
   create: (payload: ServiceCatalogFormPayload) =>
-    api.post<{ id: number }>('/api/admin/service-catalog', payload),
+    api.post<{ id: number }>('/admin/service-catalog', payload),
 
   update: (id: number, payload: Partial<ServiceCatalogFormPayload>) =>
     api.post<null>(`/api/admin/service-catalog/${id}`, payload),

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import {
   AlertCircle, BadgeCheck, CheckCircle2, Copy, CreditCard, ExternalLink,
-  Loader2, Receipt, ReceiptText, ShieldCheck, Wallet, BanknoteIcon, Upload, Lock, LockOpen,
+  Loader2, Receipt, ReceiptText, ShieldCheck, Wallet, Lock, LockOpen, FileText, X,
 } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 import BordereauPaymentForm from './BordereauPaymentForm'
@@ -53,6 +53,7 @@ export default function AdmissionFeesPanel({
   const [confirming, setConfirming] = useState<AdmissionBill | null>(null)
   const [openedCheckout, setOpenedCheckout] = useState(false)
   const [showBordereauForm, setShowBordereauForm] = useState(false)
+  const [showBankSlipModal, setShowBankSlipModal] = useState(false)
 
   const billsQ = useQuery({
     queryKey,
@@ -239,6 +240,25 @@ export default function AdmissionFeesPanel({
 
   return (
     <section className={`card p-6 space-y-5 ${className}`}>
+      {/* Unpaid Amount Alert for Applicants */}
+      {!isValidator && summary && summary.balance > 0 && (
+        <div className="p-4 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1">
+              <p className="text-[13px] font-semibold text-amber-900 dark:text-amber-100">
+                Admission Fee Outstanding
+              </p>
+              <p className="text-[12px] text-amber-700 dark:text-amber-200 mt-1">
+                You have an unpaid balance. Complete payment below to receive your registration number and proceed to enrollment.
+              </p>
+            </div>
+            <p className="text-[24px] font-black tabular-nums text-amber-600 dark:text-amber-400 shrink-0">
+              {fmt(summary.balance)} RWF
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-wrap items-start justify-between gap-4">
         <Header
           title="Admission fees"
@@ -304,41 +324,38 @@ export default function AdmissionFeesPanel({
                 </span>
               ) : (
                 <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                  {/* Pay Now Button */}
-                  <button className="btn-primary" onClick={() => payNow()}>
-                    <CreditCard className="w-4 h-4" />
-                    {isValidator ? 'Open payment page' : `Pay ${fmt(bill.balance)} RWF`}
-                  </button>
-
-                  {/* Bordereau Button (Student Only) */}
+                  {/* Pay via Urubuto - Primary button for applicants */}
                   {!isValidator && (
                     <button
-                      className="btn-secondary"
-                      onClick={() => setShowBordereauForm(true)}
-                      title="Paid via bank transfer? Submit your receipt number for verification"
+                      className="btn-primary font-semibold"
+                      onClick={() => payNow()}
+                      title="Pay via Urubuto (MTN MoMo / Airtel Money)"
                     >
-                      <BanknoteIcon className="w-4 h-4" />
-                      Bordereau
+                      <CreditCard className="w-4 h-4" />
+                      Pay {fmt(bill.balance)} RWF
                     </button>
                   )}
 
-                  {/* Upload Slip Button (Student Only) */}
-                  {!isValidator && (
-                    <label className="btn-secondary cursor-pointer">
-                      <Upload className="w-4 h-4" />
-                      Upload Slip
-                      <input
-                        type="file"
-                        accept=".pdf,.jpg,.jpeg,.png"
-                        className="hidden"
-                        onChange={(e) => {
-                          if (e.target.files?.[0]) {
-                            toast.success('Payment slip uploaded. Finance will review within 24 hours.')
-                          }
-                        }}
-                      />
-                    </label>
+                  {/* Validator: Open payment page */}
+                  {isValidator && (
+                    <button className="btn-primary" onClick={() => payNow()}>
+                      <CreditCard className="w-4 h-4" />
+                      Open payment page
+                    </button>
                   )}
+
+                  {/* Bank Slip Button (Applicant Only) */}
+                  {!isValidator && (
+                    <button
+                      className="btn-secondary"
+                      onClick={() => setShowBankSlipModal(true)}
+                      title="Upload or manage bank slip payment"
+                    >
+                      <FileText className="w-4 h-4" />
+                      Bank Slip
+                    </button>
+                  )}
+
 
                   {/* Confirm Offline Button (Finance Only) */}
                   {isValidator && canManage && (
@@ -392,7 +409,7 @@ export default function AdmissionFeesPanel({
           </button>
           <button
             onClick={() => {
-              window.location.href = '/dashboard'
+              window.location.href = mode === 'applicant' ? '/applicant' : '/dashboard'
             }}
             className="btn-primary flex-1 inline-flex items-center justify-center gap-2"
           >
@@ -494,6 +511,37 @@ export default function AdmissionFeesPanel({
             qc.invalidateQueries({ queryKey })
           }}
         />
+      )}
+
+      {/* Bank Slip Modal */}
+      {showBankSlipModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 dark:bg-black/70 backdrop-blur-sm p-4">
+          <div className="w-[60%] h-[90vh] max-h-[90vh] bg-white dark:bg-ink-800 rounded-xl shadow-2xl flex flex-col">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-ink-100 dark:border-ink-700 shrink-0">
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-green-600" />
+                <h2 className="text-sm font-semibold text-ink-800 dark:text-white">Bank Slip Management</h2>
+              </div>
+              <button
+                onClick={() => setShowBankSlipModal(false)}
+                className="p-1.5 hover:bg-ink-100 dark:hover:bg-ink-700 rounded-lg transition-colors"
+                title="Close modal"
+              >
+                <X className="w-4 h-4 text-ink-500 dark:text-ink-400" />
+              </button>
+            </div>
+
+            {/* Modal Body - iFrame */}
+            <div className="flex-1 overflow-hidden bg-white dark:bg-ink-900">
+              <iframe
+                src="https://cur.ac.rw/umis/finance/bank_slip/index.php"
+                className="w-full h-full border-none"
+                title="Bank Slip Portal"
+              />
+            </div>
+          </div>
+        </div>
       )}
     </section>
   )

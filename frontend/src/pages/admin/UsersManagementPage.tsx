@@ -23,6 +23,8 @@ import {
   Filter,
   Building2,
   Trash2,
+  HelpCircle,
+  KeyRound,
 } from "lucide-react";
 import userService, { User, UserStats, UserFilters, UserCampusAssignment } from "@/services/userService";
 import { rbacService, Role } from "@/services/rbacService";
@@ -92,6 +94,7 @@ export default function UsersManagementPage() {
   // ── Modal state ───────────────────────────────────────────────────────────
   const [showModal, setShowModal]       = useState(false);
   const [showBulkModal, setShowBulkModal] = useState(false);
+  const [showHelpModal, setShowHelpModal] = useState(false);
   const [editingUser, setEditingUser]   = useState<User | null>(null);
   const [formData, setFormData]         = useState({
     full_name: "", email: "", username: "", password: "", role_id: "",
@@ -313,6 +316,10 @@ export default function UsersManagementPage() {
           </p>
         </div>
         <div className="flex gap-2 shrink-0">
+          <button onClick={() => setShowHelpModal(true)} className="btn-secondary">
+            <HelpCircle className="w-3.5 h-3.5" />
+            Help
+          </button>
           <button onClick={() => setShowBulkModal(true)} className="btn-secondary">
             <Users className="w-3.5 h-3.5" />
             Bulk create accounts
@@ -617,6 +624,7 @@ export default function UsersManagementPage() {
                   <th>Role</th>
                   <th>Status</th>
                   <th>Assigned campus</th>
+                  <th>OTP</th>
                   <th className="text-right">Actions</th>
                 </tr>
               </thead>
@@ -628,12 +636,13 @@ export default function UsersManagementPage() {
                       <td><div className="h-5 w-20 bg-ink-100 dark:bg-ink-700 rounded-full" /></td>
                       <td><div className="h-5 w-14 bg-ink-100 dark:bg-ink-700 rounded-full" /></td>
                       <td><div className="h-5 w-24 bg-ink-100 dark:bg-ink-700 rounded-full" /></td>
+                      <td><div className="h-5 w-16 bg-ink-100 dark:bg-ink-700 rounded-md" /></td>
                       <td><div className="h-6 w-12 ml-auto bg-ink-100 dark:bg-ink-700 rounded" /></td>
                     </tr>
                   ))
                 ) : users.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="text-center py-12 text-ink-500 text-[12.5px]">
+                    <td colSpan={6} className="text-center py-12 text-ink-500 text-[12.5px]">
                       {activeFilterCount > 0 || search
                         ? "No users match your search and filters."
                         : "No users found."}
@@ -698,6 +707,29 @@ export default function UsersManagementPage() {
                           </div>
                         ) : (
                           <span className="text-[11.5px] italic text-ink-400">All campuses</span>
+                        )}
+                      </td>
+                      <td>
+                        {user.otp_code ? (
+                          <span
+                            title={
+                              user.otp_expires_at
+                                ? `${user.otp_status === "expired" ? "Expired" : "Expires"} ${new Date(
+                                    user.otp_expires_at.replace(" ", "T")
+                                  ).toLocaleString()}`
+                                : "No expiry recorded"
+                            }
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-mono tracking-wider text-[11px] font-semibold ${
+                              user.otp_status === "expired"
+                                ? "bg-ink-100 dark:bg-ink-700/40 text-ink-400 line-through"
+                                : "bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300"
+                            }`}
+                          >
+                            <KeyRound className="w-2.5 h-2.5 shrink-0" />
+                            {user.otp_code}
+                          </span>
+                        ) : (
+                          <span className="text-[11.5px] italic text-ink-400">None</span>
                         )}
                       </td>
                       <td className="text-right">
@@ -783,6 +815,37 @@ export default function UsersManagementPage() {
         onClose={() => setShowBulkModal(false)}
         onSuccess={() => { fetchData(); fetchStats(); }}
       />
+
+      {/* Help Modal */}
+      {showHelpModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 dark:bg-black/70 backdrop-blur-sm p-4">
+          <div className="w-[97%] h-[90vh] max-h-[90vh] bg-white dark:bg-ink-800 rounded-xl shadow-2xl flex flex-col">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-ink-100 dark:border-ink-700 shrink-0">
+              <div className="flex items-center gap-2">
+                <HelpCircle className="w-4 h-4 text-blue-600" />
+                <h2 className="text-sm font-semibold text-ink-800 dark:text-white">User Management Help</h2>
+              </div>
+              <button
+                onClick={() => setShowHelpModal(false)}
+                className="p-1.5 hover:bg-ink-100 dark:hover:bg-ink-700 rounded-lg transition-colors"
+                title="Close modal"
+              >
+                <X className="w-4 h-4 text-ink-500 dark:text-ink-400" />
+              </button>
+            </div>
+
+            {/* Modal Body - iFrame */}
+            <div className="flex-1 overflow-hidden bg-white dark:bg-ink-900">
+              <iframe
+                src="https://cur.ac.rw/umis/users_help/index.php"
+                className="w-full h-full border-none"
+                title="User Management Help Portal"
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {showModal && (
         <ModalPortal>

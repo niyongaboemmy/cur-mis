@@ -44,5 +44,5 @@ export interface TimetableResponse {
 export const timetableService = {
   /** The whole term's sessions plus the options needed to narrow them. */
   get: (filters: TimetableFilters = {}, signal?: AbortSignal) =>
-    api.get<TimetableResponse>('/api/timetable', filters as Record<string, unknown>, signal),
+    api.get<TimetableResponse>('/timetable', filters as Record<string, unknown>, signal),
 }

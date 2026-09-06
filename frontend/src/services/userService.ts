@@ -17,6 +17,11 @@ export interface User {
     code: string | null;
     location: string | null;
   }>;
+  /** Current one-time passcode on the users table. Null when none is set. */
+  otp_code?: string | null;
+  otp_expires_at?: string | null;
+  /** Server-computed: 'active' (unexpired), 'expired', or 'none'. */
+  otp_status?: 'active' | 'expired' | 'none';
 }
 
 export interface UserListResponse {
@@ -144,7 +149,7 @@ const userService = {
     if (!user.photo) return null;
     const token = useAuthStore.getState().token;
     const base  = import.meta.env.VITE_API_URL ?? "";
-    return `${base}/api/users/${user.id}/photo?token=${token}&v=${encodeURIComponent(user.photo)}`;
+    return `${base}/users/${user.id}/photo?token=${token}&v=${encodeURIComponent(user.photo)}`;
   },
 };
 

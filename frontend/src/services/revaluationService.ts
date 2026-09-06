@@ -52,14 +52,14 @@ export const STATUS_LABELS: Record<RevaluationStatus, string> = {
 
 export const revaluationService = {
   // Student self-service
-  myRequests: () => api.get<Revaluation[]>('/api/revaluations/my'),
-  myBacklog:  () => api.get<BacklogRow[]>('/api/revaluations/my-backlog'),
+  myRequests: () => api.get<Revaluation[]>('/revaluations/my'),
+  myBacklog:  () => api.get<BacklogRow[]>('/revaluations/my-backlog'),
   request: (markId: number, reason: string) =>
-    api.post<Revaluation>('/api/revaluations/request', { mark_id: markId, reason }),
+    api.post<Revaluation>('/revaluations/request', { mark_id: markId, reason }),
 
   // Staff
   list: (status?: RevaluationStatus) =>
-    api.get<Revaluation[]>('/api/revaluations', status ? { status } : {}),
+    api.get<Revaluation[]>('/revaluations', status ? { status } : {}),
   backlogById: (studentId: number | string) =>
     api.get<BacklogRow[]>(`/api/revaluations/backlog/by-id/${studentId}`),
   review: (id: number, payload: RevaluationReview) =>

@@ -57,9 +57,10 @@ class DeliberationController extends BaseController
 
         // Resolve the academic year — default to current.
         if ($yearId <= 0) {
-            $cur = $this->db->fetchOne(
-                "SELECT id, label FROM academic_years WHERE is_current = 1 ORDER BY id DESC LIMIT 1"
-            );
+            $ctxYearId = \App\Helpers\AcademicContext::yearId();
+            $cur = $ctxYearId
+                ? $this->db->fetchOne("SELECT id, label FROM academic_years WHERE id = ? LIMIT 1", [$ctxYearId])
+                : false;
             if (!$cur) {
                 $cur = $this->db->fetchOne(
                     "SELECT id, label FROM academic_years ORDER BY id DESC LIMIT 1"

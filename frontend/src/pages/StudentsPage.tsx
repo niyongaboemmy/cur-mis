@@ -35,6 +35,7 @@ import BarChart, { type BarDatum } from "@/components/dashboard/BarChart";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import StudentExportModal from "@/components/admin/StudentExportModal";
 import BulkUploadModal from "@/components/admin/BulkUploadModal";
+import DocumentCompletionBadge from "@/components/admin/DocumentCompletionBadge";
 import { academicsMgmtService } from "@/services/academicsMgmtService";
 import type { Student } from "@/types/academic";
 import ProfileChangeReviewPanel from '@/components/students/ProfileChangeReviewPanel'
@@ -1169,6 +1170,7 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
                       currentDir={sort_dir}
                       onSort={handleSort}
                     />
+                    <th className="text-sm font-semibold text-ink-700 dark:text-ink-300 px-4">Documents</th>
                     <th className="w-[60px]"></th>
                   </tr>
                 </thead>
@@ -1282,6 +1284,16 @@ function StudentRow({
     open();
   };
 
+  // Determine document status based on student data
+  const getDocumentStatus = (): 'verified' | 'rejected' | 'pending' => {
+    const verification = (s as any)?.verification_status;
+    if (verification === 'verified' || verification === 'approved') return 'verified';
+    if (verification === 'rejected' || verification === 'declined') return 'rejected';
+    return 'pending';
+  };
+
+  const documentStatus = getDocumentStatus();
+
   return (
     <tr
       onClick={onRowClick}
@@ -1352,6 +1364,18 @@ function StudentRow({
         )}
       </td>
       <td>{s.nationality || "—"}</td>
+      <td className="px-4">
+        <DocumentCompletionBadge
+          status={documentStatus}
+          onClick={() => {
+            if (documentStatus === 'pending') {
+              navigate(`/students/${s.id}?tab=documents`, {
+                state: { fromSearch: searchParams?.toString() },
+              });
+            }
+          }}
+        />
+      </td>
       <td className="text-right pr-4">
         <Link
           to={`/students/${s.id}`}

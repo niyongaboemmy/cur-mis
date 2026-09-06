@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Helpers;
 
-use App\Services\DegreeClassificationService;
 
 /**
  * Renders the official CUR student transcript as HTML / PDF.
@@ -27,13 +26,6 @@ use App\Services\DegreeClassificationService;
  * `grading_scales`, so a transcript could show a "B+" the key did not explain.
  * Both now read {@see GradingScale::displayBands()}, which folds the scale's
  * sub-bands into whole letters — CUR awards A/B/C/D/E, never a B+.
- *
- * The final sheet carries one thing the others do not: the degree class the
- * regulations award, from {@see DegreeClassificationService::honours()}. It is
- * printed on the last sheet only, because it is a statement about the whole
- * record rather than about the level that sheet lists, and it is omitted
- * outright for a student with no final-level marks — a first-year transcript
- * should not carry an empty classification line.
  */
 class TranscriptPdf
 {
@@ -60,7 +52,6 @@ class TranscriptPdf
         } else {
             $pages    = '';
             $lastKey  = array_key_last($groups);
-            $award    = self::awardHtml($rows);
             foreach ($groups as $level => $list) {
                 $totals = self::levelTotals($list);
                 $isLast = $level === $lastKey;
@@ -70,7 +61,6 @@ class TranscriptPdf
                     self::closingHtml(
                         self::summaryHtml($totals),
                         self::semesterNote($semMap[$level] ?? []),
-                        $isLast ? $award : ''
                     ),
                     false,
                     !$isLast
@@ -159,11 +149,8 @@ HTML;
      * The gap the middle column leaves is where the registrar's stamp lands on
      * the signed copy, which is why the bands sit far right rather than beside
      * the results.
-     *
-     * `$award` is the degree classification, and is passed only for the final
-     * sheet; every other sheet gets an empty string and closes as before.
      */
-    private static function closingHtml(string $summary, string $note, string $award = ''): string
+    private static function closingHtml(string $summary, string $note): string
     {
         $legend  = self::legendHtml();
         $signoff = self::signoffHtml();
@@ -175,8 +162,6 @@ HTML;
       <td class="c2"><div class="legend-title">Grading System:</div></td>
       <td class="c3">{$legend}{$note}</td>
     </tr></table>
-
-    {$award}
 
     {$signoff}
     <div class="motto">Audi et Aude</div>
@@ -315,56 +300,9 @@ HTML;
         return $items;
     }
 
-    /**
-     * The degree classification block for the final sheet.
-     *
-     * Prints the class, the arithmetic that produced it, and — where the record
-     * left something unverifiable, such as a missing Project module — the
-     * caveat, in the same words the API returns. A transcript that says "2i"
-     * without saying what it was measured on is not auditable, and the registry
-     * has to be able to defend the line to an external verifier.
-     *
-     * Empty when the student has no final-level marks: nothing to classify yet.
-     *
-     * @param array<int,array<string,mixed>> $rows every graded module, any level
-     */
-    private static function awardHtml(array $rows): string
-    {
-        $c = DegreeClassificationService::honours($rows);
-        if ((int)($c['modules'] ?? 0) === 0) return '';
-
-        $label  = htmlspecialchars((string)($c['label'] ?? 'Not classified'));
-        $levels = implode(' &amp; ', array_map('strval', (array)($c['levels'] ?? [])));
-
-        $detail = '';
-        if ($c['awarded']) {
-            $credits   = self::num($c['qualifying_credits'] ?? 0);
-            $total     = (int)($c['credits'] ?? 0);
-            $lowest    = $c['lowest_mark'] !== null ? self::num($c['lowest_mark']) . '%' : '—';
-            $detail    = "Assessed on levels {$levels}: {$credits} of {$total} credits at or above "
-                       . "the class threshold, lowest mark {$lowest}.";
-        } elseif (!empty($c['reason'])) {
-            $detail = "Assessed on levels {$levels}. " . (string)$c['reason'];
-        }
-        // `$levels` is built from integers and already carries an escaped
-        // ampersand, so the sentence is assembled from safe parts and must not
-        // be escaped again — that would print "&amp;amp;".
-        $detail = $detail !== '' ? '<div class="award-detail">' . $detail . '</div>' : '';
-
-        $notes = '';
-        foreach ((array)($c['caveats'] ?? []) as $n) {
-            $notes .= '<div class="award-note">' . htmlspecialchars((string)$n) . '</div>';
-        }
-
-        return "<section class=\"award\">
-                  <div class=\"award-title\">DEGREE CLASSIFICATION: {$label}</div>
-                  {$detail}{$notes}
-                </section>";
-    }
-
     private static function signoffHtml(): string
     {
-        $registrar = htmlspecialchars(getenv('ACADEMIC_REGISTRAR_NAME') ?: 'MUTAYOMBA Sylvestre');
+        $registrar = htmlspecialchars(Signatories::academicRegistrar());
         $issueLoc  = htmlspecialchars(getenv('TRANSCRIPT_ISSUE_LOCATION') ?: 'TABA');
         $issueDate = date('d-m-y');
 
@@ -638,15 +576,6 @@ table.grid th:nth-child(7) { width: 11.5%; }
 .legend-title { font-weight: bold; text-align: center; font-size: 11pt; }
 /* The footnote hangs a clear line below the last band. */
 .note { margin-top: 10pt; }
-
-/* The classification sits between the results and the sign-off on the final
-   sheet, boxed so it reads as the document's conclusion rather than as another
-   line of the totals. It travels with the rest of `.closing`. */
-.award { margin-top: 10pt; border: 1px solid #000; padding: 5pt 7pt; font-size: 9pt; }
-.award-title { font-weight: bold; }
-.award-detail { margin-top: 3pt; }
-/* Caveats are the small print they are: what the record could not confirm. */
-.award-note { margin-top: 2pt; font-style: italic; font-size: 8pt; }
 
 .signoff { margin-top: 16pt; font-size: 9pt; font-weight: bold; }
 .signoff div { padding: 3pt 0; }

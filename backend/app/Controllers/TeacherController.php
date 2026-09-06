@@ -60,10 +60,7 @@ class TeacherController extends BaseController
         if ($q > 0) {
             return $q;
         }
-        $row = $this->db->fetchOne(
-            "SELECT id FROM `academic_terms` WHERE is_current = 1 ORDER BY id ASC LIMIT 1"
-        );
-        return $row ? (int)$row['id'] : null;
+        return \App\Helpers\AcademicContext::termId();
     }
 
     /**

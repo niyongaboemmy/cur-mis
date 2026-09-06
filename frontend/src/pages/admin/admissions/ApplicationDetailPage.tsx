@@ -50,6 +50,8 @@ import AdmissionFeesPanel from "@/components/admission/AdmissionFeesPanel";
 import { PERMISSIONS } from "@/constants";
 import { usePermission } from "@/utils/permissions";
 import { useLevels } from "@/hooks/useLevels";
+import ApplicationEditModal from "@/components/admin/ApplicationEditModal";
+import ApplicationDeleteModal from "@/components/admin/ApplicationDeleteModal";
 
 const STATUS_OPTIONS: ApplicationStatus[] = [
   ApplicationStatus.SUBMITTED,
@@ -238,6 +240,8 @@ export default function ApplicationDetailPage() {
   const [activeStep, setActiveStep] = useState(1);
   const [selectedLevelId, setSelectedLevelId] = useState<number>(1);
   const [photoLightboxOpen, setPhotoLightboxOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
   const appQ = useQuery({
     queryKey: ["admin", "applications", appId],
@@ -323,6 +327,17 @@ export default function ApplicationDetailPage() {
     },
     onError: (e: any) =>
       toast.error(e?.response?.data?.message ?? "Failed to issue offer"),
+  });
+
+  const acceptOffer = useMutation({
+    mutationFn: () => applicationAdminService.acceptOfferByAppId(appId),
+    onSuccess: () => {
+      toast.success("Offer accepted. Applicant can now proceed with payment.");
+      qc.invalidateQueries({ queryKey: ["admin", "applications", appId] });
+      qc.invalidateQueries({ queryKey: ["admin", "applications"] });
+    },
+    onError: (e: any) =>
+      toast.error(e?.response?.data?.message ?? "Failed to accept offer"),
   });
 
   const addNote = useMutation({
@@ -495,7 +510,21 @@ export default function ApplicationDetailPage() {
             <p className="text-[10px] uppercase tracking-widest font-black text-ink-400">
               Application Options
             </p>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+              <button
+                className="btn-secondary btn-sm"
+                onClick={() => setIsEditModalOpen(true)}
+                title="Edit applicant information"
+              >
+                Edit
+              </button>
+              <button
+                className="btn-secondary btn-sm !text-red-600 hover:!bg-red-50 dark:hover:!bg-red-900/10"
+                onClick={() => setIsDeleteModalOpen(true)}
+                title="Delete application and request resubmission"
+              >
+                Delete
+              </button>
               <select
                 className="input py-1.5 text-[12px] w-40"
                 value={status}
@@ -1230,26 +1259,64 @@ export default function ApplicationDetailPage() {
 
           {activeStep === 3 && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-              {/* The real thing: the applicant's Registration and CURSU bills,
-                  priced from the published fee structures and settled through
-                  Urubuto Pay. This replaced a "Simulate registration fee
-                  payment?" button that moved the application forward without any
-                  money changing hands. */}
-              <AdmissionFeesPanel
-                mode="validator"
-                applicationId={appId}
-                canManage={canManage}
-              />
-
-              {maxStep >= 4 && (
-                <div className="flex justify-center">
+              {status === ApplicationStatus.OFFERED ? (
+                <section className="card p-8 text-center">
+                  <CheckCircle2 className="w-16 h-16 text-amber-500/20 mx-auto mb-4" />
+                  <h3 className="text-xl font-black text-ink-900 dark:text-white mb-2">
+                    Accept Admission Offer
+                  </h3>
+                  <p className="text-ink-500 text-[14px] mb-8 max-w-sm mx-auto">
+                    Please accept the admission offer to proceed with payment of
+                    admission fees.
+                  </p>
                   <button
-                    className="btn-secondary"
-                    onClick={() => setActiveStep(4)}
+                    className="btn-primary py-3 px-8 text-[14px] flex items-center justify-center gap-2 mx-auto shadow-xl shadow-brand/20"
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          "Accept this admission offer? The applicant will then need to pay admission fees.",
+                        )
+                      ) {
+                        acceptOffer.mutate();
+                      }
+                    }}
+                    disabled={acceptOffer.isPending}
                   >
-                    Proceed to Step 4 <ChevronRight className="w-4 h-4 ml-2" />
+                    {acceptOffer.isPending ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" /> Accepting...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-5 h-5" /> Accept Offer
+                      </>
+                    )}
                   </button>
-                </div>
+                </section>
+              ) : (
+                <>
+                  {/* The real thing: the applicant's Registration and CURSU bills,
+                      priced from the published fee structures and settled through
+                      Urubuto Pay. This replaced a "Simulate registration fee
+                      payment?" button that moved the application forward without any
+                      money changing hands. */}
+                  <AdmissionFeesPanel
+                    mode="validator"
+                    applicationId={appId}
+                    canManage={canManage}
+                  />
+
+                  {maxStep >= 4 && (
+                    <div className="flex justify-center">
+                      <button
+                        className="btn-secondary"
+                        onClick={() => setActiveStep(4)}
+                      >
+                        Proceed to Step 4 <ChevronRight className="w-4 h-4 ml-2" />
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -1671,6 +1738,18 @@ export default function ApplicationDetailPage() {
         onClose={() => setPhotoLightboxOpen(false)}
         url={applicationAdminService.photoUrl(appId, (app as any).applicant_photo_id ?? null)}
         caption={`${app.first_name ?? ''} ${app.last_name ?? ''}`.trim() || app.application_number}
+      />
+
+      <ApplicationEditModal
+        open={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        application={appData}
+      />
+
+      <ApplicationDeleteModal
+        open={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        application={appData}
       />
     </div>
   );

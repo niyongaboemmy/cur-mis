@@ -160,29 +160,35 @@ export interface Student {
 }
 
 export interface HrEmployee {
-  id:             number | string
+  id:                         number | string
   /** 'employee' = row from the HR employees table; 'user' = a non-student
    *  user account surfaced in the directory (read-only here). */
-  source?:        'employee' | 'user'
-  emp_code:       string
-  staff_id?:      string | null
-  full_name:      string
-  first_name?:    string
-  last_name?:     string
-  gender?:        'M' | 'F' | string | null
-  department?:    string
-  position?:      string
-  contract_type?: string
-  start_date?:    string | null
-  end_date?:      string | null
-  salary?:        string | number | null
-  phone?:         string | null
-  email?:         string | null
-  status?:        string
-  address?:       string | null
-  created_at?:    string
-  bank?:          string | null
-  bank_account?:  string | null
+  source?:                    'employee' | 'user'
+  emp_code:                   string
+  staff_id?:                  string | null
+  full_name:                  string
+  first_name?:                string
+  last_name?:                 string
+  gender?:                    'M' | 'F' | string | null
+  degree?:                    string | null
+  area_of_specialization?:    string | null
+  department?:                string
+  position?:                  string
+  contract_type?:             string
+  start_date?:                string | null
+  end_date?:                  string | null
+  salary?:                    string | number | null
+  phone?:                     string | null
+  phone_number?:              string | null
+  email?:                     string | null
+  status?:                    string
+  address?:                   string | null
+  created_at?:                string
+  bank?:                      string | null
+  bank_account?:              string | null
+  bank_account_number?:       string | null
+  rssb_number?:               string | null
+  foreign_degree_equivalence?: string | null
 }
 
 export type QualificationType = 'Academic' | 'Certification' | 'Teaching Specialisation'

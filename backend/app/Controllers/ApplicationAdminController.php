@@ -226,6 +226,121 @@ class ApplicationAdminController extends BaseController
      * PATCH /api/admin/applications/:id/status
      * Manually transition application status.
      */
+    /**
+     * POST /api/admin/applications/:id
+     *
+     * Update application data (personal info, campus, mode of study, level, intake).
+     * Called by admin when editing applicant information via the edit modal.
+     * Returns full application data with joined information.
+     */
+    public function updateApplication(Request $request, Response $response): never
+    {
+        $id          = (int)$request->param('id');
+        $application = $this->appModel->find($id);
+        $authUser    = $request->param('_auth_user');
+        $actorId     = (int)($authUser['id'] ?? 0);
+
+        if (!$application) {
+            $this->error($response, 'Application not found.', 404);
+        }
+
+        $data = $request->body();
+
+        // Whitelist editable fields (prevent updating status, sensitive fields)
+        $allowedFields = [
+            // Personal Information
+            'first_name',
+            'last_name',
+            'email',
+            'phone',
+            'gender',
+            'birthdate',
+            'reference_phone',
+            // Academic Background
+            'prev_school',
+            'prev_qualification',
+            'prev_grade',
+            'combination',
+            'graduation_year',
+            // Sponsorship
+            'sponsorship',
+            'sponsor_name',
+            // Address
+            'address',
+            'nationality',
+            'country_of_residence',
+            // Academic Placement
+            'faculty_id',
+            'department_id',
+            'campus_id',
+            'level_id',
+            'mode_of_study',
+            'intake',
+        ];
+
+        $updateData = [];
+        foreach ($allowedFields as $field) {
+            if (array_key_exists($field, $data)) {
+                $value = $data[$field];
+                // Skip empty strings for optional fields, but allow 0 and false
+                if ($value !== '' || in_array($field, ['campus_id', 'level_id', 'faculty_id', 'department_id', 'program_id', 'mode_of_study'])) {
+                    $updateData[$field] = $value;
+                }
+            }
+        }
+
+        if (empty($updateData)) {
+            $this->error($response, 'No valid fields to update.', 422);
+        }
+
+        // Update the application
+        try {
+            $this->appModel->update($id, $updateData);
+        } catch (\Throwable $e) {
+            $this->error($response, 'Failed to update application: ' . $e->getMessage(), 500);
+        }
+
+        // Fetch updated application with all details and joined names
+        $db = \Core\Database::getInstance();
+        try {
+            $updatedApp = $db->fetchOne("
+                SELECT
+                    sa.*,
+                    f.fac_name AS faculty_name,
+                    d.dep_name AS department_name,
+                    lvl.name AS level_name,
+                    pt.display_name AS mode_of_study_name,
+                    ay.label AS academic_year
+                FROM student_applications sa
+                LEFT JOIN faculty f ON sa.faculty_id = f.fac_id
+                LEFT JOIN departements d ON sa.department_id = d.dep_id
+                LEFT JOIN levels lvl ON sa.level_id = lvl.id
+                LEFT JOIN programme_types pt ON sa.mode_of_study = pt.id
+                LEFT JOIN academic_years ay ON sa.academic_year_id = ay.id
+                WHERE sa.id = ?
+            ", [$id]);
+        } catch (\Throwable $e) {
+            $this->error($response, 'Failed to fetch updated application: ' . $e->getMessage(), 500);
+        }
+
+        if (!$updatedApp) {
+            $this->error($response, 'Application not found after update.', 404);
+        }
+
+        // Log the update
+        SystemLogService::log(
+            'UPDATE',
+            'ADMISSIONS',
+            "Application ID {$id} edited by admin.",
+            $id,
+            'student_application',
+            $updateData,
+            (array) $authUser ?: null
+        );
+
+        $this->success($response, $updatedApp, 'Application updated successfully.');
+    }
+
     public function updateStatus(Request $request, Response $response): never
     {
         $id          = (int)$request->param('id');
@@ -263,6 +378,55 @@ class ApplicationAdminController extends BaseController
 
         SystemLogService::log('UPDATE', 'ADMISSIONS', "Application ID {$id} status changed from '{$from}' to '{$to}'.", $id, 'student_application', ['from' => $from, 'to' => $to, 'notes' => $data['notes'] ?? null], (array) $authUser ?: null);
         $this->success($response, ['status' => $to], 'Application status updated.');
+    }
+
+    /**
+     * DELETE /api/admin/applications/:id
+     * Delete an application and all its associated documents/logs.
+     * Allows applicant to resubmit. Cannot delete enrolled applications.
+     */
+    public function deleteApplication(Request $request, Response $response): never
+    {
+        $id          = (int)$request->param('id');
+        $application = $this->appModel->find($id);
+        $authUser    = $request->param('_auth_user');
+
+        if (!$application) {
+            $this->error($response, 'Application not found.', 404);
+        }
+
+        // Prevent deletion of final-status applications
+        if (in_array($application['status'], self::FINAL_STATUSES, true)) {
+            $this->error($response, "Cannot delete application in status '{$application['status']}' — it is a final state.", 422);
+        }
+
+        $db = \Core\Database::getInstance();
+
+        try {
+            $db->beginTransaction();
+
+            // Delete documents
+            $this->docModel->db()->delete('application_documents', ['application_id' => $id]);
+
+            // Delete status logs
+            $this->logModel->db()->delete('application_status_logs', ['application_id' => $id]);
+
+            // Delete pending notes
+            $this->pendingNoteModel->db()->delete('application_pending_notes', ['application_id' => $id]);
+
+            // Delete the application itself
+            $this->appModel->delete($id);
+
+            $db->commit();
+
+            SystemLogService::log('DELETE', 'ADMISSIONS', "Application ID {$id} ({$application['application_number']}) deleted by admin. Applicant can resubmit.", $id, 'student_application', ['applicant_name' => "{$application['first_name']} {$application['last_name']}", 'applicant_email' => $application['email']], (array) $authUser ?: null);
+
+            $this->success($response, null, 'Application deleted successfully. Applicant can resubmit.');
+
+        } catch (\Throwable $e) {
+            $db->rollBack();
+            $this->error($response, 'Failed to delete application: ' . $e->getMessage(), 500);
+        }
     }
 
     /**

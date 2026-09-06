@@ -6,7 +6,7 @@ import {
   Files, Search, ChevronRight, ArrowLeft, ArrowRight, Filter,
   CheckCircle2, Clock, Sparkles, AlertCircle, GraduationCap, FileText,
   Download, FileSpreadsheet, StickyNote, X, MessageSquarePlus,
-  EyeOff, RotateCcw, Upload,
+  EyeOff, RotateCcw, Upload, Banknote, Edit2,
 } from 'lucide-react'
 import { applicationAdminService, intakeService } from '@/services/admissionService'
 import { ApplicationStatus, ApplicationPendingNote } from '@/types/admission'
@@ -16,6 +16,7 @@ import ApplicationsDashboard from './ApplicationsDashboard'
 import { useAuthStore } from '@/store/authStore'
 import SharedBulkUploadModal from '@/components/admin/BulkUploadModal'
 import DateRangeFilter, { type DateRangeValue } from '@/components/ui/DateRangeFilter'
+import ApplicationEditModal from '@/components/admin/ApplicationEditModal'
 
 // On the admin side we relabel `submitted` → `Pending` so the queue
 // is framed as "awaiting review" rather than the raw state-machine name.
@@ -87,6 +88,8 @@ export default function ApplicationsListPage() {
   const [showHidden, setShowHidden]       = useState(false)
   // Task 1.12 — bulk upload modal state.
   const [showBulkUpload, setShowBulkUpload] = useState(false)
+  // Bank Slip management modal state
+  const [showBankSlipModal, setShowBankSlipModal] = useState(false)
   // Default to the "pending" pseudo-status (submitted OR
   // documents_under_review) — that's the full active queue admins act
   // on first, not just the very first stage.
@@ -101,6 +104,8 @@ export default function ApplicationsListPage() {
   const [activeTab, setActiveTab] = useState<'list' | 'dashboard'>('list')
   // Submission date window, shared by the list, the stat tiles and the exports.
   const [dateRange, setDateRange] = useState<DateRangeValue>({ from: '', to: '' })
+  // Edit modal state
+  const [editingApp, setEditingApp] = useState<any>(null)
 
   const intakesQ = useQuery({ queryKey: ['admin', 'intakes'], queryFn: () => intakeService.list() })
   const intakes = intakesQ.data?.data ?? []
@@ -205,14 +210,24 @@ export default function ApplicationsListPage() {
             Review submissions, verify documents, and manage admission decisions across all intakes.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowBulkUpload(true)}
-          className="btn-secondary inline-flex items-center gap-1.5 whitespace-nowrap"
-          title="Bulk import applicants from a CSV template"
-        >
-          <Upload className="w-3.5 h-3.5" /> Bulk upload
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setShowBankSlipModal(true)}
+            className="btn-secondary inline-flex items-center gap-1.5 whitespace-nowrap"
+            title="Manage bank slip payments"
+          >
+            <Banknote className="w-3.5 h-3.5" /> Bank Slip
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowBulkUpload(true)}
+            className="btn-secondary inline-flex items-center gap-1.5 whitespace-nowrap"
+            title="Bulk import applicants from a CSV template"
+          >
+            <Upload className="w-3.5 h-3.5" /> Bulk upload
+          </button>
+        </div>
       </div>
 
       {/* Tab Switcher */}
@@ -580,6 +595,14 @@ export default function ApplicationsListPage() {
                               <EyeOff className="w-3.5 h-3.5" />
                             </button>
                           )}
+                          <button
+                            type="button"
+                            onClick={() => setEditingApp(a)}
+                            title="Edit applicant information"
+                            className="icon-btn text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
                           <Link to={`/admin/admissions/applications/${a.id}`} className="btn-secondary btn-sm">
                             View <ChevronRight className="w-3 h-3" />
                           </Link>
@@ -597,6 +620,12 @@ export default function ApplicationsListPage() {
           </section>
         </>
       )}
+
+      <ApplicationEditModal
+        open={!!editingApp}
+        onClose={() => setEditingApp(null)}
+        application={editingApp}
+      />
 
       <PendingNotesModal
         applicationId={notesAppId}
@@ -650,6 +679,37 @@ export default function ApplicationsListPage() {
           queryClient.invalidateQueries({ queryKey: ['admin', 'applications'] })
         }}
       />
+
+      {/* Bank Slip Modal */}
+      {showBankSlipModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 dark:bg-black/70 backdrop-blur-sm p-4">
+          <div className="w-[60%] h-[90vh] max-h-[90vh] bg-white dark:bg-ink-800 rounded-xl shadow-2xl flex flex-col">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-ink-100 dark:border-ink-700 shrink-0">
+              <div className="flex items-center gap-2">
+                <Banknote className="w-4 h-4 text-green-600" />
+                <h2 className="text-sm font-semibold text-ink-800 dark:text-white">Bank Slip Management</h2>
+              </div>
+              <button
+                onClick={() => setShowBankSlipModal(false)}
+                className="p-1.5 hover:bg-ink-100 dark:hover:bg-ink-700 rounded-lg transition-colors"
+                title="Close modal"
+              >
+                <X className="w-4 h-4 text-ink-500 dark:text-ink-400" />
+              </button>
+            </div>
+
+            {/* Modal Body - iFrame */}
+            <div className="flex-1 overflow-hidden bg-white dark:bg-ink-900">
+              <iframe
+                src="https://cur.ac.rw/umis/finance/bank_slip/index.php?tab=registrar"
+                className="w-full h-full border-none"
+                title="Bank Slip Portal"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

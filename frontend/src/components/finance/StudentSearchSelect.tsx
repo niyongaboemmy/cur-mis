@@ -19,7 +19,7 @@ export default function StudentSearchSelect({ value, onChange, placeholder = 'Se
 
   const q = useQuery({
     queryKey: ['student-search', keyword],
-    queryFn: () => api.get<any>('/api/students', { search: keyword, per_page: 20 }),
+    queryFn: () => api.get<any>('/students', { search: keyword, per_page: 20 }),
     enabled: keyword.length >= 1,
     staleTime: 30_000,
   })

@@ -23,7 +23,7 @@ export const systemDocumentService = {
    * Get all active system documents
    */
   list: async () => {
-    const response = await api.get<SystemDocument[]>('/api/system-documents')
+    const response = await api.get<SystemDocument[]>('/system-documents')
     return response.data || []
   },
 
@@ -31,7 +31,7 @@ export const systemDocumentService = {
    * Get all document categories
    */
   getCategories: async () => {
-    const response = await api.get<DocumentCategory[]>('/api/system-documents/categories')
+    const response = await api.get<DocumentCategory[]>('/system-documents/categories')
     return response.data || []
   },
 
@@ -66,7 +66,7 @@ export const systemDocumentService = {
    * Upload a new system document (admin only)
    */
   upload: async (formData: FormData): Promise<SystemDocument> => {
-    const response = await fetch('/api/system-documents', {
+    const response = await fetch('/system-documents', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${localStorage.getItem('cur-mis-auth') ? JSON.parse(localStorage.getItem('cur-mis-auth') || '{}').token : ''}`,

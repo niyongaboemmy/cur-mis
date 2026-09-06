@@ -38,7 +38,7 @@ class CorsMiddleware
         }
 
         header('Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS');
-        header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, X-HTTP-Method-Override, Accept');
+        header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, X-HTTP-Method-Override, Accept, X-Academic-Year-Id, X-Academic-Term-Id');
         header('Access-Control-Allow-Credentials: true');
         header('Access-Control-Max-Age: 86400');
 

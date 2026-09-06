@@ -37,24 +37,24 @@ export interface UnreadSummary {
 
 export const notificationService = {
   list: (params: { page?: number; per_page?: number; unread?: 1 } = {}, signal?: AbortSignal) =>
-    api.get<NotificationPage>('/api/notifications', params as Record<string, unknown>, signal),
+    api.get<NotificationPage>('/notifications', params as Record<string, unknown>, signal),
 
   /** Cheap poll for the bell: a count plus a few rows for the dropdown. */
   unreadCount: (signal?: AbortSignal) =>
-    api.get<UnreadSummary>('/api/notifications/unread-count', {}, signal),
+    api.get<UnreadSummary>('/notifications/unread-count', {}, signal),
 
   markRead: (id: number) =>
     api.post<void>(`/api/notifications/${id}/read`, {}),
 
   markAllRead: () =>
-    api.post<{ marked: number }>('/api/notifications/read-all', {}),
+    api.post<{ marked: number }>('/notifications/read-all', {}),
 
   /**
    * Clear every notification about one record — call it when the user opens the
    * thing the notification pointed at, so the badge does not outlive its reason.
    */
   markEntityRead: (entityType: string, entityId: number) =>
-    api.post<{ marked: number }>('/api/notifications/read-entity', {
+    api.post<{ marked: number }>('/notifications/read-entity', {
       entity_type: entityType,
       entity_id:   entityId,
     }),

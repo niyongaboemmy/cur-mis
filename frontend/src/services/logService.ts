@@ -15,19 +15,19 @@ function getToken(): string {
 export const logService = {
   getLogs: (params: SystemLogFilters, signal?: AbortSignal) =>
     api.get<PaginatedResponse<SystemLog>>(
-      '/api/logs',
+      '/logs',
       params as Record<string, unknown>,
       signal
     ),
 
   getStats: (signal?: AbortSignal) =>
-    api.get<SystemLogStats>('/api/logs/stats', undefined, signal),
+    api.get<SystemLogStats>('/logs/stats', undefined, signal),
 
   getModules: (signal?: AbortSignal) =>
-    api.get<string[]>('/api/logs/modules', undefined, signal),
+    api.get<string[]>('/logs/modules', undefined, signal),
 
   exportUrl: (filters: SystemLogFilters): string => {
-    const base   = (import.meta.env.VITE_API_URL ?? '') + '/api/logs/export'
+    const base   = (import.meta.env.VITE_API_URL ?? '') + '/logs/export'
     const params = new URLSearchParams()
     const token  = getToken()
 
