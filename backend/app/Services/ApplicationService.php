@@ -754,10 +754,11 @@ class ApplicationService
                     break;
 
                 case 'enrollment_complete':
-                    $html    = EmailTemplateHelper::enrollmentCompleteTemplate(
-                        $name, $extra['reg_number'] ?? '', $extra['program_name'] ?? ''
+                    $whatsappGroup = getenv('WHATSAPP_NEW_STUDENTS_GROUP') ?: 'https://chat.whatsapp.com/GD0N92txd3z0ihrCJ8rfPk';
+                    $html    = EmailTemplateHelper::studentAdmittedWelcomeTemplate(
+                        $name, $extra['reg_number'] ?? '', $extra['program_name'] ?? '', $whatsappGroup
                     );
-                    $subject = 'Welcome — Your Registration Number';
+                    $subject = 'Congratulations! Welcome to CUR — ' . ($extra['reg_number'] ?? '');
                     break;
 
                 case 'admission_letter':

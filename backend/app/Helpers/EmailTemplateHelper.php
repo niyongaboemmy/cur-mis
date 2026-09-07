@@ -300,6 +300,61 @@ class EmailTemplateHelper
     }
 
     /**
+     * Template: student admitted and enrolled — includes registration number and WhatsApp group link
+     */
+    public static function studentAdmittedWelcomeTemplate(
+        string $name,
+        string $regNumber,
+        string $programName,
+        string $whatsappGroupLink = 'https://chat.whatsapp.com/GD0N92txd3z0ihrCJ8rfPk'
+    ): string {
+        $safeName = htmlspecialchars($name);
+        $safeRegNumber = htmlspecialchars($regNumber);
+        $safeProgramName = htmlspecialchars($programName);
+        $safeWhatsappLink = htmlspecialchars($whatsappGroupLink);
+
+        $content = "
+            Dear {$safeName},<br><br>
+            <strong>Congratulations!</strong><br><br>
+            Welcome to the <strong>Catholic University of Rwanda</strong>!<br>
+            We are pleased to have you join us as a student in the <strong>{$safeProgramName}</strong> programme.<br><br>
+
+            <div style='background-color: #f0f9ff; border: 1px solid #bae6fd; border-radius: 12px; padding: 24px; margin: 24px 0;'>
+                <p style='margin: 0 0 12px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: #0369a1; font-weight: 700;'>Your Registration Details</p>
+                <p style='margin: 0 0 8px 0;'><strong>Registration Number:</strong></p>
+                <div style='font-family: \"JetBrains Mono\", \"Courier New\", monospace; font-size: 28px; font-weight: 800; color: #1e40af; letter-spacing: 0.1em; text-align: center; margin: 12px 0;'>{$safeRegNumber}</div>
+                <p style='margin: 12px 0 0 0; font-size: 13px; color: #0369a1;'>Keep this number safe — you will need it for all official communication with CUR.</p>
+            </div>
+
+            <strong>Join Our New Students' WhatsApp Group</strong><br>
+            Connect with fellow new students and receive important updates from our Deans, Directors, and Heads of Department:
+            <div style='text-align: center; margin: 24px 0;'>
+                <a href='{$safeWhatsappLink}' style='display: inline-block; padding: 14px 32px; background-color: #25D366; color: #ffffff !important; text-decoration: none; border-radius: 9px; font-weight: 700; font-size: 15px;'>
+                    Join WhatsApp Group
+                </a>
+            </div>
+
+            <div style='background-color: #fef3c7; border: 1px solid #fcd34d; border-radius: 12px; padding: 18px; margin: 20px 0; color: #92400e;'>
+                <p style='margin: 0; font-size: 14px; line-height: 1.6;'>
+                    <strong>💡 Tip:</strong> In the WhatsApp group, you can ask any questions related to your academics, orientation, or student life.
+                    Our academic leadership team is there to guide and support you during this exciting transition.
+                </p>
+            </div>
+
+            We wish you a successful and enjoyable academic journey at the <strong>Catholic University of Rwanda</strong>!<br><br>
+
+            <div style='border-top: 1px solid #e2e8f0; padding-top: 16px; margin-top: 24px; font-size: 13px; color: #64748b;'>
+                <strong>Registry Office</strong><br>
+                Catholic University of Rwanda<br>
+                📞 +250 733 214 677<br>
+                🏫 Save Campus, Huye District, Southern Province, Rwanda
+            </div>
+        ";
+
+        return self::wrap("Congratulations! Welcome to CUR — {$safeRegNumber}", $content, "Registration number and WhatsApp group link for newly admitted student");
+    }
+
+    /**
      * Template: admission letter dispatch — sent with PDF attached.
      */
     public static function admissionLetterEmailTemplate(
