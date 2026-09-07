@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Loader2, DollarSign, CheckCircle2, AlertCircle, TrendingUp } from 'lucide-react'
-import type { AxiosError } from 'axios'
+import { Loader2, DollarSign, CheckCircle2, AlertCircle } from 'lucide-react'
 
 /**
  * Payment History Panel

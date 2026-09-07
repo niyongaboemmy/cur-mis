@@ -1308,7 +1308,7 @@ export default function ApplicationDetailPage() {
                   />
 
                   <PaymentHistoryPanel
-                    studentId={app?.student_id}
+                    studentId={app?.student_id ?? undefined}
                     applicationId={appId}
                   />
 

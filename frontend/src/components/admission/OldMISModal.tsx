@@ -1,5 +1,4 @@
 import { X } from 'lucide-react'
-import ModalPortal from '@/components/ui/ModalPortal'
 
 export default function OldMISModal({
   isOpen,
@@ -11,7 +10,6 @@ export default function OldMISModal({
   if (!isOpen) return null
 
   return (
-    <ModalPortal onClose={onClose}>
       <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
         {/* Backdrop */}
         <div
@@ -46,6 +44,6 @@ export default function OldMISModal({
           </div>
         </div>
       </div>
-    </ModalPortal>
+    </div>
   )
 }
