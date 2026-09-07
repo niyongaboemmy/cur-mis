@@ -1,81 +1,71 @@
 <?php
+
+declare(strict_types=1);
+
 /**
  * Admission Payment History API
  *
- * GET /api/admissions/applications/:id/payments
- * Fetch payment history for staff validation
- * Shows all confirmed payments from the payment table
+ * GET /api/admissions/applications/:id/payments?student_id=...
+ * Fetch confirmed payment history for staff validation.
+ *
+ * NOTE: every file in routes/api/ is require()d at bootstrap by routes/api.php,
+ * so this file must ONLY register routes. It previously ran its logic at include
+ * time and called exit() on a missing ?id — which aborted EVERY API request with
+ * {"error":"Application ID and Student ID are required"}.
  */
 
 use Core\Request;
 use Core\Response;
 use Core\Database;
+use App\Middleware\AuthMiddleware;
 
-// Get database connection
-$db = Database::getInstance();
+$router->get('/api/admissions/applications/:id/payments', function (Request $request, Response $response): never {
+    $db        = Database::getInstance();
+    $appId     = (int) $request->param('id');
+    $studentId = trim((string) $request->query('student_id', ''));
 
-// Get application ID from URL
-$appId = (int)($_GET['id'] ?? 0);
-$studentId = $_GET['student_id'] ?? '';
+    if (!$appId || $studentId === '') {
+        $response->error('Application ID and Student ID are required', 400);
+    }
 
-if (!$appId || !$studentId) {
-    http_response_code(400);
-    echo json_encode([
-        'error' => 'Application ID and Student ID are required'
-    ]);
-    exit;
-}
+    $app = $db->fetchOne(
+        "SELECT a.id, a.student_id FROM applications a WHERE a.id = ? LIMIT 1",
+        [$appId]
+    );
 
-// Verify application exists and student matches
-$app = $db->fetchOne(
-    "SELECT a.id, a.student_id FROM applications a WHERE a.id = ? LIMIT 1",
-    [$appId]
-);
+    if (!$app) {
+        $response->error('Application not found', 404);
+    }
 
-if (!$app) {
-    http_response_code(404);
-    echo json_encode([
-        'error' => 'Application not found'
-    ]);
-    exit;
-}
+    $payments = $db->fetchAll(
+        "SELECT
+            id,
+            trans_code,
+            student,
+            amount,
+            date,
+            payment_chanel,
+            payment_notifi,
+            status,
+            external_transaction_id
+         FROM `payment`
+         WHERE student COLLATE utf8mb4_unicode_ci = ?
+           AND payment_notifi = 'Debit'
+           AND status = 1
+         ORDER BY date DESC",
+        [$studentId]
+    );
 
-// Get all Debit (confirmed payment) transactions for this student
-$payments = $db->fetchAll(
-    "SELECT
-        id,
-        trans_code,
-        student,
-        amount,
-        date,
-        payment_chanel,
-        payment_notifi,
-        status,
-        external_transaction_id
-     FROM `payment`
-     WHERE student COLLATE utf8mb4_unicode_ci = ?
-     AND payment_notifi = 'Debit'
-     AND status = 1
-     ORDER BY date DESC",
-    [$studentId]
-);
+    $totalPaid = 0.0;
+    foreach ($payments as $payment) {
+        $totalPaid += (float) $payment['amount'];
+    }
 
-// Calculate total paid
-$totalPaid = 0;
-foreach ($payments as $payment) {
-    $totalPaid += (float)$payment['amount'];
-}
-
-// Return response
-http_response_code(200);
-echo json_encode([
-    'data' => [
-        'student_id' => $studentId,
+    $response->success([
+        'student_id'     => $studentId,
         'application_id' => $appId,
-        'payments' => $payments,
-        'payment_count' => count($payments),
-        'total_paid' => $totalPaid
-    ],
-    'message' => 'Payment history fetched'
-]);
-?>
+        'payments'       => $payments,
+        'payment_count'  => count($payments),
+        'total_paid'     => $totalPaid,
+    ], 'Payment history fetched');
+}, [AuthMiddleware::class]);
