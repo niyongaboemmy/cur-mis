@@ -18,18 +18,34 @@ $router->get('/api/hr/monitoring/dashboard', [HrMonitoringController::class, 'ge
     new PermissionMiddleware(Permissions::VIEW_HR_EMPLOYEES),
 ]);
 
+// Employees listing for monitoring forms
+$router->get('/api/hr/monitoring/employees', [HrMonitoringController::class, 'getEmployees'], [
+    AuthMiddleware::class,
+    new PermissionMiddleware(Permissions::VIEW_HR_EMPLOYEES),
+]);
+
 // ─────────────────────────────────────────────────────────────────────────
 // PERFORMANCE MONITORING
 // ─────────────────────────────────────────────────────────────────────────
 
 $router->get('/api/hr/monitoring/appraisals', [HrMonitoringController::class, 'getAppraisals'], [
     AuthMiddleware::class,
-    new PermissionMiddleware(Permissions::VIEW_APPRAISALS),
+    new PermissionMiddleware(Permissions::VIEW_HR_EMPLOYEES),
 ]);
 
 $router->post('/api/hr/monitoring/appraisals', [HrMonitoringController::class, 'createAppraisal'], [
     AuthMiddleware::class,
-    new PermissionMiddleware(Permissions::VIEW_APPRAISALS),
+    new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES),
+]);
+
+$router->put('/api/hr/monitoring/appraisals/:id', [HrMonitoringController::class, 'updateAppraisal'], [
+    AuthMiddleware::class,
+    new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES),
+]);
+
+$router->delete('/api/hr/monitoring/appraisals/:id', [HrMonitoringController::class, 'deleteAppraisal'], [
+    AuthMiddleware::class,
+    new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES),
 ]);
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -46,7 +62,32 @@ $router->post('/api/hr/monitoring/recruitment/posts', [HrMonitoringController::c
     new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES),
 ]);
 
+$router->put('/api/hr/monitoring/recruitment/posts/:id', [HrMonitoringController::class, 'updateRecruitmentPost'], [
+    AuthMiddleware::class,
+    new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES),
+]);
+
+$router->delete('/api/hr/monitoring/recruitment/posts/:id', [HrMonitoringController::class, 'deleteRecruitmentPost'], [
+    AuthMiddleware::class,
+    new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES),
+]);
+
 $router->get('/api/hr/monitoring/recruitment/candidates', [HrMonitoringController::class, 'getCandidates'], [
+    AuthMiddleware::class,
+    new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES),
+]);
+
+$router->post('/api/hr/monitoring/recruitment/candidates', [HrMonitoringController::class, 'createCandidate'], [
+    AuthMiddleware::class,
+    new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES),
+]);
+
+$router->put('/api/hr/monitoring/recruitment/candidates/:id', [HrMonitoringController::class, 'updateCandidate'], [
+    AuthMiddleware::class,
+    new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES),
+]);
+
+$router->delete('/api/hr/monitoring/recruitment/candidates/:id', [HrMonitoringController::class, 'deleteCandidate'], [
     AuthMiddleware::class,
     new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES),
 ]);
@@ -62,10 +103,15 @@ $router->get('/api/hr/monitoring/grievances', [HrMonitoringController::class, 'g
 
 $router->post('/api/hr/monitoring/grievances', [HrMonitoringController::class, 'createGrievance'], [
     AuthMiddleware::class,
-    new PermissionMiddleware(Permissions::VIEW_HR_EMPLOYEES),
+    new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES),
 ]);
 
 $router->put('/api/hr/monitoring/grievances/:id', [HrMonitoringController::class, 'updateGrievanceStatus'], [
+    AuthMiddleware::class,
+    new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES),
+]);
+
+$router->delete('/api/hr/monitoring/grievances/:id', [HrMonitoringController::class, 'deleteGrievance'], [
     AuthMiddleware::class,
     new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES),
 ]);
@@ -76,6 +122,16 @@ $router->get('/api/hr/monitoring/conflicts', [HrMonitoringController::class, 'ge
 ]);
 
 $router->post('/api/hr/monitoring/conflicts', [HrMonitoringController::class, 'recordConflictResolution'], [
+    AuthMiddleware::class,
+    new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES),
+]);
+
+$router->put('/api/hr/monitoring/conflicts/:id', [HrMonitoringController::class, 'updateConflictResolution'], [
+    AuthMiddleware::class,
+    new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES),
+]);
+
+$router->delete('/api/hr/monitoring/conflicts/:id', [HrMonitoringController::class, 'deleteConflictResolution'], [
     AuthMiddleware::class,
     new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES),
 ]);
@@ -95,6 +151,16 @@ $router->post('/api/hr/monitoring/counseling', [HrMonitoringController::class, '
     new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES),
 ]);
 
+$router->put('/api/hr/monitoring/counseling/:id', [HrMonitoringController::class, 'updateCounselingRecord'], [
+    AuthMiddleware::class,
+    new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES),
+]);
+
+$router->delete('/api/hr/monitoring/counseling/:id', [HrMonitoringController::class, 'deleteCounselingRecord'], [
+    AuthMiddleware::class,
+    new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES),
+]);
+
 // ─────────────────────────────────────────────────────────────────────────
 // TURNOVER & RETENTION MONITORING
 // ─────────────────────────────────────────────────────────────────────────
@@ -105,6 +171,16 @@ $router->get('/api/hr/monitoring/exit-interviews', [HrMonitoringController::clas
 ]);
 
 $router->post('/api/hr/monitoring/exit-interviews', [HrMonitoringController::class, 'recordExitInterview'], [
+    AuthMiddleware::class,
+    new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES),
+]);
+
+$router->put('/api/hr/monitoring/exit-interviews/:id', [HrMonitoringController::class, 'updateExitInterview'], [
+    AuthMiddleware::class,
+    new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES),
+]);
+
+$router->delete('/api/hr/monitoring/exit-interviews/:id', [HrMonitoringController::class, 'deleteExitInterview'], [
     AuthMiddleware::class,
     new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES),
 ]);

@@ -73,6 +73,41 @@ class HrMonitoringController extends BaseController
         $this->success($response, null, 'Appraisal created.');
     }
 
+    public function updateAppraisal(Request $request, Response $response): never
+    {
+        $id = (int)($request->param('id') ?? 0);
+        $data = $request->body();
+
+        $this->db->query(
+            "UPDATE `performance_appraisals`
+             SET appraisal_period = ?, appraisal_date = ?, rating = ?, comments = ?, appraiser_id = ?, status = ?
+             WHERE id = ?",
+            [
+                $data['appraisal_period'] ?? null,
+                $data['appraisal_date'] ?? null,
+                $data['rating'] ?? null,
+                $data['comments'] ?? null,
+                $data['appraiser_id'] ?? null,
+                $data['status'] ?? 'draft',
+                $id,
+            ]
+        );
+
+        $this->success($response, null, 'Appraisal updated.');
+    }
+
+    public function deleteAppraisal(Request $request, Response $response): never
+    {
+        $id = (int)($request->param('id') ?? 0);
+
+        $this->db->query(
+            "DELETE FROM `performance_appraisals` WHERE id = ?",
+            [$id]
+        );
+
+        $this->success($response, null, 'Appraisal deleted.');
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // RECRUITMENT MONITORING
     // ─────────────────────────────────────────────────────────────────────────
@@ -112,6 +147,42 @@ class HrMonitoringController extends BaseController
         $this->success($response, null, 'Recruitment post created.');
     }
 
+    public function updateRecruitmentPost(Request $request, Response $response): never
+    {
+        $id = (int)($request->param('id') ?? 0);
+        $data = $request->body();
+
+        $this->db->query(
+            "UPDATE `recruitment_posts`
+             SET position_title = ?, department_id = ?, position_level = ?, vacancy_count = ?, closing_date = ?, status = ?, description = ?
+             WHERE id = ?",
+            [
+                $data['position_title'] ?? null,
+                $data['department_id'] ?? null,
+                $data['position_level'] ?? null,
+                $data['vacancy_count'] ?? 1,
+                $data['closing_date'] ?? null,
+                $data['status'] ?? 'open',
+                $data['description'] ?? null,
+                $id,
+            ]
+        );
+
+        $this->success($response, null, 'Recruitment post updated.');
+    }
+
+    public function deleteRecruitmentPost(Request $request, Response $response): never
+    {
+        $id = (int)($request->param('id') ?? 0);
+
+        $this->db->query(
+            "DELETE FROM `recruitment_posts` WHERE id = ?",
+            [$id]
+        );
+
+        $this->success($response, null, 'Recruitment post deleted.');
+    }
+
     public function getCandidates(Request $request, Response $response): never
     {
         $postId = (int)($request->query('post_id') ?? 0);
@@ -124,6 +195,65 @@ class HrMonitoringController extends BaseController
         );
 
         $this->success($response, $candidates, 'Candidates fetched.');
+    }
+
+    public function createCandidate(Request $request, Response $response): never
+    {
+        $data = $request->body();
+
+        $this->db->query(
+            "INSERT INTO `recruitment_candidates`
+             (recruitment_post_id, candidate_name, candidate_email, candidate_phone, application_date, stage, status, notes)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                $data['recruitment_post_id'] ?? null,
+                $data['candidate_name'] ?? null,
+                $data['candidate_email'] ?? null,
+                $data['candidate_phone'] ?? null,
+                $data['application_date'] ?? date('Y-m-d'),
+                $data['stage'] ?? 'initial',
+                'applied',
+                $data['notes'] ?? null,
+            ]
+        );
+
+        $this->success($response, null, 'Candidate added.');
+    }
+
+    public function updateCandidate(Request $request, Response $response): never
+    {
+        $id = (int)($request->param('id') ?? 0);
+        $data = $request->body();
+
+        $this->db->query(
+            "UPDATE `recruitment_candidates`
+             SET candidate_name = ?, candidate_email = ?, candidate_phone = ?, stage = ?, status = ?, interview_date = ?, notes = ?
+             WHERE id = ?",
+            [
+                $data['candidate_name'] ?? null,
+                $data['candidate_email'] ?? null,
+                $data['candidate_phone'] ?? null,
+                $data['stage'] ?? null,
+                $data['status'] ?? 'applied',
+                $data['interview_date'] ?? null,
+                $data['notes'] ?? null,
+                $id,
+            ]
+        );
+
+        $this->success($response, null, 'Candidate updated.');
+    }
+
+    public function deleteCandidate(Request $request, Response $response): never
+    {
+        $id = (int)($request->param('id') ?? 0);
+
+        $this->db->query(
+            "DELETE FROM `recruitment_candidates` WHERE id = ?",
+            [$id]
+        );
+
+        $this->success($response, null, 'Candidate deleted.');
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -202,6 +332,18 @@ class HrMonitoringController extends BaseController
         $this->success($response, null, 'Grievance updated.');
     }
 
+    public function deleteGrievance(Request $request, Response $response): never
+    {
+        $id = (int)($request->param('id') ?? 0);
+
+        $this->db->query(
+            "DELETE FROM `grievances` WHERE id = ?",
+            [$id]
+        );
+
+        $this->success($response, null, 'Grievance deleted.');
+    }
+
     public function getConflictResolutions(Request $request, Response $response): never
     {
         $conflicts = $this->db->fetchAll(
@@ -231,6 +373,41 @@ class HrMonitoringController extends BaseController
         );
 
         $this->success($response, null, 'Conflict resolution recorded.');
+    }
+
+    public function updateConflictResolution(Request $request, Response $response): never
+    {
+        $id = (int)($request->param('id') ?? 0);
+        $data = $request->body();
+
+        $this->db->query(
+            "UPDATE `conflict_resolutions`
+             SET conflict_date = ?, parties_involved = ?, conflict_description = ?, resolution_method = ?, mediator_id = ?, status = ?
+             WHERE id = ?",
+            [
+                $data['conflict_date'] ?? null,
+                $data['parties_involved'] ?? null,
+                $data['conflict_description'] ?? null,
+                $data['resolution_method'] ?? null,
+                $data['mediator_id'] ?? null,
+                $data['status'] ?? 'pending',
+                $id,
+            ]
+        );
+
+        $this->success($response, null, 'Conflict resolution updated.');
+    }
+
+    public function deleteConflictResolution(Request $request, Response $response): never
+    {
+        $id = (int)($request->param('id') ?? 0);
+
+        $this->db->query(
+            "DELETE FROM `conflict_resolutions` WHERE id = ?",
+            [$id]
+        );
+
+        $this->success($response, null, 'Conflict resolution deleted.');
     }
 
     public function getStaffSatisfactionSurveys(Request $request, Response $response): never
@@ -281,6 +458,41 @@ class HrMonitoringController extends BaseController
         $this->success($response, null, 'Counseling session recorded.');
     }
 
+    public function updateCounselingRecord(Request $request, Response $response): never
+    {
+        $id = (int)($request->param('id') ?? 0);
+        $data = $request->body();
+
+        $this->db->query(
+            "UPDATE `counseling_records`
+             SET counselor_id = ?, counseling_date = ?, session_topic = ?, session_notes = ?, follow_up_required = ?, follow_up_date = ?
+             WHERE id = ?",
+            [
+                $data['counselor_id'] ?? null,
+                $data['counseling_date'] ?? null,
+                $data['session_topic'] ?? null,
+                $data['session_notes'] ?? null,
+                $data['follow_up_required'] ?? false,
+                $data['follow_up_date'] ?? null,
+                $id,
+            ]
+        );
+
+        $this->success($response, null, 'Counseling record updated.');
+    }
+
+    public function deleteCounselingRecord(Request $request, Response $response): never
+    {
+        $id = (int)($request->param('id') ?? 0);
+
+        $this->db->query(
+            "DELETE FROM `counseling_records` WHERE id = ?",
+            [$id]
+        );
+
+        $this->success($response, null, 'Counseling record deleted.');
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // TURNOVER & RETENTION MONITORING
     // ─────────────────────────────────────────────────────────────────────────
@@ -319,6 +531,87 @@ class HrMonitoringController extends BaseController
         );
 
         $this->success($response, null, 'Exit interview recorded.');
+    }
+
+    public function updateExitInterview(Request $request, Response $response): never
+    {
+        $id = (int)($request->param('id') ?? 0);
+        $data = $request->body();
+
+        $this->db->query(
+            "UPDATE `exit_interviews`
+             SET exit_date = ?, reason_for_leaving = ?, interviewer_id = ?, job_satisfaction = ?, management_satisfaction = ?, work_environment_satisfaction = ?, comments = ?, would_rehire = ?
+             WHERE id = ?",
+            [
+                $data['exit_date'] ?? null,
+                $data['reason_for_leaving'] ?? null,
+                $data['interviewer_id'] ?? null,
+                $data['job_satisfaction'] ?? null,
+                $data['management_satisfaction'] ?? null,
+                $data['work_environment_satisfaction'] ?? null,
+                $data['comments'] ?? null,
+                $data['would_rehire'] ?? false,
+                $id,
+            ]
+        );
+
+        $this->success($response, null, 'Exit interview updated.');
+    }
+
+    public function deleteExitInterview(Request $request, Response $response): never
+    {
+        $id = (int)($request->param('id') ?? 0);
+
+        $this->db->query(
+            "DELETE FROM `exit_interviews` WHERE id = ?",
+            [$id]
+        );
+
+        $this->success($response, null, 'Exit interview deleted.');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // EMPLOYEES & STAFF LISTING
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public function getEmployees(Request $request, Response $response): never
+    {
+        $page = (int)($request->query('page') ?? 1);
+        $perPage = (int)($request->query('per_page') ?? 25);
+        $search = (string)($request->query('search') ?? '');
+        $offset = ($page - 1) * $perPage;
+
+        $whereClause = '';
+        $params = [];
+
+        if (!empty($search)) {
+            $whereClause = "WHERE CONCAT(e.fname, ' ', e.lname) LIKE ?";
+            $params[] = "%$search%";
+        }
+
+        $total = $this->db->fetchOne(
+            "SELECT COUNT(DISTINCT e.id) AS n FROM `employee_contracts` e $whereClause",
+            $params
+        )['n'] ?? 0;
+
+        $employees = $this->db->fetchAll(
+            "SELECT DISTINCT e.id, e.fname, e.lname, e.email, e.employee_post, e.position
+             FROM `employee_contracts` e
+             $whereClause
+             ORDER BY e.fname, e.lname
+             LIMIT ? OFFSET ?",
+            array_merge($params, [$perPage, $offset])
+        );
+
+        $this->success($response, [
+            'employees' => $employees,
+            'pagination' => [
+                'total' => (int)$total,
+                'page' => $page,
+                'per_page' => $perPage,
+                'total_pages' => ceil($total / $perPage),
+            ],
+        ], 'Employees fetched.');
     }
 
     public function getTurnoverAnalytics(Request $request, Response $response): never
