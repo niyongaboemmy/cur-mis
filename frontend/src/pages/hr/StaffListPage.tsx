@@ -512,10 +512,9 @@ function AllTab({ stats }: { stats: HrStats | null }) {
 
 function EmployeeRow({ e, index }: { e: HrEmployee; index: number }) {
   const qc = useQueryClient()
-  const canManage = useAnyPermission([PERMISSIONS.MANAGE_HR_EMPLOYEES, PERMISSIONS.VIEW_HR_EMPLOYEES])
+  const canManage = usePermission(PERMISSIONS.MANAGE_HR_EMPLOYEES)
   const [editOpen, setEditOpen] = useState(false)
 
-  const isUser = e.source === 'user'
   const initials = e.full_name?.split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase() || 'E'
   const currentStatus = e.status || ''
   const isActive = currentStatus.toLowerCase() === 'active'
@@ -563,7 +562,7 @@ function EmployeeRow({ e, index }: { e: HrEmployee; index: number }) {
         </div>
       </td>
       <td>
-        {canManage && !isUser ? (
+        {canManage ? (
           <div className="flex items-center gap-1.5">
             {statusMut.isPending
               ? <Loader2 className="w-4 h-4 animate-spin text-ink-400" />
@@ -598,27 +597,17 @@ function EmployeeRow({ e, index }: { e: HrEmployee; index: number }) {
         )}
       </td>
       <td>
-        {isUser ? (
-          // User-account row (no HR employee record) — manage it from Users.
-          <div className="flex items-center gap-2">
-            <span className="chip-soft text-[11px]">User account</span>
-            <Link to="/users" className="btn-secondary btn-sm" title="Manage in Users">
-              <Eye className="w-3.5 h-3.5" />
-            </Link>
-          </div>
-        ) : (
-          <div className="flex items-center gap-1">
-            {canManage && (
-              <button className="btn-secondary btn-sm" title="Edit" onClick={() => setEditOpen(true)}>
-                <Pencil className="w-3.5 h-3.5" />
-              </button>
-            )}
-            <Link to={`/hr/staff/${e.id}`} className="btn-secondary btn-sm" title="View details">
-              <Eye className="w-3.5 h-3.5" />
-            </Link>
-          </div>
-        )}
-        {editOpen && !isUser && (
+        <div className="flex items-center gap-1">
+          {canManage && (
+            <button className="btn-secondary btn-sm" title="Edit" onClick={() => setEditOpen(true)}>
+              <Pencil className="w-3.5 h-3.5" />
+            </button>
+          )}
+          <Link to={`/hr/staff/${e.id}`} className="btn-secondary btn-sm" title="View details">
+            <Eye className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+        {editOpen && (
           <EditStaffModal
             employee={e}
             onClose={() => setEditOpen(false)}
