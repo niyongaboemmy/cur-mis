@@ -1,10 +1,9 @@
 import { useState, useMemo } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Download, FileText, Search, Loader2, Edit2, Trash2, Eye } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { Plus, Download, FileText, Search } from 'lucide-react'
 import toast from 'react-hot-toast'
 import PageHeader from '@/components/ui/PageHeader'
 import Spinner from '@/components/ui/Spinner'
-import { hrService } from '@/services/hrService'
 
 interface Staff {
   employee_id: number
@@ -21,18 +20,6 @@ interface Staff {
 
 export default function AllStaffPage() {
   const [searchTerm, setSearchTerm] = useState('')
-  const [showForm, setShowForm] = useState(false)
-  const [editingId, setEditingId] = useState<number | null>(null)
-  const queryClient = useQueryClient()
-
-  const [formData, setFormData] = useState({
-    employee_fname: '',
-    employee_lname: '',
-    employee_position: '',
-    employee_phone: '',
-    employee_post: '',
-    employee_status: 'Active',
-  })
 
   // Fetch all staff
   const { data: staffData, isLoading } = useQuery({
@@ -63,79 +50,6 @@ export default function AllStaffPage() {
     )
   }, [staff, searchTerm])
 
-  // Create mutation
-  const createMutation = useMutation({
-    mutationFn: (data: any) => hrService.createStaff(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['all-staff'] })
-      setShowForm(false)
-      resetForm()
-      toast.success('Staff added successfully')
-    },
-    onError: () => toast.error('Failed to add staff'),
-  })
-
-  // Update mutation
-  const updateMutation = useMutation({
-    mutationFn: (data: any) =>
-      hrService.updateStaff(editingId!, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['all-staff'] })
-      setShowForm(false)
-      setEditingId(null)
-      resetForm()
-      toast.success('Staff updated successfully')
-    },
-    onError: () => toast.error('Failed to update staff'),
-  })
-
-  // Delete mutation
-  const deleteMutation = useMutation({
-    mutationFn: (id: number) => hrService.deleteStaff(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['all-staff'] })
-      toast.success('Staff deleted successfully')
-    },
-    onError: () => toast.error('Failed to delete staff'),
-  })
-
-  const resetForm = () => {
-    setFormData({
-      employee_fname: '',
-      employee_lname: '',
-      employee_position: '',
-      employee_phone: '',
-      employee_post: '',
-      employee_status: 'Active',
-    })
-  }
-
-  const handleSubmit = () => {
-    if (!formData.employee_fname || !formData.employee_lname) {
-      toast.error('Please fill all required fields')
-      return
-    }
-
-    if (editingId) {
-      updateMutation.mutate(formData)
-    } else {
-      createMutation.mutate(formData)
-    }
-  }
-
-  const handleEdit = (staffMember: Staff) => {
-    setFormData({
-      employee_fname: staffMember.employee_fname,
-      employee_lname: staffMember.employee_lname,
-      employee_position: staffMember.employee_position,
-      employee_phone: staffMember.employee_phone,
-      employee_post: staffMember.employee_post,
-      employee_status: staffMember.employee_status,
-    })
-    setEditingId(staffMember.employee_id)
-    setShowForm(true)
-  }
-
   const exportToCSV = () => {
     const headers = ['First Name', 'Last Name', 'Position', 'Phone', 'Post', 'Status']
     const rows = filteredStaff.map((s) => [
@@ -163,7 +77,7 @@ export default function AllStaffPage() {
   }
 
   const exportToPDF = () => {
-    toast.info('PDF export feature coming soon')
+    toast.success('PDF export coming soon')
   }
 
   if (isLoading) return <Spinner />
@@ -175,11 +89,7 @@ export default function AllStaffPage() {
       {/* Action Bar */}
       <div className="flex gap-3 mb-6 flex-wrap">
         <button
-          onClick={() => {
-            setShowForm(true)
-            setEditingId(null)
-            resetForm()
-          }}
+          onClick={() => window.location.href = '/admin/hr/staff'}
           className="flex items-center gap-2 px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand/90 transition-colors"
         >
           <Plus className="w-4 h-4" />
@@ -215,95 +125,6 @@ export default function AllStaffPage() {
         </div>
       </div>
 
-      {/* Add/Edit Form */}
-      {showForm && (
-        <div className="bg-white dark:bg-ink-800 rounded-lg p-6 mb-6 border border-gray-200 dark:border-ink-700">
-          <h3 className="text-lg font-semibold mb-4">
-            {editingId ? 'Edit Staff' : 'Add New Staff'}
-          </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <input
-              type="text"
-              placeholder="First Name *"
-              value={formData.employee_fname}
-              onChange={(e) =>
-                setFormData({ ...formData, employee_fname: e.target.value })
-              }
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
-            />
-            <input
-              type="text"
-              placeholder="Last Name *"
-              value={formData.employee_lname}
-              onChange={(e) =>
-                setFormData({ ...formData, employee_lname: e.target.value })
-              }
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
-            />
-            <input
-              type="text"
-              placeholder="Position"
-              value={formData.employee_position}
-              onChange={(e) =>
-                setFormData({ ...formData, employee_position: e.target.value })
-              }
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
-            />
-            <input
-              type="tel"
-              placeholder="Phone"
-              value={formData.employee_phone}
-              onChange={(e) =>
-                setFormData({ ...formData, employee_phone: e.target.value })
-              }
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
-            />
-            <input
-              type="text"
-              placeholder="Post"
-              value={formData.employee_post}
-              onChange={(e) =>
-                setFormData({ ...formData, employee_post: e.target.value })
-              }
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
-            />
-            <select
-              value={formData.employee_status}
-              onChange={(e) =>
-                setFormData({ ...formData, employee_status: e.target.value })
-              }
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand"
-            >
-              <option value="Active">Active</option>
-              <option value="Inactive">Inactive</option>
-              <option value="Terminated">Terminated</option>
-            </select>
-          </div>
-          <div className="flex gap-3 mt-4">
-            <button
-              onClick={handleSubmit}
-              disabled={createMutation.isPending || updateMutation.isPending}
-              className="px-4 py-2 bg-brand text-white rounded-lg hover:bg-brand/90 disabled:opacity-50"
-            >
-              {createMutation.isPending || updateMutation.isPending ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                'Save'
-              )}
-            </button>
-            <button
-              onClick={() => {
-                setShowForm(false)
-                setEditingId(null)
-                resetForm()
-              }}
-              className="px-4 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Staff Table */}
       <div className="bg-white dark:bg-ink-800 rounded-lg overflow-hidden border border-gray-200 dark:border-ink-700">
@@ -370,30 +191,12 @@ export default function AllStaffPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <div className="flex justify-end gap-2">
-                        <button
-                          onClick={() => handleEdit(staffMember)}
-                          className="p-1 text-blue-600 hover:bg-blue-50 rounded"
-                          title="Edit"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (
-                              window.confirm(
-                                'Are you sure you want to delete this staff?'
-                              )
-                            ) {
-                              deleteMutation.mutate(staffMember.employee_id)
-                            }
-                          }}
-                          className="p-1 text-red-600 hover:bg-red-50 rounded"
-                          title="Delete"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
+                      <button
+                        onClick={() => window.location.href = `/admin/hr/staff/${staffMember.employee_id}`}
+                        className="text-blue-600 hover:text-blue-800 font-medium text-sm"
+                      >
+                        View
+                      </button>
                     </td>
                   </tr>
                 ))
