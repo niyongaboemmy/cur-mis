@@ -18,7 +18,7 @@ export default function OldMISModal({
         />
 
         {/* Modal */}
-        <div className="relative w-full bg-white dark:bg-ink-900 rounded-2xl shadow-2xl z-50 flex flex-col max-h-[95vh]">
+        <div className="relative w-[97%] bg-white dark:bg-ink-900 rounded-2xl shadow-2xl z-50 flex flex-col max-h-[97vh]">
           {/* Header */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-ink-100 dark:border-ink-800 shrink-0">
             <h2 className="text-lg font-semibold text-ink-900 dark:text-white">
