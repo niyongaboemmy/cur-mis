@@ -75,8 +75,11 @@ class ModuleModel extends BaseModel
         // Optional sort, whitelisted to safe identifiers.
         $sortBy  = (string)($filters['sort_by']  ?? '');
         $sortDir = strtoupper((string)($filters['sort_dir'] ?? 'ASC'));
-        if (!preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/', $sortBy)) $sortBy = '';
-        if (!in_array($sortDir, ['ASC', 'DESC'], true))         $sortDir = 'ASC';
+        // Whitelist to real, sortable columns on `modules` — an unknown name
+        // (e.g. a UI-only "programs" column) would blow up as "Unknown column".
+        $sortable = ['module_code', 'module_name', 'module_credits', 'level', 'hours', 'price', 'status'];
+        if (!in_array($sortBy, $sortable, true))        $sortBy  = '';
+        if (!in_array($sortDir, ['ASC', 'DESC'], true)) $sortDir = 'ASC';
         $orderSql = $sortBy !== ''
             ? "ORDER BY m.`{$sortBy}` {$sortDir}"
             : 'ORDER BY m.module_code ASC';
