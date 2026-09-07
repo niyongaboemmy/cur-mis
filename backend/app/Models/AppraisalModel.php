@@ -53,6 +53,13 @@ class AppraisalModel extends BaseModel
         return $row ?: null;
     }
 
+    /** Blank date strings from the form must become SQL NULL, not '' (which MySQL rejects in strict mode). */
+    private static function nullableDate($value): ?string
+    {
+        $value = is_string($value) ? trim($value) : $value;
+        return ($value === '' || $value === null) ? null : $value;
+    }
+
     public function createPeriod(array $data): int
     {
         $this->db->execute(
@@ -62,9 +69,9 @@ class AppraisalModel extends BaseModel
                 $data['title'],
                 $data['period_type'],
                 $data['year'],
-                $data['start_date'],
-                $data['end_date'],
-                $data['submission_deadline'] ?? null,
+                self::nullableDate($data['start_date'] ?? null),
+                self::nullableDate($data['end_date'] ?? null),
+                self::nullableDate($data['submission_deadline'] ?? null),
                 $data['status'] ?? 'Draft',
                 $data['description'] ?? null,
             ]
@@ -80,7 +87,9 @@ class AppraisalModel extends BaseModel
         foreach ($allowed as $col) {
             if (array_key_exists($col, $data)) {
                 $sets[]     = "$col = ?";
-                $bindings[] = $data[$col];
+                $bindings[] = in_array($col, ['start_date','end_date','submission_deadline'], true)
+                    ? self::nullableDate($data[$col])
+                    : $data[$col];
             }
         }
         if (!$sets) return;
