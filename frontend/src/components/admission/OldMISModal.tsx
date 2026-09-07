@@ -44,6 +44,5 @@ export default function OldMISModal({
           </div>
         </div>
       </div>
-    </div>
   )
 }
