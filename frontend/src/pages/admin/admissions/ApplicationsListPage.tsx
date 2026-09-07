@@ -6,7 +6,7 @@ import {
   Files, Search, ChevronRight, ArrowLeft, ArrowRight, Filter,
   CheckCircle2, Clock, Sparkles, AlertCircle, GraduationCap, FileText,
   Download, FileSpreadsheet, StickyNote, X, MessageSquarePlus,
-  EyeOff, RotateCcw, Upload, Banknote, Edit2,
+  EyeOff, RotateCcw, Upload, Banknote, Edit2, Archive,
 } from 'lucide-react'
 import { applicationAdminService, intakeService } from '@/services/admissionService'
 import { ApplicationStatus, ApplicationPendingNote } from '@/types/admission'
@@ -17,6 +17,7 @@ import { useAuthStore } from '@/store/authStore'
 import SharedBulkUploadModal from '@/components/admin/BulkUploadModal'
 import DateRangeFilter, { type DateRangeValue } from '@/components/ui/DateRangeFilter'
 import ApplicationEditModal from '@/components/admin/ApplicationEditModal'
+import OldMISModal from '@/components/admission/OldMISModal'
 
 // On the admin side we relabel `submitted` → `Pending` so the queue
 // is framed as "awaiting review" rather than the raw state-machine name.
@@ -90,6 +91,8 @@ export default function ApplicationsListPage() {
   const [showBulkUpload, setShowBulkUpload] = useState(false)
   // Bank Slip management modal state
   const [showBankSlipModal, setShowBankSlipModal] = useState(false)
+  // Old MIS modal state
+  const [showOldMISModal, setShowOldMISModal] = useState(false)
   // Default to the "pending" pseudo-status (submitted OR
   // documents_under_review) — that's the full active queue admins act
   // on first, not just the very first stage.
@@ -461,12 +464,22 @@ export default function ApplicationsListPage() {
 
             {/* Submission window — drives the list, the stat tiles and both
                 exports, so everything on screen describes the same rows. */}
-            <div className="px-3 pb-3 pt-1 border-t border-ink-100 dark:border-ink-800">
-              <DateRangeFilter
-                label="Submitted"
-                value={dateRange}
-                onChange={(v) => { setDateRange(v); setPage(1) }}
-              />
+            <div className="px-3 pb-3 pt-1 border-t border-ink-100 dark:border-ink-800 flex items-end gap-3">
+              <div className="flex-1">
+                <DateRangeFilter
+                  label="Submitted"
+                  value={dateRange}
+                  onChange={(v) => { setDateRange(v); setPage(1) }}
+                />
+              </div>
+              <button
+                onClick={() => setShowOldMISModal(true)}
+                className="px-4 py-2 rounded-lg bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 hover:bg-amber-200 dark:hover:bg-amber-900/50 transition-colors font-medium text-[13px] flex items-center gap-2 shrink-0 whitespace-nowrap"
+                title="Open Old MIS Application"
+              >
+                <Archive className="w-4 h-4" />
+                Old MIS Application
+              </button>
             </div>
 
       {listQ.isLoading ? (
@@ -710,6 +723,12 @@ export default function ApplicationsListPage() {
           </div>
         </div>
       )}
+
+      {/* Old MIS Modal */}
+      <OldMISModal
+        isOpen={showOldMISModal}
+        onClose={() => setShowOldMISModal(false)}
+      />
     </div>
   )
 }
