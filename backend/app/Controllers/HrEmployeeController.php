@@ -335,11 +335,11 @@ class HrEmployeeController extends BaseController
         $offset = ($page - 1) * $perPage;
         $db     = $this->employeeModel->db();
 
-        $countRow = $db->fetchOne("SELECT COUNT(*) AS n FROM ({$union}) t $where", $bindings);
+        $countRow = $db->fetchOne("SELECT COUNT(DISTINCT t.id) AS n FROM ({$union}) t $where", $bindings);
         $total    = (int)($countRow['n'] ?? 0);
 
         $rows = $db->fetchAll(
-            "SELECT t.* FROM ({$union}) t
+            "SELECT DISTINCT t.* FROM ({$union}) t
              $where
              ORDER BY t.full_name ASC
              LIMIT ? OFFSET ?",
