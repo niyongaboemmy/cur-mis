@@ -47,6 +47,7 @@ import DocumentPreviewModal from "./DocumentPreviewModal";
 import RequestChangesModal from "./RequestChangesModal";
 import ModalPortal from "@/components/ui/ModalPortal";
 import AdmissionFeesPanel from "@/components/admission/AdmissionFeesPanel";
+import PaymentHistoryPanel from "@/components/admission/PaymentHistoryPanel";
 import { PERMISSIONS } from "@/constants";
 import { usePermission } from "@/utils/permissions";
 import { useLevels } from "@/hooks/useLevels";
@@ -1304,6 +1305,11 @@ export default function ApplicationDetailPage() {
                     mode="validator"
                     applicationId={appId}
                     canManage={canManage}
+                  />
+
+                  <PaymentHistoryPanel
+                    studentId={app?.student_id}
+                    applicationId={appId}
                   />
 
                   {maxStep >= 4 && (
