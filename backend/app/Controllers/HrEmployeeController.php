@@ -224,10 +224,15 @@ class HrEmployeeController extends BaseController
             -- detail view showed none even when one was stored.
             e.employee_username                              AS email,
             e.employee_reg_date                              AS start_date,
+            e.end_date,
             e.salary,
             e.employee_bank                                  AS bank,
             e.employee_account                               AS bank_account,
+            e.rssb_number,
             e.employee_address                               AS address,
+            e.degree,
+            e.area_specialization                            AS area_of_specialization,
+            e.foreign_degree_equivalence,
             e.faculty
         ";
     }
@@ -315,10 +320,15 @@ class HrEmployeeController extends BaseController
               e.employee_phone AS phone,
               e.employee_username AS email,
               e.employee_reg_date AS start_date,
+              e.end_date,
               e.salary,
               e.employee_bank AS bank,
               e.employee_account AS bank_account,
+              e.rssb_number,
               e.employee_address AS address,
+              e.degree,
+              e.area_specialization AS area_of_specialization,
+              e.foreign_degree_equivalence,
               e.faculty,
               'employee' AS source
             FROM employees e
@@ -383,13 +393,18 @@ class HrEmployeeController extends BaseController
             'employee_phone'    => $data['phone']             ?? '',
             'employee_idcard'   => trim($data['emp_code']     ?? ''),
             'employee_reg_date' => $data['start_date']        ?? date('Y-m-d'),
+            'end_date'          => $data['end_date']          ?? null,
             // employees.salary is NOT NULL, so passing null when the form omits
             // it aborted the whole insert with a 500 — staff without a stated
             // salary could not be created at all.
             'salary'            => isset($data['salary']) && $data['salary'] !== '' ? (float)$data['salary'] : 0.0,
             'employee_bank'     => $data['bank']              ?? '',
             'employee_account'  => $data['bank_account']      ?? '',
+            'rssb_number'       => $data['rssb_number']       ?? null,
             'employee_address'  => $data['address']           ?? '',
+            'degree'            => $data['degree']            ?? null,
+            'area_specialization' => $data['area_of_specialization'] ?? null,
+            'foreign_degree_equivalence' => $data['foreign_degree_equivalence'] ?? null,
             'employee_age'      => $data['age']               ?? '',
             // The staff directory reads this column as `email` and every client
             // sends it under that name. Reading only `username` here meant the
@@ -449,10 +464,15 @@ class HrEmployeeController extends BaseController
             'employee_phone'    => $data['phone']              ?? $row['employee_phone'],
             'employee_idcard'   => trim((string)($data['emp_code']      ?? $row['employee_idcard'])),
             'employee_reg_date' => $data['start_date']         ?? $row['employee_reg_date'],
+            'end_date'          => $data['end_date']           ?? $row['end_date']           ?? null,
             'salary'            => isset($data['salary']) && $data['salary'] !== '' ? (float)$data['salary'] : (float)($row['salary'] ?? 0),
             'employee_bank'     => $data['bank']               ?? $row['employee_bank'],
             'employee_account'  => $data['bank_account']       ?? $row['employee_account'],
+            'rssb_number'       => $data['rssb_number']        ?? $row['rssb_number']       ?? null,
             'employee_address'  => $data['address']            ?? $row['employee_address'],
+            'degree'            => $data['degree']             ?? $row['degree']            ?? null,
+            'area_specialization' => $data['area_of_specialization'] ?? $row['area_specialization'] ?? null,
+            'foreign_degree_equivalence' => $data['foreign_degree_equivalence'] ?? $row['foreign_degree_equivalence'] ?? null,
             // Was omitted entirely, so re-entering a lost email and saving
             // appeared to "delete it again" — the write simply never included
             // the column. Keeps the stored value when the key isn't sent, so

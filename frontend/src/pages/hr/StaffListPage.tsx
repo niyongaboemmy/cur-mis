@@ -641,6 +641,10 @@ function EditStaffModal({ employee, onClose, onSaved }: { employee: HrEmployee; 
     status:        ((e.status || 'Active') as HrEmployeePayload['status']),
     bank:          e.bank          ?? '',
     bank_account:  e.bank_account  ?? '',
+    rssb_number:   e.rssb_number   ?? '',
+    degree:        e.degree        ?? '',
+    area_of_specialization: e.area_of_specialization ?? '',
+    foreign_degree_equivalence: e.foreign_degree_equivalence ?? '',
   })
 
   const set = <K extends keyof typeof form>(k: K, v: typeof form[K]) =>
@@ -653,6 +657,10 @@ function EditStaffModal({ employee, onClose, onSaved }: { employee: HrEmployee; 
       end_date: form.end_date || null,
       phone:    form.phone   || null,
       email:    form.email   || null,
+      rssb_number: form.rssb_number || null,
+      degree: form.degree || null,
+      area_of_specialization: form.area_of_specialization || null,
+      foreign_degree_equivalence: form.foreign_degree_equivalence || null,
     } as any),
     onSuccess: (res: any) => {
       notifyAccountOutcome(res, 'Staff updated.')
@@ -720,11 +728,23 @@ function EditStaffModal({ employee, onClose, onSaved }: { employee: HrEmployee; 
 
           <div className="md:col-span-2 pt-2 border-t border-ink-100 dark:border-ink-700">
             <p className="text-[11px] font-semibold text-ink-500 uppercase tracking-wider flex items-center gap-1.5 mb-3">
-              <CreditCard className="w-3.5 h-3.5" /> Bank / Payment Info
+              <CreditCard className="w-3.5 h-3.5" /> Bank / Payment & Insurance
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <F label="Bank name"><input className="input" placeholder="e.g. Bank of Kigali" value={form.bank} onChange={e => set('bank', e.target.value)} /></F>
               <F label="Account number"><input className="input" placeholder="Account #" value={form.bank_account} onChange={e => set('bank_account', e.target.value)} /></F>
+              <F label="RSSB Number"><input className="input" placeholder="Social security #" value={form.rssb_number} onChange={e => set('rssb_number', e.target.value)} /></F>
+            </div>
+          </div>
+
+          <div className="md:col-span-2 pt-2 border-t border-ink-100 dark:border-ink-700">
+            <p className="text-[11px] font-semibold text-ink-500 uppercase tracking-wider flex items-center gap-1.5 mb-3">
+              📚 Academic Qualifications
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <F label="Degree/Qualification"><input className="input" placeholder="e.g. BSc, MSc, PhD" value={form.degree} onChange={e => set('degree', e.target.value)} /></F>
+              <F label="Area of Specialization"><input className="input" placeholder="e.g. Computer Science" value={form.area_of_specialization} onChange={e => set('area_of_specialization', e.target.value)} /></F>
+              <F label="Foreign Degree Equivalence"><input className="input" placeholder="e.g. Recognized as equivalent to..." value={form.foreign_degree_equivalence} onChange={e => set('foreign_degree_equivalence', e.target.value)} /></F>
             </div>
           </div>
 
