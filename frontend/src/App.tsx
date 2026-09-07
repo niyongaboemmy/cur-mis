@@ -27,7 +27,6 @@ import DocumentGenerationPage from "@/pages/DocumentGenerationPage";
 import AttendancePage from "@/pages/AttendancePage";
 
 // HR Management
-import StaffListPage from "@/pages/hr/StaffListPage";
 import AllStaffList from "@/pages/hr/AllStaffList";
 import StaffDetailPage from "@/pages/hr/StaffDetailPage";
 import HrAttendancePage from "@/pages/hr/HrAttendancePage";

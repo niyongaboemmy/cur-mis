@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Edit2, Trash2, Download, Upload, Eye } from 'lucide-react';
+import { Plus, Edit2, Trash2, Download, Upload } from 'lucide-react';
 import { useState } from 'react';
 import PageHeader from '@/components/ui/PageHeader';
 import Spinner from '@/components/ui/Spinner';
@@ -173,7 +173,7 @@ export default function RecruitmentMonitoringPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200 dark:divide-ink-700">
-            {posts?.data?.map((post: any) => (
+            {(posts as any)?.data?.map((post: any) => (
               <tr key={post.id} className="hover:bg-gray-50 dark:hover:bg-ink-700/50">
                 <td className="px-6 py-4 text-sm font-medium">{post.position_title}</td>
                 <td className="px-6 py-4 text-sm">{post.position_level}</td>
@@ -233,7 +233,7 @@ export default function RecruitmentMonitoringPage() {
             </div>
             <div className="p-6">
               <div className="space-y-3">
-                {candidates?.data?.map((candidate: any, idx: number) => (
+                {(candidates as any)?.data?.map((candidate: any, idx: number) => (
                   <div key={idx} className="border border-gray-200 dark:border-ink-700 rounded-lg p-4">
                     <div className="flex justify-between items-start">
                       <div>

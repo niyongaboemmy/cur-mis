@@ -25,7 +25,7 @@ export default function PerformanceMonitoringPage() {
     queryFn: () => hrMonitoringService.getAppraisals(1, 50),
   });
 
-  const { data: employees, isLoading: employeesLoading } = useQuery({
+  const { data: employees } = useQuery({
     queryKey: ['monitoring-employees', searchEmployee],
     queryFn: () => hrMonitoringService.getEmployees(1, 50, searchEmployee),
   });
@@ -104,8 +104,8 @@ export default function PerformanceMonitoringPage() {
 
   if (appraisalsLoading) return <Spinner />;
 
-  const appraisalList = appraisals?.data?.appraisals || appraisals?.appraisals || [];
-  const employeeList = employees?.data?.employees || employees?.employees || [];
+  const appraisalList = (appraisals as any)?.data?.appraisals || (appraisals as any)?.appraisals || [];
+  const employeeList = (employees as any)?.data?.employees || (employees as any)?.employees || [];
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-ink-950 p-6">

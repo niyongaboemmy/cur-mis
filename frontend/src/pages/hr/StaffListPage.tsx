@@ -30,7 +30,7 @@ import {
 } from '@/services/hrService'
 import { useDebounce } from '@/hooks/useDebounce'
 import { PERMISSIONS } from '@/constants'
-import { usePermission, useAnyPermission } from '@/utils/permissions'
+import { usePermission } from '@/utils/permissions'
 import DonutChart from '@/components/dashboard/DonutChart'
 import BarChart, { type BarDatum } from '@/components/dashboard/BarChart'
 import SearchableSelect from '@/components/ui/SearchableSelect'

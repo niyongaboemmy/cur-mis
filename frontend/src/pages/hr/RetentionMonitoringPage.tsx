@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Edit2, Trash2, Download, Upload, TrendingDown } from 'lucide-react';
+import { Plus, Edit2, Trash2, Download, Upload } from 'lucide-react';
 import { useState } from 'react';
 import PageHeader from '@/components/ui/PageHeader';
 import Spinner from '@/components/ui/Spinner';
@@ -78,25 +78,25 @@ export default function RetentionMonitoringPage() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <div className="bg-white dark:bg-ink-800 rounded-lg p-4 border-l-4 border-blue-500">
           <p className="text-sm text-gray-600 dark:text-gray-400">Exit Interviews</p>
-          <p className="text-2xl font-bold text-ink-900 dark:text-white">{exitInterviews?.data?.length || 0}</p>
+          <p className="text-2xl font-bold text-ink-900 dark:text-white">{(exitInterviews as any)?.data?.length || 0}</p>
         </div>
         <div className="bg-white dark:bg-ink-800 rounded-lg p-4 border-l-4 border-red-500">
           <p className="text-sm text-gray-600 dark:text-gray-400">Avg Turnover Rate</p>
           <p className="text-2xl font-bold text-red-600 dark:text-red-400">
-            {turnoverAnalytics?.data?.[0]?.turnover_rate?.toFixed(2) || 0}%
+            {(turnoverAnalytics as any)?.data?.[0]?.turnover_rate?.toFixed(2) || 0}%
           </p>
         </div>
         <div className="bg-white dark:bg-ink-800 rounded-lg p-4 border-l-4 border-green-500">
           <p className="text-sm text-gray-600 dark:text-gray-400">Avg Tenure</p>
           <p className="text-2xl font-bold text-ink-900 dark:text-white">
-            {turnoverAnalytics?.data?.[0]?.avg_tenure_months?.toFixed(1) || 0} mo.
+            {(turnoverAnalytics as any)?.data?.[0]?.avg_tenure_months?.toFixed(1) || 0} mo.
           </p>
         </div>
         <div className="bg-white dark:bg-ink-800 rounded-lg p-4 border-l-4 border-purple-500">
           <p className="text-sm text-gray-600 dark:text-gray-400">Rehire Rate</p>
           <p className="text-2xl font-bold text-ink-900 dark:text-white">
-            {exitInterviews?.data?.filter((e: any) => e.would_rehire).length || 0}/
-            {exitInterviews?.data?.length || 0}
+            {(exitInterviews as any)?.data?.filter((e: any) => e.would_rehire).length || 0}/
+            {(exitInterviews as any)?.data?.length || 0}
           </p>
         </div>
       </div>
@@ -251,7 +251,7 @@ export default function RetentionMonitoringPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-ink-700">
-              {exitInterviews?.data?.map((interview: any) => (
+              {(exitInterviews as any)?.data?.map((interview: any) => (
                 <tr key={interview.id} className="hover:bg-gray-50 dark:hover:bg-ink-700/50">
                   <td className="px-6 py-4 text-sm font-medium">Employee #{interview.employee_id}</td>
                   <td className="px-6 py-4 text-sm">{interview.exit_date}</td>
@@ -311,7 +311,7 @@ export default function RetentionMonitoringPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-ink-700">
-              {turnoverAnalytics?.data?.map((report: any) => (
+              {(turnoverAnalytics as any)?.data?.map((report: any) => (
                 <tr key={report.id} className="hover:bg-gray-50 dark:hover:bg-ink-700/50">
                   <td className="px-6 py-4 text-sm">{report.report_date}</td>
                   <td className="px-6 py-4 text-sm">{report.total_employees_start}</td>

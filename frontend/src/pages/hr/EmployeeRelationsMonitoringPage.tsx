@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Edit2, Trash2, Download, Upload, CheckCircle, Clock, X } from 'lucide-react';
+import { Plus, Edit2, Trash2, CheckCircle, Clock, X } from 'lucide-react';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 import PageHeader from '@/components/ui/PageHeader';
@@ -41,7 +41,7 @@ export default function EmployeeRelationsMonitoringPage() {
     queryFn: () => hrMonitoringService.getConflictResolutions(),
   });
 
-  const { data: employees, isLoading: employeesLoading } = useQuery({
+  const { data: employees } = useQuery({
     queryKey: ['monitoring-employees', searchEmployee],
     queryFn: () => hrMonitoringService.getEmployees(1, 50, searchEmployee),
   });
@@ -167,9 +167,9 @@ export default function EmployeeRelationsMonitoringPage() {
 
   if (grievancesLoading || conflictsLoading) return <Spinner />;
 
-  const grievanceList = grievances?.data?.grievances || [];
-  const conflictList = conflicts?.data || conflicts || [];
-  const employeeList = employees?.data?.employees || employees?.employees || [];
+  const grievanceList = (grievances as any)?.data?.grievances || [];
+  const conflictList = (conflicts as any)?.data || (conflicts as any) || [];
+  const employeeList = (employees as any)?.data?.employees || (employees as any)?.employees || [];
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-ink-950 p-6">
