@@ -1,42 +1,22 @@
 <?php
+
+declare(strict_types=1);
+
+use App\Controllers\HrEmployeeController;
+use App\Middleware\AuthMiddleware;
+use App\Middleware\PermissionMiddleware;
+use App\Constants\Permissions;
+
 /**
- * HR All Staff API
- * GET /api/hr/staff/all
- * Fetch all employees from employees table
+ * HR All Staff API Routes
+ *
+ * Every file in this directory is require_once'd by routes/api.php on *every*
+ * request, purely to register routes. Nothing here may run a query or emit
+ * output at include time — doing so writes that output into the body of every
+ * response the API sends, whatever endpoint was actually requested.
  */
 
-use Core\Database;
-
-$db = Database::getInstance();
-
-try {
-  // Get all employees - show all records
-  $employees = $db->fetchAll(
-    "SELECT
-      employee_id,
-      employee_fname,
-      employee_lname,
-      employee_position,
-      employee_phone,
-      employee_post,
-      faculty,
-      employee_status,
-      account_status,
-      salary
-     FROM employees
-     ORDER BY employee_fname ASC, employee_lname ASC"
-  );
-
-  http_response_code(200);
-  echo json_encode([
-    'data' => $employees,
-    'total' => count($employees),
-    'message' => 'All staff retrieved successfully'
-  ]);
-} catch (Exception $e) {
-  http_response_code(500);
-  echo json_encode([
-    'error' => 'Failed to fetch staff: ' . $e->getMessage()
-  ]);
-}
-?>
+$router->group('/api/hr/staff', function ($router) {
+    $router->get('',     [HrEmployeeController::class, 'all']);
+    $router->get('/all', [HrEmployeeController::class, 'all']);
+}, [AuthMiddleware::class, new PermissionMiddleware(Permissions::VIEW_HR_EMPLOYEES)]);

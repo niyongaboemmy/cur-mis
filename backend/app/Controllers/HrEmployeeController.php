@@ -348,6 +348,40 @@ class HrEmployeeController extends BaseController
     }
 
     /**
+     * GET /api/hr/staff  and  GET /api/hr/staff/all
+     *
+     * The whole staff list in one unpaginated payload. The staff directory
+     * deduplicates records by name client-side, so it needs every row at once —
+     * paging through /api/employees would split duplicate groups across pages
+     * and hide them from each other.
+     *
+     * Columns are the raw `employees` names (not the aliases index()/show() use)
+     * because that is what the deduplication service reads.
+     */
+    public function all(Request $request, Response $response): never
+    {
+        $rows = $this->employeeModel->db()->fetchAll(
+            "SELECT
+              e.employee_id,
+              e.user_id,
+              e.employee_fname,
+              e.employee_lname,
+              e.employee_gender,
+              e.employee_position,
+              e.employee_phone,
+              e.employee_post,
+              e.faculty,
+              e.employee_status,
+              e.account_status,
+              e.salary
+             FROM employees e
+             ORDER BY e.employee_fname ASC, e.employee_lname ASC"
+        );
+
+        $this->success($response, array_values($rows), 'All staff retrieved successfully.');
+    }
+
+    /**
      * GET /api/employees/:id
      */
     public function show(Request $request, Response $response): never
