@@ -35,7 +35,9 @@ import BarChart, { type BarDatum } from "@/components/dashboard/BarChart";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import StudentExportModal from "@/components/admin/StudentExportModal";
 import BulkUploadModal from "@/components/admin/BulkUploadModal";
-import DocumentCompletionBadge from "@/components/admin/DocumentCompletionBadge";
+import DocumentCompletionBadge, {
+  type DocumentStatus,
+} from "@/components/admin/DocumentCompletionBadge";
 import { academicsMgmtService } from "@/services/academicsMgmtService";
 import type { Student } from "@/types/academic";
 import ProfileChangeReviewPanel from '@/components/students/ProfileChangeReviewPanel'
@@ -581,6 +583,8 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
   // student is active, so an implicit current-year scope silently hid every
   // inactive and graduated student — "All students" showed half the registry.
   const accYear = sp.get("acc_year") ?? "";
+  // Documents — derived server-side from the student's application documents.
+  const documentStatus = sp.get("document_status") ?? "";
   const sort_by = sp.get("sort_by") ?? "";
   const sort_dir = (sp.get("sort_dir") as "asc" | "desc") ?? "desc";
   const page = Math.max(1, Number(sp.get("page") || 1));
@@ -641,6 +645,7 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
       sector: sector || undefined,
       age_min: ageMin || undefined,
       age_max: ageMax || undefined,
+      document_status: documentStatus || undefined,
       campus: campus || undefined,
       intake: intake || undefined,
       learning_mode: learning_mode || undefined,
@@ -663,6 +668,7 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
     sector,
     ageMin,
     ageMax,
+    documentStatus,
     program,
     campus,
     intake,
@@ -749,6 +755,20 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
     () => (filterOpts?.statuses ?? []).map(withCount),
     [filterOpts],
   );
+
+  /** Document-verification buckets, counted server-side like every other
+   *  facet. Falls back to the plain buckets when the endpoint is older than
+   *  this filter, so the picker is never empty. */
+  const documentStatusFacets: FacetOption[] = useMemo(() => {
+    const rows = filterOpts?.document_statuses ?? [];
+    if (rows.length) return rows.map(withCount);
+    return [
+      { value: "verified", label: "Verified" },
+      { value: "pending", label: "Not verified" },
+      { value: "rejected", label: "Rejected" },
+      { value: "none", label: "No documents" },
+    ];
+  }, [filterOpts]);
 
   /**
    * The Option picker is specific to Education, per the registry's request:
@@ -1001,6 +1021,16 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
               { value: "unknown", label: "Not specified" },
             ]}
             className="w-full sm:w-40"
+          />
+          {/* Documents — one bucket per badge shown in the table, so a
+              registrar can pull "everyone still unverified" in one click. */}
+          <FilterSelect
+            label="Documents"
+            value={documentStatus}
+            onChange={(v) => update({ document_status: v })}
+            options={documentStatusFacets}
+            placeholder="All documents"
+            className="w-full sm:w-44"
           />
           <FilterSelect
             label="Learning mode"
@@ -1284,15 +1314,12 @@ function StudentRow({
     open();
   };
 
-  // Determine document status based on student data
-  const getDocumentStatus = (): 'verified' | 'rejected' | 'pending' => {
-    const verification = (s as any)?.verification_status;
-    if (verification === 'verified' || verification === 'approved') return 'verified';
-    if (verification === 'rejected' || verification === 'declined') return 'rejected';
-    return 'pending';
-  };
-
-  const documentStatus = getDocumentStatus();
+  // Document verification badge. `document_status` is derived server-side
+  // (StudentController::deriveDocumentStatus) from the documents attached to
+  // the student's admission application, so it changes as soon as a document
+  // is verified or rejected on the student's Documents tab.
+  const documentStatus: DocumentStatus =
+    (s.document_status as DocumentStatus | undefined) ?? "none";
 
   return (
     <tr
@@ -1368,11 +1395,9 @@ function StudentRow({
         <DocumentCompletionBadge
           status={documentStatus}
           onClick={() => {
-            if (documentStatus === 'pending') {
-              navigate(`/students/${s.id}?tab=documents`, {
-                state: { fromSearch: searchParams?.toString() },
-              });
-            }
+            navigate(`/students/${s.id}?tab=documents`, {
+              state: { fromSearch: searchParams?.toString() },
+            });
           }}
         />
       </td>

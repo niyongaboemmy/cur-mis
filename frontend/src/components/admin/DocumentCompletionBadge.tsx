@@ -1,7 +1,9 @@
-import { CheckCircle2, AlertCircle, XCircle } from 'lucide-react'
+import { CheckCircle2, AlertCircle, XCircle, FileX } from 'lucide-react'
+
+export type DocumentStatus = 'verified' | 'pending' | 'rejected' | 'none'
 
 interface DocumentCompletionBadgeProps {
-  status?: 'verified' | 'pending' | 'rejected'
+  status?: DocumentStatus
   onClick?: () => void
 }
 
@@ -31,6 +33,21 @@ export default function DocumentCompletionBadge({
           Rejected
         </span>
       </div>
+    )
+  }
+
+  if (status === 'none') {
+    return (
+      <button
+        onClick={onClick}
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-ink-50 dark:bg-ink-800/60 border border-ink-200 dark:border-ink-700 hover:bg-ink-100 dark:hover:bg-ink-800 transition-colors cursor-pointer"
+        title="No documents uploaded yet"
+      >
+        <FileX className="w-3.5 h-3.5 text-ink-500 dark:text-ink-400" />
+        <span className="text-xs font-semibold text-ink-600 dark:text-ink-300">
+          No Documents
+        </span>
+      </button>
     )
   }
 
