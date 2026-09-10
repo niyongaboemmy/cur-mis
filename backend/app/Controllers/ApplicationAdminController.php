@@ -1265,9 +1265,23 @@ class ApplicationAdminController extends BaseController
         if ($rangeFrom !== null) { $rangeWhere .= ' AND sa.submitted_at >= ?'; $rangeParams[] = $rangeFrom; }
         if ($rangeTo   !== null) { $rangeWhere .= ' AND sa.submitted_at <  ?'; $rangeParams[] = $rangeTo; }
 
-        // Scope clause first, then range — the bindings must follow the same
-        // order they appear in the string.
-        $filterWhere  = $scopeWhere . $rangeWhere;
+        // Hidden-row scoping, mirroring index()'s default. Without this the
+        // tiles counted hidden rows that the list below (which excludes them
+        // by default) never shows, so a tile could read higher than the
+        // number of rows actually reachable under that same filter.
+        $includeHidden = $request->query('include_hidden') === '1' || $request->query('include_hidden') === 'true';
+        $onlyHidden    = $request->query('only_hidden')    === '1' || $request->query('only_hidden')    === 'true';
+        if ($onlyHidden) {
+            $hiddenWhere = ' AND sa.is_hidden = 1';
+        } elseif ($includeHidden) {
+            $hiddenWhere = '';
+        } else {
+            $hiddenWhere = ' AND (sa.is_hidden IS NULL OR sa.is_hidden = 0)';
+        }
+
+        // Scope clause first, then range, then hidden-row scoping — the
+        // bindings must follow the same order they appear in the string.
+        $filterWhere  = $scopeWhere . $rangeWhere . $hiddenWhere;
         $filterParams = array_merge($scopeParams, $rangeParams);
 
         // All admin-facing aggregates exclude `draft` applications since those

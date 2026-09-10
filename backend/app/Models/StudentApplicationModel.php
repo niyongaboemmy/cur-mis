@@ -151,8 +151,18 @@ class StudentApplicationModel extends BaseModel
             // active review queue" — covers raw submissions AND those an
             // admin has already started reviewing. Lets the Pending tile
             // surface the full to-do list rather than only the first stage.
+            // Mirrors the "In Review" / "Offers" / "Action" stat tiles on the
+            // Applications page, which each sum more than one raw status —
+            // without these, clicking a tile applies a single-status filter
+            // that can't reproduce the tile's own count.
             if ($filters['status'] === 'pending') {
                 $conditions[] = "sa.status IN ('submitted', 'documents_under_review')";
+            } elseif ($filters['status'] === 'in_review') {
+                $conditions[] = "sa.status IN ('documents_under_review', 'documents_verified')";
+            } elseif ($filters['status'] === 'offers_queue') {
+                $conditions[] = "sa.status IN ('offered', 'offer_accepted')";
+            } elseif ($filters['status'] === 'action_needed') {
+                $conditions[] = "sa.status IN ('documents_rejected', 'requested_changes')";
             } else {
                 $conditions[] = 'sa.status = ?';
                 $bindings[]   = $filters['status'];
