@@ -34,6 +34,7 @@ export interface AdmissionRequirement {
   faculty_id:         number
   document_type_id:   number
   is_required:        boolean
+  is_active?:         boolean | 0 | 1
   notes?:             string | null
   sort_order?:        number
   created_at?:        string

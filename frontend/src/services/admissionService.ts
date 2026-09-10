@@ -124,8 +124,12 @@ export const admissionRequirementService = {
   create: (d: Partial<AdmissionRequirement>) =>
     api.post<{ id: number }>('/admin/admission-requirements', d),
 
+  // Backend registers this as POST /:id (not PUT) — match its verb.
   update: (id: number, d: Partial<AdmissionRequirement>) =>
-    api.put<null>(`/admin/admission-requirements/${id}`, d),
+    api.post<null>(`/admin/admission-requirements/${id}`, d),
+
+  toggleActive: (id: number) =>
+    api.post<{ id: number; is_active: 0 | 1 }>(`/admin/admission-requirements/${id}/toggle-active`, {}),
 
   remove: (id: number) => api.delete<null>(`/admin/admission-requirements/${id}`),
 }

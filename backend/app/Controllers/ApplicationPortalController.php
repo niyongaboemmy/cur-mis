@@ -305,7 +305,7 @@ class ApplicationPortalController extends BaseController
             $this->error($response, $e->getMessage(), 503);
         }
 
-        $requirements = $this->requirementModel->getForFaculty($facultyId);
+        $requirements = $this->requirementModel->getForFaculty($facultyId, activeOnly: true);
 
         $this->success($response, [
             'academic_year' => ['id' => $year['id'], 'label' => $year['label']],

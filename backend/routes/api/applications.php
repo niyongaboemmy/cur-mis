@@ -90,6 +90,7 @@ $router->group('/api/admin', function ($router) {
 
         $router->get('/:id',    [AdmissionRequirementController::class, 'show']);
         $router->post('/:id',    [AdmissionRequirementController::class, 'update']);
+        $router->post('/:id/toggle-active', [AdmissionRequirementController::class, 'toggleActive']);
         $router->delete('/:id', [AdmissionRequirementController::class, 'delete']);
     }, [new PermissionMiddleware(Permissions::MANAGE_ADMISSION_REQUIREMENTS)]);
 
