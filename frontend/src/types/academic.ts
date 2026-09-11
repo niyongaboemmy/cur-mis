@@ -156,6 +156,13 @@ export interface Student {
   photo?:              string | null
   nationality?:        string | null
   learning_mode?:      'day' | 'evening' | 'weekend' | 'holiday'
+  /** Derived by the students list endpoint from the documents on the student's
+   *  admission application — see StudentController::deriveDocumentStatus. */
+  document_status?:    'verified' | 'pending' | 'rejected' | 'none'
+  documents_total?:    number
+  documents_verified?: number
+  documents_pending?:  number
+  documents_rejected?: number
   [k: string]:         unknown
 }
 

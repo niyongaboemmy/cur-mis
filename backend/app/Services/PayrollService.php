@@ -395,7 +395,7 @@ class PayrollService
         $run['employees'] = $employees;
         $run['employee_count'] = $totalEmployees;
         $run['limit'] = $limit;
-        $run['offset'] => $offset;
+        $run['offset'] = $offset;
 
         return $run;
     }

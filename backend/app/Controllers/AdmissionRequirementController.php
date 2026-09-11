@@ -142,6 +142,7 @@ class AdmissionRequirementController extends BaseController
             'faculty_id'       => $facultyId,
             'document_type_id' => $typeId,
             'is_required'      => (int)(bool)$data['is_required'],
+            'is_active'        => isset($data['is_active']) ? (int)(bool)$data['is_active'] : 1,
             'notes'            => $data['notes']       ?? null,
             'sort_order'       => isset($data['sort_order']) ? (int)$data['sort_order'] : 0,
             'created_by'       => (int)($authUser['id'] ?? 0),
@@ -175,11 +176,34 @@ class AdmissionRequirementController extends BaseController
 
         $this->model->update($id, [
             'is_required' => (int)(bool)$data['is_required'],
+            'is_active'   => isset($data['is_active']) ? (int)(bool)$data['is_active'] : (int)$row['is_active'],
             'notes'       => $data['notes']       ?? $row['notes'],
             'sort_order'  => isset($data['sort_order']) ? (int)$data['sort_order'] : (int)$row['sort_order'],
         ]);
 
         $this->success($response, ['id' => $id], 'Requirement updated successfully.');
+    }
+
+    /**
+     * POST /api/admin/admission-requirements/:id/toggle-active
+     * Flip a requirement between active/inactive without touching its other
+     * fields — deleting loses notes/sort_order/history, this doesn't.
+     * Inactive requirements stay visible in the admin checklist (so the
+     * admin can re-enable them) but drop off the applicant-facing checklist.
+     */
+    public function toggleActive(Request $request, Response $response): never
+    {
+        $id  = (int)$request->param('id');
+        $row = $this->model->find($id);
+
+        if (!$row) {
+            $this->error($response, 'Requirement not found.', 404);
+        }
+
+        $newActive = (int)!((bool)$row['is_active']);
+        $this->model->update($id, ['is_active' => $newActive]);
+
+        $this->success($response, ['id' => $id, 'is_active' => $newActive], $newActive ? 'Requirement activated.' : 'Requirement deactivated.');
     }
 
     /**

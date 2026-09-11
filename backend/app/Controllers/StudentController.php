@@ -264,7 +264,27 @@ class StudentController extends BaseController
                 $r['campus_code'] = $c !== '' && isset($nameById[$c]) ? $nameById[$c]['code'] : null;
             }
             unset($r);
-            $paginated['data'] = \App\Helpers\LevelHelper::decorate($rows, 'current_level', 'level_name');
+            $rows = \App\Helpers\LevelHelper::decorate($rows, 'current_level', 'level_name');
+
+            // Document verification badge. Computed for the page's rows only —
+            // two grouped queries, no per-row lookups — so the list can show
+            // the same state the student's Documents tab does.
+            $docSummary = $this->fetchDocumentStatusSummary(array_map(
+                static fn ($r) => (int)($r['id'] ?? 0),
+                $rows
+            ));
+            foreach ($rows as &$r) {
+                $sum = $docSummary[(int)($r['id'] ?? 0)]
+                    ?? ['total' => 0, 'verified' => 0, 'pending' => 0, 'rejected' => 0, 'status' => 'none'];
+                $r['document_status']  = $sum['status'];
+                $r['documents_total']  = $sum['total'];
+                $r['documents_verified'] = $sum['verified'];
+                $r['documents_pending']  = $sum['pending'];
+                $r['documents_rejected'] = $sum['rejected'];
+            }
+            unset($r);
+
+            $paginated['data'] = $rows;
         }
 
         $this->success($response, $paginated, 'Students fetched successfully.');
@@ -2868,6 +2888,126 @@ class StudentController extends BaseController
     }
 
     /**
+     * Per-student document verification summary, keyed by `student.id`.
+     *
+     * Documents live on the application the student was admitted through
+     * (`application_documents.application_id`), so the join goes through the
+     * student's LATEST `admission_offers` row — the same one
+     * documents()/resolveApplicationId() reads, so the badge on the list can
+     * never disagree with the documents tab.
+     *
+     * Self-service uploads (StudentController::meUploadDocument) are picked up
+     * too: they store `applicant_profile_id = student.id` with a NULL
+     * application_id, and the documents tab shows them for students who were
+     * never admitted through the portal.
+     *
+     * @param array<int, int> $studentIds
+     * @return array<int, array{total:int,verified:int,pending:int,rejected:int,status:string}>
+     */
+    private function fetchDocumentStatusSummary(array $studentIds): array
+    {
+        $studentIds = array_values(array_unique(array_map('intval', $studentIds)));
+        if (empty($studentIds) || !$this->tableExists('application_documents')) {
+            return [];
+        }
+
+        $db = $this->studentModel->db();
+        $ph = implode(',', array_fill(0, count($studentIds), '?'));
+
+        $rows = [];
+
+        if ($this->tableExists('admission_offers')) {
+            $rows = $db->fetchAll(
+                "SELECT latest.student_id,
+                        ad.verification_status AS status,
+                        COUNT(*)               AS cnt
+                 FROM (
+                     SELECT ao.student_id, MAX(ao.id) AS offer_id
+                     FROM `admission_offers` ao
+                     WHERE ao.student_id IN ($ph)
+                     GROUP BY ao.student_id
+                 ) latest
+                 JOIN `admission_offers` o    ON o.id = latest.offer_id
+                 JOIN `application_documents` ad ON ad.application_id = o.application_id
+                 GROUP BY latest.student_id, ad.verification_status",
+                $studentIds
+            );
+        }
+
+        $selfRows = $db->fetchAll(
+            "SELECT ad.applicant_profile_id AS student_id,
+                    ad.verification_status  AS status,
+                    COUNT(*)                AS cnt
+             FROM `application_documents` ad
+             WHERE ad.application_id IS NULL
+               AND ad.applicant_profile_id IN ($ph)
+             GROUP BY ad.applicant_profile_id, ad.verification_status",
+            $studentIds
+        );
+
+        $summary = [];
+        foreach (array_merge($rows, $selfRows) as $row) {
+            $sid = (int)$row['student_id'];
+            $summary[$sid] ??= ['total' => 0, 'verified' => 0, 'pending' => 0, 'rejected' => 0, 'status' => 'none'];
+
+            $cnt    = (int)$row['cnt'];
+            $status = strtolower(trim((string)$row['status']));
+
+            $summary[$sid]['total'] += $cnt;
+            if ($status === 'verified') {
+                $summary[$sid]['verified'] += $cnt;
+            } elseif ($status === 'rejected') {
+                $summary[$sid]['rejected'] += $cnt;
+            } else {
+                // 'pending', 'required', legacy blanks — anything not yet decided.
+                $summary[$sid]['pending'] += $cnt;
+            }
+        }
+
+        foreach ($summary as &$s) {
+            $s['status'] = self::deriveDocumentStatus($s['total'], $s['verified'], $s['rejected']);
+        }
+        unset($s);
+
+        return $summary;
+    }
+
+    /**
+     * The single rule the badge, the filter and the CSV export all share:
+     * one rejected document outranks everything, otherwise a student is only
+     * "verified" once every document on file has been verified.
+     */
+    private static function deriveDocumentStatus(int $total, int $verified, int $rejected): string
+    {
+        if ($total === 0)       return 'none';
+        if ($rejected > 0)      return 'rejected';
+        if ($verified >= $total) return 'verified';
+        return 'pending';
+    }
+
+    /**
+     * SQL fragment counting a student's documents with a given status,
+     * correlated on the student alias `$p`. Mirrors the joins in
+     * fetchDocumentStatusSummary() so the filter and the badge agree.
+     *
+     * @param string $statusSql `verification_status` predicate, or '' for all rows.
+     */
+    private function documentCountSql(string $p, string $statusSql): string
+    {
+        $statusClause = $statusSql === '' ? '' : " AND {$statusSql}";
+        $offerBranch  = $this->tableExists('admission_offers')
+            ? "ad.application_id = (
+                   SELECT o.application_id FROM `admission_offers` o
+                   WHERE o.student_id = {$p}id ORDER BY o.id DESC LIMIT 1
+               ) OR "
+            : '';
+
+        return "(SELECT COUNT(*) FROM `application_documents` ad
+                  WHERE ({$offerBranch}(ad.application_id IS NULL AND ad.applicant_profile_id = {$p}id))
+                  {$statusClause})";
+    }
+
+    /**
      * Whether `$table` exists in the current schema. Cached per request.
      * Companion to columnExists() for the same legacy-schema guards.
      */
@@ -2906,6 +3046,29 @@ class StudentController extends BaseController
             // misnamed schema column.
             'learning_mode',
         ];
+
+        // ── Document verification status ─────────────────────────────
+        // Derived, not stored: a student's badge comes from the documents on
+        // their admission application (plus any self-service uploads), so the
+        // filter has to reproduce deriveDocumentStatus() in SQL.
+        if (!in_array('document_status', $except, true)) {
+            $docStatus = strtolower(trim((string)($request->query('document_status') ?? '')));
+            if ($docStatus !== '' && $this->tableExists('application_documents')) {
+                $total    = $this->documentCountSql($p, '');
+                $verified = $this->documentCountSql($p, "ad.verification_status = 'verified'");
+                $rejected = $this->documentCountSql($p, "ad.verification_status = 'rejected'");
+
+                if ($docStatus === 'none') {
+                    $clauses[] = "{$total} = 0";
+                } elseif ($docStatus === 'rejected') {
+                    $clauses[] = "{$rejected} > 0";
+                } elseif ($docStatus === 'verified') {
+                    $clauses[] = "({$total} > 0 AND {$rejected} = 0 AND {$verified} >= {$total})";
+                } elseif ($docStatus === 'pending') {
+                    $clauses[] = "({$total} > 0 AND {$rejected} = 0 AND {$verified} < {$total})";
+                }
+            }
+        }
 
         // ── Age range ────────────────────────────────────────────────
         // `student.birthdate` is a varchar holding two live formats
@@ -3664,6 +3827,28 @@ class StudentController extends BaseController
             $statuses[] = ['value' => $key, 'label' => $bucket['label'], 'total' => $total];
         }
 
+        // ── Document verification ────────────────────────────────────
+        // Same derivation as the badge (deriveDocumentStatus), expressed as a
+        // CASE so each bucket reports how many students it would yield.
+        $documentStatuses = [];
+        if ($this->tableExists('application_documents')) {
+            $total    = $this->documentCountSql('s.', '');
+            $verified = $this->documentCountSql('s.', "ad.verification_status = 'verified'");
+            $rejected = $this->documentCountSql('s.', "ad.verification_status = 'rejected'");
+            $caseSql  = "CASE
+                           WHEN {$total} = 0 THEN 'none'
+                           WHEN {$rejected} > 0 THEN 'rejected'
+                           WHEN {$verified} >= {$total} THEN 'verified'
+                           ELSE 'pending'
+                         END";
+
+            $docRows  = $facet(['document_status'], "{$caseSql} AS value", 'value');
+            $docCount = array_column($docRows, 'total', 'value');
+            foreach (self::DOCUMENT_STATUS_LABELS as $key => $label) {
+                $documentStatuses[] = ['value' => $key, 'label' => $label, 'total' => (int)($docCount[$key] ?? 0)];
+            }
+        }
+
         // ── Age ──────────────────────────────────────────────────────
         // Bounds are clamped to a plausible student range: the birthdate
         // column contains typos that parse into ages of 3 or 120, and letting
@@ -3718,6 +3903,7 @@ class StudentController extends BaseController
             'sectors'        => $sectors,
             'academic_years' => $years,
             'statuses'       => $statuses,
+            'document_statuses' => $documentStatuses,
             'age'            => [
                 'min'   => $ageRow['min_age'] !== null ? (int)$ageRow['min_age'] : self::AGE_FLOOR,
                 'max'   => $ageRow['max_age'] !== null ? (int)$ageRow['max_age'] : self::AGE_CEILING,
@@ -3726,6 +3912,14 @@ class StudentController extends BaseController
             ],
         ], 'Filter options fetched.');
     }
+
+    /** Document-verification buckets offered by the Documents filter. */
+    private const DOCUMENT_STATUS_LABELS = [
+        'verified' => 'Verified',
+        'pending'  => 'Not verified',
+        'rejected' => 'Rejected',
+        'none'     => 'No documents',
+    ];
 
     /** Ages outside this range are typos, not students — see filterOptions(). */
     private const AGE_FLOOR   = 14;

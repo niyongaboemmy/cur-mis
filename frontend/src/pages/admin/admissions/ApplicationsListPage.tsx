@@ -35,16 +35,23 @@ const STATUS_LABEL: Record<string, string> = {
   draft:                  'Draft',
 }
 
-// UI pseudo-status: "Pending" means the active queue ⇒ submitted OR
-// documents_under_review. The backend expands this string in
-// StudentApplicationModel::paginate(), so it's a real filter value
-// even though it isn't a value in the SQL enum.
-const PENDING_FILTER = 'pending' as const
+// UI pseudo-statuses: each stat tile sums more than one raw status (see
+// `stats` below), so clicking a tile has to filter by the same combination
+// the tile counted — not just one of the statuses in it. The backend
+// expands these strings in StudentApplicationModel::paginateFiltered(), so
+// they're real filter values even though they aren't in the SQL enum.
+const PENDING_FILTER = 'pending' as const       // submitted OR documents_under_review — matches the "Pending" tile.
+const IN_REVIEW_FILTER = 'in_review' as const   // documents_under_review OR documents_verified — matches the "In Review" tile.
+const OFFERS_FILTER = 'offers_queue' as const   // offered OR offer_accepted — matches the "Offers" tile.
+const ACTION_FILTER = 'action_needed' as const  // documents_rejected OR requested_changes — matches the "Action" tile.
 
 const STATUSES: { value: string; label: string }[] = [
   { value: '',                                       label: 'All statuses' },
-  // Pseudo-status surfaced first so the dropdown matches the tile.
+  // Pseudo-statuses surfaced first so the dropdown can reproduce every tile.
   { value: PENDING_FILTER,                           label: 'Pending (queue)' },
+  { value: IN_REVIEW_FILTER,                         label: 'In review (queue)' },
+  { value: OFFERS_FILTER,                            label: 'Offers (queue)' },
+  { value: ACTION_FILTER,                            label: 'Action needed (queue)' },
   { value: ApplicationStatus.SUBMITTED,              label: 'Submitted only' },
   { value: ApplicationStatus.DOCUMENTS_UNDER_REVIEW, label: 'Docs under review' },
   { value: ApplicationStatus.DOCUMENTS_VERIFIED,     label: 'Docs verified' },
@@ -96,7 +103,9 @@ export default function ApplicationsListPage() {
   // Default to the "pending" pseudo-status (submitted OR
   // documents_under_review) — that's the full active queue admins act
   // on first, not just the very first stage.
-  const [status, setStatus] = useState<ApplicationStatus | typeof PENDING_FILTER | ''>(PENDING_FILTER)
+  const [status, setStatus] = useState<
+    ApplicationStatus | typeof PENDING_FILTER | typeof IN_REVIEW_FILTER | typeof OFFERS_FILTER | typeof ACTION_FILTER | ''
+  >(PENDING_FILTER)
   const [intake, setIntake] = useState('')
   // Campus is no longer set from this page (global topbar + role flag own
   // scope), but the state stays so the query key changes when a dashboard
@@ -292,15 +301,15 @@ export default function ApplicationsListPage() {
             <StatTile
               icon={Clock} label="In Review" value={stats.inReview}
               accent="bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
-              active={status === ApplicationStatus.DOCUMENTS_UNDER_REVIEW}
-              onClick={() => { setStatus(ApplicationStatus.DOCUMENTS_UNDER_REVIEW); setPage(1) }}
+              active={status === IN_REVIEW_FILTER}
+              onClick={() => { setStatus(IN_REVIEW_FILTER); setPage(1) }}
             />
             <StatTile
               icon={Sparkles} label="Offers" value={stats.offers}
               accent="bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
               highlight={stats.offers > 0}
-              active={status === ApplicationStatus.OFFERED}
-              onClick={() => { setStatus(ApplicationStatus.OFFERED); setPage(1) }}
+              active={status === OFFERS_FILTER}
+              onClick={() => { setStatus(OFFERS_FILTER); setPage(1) }}
             />
             <StatTile
               icon={GraduationCap} label="Enrolled" value={stats.enrolled}
@@ -312,8 +321,8 @@ export default function ApplicationsListPage() {
               icon={AlertCircle} label="Action" value={stats.actionNeeded}
               accent="bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300"
               highlight={stats.actionNeeded > 0}
-              active={status === ApplicationStatus.REQUESTED_CHANGES}
-              onClick={() => { setStatus(ApplicationStatus.REQUESTED_CHANGES); setPage(1) }}
+              active={status === ACTION_FILTER}
+              onClick={() => { setStatus(ACTION_FILTER); setPage(1) }}
             />
           </div>
 

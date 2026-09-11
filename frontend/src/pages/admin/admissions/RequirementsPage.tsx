@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { ListChecks, Plus, Trash2, Loader2 } from 'lucide-react'
+import { ListChecks, Plus, Trash2, Loader2, Eye, EyeOff } from 'lucide-react'
 import { admissionRequirementService, documentTypeService, portalService } from '@/services/admissionService'
 import { PERMISSIONS } from '@/constants'
 import { usePermission } from '@/utils/permissions'
@@ -37,6 +37,15 @@ export default function RequirementsPage() {
     mutationFn: (id: number) => admissionRequirementService.remove(id),
     onSuccess: () => { toast.success('Requirement removed'); qc.invalidateQueries({ queryKey: ['admin', 'requirements'] }) },
     onError:   (e: any) => toast.error(e?.response?.data?.message ?? 'Failed'),
+  })
+
+  const toggleActive = useMutation({
+    mutationFn: (id: number) => admissionRequirementService.toggleActive(id),
+    onSuccess: (res) => {
+      toast.success(res.data?.is_active ? 'Requirement activated' : 'Requirement deactivated — hidden from applicants')
+      qc.invalidateQueries({ queryKey: ['admin', 'requirements'] })
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Failed'),
   })
 
   const rows      = listQ.data?.data?.requirements ?? []
@@ -80,33 +89,56 @@ export default function RequirementsPage() {
             </p>
           ) : (
             <table className="data-table mb-5">
-              <thead><tr><th>Document</th><th>Required?</th><th>Notes</th><th className="text-right">Actions</th></tr></thead>
+              <thead><tr><th>Document</th><th>Required?</th><th>Active?</th><th>Notes</th><th className="text-right">Actions</th></tr></thead>
               <tbody>
-                {rows.map((r) => (
-                  <tr key={r.id}>
-                    <td className="font-medium text-ink-900 dark:text-ink-100">
-                      {r.document_type_name ?? `#${r.document_type_id}`}
-                      {r.document_type_active === 0 && (
-                        <span className="ml-2 chip-soft text-[10px]">inactive type</span>
-                      )}
-                    </td>
-                    <td>{r.is_required ? <span className="chip-primary">Required</span> : <span className="chip-soft">Optional</span>}</td>
-                    <td className="text-ink-500 text-[12.5px]">{r.notes || '—'}</td>
-                    <td className="text-right">
-                      {canManage && (
-                        <button
-                          className="icon-btn text-red-500 hover:text-red-600 hover:bg-red-50"
-                          onClick={() => remove.mutate(r.id)}
-                          disabled={remove.isPending && remove.variables === r.id}
-                        >
-                          {remove.isPending && remove.variables === r.id
-                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            : <Trash2 className="w-3.5 h-3.5" />}
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                {rows.map((r) => {
+                  const active = r.is_active === undefined ? true : Boolean(r.is_active)
+                  return (
+                    <tr key={r.id} className={active ? undefined : 'opacity-60'}>
+                      <td className="font-medium text-ink-900 dark:text-ink-100">
+                        {r.document_type_name ?? `#${r.document_type_id}`}
+                        {r.document_type_active === 0 && (
+                          <span className="ml-2 chip-soft text-[10px]">inactive type</span>
+                        )}
+                      </td>
+                      <td>{r.is_required ? <span className="chip-primary">Required</span> : <span className="chip-soft">Optional</span>}</td>
+                      <td>
+                        {active
+                          ? <span className="chip-success">Active</span>
+                          : <span className="chip-soft" title="Hidden from the applicant upload checklist">Inactive</span>}
+                      </td>
+                      <td className="text-ink-500 text-[12.5px]">{r.notes || '—'}</td>
+                      <td className="text-right">
+                        {canManage && (
+                          <div className="inline-flex items-center gap-1">
+                            <button
+                              className={active
+                                ? 'icon-btn text-amber-600 hover:text-amber-700 hover:bg-amber-50'
+                                : 'icon-btn text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50'}
+                              title={active ? 'Deactivate — hide from applicants' : 'Activate — show to applicants'}
+                              onClick={() => toggleActive.mutate(r.id)}
+                              disabled={toggleActive.isPending && toggleActive.variables === r.id}
+                            >
+                              {toggleActive.isPending && toggleActive.variables === r.id
+                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                : active ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                            </button>
+                            <button
+                              className="icon-btn text-red-500 hover:text-red-600 hover:bg-red-50"
+                              title="Delete permanently"
+                              onClick={() => remove.mutate(r.id)}
+                              disabled={remove.isPending && remove.variables === r.id}
+                            >
+                              {remove.isPending && remove.variables === r.id
+                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                : <Trash2 className="w-3.5 h-3.5" />}
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           )}

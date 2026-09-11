@@ -124,8 +124,12 @@ export const admissionRequirementService = {
   create: (d: Partial<AdmissionRequirement>) =>
     api.post<{ id: number }>('/admin/admission-requirements', d),
 
+  // Backend registers this as POST /:id (not PUT) — match its verb.
   update: (id: number, d: Partial<AdmissionRequirement>) =>
-    api.put<null>(`/admin/admission-requirements/${id}`, d),
+    api.post<null>(`/admin/admission-requirements/${id}`, d),
+
+  toggleActive: (id: number) =>
+    api.post<{ id: number; is_active: 0 | 1 }>(`/admin/admission-requirements/${id}/toggle-active`, {}),
 
   remove: (id: number) => api.delete<null>(`/admin/admission-requirements/${id}`),
 }
@@ -136,7 +140,7 @@ export const admissionRequirementService = {
  * ─────────────────────────────────────────────────────────────── */
 export const applicationAdminService = {
   list: (
-    params: { page?: number; per_page?: number; status?: ApplicationStatus | 'pending'; department_id?: number; intake?: string; campus_id?: number; mode_of_study?: string; search?: string; q?: string; level_id?: number; gender?: string; payment_status?: string; include_hidden?: '1'; only_hidden?: '1'; sort_paid_first?: '1'; submitted_from?: string; submitted_to?: string } = {},
+    params: { page?: number; per_page?: number; status?: ApplicationStatus | 'pending' | 'in_review' | 'offers_queue' | 'action_needed'; department_id?: number; intake?: string; campus_id?: number; mode_of_study?: string; search?: string; q?: string; level_id?: number; gender?: string; payment_status?: string; include_hidden?: '1'; only_hidden?: '1'; sort_paid_first?: '1'; submitted_from?: string; submitted_to?: string } = {},
     signal?: AbortSignal,
   ) => {
     const { q, ...rest } = params;

@@ -9,7 +9,7 @@ class AdmissionRequirementModel extends BaseModel
     protected string $table    = 'admission_requirements';
     protected array  $fillable = [
         'faculty_id', 'document_type_id',
-        'is_required', 'notes', 'sort_order', 'created_by',
+        'is_required', 'is_active', 'notes', 'sort_order', 'created_by',
     ];
     protected array $hidden = [];
 
@@ -21,9 +21,15 @@ class AdmissionRequirementModel extends BaseModel
      * Uses LEFT JOIN with no `dt.is_active` filter so requirements remain
      * visible even after their document type is deactivated or deleted; the
      * admin can then either delete the stale row or re-activate the doc type.
+     *
+     * $activeOnly — the admin checklist editor needs every row (active and
+     * inactive) so a disabled requirement can still be found and re-enabled;
+     * the applicant-facing upload step passes true so a deactivated
+     * requirement simply doesn't appear on their checklist.
      */
-    public function getForFaculty(int $facultyId): array
+    public function getForFaculty(int $facultyId, bool $activeOnly = false): array
     {
+        $activeWhere = $activeOnly ? ' AND ar.is_active = 1' : '';
         return $this->db->fetchAll(
             "SELECT ar.*,
                     dt.name AS document_type_name,
@@ -33,7 +39,7 @@ class AdmissionRequirementModel extends BaseModel
                     COALESCE(dt.is_active, 0) AS document_type_active
              FROM `admission_requirements` ar
              LEFT JOIN `document_types` dt ON dt.id = ar.document_type_id
-             WHERE ar.faculty_id = ?
+             WHERE ar.faculty_id = ?{$activeWhere}
              ORDER BY ar.sort_order ASC, ar.id ASC",
             [$facultyId]
         );

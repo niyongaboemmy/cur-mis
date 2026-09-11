@@ -146,6 +146,9 @@ export interface StudentListParams {
    *  birthdate is missing or unparseable are excluded once either is set. */
   age_min?:       string | number
   age_max?:       string | number
+  /** Document verification bucket — derived server-side from the student's
+   *  application documents: verified | pending | rejected | none. */
+  document_status?: string
   sort_by?:       string
   sort_dir?:      'asc' | 'desc'
 }
@@ -207,6 +210,8 @@ export interface StudentFilterOptions {
   sectors:        SectorFacet[]
   academic_years: FacetValue[]
   statuses:       FacetValue[]
+  /** Derived document-verification buckets (verified | pending | rejected | none). */
+  document_statuses: FacetValue[]
   age: {
     min:   number
     max:   number

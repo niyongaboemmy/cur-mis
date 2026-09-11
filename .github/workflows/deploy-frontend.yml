@@ -9,7 +9,13 @@ name: Deploy — Frontend (React SPA)
 #   rename() is atomic on the same filesystem — near-zero window of mixed files.
 #
 # Required GitHub Secret:
-#   CPANEL_PASS — cPanel account password
+#   CPANEL_API_TOKEN — cPanel API Token (WHM/cPanel → Security → Manage API Tokens),
+#   NOT the account password. Sent as `Authorization: cpanel USER:TOKEN`, which cPanel
+#   accepts identically to Basic Auth for UAPI/API2 calls. Switched from CPANEL_PASS
+#   because Basic Auth silently broke on 2026-09-08 (password rotated/cPHulk lockout
+#   server-side, no repo change) — every retry got back a login-page HTML body instead
+#   of JSON, with no clear error. A token isn't invalidated by a password change and
+#   can be scoped/revoked independently.
 
 on:
   push:
@@ -89,12 +95,12 @@ jobs:
           done
           echo "reachable=$reach" >> "$GITHUB_OUTPUT"
           if [ "$reach" != "true" ]; then
-            echo "::warning title=Deploy skipped — cPanel unreachable::$CPANEL_URL did not answer in 6 attempts over 2 minutes (server firewall). The build passed; deploy from an allowed network: CPANEL_PASS='...' bash deploy-from-local.sh"
+            echo "::warning title=Deploy skipped — cPanel unreachable::$CPANEL_URL did not answer in 6 attempts over 2 minutes (server firewall). The build passed; deploy from an allowed network: CPANEL_PASS='...' bash deploy-from-local.sh (deploy-from-local.sh still uses password auth)"
           fi
       - name: Upload & extract
         if: steps.preflight.outputs.reachable == 'true'
         env:
-          CPANEL_PASS: ${{ secrets.CPANEL_PASS }}
+          CPANEL_API_TOKEN: ${{ secrets.CPANEL_API_TOKEN }}
         # NO PHP HELPER: the server's security layer blocks uploading .php
         # files (returns an HTML block page — run 33226* proved zips pass but
         # the extractor helper is flagged as a webshell, which is also what
@@ -105,7 +111,7 @@ jobs:
           up() {
             local f="$1" d="$2" r s i
             for i in 1 2 3; do
-              r=$(curl -s -k --connect-timeout 20 --max-time 300 -u "$CPANEL_USER:$CPANEL_PASS" \
+              r=$(curl -s -k --connect-timeout 20 --max-time 300 -H "Authorization: cpanel $CPANEL_USER:$CPANEL_API_TOKEN" \
                 -F "dir=$d" -F "overwrite=1" -F "file-1=@$f" \
                 "$CPANEL_URL/execute/Fileman/upload_files" || true)
               s=$(printf '%s' "$r" | jq -r '.status // 0' 2>/dev/null || echo 0)
@@ -118,7 +124,7 @@ jobs:
           ex() {
             local z="$1" d="$2" r i
             for i in 1 2 3; do
-              r=$(curl -s -k --connect-timeout 20 --max-time 300 -u "$CPANEL_USER:$CPANEL_PASS" \
+              r=$(curl -s -k --connect-timeout 20 --max-time 300 -H "Authorization: cpanel $CPANEL_USER:$CPANEL_API_TOKEN" \
                 "$CPANEL_URL/json-api/cpanel?cpanel_jsonapi_apiversion=2&cpanel_jsonapi_module=Fileman&cpanel_jsonapi_func=fileop&op=extract&sourcefiles=$z&destfiles=$d&doubledecode=0" || true)
               if printf '%s' "$r" | jq -e '(.cpanelresult.error // "") == "" and .cpanelresult.data' >/dev/null 2>&1; then
                 echo "extract $z -> $d: ok"; return 0
