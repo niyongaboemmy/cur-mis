@@ -1059,6 +1059,21 @@ export function MarksEditor({
         return
       }
 
+      // Without at least one recognized mark column, every row's "incoming"
+      // value below falls back to its current value (`cell(...) || cur.X`),
+      // so the whole file reads back as "unchanged" with nothing applied and
+      // no indication why. A file whose headers don't match the template
+      // (renamed, translated, hand-built) must fail loudly here instead.
+      const hasCatCol  = iCats >= 0 || iCat1 >= 0 || iCat2 >= 0 || iCat3 >= 0 || iPartial >= 0
+      const hasExamCol = iExam1 >= 0 || iExam2 >= 0
+      if (!hasCatCol && !hasExamCol) {
+        toast.error(
+          'Could not find a CAT or EXAM column in this file. Re-export the template and try again.',
+          { duration: 7000 },
+        )
+        return
+      }
+
       const normReg = (s: string) =>
         s.replace(/^['’]+/, '')
          .replace(/\s+/g, '')
