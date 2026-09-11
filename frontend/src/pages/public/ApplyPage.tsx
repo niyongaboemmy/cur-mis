@@ -1743,6 +1743,16 @@ function PaymentStep({
             <PayDetailRow label="Payer code" value={checkout?.payer_code ?? '…'} hint="Your application number" onCopy={() => copy('Payer code', checkout?.payer_code)} />
           </div>
 
+          {checkout?.merchant_codes?.slice(1, 2).map((merchantCode) => (
+            <div key={merchantCode} className="rounded-lg border border-ink-100 dark:border-ink-800 bg-ink-50/60 dark:bg-ink-900/40">
+              <PayDetailRow
+                label="Merchant code (KIGALI CAMPUS)"
+                value={merchantCode}
+                onCopy={() => copy('Merchant code (KIGALI CAMPUS)', merchantCode)}
+              />
+            </div>
+          ))}
+
           {/* The consent tick gates the Pay button, so it sits directly above it.
               Down with the checklist it read as an afterthought — applicants met
               a disabled button with no visible reason. */}
