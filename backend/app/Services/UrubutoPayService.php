@@ -958,6 +958,8 @@ class UrubutoPayService
     public function generateApplicationCheckoutUrl(string $appNumber): array
     {
         $merchantCode = $this->merchantCode();
+        $merchantCodes = $this->applicationMerchantCodes($merchantCode);
+        $displayMerchantCode = $merchantCodes[0] ?? $merchantCode;
         $serviceCode  = $this->applicationServiceCode();
         $fee          = $this->applicationFee();
         $checkoutBase = $_ENV['URUBUTOPAY_CHECKOUT_URL'] ?? self::CHECKOUT_BASE; // .../pay-now
@@ -978,7 +980,8 @@ class UrubutoPayService
 
         return [
             'checkout_url'  => $checkoutUrl,
-            'merchant_code' => $merchantCode,
+            'merchant_code' => $displayMerchantCode,
+            'merchant_codes' => $merchantCodes,
             'payer_code'    => $appNumber,
             'amount'        => $fee,
             'currency'      => 'RWF',
@@ -1222,6 +1225,27 @@ class UrubutoPayService
             $code = (string)($row['merchant_code'] ?? '');
         }
         return $code;
+    }
+
+    /** Return the two merchant codes shown on the application payment page. */
+    private function applicationMerchantCodes(string $primaryCode): array
+    {
+        $rows = $this->db->fetchAll(
+            "SELECT merchant_code
+             FROM api_authorization
+             WHERE merchant_code IS NOT NULL
+               AND TRIM(merchant_code) <> ''
+               AND merchant_code LIKE 'TH%'
+             ORDER BY id ASC
+             LIMIT 2"
+        );
+
+        $codes = array_values(array_unique(array_filter(array_map(
+            static fn(array $row): string => trim((string)($row['merchant_code'] ?? '')),
+            $rows
+        ))));
+
+        return $codes ?: ($primaryCode !== '' ? [$primaryCode] : []);
     }
 
     /**

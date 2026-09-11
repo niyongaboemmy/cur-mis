@@ -573,6 +573,7 @@ export const applicantService = {
     api.get<{
       checkout_url:       string
       merchant_code:      string
+      merchant_codes:     string[]
       payer_code:         string
       amount:             number
       currency:           string
