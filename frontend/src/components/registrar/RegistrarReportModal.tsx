@@ -14,7 +14,7 @@ export default function RegistrarReportModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-0 sm:p-2">
       {/* Modal backdrop */}
       <div
         className="absolute inset-0 cursor-pointer"
@@ -22,7 +22,7 @@ export default function RegistrarReportModal({
       />
 
       {/* Modal content - Full screen iframe */}
-      <div className="relative w-[95%] h-[95vh] flex flex-col bg-white dark:bg-ink-900 rounded-lg shadow-2xl">
+      <div className="relative w-full h-full sm:w-[99%] sm:h-[99vh] flex flex-col bg-white dark:bg-ink-900 rounded-none sm:rounded-xl shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-ink-100 dark:border-ink-700">
           <h2 className="text-lg font-bold text-ink-900 dark:text-white">
