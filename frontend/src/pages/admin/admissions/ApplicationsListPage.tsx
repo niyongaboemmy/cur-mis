@@ -899,7 +899,7 @@ function StatTile({
     <button
       type="button"
       onClick={onClick}
-      className={`p-3.5 rounded-lg border flex flex-col gap-2.5 text-left transition-all cursor-pointer ${
+      className={`px-3 py-2 rounded-lg border flex items-center gap-2.5 text-left transition-all cursor-pointer ${
         active
           ? 'border-primary-400 dark:border-primary-500 bg-gradient-to-br from-primary-50 to-white dark:from-primary-900/30 dark:to-ink-900 shadow-lg ring-2 ring-primary-200/50 dark:ring-primary-900/50 hover:-translate-y-0.5'
           : highlight
@@ -907,12 +907,12 @@ function StatTile({
             : 'border-ink-100 dark:border-ink-700/50 bg-white dark:bg-ink-800/20 shadow-sm hover:shadow-md hover:border-ink-200 dark:hover:border-ink-600 hover:-translate-y-0.5'
       }`}
     >
-      <span className={`w-9 h-9 rounded-md flex items-center justify-center shrink-0 ${accent}`}>
-        <Icon className="w-4.5 h-4.5" />
+      <span className={`w-8 h-8 rounded-md flex items-center justify-center shrink-0 ${accent}`}>
+        <Icon className="w-4 h-4" />
       </span>
       <div className="min-w-0">
-        <p className="text-[9.5px] uppercase tracking-widest font-bold text-ink-500 dark:text-ink-400 leading-none">{label}</p>
-        <p className="text-[22px] font-black text-ink-900 dark:text-white leading-none mt-1">{value.toLocaleString()}</p>
+        <p className="text-[8.5px] uppercase tracking-widest font-bold text-ink-500 dark:text-ink-400 leading-none">{label}</p>
+        <p className="text-[16px] font-black text-ink-900 dark:text-white leading-none">{value.toLocaleString()}</p>
       </div>
     </button>
   )
