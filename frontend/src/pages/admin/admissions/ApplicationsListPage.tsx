@@ -269,7 +269,7 @@ export default function ApplicationsListPage() {
       ) : (
         <>
           {(statsQ.data?.data as any)?.desynced_pending_count > 0 && (
-            <div className="hidden flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 text-amber-900 dark:bg-amber-900/20 dark:border-amber-800 dark:text-amber-100 px-3.5 py-2.5">
+            <div className="flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 text-amber-900 dark:bg-amber-900/20 dark:border-amber-800 dark:text-amber-100 px-3.5 py-2.5">
               <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
               <div className="text-[12.5px] leading-snug">
                 <strong>{(statsQ.data?.data as any).desynced_pending_count}</strong>
@@ -280,10 +280,10 @@ export default function ApplicationsListPage() {
             </div>
           )}
 
-          {false && <ScopeHint stats={statsQ.data?.data} />}
+          <ScopeHint stats={statsQ.data?.data} />
 
-          {/* Stats strip hidden — clicking a tile applies the matching status filter. */}
-          <div style={{ display: 'none' }} className="card p-5 bg-white dark:bg-ink-900 shadow-sm border border-white dark:border-ink-800/50">
+          {/* Stats strip — clicking a tile applies the matching status filter. */}
+          <div className="card p-5 bg-white dark:bg-ink-900 shadow-sm border border-white dark:border-ink-800/50">
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
             <StatTile
               icon={FileText} label="Total Applications" value={stats.totalAll}
