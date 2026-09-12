@@ -212,54 +212,54 @@ export default function ApplicationsListPage() {
   return (
     <div className="space-y-6">
       {/* Page header */}
-      <div className="flex items-end justify-between gap-4 flex-wrap">
+      <div className="flex items-end justify-between gap-6 flex-wrap">
         <div>
-          <p className="text-[11px] uppercase tracking-[0.2em] font-bold text-brand mb-1">Admissions</p>
-          <h1 className="text-[26px] sm:text-[30px] font-black text-ink-900 dark:text-white tracking-tight leading-tight">
+          <p className="text-[10.5px] uppercase tracking-[0.25em] font-bold text-brand mb-2">Admissions</p>
+          <h1 className="text-[32px] sm:text-[36px] font-black text-ink-900 dark:text-white tracking-tight leading-tight">
             Applications
           </h1>
-          <p className="text-[13px] text-ink-500 mt-1">
+          <p className="text-[13px] text-ink-500 dark:text-ink-400 mt-2 max-w-lg">
             Review submissions, verify documents, and manage admission decisions across all intakes.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2.5">
           <button
             type="button"
             onClick={() => setShowBankSlipModal(true)}
-            className="btn-secondary inline-flex items-center gap-1.5 whitespace-nowrap"
+            className="btn-secondary inline-flex items-center gap-2 whitespace-nowrap"
             title="Manage bank slip payments"
           >
-            <Banknote className="w-3.5 h-3.5" /> Bank Slip
+            <Banknote className="w-4 h-4" /> Bank Slip
           </button>
           <button
             type="button"
             onClick={() => setShowBulkUpload(true)}
-            className="btn-secondary inline-flex items-center gap-1.5 whitespace-nowrap"
+            className="btn-primary inline-flex items-center gap-2 whitespace-nowrap"
             title="Bulk import applicants from a CSV template"
           >
-            <Upload className="w-3.5 h-3.5" /> Bulk upload
+            <Upload className="w-4 h-4" /> Bulk upload
           </button>
         </div>
       </div>
 
       {/* Tab Switcher */}
-      <div className="flex items-center gap-2 p-1 bg-ink-100 dark:bg-ink-800 rounded-xl w-fit">
+      <div className="flex items-center gap-2 p-1.5 bg-ink-100 dark:bg-ink-800/50 rounded-xl w-fit">
         <button
           onClick={() => setActiveTab('dashboard')}
-          className={`px-6 py-2 text-[13px] font-bold rounded-lg transition-all ${
+          className={`px-6 py-2 text-[13px] font-semibold rounded-lg transition-all ${
             activeTab === 'dashboard'
-              ? 'bg-white dark:bg-ink-900 text-brand shadow-sm'
-              : 'text-ink-500 hover:text-ink-700'
+              ? 'bg-white dark:bg-ink-900 text-brand shadow-md ring-1 ring-brand/20'
+              : 'text-ink-600 dark:text-ink-400 hover:text-ink-800 dark:hover:text-ink-200'
           }`}
         >
           Dashboard
         </button>
         <button
           onClick={() => setActiveTab('list')}
-          className={`px-6 py-2 text-[13px] font-bold rounded-lg transition-all ${
+          className={`px-6 py-2 text-[13px] font-semibold rounded-lg transition-all ${
             activeTab === 'list'
-              ? 'bg-white dark:bg-ink-900 text-brand shadow-sm'
-              : 'text-ink-500 hover:text-ink-700'
+              ? 'bg-white dark:bg-ink-900 text-brand shadow-md ring-1 ring-brand/20'
+              : 'text-ink-600 dark:text-ink-400 hover:text-ink-800 dark:hover:text-ink-200'
           }`}
         >
           Applications List
@@ -327,8 +327,8 @@ export default function ApplicationsListPage() {
           </div>
 
           <section className="card p-0 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
-            {/* Toolbar */}
-            <div className="flex items-center gap-3 flex-wrap border-b border-ink-100 p-4">
+            {/* Toolbar Header */}
+            <div className="flex items-center justify-between gap-4 border-b border-ink-100 dark:border-ink-800 px-5 py-4">
               <div className="flex items-center gap-2">
                 <Files className="w-5 h-5 text-brand" />
                 <div>
@@ -336,120 +336,7 @@ export default function ApplicationsListPage() {
                   <p className="section-sub">{total.toLocaleString()} match{total === 1 ? '' : 'es'} current filters</p>
                 </div>
               </div>
-
-              <div className="flex-1" />
-
-              <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-400 pointer-events-none" />
-                <input
-                  value={q}
-                  onChange={(e) => { setQ(e.target.value); setPage(1) }}
-                  placeholder="Search by name, email, number…"
-                  className="input pl-8 w-64"
-                />
-              </div>
-              <div className="w-56">
-                <SearchableSelect
-                  options={statusOptions}
-                  value={status}
-                  onChange={(val) => { setStatus(val as any); setPage(1) }}
-                  allLabel="All statuses"
-                  placeholder="Filter by status"
-                />
-              </div>
-              <div className="relative">
-                <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-400 pointer-events-none" />
-                <select
-                  className="input pl-8 w-40"
-                  value={intake}
-                  onChange={(e) => { setIntake(e.target.value); setPage(1) }}
-                >
-                  <option value="">All intakes</option>
-                  {intakes.map((i: any) => (
-                    <option key={i.id} value={i.name}>{i.name}</option>
-                  ))}
-                </select>
-              </div>
-              {/* Inline campus dropdown removed. Scope is now controlled
-                  globally by the topbar Campus switcher + the role-level
-                  enforce_campus_scope flag, so this filter would have been
-                  redundant noise on the toolbar. */}
-              <div className="relative">
-                <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-400 pointer-events-none" />
-                <select
-                  className="input pl-8 w-44"
-                  value={levelId === '' ? '' : String(levelId)}
-                  onChange={(e) => { setLevelId(e.target.value ? Number(e.target.value) : ''); setPage(1) }}
-                >
-                  <option value="">All levels</option>
-                  {levelOptions.map((l) => (
-                    <option key={l.id} value={l.id}>{l.label} ({l.cnt})</option>
-                  ))}
-                </select>
-              </div>
-              <div className="relative">
-                <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-400 pointer-events-none" />
-                <select
-                  className="input pl-8 w-36"
-                  value={gender}
-                  onChange={(e) => { setGender(e.target.value); setPage(1) }}
-                >
-                  <option value="">All genders</option>
-                  <option value="M">Male</option>
-                  <option value="F">Female</option>
-                  <option value="O">Other</option>
-                </select>
-              </div>
-              <div className="relative">
-                <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-400 pointer-events-none" />
-                <select
-                  className="input pl-8 w-40"
-                  value={paymentStatus}
-                  onChange={(e) => { setPaymentStatus(e.target.value); setPage(1) }}
-                >
-                  <option value="">All payment</option>
-                  <option value="paid">Paid</option>
-                  <option value="unpaid">Unpaid</option>
-                </select>
-              </div>
-              <label className="flex items-center gap-1.5 text-[12px] text-ink-600 dark:text-ink-300 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  className="accent-brand"
-                  checked={paidFirst}
-                  onChange={(e) => { setPaidFirst(e.target.checked); setPage(1) }}
-                />
-                Paid first
-              </label>
-              <button
-                type="button"
-                onClick={() => { setShowHidden((v) => !v); setPage(1) }}
-                className={
-                  'inline-flex items-center gap-1.5 text-[12px] font-medium px-2.5 py-1.5 rounded-md transition-colors ' +
-                  (showHidden
-                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200'
-                    : 'bg-ink-50 dark:bg-ink-800 text-ink-600 dark:text-ink-300 hover:bg-ink-100')
-                }
-                title={showHidden ? 'Showing hidden — click to return to the main list' : 'Show only hidden applications'}
-              >
-                <EyeOff className="w-3.5 h-3.5" />
-                {showHidden ? 'Hidden only' : 'Show hidden'}
-              </button>
-              <div className="relative">
-                <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-400 pointer-events-none" />
-                <select
-                  className="input pl-8 w-44"
-                  value={mode}
-                  onChange={(e) => { setMode(e.target.value); setPage(1) }}
-                >
-                  <option value="">All modes</option>
-                  {modeOptions.map((m) => (
-                    <option key={m.label} value={m.label}>{m.label} ({m.cnt})</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex items-center gap-1.5 ml-1 pl-3 border-l border-ink-100 dark:border-ink-800">
+              <div className="flex items-center gap-1.5 shrink-0">
                 <a
                   href={buildExportUrl('xlsx')}
                   target="_blank"
@@ -471,10 +358,130 @@ export default function ApplicationsListPage() {
               </div>
             </div>
 
+            {/* Filters Row 1 - Primary filters */}
+            <div className="flex items-end gap-3 border-b border-ink-100 dark:border-ink-800 px-5 py-3.5">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-400 pointer-events-none" />
+                <input
+                  value={q}
+                  onChange={(e) => { setQ(e.target.value); setPage(1) }}
+                  placeholder="Search by name, email, or application number…"
+                  className="input pl-9 w-full"
+                />
+              </div>
+              <div className="w-56">
+                <SearchableSelect
+                  options={statusOptions}
+                  value={status}
+                  onChange={(val) => { setStatus(val as any); setPage(1) }}
+                  allLabel="All statuses"
+                  placeholder="Filter by status"
+                />
+              </div>
+              <div className="relative w-48">
+                <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-400 pointer-events-none" />
+                <select
+                  className="input pl-9 w-full"
+                  value={intake}
+                  onChange={(e) => { setIntake(e.target.value); setPage(1) }}
+                >
+                  <option value="">All intakes</option>
+                  {intakes.map((i: any) => (
+                    <option key={i.id} value={i.name}>{i.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Filters Row 2 - Secondary filters */}
+            <div className="flex items-end gap-2 flex-wrap bg-ink-50/50 dark:bg-ink-800/20 border-b border-ink-100 dark:border-ink-800 px-5 py-3.5">
+              <div className="relative w-44">
+                <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-400 pointer-events-none" />
+                <select
+                  className="input pl-9 w-full"
+                  value={levelId === '' ? '' : String(levelId)}
+                  onChange={(e) => { setLevelId(e.target.value ? Number(e.target.value) : ''); setPage(1) }}
+                  title="Filter by programme level"
+                >
+                  <option value="">All levels</option>
+                  {levelOptions.map((l) => (
+                    <option key={l.id} value={l.id}>{l.label} ({l.cnt})</option>
+                  ))}
+                </select>
+              </div>
+              <div className="relative w-40">
+                <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-400 pointer-events-none" />
+                <select
+                  className="input pl-9 w-full"
+                  value={gender}
+                  onChange={(e) => { setGender(e.target.value); setPage(1) }}
+                  title="Filter by gender"
+                >
+                  <option value="">All genders</option>
+                  <option value="M">Male</option>
+                  <option value="F">Female</option>
+                  <option value="O">Other</option>
+                </select>
+              </div>
+              <div className="relative w-40">
+                <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-400 pointer-events-none" />
+                <select
+                  className="input pl-9 w-full"
+                  value={paymentStatus}
+                  onChange={(e) => { setPaymentStatus(e.target.value); setPage(1) }}
+                  title="Filter by payment status"
+                >
+                  <option value="">All payments</option>
+                  <option value="paid">Paid</option>
+                  <option value="unpaid">Unpaid</option>
+                </select>
+              </div>
+              <div className="relative w-40">
+                <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-400 pointer-events-none" />
+                <select
+                  className="input pl-9 w-full"
+                  value={mode}
+                  onChange={(e) => { setMode(e.target.value); setPage(1) }}
+                  title="Filter by mode of study"
+                >
+                  <option value="">All modes</option>
+                  {modeOptions.map((m) => (
+                    <option key={m.label} value={m.label}>{m.label} ({m.cnt})</option>
+                  ))}
+                </select>
+              </div>
+              <label className="flex items-center gap-2 text-[12px] font-medium text-ink-700 dark:text-ink-300 cursor-pointer select-none px-2 py-1.5 rounded-md hover:bg-white/40 dark:hover:bg-white/5 transition-colors">
+                <input
+                  type="checkbox"
+                  className="accent-brand w-4 h-4"
+                  checked={paidFirst}
+                  onChange={(e) => { setPaidFirst(e.target.checked); setPage(1) }}
+                  title="Show paid applications first"
+                />
+                Paid first
+              </label>
+              <button
+                type="button"
+                onClick={() => { setShowHidden((v) => !v); setPage(1) }}
+                className={
+                  'inline-flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-md transition-colors ' +
+                  (showHidden
+                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200 hover:bg-amber-200 dark:hover:bg-amber-900/60'
+                    : 'bg-white dark:bg-ink-700 text-ink-700 dark:text-ink-300 border border-ink-200 dark:border-ink-600 hover:bg-ink-50 dark:hover:bg-ink-600')
+                }
+                title={showHidden ? 'Showing hidden — click to return to the main list' : 'Show only hidden applications'}
+              >
+                <EyeOff className="w-3.5 h-3.5" />
+                {showHidden ? 'Hidden only' : 'Show hidden'}
+              </button>
+
+              <div className="flex-1" />
+            </div>
+
             {/* Submission window — drives the list, the stat tiles and both
                 exports, so everything on screen describes the same rows. */}
-            <div className="px-3 pb-3 pt-1 border-t border-ink-100 dark:border-ink-800 flex items-end gap-3">
-              <div className="flex-1">
+            <div className="px-5 py-3.5 border-t border-ink-100 dark:border-ink-800 flex items-end gap-6 flex-wrap">
+              <div className="flex-1 min-w-[280px]">
                 <DateRangeFilter
                   label="Submitted"
                   value={dateRange}
@@ -483,7 +490,7 @@ export default function ApplicationsListPage() {
               </div>
               <button
                 onClick={() => setShowOldMISModal(true)}
-                className="px-4 py-2 rounded-lg bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 hover:bg-amber-200 dark:hover:bg-amber-900/50 transition-colors font-medium text-[13px] flex items-center gap-2 shrink-0 whitespace-nowrap"
+                className="px-4 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors font-medium text-[13px] flex items-center gap-2 shrink-0 whitespace-nowrap"
                 title="Open Old MIS Application"
               >
                 <Archive className="w-4 h-4" />
@@ -494,19 +501,23 @@ export default function ApplicationsListPage() {
       {listQ.isLoading ? (
         <Skel />
       ) : rows.length === 0 ? (
-        <p className="p-10 text-center text-ink-500 text-[13px]">No applications match your filters.</p>
+        <div className="py-12 px-6 text-center">
+          <Files className="w-12 h-12 text-ink-300 dark:text-ink-600 mx-auto mb-3" />
+          <p className="text-ink-600 dark:text-ink-400 text-[13px] font-medium">No applications match your filters.</p>
+          <p className="text-ink-500 dark:text-ink-500 text-[12px] mt-1">Try adjusting your search or filter criteria.</p>
+        </div>
       ) : (
         <>
           <div className="overflow-x-auto">
             <table className="data-table">
               <thead>
-                <tr>
-                  <th>Applicant</th>
-                  <th>Program &amp; placement</th>
-                  <th>Status</th>
-                  <th>Submitted</th>
-                  <th>Pending notes</th>
-                  <th className="text-right">Actions</th>
+                <tr className="bg-ink-50 dark:bg-ink-800/50 border-b border-ink-200 dark:border-ink-700">
+                  <th className="font-semibold text-ink-700 dark:text-ink-200 uppercase text-[11px] tracking-wider py-3">Applicant</th>
+                  <th className="font-semibold text-ink-700 dark:text-ink-200 uppercase text-[11px] tracking-wider py-3">Program &amp; placement</th>
+                  <th className="font-semibold text-ink-700 dark:text-ink-200 uppercase text-[11px] tracking-wider py-3">Status</th>
+                  <th className="font-semibold text-ink-700 dark:text-ink-200 uppercase text-[11px] tracking-wider py-3">Submitted</th>
+                  <th className="font-semibold text-ink-700 dark:text-ink-200 uppercase text-[11px] tracking-wider py-3">Pending notes</th>
+                  <th className="font-semibold text-ink-700 dark:text-ink-200 uppercase text-[11px] tracking-wider py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -704,25 +715,31 @@ export default function ApplicationsListPage() {
 
       {/* Bank Slip Modal */}
       {showBankSlipModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 dark:bg-black/70 backdrop-blur-sm p-4">
-          <div className="w-[60%] h-[90vh] max-h-[90vh] bg-white dark:bg-ink-800 rounded-xl shadow-2xl flex flex-col">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 dark:bg-black/70 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="w-[90%] max-w-5xl h-[85vh] max-h-[85vh] bg-white dark:bg-ink-900 rounded-xl shadow-2xl flex flex-col animate-in zoom-in-95">
             {/* Modal Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-ink-100 dark:border-ink-700 shrink-0">
-              <div className="flex items-center gap-2">
-                <Banknote className="w-4 h-4 text-green-600" />
-                <h2 className="text-sm font-semibold text-ink-800 dark:text-white">Bank Slip Management</h2>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-ink-100 dark:border-ink-800 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-green-50 dark:bg-green-900/30">
+                  <Banknote className="w-5 h-5 text-green-600 dark:text-green-400" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-semibold text-ink-900 dark:text-white">Bank Slip Management</h2>
+                  <p className="text-xs text-ink-500 dark:text-ink-400 mt-0.5">Verify and manage payment slips</p>
+                </div>
               </div>
               <button
                 onClick={() => setShowBankSlipModal(false)}
-                className="p-1.5 hover:bg-ink-100 dark:hover:bg-ink-700 rounded-lg transition-colors"
+                className="p-2 hover:bg-ink-100 dark:hover:bg-ink-800 rounded-lg transition-colors"
                 title="Close modal"
+                aria-label="Close"
               >
-                <X className="w-4 h-4 text-ink-500 dark:text-ink-400" />
+                <X className="w-5 h-5 text-ink-500 dark:text-ink-400" />
               </button>
             </div>
 
             {/* Modal Body - iFrame */}
-            <div className="flex-1 overflow-hidden bg-white dark:bg-ink-900">
+            <div className="flex-1 overflow-hidden bg-white dark:bg-ink-950">
               <iframe
                 src="https://cur.ac.rw/umis/finance/bank_slip/index.php?tab=registrar"
                 className="w-full h-full border-none"
@@ -794,35 +811,39 @@ function PendingNotesModal({
     <ModalPortal>
       <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 animate-in fade-in">
         <div className="absolute inset-0 bg-ink-900/60 backdrop-blur-sm" onClick={onClose} />
-        <div className="relative w-full max-w-lg card overflow-hidden animate-in flex flex-col max-h-[85vh]">
-          <div className="px-5 py-3.5 border-b hairline flex justify-between items-center">
+        <div className="relative w-full max-w-lg card overflow-hidden animate-in flex flex-col max-h-[90vh] shadow-2xl">
+          <div className="px-5 py-4 border-b border-ink-100 dark:border-ink-800 flex justify-between items-center shrink-0">
             <div className="min-w-0">
-              <h2 className="text-[14px] font-semibold text-ink-900 dark:text-white flex items-center gap-2">
-                <StickyNote className="w-4 h-4 text-amber-600" />
+              <h2 className="text-[14px] font-semibold text-ink-900 dark:text-white flex items-center gap-2.5">
+                <div className="p-1.5 rounded-lg bg-amber-50 dark:bg-amber-900/30">
+                  <StickyNote className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                </div>
                 Shared pending notes
               </h2>
-              <p className="section-sub mt-0.5 truncate">
-                {applicantLabel} — visible to every registry staff member.
+              <p className="section-sub mt-1 truncate">
+                {applicantLabel} — visible to registry staff
               </p>
             </div>
-            <button onClick={onClose} className="icon-btn" aria-label="Close">
+            <button onClick={onClose} className="icon-btn p-2 hover:bg-ink-100 dark:hover:bg-ink-800 rounded-lg transition-colors shrink-0" aria-label="Close">
               <X className="w-4 h-4" />
             </button>
           </div>
 
-          <div className="px-5 py-3 flex-1 overflow-y-auto space-y-2.5">
+          <div className="px-5 py-4 flex-1 overflow-y-auto space-y-3">
             {loading ? (
-              <div className="text-[12.5px] text-ink-500 py-6 text-center">Loading…</div>
+              <div className="text-[12.5px] text-ink-500 py-8 text-center">Loading notes…</div>
             ) : notes.length === 0 ? (
-              <div className="text-[12.5px] text-ink-500 py-6 text-center italic">
-                No notes recorded yet. Add the first one below.
+              <div className="text-[12.5px] text-ink-500 py-8 text-center">
+                <MessageSquarePlus className="w-8 h-8 text-ink-300 dark:text-ink-600 mx-auto mb-2" />
+                <p className="font-medium">No notes yet</p>
+                <p className="text-[11px] mt-1">Add the first note below</p>
               </div>
             ) : (
               notes.map((n) => (
-                <div key={n.id} className="border hairline rounded-lg p-2.5">
-                  <p className="text-[12.5px] text-ink-900 dark:text-ink-100 whitespace-pre-wrap">{n.note}</p>
-                  <p className="text-[10.5px] text-ink-500 mt-1.5 flex items-center justify-between">
-                    <span>{n.created_by_name ?? 'Unknown'}</span>
+                <div key={n.id} className="border border-ink-200 dark:border-ink-700 rounded-lg p-3 bg-ink-50/50 dark:bg-ink-800/20">
+                  <p className="text-[12.5px] text-ink-900 dark:text-ink-100 whitespace-pre-wrap leading-relaxed">{n.note}</p>
+                  <p className="text-[10.5px] text-ink-500 dark:text-ink-400 mt-2.5 flex items-center justify-between">
+                    <span className="font-medium">{n.created_by_name ?? 'Unknown'}</span>
                     <span>{fmtDateTime(n.created_at)}</span>
                   </p>
                 </div>
@@ -830,20 +851,20 @@ function PendingNotesModal({
             )}
           </div>
 
-          <div className="px-5 py-3 border-t hairline space-y-2">
-            <label className="label flex items-center gap-1.5">
-              <MessageSquarePlus className="w-3.5 h-3.5" /> Add a shared note
+          <div className="px-5 py-4 border-t border-ink-100 dark:border-ink-800 space-y-3 shrink-0 bg-ink-50/50 dark:bg-ink-800/20">
+            <label className="label flex items-center gap-2 text-[13px] font-medium text-ink-900 dark:text-white">
+              <MessageSquarePlus className="w-4 h-4" /> Add a shared note
             </label>
             <textarea
-              className="input min-h-[72px] text-[12.5px]"
-              placeholder="Explain why this candidate is being held (e.g. awaiting transcript verification)…"
+              className="input min-h-[80px] text-[12.5px] resize-none"
+              placeholder="Explain why this candidate is being held (e.g., awaiting transcript verification)…"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               maxLength={1000}
               disabled={saving}
             />
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] text-ink-400">{draft.length}/1000</span>
+              <span className="text-[11px] text-ink-400 dark:text-ink-500 font-medium">{draft.length}/1000</span>
               <div className="flex gap-2">
                 <button type="button" onClick={onClose} className="btn-secondary btn-sm">Close</button>
                 <button
@@ -878,20 +899,20 @@ function StatTile({
     <button
       type="button"
       onClick={onClick}
-      className={`p-3.5 rounded-2xl border flex items-center gap-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-md ${
+      className={`p-4 rounded-xl border flex items-center gap-3.5 text-left transition-all cursor-pointer ${
         active
-          ? 'border-primary-400 dark:border-primary-600 bg-white dark:bg-ink-900 shadow-md ring-2 ring-primary-200 dark:ring-primary-900/40'
+          ? 'border-primary-400 dark:border-primary-500 bg-white dark:bg-ink-900 shadow-lg ring-2 ring-primary-200/50 dark:ring-primary-900/50 hover:-translate-y-1'
           : highlight
-            ? 'border-primary-200 dark:border-primary-800 bg-white dark:bg-ink-900 shadow-sm'
-            : 'border-ink-100 dark:border-ink-800 bg-white dark:bg-ink-900/40'
+            ? 'border-primary-200 dark:border-primary-800 bg-white dark:bg-ink-900 shadow-md hover:shadow-lg hover:-translate-y-0.5'
+            : 'border-ink-100 dark:border-ink-700 bg-white dark:bg-ink-900/50 shadow-sm hover:shadow-md hover:border-ink-200 dark:hover:border-ink-600 hover:-translate-y-0.5'
       }`}
     >
-      <span className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${accent}`}>
-        <Icon className="w-4 h-4" />
+      <span className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${accent}`}>
+        <Icon className="w-5 h-5" />
       </span>
       <div className="min-w-0">
-        <p className="text-[10px] uppercase tracking-wider font-bold text-ink-400 leading-none">{label}</p>
-        <p className="text-[18px] font-black text-ink-900 dark:text-white leading-none mt-1">{value}</p>
+        <p className="text-[10px] uppercase tracking-widest font-bold text-ink-400 dark:text-ink-500 leading-none">{label}</p>
+        <p className="text-[20px] font-black text-ink-900 dark:text-white leading-none mt-1.5">{value.toLocaleString()}</p>
       </div>
     </button>
   )
@@ -918,14 +939,14 @@ function Skel() {
 function Pager({ page, last, onPage }: { page: number; last: number; onPage: (p: number) => void }) {
   if (last <= 1) return null
   return (
-    <div className="flex items-center justify-between px-4 py-3 border-t border-ink-100 text-[12.5px] text-ink-500">
-      <span>Page {page} of {last}</span>
-      <div className="flex gap-1">
-        <button className="btn-secondary btn-sm" onClick={() => onPage(Math.max(1, page - 1))} disabled={page <= 1}>
-          <ArrowLeft className="w-3 h-3" /> Prev
+    <div className="flex items-center justify-between px-5 py-4 border-t border-ink-100 dark:border-ink-800 bg-ink-50/50 dark:bg-ink-800/20">
+      <span className="text-[12.5px] font-medium text-ink-600 dark:text-ink-400">Page <strong className="text-ink-900 dark:text-ink-100">{page}</strong> of <strong className="text-ink-900 dark:text-ink-100">{last}</strong></span>
+      <div className="flex gap-2">
+        <button className="btn-secondary btn-sm" onClick={() => onPage(Math.max(1, page - 1))} disabled={page <= 1} title="Previous page">
+          <ArrowLeft className="w-3.5 h-3.5" /> Prev
         </button>
-        <button className="btn-secondary btn-sm" onClick={() => onPage(Math.min(last, page + 1))} disabled={page >= last}>
-          Next <ArrowRight className="w-3 h-3" />
+        <button className="btn-secondary btn-sm" onClick={() => onPage(Math.min(last, page + 1))} disabled={page >= last} title="Next page">
+          Next <ArrowRight className="w-3.5 h-3.5" />
         </button>
       </div>
     </div>
