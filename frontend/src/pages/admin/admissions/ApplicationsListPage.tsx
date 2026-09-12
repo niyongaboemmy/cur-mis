@@ -211,64 +211,56 @@ export default function ApplicationsListPage() {
 
   return (
     <div className="space-y-5 bg-gradient-to-br from-ink-50 via-white to-ink-50/50 dark:from-ink-950 dark:via-ink-900 dark:to-ink-900/50 -mx-6 px-6 py-6 min-h-screen">
-      {/* Page header card */}
-      <div className="card p-6 bg-white dark:bg-ink-900 shadow-sm border border-white dark:border-ink-800/50">
-        <div>
-          <p className="text-[10.5px] uppercase tracking-[0.25em] font-bold text-brand mb-2">Admissions</p>
-          <h1 className="text-[32px] sm:text-[36px] font-black text-ink-900 dark:text-white tracking-tight leading-tight">
-            Applications
-          </h1>
-          <p className="text-[13px] text-ink-500 dark:text-ink-400 mt-2 max-w-lg">
-            Review submissions, verify documents, and manage admission decisions across all intakes.
-          </p>
-        </div>
-      </div>
-
-      {/* Action buttons card */}
+      {/* Page header with tabs and action buttons on same line */}
       <div className="card p-4 bg-white dark:bg-ink-900 shadow-sm border border-white dark:border-ink-800/50">
-        <div className="flex gap-2.5">
-          <button
-            type="button"
-            onClick={() => setShowBankSlipModal(true)}
-            className="btn-secondary inline-flex items-center gap-2 whitespace-nowrap"
-            title="Manage bank slip payments"
-          >
-            <Banknote className="w-4 h-4" /> Bank Slip
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowBulkUpload(true)}
-            className="btn-primary inline-flex items-center gap-2 whitespace-nowrap"
-            title="Bulk import applicants from a CSV template"
-          >
-            <Upload className="w-4 h-4" /> Bulk upload
-          </button>
-        </div>
-      </div>
-
-      {/* Tab Switcher card */}
-      <div className="card p-4 bg-white dark:bg-ink-900 shadow-sm border border-white dark:border-ink-800/50">
-        <div className="flex items-center gap-2 p-1.5 bg-ink-100 dark:bg-ink-800/50 rounded-xl w-fit">
-        <button
-          onClick={() => setActiveTab('dashboard')}
-          className={`px-6 py-2 text-[13px] font-semibold rounded-lg transition-all ${
-            activeTab === 'dashboard'
-              ? 'bg-white dark:bg-ink-900 text-brand shadow-md ring-1 ring-brand/20'
-              : 'text-ink-600 dark:text-ink-400 hover:text-ink-800 dark:hover:text-ink-200'
-          }`}
-        >
-          Dashboard
-        </button>
-        <button
-          onClick={() => setActiveTab('list')}
-          className={`px-6 py-2 text-[13px] font-semibold rounded-lg transition-all ${
-            activeTab === 'list'
-              ? 'bg-white dark:bg-ink-900 text-brand shadow-md ring-1 ring-brand/20'
-              : 'text-ink-600 dark:text-ink-400 hover:text-ink-800 dark:hover:text-ink-200'
-          }`}
-        >
-          Applications List
-        </button>
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-3">
+            <div>
+              <p className="text-[10.5px] uppercase tracking-[0.25em] font-bold text-brand">Admissions</p>
+              <h1 className="text-[24px] font-black text-ink-900 dark:text-white tracking-tight">Applications</h1>
+            </div>
+            <div className="h-12 border-l border-ink-200 dark:border-ink-700/50" />
+            <div className="flex items-center gap-2 p-1.5 bg-ink-100 dark:bg-ink-800/50 rounded-lg">
+              <button
+                onClick={() => setActiveTab('dashboard')}
+                className={`px-4 py-1.5 text-[12px] font-semibold rounded-md transition-all ${
+                  activeTab === 'dashboard'
+                    ? 'bg-white dark:bg-ink-900 text-brand shadow-sm'
+                    : 'text-ink-600 dark:text-ink-400 hover:text-ink-800 dark:hover:text-ink-200'
+                }`}
+              >
+                Dashboard
+              </button>
+              <button
+                onClick={() => setActiveTab('list')}
+                className={`px-4 py-1.5 text-[12px] font-semibold rounded-md transition-all ${
+                  activeTab === 'list'
+                    ? 'bg-white dark:bg-ink-900 text-brand shadow-sm'
+                    : 'text-ink-600 dark:text-ink-400 hover:text-ink-800 dark:hover:text-ink-200'
+                }`}
+              >
+                Applications List
+              </button>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setShowBankSlipModal(true)}
+              className="btn-secondary inline-flex items-center gap-1.5 whitespace-nowrap text-[12px] px-3 py-2"
+              title="Manage bank slip payments"
+            >
+              <Banknote className="w-3.5 h-3.5" /> Bank Slip
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowBulkUpload(true)}
+              className="btn-primary inline-flex items-center gap-1.5 whitespace-nowrap text-[12px] px-3 py-2"
+              title="Bulk import applicants from a CSV template"
+            >
+              <Upload className="w-3.5 h-3.5" /> Bulk upload
+            </button>
+          </div>
         </div>
       </div>
 
@@ -277,7 +269,7 @@ export default function ApplicationsListPage() {
       ) : (
         <>
           {(statsQ.data?.data as any)?.desynced_pending_count > 0 && (
-            <div className="flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 text-amber-900 dark:bg-amber-900/20 dark:border-amber-800 dark:text-amber-100 px-3.5 py-2.5">
+            <div className="hidden flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 text-amber-900 dark:bg-amber-900/20 dark:border-amber-800 dark:text-amber-100 px-3.5 py-2.5">
               <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
               <div className="text-[12.5px] leading-snug">
                 <strong>{(statsQ.data?.data as any).desynced_pending_count}</strong>
@@ -288,10 +280,10 @@ export default function ApplicationsListPage() {
             </div>
           )}
 
-          <ScopeHint stats={statsQ.data?.data} />
+          {false && <ScopeHint stats={statsQ.data?.data} />}
 
-          {/* Stats strip — clicking a tile applies the matching status filter. */}
-          <div className="card p-5 bg-white dark:bg-ink-900 shadow-sm border border-white dark:border-ink-800/50">
+          {/* Stats strip hidden — clicking a tile applies the matching status filter. */}
+          <div style={{ display: 'none' }} className="card p-5 bg-white dark:bg-ink-900 shadow-sm border border-white dark:border-ink-800/50">
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
             <StatTile
               icon={FileText} label="Total Applications" value={stats.totalAll}
