@@ -213,34 +213,36 @@ export default function ApplicationsListPage() {
     <div className="space-y-5 bg-gradient-to-br from-ink-50 via-white to-ink-50/50 dark:from-ink-950 dark:via-ink-900 dark:to-ink-900/50 -mx-6 px-6 py-6 min-h-screen">
       {/* Page header card */}
       <div className="card p-6 bg-white dark:bg-ink-900 shadow-sm border border-white dark:border-ink-800/50">
-        <div className="flex items-end justify-between gap-6 flex-wrap">
-          <div>
-            <p className="text-[10.5px] uppercase tracking-[0.25em] font-bold text-brand mb-2">Admissions</p>
-            <h1 className="text-[32px] sm:text-[36px] font-black text-ink-900 dark:text-white tracking-tight leading-tight">
-              Applications
-            </h1>
-            <p className="text-[13px] text-ink-500 dark:text-ink-400 mt-2 max-w-lg">
-              Review submissions, verify documents, and manage admission decisions across all intakes.
-            </p>
-          </div>
-          <div className="flex gap-2.5">
-            <button
-              type="button"
-              onClick={() => setShowBankSlipModal(true)}
-              className="btn-secondary inline-flex items-center gap-2 whitespace-nowrap"
-              title="Manage bank slip payments"
-            >
-              <Banknote className="w-4 h-4" /> Bank Slip
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowBulkUpload(true)}
-              className="btn-primary inline-flex items-center gap-2 whitespace-nowrap"
-              title="Bulk import applicants from a CSV template"
-            >
-              <Upload className="w-4 h-4" /> Bulk upload
-            </button>
-          </div>
+        <div>
+          <p className="text-[10.5px] uppercase tracking-[0.25em] font-bold text-brand mb-2">Admissions</p>
+          <h1 className="text-[32px] sm:text-[36px] font-black text-ink-900 dark:text-white tracking-tight leading-tight">
+            Applications
+          </h1>
+          <p className="text-[13px] text-ink-500 dark:text-ink-400 mt-2 max-w-lg">
+            Review submissions, verify documents, and manage admission decisions across all intakes.
+          </p>
+        </div>
+      </div>
+
+      {/* Action buttons card */}
+      <div className="card p-4 bg-white dark:bg-ink-900 shadow-sm border border-white dark:border-ink-800/50">
+        <div className="flex gap-2.5">
+          <button
+            type="button"
+            onClick={() => setShowBankSlipModal(true)}
+            className="btn-secondary inline-flex items-center gap-2 whitespace-nowrap"
+            title="Manage bank slip payments"
+          >
+            <Banknote className="w-4 h-4" /> Bank Slip
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowBulkUpload(true)}
+            className="btn-primary inline-flex items-center gap-2 whitespace-nowrap"
+            title="Bulk import applicants from a CSV template"
+          >
+            <Upload className="w-4 h-4" /> Bulk upload
+          </button>
         </div>
       </div>
 
