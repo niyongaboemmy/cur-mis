@@ -210,40 +210,43 @@ export default function ApplicationsListPage() {
   }))
 
   return (
-    <div className="space-y-6">
-      {/* Page header */}
-      <div className="flex items-end justify-between gap-6 flex-wrap">
-        <div>
-          <p className="text-[10.5px] uppercase tracking-[0.25em] font-bold text-brand mb-2">Admissions</p>
-          <h1 className="text-[32px] sm:text-[36px] font-black text-ink-900 dark:text-white tracking-tight leading-tight">
-            Applications
-          </h1>
-          <p className="text-[13px] text-ink-500 dark:text-ink-400 mt-2 max-w-lg">
-            Review submissions, verify documents, and manage admission decisions across all intakes.
-          </p>
-        </div>
-        <div className="flex gap-2.5">
-          <button
-            type="button"
-            onClick={() => setShowBankSlipModal(true)}
-            className="btn-secondary inline-flex items-center gap-2 whitespace-nowrap"
-            title="Manage bank slip payments"
-          >
-            <Banknote className="w-4 h-4" /> Bank Slip
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowBulkUpload(true)}
-            className="btn-primary inline-flex items-center gap-2 whitespace-nowrap"
-            title="Bulk import applicants from a CSV template"
-          >
-            <Upload className="w-4 h-4" /> Bulk upload
-          </button>
+    <div className="space-y-5 bg-gradient-to-br from-ink-50 via-white to-ink-50/50 dark:from-ink-950 dark:via-ink-900 dark:to-ink-900/50 -mx-6 px-6 py-6 min-h-screen">
+      {/* Page header card */}
+      <div className="card p-6 bg-white dark:bg-ink-900 shadow-sm border border-white dark:border-ink-800/50">
+        <div className="flex items-end justify-between gap-6 flex-wrap">
+          <div>
+            <p className="text-[10.5px] uppercase tracking-[0.25em] font-bold text-brand mb-2">Admissions</p>
+            <h1 className="text-[32px] sm:text-[36px] font-black text-ink-900 dark:text-white tracking-tight leading-tight">
+              Applications
+            </h1>
+            <p className="text-[13px] text-ink-500 dark:text-ink-400 mt-2 max-w-lg">
+              Review submissions, verify documents, and manage admission decisions across all intakes.
+            </p>
+          </div>
+          <div className="flex gap-2.5">
+            <button
+              type="button"
+              onClick={() => setShowBankSlipModal(true)}
+              className="btn-secondary inline-flex items-center gap-2 whitespace-nowrap"
+              title="Manage bank slip payments"
+            >
+              <Banknote className="w-4 h-4" /> Bank Slip
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowBulkUpload(true)}
+              className="btn-primary inline-flex items-center gap-2 whitespace-nowrap"
+              title="Bulk import applicants from a CSV template"
+            >
+              <Upload className="w-4 h-4" /> Bulk upload
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Tab Switcher */}
-      <div className="flex items-center gap-2 p-1.5 bg-ink-100 dark:bg-ink-800/50 rounded-xl w-fit">
+      {/* Tab Switcher card */}
+      <div className="card p-4 bg-white dark:bg-ink-900 shadow-sm border border-white dark:border-ink-800/50">
+        <div className="flex items-center gap-2 p-1.5 bg-ink-100 dark:bg-ink-800/50 rounded-xl w-fit">
         <button
           onClick={() => setActiveTab('dashboard')}
           className={`px-6 py-2 text-[13px] font-semibold rounded-lg transition-all ${
@@ -264,6 +267,7 @@ export default function ApplicationsListPage() {
         >
           Applications List
         </button>
+        </div>
       </div>
 
       {activeTab === 'dashboard' ? (
@@ -285,7 +289,8 @@ export default function ApplicationsListPage() {
           <ScopeHint stats={statsQ.data?.data} />
 
           {/* Stats strip — clicking a tile applies the matching status filter. */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="card p-5 bg-white dark:bg-ink-900 shadow-sm border border-white dark:border-ink-800/50">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
             <StatTile
               icon={FileText} label="Total Applications" value={stats.totalAll}
               accent="bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
@@ -324,9 +329,10 @@ export default function ApplicationsListPage() {
               active={status === ACTION_FILTER}
               onClick={() => { setStatus(ACTION_FILTER); setPage(1) }}
             />
+            </div>
           </div>
 
-          <section className="card p-0 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <section className="card p-0 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300 bg-white dark:bg-ink-900 shadow-md border border-white dark:border-ink-800/50">
             {/* Toolbar Header */}
             <div className="flex items-center justify-between gap-4 border-b border-ink-100 dark:border-ink-800 px-5 py-4">
               <div className="flex items-center gap-2">
@@ -359,7 +365,7 @@ export default function ApplicationsListPage() {
             </div>
 
             {/* Filters Row 1 - Primary filters */}
-            <div className="flex items-end gap-3 border-b border-ink-100 dark:border-ink-800 px-5 py-3.5">
+            <div className="flex items-end gap-3 border-b border-ink-100 dark:border-ink-800 px-5 py-4 bg-white dark:bg-ink-900/50">
               <div className="flex-1 relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-400 pointer-events-none" />
                 <input
@@ -394,7 +400,7 @@ export default function ApplicationsListPage() {
             </div>
 
             {/* Filters Row 2 - Secondary filters */}
-            <div className="flex items-end gap-2 flex-wrap bg-ink-50/50 dark:bg-ink-800/20 border-b border-ink-100 dark:border-ink-800 px-5 py-3.5">
+            <div className="flex items-end gap-2 flex-wrap bg-ink-50/60 dark:bg-ink-800/40 border-b border-ink-100 dark:border-ink-800 px-5 py-4">
               <div className="relative w-44">
                 <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-400 pointer-events-none" />
                 <select
@@ -899,20 +905,20 @@ function StatTile({
     <button
       type="button"
       onClick={onClick}
-      className={`p-4 rounded-xl border flex items-center gap-3.5 text-left transition-all cursor-pointer ${
+      className={`p-3.5 rounded-lg border flex flex-col gap-2.5 text-left transition-all cursor-pointer ${
         active
-          ? 'border-primary-400 dark:border-primary-500 bg-white dark:bg-ink-900 shadow-lg ring-2 ring-primary-200/50 dark:ring-primary-900/50 hover:-translate-y-1'
+          ? 'border-primary-400 dark:border-primary-500 bg-gradient-to-br from-primary-50 to-white dark:from-primary-900/30 dark:to-ink-900 shadow-lg ring-2 ring-primary-200/50 dark:ring-primary-900/50 hover:-translate-y-0.5'
           : highlight
-            ? 'border-primary-200 dark:border-primary-800 bg-white dark:bg-ink-900 shadow-md hover:shadow-lg hover:-translate-y-0.5'
-            : 'border-ink-100 dark:border-ink-700 bg-white dark:bg-ink-900/50 shadow-sm hover:shadow-md hover:border-ink-200 dark:hover:border-ink-600 hover:-translate-y-0.5'
+            ? 'border-primary-200 dark:border-primary-800 bg-white dark:bg-ink-800/30 shadow-md hover:shadow-lg hover:-translate-y-0.5'
+            : 'border-ink-100 dark:border-ink-700/50 bg-white dark:bg-ink-800/20 shadow-sm hover:shadow-md hover:border-ink-200 dark:hover:border-ink-600 hover:-translate-y-0.5'
       }`}
     >
-      <span className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${accent}`}>
-        <Icon className="w-5 h-5" />
+      <span className={`w-9 h-9 rounded-md flex items-center justify-center shrink-0 ${accent}`}>
+        <Icon className="w-4.5 h-4.5" />
       </span>
       <div className="min-w-0">
-        <p className="text-[10px] uppercase tracking-widest font-bold text-ink-400 dark:text-ink-500 leading-none">{label}</p>
-        <p className="text-[20px] font-black text-ink-900 dark:text-white leading-none mt-1.5">{value.toLocaleString()}</p>
+        <p className="text-[9.5px] uppercase tracking-widest font-bold text-ink-500 dark:text-ink-400 leading-none">{label}</p>
+        <p className="text-[22px] font-black text-ink-900 dark:text-white leading-none mt-1">{value.toLocaleString()}</p>
       </div>
     </button>
   )
