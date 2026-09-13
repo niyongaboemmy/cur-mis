@@ -100,8 +100,9 @@ class ModulesManagementController extends BaseController
             'status'         => ['in:draft,active,archived'],
         ]);
 
-        if ($this->modules->exists('module_code', $data['module_code'])) {
-            $this->error($response, 'module_code already exists.', 409);
+        // Allow same module code if it's for a different level in the same department
+        if ($this->moduleCodeExistsInDepartmentLevel($data['module_code'], (int)$data['department'], (int)$data['level'])) {
+            $this->error($response, 'module_code already exists for this level in this department.', 409);
         }
 
         $id = (int)$this->modules->create($data);
@@ -121,25 +122,32 @@ class ModulesManagementController extends BaseController
     public function updateCatalog(Request $request, Response $response): never
     {
         $id = (int)$request->param('id');
-        if (!$this->modules->find($id)) {
+        $module = $this->modules->find($id);
+        if (!$module) {
             $this->error($response, 'Module not found.', 404);
         }
 
         $data = $request->body();
+
+        // Validate basic fields only if they are present
+        $validationRules = [
+            'module_name'    => ['min:3'],
+            'module_credits' => ['numeric'],
+            'status'         => ['in:draft,active,archived'],
+        ];
+        if (isset($data['department'])) {
+            $validationRules['department'] = ['numeric'];
+        }
+        if (isset($data['level'])) {
+            $validationRules['level'] = ['numeric'];
+        }
+        $this->validateOrFail($response, $data, $validationRules);
 
         if (!empty($data['module_code'])) {
             if ($this->modules->exists('module_code', $data['module_code'], $id)) {
                 $this->error($response, 'module_code already exists.', 409);
             }
         }
-
-        $this->validateOrFail($response, $data, [
-            'module_name'    => ['min:3'],
-            'module_credits' => ['numeric'],
-            'department'     => ['numeric'],
-            'level'          => ['numeric'],
-            'status'         => ['in:draft,active,archived'],
-        ]);
 
         $this->modules->update($id, $data);
 
@@ -911,5 +919,23 @@ class ModulesManagementController extends BaseController
             }
         }
         return null;
+    }
+
+    /**
+     * Check if a module code exists for the same level AND department.
+     * Allows same code for different levels within same department.
+     */
+    private function moduleCodeExistsInDepartmentLevel(string $code, int $department, int $level, ?int $excludeId = null): bool
+    {
+        $sql = "SELECT COUNT(*) as cnt FROM `modules` WHERE `module_code` = ? AND `department` = ? AND `level` = ?";
+        $bindings = [$code, $department, $level];
+
+        if ($excludeId !== null) {
+            $sql .= " AND `module_id` != ?";
+            $bindings[] = $excludeId;
+        }
+
+        $row = $this->modules->db()->fetchOne($sql, $bindings);
+        return ($row['cnt'] ?? 0) > 0;
     }
 }
