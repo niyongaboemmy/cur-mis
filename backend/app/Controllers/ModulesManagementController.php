@@ -143,9 +143,12 @@ class ModulesManagementController extends BaseController
         }
         $this->validateOrFail($response, $data, $validationRules);
 
+        // Check for duplicate module code in same department+level
         if (!empty($data['module_code'])) {
-            if ($this->modules->exists('module_code', $data['module_code'], $id)) {
-                $this->error($response, 'module_code already exists.', 409);
+            $department = (int)($data['department'] ?? $module['department']);
+            $level = (int)($data['level'] ?? $module['level']);
+            if ($this->moduleCodeExistsInDepartmentLevel($data['module_code'], $department, $level, $id)) {
+                $this->error($response, 'module_code already exists for this level in this department.', 409);
             }
         }
 
