@@ -75,6 +75,7 @@ type NavNode = {
   label: string;
   icon: LucideIcon;
   to?: string;
+  action?: string;
   permissions?: string[];
   /**
    * Restrict this node to a specific set of roles. Applied BEFORE the
@@ -102,10 +103,10 @@ type NavNode = {
 const NAV_TREE: NavNode[] = [
   { id: "home", label: "Home", icon: Home, to: "/" },
   {
-    id: "dashboard",
-    label: "Dashboard",
+    id: "campus-statistics",
+    label: "Campus Statistics",
     icon: LayoutDashboard,
-    to: "/dashboard",
+    action: "campus-statistics",
     permissions: [PERMISSIONS.VIEW_DASHBOARD],
     // Admin metrics only — hide from external portal roles.
     hideForRoles: ["student", "applicant"],
@@ -1282,6 +1283,7 @@ export default function MainLayout() {
   });
   const [query, setQuery] = useState("");
   const [scrolled, setScrolled] = useState(false);
+  const [campusStatisticsOpen, setCampusStatisticsOpen] = useState(false);
 
   const initiallyOpen = useMemo<Set<string>>(() => {
     const set = new Set<string>();
@@ -1522,6 +1524,7 @@ export default function MainLayout() {
               isOpen={openIds.has(node.id)}
               activeUrl={activeUrl}
               onToggle={toggleGroup}
+              onCampusStatisticsOpen={() => setCampusStatisticsOpen(true)}
             />
           ))}
 
@@ -1539,6 +1542,7 @@ export default function MainLayout() {
                   isOpen={openIds.has(node.id)}
                   activeUrl={activeUrl}
                   onToggle={toggleGroup}
+                  onCampusStatisticsOpen={() => setCampusStatisticsOpen(true)}
                 />
               ))}
             </div>
@@ -1620,6 +1624,50 @@ export default function MainLayout() {
 
       {/* AiChatWidget hidden until ANTHROPIC_API_KEY is active */}
       {/* <AiChatWidget /> */}
+
+      {/* Campus Statistics Modal */}
+      <AnimatePresence>
+        {campusStatisticsOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-ink-900/50 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setCampusStatisticsOpen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="w-full h-full max-w-7xl bg-white dark:bg-ink-800 rounded-lg shadow-2xl flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal header */}
+              <div className="flex items-center justify-between p-4 border-b border-ink-200 dark:border-ink-700">
+                <h2 className="text-lg font-semibold text-ink-900 dark:text-white">
+                  Campus Statistics
+                </h2>
+                <button
+                  onClick={() => setCampusStatisticsOpen(false)}
+                  className="p-1 rounded-lg hover:bg-ink-100 dark:hover:bg-ink-700 text-ink-500 hover:text-ink-900 dark:hover:text-white transition-colors"
+                  aria-label="Close modal"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* Modal body with iframe */}
+              <div className="flex-1 overflow-hidden">
+                <iframe
+                  src="https://cur.ac.rw/umis/documents/registrar_report/campus_statistics.php"
+                  className="w-full h-full border-0"
+                  title="Campus Statistics"
+                />
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -1628,13 +1676,7 @@ export default function MainLayout() {
  * Sub-components
  * ------------------------------------------------------------------ */
 
-const NavNodeItem = memo(function NavNodeItem({
-  node,
-  collapsed,
-  isOpen,
-  activeUrl,
-  onToggle,
-}: {
+type NavNodeItemProps = {
   node: NavNode;
   collapsed: boolean;
   isOpen: boolean;
@@ -1646,25 +1688,53 @@ const NavNodeItem = memo(function NavNodeItem({
    */
   activeUrl: string | null;
   onToggle: (id: string) => void;
-}) {
+  onCampusStatisticsOpen?: () => void;
+};
+
+const NavNodeItem = memo(function NavNodeItem({
+  node,
+  collapsed,
+  isOpen,
+  activeUrl,
+  onToggle,
+  onCampusStatisticsOpen,
+}: NavNodeItemProps) {
   // Leaf route
   if (!node.children) {
+    const buttonClasses =
+      `${collapsed ? "flex items-center justify-center h-10 w-full rounded-lg transition-colors" : "nav-link"} ` +
+      (collapsed
+        ? "bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-200 hover:bg-primary-100 dark:hover:bg-primary-800/50"
+        : "nav-link-active");
+
+    const idleClasses =
+      `${collapsed ? "flex items-center justify-center h-10 w-full rounded-lg transition-colors" : "nav-link"} ` +
+      (collapsed
+        ? "text-ink-500 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-400 dark:hover:bg-ink-700/50 dark:hover:text-white"
+        : "nav-link-idle");
+
+    // Handle action-based navigation (e.g., campus-statistics)
+    if (node.action === "campus-statistics") {
+      return (
+        <button
+          type="button"
+          onClick={onCampusStatisticsOpen}
+          title={collapsed ? node.label : undefined}
+          className={idleClasses}
+        >
+          <node.icon className="h-[18px] w-[18px] shrink-0" />
+          {!collapsed && <span className="truncate">{node.label}</span>}
+        </button>
+      );
+    }
+
     const isActive = activeUrl === node.to;
     return (
       <NavLink
         to={node.to!}
         end
         title={collapsed ? node.label : undefined}
-        className={
-          `${collapsed ? "flex items-center justify-center h-10 w-full rounded-lg transition-colors" : "nav-link"} ` +
-          (isActive
-            ? collapsed
-              ? "bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-200"
-              : "nav-link-active"
-            : collapsed
-              ? "text-ink-500 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-400 dark:hover:bg-ink-700/50 dark:hover:text-white"
-              : "nav-link-idle")
-        }
+        className={isActive ? buttonClasses : idleClasses}
       >
         <node.icon className="h-[18px] w-[18px] shrink-0" />
         {!collapsed && <span className="truncate">{node.label}</span>}
