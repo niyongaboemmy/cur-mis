@@ -162,6 +162,11 @@ export interface EntityCfg {
     ) => ReactNode
   }[]
   fields: FieldCfg[]
+  /** Width of the create/edit dialog. Defaults to `xl`; entities whose form
+   *  carries side-by-side pickers (two multi-selects, each with its own list
+   *  and Selected pane) need `full`, or the selected chips truncate down to
+   *  "Level 8 , Se…". */
+  formSize?: 'sm' | 'md' | 'lg' | 'xl' | 'full'
   /** Explicit Excel import/export schema. Falls back to `fields` when absent. */
   ioColumns?: IOColumn[]
   /** Field key used to detect duplicate rows during Excel import. */
@@ -421,6 +426,9 @@ export const ENTITIES: EntityCfg[] = [
       { key: 'level_ids',      label: 'Levels',   type: 'multi-select', required: true,
         selectFrom: { slug: 'levels', valueKey: 'id', labelKey: 'name' } },
     ],
+    // Programs and Levels sit side by side, each splitting into a list and a
+    // Selected pane — four columns of content that need the whole screen.
+    formSize: 'full',
     defaultSort: { key: 'module_code', dir: 'asc' },
     importMatchKey: 'module_code',
     filters: [
@@ -2933,7 +2941,7 @@ function EntityFormModal({
       open={open}
       onClose={onClose}
       title={`${initial ? 'Edit' : 'New'} ${entity.singular.toLowerCase()}`}
-      size="xl"
+      size={entity.formSize ?? 'xl'}
       footer={
         <>
           <button className="btn-secondary" onClick={onClose}>Cancel</button>
@@ -3172,7 +3180,7 @@ function MultiSelectChecklist({
                 key={o.value}
                 className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-white dark:bg-ink-900 border border-emerald-100 dark:border-emerald-900/40 text-[12.5px] text-ink-800 dark:text-ink-100"
               >
-                <span className="flex-1 truncate">{o.label}</span>
+                <span className="flex-1 truncate" title={o.label}>{o.label}</span>
                 <button
                   type="button"
                   onClick={() => toggle(o.value)}

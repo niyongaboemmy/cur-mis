@@ -299,10 +299,6 @@ class AcademicsManagementController extends BaseController
             $this->error($response, 'Validation failed', 422, $errors);
         }
 
-        if ($conflict = $this->checkCodeUniqueness($entity, $data, null)) {
-            $this->error($response, 'Validation failed', 422, $conflict);
-        }
-
         $data = $this->applyEntityDefaults($entity, $data);
         $data = $this->normalizeNullableColumns($entity, $data);
 
@@ -318,6 +314,13 @@ class AcademicsManagementController extends BaseController
             if (empty($data['level']) && !empty($levelIds)) {
                 $data['level'] = (int)$levelIds[0];
             }
+        }
+
+        // After the department/level fill-in above, so the module check scopes
+        // against the values actually about to be written rather than the empty
+        // ones the form omits.
+        if ($conflict = $this->checkCodeUniqueness($entity, $data, null, $levelIds)) {
+            $this->error($response, 'Validation failed', 422, $conflict);
         }
 
         $id = $this->models[$entity]->create($data);
@@ -385,10 +388,6 @@ class AcademicsManagementController extends BaseController
             $this->error($response, 'Validation failed', 422, $errors);
         }
 
-        if ($conflict = $this->checkCodeUniqueness($entity, $data, $id)) {
-            $this->error($response, 'Validation failed', 422, $conflict);
-        }
-
         $data = $this->normalizeNullableColumns($entity, $data);
 
         if ($entity === 'modules') {
@@ -402,6 +401,13 @@ class AcademicsManagementController extends BaseController
             if (empty($data['level']) && !empty($levelIds)) {
                 $data['level'] = (int)$levelIds[0];
             }
+        }
+
+        // After the department/level fill-in above, so the module check scopes
+        // against the values actually about to be written rather than the empty
+        // ones the form omits.
+        if ($conflict = $this->checkCodeUniqueness($entity, $data, $id, $levelIds)) {
+            $this->error($response, 'Validation failed', 422, $conflict);
         }
 
         $this->models[$entity]->update($id, $data);
@@ -2391,7 +2397,7 @@ class AcademicsManagementController extends BaseController
      * @param int|null $excludeId Pass the row's PK on update so a row's own
      *                            code doesn't conflict with itself.
      */
-    private function checkCodeUniqueness(string $entity, array $data, ?int $excludeId): ?array
+    private function checkCodeUniqueness(string $entity, array $data, ?int $excludeId, ?array $levelIds = null): ?array
     {
         $config = match ($entity) {
             'faculties'   => ['column' => 'fac_code',    'pk' => 'fac_id',    'table' => 'faculty',      'label' => 'Faculty code'],
@@ -2404,6 +2410,16 @@ class AcademicsManagementController extends BaseController
 
         $value = $data[$config['column']] ?? null;
         if ($value === null || $value === '') return null;
+
+        // A module code is NOT globally unique: the same code names a different
+        // module at another level, which is why ModulesManagementController has
+        // `moduleCodeExistsInDepartmentLevel()`. This screen kept the global
+        // check, so once a code existed on more than one row every one of those
+        // rows became uneditable — saving any of them, even to change Hours,
+        // came back "This Module code is already in use."
+        if ($entity === 'modules') {
+            return $this->checkModuleCodeUniqueness((string)$value, $data, $excludeId, $levelIds);
+        }
 
         $sql = "SELECT 1 FROM `{$config['table']}` WHERE `{$config['column']}` = ?";
         $bindings = [$value];
@@ -2418,6 +2434,101 @@ class AcademicsManagementController extends BaseController
             return [$config['column'] => ["This {$config['label']} is already in use."]];
         }
         return null;
+    }
+
+    /**
+     * Module codes are unique per (department, level), not globally.
+     *
+     * This generalises `ModulesManagementController::moduleCodeExistsInDepartmentLevel()`
+     * for modules that carry several levels: two modules sharing a code in the
+     * same department clash only where their level sets OVERLAP. A module's
+     * levels are `module_levels` when it has rows there, and the legacy
+     * `modules.level` otherwise.
+     *
+     * Department is compared exactly, matching the helper above — a module with
+     * no department is unplaced and conflicts with nothing, so the spare rows
+     * left over from the old one-record-per-level workaround never block an
+     * edit of the real one.
+     *
+     * @param  array<int,int|string>|null $levelIds levels being saved, if the caller sent any
+     * @return array<string,array<int,string>>|null
+     */
+    private function checkModuleCodeUniqueness(
+        string $code,
+        array $data,
+        ?int $excludeId,
+        ?array $levelIds,
+    ): ?array {
+        $db = $this->models['modules']->db();
+
+        $existing = $excludeId !== null
+            ? $db->fetchOne('SELECT department, level FROM `modules` WHERE module_id = ?', [$excludeId])
+            : null;
+
+        $department = (int)($data['department'] ?? 0);
+        if ($department <= 0) {
+            $department = (int)($existing['department'] ?? 0);
+        }
+        // Unplaced module — nothing to scope against, so nothing to clash with.
+        if ($department <= 0) {
+            return null;
+        }
+
+        // Levels of the row being saved.
+        $levels = array_values(array_unique(array_filter(
+            array_map('intval', $levelIds ?? []),
+            static fn (int $l) => $l > 0,
+        )));
+        if ($levels === [] && !empty($data['level'])) {
+            $levels = [(int)$data['level']];
+        }
+        if ($levels === [] && $excludeId !== null) {
+            foreach ($db->fetchAll('SELECT level_id FROM `module_levels` WHERE module_id = ?', [$excludeId]) as $r) {
+                $levels[] = (int)$r['level_id'];
+            }
+            if ($levels === [] && !empty($existing['level'])) {
+                $levels = [(int)$existing['level']];
+            }
+        }
+        if ($levels === []) {
+            return null;
+        }
+
+        // Same code, same department, anyone but us.
+        $sql      = 'SELECT module_id, level FROM `modules` WHERE `module_code` = ? AND `department` = ?';
+        $bindings = [$code, $department];
+        if ($excludeId !== null) {
+            $sql .= ' AND `module_id` <> ?';
+            $bindings[] = $excludeId;
+        }
+        $rivals = $db->fetchAll($sql, $bindings);
+        if ($rivals === []) {
+            return null;
+        }
+
+        $clashes = [];
+        foreach ($rivals as $rival) {
+            $rivalLevels = array_map(
+                static fn (array $r) => (int)$r['level_id'],
+                $db->fetchAll('SELECT level_id FROM `module_levels` WHERE module_id = ?', [(int)$rival['module_id']]),
+            );
+            if ($rivalLevels === [] && !empty($rival['level'])) {
+                $rivalLevels = [(int)$rival['level']];
+            }
+            foreach (array_intersect($levels, $rivalLevels) as $levelId) {
+                $clashes[$levelId] = \App\Helpers\LevelHelper::name($levelId) ?: "level {$levelId}";
+            }
+        }
+
+        if ($clashes === []) {
+            return null;
+        }
+
+        return ['module_code' => [
+            'Another module in this department already uses this code at '
+            . implode(', ', $clashes)
+            . '. Codes may repeat across levels, but not within one.',
+        ]];
     }
 
     private function getValidationRules(string $entity): array
