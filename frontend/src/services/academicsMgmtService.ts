@@ -24,6 +24,19 @@ export const academicsMgmtService = {
   remove: (entity: AcMgmtEntity, id: number | string) =>
     api.delete<null>(`/api/academics-management/${entity}/${id}`),
 
+  /** Hide a module from the catalogue without touching its marks. Deleting is
+   *  not an option for a row that has results recorded against it — archiving
+   *  retires it while every mark keeps printing at that module's own level. */
+  archiveModule: (id: number | string) =>
+    api.post<{ module_id: number; status: string }>(
+      `/api/academics-management/modules/${id}/archive`, {},
+    ),
+
+  restoreModule: (id: number | string) =>
+    api.post<{ module_id: number; status: string }>(
+      `/api/academics-management/modules/${id}/restore`, {},
+    ),
+
   /** Campuses linked to a program (`options`). */
   listOptionCampuses: (optionId: number | string, signal?: AbortSignal) =>
     api.get<{ option_id: number; campus_ids: number[]; campuses: Array<Record<string, any>> }>(

@@ -65,6 +65,11 @@ $router->group('/api/academics-management/modules', function (Core\Router $r) {
     $r->post('',                   [AcademicsManagementController::class, 'create']);
     $r->post('/bulk-import',       [AcademicsManagementController::class, 'bulkImport']);
     $r->post('/:id',                [AcademicsManagementController::class, 'update']);
+    // Hide / restore a catalogue row. Separate from update() because that one
+    // validates the whole record, so it cannot take a status-only payload —
+    // and because retiring a duplicate is a different act from editing it.
+    $r->post('/:id/archive',       [AcademicsManagementController::class, 'archiveModule']);
+    $r->post('/:id/restore',       [AcademicsManagementController::class, 'restoreModule']);
     $r->delete('/:id',             [AcademicsManagementController::class, 'delete']);
     $r->post('/program-import',    [AcademicsManagementController::class, 'programImport']);
     $r->post('/curriculum-import', [AcademicsManagementController::class, 'curriculumImport']);

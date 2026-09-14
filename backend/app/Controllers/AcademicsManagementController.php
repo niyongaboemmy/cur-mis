@@ -98,6 +98,12 @@ class AcademicsManagementController extends BaseController
                 'level'      => $request->query('level')      ?: null,
                 'status'     => $request->query('status')     ?: null,
                 'q'          => $request->query('q')          ?: null,
+                // Hidden (archived) rows are off the catalogue unless asked for.
+                'include_archived' => in_array(
+                    (string)($request->query('include_archived') ?? ''),
+                    ['1', 'true', 'yes'],
+                    true,
+                ),
                 'sort_by'    => $sortBy ?? '',
                 'sort_dir'   => $sortDir,
             ]);
@@ -2529,6 +2535,47 @@ class AcademicsManagementController extends BaseController
             . implode(', ', $clashes)
             . '. Codes may repeat across levels, but not within one.',
         ]];
+    }
+
+    /**
+     * Retire a catalogue row without touching a single mark.
+     *
+     * The registry ends up with spare `modules` rows — the old
+     * one-record-per-level workaround, and the importer's whitespace twins
+     * that migration 154 cleaned up once. Deleting them is destructive:
+     * `module_marks` references `module_id`, so a delete either fails or
+     * orphans results. Archiving takes the row off the catalogue list and out
+     * of "modules still to take", while every mark recorded against it keeps
+     * printing on the transcript at that module's own level — the transcript
+     * query does not filter on `modules.status`, and the curriculum filter
+     * keys on the module CODE, which the surviving twin shares.
+     */
+    public function archiveModule(Request $request, Response $response): never
+    {
+        $this->setModuleStatus($request, $response, 'archived');
+    }
+
+    /** Undo {@see self::archiveModule()} — puts the row back on the catalogue. */
+    public function restoreModule(Request $request, Response $response): never
+    {
+        $this->setModuleStatus($request, $response, 'active');
+    }
+
+    private function setModuleStatus(Request $request, Response $response, string $status): never
+    {
+        $id     = (int)$request->param('id');
+        $module = $this->models['modules']->find($id);
+        if (!$module) {
+            $this->error($response, 'Module not found.', 404);
+        }
+
+        $this->models['modules']->update($id, ['status' => $status]);
+
+        $this->success(
+            $response,
+            ['module_id' => $id, 'status' => $status],
+            $status === 'archived' ? 'Module hidden.' : 'Module restored.',
+        );
     }
 
     private function getValidationRules(string $entity): array

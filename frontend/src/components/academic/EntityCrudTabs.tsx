@@ -21,6 +21,8 @@ import {
   CalendarDays,
   Download,
   Upload,
+  Eye,
+  EyeOff,
   ArrowUp,
   ArrowDown,
   ArrowUpDown,
@@ -167,6 +169,11 @@ export interface EntityCfg {
    *  and Selected pane) need `full`, or the selected chips truncate down to
    *  "Level 8 , Se…". */
   formSize?: 'sm' | 'md' | 'lg' | 'xl' | 'full'
+  /** Rows can be retired instead of deleted. Adds a hide/restore action and a
+   *  "Show hidden" toggle. Used where a row is referenced by records that must
+   *  survive it — a module with marks against it cannot be deleted, but it can
+   *  be taken off the catalogue. */
+  archivable?: boolean
   /** Explicit Excel import/export schema. Falls back to `fields` when absent. */
   ioColumns?: IOColumn[]
   /** Field key used to detect duplicate rows during Excel import. */
@@ -393,6 +400,26 @@ export const ENTITIES: EntityCfg[] = [
             </div>
           )
         } },
+      // What is actually recorded against this row. The registry needs it
+      // before retiring one of the duplicate records: a row with marks must be
+      // hidden rather than deleted, and this says at a glance which is which.
+      { key: 'marks_count',    label: 'Marks',
+        render: (r) => {
+          const n = Number(r.marks_count ?? 0)
+          const hidden = String(r.status ?? '') === 'archived'
+          return (
+            <div className="flex items-center gap-1.5">
+              <span className={`inline-flex items-center justify-center min-w-[24px] h-[20px] px-1.5 rounded-full text-[11px] font-bold ${
+                n > 0
+                  ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                  : 'bg-ink-100 dark:bg-ink-800 text-ink-500'
+              }`}>{n}</span>
+              {hidden && (
+                <span className="text-[10px] uppercase tracking-wider font-bold text-ink-400">hidden</span>
+              )}
+            </div>
+          )
+        } },
       { key: 'programs',       label: 'Programs',
         render: (r) => <ProgramPills programs={r.programs ?? []} /> },
       { key: 'programs_count', label: 'Programs',
@@ -429,6 +456,7 @@ export const ENTITIES: EntityCfg[] = [
     // Programs and Levels sit side by side, each splitting into a list and a
     // Selected pane — four columns of content that need the whole screen.
     formSize: 'full',
+    archivable: true,
     defaultSort: { key: 'module_code', dir: 'asc' },
     importMatchKey: 'module_code',
     filters: [
@@ -746,6 +774,9 @@ function CrudPanel({ entity, canWrite }: { entity: EntityCfg; canWrite: boolean 
   const [campusFor, setCampusFor] = useState<Record<string, any> | null>(null)
   const [exporting, setExporting] = useState(false)
   const [importing, setImporting] = useState(false)
+  /** Archived rows are off the list by default; this brings them back so they
+   *  can be reviewed or restored. Only meaningful when `entity.archivable`. */
+  const [showHidden, setShowHidden] = useState(false)
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null)
   const [levelMapping, setLevelMapping] = useState<Record<string, number>>({})
   const [orderEdits, setOrderEdits] = useState<Record<number, number>>({})
@@ -829,12 +860,13 @@ function CrudPanel({ entity, canWrite }: { entity: EntityCfg; canWrite: boolean 
   )
 
   const listQ = useQuery({
-    queryKey: ['acmgmt', entity.slug, page, sort?.key, sort?.dir, search, cleanFilters],
+    queryKey: ['acmgmt', entity.slug, page, sort?.key, sort?.dir, search, cleanFilters, showHidden],
     queryFn:  () => academicsMgmtService.list<any>(entity.slug, {
       page,
       per_page: 15,
       ...(sort   ? { sort_by: sort.key, sort_dir: sort.dir } : {}),
       ...(search ? { q: search } : {}),
+      ...(showHidden ? { include_archived: 1 } : {}),
       ...cleanFilters,
     }),
   })
@@ -969,6 +1001,17 @@ function CrudPanel({ entity, canWrite }: { entity: EntityCfg; canWrite: boolean 
     mutationFn: (id: number | string) => academicsMgmtService.remove(entity.slug, id),
     onSuccess:  () => { toast.success(`${entity.singular} removed`); invalidate() },
     onError:    (e: any) => toast.error(e?.response?.data?.message ?? 'Delete failed'),
+  })
+
+  const archiveM = useMutation({
+    mutationFn: ({ id, hide }: { id: number | string; hide: boolean }) =>
+      hide ? academicsMgmtService.archiveModule(id) : academicsMgmtService.restoreModule(id),
+    onSuccess: (_d, v) => {
+      toast.success(v.hide ? 'Hidden. Its marks are untouched.' : 'Restored to the catalogue.')
+      invalidate()
+    },
+    onError: (e: any) =>
+      toast.error(e?.response?.data?.message ?? 'Could not change visibility'),
   })
 
   const openNew = () => { setEditing(null); setModalOpen(true) }
@@ -1409,6 +1452,18 @@ function CrudPanel({ entity, canWrite }: { entity: EntityCfg; canWrite: boolean 
               </select>
             )
           })}
+          {entity.archivable && (
+            <button
+              className={`btn-secondary btn-sm ${showHidden ? 'ring-1 ring-brand text-brand' : ''}`}
+              onClick={() => { setPage(1); setShowHidden((v) => !v) }}
+              title={showHidden
+                ? 'Back to the active catalogue'
+                : 'Include rows that have been hidden from the catalogue'}
+            >
+              {showHidden ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+              {showHidden ? 'Showing hidden' : 'Show hidden'}
+            </button>
+          )}
           <button
             className="btn-secondary btn-sm"
             onClick={exportToXlsx}
@@ -1552,6 +1607,36 @@ function CrudPanel({ entity, canWrite }: { entity: EntityCfg; canWrite: boolean 
                           <button className="icon-btn" onClick={() => openEdit(r)} aria-label="Edit">
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
+                          {entity.archivable && (() => {
+                            const hidden = String(r.status ?? '') === 'archived'
+                            const marks  = Number(r.marks_count ?? 0)
+                            return (
+                              <button
+                                className={`icon-btn ${hidden ? 'text-brand hover:bg-brand/10' : ''}`}
+                                onClick={() => {
+                                  if (hidden) { archiveM.mutate({ id: r[entity.pk], hide: false }); return }
+                                  const note = marks > 0
+                                    ? `\n\n${marks} mark${marks === 1 ? '' : 's'} recorded against it stay exactly where they are — they keep printing on transcripts at this module's level. Nothing is deleted.`
+                                    : '\n\nNo marks are recorded against it.'
+                                  const label = `${r.module_code ?? ''} ${r.module_name ?? ''}`.trim()
+                                  if (confirm(`Hide "${label}" from the catalogue?${note}`)) {
+                                    archiveM.mutate({ id: r[entity.pk], hide: true })
+                                  }
+                                }}
+                                disabled={archiveM.isPending && archiveM.variables?.id === r[entity.pk]}
+                                aria-label={hidden ? 'Restore' : 'Hide'}
+                                title={hidden
+                                  ? 'Restore to the catalogue'
+                                  : 'Hide from the catalogue — marks are kept'}
+                              >
+                                {archiveM.isPending && archiveM.variables?.id === r[entity.pk]
+                                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  : hidden
+                                    ? <Eye className="w-3.5 h-3.5" />
+                                    : <EyeOff className="w-3.5 h-3.5" />}
+                              </button>
+                            )
+                          })()}
                           <button
                             className="icon-btn text-red-500 hover:text-red-600 hover:bg-red-50"
                             onClick={() => {

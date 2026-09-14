@@ -68,6 +68,14 @@ class ModuleModel extends BaseModel
         if (!empty($filters['status'])) {
             $where[]    = 'm.status = ?';
             $bindings[] = (string)$filters['status'];
+        } elseif (empty($filters['include_archived'])) {
+            // Hidden rows stay out of the catalogue. Archiving is how the
+            // registry retires the spare records left over from the old
+            // one-module-per-level workaround: it takes them off this list
+            // without touching a single mark — every `module_marks` row still
+            // points at the archived module and still prints on the transcript
+            // at that module's own level.
+            $where[] = "(m.status IS NULL OR m.status <> 'archived')";
         }
         if (!empty($filters['q'])) {
             $where[]    = '(m.module_code LIKE ? OR m.module_name LIKE ?)';
@@ -161,10 +169,29 @@ class ModuleModel extends BaseModel
             foreach ($schRows as $r) $scheduledIds[(int)$r['module_id']] = true;
         }
 
-        $withRels = array_map(function (array $row) use ($offerings, $scheduledIds, $modesByModule, $hasProgramFilter, $perCreditPrices) {
+        // How many live marks hang off each row. Retiring a duplicate catalogue
+        // record is safe either way — the marks keep printing at that module's
+        // own level — but the registry should be able to see, before hiding a
+        // row, whether anyone's results are recorded against it.
+        $marksByModule = [];
+        if ($moduleIds !== []) {
+            $idsPh = implode(',', array_fill(0, count($moduleIds), '?'));
+            foreach ($this->db->fetchAll(
+                "SELECT module_id, COUNT(*) AS cnt
+                 FROM `module_marks`
+                 WHERE module_id IN ($idsPh) AND superseded = 0
+                 GROUP BY module_id",
+                $moduleIds,
+            ) as $r) {
+                $marksByModule[(int)$r['module_id']] = (int)$r['cnt'];
+            }
+        }
+
+        $withRels = array_map(function (array $row) use ($offerings, $scheduledIds, $modesByModule, $hasProgramFilter, $perCreditPrices, $marksByModule) {
             $row['prerequisites'] = $this->prereqsFor((int)$row['module_id']);
             $row['programs']      = $this->programsFor((int)$row['module_id']);
             $row['levels']        = $this->levelsFor((int)$row['module_id']);
+            $row['marks_count']   = $marksByModule[(int)$row['module_id']] ?? 0;
             // `modules.level` holds a `levels.id`; the catalogue name is what
             // every screen and export shows, so ship it beside the id.
             $row['level_name']    = \App\Helpers\LevelHelper::name($row['level'] ?? null) ?: null;
