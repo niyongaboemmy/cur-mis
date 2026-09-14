@@ -53,7 +53,16 @@ class ModuleModel extends BaseModel
             $bindings[] = (int)$filters['department'];
         }
         if (!empty($filters['level'])) {
-            $where[]    = 'm.level = ?';
+            // A module can sit at several levels (`module_levels`), so filtering
+            // on the legacy single `m.level` column alone hid every module whose
+            // chosen level was its second or third. Match either side: the join
+            // table when it has rows, the legacy column for modules that predate
+            // it.
+            $where[]    = '(m.level = ? OR EXISTS (
+                               SELECT 1 FROM `module_levels` ml
+                               WHERE ml.module_id = m.module_id AND ml.level_id = ?
+                           ))';
+            $bindings[] = (int)$filters['level'];
             $bindings[] = (int)$filters['level'];
         }
         if (!empty($filters['status'])) {

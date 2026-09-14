@@ -363,7 +363,31 @@ export const ENTITIES: EntityCfg[] = [
         }
       },
       { key: 'level',          label: 'Level',
-        render: (r, ctx) => ctx?.lookups.levels?.get(Number(r.level)) ?? r.level_name ?? (r.level ? `Level ${r.level}` : '—') },
+        render: (r, ctx) => {
+          // A module can be placed at several levels, so print all of them.
+          // `r.levels` is the join table; fall back to the legacy single
+          // column for rows that predate it.
+          const names: string[] = Array.isArray(r.levels) && r.levels.length > 0
+            ? r.levels.map((l: any) => String(
+                ctx?.lookups.levels?.get(Number(l.id)) ?? l.name ?? `Level ${l.id}`,
+              ))
+            : [String(
+                ctx?.lookups.levels?.get(Number(r.level)) ?? r.level_name
+                ?? (r.level ? `Level ${r.level}` : ''),
+              )].filter(Boolean)
+
+          if (names.length === 0) return <span className="text-ink-400 text-[12px]">—</span>
+          if (names.length === 1) return names[0]
+          return (
+            <div className="flex flex-wrap gap-1">
+              {names.map((n) => (
+                <span key={n} className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[11px] font-semibold bg-brand/10 text-brand dark:bg-brand/20 dark:text-gold-400">
+                  {n}
+                </span>
+              ))}
+            </div>
+          )
+        } },
       { key: 'programs',       label: 'Programs',
         render: (r) => <ProgramPills programs={r.programs ?? []} /> },
       { key: 'programs_count', label: 'Programs',
@@ -384,13 +408,18 @@ export const ENTITIES: EntityCfg[] = [
       { key: 'module_name',    label: 'Name',     type: 'text',   required: true, placeholder: 'Introduction to Programming', span: 9 },
       { key: 'module_credits', label: 'Credits',  type: 'number', required: true, span: 3 },
       { key: 'hours',          label: 'Hours',    type: 'number', span: 3 },
-      // Level first, then Price — admins fill in the curricular level
-      // before the (optional) fee.
-      { key: 'level',          label: 'Level',    type: 'select', required: true, span: 3,
-        selectFrom: { slug: 'levels', valueKey: 'id', labelKey: 'name' } },
       { key: 'price',          label: 'Price',    type: 'number', placeholder: 'Optional', span: 3, nullable: true },
+      // Level sits with Programs under "Curriculum placement", not in the
+      // details grid: a module can be taught at more than one level (one
+      // course, two years of the curriculum), so it is a placement — the same
+      // kind of thing as the programmes it belongs to. `level_ids` seeds itself
+      // from the row's `levels` array via the `_ids` → plural convention in the
+      // form's init, and the API keeps the legacy single `modules.level`
+      // column in step by taking the first id.
       { key: 'program_ids',    label: 'Programs', type: 'multi-select', required: true,
         selectFrom: { slug: 'options', valueKey: 'id', labelKey: 'name' } },
+      { key: 'level_ids',      label: 'Levels',   type: 'multi-select', required: true,
+        selectFrom: { slug: 'levels', valueKey: 'id', labelKey: 'name' } },
     ],
     defaultSort: { key: 'module_code', dir: 'asc' },
     importMatchKey: 'module_code',
@@ -429,8 +458,10 @@ export const ENTITIES: EntityCfg[] = [
         // `modules.level` is a `levels.id`, so the export must carry the
         // catalogue name — an exported "Level 3" that means "Year 2" is worse
         // than useless to whoever opens the spreadsheet.
+        // A module can be placed at several levels — export all of them,
+        // semicolon-separated, the same way Programs is written below.
         if (r.levels && Array.isArray(r.levels) && r.levels.length > 0) {
-          return r.levels[0].name
+          return r.levels.map((l: any) => l.name).join('; ')
         }
         if (r.level_name) return r.level_name
         return r.level ? `Level ${r.level}` : ''

@@ -1551,7 +1551,102 @@ class ModuleMarksController extends BaseController
             ], $excluded),
         ];
 
+        // Display expansion — deliberately AFTER every total above.
+        //
+        // A module placed at several levels prints on each of those level
+        // sheets, but the student sat it once and is credited once: the
+        // cumulative credits, weighted average and degree classification are
+        // all computed from the un-expanded rows. Expanding first would credit
+        // one sitting twice and could move the awarded classification, which is
+        // the same double-count `dedupeTranscriptRows()` exists to prevent.
+        $rows = $this->expandRowsByLevel($rows);
+
         return [$rows, $totals, $student];
+    }
+
+    /**
+     * One display row per level a module is placed at.
+     *
+     * `module_levels` is the authoritative placement (the catalogue form writes
+     * it; timetabling, deliberation and the graduation audit already read it).
+     * A module with two or more rows there yields one copy of the mark per
+     * level so {@see TranscriptPdf::groupByLevel()} files it on each level's
+     * sheet. Modules with 0 or 1 placement are returned untouched and keep the
+     * legacy `modules.level` they were loaded with.
+     *
+     * The copies carry `level_repeat` so a reader can tell the second and later
+     * appearances from the first; the marks themselves are identical by design.
+     *
+     * A copy is only made onto a level the student's record already reaches.
+     * Without that guard a module placed at levels 4 and 5 grows a Level 5
+     * sheet — holding that one module and nothing else — on the transcript of
+     * someone who stopped at level 4; across the current data that invented a
+     * page for 754 student/level pairs. The module's own level is always kept,
+     * so this can only ever add a repeat, never drop the original row.
+     *
+     * @param  array<int,array<string,mixed>> $rows
+     * @return array<int,array<string,mixed>>
+     */
+    private function expandRowsByLevel(array $rows): array
+    {
+        $ids = array_values(array_unique(array_filter(
+            array_map(static fn ($r) => (int)($r['module_id'] ?? 0), $rows)
+        )));
+        if ($ids === []) {
+            return $rows;
+        }
+
+        // Levels this student's record actually occupies, taken from the rows
+        // before any expansion.
+        $reached = [];
+        foreach ($rows as $r) {
+            $lv = $r['level'] ?? null;
+            if ($lv !== null && $lv !== '') {
+                $reached[(int)$lv] = true;
+            }
+        }
+
+        $placements = [];
+        $ph = implode(',', array_fill(0, count($ids), '?'));
+        foreach ($this->db->fetchAll(
+            "SELECT module_id, level_id FROM `module_levels`
+             WHERE module_id IN ($ph)
+             ORDER BY module_id ASC, level_id ASC",
+            $ids
+        ) as $p) {
+            $placements[(int)$p['module_id']][] = (int)$p['level_id'];
+        }
+
+        $out = [];
+        foreach ($rows as $r) {
+            $levels = $placements[(int)($r['module_id'] ?? 0)] ?? [];
+            if (count($levels) < 2) {
+                $out[] = $r;
+                continue;
+            }
+
+            $own     = ($r['level'] === null || $r['level'] === '') ? null : (int)$r['level'];
+            $targets = array_values(array_filter($levels, static fn ($l) => isset($reached[$l])));
+            if ($own !== null && !in_array($own, $targets, true)) {
+                $targets[] = $own;
+            }
+            sort($targets);
+
+            if (count($targets) < 2) {
+                $out[] = $r;
+                continue;
+            }
+
+            foreach ($targets as $i => $levelId) {
+                $copy                 = $r;
+                $copy['level']        = $levelId;
+                $copy['level_name']   = \App\Helpers\LevelHelper::name($levelId) ?: null;
+                $copy['level_repeat'] = $i > 0;
+                $out[] = $copy;
+            }
+        }
+
+        return $out;
     }
 
     /**
