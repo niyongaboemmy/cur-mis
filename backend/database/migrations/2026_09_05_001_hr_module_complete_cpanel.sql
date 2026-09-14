@@ -14,11 +14,26 @@ SET SESSION sql_mode = 'STRICT_TRANS_TABLES,NO_ZERO_DATE,NO_ZERO_IN_DATE,ERROR_F
 -- =========================================================================
 
 -- Add columns to leave_types if not exists
-ALTER TABLE `leave_types` ADD COLUMN IF NOT EXISTS `description` mediumtext DEFAULT NULL;
-ALTER TABLE `leave_types` ADD COLUMN IF NOT EXISTS `color` varchar(30) DEFAULT '#4FB4FF';
-ALTER TABLE `leave_types` ADD COLUMN IF NOT EXISTS `is_active` tinyint(1) DEFAULT 1;
-ALTER TABLE `leave_types` ADD COLUMN IF NOT EXISTS `created_at` timestamp DEFAULT CURRENT_TIMESTAMP;
-ALTER TABLE `leave_types` ADD COLUMN IF NOT EXISTS `updated_at` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;
+SET @c := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'leave_types' AND COLUMN_NAME = 'description');
+SET @s := IF(@c = 0, "ALTER TABLE `leave_types` ADD COLUMN `description` mediumtext DEFAULT NULL", 'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @c := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'leave_types' AND COLUMN_NAME = 'color');
+SET @s := IF(@c = 0, "ALTER TABLE `leave_types` ADD COLUMN `color` varchar(30) DEFAULT '#4FB4FF'", 'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @c := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'leave_types' AND COLUMN_NAME = 'is_active');
+SET @s := IF(@c = 0, "ALTER TABLE `leave_types` ADD COLUMN `is_active` tinyint(1) DEFAULT 1", 'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @c := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'leave_types' AND COLUMN_NAME = 'created_at');
+SET @s := IF(@c = 0, "ALTER TABLE `leave_types` ADD COLUMN `created_at` timestamp DEFAULT CURRENT_TIMESTAMP", 'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @c := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'leave_types' AND COLUMN_NAME = 'updated_at');
+SET @s := IF(@c = 0, "ALTER TABLE `leave_types` ADD COLUMN `updated_at` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP", 'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 -- Create leave_approval_history table for 3-level workflow tracking
 CREATE TABLE IF NOT EXISTS `leave_approval_history` (
@@ -39,7 +54,10 @@ CREATE TABLE IF NOT EXISTS `leave_approval_history` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- Add supervisor_id column if not exists
-ALTER TABLE `users` ADD COLUMN IF NOT EXISTS `supervisor_id` int(10) UNSIGNED DEFAULT NULL;
+SET @c := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'supervisor_id');
+SET @s := IF(@c = 0, "ALTER TABLE `users` ADD COLUMN `supervisor_id` int(10) UNSIGNED DEFAULT NULL", 'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 -- =========================================================================
 -- PHASE 2: EMPLOYEE PROFILES & QUALIFICATIONS
@@ -264,13 +282,34 @@ CREATE TABLE IF NOT EXISTS `leave_balances` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- Add columns to leave_requests if not exists
-ALTER TABLE `leave_requests` ADD COLUMN IF NOT EXISTS `contact_during_absence` varchar(100) DEFAULT NULL;
-ALTER TABLE `leave_requests` ADD COLUMN IF NOT EXISTS `remarks` text DEFAULT NULL;
-ALTER TABLE `leave_requests` ADD COLUMN IF NOT EXISTS `pdf_file_id` varchar(255) DEFAULT NULL;
-ALTER TABLE `leave_requests` ADD COLUMN IF NOT EXISTS `qr_code` varchar(500) DEFAULT NULL;
-ALTER TABLE `leave_requests` ADD COLUMN IF NOT EXISTS `user_id` int(10) UNSIGNED DEFAULT NULL;
-ALTER TABLE `leave_requests` ADD COLUMN IF NOT EXISTS `current_stage_order` tinyint(3) UNSIGNED DEFAULT 1;
-ALTER TABLE `leave_requests` ADD COLUMN IF NOT EXISTS `updated_at` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;
+SET @c := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'leave_requests' AND COLUMN_NAME = 'contact_during_absence');
+SET @s := IF(@c = 0, "ALTER TABLE `leave_requests` ADD COLUMN `contact_during_absence` varchar(100) DEFAULT NULL", 'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @c := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'leave_requests' AND COLUMN_NAME = 'remarks');
+SET @s := IF(@c = 0, "ALTER TABLE `leave_requests` ADD COLUMN `remarks` text DEFAULT NULL", 'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @c := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'leave_requests' AND COLUMN_NAME = 'pdf_file_id');
+SET @s := IF(@c = 0, "ALTER TABLE `leave_requests` ADD COLUMN `pdf_file_id` varchar(255) DEFAULT NULL", 'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @c := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'leave_requests' AND COLUMN_NAME = 'qr_code');
+SET @s := IF(@c = 0, "ALTER TABLE `leave_requests` ADD COLUMN `qr_code` varchar(500) DEFAULT NULL", 'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @c := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'leave_requests' AND COLUMN_NAME = 'user_id');
+SET @s := IF(@c = 0, "ALTER TABLE `leave_requests` ADD COLUMN `user_id` int(10) UNSIGNED DEFAULT NULL", 'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @c := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'leave_requests' AND COLUMN_NAME = 'current_stage_order');
+SET @s := IF(@c = 0, "ALTER TABLE `leave_requests` ADD COLUMN `current_stage_order` tinyint(3) UNSIGNED DEFAULT 1", 'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @c := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'leave_requests' AND COLUMN_NAME = 'updated_at');
+SET @s := IF(@c = 0, "ALTER TABLE `leave_requests` ADD COLUMN `updated_at` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP", 'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 -- =========================================================================
 -- PHASE 5: CONTRACT MANAGEMENT
@@ -375,20 +414,50 @@ CREATE TABLE IF NOT EXISTS `certificate_requests` (
 -- =========================================================================
 
 -- Ensure salary_component_types has all required columns (add missing if needed)
-ALTER TABLE `salary_component_types` ADD COLUMN IF NOT EXISTS `formula` varchar(500) DEFAULT NULL;
-ALTER TABLE `salary_component_types` ADD COLUMN IF NOT EXISTS `sort_order` int(11) DEFAULT 0;
-ALTER TABLE `salary_component_types` ADD COLUMN IF NOT EXISTS `component_type` enum('Earnings','Deduction','Statutory') DEFAULT 'Earnings';
+SET @c := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'salary_component_types' AND COLUMN_NAME = 'formula');
+SET @s := IF(@c = 0, "ALTER TABLE `salary_component_types` ADD COLUMN `formula` varchar(500) DEFAULT NULL", 'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @c := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'salary_component_types' AND COLUMN_NAME = 'sort_order');
+SET @s := IF(@c = 0, "ALTER TABLE `salary_component_types` ADD COLUMN `sort_order` int(11) DEFAULT 0", 'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @c := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'salary_component_types' AND COLUMN_NAME = 'component_type');
+SET @s := IF(@c = 0, "ALTER TABLE `salary_component_types` ADD COLUMN `component_type` enum('Earnings','Deduction','Statutory') DEFAULT 'Earnings'", 'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 -- Ensure contract_types table has all required columns
-ALTER TABLE `contract_types` ADD COLUMN IF NOT EXISTS `code` varchar(20) DEFAULT NULL UNIQUE;
-ALTER TABLE `contract_types` ADD COLUMN IF NOT EXISTS `default_duration_days` int(11) DEFAULT NULL;
-ALTER TABLE `contract_types` ADD COLUMN IF NOT EXISTS `renewal_notice_days` int(11) DEFAULT 30;
-ALTER TABLE `contract_types` ADD COLUMN IF NOT EXISTS `sort_order` int(11) DEFAULT 0;
+SET @c := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'contract_types' AND COLUMN_NAME = 'code');
+SET @s := IF(@c = 0, "ALTER TABLE `contract_types` ADD COLUMN `code` varchar(20) DEFAULT NULL UNIQUE", 'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @c := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'contract_types' AND COLUMN_NAME = 'default_duration_days');
+SET @s := IF(@c = 0, "ALTER TABLE `contract_types` ADD COLUMN `default_duration_days` int(11) DEFAULT NULL", 'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @c := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'contract_types' AND COLUMN_NAME = 'renewal_notice_days');
+SET @s := IF(@c = 0, "ALTER TABLE `contract_types` ADD COLUMN `renewal_notice_days` int(11) DEFAULT 30", 'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @c := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'contract_types' AND COLUMN_NAME = 'sort_order');
+SET @s := IF(@c = 0, "ALTER TABLE `contract_types` ADD COLUMN `sort_order` int(11) DEFAULT 0", 'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 -- Ensure certificate_types table has all required columns
-ALTER TABLE `certificate_types` ADD COLUMN IF NOT EXISTS `code` varchar(20) DEFAULT NULL UNIQUE;
-ALTER TABLE `certificate_types` ADD COLUMN IF NOT EXISTS `requires_approval` tinyint(1) DEFAULT 1;
-ALTER TABLE `certificate_types` ADD COLUMN IF NOT EXISTS `sort_order` int(11) DEFAULT 0;
+SET @c := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'certificate_types' AND COLUMN_NAME = 'code');
+SET @s := IF(@c = 0, "ALTER TABLE `certificate_types` ADD COLUMN `code` varchar(20) DEFAULT NULL UNIQUE", 'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @c := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'certificate_types' AND COLUMN_NAME = 'requires_approval');
+SET @s := IF(@c = 0, "ALTER TABLE `certificate_types` ADD COLUMN `requires_approval` tinyint(1) DEFAULT 1", 'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @c := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'certificate_types' AND COLUMN_NAME = 'sort_order');
+SET @s := IF(@c = 0, "ALTER TABLE `certificate_types` ADD COLUMN `sort_order` int(11) DEFAULT 0", 'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 -- =========================================================================
 -- VERIFICATION QUERIES (run these to verify successful migration)
