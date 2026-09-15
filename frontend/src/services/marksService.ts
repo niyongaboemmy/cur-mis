@@ -217,6 +217,12 @@ export interface MyMarksRow {
   academic_year_id:  number
   year_label:        string
   updated_at:        string | null
+  /** True for a synthetic row: a module the student's curriculum requires
+   *  but holds no live mark for, printed at 0/0/0 alongside the graded rows
+   *  (same level group) rather than hidden. Appended server-side AFTER
+   *  every total/average/classification is computed, so it never affects
+   *  them — display-only. */
+  not_marked?:       boolean;
 }
 
 /**

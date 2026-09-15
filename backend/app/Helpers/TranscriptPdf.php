@@ -214,7 +214,12 @@ HTML;
             $title   = htmlspecialchars((string)($r['module_name'] ?? ''));
             $credits = (int)($r['module_credits'] ?? 0);
             $pct     = $r['percentage'] !== null ? (int)round((float)$r['percentage']) : null;
-            $marks   = $pct !== null ? (string)$pct : '—';
+            // A curriculum gap prints "0" here — never counted in the level
+            // TOTAL row above (that recomputes from `percentage`, which this
+            // row leaves NULL) — so the sheet is honest that nothing was
+            // actually awarded while still showing the module is outstanding.
+            $notMarked = !empty($r['not_marked']);
+            $marks   = $pct !== null ? (string)$pct : ($notMarked ? '0' : '—');
             $cp      = $r['credit_point'] !== null ? self::plain((float)$r['credit_point']) : '—';
             // The API already grades from the scale in whole letters; a row
             // carrying a stored "B+" straight from `module_marks` is normalised

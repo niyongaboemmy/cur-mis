@@ -18,8 +18,6 @@ import {
   type HonoursClassification,
   type MyMarksRow,
   type MyMarksTotals,
-  type CoverageRemainingRow,
-  type StudentCoverageResponse,
 } from "@/services/marksService";
 import { gradeService } from "@/services/gradeService";
 import {
@@ -5281,16 +5279,6 @@ function TranscriptTab({ student }: { student: any }) {
     enabled: !!studentId,
   });
 
-  // Curriculum modules the student has no mark for yet — the transcript rows
-  // below only ever show what WAS graded, so without this a module the
-  // student still needs to take (or sat but nobody has marked) is invisible
-  // rather than flagged. Same source ModulesMarksPage's coverage panel uses.
-  const coverageQ = useQuery({
-    queryKey: ["student-coverage", studentId],
-    queryFn: () => marksService.studentCoverageById(studentId as number),
-    enabled: !!studentId,
-  });
-
   const requestsQ = useQuery({
     queryKey: ["transcript-requests-student", studentId],
     queryFn: () => transcriptService.list({ search: student?.regnumber }),
@@ -5324,39 +5312,24 @@ function TranscriptTab({ student }: { student: any }) {
   }
 
   const data = marksQ.data?.data;
-  const rawRows: MyMarksRow[] = data?.rows ?? [];
   const totals: MyMarksTotals | undefined = data?.totals;
 
-  const coverage = coverageQ.data?.data;
-  const remaining: CoverageRemainingRow[] = coverage?.remaining ?? [];
+  // Every module for the student's curriculum, in one list: graded ones as
+  // the server computed them, plus every outstanding module the option
+  // requires but holds no mark for — the server appends those at 0/0/0
+  // AFTER its own totals/average/classification are locked in, so a
+  // placeholder can never drag down a real result. They print together,
+  // grouped by level like everything else, rather than in a separate panel —
+  // "still owed" and "already graded" are both just rows on the sheet.
+  const rows: MyMarksRow[] = data?.rows ?? [];
 
-  // Transcript rule: only modules the student has actually completed —
-  // i.e. has a final grade (or, defensively, a computed percentage). Rows
-  // with no marks yet are still in-progress and shouldn't be on the
-  // transcript proper — they show in the "Remaining" panel below instead.
-  const rows = rawRows.filter(
-    (r) =>
-      (r.grade != null && String(r.grade).trim() !== "") ||
-      r.percentage != null,
-  );
-
-  // Nothing graded AND no curriculum-derived gap to show — genuinely empty.
-  if (rows.length === 0 && remaining.length === 0 && !coverageQ.isLoading) {
+  if (rows.length === 0) {
     return (
       <div className="card p-8 text-center text-ink-400">
-        {rawRows.length === 0 ? (
-          <>
-            No marks have been recorded for this student yet. Once a lecturer or
-            admin records marks under{" "}
-            <span className="font-mono mx-1">Modules → Marks</span>, they will
-            appear here.
-          </>
-        ) : (
-          <>
-            This student has registered modules but none have been completed yet
-            — the transcript only lists modules with a final grade.
-          </>
-        )}
+        No marks or curriculum modules were found for this student. Once a
+        lecturer or admin records marks under{" "}
+        <span className="font-mono mx-1">Modules → Marks</span>, or a
+        programme is mapped to this student, they will appear here.
       </div>
     );
   }
@@ -5378,6 +5351,8 @@ function TranscriptTab({ student }: { student: any }) {
     a === "unclassified" ? 1 : b === "unclassified" ? -1 : Number(a) - Number(b),
   );
 
+  const pendingCount = rows.filter((r) => r.not_marked).length;
+
   return (
     <div className="space-y-4">
       {/* Summary + download */}
@@ -5385,8 +5360,16 @@ function TranscriptTab({ student }: { student: any }) {
         <TStat
           icon={<BookOpen className="w-4 h-4" />}
           label="Completed modules"
-          value={rows.length}
+          value={totals?.modules ?? rows.length - pendingCount}
         />
+        {pendingCount > 0 && (
+          <TStat
+            icon={<AlertCircle className="w-4 h-4" />}
+            label="Pending"
+            value={pendingCount}
+            tone="bad"
+          />
+        )}
         <TStat
           icon={<Award className="w-4 h-4" />}
           label="Total credits"
@@ -5439,12 +5422,6 @@ function TranscriptTab({ student }: { student: any }) {
           {download.isPending ? "Preparing…" : "Download transcript (PDF)"}
         </button>
       </div>
-
-      {/* Outstanding curriculum modules — what the transcript rows above can
-          never show, since they only ever list what already has a grade.
-          Shown before the classification/level tables so "what is this
-          student still missing" is the first thing the registry sees. */}
-      <TRemainingCard coverage={coverage} remaining={remaining} loading={coverageQ.isLoading} />
 
       {/* The class the regulations award — final-level modules only, so it is
           absent for a student who has not reached them yet. */}
@@ -5516,139 +5493,82 @@ function TranscriptTab({ student }: { student: any }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-ink-100 dark:divide-ink-700">
-              {list.map((r, i) => (
-                <tr
-                  key={r.id}
-                  className="hover:bg-ink-50/50 dark:hover:bg-ink-700/20"
-                >
-                  <td className="px-3 py-2 text-ink-500">{i + 1}</td>
-                  <td className="px-3 py-2 font-mono">{r.module_code}</td>
-                  <td className="px-3 py-2">{r.module_name}</td>
-                  <td className="px-3 py-2 text-ink-500">{r.term_label}</td>
-                  <td className="px-3 py-2 text-center">{r.module_credits}</td>
-                  <td className="px-3 py-2 text-center">
-                    {tFmt(r.cat_marks)}
-                    <span className="text-ink-400 text-[11px]">
-                      /60
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 text-center">
-                    {tFmt(r.exam_marks)}
-                    <span className="text-ink-400 text-[11px]">
-                      /40
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 text-center font-semibold">
-                    {r.cat_marks != null && r.exam_marks != null
-                      ? Math.round(Number(r.cat_marks) + Number(r.exam_marks))
-                      : r.percentage != null
-                        ? Math.round(Number(r.percentage))
-                        : "—"}
-                  </td>
-                  <td className="px-3 py-2 text-center">
-                    {r.grade ? (
-                      <TGradePill grade={r.grade} />
-                    ) : (
-                      <span className="text-ink-400">—</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
+              {list.map((r, i) => {
+                const notMarked = !!r.not_marked;
+                return (
+                  <tr
+                    key={r.id ?? `pending-${r.module_id}-${i}`}
+                    className={
+                      notMarked
+                        ? "bg-amber-50/40 dark:bg-amber-500/5 hover:bg-amber-50/70 dark:hover:bg-amber-500/10"
+                        : "hover:bg-ink-50/50 dark:hover:bg-ink-700/20"
+                    }
+                  >
+                    <td className="px-3 py-2 text-ink-500">{i + 1}</td>
+                    <td className="px-3 py-2 font-mono">
+                      {notMarked ? (
+                        <Link
+                          to={`/modules/marks?module_id=${r.module_id}`}
+                          className="text-amber-700 dark:text-amber-400 font-semibold hover:underline"
+                          title="Open this module on the marks sheet"
+                        >
+                          {r.module_code}
+                        </Link>
+                      ) : (
+                        r.module_code
+                      )}
+                    </td>
+                    <td className="px-3 py-2">{r.module_name}</td>
+                    <td className="px-3 py-2 text-ink-500">
+                      {notMarked ? (
+                        <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-400">
+                          <AlertCircle className="w-3 h-3" /> {r.term_label}
+                        </span>
+                      ) : (
+                        r.term_label
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-center">{r.module_credits}</td>
+                    <td className="px-3 py-2 text-center">
+                      {tFmt(r.cat_marks)}
+                      <span className="text-ink-400 text-[11px]">
+                        /60
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      {tFmt(r.exam_marks)}
+                      <span className="text-ink-400 text-[11px]">
+                        /40
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-center font-semibold">
+                      {r.cat_marks != null && r.exam_marks != null
+                        ? Math.round(Number(r.cat_marks) + Number(r.exam_marks))
+                        : r.percentage != null
+                          ? Math.round(Number(r.percentage))
+                          : "—"}
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      {r.grade ? (
+                        <TGradePill grade={r.grade} />
+                      ) : notMarked ? (
+                        <span
+                          className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300"
+                          title="Not yet marked — click the code to open the marks sheet"
+                        >
+                          Pending
+                        </span>
+                      ) : (
+                        <span className="text-ink-400">—</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       ))}
-    </div>
-  );
-}
-
-/**
- * Curriculum modules the student has no mark for — everything they "should
- * learn" that the graded rows above are structurally unable to show, since
- * those only ever list what already has a grade. Same `/coverage` endpoint
- * ModulesMarksPage's student-lookup panel uses, so the two screens agree.
- */
-function TRemainingCard({
-  coverage,
-  remaining,
-  loading,
-}: {
-  coverage?: StudentCoverageResponse | null;
-  remaining: CoverageRemainingRow[];
-  loading: boolean;
-}) {
-  const { levelName } = useLevels();
-
-  if (loading) {
-    return (
-      <div className="card p-4 flex items-center gap-2 text-[13px] text-ink-400">
-        <Loader2 className="w-4 h-4 animate-spin" /> Checking curriculum coverage…
-      </div>
-    );
-  }
-  if (!coverage) return null;
-
-  if (!coverage.totals.has_curriculum) {
-    // No programme mapped — "0 remaining" would read as "finished", so say
-    // plainly that the gap can't be computed rather than hiding the section.
-    return (
-      <div className="card p-4 flex items-center gap-2 text-[13px] text-ink-500">
-        <AlertCircle className="w-4 h-4 text-ink-400 shrink-0" />
-        No programme is mapped to this student, so modules still owed cannot be
-        worked out. Their graded marks are listed below.
-      </div>
-    );
-  }
-
-  if (remaining.length === 0) {
-    return (
-      <div className="card p-4 flex items-center gap-2 text-[13px] text-emerald-700 dark:text-emerald-400">
-        <CheckCircle className="w-4 h-4" />
-        Every module in this student&apos;s programme has a recorded mark.
-      </div>
-    );
-  }
-
-  return (
-    <div className="card overflow-hidden">
-      <div className="px-4 py-2.5 border-b border-ink-100 dark:border-ink-700 flex items-center gap-2 flex-wrap">
-        <AlertCircle className="w-4 h-4 text-amber-500" />
-        <span className="font-semibold text-[13px] text-ink-800 dark:text-ink-100">
-          Remaining — {remaining.length} module{remaining.length === 1 ? "" : "s"} with no mark
-        </span>
-        <span className="text-[12px] text-ink-400">
-          {coverage.totals.credits_remaining} credit{coverage.totals.credits_remaining === 1 ? "" : "s"} outstanding
-        </span>
-      </div>
-      {coverage.totals.curriculum_suspect && (
-        <div className="px-4 py-2 bg-amber-50 dark:bg-amber-500/10 border-b border-ink-100 dark:border-ink-700 text-[12px] text-amber-800 dark:text-amber-300">
-          This programme maps to {coverage.totals.curriculum_size} modules — a
-          legacy bulk import rather than a real curriculum, so treat this list
-          as indicative, not a definitive backlog.
-        </div>
-      )}
-      <div className="overflow-auto max-h-80">
-        <table className="w-full text-left text-[12.5px]">
-          <thead className="sticky top-0 bg-amber-50/70 dark:bg-amber-500/10">
-            <tr className="border-b border-ink-100 dark:border-ink-700">
-              <th className="px-3 py-2 text-[10px] uppercase font-bold text-ink-500">Code</th>
-              <th className="px-3 py-2 text-[10px] uppercase font-bold text-ink-500">Module</th>
-              <th className="px-3 py-2 text-[10px] uppercase font-bold text-ink-500 text-center">Level</th>
-              <th className="px-3 py-2 text-[10px] uppercase font-bold text-ink-500 text-center">Credits</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-ink-100 dark:divide-ink-700">
-            {remaining.map((r) => (
-              <tr key={r.module_id} className="hover:bg-ink-50/50 dark:hover:bg-ink-700/20">
-                <td className="px-3 py-2 font-mono font-semibold text-amber-700 dark:text-amber-400">{r.module_code}</td>
-                <td className="px-3 py-2 text-ink-800 dark:text-ink-100">{r.module_name}</td>
-                <td className="px-3 py-2 text-center text-ink-500">{levelName(r.level)}</td>
-                <td className="px-3 py-2 text-center text-ink-500">{r.module_credits ?? "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
     </div>
   );
 }
@@ -5739,14 +5659,17 @@ function tLevelLabel(level: string, name?: string): string {
 function tLevelSummary(list: MyMarksRow[]): string {
   let credits = 0;
   let points = 0;
+  let pending = 0;
   for (const r of list) {
+    if (r.not_marked) { pending++; continue; }
     if (r.percentage === null || r.percentage === undefined) continue;
     const c = Number(r.module_credits) || 0;
     credits += c;
     points += c * Number(r.percentage);
   }
   const avg = credits > 0 ? (points / credits).toFixed(2) : null;
-  return `${list.length} module${list.length === 1 ? "" : "s"} · ${credits} credits${
+  const completed = list.length - pending;
+  return `${completed} completed${pending ? ` · ${pending} pending` : ""} · ${credits} credits${
     avg !== null ? ` · ${avg}%` : ""
   }`;
 }

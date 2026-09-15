@@ -1563,7 +1563,95 @@ class ModuleMarksController extends BaseController
         // the same double-count `dedupeTranscriptRows()` exists to prevent.
         $rows = $this->expandRowsByLevel($rows);
 
+        // Curriculum gaps — modules the option requires but that hold no live
+        // mark. Appended AFTER every total above (credits, average, decision,
+        // classification) so a placeholder can never drag down a real result;
+        // they print at 0/0/0 with no grade so the sheet stays honest that
+        // nothing was actually awarded. Skipped for a year-filtered request,
+        // where "still owed" isn't a meaningful concept for one slice of the
+        // record.
+        if ($yearId === 0) {
+            $rows = array_merge($rows, $this->remainingCurriculumRows($reg, $student, $rows));
+        }
+
         return [$rows, $totals, $student];
+    }
+
+    /**
+     * Curriculum modules the student's option requires but holds no live mark
+     * for — merged alongside the graded rows (grouped by level, same as
+     * everything else) at 0/0/0 rather than kept in a separate list, so a
+     * module the record is missing is visible on the one sheet instead of
+     * silently absent or tucked away elsewhere. See {@see studentCoverageById}
+     * for the same query used by the standalone coverage check.
+     *
+     * @param array<int,array<string,mixed>> $existingRows already-loaded rows,
+     *        so a module already carrying a mark is never listed twice.
+     */
+    private function remainingCurriculumRows(string $reg, array $student, array $existingRows): array
+    {
+        $optionId = self::optionIdOf($student);
+        if ($optionId <= 0) return [];
+
+        $have = [];
+        foreach ($existingRows as $r) {
+            if (!empty($r['module_id'])) $have[(int)$r['module_id']] = true;
+        }
+
+        $missing = $this->db->fetchAll(
+            "SELECT m.module_id, m.module_code, m.module_name, m.module_credits, m.level
+             FROM module_programs mp
+             JOIN modules m ON m.module_id = mp.module_id
+             WHERE mp.option_id = ?
+               AND m.status <> 'archived'
+               AND NOT EXISTS (
+                   SELECT 1 FROM module_marks mm
+                   WHERE mm.student_regnumber = ?
+                     AND mm.module_id = m.module_id
+                     AND mm.superseded = 0
+               )
+             ORDER BY m.level ASC, m.module_code ASC",
+            [$optionId, $reg]
+        );
+        $missing = array_values(array_filter(
+            $missing,
+            static fn ($m) => !isset($have[(int)($m['module_id'] ?? 0)]),
+        ));
+
+        foreach ($missing as &$m) {
+            $m['id']               = null;
+            $m['cat_marks']        = 0;
+            $m['assignment_marks'] = 0;
+            $m['exam_marks']       = 0;
+            $m['cat_max']          = null;
+            $m['assignment_max']   = null;
+            $m['exam_max']         = null;
+            $m['total']            = 0;
+            // `percentage` stays NULL — every average/credit-point/level-total
+            // roll-up (here and in TranscriptPdf::levelTotals) skips rows on
+            // exactly that check, so a placeholder can never count as a real
+            // 0% and drag a class average down. Screens display "0" for these
+            // rows off `not_marked` instead of off this field.
+            $m['percentage']       = null;
+            // No grade — a computed letter for an unmarked module would claim
+            // a result nobody awarded. The 0s already say "outstanding".
+            $m['grade']            = null;
+            $m['grade_point']      = null;
+            $m['grade_label']      = null;
+            $m['remarks']          = null;
+            $m['updated_at']       = null;
+            $m['is_exempted']      = 0;
+            $m['exemption_reason'] = null;
+            $m['academic_term_id'] = null;
+            $m['term_label']       = 'Not yet marked';
+            $m['academic_year_id'] = null;
+            $m['year_label']       = null;
+            $m['credit_point']     = 0;
+            $m['not_marked']       = true;
+        }
+        unset($m);
+
+        return \App\Helpers\LevelHelper::decorate($missing);
     }
 
     /**
