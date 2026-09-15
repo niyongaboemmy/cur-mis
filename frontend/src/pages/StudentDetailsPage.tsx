@@ -18,6 +18,8 @@ import {
   type HonoursClassification,
   type MyMarksRow,
   type MyMarksTotals,
+  type CoverageRemainingRow,
+  type StudentCoverageResponse,
 } from "@/services/marksService";
 import { gradeService } from "@/services/gradeService";
 import {
@@ -5279,6 +5281,16 @@ function TranscriptTab({ student }: { student: any }) {
     enabled: !!studentId,
   });
 
+  // Curriculum modules the student has no mark for yet — the transcript rows
+  // below only ever show what WAS graded, so without this a module the
+  // student still needs to take (or sat but nobody has marked) is invisible
+  // rather than flagged. Same source ModulesMarksPage's coverage panel uses.
+  const coverageQ = useQuery({
+    queryKey: ["student-coverage", studentId],
+    queryFn: () => marksService.studentCoverageById(studentId as number),
+    enabled: !!studentId,
+  });
+
   const requestsQ = useQuery({
     queryKey: ["transcript-requests-student", studentId],
     queryFn: () => transcriptService.list({ search: student?.regnumber }),
@@ -5315,17 +5327,21 @@ function TranscriptTab({ student }: { student: any }) {
   const rawRows: MyMarksRow[] = data?.rows ?? [];
   const totals: MyMarksTotals | undefined = data?.totals;
 
+  const coverage = coverageQ.data?.data;
+  const remaining: CoverageRemainingRow[] = coverage?.remaining ?? [];
+
   // Transcript rule: only modules the student has actually completed —
   // i.e. has a final grade (or, defensively, a computed percentage). Rows
   // with no marks yet are still in-progress and shouldn't be on the
-  // transcript.
+  // transcript proper — they show in the "Remaining" panel below instead.
   const rows = rawRows.filter(
     (r) =>
       (r.grade != null && String(r.grade).trim() !== "") ||
       r.percentage != null,
   );
 
-  if (rows.length === 0) {
+  // Nothing graded AND no curriculum-derived gap to show — genuinely empty.
+  if (rows.length === 0 && remaining.length === 0 && !coverageQ.isLoading) {
     return (
       <div className="card p-8 text-center text-ink-400">
         {rawRows.length === 0 ? (
@@ -5423,6 +5439,12 @@ function TranscriptTab({ student }: { student: any }) {
           {download.isPending ? "Preparing…" : "Download transcript (PDF)"}
         </button>
       </div>
+
+      {/* Outstanding curriculum modules — what the transcript rows above can
+          never show, since they only ever list what already has a grade.
+          Shown before the classification/level tables so "what is this
+          student still missing" is the first thing the registry sees. */}
+      <TRemainingCard coverage={coverage} remaining={remaining} loading={coverageQ.isLoading} />
 
       {/* The class the regulations award — final-level modules only, so it is
           absent for a student who has not reached them yet. */}
@@ -5536,6 +5558,97 @@ function TranscriptTab({ student }: { student: any }) {
           </table>
         </div>
       ))}
+    </div>
+  );
+}
+
+/**
+ * Curriculum modules the student has no mark for — everything they "should
+ * learn" that the graded rows above are structurally unable to show, since
+ * those only ever list what already has a grade. Same `/coverage` endpoint
+ * ModulesMarksPage's student-lookup panel uses, so the two screens agree.
+ */
+function TRemainingCard({
+  coverage,
+  remaining,
+  loading,
+}: {
+  coverage?: StudentCoverageResponse | null;
+  remaining: CoverageRemainingRow[];
+  loading: boolean;
+}) {
+  const { levelName } = useLevels();
+
+  if (loading) {
+    return (
+      <div className="card p-4 flex items-center gap-2 text-[13px] text-ink-400">
+        <Loader2 className="w-4 h-4 animate-spin" /> Checking curriculum coverage…
+      </div>
+    );
+  }
+  if (!coverage) return null;
+
+  if (!coverage.totals.has_curriculum) {
+    // No programme mapped — "0 remaining" would read as "finished", so say
+    // plainly that the gap can't be computed rather than hiding the section.
+    return (
+      <div className="card p-4 flex items-center gap-2 text-[13px] text-ink-500">
+        <AlertCircle className="w-4 h-4 text-ink-400 shrink-0" />
+        No programme is mapped to this student, so modules still owed cannot be
+        worked out. Their graded marks are listed below.
+      </div>
+    );
+  }
+
+  if (remaining.length === 0) {
+    return (
+      <div className="card p-4 flex items-center gap-2 text-[13px] text-emerald-700 dark:text-emerald-400">
+        <CheckCircle className="w-4 h-4" />
+        Every module in this student&apos;s programme has a recorded mark.
+      </div>
+    );
+  }
+
+  return (
+    <div className="card overflow-hidden">
+      <div className="px-4 py-2.5 border-b border-ink-100 dark:border-ink-700 flex items-center gap-2 flex-wrap">
+        <AlertCircle className="w-4 h-4 text-amber-500" />
+        <span className="font-semibold text-[13px] text-ink-800 dark:text-ink-100">
+          Remaining — {remaining.length} module{remaining.length === 1 ? "" : "s"} with no mark
+        </span>
+        <span className="text-[12px] text-ink-400">
+          {coverage.totals.credits_remaining} credit{coverage.totals.credits_remaining === 1 ? "" : "s"} outstanding
+        </span>
+      </div>
+      {coverage.totals.curriculum_suspect && (
+        <div className="px-4 py-2 bg-amber-50 dark:bg-amber-500/10 border-b border-ink-100 dark:border-ink-700 text-[12px] text-amber-800 dark:text-amber-300">
+          This programme maps to {coverage.totals.curriculum_size} modules — a
+          legacy bulk import rather than a real curriculum, so treat this list
+          as indicative, not a definitive backlog.
+        </div>
+      )}
+      <div className="overflow-auto max-h-80">
+        <table className="w-full text-left text-[12.5px]">
+          <thead className="sticky top-0 bg-amber-50/70 dark:bg-amber-500/10">
+            <tr className="border-b border-ink-100 dark:border-ink-700">
+              <th className="px-3 py-2 text-[10px] uppercase font-bold text-ink-500">Code</th>
+              <th className="px-3 py-2 text-[10px] uppercase font-bold text-ink-500">Module</th>
+              <th className="px-3 py-2 text-[10px] uppercase font-bold text-ink-500 text-center">Level</th>
+              <th className="px-3 py-2 text-[10px] uppercase font-bold text-ink-500 text-center">Credits</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-ink-100 dark:divide-ink-700">
+            {remaining.map((r) => (
+              <tr key={r.module_id} className="hover:bg-ink-50/50 dark:hover:bg-ink-700/20">
+                <td className="px-3 py-2 font-mono font-semibold text-amber-700 dark:text-amber-400">{r.module_code}</td>
+                <td className="px-3 py-2 text-ink-800 dark:text-ink-100">{r.module_name}</td>
+                <td className="px-3 py-2 text-center text-ink-500">{levelName(r.level)}</td>
+                <td className="px-3 py-2 text-center text-ink-500">{r.module_credits ?? "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
