@@ -459,13 +459,14 @@ class ApplicationService
             $parentStudent = $this->db->fetchOne($sql, $params) ?: null;
         }
 
-        // Generate registration number: LCURYYAKNNNNN (e.g., 2CUR26AK000864)
-        // L = level indicator (1 for Undergraduate, 2 for Postgraduate), CUR = institution, YY = year, AK = program code, NNNNNN = sequential
-        $regNumber = $this->generateNewRegistrationNumberForLevel($levelId);
-
-        // Best-effort: derive `programme_level` from the offer's `level_id` /
-        // `level_name`. Anything not matching the known tiers falls back to
-        // undergraduate (the column's default).
+        // Derive `programme_level` from the offer's `level_id` / `level_name`.
+        // Anything not matching the known tiers falls back to undergraduate
+        // (the column's default). This MUST happen before the registration
+        // number is minted below — the reg number's leading digit encodes
+        // this same tier, and it must never be keyed off `$levelId` (the
+        // curriculum "starting year/level" dropdown, e.g. "Level 1"), which
+        // is an unrelated value that happens to collide with the tier
+        // indicator's own "1" for undergraduate.
         $programmeLevel = 'undergraduate';
         $levelName = strtolower((string)($offer['level_name'] ?? ''));
         if ($levelName !== '') {
@@ -476,6 +477,10 @@ class ApplicationService
             elseif (str_contains($levelName, 'diploma')) $programmeLevel = 'diploma';
             elseif (str_contains($levelName, 'cert'))    $programmeLevel = 'certificate';
         }
+
+        // Generate registration number: LCURYYAKNNNNN (e.g., 2CUR26AK000864)
+        // L = level indicator (1 for Undergraduate, 2 for Postgraduate), CUR = institution, YY = year, AK = program code, NNNNNN = sequential
+        $regNumber = $this->generateNewRegistrationNumberForLevel($programmeLevel);
 
         // Resolve the user account that owns this application up front so the
         // student row can be linked back to it via `user_id`. Without that
@@ -1030,14 +1035,18 @@ class ApplicationService
      * - AK: Program/department code (fixed - Alex Kagame)
      * - NNNNNN: 6-digit sequential number (000001 onwards)
      *
-     * @param int $levelId The level ID (1 for Undergraduate, 2+ for Postgraduate)
+     * @param string $programmeLevel The programme tier ('undergraduate', 'masters', 'pgde', 'phd', 'diploma', 'certificate')
      * @throws \RuntimeException if registration number generation fails
      */
-    private function generateNewRegistrationNumberForLevel(int $levelId): string
+    private function generateNewRegistrationNumberForLevel(string $programmeLevel): string
     {
         try {
-            // Determine level indicator: 1 for Undergraduate, 2 for Postgraduate
-            $levelIndicator = $levelId === 1 ? 1 : 2;
+            // Determine level indicator: 1 for Undergraduate/Diploma/Certificate
+            // (pre-degree/first-degree tiers), 2 for Postgraduate (Masters/PGDE/PhD).
+            // This must be driven by the programme's actual academic tier, never
+            // by the curriculum "starting level" dropdown (year 1, 2, 3...),
+            // which is a different concept that happens to share the value "1".
+            $levelIndicator = in_array($programmeLevel, ['masters', 'pgde', 'phd'], true) ? 2 : 1;
 
             $currentYear = date('Y'); // Get year as string
             $yearSuffix = substr($currentYear, 2); // Last 2 digits: 26 for 2026
