@@ -68,13 +68,17 @@ class ModuleModel extends BaseModel
         if (!empty($filters['status'])) {
             $where[]    = 'm.status = ?';
             $bindings[] = (string)$filters['status'];
-        } elseif (empty($filters['include_archived'])) {
+        } elseif (empty($filters['include_archived']) && $this->hasColumn('modules', 'status')) {
             // Hidden rows stay out of the catalogue. Archiving is how the
             // registry retires the spare records left over from the old
             // one-module-per-level workaround: it takes them off this list
             // without touching a single mark — every `module_marks` row still
             // points at the archived module and still prints on the transcript
             // at that module's own level.
+            //
+            // Column-guarded: live and local schemas drift (see the migration
+            // ledger's baselined rows), and the catalogue must not 500 on an
+            // environment where this column has not landed yet.
             $where[] = "(m.status IS NULL OR m.status <> 'archived')";
         }
         if (!empty($filters['q'])) {
@@ -173,17 +177,28 @@ class ModuleModel extends BaseModel
         // record is safe either way — the marks keep printing at that module's
         // own level — but the registry should be able to see, before hiding a
         // row, whether anyone's results are recorded against it.
+        // A count is a convenience on a screen people need to be able to open.
+        // It must never be the reason the catalogue fails to load, so any
+        // problem here degrades to "no counts" instead of a 500.
         $marksByModule = [];
         if ($moduleIds !== []) {
-            $idsPh = implode(',', array_fill(0, count($moduleIds), '?'));
-            foreach ($this->db->fetchAll(
-                "SELECT module_id, COUNT(*) AS cnt
-                 FROM `module_marks`
-                 WHERE module_id IN ($idsPh) AND superseded = 0
-                 GROUP BY module_id",
-                $moduleIds,
-            ) as $r) {
-                $marksByModule[(int)$r['module_id']] = (int)$r['cnt'];
+            try {
+                $idsPh    = implode(',', array_fill(0, count($moduleIds), '?'));
+                $liveOnly = $this->hasColumn('module_marks', 'superseded')
+                    ? ' AND superseded = 0'
+                    : '';
+                foreach ($this->db->fetchAll(
+                    "SELECT module_id, COUNT(*) AS cnt
+                     FROM `module_marks`
+                     WHERE module_id IN ($idsPh){$liveOnly}
+                     GROUP BY module_id",
+                    $moduleIds
+                ) as $r) {
+                    $marksByModule[(int)$r['module_id']] = (int)$r['cnt'];
+                }
+            } catch (\Throwable $e) {
+                error_log('ModuleModel marks_count failed: ' . $e->getMessage());
+                $marksByModule = [];
             }
         }
 
@@ -364,6 +379,38 @@ class ModuleModel extends BaseModel
                 'INSERT IGNORE INTO `module_programs` (`module_id`, `option_id`) VALUES (?, ?)',
                 [$moduleId, $pid]
             );
+        }
+    }
+
+    /** @var array<string,bool> "table.column" => exists. Per-process cache. */
+    private static array $columnExists = [];
+
+    /**
+     * Is this column actually present in the database we are talking to?
+     *
+     * Local (MySQL 8, rebuilt from dumps) and live (MariaDB, with migrations
+     * baselined rather than run) do not always carry the same columns — that
+     * drift is a documented property of this project, not a hypothetical. A
+     * catalogue screen must not 500 because a nice-to-have column is missing,
+     * so anything optional is gated on this. Unknown or unreachable counts as
+     * absent: the query then falls back to the shape that worked before.
+     */
+    private function hasColumn(string $table, string $column): bool
+    {
+        $key = $table . '.' . $column;
+        if (array_key_exists($key, self::$columnExists)) {
+            return self::$columnExists[$key];
+        }
+        try {
+            $row = $this->db->fetchOne(
+                'SELECT 1 AS ok FROM INFORMATION_SCHEMA.COLUMNS
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?
+                 LIMIT 1',
+                [$table, $column]
+            );
+            return self::$columnExists[$key] = (bool)$row;
+        } catch (\Throwable) {
+            return self::$columnExists[$key] = false;
         }
     }
 
