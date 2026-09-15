@@ -56,6 +56,20 @@ jobs:
           jq -r '.data.migrations[] | select(.status == "error") | .file' /tmp/status.json \
             | sed 's/^/  /' || true
 
+          # "skipped" matters as much as "pending": the runner records a file as
+          # skipped when it hit an idempotent error code, which can mean the file
+          # died part-way and the rest of its statements never ran. A column can
+          # be missing behind a skipped file just as easily as behind a pending one.
+          echo
+          echo "### SKIPPED on live"
+          jq -r '.data.migrations[] | select(.status == "skipped") | .file' /tmp/status.json \
+            | sed 's/^/  /' || true
+
+          echo
+          echo "### BASELINED on live (ledgered without running)"
+          jq -r '.data.migrations[] | select(.status == "baselined") | .file' /tmp/status.json \
+            | sed 's/^/  /' || true
+
           {
             echo "## Live migration ledger"
             echo
