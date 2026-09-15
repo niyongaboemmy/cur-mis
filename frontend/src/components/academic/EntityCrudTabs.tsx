@@ -984,17 +984,36 @@ function CrudPanel({ entity, canWrite }: { entity: EntityCfg; canWrite: boolean 
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['acmgmt', entity.slug] })
 
+  /**
+   * A 422 from this API carries the useful part in `errors` — a field-keyed map
+   * of messages — while `message` is only ever the generic "Validation failed".
+   * Showing the generic string told the user nothing: a save rejected because a
+   * module code collides at a particular level read simply as "Validation
+   * failed". Surface the field messages instead, falling back to the generic.
+   */
+  const saveError = (e: any, fallback: string): string => {
+    const data = e?.response?.data
+    const errs = data?.errors
+    if (errs && typeof errs === 'object') {
+      const flat = Object.values(errs as Record<string, unknown>)
+        .flatMap((v) => (Array.isArray(v) ? v : [v]))
+        .filter((v): v is string => typeof v === 'string' && v.trim() !== '')
+      if (flat.length > 0) return flat.join(' ')
+    }
+    return data?.message ?? fallback
+  }
+
   const createM = useMutation({
     mutationFn: (d: Record<string, any>) => academicsMgmtService.create(entity.slug, d),
     onSuccess:  () => { toast.success(`${entity.singular} added`); setModalOpen(false); invalidate() },
-    onError:    (e: any) => toast.error(e?.response?.data?.message ?? 'Create failed'),
+    onError:    (e: any) => toast.error(saveError(e, 'Create failed'), { duration: 8000 }),
   })
 
   const updateM = useMutation({
     mutationFn: (v: { id: number | string; data: Record<string, any> }) =>
       academicsMgmtService.update(entity.slug, v.id, v.data),
     onSuccess:  () => { toast.success(`${entity.singular} updated`); setModalOpen(false); invalidate() },
-    onError:    (e: any) => toast.error(e?.response?.data?.message ?? 'Update failed'),
+    onError:    (e: any) => toast.error(saveError(e, 'Update failed'), { duration: 8000 }),
   })
 
   const deleteM = useMutation({

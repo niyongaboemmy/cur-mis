@@ -2500,8 +2500,13 @@ class AcademicsManagementController extends BaseController
             return null;
         }
 
-        // Same code, same department, anyone but us.
-        $sql      = 'SELECT module_id, level FROM `modules` WHERE `module_code` = ? AND `department` = ?';
+        // Same code, same department, anyone but us — and only rows that are
+        // still on the catalogue. A hidden row is retired; it must not veto the
+        // live record that replaces it, or the whole point of hiding the spare
+        // duplicates (then giving the survivor all their levels) is defeated.
+        $sql      = "SELECT module_id, level FROM `modules`
+                     WHERE `module_code` = ? AND `department` = ?
+                       AND (`status` IS NULL OR `status` <> 'archived')";
         $bindings = [$code, $department];
         if ($excludeId !== null) {
             $sql .= ' AND `module_id` <> ?';
