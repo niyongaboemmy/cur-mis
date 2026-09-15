@@ -1,0 +1,74 @@
+name: Migration status — Backend (read-only)
+
+# Reports what the LIVE schema_migrations ledger says, and changes nothing.
+#
+# migrate-backend.yml prints the same status but then immediately applies every
+# pending migration, so there was no way to simply LOOK at production's ledger
+# before deciding whether to run it. Deploying code does not migrate the
+# database (deploy-backend.yml is source-only), so live can sit many migrations
+# behind main without anyone noticing — until a query references a column that
+# never landed. This is the check for that.
+#
+# Read-only: one authenticated GET. No POST, no migrate, no seed.
+#
+# Required GitHub Secrets:
+#   DEPLOY_KEY — same value as DEPLOY_KEY in backend/.env
+
+on:
+  workflow_dispatch:
+
+env:
+  API_BASE: https://cur.ac.rw/umis/api
+
+jobs:
+  status:
+    name: Read live migration ledger
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Fetch ledger
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+
+          curl -s -k --max-time 60 \
+            -H "Authorization: Bearer $DEPLOY_KEY" \
+            "$API_BASE/api/deploy/status" > /tmp/status.json
+
+          if ! jq -e '.success == true' /tmp/status.json >/dev/null 2>&1; then
+            echo "Could not read the ledger:"
+            head -c 2000 /tmp/status.json
+            exit 1
+          fi
+
+          echo "### Counts by status"
+          jq -r '.data.migrations | group_by(.status)[] | "\(.[0].status)\t\(length)"' /tmp/status.json
+
+          echo
+          echo "### PENDING on live (not applied)"
+          jq -r '.data.migrations[] | select(.status == "pending") | .file' /tmp/status.json \
+            | sed 's/^/  /' || true
+          echo "pending_count: $(jq -r '.data.pending_count' /tmp/status.json)"
+
+          echo
+          echo "### Anything recorded as an error"
+          jq -r '.data.migrations[] | select(.status == "error") | .file' /tmp/status.json \
+            | sed 's/^/  /' || true
+
+          {
+            echo "## Live migration ledger"
+            echo
+            echo "| status | count |"
+            echo "|---|---|"
+            jq -r '.data.migrations | group_by(.status)[] | "| \(.[0].status) | \(length) |"' /tmp/status.json
+            echo
+            PENDING=$(jq -r '.data.migrations[] | select(.status == "pending") | "- `" + .file + "`"' /tmp/status.json)
+            if [ -n "$PENDING" ]; then
+              echo "### Pending on live"
+              echo "$PENDING"
+            else
+              echo "### Pending on live"
+              echo "_None — live is up to date with the files in this commit._"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
