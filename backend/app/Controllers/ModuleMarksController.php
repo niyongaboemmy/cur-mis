@@ -381,6 +381,7 @@ class ModuleMarksController extends BaseController
     {
         $rosterCols = "st.id AS student_id, st.regnumber, st.fname, st.lname, st.email,
                        st.gender AS sex, st.program AS student_program, st.std_option AS option_acro,
+                       CAST(NULLIF(st.current_level,'') AS UNSIGNED) AS student_level,
                        mm.id AS mark_id,
                        mm.cat_marks, mm.assignment_marks, mm.exam_marks,
                        mm.cat_max, mm.assignment_max, mm.exam_max,
@@ -505,6 +506,7 @@ class ModuleMarksController extends BaseController
                     COALESCE(st.lname, '') AS lname,
                     st.email,
                     st.gender AS sex, st.program AS student_program, st.std_option AS option_acro,
+                    CAST(NULLIF(st.current_level,'') AS UNSIGNED) AS student_level,
                     mm.id AS mark_id,
                     mm.cat_marks, mm.assignment_marks, mm.exam_marks,
                     mm.cat_max, mm.assignment_max, mm.exam_max,

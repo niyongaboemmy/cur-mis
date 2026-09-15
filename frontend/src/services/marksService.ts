@@ -34,6 +34,12 @@ export interface MarksRosterRow {
   sex:               string | null
   student_program:   string | null
   option_acro:       string | null
+  /** Student's current level, cast server-side from `student.current_level`.
+   *  Backs the "Filter by level" control — a module's roster can mix
+   *  students from several levels (multi-level placement, stale
+   *  eligibility guesses), and this is what lets the sheet be narrowed
+   *  down to the one actually being marked. */
+  student_level:     number | null
   mark_id:           number | null
 
   // Legacy (kept in sync server-side for the transcript path).

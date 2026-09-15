@@ -10,6 +10,7 @@ import {
   UserPlus, Search, X, Download, Upload, AlertTriangle,
   Filter, BookOpen, ChevronLeft, AlertCircle,
   CalendarClock, UserSearch, FileSpreadsheet,
+  ArrowUp, ArrowDown, ArrowUpDown,
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import toast from 'react-hot-toast'
@@ -573,6 +574,7 @@ export function MarksEditor({
   const qc = useQueryClient()
   const [, setSp] = useSearchParams()
   const scale = useGradingScale()
+  const { levelName } = useLevels()
 
   const setModuleId = (id: number) => {
     setSp((prev) => {
@@ -1202,6 +1204,39 @@ export function MarksEditor({
   const [addedFrom,    setAddedFrom]    = useState('')
   const [addedTo,      setAddedTo]      = useState('')
 
+  /* ── Filter by level ───────────────────────────────────────────────────
+   * A roster can mix students from several current levels — a module placed
+   * at more than one level, or the eligibility fallback picking up someone
+   * whose level has since moved on — so "the list doesn't match the level I
+   * selected" is a real complaint, not a misunderstanding. 0 = every level. */
+  const [levelFilter, setLevelFilter] = useState(0)
+  const levelOptions = useMemo(() => {
+    const counts = new Map<number, number>()
+    ;(roster ?? []).forEach((r) => {
+      const lv = Number(r.student_level ?? 0)
+      if (lv > 0) counts.set(lv, (counts.get(lv) ?? 0) + 1)
+    })
+    return Array.from(counts.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([id, count]) => ({ id, count }))
+  }, [roster])
+
+  /* ── Sort — by name or program, missing info always last ────────────────
+   * A row with a blank name or program is a data problem (a mark row whose
+   * student record didn't come along, or a legacy import), not a "student
+   * named blank" who alphabetically belongs at the top. It stays visible —
+   * hiding it would bury the very thing that needs fixing — but sinks to the
+   * bottom so it never masks the real roster above it. */
+  type SortKey = 'name' | 'program'
+  const [sortKey, setSortKey] = useState<SortKey>('name')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    else { setSortKey(key); setSortDir('asc') }
+  }
+  const isMissingInfo = (r: MarksRosterRow) =>
+    !r.fname?.trim() || !r.lname?.trim() || !r.student_program?.trim()
+
   /* ── "With marks" vs "All students" ──────────────────────────────────
    * The roster is padded by an eligibility guess (module → programs →
    * options → students at that level) whenever formal registrations are
@@ -1229,12 +1264,12 @@ export function MarksEditor({
     // parseable across browsers, so normalise to ISO before comparing.
     const from = addedFrom ? new Date(`${addedFrom}T00:00:00`).getTime()     : null
     const to   = addedTo   ? new Date(`${addedTo}T23:59:59.999`).getTime()   : null
-    if (!q && from === null && to === null && !markedOnly) return all
 
-    return all.filter((r: MarksRosterRow) => {
+    const filtered = all.filter((r: MarksRosterRow) => {
       // "With marks" — the sheet as a record of what was actually awarded,
       // without the eligibility-derived students padding it out.
       if (markedOnly && !r.mark_id) return false
+      if (levelFilter > 0 && Number(r.student_level ?? 0) !== levelFilter) return false
       if (q) {
         const hay = `${r.fname ?? ''} ${r.lname ?? ''} ${r.regnumber ?? ''}`.toLowerCase()
         if (!hay.includes(q)) return false
@@ -1250,7 +1285,27 @@ export function MarksEditor({
       }
       return true
     })
-  }, [roster, rosterSearch, addedFrom, addedTo, markedOnly])
+
+    const dir = sortDir === 'asc' ? 1 : -1
+    const collator = new Intl.Collator(undefined, { sensitivity: 'base' })
+    return [...filtered].sort((a, b) => {
+      // Missing name/program is a data problem, not a name that sorts first —
+      // it stays out of the way at the bottom regardless of direction.
+      const missA = isMissingInfo(a)
+      const missB = isMissingInfo(b)
+      if (missA !== missB) return missA ? 1 : -1
+
+      if (sortKey === 'program') {
+        const pa = (a.student_program ?? '').trim()
+        const pb = (b.student_program ?? '').trim()
+        const cmp = collator.compare(pa, pb)
+        if (cmp !== 0) return cmp * dir
+      }
+      const na = `${a.lname ?? ''} ${a.fname ?? ''}`.trim()
+      const nb = `${b.lname ?? ''} ${b.fname ?? ''}`.trim()
+      return collator.compare(na, nb) * dir
+    })
+  }, [roster, rosterSearch, addedFrom, addedTo, markedOnly, levelFilter, sortKey, sortDir])
 
   // Keep the printed row number tied to the student's position on the real
   // mark sheet, so filtering never renumbers the class.
@@ -1261,8 +1316,8 @@ export function MarksEditor({
   }, [roster])
 
   const markedCount   = useMemo(() => (roster ?? []).filter((r) => !!r.mark_id).length, [roster])
-  const filtersActive = !!rosterSearch.trim() || !!addedFrom || !!addedTo
-  const clearFilters  = () => { setRosterSearch(''); setAddedFrom(''); setAddedTo('') }
+  const filtersActive = !!rosterSearch.trim() || !!addedFrom || !!addedTo || levelFilter > 0
+  const clearFilters  = () => { setRosterSearch(''); setAddedFrom(''); setAddedTo(''); setLevelFilter(0) }
 
   // Publish a save handle so a host header can own the Save button.
   //
@@ -1484,6 +1539,23 @@ export function MarksEditor({
                   />
                 </div>
               </div>
+              {levelOptions.length > 0 && (
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase text-ink-400 mb-1">
+                    Filter by level
+                  </label>
+                  <select
+                    className={`input input-sm ${levelFilter > 0 ? 'border-brand text-brand font-semibold' : ''}`}
+                    value={levelFilter}
+                    onChange={(e) => setLevelFilter(Number(e.target.value))}
+                  >
+                    <option value={0}>All levels ({roster.length})</option>
+                    {levelOptions.map(({ id, count }) => (
+                      <option key={id} value={id}>{levelName(id)} ({count})</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="block text-[11px] font-semibold uppercase text-ink-400 mb-1">
                   Marks added from
@@ -1585,11 +1657,33 @@ export function MarksEditor({
                 <thead className="sticky top-0 z-10">
                   <tr className="bg-sky-50 dark:bg-ink-800 border-b border-ink-100 dark:border-ink-700">
                     <th className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase border-r border-ink-100 dark:border-ink-700">No</th>
-                    <th className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase border-r border-ink-100 dark:border-ink-700">First Name</th>
+                    <th
+                      className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase border-r border-ink-100 dark:border-ink-700 cursor-pointer select-none hover:text-brand"
+                      onClick={() => toggleSort('name')}
+                      title="Sort by name"
+                    >
+                      <span className="inline-flex items-center gap-1">
+                        First Name
+                        {sortKey === 'name'
+                          ? (sortDir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)
+                          : <ArrowUpDown className="w-3 h-3 opacity-30" />}
+                      </span>
+                    </th>
                     <th className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase border-r border-ink-100 dark:border-ink-700">Surname</th>
                     <th className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase border-r border-ink-100 dark:border-ink-700">Sex</th>
                     <th className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase border-r border-ink-100 dark:border-ink-700">Reg #</th>
-                    <th className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase border-r border-ink-100 dark:border-ink-700">Program</th>
+                    <th
+                      className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase border-r border-ink-100 dark:border-ink-700 cursor-pointer select-none hover:text-brand"
+                      onClick={() => toggleSort('program')}
+                      title="Sort by program"
+                    >
+                      <span className="inline-flex items-center gap-1">
+                        Program
+                        {sortKey === 'program'
+                          ? (sortDir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)
+                          : <ArrowUpDown className="w-3 h-3 opacity-30" />}
+                      </span>
+                    </th>
                     <th className="px-2 py-2.5 font-bold text-ink-500 text-[10px] uppercase border-r border-ink-100 dark:border-ink-700">Option</th>
                     {/* One CAT column and one EXAM column, out of 60 and 40 —
                         how CUR records marks and what the template asks for. */}
@@ -1610,9 +1704,11 @@ export function MarksEditor({
                     const c = computed[r.regnumber]
                     const isExempted = !!r.is_exempted
                     const rowDisabled = isLocked || isExempted
+                    const missingInfo = isMissingInfo(r)
                     return (
                       <tr key={r.regnumber} className={`hover:bg-ink-50/50 dark:hover:bg-ink-700/20 ${
                         isExempted ? 'bg-violet-50/40 dark:bg-violet-500/10' :
+                        missingInfo ? 'bg-rose-50/30 dark:bg-rose-500/5' :
                         dirty[r.regnumber] ? 'bg-amber-50/40 dark:bg-amber-500/5' : ''
                       }`}>
                         <td className="px-2 py-2 text-ink-500 border-r border-ink-100 dark:border-ink-700">
@@ -1651,7 +1747,11 @@ export function MarksEditor({
                         <td className="px-2 py-2 border-r border-ink-100 dark:border-ink-700">{r.lname}</td>
                         <td className="px-2 py-2 text-center border-r border-ink-100 dark:border-ink-700">{r.sex ?? '—'}</td>
                         <td className="px-2 py-2 font-mono border-r border-ink-100 dark:border-ink-700">{r.regnumber}</td>
-                        <td className="px-2 py-2 border-r border-ink-100 dark:border-ink-700">{r.student_program ?? '—'}</td>
+                        <td className="px-2 py-2 border-r border-ink-100 dark:border-ink-700">
+                          {r.student_program?.trim() ? r.student_program : (
+                            <span className="text-rose-500 italic" title="No program on record for this student">missing</span>
+                          )}
+                        </td>
                         <td className="px-2 py-2 border-r border-ink-100 dark:border-ink-700">{r.option_acro ?? '—'}</td>
                         <td className="px-1 py-1 text-center border-r border-ink-100 dark:border-ink-700">
                           {isExempted ? (
@@ -2299,6 +2399,7 @@ function toRosterRow(s: any): MarksRosterRow {
     sex:               s.gender ?? null,
     student_program:   s.program ?? null,
     option_acro:       s.std_option ?? null,
+    student_level:     s.current_level != null && s.current_level !== '' ? Number(s.current_level) : null,
     mark_id:           null,
 
     cat_marks:         null,
