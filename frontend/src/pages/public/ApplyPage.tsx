@@ -141,7 +141,7 @@ const CATEGORY_OPTIONS = [
   {
     value: "postgraduate",
     label: "Postgraduate",
-    desc: "Postgraduate diplomas, PGDE, PhD",
+    desc: "Post Graduate Diploma in Education (PGDE)",
     icon: Award,
     accent: "from-purple-500 to-fuchsia-500",
     ring: "ring-purple-500/40",
@@ -759,33 +759,63 @@ export default function ApplyPage({ presetCategory }: { presetCategory?: Program
     const categoryError = form.formState.errors.programme_category?.message;
     return (
       <Shell>
-        <section className="max-w-3xl mx-auto">
-          <div className="card overflow-hidden">
-            <div className="relative px-8 sm:px-10 pt-10 pb-8 text-center bg-gradient-to-br from-brand/10 via-transparent to-transparent">
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-brand to-indigo-600 flex items-center justify-center mx-auto text-white shadow-lg shadow-brand/30">
-                <GraduationCap className="w-7 h-7" />
-              </div>
-              <h2 className="text-[22px] font-bold text-ink-900 dark:text-white mt-4">
-                Welcome to the Application Portal
-              </h2>
-              <p className="text-[13.5px] text-ink-500 dark:text-ink-400 mt-2 leading-relaxed max-w-md mx-auto">
-                Select the category you're applying for. This shapes your
-                programme options and registration number, so choose carefully.
-              </p>
-            </div>
+        <section className="min-h-[600px] grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-0 items-center">
+          {/* Left side - Illustration */}
+          <div className="hidden lg:flex flex-col items-center justify-center px-8 py-12">
+            <div className="relative w-full max-w-md">
+              {/* Decorative gradient background */}
+              <div className="absolute inset-0 bg-gradient-to-br from-brand/5 via-transparent to-indigo-500/5 rounded-3xl blur-3xl" />
 
-            <div className="px-8 sm:px-10 pb-8">
-              <div className="grid sm:grid-cols-3 gap-3.5">
+              {/* Main illustration */}
+              <div className="relative flex flex-col items-center space-y-8">
+                {/* Graduate icon/illustration */}
+                <div className="w-32 h-32 rounded-full bg-gradient-to-br from-brand/20 to-indigo-500/20 flex items-center justify-center">
+                  <GraduationCap className="w-16 h-16 text-brand" />
+                </div>
+
+                {/* Decorative elements */}
+                <div className="flex gap-4 justify-center">
+                  <div className="w-16 h-20 rounded-lg bg-brand/10 transform -rotate-12" />
+                  <div className="w-16 h-20 rounded-lg bg-indigo-500/10 transform rotate-12" />
+                </div>
+
+                {/* Text */}
+                <div className="text-center space-y-2">
+                  <p className="text-lg font-semibold text-ink-900 dark:text-white">Your Journey Starts Here</p>
+                  <p className="text-sm text-ink-500 dark:text-ink-400">Begin your application today</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Right side - Form */}
+          <div className="flex items-center justify-center px-4 py-8 lg:py-0">
+            <div className="w-full max-w-md">
+              {/* Header */}
+              <div className="text-center mb-8">
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-brand to-indigo-600 flex items-center justify-center mx-auto text-white shadow-lg shadow-brand/30 mb-4">
+                  <GraduationCap className="w-7 h-7" />
+                </div>
+                <h2 className="text-[24px] font-bold text-ink-900 dark:text-white mb-2">
+                  Welcome
+                </h2>
+                <p className="text-[13.5px] text-ink-500 dark:text-ink-400 leading-relaxed">
+                  Select the category you're applying for to get started
+                </p>
+              </div>
+
+              {/* Category Cards */}
+              <div className="space-y-3 mb-6">
                 {CATEGORY_OPTIONS.map((opt) => {
                   const Icon = opt.icon;
                   const selected = category === opt.value;
                   return (
                     <label
                       key={opt.value}
-                      className={`group relative flex flex-col gap-3 p-5 rounded-2xl border-2 cursor-pointer transition-all duration-150 ${
+                      className={`group relative flex items-start gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all duration-150 ${
                         selected
-                          ? `${opt.tint} ring-4 ${opt.ring} shadow-sm`
-                          : "border-ink-200 dark:border-ink-700 hover:border-ink-300 dark:hover:border-ink-600 hover:-translate-y-0.5 hover:shadow-md"
+                          ? `${opt.tint} ring-2 ${opt.ring} shadow-sm`
+                          : "border-ink-200 dark:border-ink-700 hover:border-ink-300 dark:hover:border-ink-600 hover:shadow-md bg-white dark:bg-ink-800/50"
                       }`}
                     >
                       <input
@@ -795,33 +825,33 @@ export default function ApplyPage({ presetCategory }: { presetCategory?: Program
                         checked={selected}
                         onChange={() => form.setValue("programme_category", opt.value, { shouldValidate: true })}
                       />
-                      {selected && (
-                        <CheckCircle2 className="w-5 h-5 text-brand absolute top-3 right-3" />
-                      )}
-                      <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${opt.accent} flex items-center justify-center text-white shadow-sm`}>
+                      <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${opt.accent} flex items-center justify-center text-white shadow-sm flex-shrink-0 mt-0.5`}>
                         <Icon className="w-5 h-5" />
                       </div>
-                      <div>
-                        <div className="text-[14.5px] font-semibold text-ink-900 dark:text-white">{opt.label}</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[14px] font-semibold text-ink-900 dark:text-white">{opt.label}</div>
                         <div className="text-[12px] text-ink-500 dark:text-ink-400 mt-0.5 leading-snug">{opt.desc}</div>
                       </div>
+                      {selected && (
+                        <CheckCircle2 className="w-5 h-5 text-brand flex-shrink-0 mt-0.5" />
+                      )}
                     </label>
                   );
                 })}
               </div>
+
               {categoryError && (
-                <p className="text-[12.5px] text-red-600 mt-4 text-center">{String(categoryError)}</p>
+                <p className="text-[12.5px] text-red-600 text-center mb-4">{String(categoryError)}</p>
               )}
+
+              {/* Continue Button */}
               <button
                 type="button"
-                className="btn-primary w-full justify-center mt-6"
+                className="btn-primary w-full justify-center"
                 onClick={async () => {
                   const ok = await form.trigger("programme_category");
                   if (!ok) return;
                   setCategoryConfirmed(true);
-                  // Keep the address bar in sync with the choice, so the
-                  // current URL always matches what's on screen and can be
-                  // copied/shared/bookmarked from any point in the flow.
                   navigate(`/apply/${form.getValues("programme_category")}`, { replace: true });
                 }}
               >
