@@ -1627,16 +1627,65 @@ function ProgramsStep({
   const [search, setSearch] = useState('');
   const errors = form.formState.errors;
   const selectedProgramId = Number(form.watch("program_id"));
+  const programmeCategory = form.watch("programme_category");
 
   const filtered = programs.filter((p) => {
+    const programName = p.name.toLowerCase();
+
+    // Filter by programme category
+    if (programmeCategory === 'postgraduate') {
+      // Show only PGDE programs
+      if (!programName.includes('post graduate diploma in education') && !programName.includes('pgde')) {
+        return false;
+      }
+    } else if (programmeCategory === 'masters') {
+      // Show only Master of... programs
+      if (!programName.startsWith('master of')) {
+        return false;
+      }
+    } else if (programmeCategory === 'undergraduate') {
+      // Show all programs except Masters and PGDE
+      if (programName.startsWith('master of') ||
+          programName.includes('post graduate diploma in education') ||
+          programName.includes('pgde')) {
+        return false;
+      }
+    }
+
+    // Apply search filter
     const q = search.trim().toLowerCase();
     if (!q) return true;
     return (
-      p.name.toLowerCase().includes(q) ||
+      programName.includes(q) ||
       (p.department_name ?? '').toLowerCase().includes(q) ||
       (p.faculty_name ?? '').toLowerCase().includes(q)
     );
   });
+
+  // Auto-select program based on programme category
+  useEffect(() => {
+    if (selectedProgramId || programs.length === 0) return;
+
+    let autoSelectProgram: typeof programs[0] | null = null;
+
+    if (programmeCategory === 'postgraduate') {
+      // Auto-select "Post Graduate Diploma in Education (PGDE)"
+      autoSelectProgram = programs.find((p) =>
+        p.name.toLowerCase().includes('post graduate diploma in education') ||
+        p.name.toLowerCase().includes('pgde')
+      ) || null;
+    } else if (programmeCategory === 'masters') {
+      // Auto-select first "Master of..." program
+      autoSelectProgram = programs.find((p) =>
+        p.name.toLowerCase().startsWith('master of')
+      ) || null;
+    }
+    // For undergraduate, no auto-select — user must choose
+
+    if (autoSelectProgram) {
+      pickProgram(autoSelectProgram.id);
+    }
+  }, [programmeCategory, programs, selectedProgramId]);
 
   const pickProgram = (id: number) => {
     form.setValue("program_id", id, { shouldValidate: true, shouldDirty: true });
