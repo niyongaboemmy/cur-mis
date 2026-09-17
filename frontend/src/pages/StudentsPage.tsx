@@ -41,6 +41,7 @@ import DocumentCompletionBadge, {
 import { academicsMgmtService } from "@/services/academicsMgmtService";
 import type { Student } from "@/types/academic";
 import ProfileChangeReviewPanel from '@/components/students/ProfileChangeReviewPanel'
+import GenderEditPopover from '@/components/students/GenderEditPopover'
 
 const PER_PAGE = 15;
 
@@ -1276,6 +1277,41 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
 }
 
 /* ─────────────────────────────────────────────────────────────
+   Gender cell — click the chip to open a tiny popover and change it
+   in place, with a success toast on save.
+   ───────────────────────────────────────────────────────────── */
+function GenderCell({
+  studentId,
+  gender,
+}: {
+  studentId: number;
+  gender: string | null | undefined;
+}) {
+  const [anchor, setAnchor] = useState<DOMRect | null>(null);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={(e) => setAnchor(e.currentTarget.getBoundingClientRect())}
+        className="chip-soft uppercase hover:ring-2 hover:ring-brand/30 transition-shadow cursor-pointer"
+        title="Click to change gender"
+      >
+        {gender ? String(gender).slice(0, 1) : "—"}
+      </button>
+      {anchor && (
+        <GenderEditPopover
+          studentId={studentId}
+          currentGender={gender}
+          anchorRect={anchor}
+          onClose={() => setAnchor(null)}
+        />
+      )}
+    </>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
    Row + bits
    ───────────────────────────────────────────────────────────── */
 function StudentRow({
@@ -1381,14 +1417,8 @@ function StudentRow({
           {String(s.campus_name || s.campus || "—")}
         </span>
       </td>
-      <td>
-        {s.gender ? (
-          <span className="chip-soft uppercase">
-            {String(s.gender).slice(0, 1)}
-          </span>
-        ) : (
-          <span className="text-ink-400">—</span>
-        )}
+      <td onClick={(e) => e.stopPropagation()}>
+        <GenderCell studentId={s.id} gender={s.gender as string | null | undefined} />
       </td>
       <td>{s.nationality || "—"}</td>
       <td className="px-4">
