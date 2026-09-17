@@ -23,6 +23,9 @@ import {
   Copy,
   FileText,
   X,
+  Award,
+  Sparkles,
+  Pencil,
 } from "lucide-react";
 import Logo from "@/components/brand/Logo";
 import { portalService, applicantService } from "@/services/admissionService";
@@ -123,6 +126,36 @@ const STEPS = [
   { id: 3, label: "Programs",       icon: GraduationCap },
   { id: 4, label: "Documents",      icon: FileUp },
   { id: 5, label: "Payment",        icon: CreditCard },
+] as const;
+
+const CATEGORY_OPTIONS = [
+  {
+    value: "undergraduate",
+    label: "Undergraduate",
+    desc: "Bachelor's degree programmes",
+    icon: GraduationCap,
+    accent: "from-blue-500 to-indigo-500",
+    ring: "ring-blue-500/40",
+    tint: "bg-blue-50 dark:bg-blue-500/10 border-blue-400/60",
+  },
+  {
+    value: "postgraduate",
+    label: "Postgraduate",
+    desc: "Postgraduate diplomas, PGDE, PhD",
+    icon: Award,
+    accent: "from-purple-500 to-fuchsia-500",
+    ring: "ring-purple-500/40",
+    tint: "bg-purple-50 dark:bg-purple-500/10 border-purple-400/60",
+  },
+  {
+    value: "masters",
+    label: "Masters",
+    desc: "Master's degree programmes",
+    icon: Sparkles,
+    accent: "from-amber-500 to-orange-500",
+    ring: "ring-amber-500/40",
+    tint: "bg-amber-50 dark:bg-amber-500/10 border-amber-400/60",
+  },
 ] as const;
 
 const PERSONAL_FIELDS = [
@@ -723,66 +756,83 @@ export default function ApplyPage({ presetCategory }: { presetCategory?: Program
     const categoryError = form.formState.errors.programme_category?.message;
     return (
       <Shell>
-        <section className="card p-8 sm:p-10 max-w-xl mx-auto space-y-6">
-          <div className="text-center">
-            <h2 className="text-[20px] font-bold text-ink-900 dark:text-white">
-              Welcome to the Application Portal
-            </h2>
-            <p className="text-[13.5px] text-ink-500 dark:text-ink-400 mt-2 leading-relaxed">
-              Please select the category you are applying for. This determines
-              your programme options and cannot be changed later.
-            </p>
-          </div>
-          <div className="space-y-3">
-            {([
-              { value: "undergraduate", label: "Undergraduate", desc: "Bachelor's degree programmes" },
-              { value: "postgraduate", label: "Postgraduate", desc: "Postgraduate diplomas, PGDE, PhD" },
-              { value: "masters", label: "Masters", desc: "Master's degree programmes" },
-            ] as const).map((opt) => (
-              <label
-                key={opt.value}
-                className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-colors ${
-                  category === opt.value
-                    ? "border-brand bg-brand/5"
-                    : "border-ink-200 dark:border-ink-700 hover:border-ink-300"
-                }`}
+        <section className="max-w-3xl mx-auto">
+          <div className="card overflow-hidden">
+            <div className="relative px-8 sm:px-10 pt-10 pb-8 text-center bg-gradient-to-br from-brand/10 via-transparent to-transparent">
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-brand to-indigo-600 flex items-center justify-center mx-auto text-white shadow-lg shadow-brand/30">
+                <GraduationCap className="w-7 h-7" />
+              </div>
+              <h2 className="text-[22px] font-bold text-ink-900 dark:text-white mt-4">
+                Welcome to the Application Portal
+              </h2>
+              <p className="text-[13.5px] text-ink-500 dark:text-ink-400 mt-2 leading-relaxed max-w-md mx-auto">
+                Select the category you're applying for. This shapes your
+                programme options and registration number, so choose carefully.
+              </p>
+            </div>
+
+            <div className="px-8 sm:px-10 pb-8">
+              <div className="grid sm:grid-cols-3 gap-3.5">
+                {CATEGORY_OPTIONS.map((opt) => {
+                  const Icon = opt.icon;
+                  const selected = category === opt.value;
+                  return (
+                    <label
+                      key={opt.value}
+                      className={`group relative flex flex-col gap-3 p-5 rounded-2xl border-2 cursor-pointer transition-all duration-150 ${
+                        selected
+                          ? `${opt.tint} ring-4 ${opt.ring} shadow-sm`
+                          : "border-ink-200 dark:border-ink-700 hover:border-ink-300 dark:hover:border-ink-600 hover:-translate-y-0.5 hover:shadow-md"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        className="sr-only"
+                        value={opt.value}
+                        checked={selected}
+                        onChange={() => form.setValue("programme_category", opt.value, { shouldValidate: true })}
+                      />
+                      {selected && (
+                        <CheckCircle2 className="w-5 h-5 text-brand absolute top-3 right-3" />
+                      )}
+                      <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${opt.accent} flex items-center justify-center text-white shadow-sm`}>
+                        <Icon className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="text-[14.5px] font-semibold text-ink-900 dark:text-white">{opt.label}</div>
+                        <div className="text-[12px] text-ink-500 dark:text-ink-400 mt-0.5 leading-snug">{opt.desc}</div>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+              {categoryError && (
+                <p className="text-[12.5px] text-red-600 mt-4 text-center">{String(categoryError)}</p>
+              )}
+              <button
+                type="button"
+                className="btn-primary w-full justify-center mt-6"
+                onClick={async () => {
+                  const ok = await form.trigger("programme_category");
+                  if (ok) setCategoryConfirmed(true);
+                }}
               >
-                <input
-                  type="radio"
-                  className="w-4 h-4 accent-brand"
-                  value={opt.value}
-                  checked={category === opt.value}
-                  onChange={() => form.setValue("programme_category", opt.value, { shouldValidate: true })}
-                />
-                <div>
-                  <div className="text-[14px] font-semibold text-ink-900 dark:text-white">{opt.label}</div>
-                  <div className="text-[12.5px] text-ink-500 dark:text-ink-400">{opt.desc}</div>
-                </div>
-              </label>
-            ))}
-            {categoryError && (
-              <p className="text-[12.5px] text-red-600">{String(categoryError)}</p>
-            )}
+                Continue <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
-          <button
-            type="button"
-            className="btn-primary w-full justify-center"
-            onClick={async () => {
-              const ok = await form.trigger("programme_category");
-              if (ok) setCategoryConfirmed(true);
-            }}
-          >
-            Continue <ArrowRight className="w-4 h-4" />
-          </button>
         </section>
       </Shell>
     );
   }
 
+  const selectedCategoryMeta = CATEGORY_OPTIONS.find((c) => c.value === form.watch("programme_category"));
+
   return (
     <Shell>
       <section className="card p-4 mb-4">
-        <div className="flex items-center justify-between overflow-x-auto gap-2 no-scrollbar">
+        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center overflow-x-auto gap-2 no-scrollbar">
           {STEPS.map((s, i) => {
             const Icon = s.icon;
             const done = step > s.id;
@@ -818,6 +868,31 @@ export default function ApplyPage({ presetCategory }: { presetCategory?: Program
               </div>
             );
           })}
+        </div>
+
+        {selectedCategoryMeta && (
+          <div
+            className={`flex items-center gap-1.5 shrink-0 pl-1 pr-1.5 py-1 rounded-full border ${selectedCategoryMeta.tint}`}
+            title={selectedCategoryMeta.desc}
+          >
+            <span className={`w-5 h-5 rounded-full bg-gradient-to-br ${selectedCategoryMeta.accent} flex items-center justify-center text-white shrink-0`}>
+              <selectedCategoryMeta.icon className="w-3 h-3" />
+            </span>
+            <span className="text-[12px] font-semibold text-ink-900 dark:text-white whitespace-nowrap">
+              {selectedCategoryMeta.label}
+            </span>
+            {!draftApp && (
+              <button
+                type="button"
+                onClick={() => setCategoryConfirmed(false)}
+                title="Change category"
+                className="ml-0.5 w-5 h-5 rounded-full flex items-center justify-center text-ink-500 hover:text-ink-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0"
+              >
+                <Pencil className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+        )}
         </div>
       </section>
 
