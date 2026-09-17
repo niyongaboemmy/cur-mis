@@ -1634,8 +1634,10 @@ function ProgramsStep({
 
     // Filter by programme category
     if (programmeCategory === 'postgraduate') {
-      // Show only PGDE programs
-      if (!programName.includes('post graduate diploma in education') && !programName.includes('pgde')) {
+      // Show only PGDE programs (Post-Graduate Diploma in Education)
+      if (!programName.includes('post-graduate diploma in education') &&
+          !programName.includes('post graduate diploma in education') &&
+          !programName.includes('pgde')) {
         return false;
       }
     } else if (programmeCategory === 'masters') {
@@ -1646,6 +1648,7 @@ function ProgramsStep({
     } else if (programmeCategory === 'undergraduate') {
       // Show all programs except Masters and PGDE
       if (programName.startsWith('master of') ||
+          programName.includes('post-graduate diploma in education') ||
           programName.includes('post graduate diploma in education') ||
           programName.includes('pgde')) {
         return false;
@@ -1669,11 +1672,13 @@ function ProgramsStep({
     let autoSelectProgram: typeof programs[0] | null = null;
 
     if (programmeCategory === 'postgraduate') {
-      // Auto-select "Post Graduate Diploma in Education (PGDE)"
-      autoSelectProgram = programs.find((p) =>
-        p.name.toLowerCase().includes('post graduate diploma in education') ||
-        p.name.toLowerCase().includes('pgde')
-      ) || null;
+      // Auto-select "Post-Graduate Diploma in Education"
+      autoSelectProgram = programs.find((p) => {
+        const name = p.name.toLowerCase();
+        return name.includes('post-graduate diploma in education') ||
+               name.includes('post graduate diploma in education') ||
+               name.includes('pgde');
+      }) || null;
     } else if (programmeCategory === 'masters') {
       // Auto-select first "Master of..." program
       autoSelectProgram = programs.find((p) =>
