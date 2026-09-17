@@ -87,6 +87,13 @@ export const feeStructureService = {
 
   bulkImport: (data: { rows: any[] }) =>
     api.post<{ created: number; updated: number; skipped: number; failed: any[] }>("/finance/structures/bulk-import", data),
+
+  copyFromYear: (data: {
+    source_academic_year_id: number;
+    target_academic_year_id: number;
+    student_category?: StudentCategory | "";
+  }) =>
+    api.post<{ created: number; skipped: number; failed: any[] }>("/finance/structures/copy", data),
 };
 
 // ─── Student Ledger & Invoice Generation ─────────────────────────────────────

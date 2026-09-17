@@ -12,7 +12,7 @@ class StudentModel extends BaseModel
         'user_id', 'parent_student_id',
         'regnumber', 'fname', 'lname', 'phone', 'email', 'gender',
         'birthdate', 'nationality', 'program', 'std_option', 'faculty',
-        'department', 'current_level', 'programme_level',
+        'department', 'current_level', 'programme_level', 'programme_category',
         'registration_date', 'student_state',
         'intake', 'acc_year', 'campus', 'combination', 'last_school', 'sponsor',
         'photo', 'marital_status', 'spouse', 'disability',

@@ -459,23 +459,37 @@ class ApplicationService
             $parentStudent = $this->db->fetchOne($sql, $params) ?: null;
         }
 
-        // Derive `programme_level` from the offer's `level_id` / `level_name`.
-        // Anything not matching the known tiers falls back to undergraduate
-        // (the column's default). This MUST happen before the registration
-        // number is minted below — the reg number's leading digit encodes
-        // this same tier, and it must never be keyed off `$levelId` (the
-        // curriculum "starting year/level" dropdown, e.g. "Level 1"), which
+        // Derive `programme_level` for the reg-number tier. Preferred source:
+        // the applicant's own `programme_category` selection, captured on the
+        // apply-wizard welcome screen and carried on the application. Only
+        // fall back to guessing from `level_name` for applications created
+        // before that field existed — `level_name` comes from the `levels`
+        // table, which holds curriculum YEAR labels ("Level 1"… "Level 5"),
+        // not the programme tier, so the guess essentially never matches and
+        // silently defaults to undergraduate. This MUST happen before the
+        // registration number is minted below — the reg number's leading
+        // digit encodes this same tier, and it must never be keyed off
+        // `$levelId` (the curriculum "starting year/level" dropdown), which
         // is an unrelated value that happens to collide with the tier
         // indicator's own "1" for undergraduate.
-        $programmeLevel = 'undergraduate';
-        $levelName = strtolower((string)($offer['level_name'] ?? ''));
-        if ($levelName !== '') {
-            if (str_contains($levelName, 'master'))      $programmeLevel = 'masters';
-            elseif (str_contains($levelName, 'pgde'))    $programmeLevel = 'pgde';
-            elseif (str_contains($levelName, 'phd') || str_contains($levelName, 'doctor'))
-                                                          $programmeLevel = 'phd';
-            elseif (str_contains($levelName, 'diploma')) $programmeLevel = 'diploma';
-            elseif (str_contains($levelName, 'cert'))    $programmeLevel = 'certificate';
+        $programmeCategory = $offer['programme_category'] ?? null;
+        if ($programmeCategory === 'masters') {
+            $programmeLevel = 'masters';
+        } elseif ($programmeCategory === 'postgraduate') {
+            $programmeLevel = 'pgde';
+        } elseif ($programmeCategory === 'undergraduate') {
+            $programmeLevel = 'undergraduate';
+        } else {
+            $programmeLevel = 'undergraduate';
+            $levelName = strtolower((string)($offer['level_name'] ?? ''));
+            if ($levelName !== '') {
+                if (str_contains($levelName, 'master'))      $programmeLevel = 'masters';
+                elseif (str_contains($levelName, 'pgde'))    $programmeLevel = 'pgde';
+                elseif (str_contains($levelName, 'phd') || str_contains($levelName, 'doctor'))
+                                                              $programmeLevel = 'phd';
+                elseif (str_contains($levelName, 'diploma')) $programmeLevel = 'diploma';
+                elseif (str_contains($levelName, 'cert'))    $programmeLevel = 'certificate';
+            }
         }
 
         // Generate registration number: LCURYYAKNNNNN (e.g., 2CUR26AK000864)
@@ -529,6 +543,11 @@ class ApplicationService
             'sponsor'           => $offer['sponsorship']   ?? '',
             'current_level'     => (string)$levelId,
             'programme_level'   => $programmeLevel,
+            'programme_category' => $programmeCategory ?: match ($programmeLevel) {
+                'masters'          => 'masters',
+                'pgde', 'phd'      => 'postgraduate',
+                default            => 'undergraduate',
+            },
             'registration_date' => date('Y-m-d'),
             'student_state'     => 'active',
             'intake'            => $offer['intake'] ?? '',

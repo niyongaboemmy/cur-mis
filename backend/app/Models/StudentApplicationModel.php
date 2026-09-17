@@ -10,7 +10,7 @@ class StudentApplicationModel extends BaseModel
     protected array  $fillable = [
         'application_number',
         // Institutional context
-        'academic_year_id', 'faculty_id', 'department_id', 'intake',
+        'academic_year_id', 'faculty_id', 'department_id', 'intake', 'programme_category',
         // Personal information
         'first_name', 'last_name', 'father', 'mother',
         'email', 'phone', 'reference_phone',

@@ -2424,6 +2424,130 @@ class FeeController extends BaseController
     }
 
     /**
+     * POST /api/finance/structures/copy
+     * Copy every fee structure (and its department/option links) from one
+     * academic year to another. Fee structures rarely change year to year,
+     * so this saves re-entering the same rows by hand every year — the row
+     * already skips anything that looks like it exists in the target year
+     * (same fee type, label, department, level, campus and category), so it
+     * is safe to run more than once without creating duplicates.
+     */
+    public function copyStructures(Request $request, Response $response): never
+    {
+        $data     = $request->body();
+        $actor    = $request->param('_auth_user');
+        $sourceId = (int)($data['source_academic_year_id'] ?? 0);
+        $targetId = (int)($data['target_academic_year_id'] ?? 0);
+        $category = $data['student_category'] ?? null;
+        $validCategories = ['local', 'international', 'sponsored', 'self_sponsored'];
+
+        if (!$sourceId || !$targetId) {
+            $this->error($response, 'Validation failed.', 422, [
+                'source_academic_year_id' => ['Source academic year is required.'],
+                'target_academic_year_id' => ['Target academic year is required.'],
+            ]);
+        }
+        if ($sourceId === $targetId) {
+            $this->error($response, 'Source and target academic years must be different.', 422);
+        }
+        if ($category !== null && $category !== '' && !in_array($category, $validCategories, true)) {
+            $this->error($response, 'Validation failed.', 422, ['student_category' => ['Invalid student category.']]);
+        }
+
+        $sql = "SELECT * FROM `fee_structures` WHERE academic_year_id = ?";
+        $bindings = [$sourceId];
+        if (!empty($category)) {
+            $sql .= " AND student_category = ?";
+            $bindings[] = $category;
+        }
+        $sourceRows = $this->db->fetchAll($sql, $bindings);
+
+        if (empty($sourceRows)) {
+            $this->success($response, ['created' => 0, 'skipped' => 0, 'failed' => []], 'No fee structures found for the source year.');
+        }
+
+        // Existing target-year rows, keyed the same way duplicates are detected below.
+        $existing = $this->db->fetchAll("SELECT fee_type, label, department_id, level_id, campus_id, student_category FROM `fee_structures` WHERE academic_year_id = ?", [$targetId]);
+        $existingKeys = [];
+        foreach ($existing as $row) {
+            $existingKeys[$this->structureCopyKey($row)] = true;
+        }
+
+        $created = 0;
+        $skipped = 0;
+        $failed  = [];
+
+        $this->db->beginTransaction();
+        try {
+            foreach ($sourceRows as $row) {
+                if (isset($existingKeys[$this->structureCopyKey($row)])) {
+                    $skipped++;
+                    continue;
+                }
+
+                $newId = $this->structureModel->create([
+                    'academic_year_id'  => $targetId,
+                    'department_id'     => $row['department_id'] !== null ? (int)$row['department_id'] : null,
+                    'level_id'          => $row['level_id'] !== null ? (int)$row['level_id'] : null,
+                    'campus_id'         => $row['campus_id'] !== null ? (int)$row['campus_id'] : null,
+                    'student_category'  => $row['student_category'],
+                    'fee_type'          => $row['fee_type'],
+                    'label'             => $row['label'],
+                    'amount'            => (float)$row['amount'],
+                    'currency'          => $row['currency'] ?? 'RWF',
+                    'semester'          => $row['semester'] !== null ? (int)$row['semester'] : null,
+                    'payment_plan'      => $row['payment_plan'] ?? 'full_year',
+                    'installment_count' => $row['installment_count'] !== null ? (int)$row['installment_count'] : null,
+                    'is_active'         => 1,
+                    'created_by'        => (int)$actor['id'],
+                ]);
+
+                $deptIds = array_column(
+                    $this->db->fetchAll("SELECT department_id FROM `fee_structure_departments` WHERE fee_structure_id = ?", [$row['id']]),
+                    'department_id'
+                );
+                if (!empty($deptIds)) {
+                    $this->structureModel->insertDepartmentLinks((int)$newId, $deptIds);
+                }
+
+                $optionIds = array_column(
+                    $this->db->fetchAll("SELECT option_id FROM `fee_structure_options` WHERE fee_structure_id = ?", [$row['id']]),
+                    'option_id'
+                );
+                if (!empty($optionIds)) {
+                    $this->structureModel->insertOptionLinks((int)$newId, $optionIds);
+                }
+
+                $created++;
+            }
+            $this->db->commit();
+        } catch (\Throwable $e) {
+            $this->db->rollBack();
+            $this->error($response, 'Copy failed: ' . $e->getMessage(), 500);
+        }
+
+        SystemLogService::log('CREATE', 'FINANCE', "Copied fee structures from academic year #{$sourceId} to #{$targetId}: {$created} created, {$skipped} skipped.", null, 'fee_structure', ['source_academic_year_id' => $sourceId, 'target_academic_year_id' => $targetId, 'created' => $created, 'skipped' => $skipped], (array)$actor ?: null);
+        $this->success($response, [
+            'created' => $created,
+            'skipped' => $skipped,
+            'failed'  => $failed,
+        ], 'Fee structures copied.');
+    }
+
+    /** Identity key used to detect a fee structure already present in the target year when copying. */
+    private function structureCopyKey(array $row): string
+    {
+        return implode('|', [
+            (string)($row['fee_type'] ?? ''),
+            strtolower(trim((string)($row['label'] ?? ''))),
+            (string)($row['department_id'] ?? ''),
+            (string)($row['level_id'] ?? ''),
+            (string)($row['campus_id'] ?? ''),
+            (string)($row['student_category'] ?? ''),
+        ]);
+    }
+
+    /**
      * GET /api/finance/structures/schedule-export
      * Export fee structures pivoted into schedule format (one row per program).
      * Query param: academic_year_id (required)

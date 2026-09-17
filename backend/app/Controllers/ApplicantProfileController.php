@@ -469,7 +469,8 @@ class ApplicantProfileController extends BaseController
 
         $data   = $request->body();
         $errors = ValidationHelper::validate($data, [
-            'intake'        => 'required|string',
+            'intake'              => 'required|string',
+            'programme_category'  => 'required|in:undergraduate,postgraduate,masters',
         ]);
 
         if (!empty($errors)) {
@@ -557,6 +558,7 @@ class ApplicantProfileController extends BaseController
             'faculty_id'         => (int)$data['faculty_id'],
             'department_id'      => (int)$data['department_id'],
             'intake'             => $data['intake'],
+            'programme_category' => $data['programme_category'],
             'status'             => 'draft',
             'first_name'         => $firstName,
             'last_name'          => $lastName,

@@ -202,6 +202,7 @@ $router->group('/api/finance', function ($router) {
     $router->group('', function ($r) {
         $r->post('/structures',              [FeeController::class, 'createStructure']);
         $r->post('/structures/bulk-import',  [FeeController::class, 'bulkImportStructures']);
+        $r->post('/structures/copy',         [FeeController::class, 'copyStructures']);
         $r->post('/structures/:id',           [FeeController::class, 'updateStructure']);
         $r->delete('/structures/:id',        [FeeController::class, 'deleteStructure']);
 

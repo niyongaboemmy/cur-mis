@@ -79,6 +79,7 @@ export interface StudentApplication {
   faculty_id:         number
   department_id:      number
   intake:             string
+  programme_category?: 'undergraduate' | 'postgraduate' | 'masters' | null
 
   first_name:         string
   last_name:          string

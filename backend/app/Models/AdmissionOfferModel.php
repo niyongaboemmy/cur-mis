@@ -30,7 +30,7 @@ class AdmissionOfferModel extends BaseModel
                     sa.national_id,
                     sa.prev_school, sa.prev_qualification, sa.prev_grade, sa.combination, sa.graduation_year,
                     sa.sponsorship, sa.sponsor_name, sa.academic_year_id,
-                    sa.intake, sa.program_id, sa.campus_id, sa.mode_of_study, sa.level_id,
+                    sa.intake, sa.program_id, sa.campus_id, sa.mode_of_study, sa.level_id, sa.programme_category,
                     sa.application_number, sa.status AS application_status,
                     sa.transaction_id, sa.payment_amount, sa.payment_currency, sa.paid_at AS application_paid_at,
                     d.dep_name    AS department_name,

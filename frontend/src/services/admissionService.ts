@@ -635,7 +635,7 @@ export const applicantService = {
   updateApplication: (id: number, data: Partial<StudentApplication>) =>
     api.post<StudentApplication>(`/applicant/application/${id}`, data),
 
-  draftApplication: (data: { faculty_id: number; department_id: number; intake: string }) =>
+  draftApplication: (data: { faculty_id: number; department_id: number; intake: string; programme_category: string }) =>
     api.post<{ id: number; application_number: string }>('/applicant/application/draft', data),
 
   submitApplication: (data: Record<string, unknown>) =>

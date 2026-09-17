@@ -60,6 +60,10 @@ const numberId = (msg: string) =>
 const CURRENT_YEAR = new Date().getFullYear();
 
 const schema = z.object({
+  // Category — welcome screen, before step 1
+  programme_category: z.enum(["undergraduate", "postgraduate", "masters"], {
+    required_error: "Please select a category",
+  }),
   // Personal — step 1
   first_name:           z.string().min(2, "Required"),
   last_name:            z.string().min(2, "Required"),
@@ -136,6 +140,12 @@ const PROGRAM_FIELDS = ["program_id","campus_id","mode_of_study","level_id","int
 
 export default function ApplyPage() {
   const [step, setStep] = useState(1);
+  // Welcome gate: the applicant must pick a category (Undergraduate /
+  // Postgraduate / Masters) before the numbered wizard is shown. Kept as a
+  // standalone gate rather than a numbered step so the ~15 existing
+  // hardcoded `step === N` checks throughout this file don't need
+  // renumbering.
+  const [categoryConfirmed, setCategoryConfirmed] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [draftApp, setDraftApp] = useState<{
     id: number;
@@ -214,6 +224,7 @@ export default function ApplyPage() {
 
   useEffect(() => {
     const cachedStep = hydrateFromCache();
+    if (form.getValues("programme_category")) setCategoryConfirmed(true);
     if (cachedStep && cachedStep >= 1 && cachedStep <= 3) setStep(cachedStep);
      
   }, []);
@@ -267,7 +278,10 @@ export default function ApplyPage() {
     }
 
     setDraftApp({ id: draft.id, application_number: draft.application_number });
+    setCategoryConfirmed(true);
     form.reset({
+      // Category
+      programme_category: draft.programme_category || "undergraduate",
       // Personal
       first_name: draft.first_name || "",
       last_name: draft.last_name || "",
@@ -354,6 +368,7 @@ export default function ApplyPage() {
       mode_of_study?: number;
       level_id?: number;
       intake: string;
+      programme_category: string;
     }) => applicantService.draftApplication(data as any),
     onSuccess: async (r) => {
       const created = r.data;
@@ -575,11 +590,12 @@ export default function ApplyPage() {
     // the already-collected Personal & Academic values into it.
     if (step === 3 && !draftApp) {
       draftM.mutate({
-        program_id:    form.getValues("program_id"),
-        campus_id:     form.getValues("campus_id"),
-        mode_of_study: form.getValues("mode_of_study"),
-        level_id:      form.getValues("level_id"),
-        intake:        form.getValues("intake"),
+        program_id:          form.getValues("program_id"),
+        campus_id:           form.getValues("campus_id"),
+        mode_of_study:       form.getValues("mode_of_study"),
+        level_id:            form.getValues("level_id"),
+        intake:              form.getValues("intake"),
+        programme_category:  form.getValues("programme_category"),
       });
       return;
     }
@@ -680,6 +696,67 @@ export default function ApplyPage() {
             </Link>
             <Link to="/" className="btn-secondary">Back to Home</Link>
           </div>
+        </section>
+      </Shell>
+    );
+  }
+
+  if (!categoryConfirmed) {
+    const category = form.watch("programme_category");
+    const categoryError = form.formState.errors.programme_category?.message;
+    return (
+      <Shell>
+        <section className="card p-8 sm:p-10 max-w-xl mx-auto space-y-6">
+          <div className="text-center">
+            <h2 className="text-[20px] font-bold text-ink-900 dark:text-white">
+              Welcome to the Application Portal
+            </h2>
+            <p className="text-[13.5px] text-ink-500 dark:text-ink-400 mt-2 leading-relaxed">
+              Please select the category you are applying for. This determines
+              your programme options and cannot be changed later.
+            </p>
+          </div>
+          <div className="space-y-3">
+            {([
+              { value: "undergraduate", label: "Undergraduate", desc: "Bachelor's degree programmes" },
+              { value: "postgraduate", label: "Postgraduate", desc: "Postgraduate diplomas, PGDE, PhD" },
+              { value: "masters", label: "Masters", desc: "Master's degree programmes" },
+            ] as const).map((opt) => (
+              <label
+                key={opt.value}
+                className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-colors ${
+                  category === opt.value
+                    ? "border-brand bg-brand/5"
+                    : "border-ink-200 dark:border-ink-700 hover:border-ink-300"
+                }`}
+              >
+                <input
+                  type="radio"
+                  className="w-4 h-4 accent-brand"
+                  value={opt.value}
+                  checked={category === opt.value}
+                  onChange={() => form.setValue("programme_category", opt.value, { shouldValidate: true })}
+                />
+                <div>
+                  <div className="text-[14px] font-semibold text-ink-900 dark:text-white">{opt.label}</div>
+                  <div className="text-[12.5px] text-ink-500 dark:text-ink-400">{opt.desc}</div>
+                </div>
+              </label>
+            ))}
+            {categoryError && (
+              <p className="text-[12.5px] text-red-600">{String(categoryError)}</p>
+            )}
+          </div>
+          <button
+            type="button"
+            className="btn-primary w-full justify-center"
+            onClick={async () => {
+              const ok = await form.trigger("programme_category");
+              if (ok) setCategoryConfirmed(true);
+            }}
+          >
+            Continue <ArrowRight className="w-4 h-4" />
+          </button>
         </section>
       </Shell>
     );

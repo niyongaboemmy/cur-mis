@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Loader2, X, CalendarDays, Layers, SplitSquareHorizontal, Upload, Download, Archive, ArchiveRestore } from 'lucide-react'
+import { Plus, Pencil, Trash2, Loader2, X, CalendarDays, Layers, SplitSquareHorizontal, Upload, Download, Archive, ArchiveRestore, Copy, ArrowRight, CheckCircle2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import * as XLSX from 'xlsx'
 import { feeStructureService, feeTypeService } from '@/services/financeService'
@@ -39,6 +39,7 @@ export default function FeeStructuresPage() {
   const [page, setPage]             = useState(1)
   const [showForm, setShowForm]     = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
+  const [showCopyModal, setShowCopyModal] = useState(false)
   const [editing, setEditing]       = useState<FeeStructure | null>(null)
 
   useEffect(() => {
@@ -277,6 +278,11 @@ export default function FeeStructuresPage() {
         </div>
         <div className="flex gap-2 flex-wrap">
           {canManage && (
+            <button className="btn-secondary btn-sm" onClick={() => setShowCopyModal(true)}>
+              <Copy className="w-3.5 h-3.5" /> Copy from year
+            </button>
+          )}
+          {canManage && (
             <button className="btn-secondary btn-sm" onClick={() => setShowImportModal(true)}>
               <Upload className="w-3.5 h-3.5" /> Import CSV
             </button>
@@ -329,7 +335,22 @@ export default function FeeStructuresPage() {
           <p className="text-center py-10 text-ink-400 text-sm">Select an academic year to view fee structures.</p>
         )}
         {yearId && !structuresQ.isLoading && allRows.length === 0 && (
-          <p className="text-center py-10 text-ink-400 text-sm">No fee structures configured for this year yet.</p>
+          <div className="flex flex-col items-center gap-3 py-10">
+            <p className="text-center text-ink-400 text-sm">No fee structures configured for this year yet.</p>
+            {canManage && (
+              <p className="text-center text-xs text-ink-400">
+                Fees rarely change year to year —{' '}
+                <button
+                  type="button"
+                  className="font-semibold text-brand hover:underline"
+                  onClick={() => setShowCopyModal(true)}
+                >
+                  copy them from another year
+                </button>{' '}
+                instead of re-entering everything.
+              </p>
+            )}
+          </div>
         )}
         {rows.length > 0 && (
           <>
@@ -449,6 +470,15 @@ export default function FeeStructuresPage() {
           onClose={() => setShowImportModal(false)}
           onImport={(rows) => bulkImportMutation.mutate(rows)}
           isLoading={bulkImportMutation.isPending}
+        />
+      )}
+
+      {showCopyModal && (
+        <CopyFromYearModal
+          yearOptions={yearOptions}
+          defaultTargetYearId={yearId ? Number(yearId) : undefined}
+          onClose={() => setShowCopyModal(false)}
+          onCopied={() => qc.invalidateQueries({ queryKey: ['finance', 'structures'] })}
         />
       )}
     </div>
@@ -1131,6 +1161,159 @@ function BulkImportModal({ onClose, onImport, isLoading }: { onClose: () => void
               }
             </button>
           </div>
+        </div>
+      </div>
+    </ModalPortal>
+  )
+}
+
+// ─── Copy from year ─────────────────────────────────────────────────────────
+
+function CopyFromYearModal({
+  yearOptions,
+  defaultTargetYearId,
+  onClose,
+  onCopied,
+}: {
+  yearOptions: { value: number; label: string }[]
+  defaultTargetYearId?: number
+  onClose: () => void
+  onCopied: () => void
+}) {
+  const [sourceYearId, setSourceYearId] = useState<number | ''>('')
+  const [targetYearId, setTargetYearId] = useState<number | ''>(defaultTargetYearId ?? '')
+  const [category, setCategory] = useState<StudentCategory | ''>('')
+  const [result, setResult] = useState<{ created: number; skipped: number; failed: any[] } | null>(null)
+
+  const sourceLabel = yearOptions.find((y) => y.value === sourceYearId)?.label
+  const targetLabel = yearOptions.find((y) => y.value === targetYearId)?.label
+
+  const copyMutation = useMutation({
+    mutationFn: () =>
+      feeStructureService.copyFromYear({
+        source_academic_year_id: Number(sourceYearId),
+        target_academic_year_id: Number(targetYearId),
+        student_category: category || undefined,
+      }),
+    onSuccess: (res: any) => {
+      setResult(res.data)
+      onCopied()
+      const { created, skipped } = res.data
+      toast.success(
+        created > 0
+          ? `Copied ${created} fee structure${created !== 1 ? 's' : ''}${skipped ? ` (${skipped} already existed, skipped)` : ''}.`
+          : `Nothing to copy — all ${skipped} structure${skipped !== 1 ? 's' : ''} already exist in ${targetLabel}.`
+      )
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Copy failed'),
+  })
+
+  const blocker = !sourceYearId
+    ? 'Pick the year to copy from.'
+    : !targetYearId
+    ? 'Pick the year to copy into.'
+    : sourceYearId === targetYearId
+    ? 'Source and target years must be different.'
+    : null
+
+  return (
+    <ModalPortal>
+      <div className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 z-50" onClick={onClose}>
+        <div
+          className="bg-white dark:bg-ink-800 rounded-lg shadow-lg max-w-md w-full"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="p-6 border-b border-ink-100 dark:border-ink-700 flex items-center justify-between">
+            <div>
+              <h3 className="font-bold text-ink-900 dark:text-white flex items-center gap-2">
+                <Copy className="w-4 h-4 text-brand" /> Copy fee structures
+              </h3>
+              <p className="text-[12.5px] text-ink-500 mt-0.5">
+                Fee structures rarely change year to year — copy last year's rates instead of re-entering them.
+              </p>
+            </div>
+            <button onClick={onClose} className="text-ink-400 hover:text-ink-600 dark:hover:text-ink-200">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {!result ? (
+            <>
+              <div className="p-6 space-y-4">
+                <div className="flex items-end gap-2">
+                  <div className="flex-1 min-w-0">
+                    <label className="block text-xs text-ink-500 mb-1">Copy from</label>
+                    <SearchableSelect
+                      options={yearOptions}
+                      value={sourceYearId}
+                      onChange={(v) => setSourceYearId(v ? Number(v) : '')}
+                      placeholder="Source year…"
+                    />
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-ink-300 mb-2.5 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <label className="block text-xs text-ink-500 mb-1">Copy into</label>
+                    <SearchableSelect
+                      options={yearOptions}
+                      value={targetYearId}
+                      onChange={(v) => setTargetYearId(v ? Number(v) : '')}
+                      placeholder="Target year…"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs text-ink-500 mb-1">Student category (optional)</label>
+                  <SearchableSelect
+                    options={STUDENT_CATEGORY_OPTIONS}
+                    value={category}
+                    onChange={(v) => setCategory((v ? v : '') as StudentCategory | '')}
+                    placeholder="All categories"
+                    allLabel="All categories"
+                  />
+                  <p className="text-[11px] text-ink-400 mt-1">Leave blank to copy every fee structure, regardless of category.</p>
+                </div>
+
+                <p className="text-[11.5px] text-ink-400">
+                  Structures already present in {targetLabel || 'the target year'} (matching type, label, department, level and category) are skipped — safe to run more than once.
+                </p>
+              </div>
+
+              <div className="p-6 pt-0 flex items-center justify-between gap-3">
+                <p className="text-[12px] text-ink-500">{blocker ?? `Ready to copy ${sourceLabel ?? ''} → ${targetLabel ?? ''}.`}</p>
+                <div className="flex gap-2 shrink-0">
+                  <button className="btn-ghost btn-sm" onClick={onClose} disabled={copyMutation.isPending}>Cancel</button>
+                  <button
+                    className="btn-primary btn-sm min-w-[90px] disabled:opacity-50"
+                    disabled={blocker !== null || copyMutation.isPending}
+                    onClick={() => copyMutation.mutate()}
+                  >
+                    {copyMutation.isPending
+                      ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Copying…</>
+                      : 'Copy'
+                    }
+                  </button>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="p-6 space-y-4">
+              <div className="flex items-start gap-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 p-3.5">
+                <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0 mt-0.5" />
+                <div className="text-[13px]">
+                  <p className="font-semibold text-ink-900 dark:text-white">
+                    {result.created} structure{result.created !== 1 ? 's' : ''} copied into {targetLabel}.
+                  </p>
+                  {result.skipped > 0 && (
+                    <p className="text-ink-500 mt-0.5">{result.skipped} already existed and {result.skipped !== 1 ? 'were' : 'was'} skipped.</p>
+                  )}
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <button className="btn-primary btn-sm" onClick={onClose}>Done</button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </ModalPortal>
