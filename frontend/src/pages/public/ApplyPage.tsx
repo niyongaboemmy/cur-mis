@@ -259,21 +259,24 @@ export default function ApplyPage({ presetCategory }: { presetCategory?: Program
 
   useEffect(() => {
     const cachedStep = hydrateFromCache();
-    if (form.getValues("programme_category")) {
-      // A cached/resumed choice always wins — the category can't be
-      // changed later, so a dedicated link must never override an
-      // application already in progress.
-      setCategoryConfirmed(true);
-    } else if (presetCategory) {
-      // Arrived via a dedicated /apply/<category> link — skip the gate.
+    if (presetCategory) {
+      // Arrived via a dedicated /apply/<category> link — the URL is the
+      // source of truth and wins over a stale guest-cache category (a
+      // genuinely resumed SERVER draft, handled by the effect further
+      // below, still overrides this once it loads — an in-progress
+      // application can never be silently switched by a link).
       form.setValue("programme_category", presetCategory);
       setCategoryConfirmed(true);
       // Flush immediately: the autosave subscription below only captures
       // *changes* seen after it registers, so a reload before the
       // applicant edits anything would otherwise lose the preset.
       try {
-        localStorage.setItem(GUEST_DRAFT_KEY, JSON.stringify({ programme_category: presetCategory, _step: 1 }));
+        const raw = localStorage.getItem(GUEST_DRAFT_KEY);
+        const existing = raw ? JSON.parse(raw) : {};
+        localStorage.setItem(GUEST_DRAFT_KEY, JSON.stringify({ ...existing, programme_category: presetCategory, _step: existing._step ?? 1 }));
       } catch { /* quota / private mode — ignore */ }
+    } else if (form.getValues("programme_category")) {
+      setCategoryConfirmed(true);
     }
     if (cachedStep && cachedStep >= 1 && cachedStep <= 3) setStep(cachedStep);
 
@@ -814,7 +817,12 @@ export default function ApplyPage({ presetCategory }: { presetCategory?: Program
                 className="btn-primary w-full justify-center mt-6"
                 onClick={async () => {
                   const ok = await form.trigger("programme_category");
-                  if (ok) setCategoryConfirmed(true);
+                  if (!ok) return;
+                  setCategoryConfirmed(true);
+                  // Keep the address bar in sync with the choice, so the
+                  // current URL always matches what's on screen and can be
+                  // copied/shared/bookmarked from any point in the flow.
+                  navigate(`/apply/${form.getValues("programme_category")}`, { replace: true });
                 }}
               >
                 Continue <ArrowRight className="w-4 h-4" />
