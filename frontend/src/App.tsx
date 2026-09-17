@@ -184,6 +184,12 @@ function App() {
           <Route path="/verify-otp" element={<VerifyOtpPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/apply" element={<ApplyPage />} />
+          {/* Dedicated, shareable starting links — one per category. Each
+              skips the welcome-gate select and jumps straight into the
+              wizard with the category pre-set. */}
+          <Route path="/apply/undergraduate" element={<ApplyPage presetCategory="undergraduate" />} />
+          <Route path="/apply/postgraduate" element={<ApplyPage presetCategory="postgraduate" />} />
+          <Route path="/apply/masters" element={<ApplyPage presetCategory="masters" />} />
           <Route path="/apply/track" element={<TrackApplicationPage />} />
           <Route path="/verify/student" element={<VerifyStudentPage />} />
           <Route path="/services" element={<ServiceCatalogPage />} />

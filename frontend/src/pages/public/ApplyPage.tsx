@@ -138,7 +138,9 @@ const ACADEMIC_FIELDS = [
 
 const PROGRAM_FIELDS = ["program_id","campus_id","mode_of_study","level_id","intake"] as const;
 
-export default function ApplyPage() {
+type ProgrammeCategory = "undergraduate" | "postgraduate" | "masters";
+
+export default function ApplyPage({ presetCategory }: { presetCategory?: ProgrammeCategory } = {}) {
   const [step, setStep] = useState(1);
   // Welcome gate: the applicant must pick a category (Undergraduate /
   // Postgraduate / Masters) before the numbered wizard is shown. Kept as a
@@ -224,9 +226,24 @@ export default function ApplyPage() {
 
   useEffect(() => {
     const cachedStep = hydrateFromCache();
-    if (form.getValues("programme_category")) setCategoryConfirmed(true);
+    if (form.getValues("programme_category")) {
+      // A cached/resumed choice always wins — the category can't be
+      // changed later, so a dedicated link must never override an
+      // application already in progress.
+      setCategoryConfirmed(true);
+    } else if (presetCategory) {
+      // Arrived via a dedicated /apply/<category> link — skip the gate.
+      form.setValue("programme_category", presetCategory);
+      setCategoryConfirmed(true);
+      // Flush immediately: the autosave subscription below only captures
+      // *changes* seen after it registers, so a reload before the
+      // applicant edits anything would otherwise lose the preset.
+      try {
+        localStorage.setItem(GUEST_DRAFT_KEY, JSON.stringify({ programme_category: presetCategory, _step: 1 }));
+      } catch { /* quota / private mode — ignore */ }
+    }
     if (cachedStep && cachedStep >= 1 && cachedStep <= 3) setStep(cachedStep);
-     
+
   }, []);
 
   // Autosave every form change to localStorage until a server draft has been
