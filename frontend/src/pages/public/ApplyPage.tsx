@@ -1692,6 +1692,16 @@ function ProgramsStep({
     }
   }, [programmeCategory, programs, selectedProgramId]);
 
+  // Auto-select "Level 9" for Masters and PGDE
+  useEffect(() => {
+    if (programmeCategory === 'masters' || programmeCategory === 'postgraduate') {
+      const level9 = levels.find((l) => l.name === 'Level 9');
+      if (level9) {
+        form.setValue('level_id', level9.id, { shouldValidate: true, shouldDirty: true });
+      }
+    }
+  }, [programmeCategory, levels, form]);
+
   const pickProgram = (id: number) => {
     form.setValue("program_id", id, { shouldValidate: true, shouldDirty: true });
     // Reset campus when program changes — the available set may differ.
@@ -1804,17 +1814,28 @@ function ProgramsStep({
                 </select>
               </Field>
 
-              <Field label="Level *" error={errors.level_id?.message}>
-                <select
-                  className="input"
-                  {...form.register("level_id", { valueAsNumber: true })}
-                >
-                  <option value="">— select level —</option>
-                  {levels.map((l) => (
-                    <option key={l.id} value={l.id}>{l.name}</option>
-                  ))}
-                </select>
-              </Field>
+              {programmeCategory === 'masters' || programmeCategory === 'postgraduate' ? (
+                <Field label="Level">
+                  <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-900/30">
+                    <p className="text-[13px] font-medium text-blue-900 dark:text-blue-100">
+                      Level 9 (Automatically set for {programmeCategory === 'masters' ? 'Masters' : 'PGDE'})
+                    </p>
+                  </div>
+                  <input type="hidden" {...form.register("level_id", { valueAsNumber: true })} />
+                </Field>
+              ) : (
+                <Field label="Level *" error={errors.level_id?.message}>
+                  <select
+                    className="input"
+                    {...form.register("level_id", { valueAsNumber: true })}
+                  >
+                    <option value="">— select level —</option>
+                    {levels.map((l) => (
+                      <option key={l.id} value={l.id}>{l.name}</option>
+                    ))}
+                  </select>
+                </Field>
+              )}
 
               <Field label="Intake *" error={errors.intake?.message}>
                 <select className="input" {...form.register("intake")}>
