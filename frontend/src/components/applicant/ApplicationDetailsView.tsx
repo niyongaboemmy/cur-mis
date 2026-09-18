@@ -661,26 +661,64 @@ export default function ApplicationDetailsView({
                     </div>
                   </div>
 
+                  {/* Programme Tier Info */}
+                  {app.programme_category && (
+                    <div className="mb-4 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-900/30">
+                      <p className="text-[11px] uppercase tracking-widest text-blue-700 dark:text-blue-300 font-bold mb-1">
+                        Programme Level
+                      </p>
+                      <p className="text-[13px] font-medium text-blue-900 dark:text-blue-100">
+                        {app.programme_category === 'masters'
+                          ? `Master of ${app.program_name || 'Programme'}`
+                          : app.programme_category === 'postgraduate'
+                          ? 'Post Graduate Diploma in Education (PGDE)'
+                          : 'Undergraduate'}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Amount Paid at Application */}
+                  {app.payment_amount && app.payment_amount > 0 && (
+                    <div className="mb-4 p-3 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-900/30">
+                      <p className="text-[11px] uppercase tracking-widest text-emerald-700 dark:text-emerald-300 font-bold mb-1">
+                        Amount Paid at Application
+                      </p>
+                      <div className="flex justify-between items-baseline">
+                        <p className="text-[13px] font-medium text-emerald-900 dark:text-emerald-100">
+                          {fmtNumber(app.payment_amount)} {app.payment_currency || 'RWF'}
+                        </p>
+                        {app.paid_at && (
+                          <p className="text-[11px] text-emerald-600 dark:text-emerald-400">
+                            {new Date(app.paid_at).toLocaleDateString()}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Bills breakdown */}
                   {billsData.bills && billsData.bills.length > 0 && (
                     <div className="mb-4 rounded-lg border border-ink-100 dark:border-ink-700 divide-y divide-ink-100 dark:divide-ink-700 overflow-hidden">
-                      {billsData.bills.map((bill: any) => (
-                        <div key={bill.id} className="p-3 flex justify-between items-center text-[12px]">
-                          <div className="min-w-0">
-                            <p className="font-medium text-ink-900 dark:text-white">{bill.label}</p>
-                            <p className="text-ink-500 dark:text-ink-400 text-[11px] mt-0.5">{fmtNumber(bill.amount_due)} {bill.currency}</p>
+                      {billsData.bills.map((bill: any) => {
+                        const displayLabel = bill.fee_type === 'REGISTRATION' ? 'Registration Fee' : bill.label;
+                        return (
+                          <div key={bill.id} className="p-3 flex justify-between items-center text-[12px]">
+                            <div className="min-w-0">
+                              <p className="font-medium text-ink-900 dark:text-white">{displayLabel}</p>
+                              <p className="text-ink-500 dark:text-ink-400 text-[11px] mt-0.5">{fmtNumber(bill.amount_due)} {bill.currency}</p>
+                            </div>
+                            <div className="text-right shrink-0 ml-4">
+                              <span className={`text-[11px] font-semibold px-2 py-1 rounded ${
+                                bill.status === 'paid'
+                                  ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
+                                  : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'
+                              }`}>
+                                {bill.status === 'paid' ? 'Paid' : 'Pending'}
+                              </span>
+                            </div>
                           </div>
-                          <div className="text-right shrink-0 ml-4">
-                            <span className={`text-[11px] font-semibold px-2 py-1 rounded ${
-                              bill.status === 'paid'
-                                ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
-                                : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'
-                            }`}>
-                              {bill.status === 'paid' ? 'Paid' : 'Pending'}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
 
