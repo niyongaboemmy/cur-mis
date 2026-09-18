@@ -36,6 +36,7 @@ export default function FeeStructuresPage() {
 
   const [yearId, setYearId]         = useState<number | string>('')
   const [categoryFilter, setCategoryFilter] = useState<StudentCategory | ''>('')
+  const [searchTerm, setSearchTerm]  = useState('')
   const [page, setPage]             = useState(1)
   const [showForm, setShowForm]     = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
@@ -109,9 +110,21 @@ export default function FeeStructuresPage() {
   })
   const allRows: FeeStructure[] = structuresQ.data?.data ?? []
 
-  const totalRows = allRows.length
+  const filteredRows = allRows.filter((row) => {
+    if (!searchTerm.trim()) return true
+    const q = searchTerm.toLowerCase()
+    return (
+      (row.label ?? '').toLowerCase().includes(q) ||
+      (row.fee_type ?? '').toLowerCase().includes(q) ||
+      (row.department_name ?? '').toLowerCase().includes(q) ||
+      (row.level_name ?? '').toLowerCase().includes(q) ||
+      String(row.amount ?? '').includes(q)
+    )
+  })
+
+  const totalRows = filteredRows.length
   const lastPage  = Math.max(1, Math.ceil(totalRows / PER_PAGE))
-  const rows      = allRows.slice((page - 1) * PER_PAGE, page * PER_PAGE)
+  const rows      = filteredRows.slice((page - 1) * PER_PAGE, page * PER_PAGE)
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => feeStructureService.delete(id),
@@ -301,7 +314,7 @@ export default function FeeStructuresPage() {
         </div>
       </div>
 
-      {/* Year filter */}
+      {/* Year filter + Search */}
       <div className="card p-3 flex gap-3 items-end flex-wrap">
         <div className="min-w-[200px]">
           <label className="block text-xs text-ink-500 mb-1">Academic Year</label>
@@ -322,6 +335,30 @@ export default function FeeStructuresPage() {
             allLabel="All categories"
           />
         </div>
+        <div className="flex-1 min-w-[250px]">
+          <label className="block text-xs text-ink-500 mb-1">Search</label>
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Search by label, type, department, level or amount…"
+              value={searchTerm}
+              onChange={(e) => { setSearchTerm(e.target.value); setPage(1) }}
+              className="w-full px-3 py-2 pl-9 text-sm border border-ink-200 dark:border-ink-700 rounded-lg bg-white dark:bg-ink-800 text-ink-900 dark:text-white placeholder-ink-400 dark:placeholder-ink-500 focus:outline-none focus:ring-2 focus:ring-brand"
+            />
+            <svg className="absolute left-3 top-2.5 w-4 h-4 text-ink-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </div>
+        </div>
+        {searchTerm && (
+          <button
+            onClick={() => { setSearchTerm(''); setPage(1) }}
+            className="btn-ghost btn-sm px-2 py-1 rounded"
+            title="Clear search"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
       {/* Table */}
@@ -350,6 +387,17 @@ export default function FeeStructuresPage() {
                 instead of re-entering everything.
               </p>
             )}
+          </div>
+        )}
+        {yearId && !structuresQ.isLoading && allRows.length > 0 && filteredRows.length === 0 && searchTerm && (
+          <div className="flex flex-col items-center gap-3 py-10">
+            <p className="text-center text-ink-400 text-sm">No fee structures match your search.</p>
+            <button
+              onClick={() => { setSearchTerm(''); setPage(1) }}
+              className="text-xs font-semibold text-brand hover:underline"
+            >
+              Clear search
+            </button>
           </div>
         )}
         {rows.length > 0 && (
