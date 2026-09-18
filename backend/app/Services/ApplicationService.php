@@ -480,15 +480,35 @@ class ApplicationService
         } elseif ($programmeCategory === 'undergraduate') {
             $programmeLevel = 'undergraduate';
         } else {
+            // Fallback: programme_category is missing (legacy applications or manual admissions).
+            // Try to infer from programme name first (more reliable than curriculum year level).
             $programmeLevel = 'undergraduate';
-            $levelName = strtolower((string)($offer['level_name'] ?? ''));
-            if ($levelName !== '') {
-                if (str_contains($levelName, 'master'))      $programmeLevel = 'masters';
-                elseif (str_contains($levelName, 'pgde'))    $programmeLevel = 'pgde';
-                elseif (str_contains($levelName, 'phd') || str_contains($levelName, 'doctor'))
-                                                              $programmeLevel = 'phd';
-                elseif (str_contains($levelName, 'diploma')) $programmeLevel = 'diploma';
-                elseif (str_contains($levelName, 'cert'))    $programmeLevel = 'certificate';
+
+            // Check programme/department name
+            $programmeName = strtolower((string)($offer['department_name'] ?? ''));
+            if ($programmeName !== '') {
+                if (str_contains($programmeName, 'master of'))                $programmeLevel = 'masters';
+                elseif (str_contains($programmeName, 'post-graduate diploma') ||
+                        str_contains($programmeName, 'post graduate diploma') ||
+                        str_contains($programmeName, 'pgde'))                 $programmeLevel = 'pgde';
+                elseif (str_contains($programmeName, 'phd') || str_contains($programmeName, 'doctor')) $programmeLevel = 'phd';
+            }
+
+            // Secondary fallback: check curriculum level name only if programme name didn't help
+            if ($programmeLevel === 'undergraduate') {
+                $levelName = strtolower((string)($offer['level_name'] ?? ''));
+                if ($levelName !== '') {
+                    if (str_contains($levelName, 'master'))      $programmeLevel = 'masters';
+                    elseif (str_contains($levelName, 'pgde'))    $programmeLevel = 'pgde';
+                    elseif (str_contains($levelName, 'phd') || str_contains($levelName, 'doctor'))
+                                                                  $programmeLevel = 'phd';
+                }
+            }
+
+            // Log when falling back (for audit trail)
+            if (!$programmeCategory) {
+                error_log("[ApplicationService] Fallback used for regnumber generation. App ID: {$applicationId}, "
+                        . "Programme: {$programmeName}, Level: {$programmeLevel}");
             }
         }
 
