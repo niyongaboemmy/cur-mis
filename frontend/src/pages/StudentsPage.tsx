@@ -46,6 +46,7 @@ import GenderEditPopover from '@/components/students/GenderEditPopover'
 import DocumentGenerateMenu from '@/components/students/DocumentGenerateMenu'
 import { usePermission } from "@/utils/permissions";
 import { PERMISSIONS } from "@/constants/permissions";
+import { useAuthStore } from "@/store/authStore";
 
 const PER_PAGE = 15;
 
@@ -552,7 +553,12 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
 
   const selectedCampusId = useCampusFilterStore((s) => s.selectedCampusId);
   const selectedCategory = useCategoryFilterStore((s) => s.selectedCategory);
-  const canGenerateDocuments = usePermission(PERMISSIONS.GENERATE_DOCUMENTS);
+
+  const user = useAuthStore((s) => s.user);
+
+  // Only Academic Secretary, Admin, Registrar, Superadmin, and Director of Finance & Administration can generate documents
+  const allowedRoles = ['Academic Secretary', 'Admin', 'Registrar', 'Superadmin', 'Director of Finance and Administration'];
+  const canGenerateDocuments = user?.role_name && allowedRoles.includes(user.role_name);
 
   // Entity data for filters. Departments + programs are loaded once and
   // shown flat — no faculty cascade — so the user can pick either directly.
