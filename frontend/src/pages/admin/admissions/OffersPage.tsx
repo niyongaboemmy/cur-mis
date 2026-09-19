@@ -284,7 +284,7 @@ export default function OffersPage() {
                         {/* Letter - Direct Link to Document System */}
                         {getDocumentIdentifier(o) ? (
                           <a
-                            href={`https://cur.ac.rw/umis/documents/all_certificate/generate_document.php?type=admission_letter&student_id=${getDocumentIdentifier(o)}&file_name=Admission_Letter_FORMAT.pdf&applicant=1`}
+                            href={`https://cur.ac.rw/umis/documents/all_certificate/generate_document.php?type=admission_letter&student_id=${getDocumentIdentifier(o)}&file_name=Admission_Letter_FORMAT.pdf`}
                             target="_blank"
                             rel="noreferrer"
                             className="btn-secondary btn-sm"
@@ -305,7 +305,7 @@ export default function OffersPage() {
                         {/* Download PDF from System */}
                         {getDocumentIdentifier(o) && (
                           <a
-                            href={`https://cur.ac.rw/umis/documents/all_certificate/generate_document.php?type=admission_letter&student_id=${getDocumentIdentifier(o)}&file_name=Admission_Letter_FORMAT.pdf&applicant=1`}
+                            href={`https://cur.ac.rw/umis/documents/all_certificate/generate_document.php?type=admission_letter&student_id=${getDocumentIdentifier(o)}&file_name=Admission_Letter_FORMAT.pdf`}
                             download
                             className="btn-secondary btn-sm"
                             title={`Download letter (${o.regnumber ? `Reg: ${o.regnumber}, ID: ${o.student_db_id}` : `App: ${o.application_number}, ID: ${o.application_id}`})`}
