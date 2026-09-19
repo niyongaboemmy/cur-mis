@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import {
   Handshake, Loader2, Send, Layers, Download, Mail,
-  MailCheck, FileText,
+  MailCheck, FileText, Search, X,
 } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 import { offerService, intakeService } from '@/services/admissionService'
@@ -24,6 +24,7 @@ export default function OffersPage() {
   const canManage = usePermission(PERMISSIONS.MANAGE_ADMISSIONS)
   const qc = useQueryClient()
   const [status, setStatus] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
   const [newOpen, setNewOpen] = useState(false)
   const [bulkOpen, setBulkOpen] = useState(false)
   const [bulkSendOpen, setBulkSendOpen] = useState(false)
@@ -50,9 +51,8 @@ export default function OffersPage() {
 
   const listQ = useQuery({
     queryKey: ['admin', 'offers', status],
-    queryFn:  () => offerService.list({ 
-        status: status || undefined, 
-        enrolled_only: '1' 
+    queryFn:  () => offerService.list({
+        status: status || undefined
     }),
   })
 
@@ -117,6 +117,18 @@ export default function OffersPage() {
 
   const rows = listQ.data?.data?.data ?? []
 
+  const filteredRows = useMemo(() => {
+    if (!searchQuery.trim()) return rows
+    const query = searchQuery.toLowerCase()
+    return rows.filter((row: any) =>
+      row.offer_letter_reference?.toLowerCase().includes(query) ||
+      row.first_name?.toLowerCase().includes(query) ||
+      row.last_name?.toLowerCase().includes(query) ||
+      row.email?.toLowerCase().includes(query) ||
+      row.department_name?.toLowerCase().includes(query) ||
+      `${row.first_name} ${row.last_name}`.toLowerCase().includes(query)
+    )
+  }, [rows, searchQuery])
 
   return (
     <section className="space-y-4">
@@ -125,15 +137,38 @@ export default function OffersPage() {
         <Handshake className="w-5 h-5 text-brand" />
         <div>
           <h2 className="section-title">Registered Applications</h2>
-          <p className="section-sub">{rows.length} registered student{rows.length === 1 ? '' : 's'}</p>
+          <p className="section-sub">{filteredRows.length} of {rows.length} student{rows.length === 1 ? '' : 's'}</p>
         </div>
         <div className="flex-1" />
+
+        {/* Inline Search */}
+        <div className="relative w-64">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-ink-400 pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Search by name, email, reference..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="input pl-9 pr-9 w-full text-sm"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-400 hover:text-ink-600 dark:hover:text-ink-300"
+              title="Clear search"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
 
         {/* Filter */}
         <select className="input w-40" value={status} onChange={(e) => setStatus(e.target.value)}>
           <option value="">All statuses</option>
+          <option value="pending">Pending</option>
           <option value="accepted">Accepted</option>
-          <option value="enrolled">Enrolled</option>
+          <option value="expired">Expired</option>
+          <option value="declined">Declined</option>
         </select>
 
         {/* Bulk Send Letters */}
@@ -156,6 +191,8 @@ export default function OffersPage() {
           <p className="p-8 text-center text-ink-500 text-[13px]">Loading…</p>
         ) : rows.length === 0 ? (
           <p className="p-10 text-center text-ink-500 text-[13px]">No offers yet.</p>
+        ) : filteredRows.length === 0 ? (
+          <p className="p-10 text-center text-ink-500 text-[13px]">No results match your search.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="data-table">
@@ -172,7 +209,7 @@ export default function OffersPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((o: any) => (
+                {filteredRows.map((o: any) => (
                   <tr key={o.id}>
                     <td className="font-mono text-[12px]">{o.offer_letter_reference}</td>
                     <td>
