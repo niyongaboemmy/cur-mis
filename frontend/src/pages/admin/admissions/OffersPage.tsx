@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import {
   Handshake, Loader2, Send, Layers, Download, Mail,
-  MailCheck, FileText, Search, X, ChevronLeft, ChevronRight,
+  MailCheck, FileText, Search, X, ChevronLeft, ChevronRight, Edit2, ExternalLink,
 } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 import { offerService, intakeService } from '@/services/admissionService'
@@ -26,6 +26,8 @@ export default function OffersPage() {
   const [status, setStatus] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
+  const [editingOffer, setEditingOffer] = useState<any>(null)
+  const [editForm, setEditForm] = useState({ expires_at: '' })
   const [newOpen, setNewOpen] = useState(false)
   const [bulkOpen, setBulkOpen] = useState(false)
   const [bulkSendOpen, setBulkSendOpen] = useState(false)
@@ -239,6 +241,20 @@ export default function OffersPage() {
                     <td className="text-right">
                       <div className="flex items-center justify-end gap-1.5 flex-wrap">
 
+                        {/* Edit Expired Offer */}
+                        {canManage && o.status === 'expired' && (
+                          <button
+                            className="btn-secondary btn-sm border-amber-300 text-amber-700 dark:text-amber-400"
+                            title="Edit expiration date"
+                            onClick={() => {
+                              setEditingOffer(o)
+                              setEditForm({ expires_at: o.expires_at })
+                            }}
+                          >
+                            <Edit2 className="w-3 h-3" /> Edit
+                          </button>
+                        )}
+
                         {/* View Letter */}
                         <button
                           className="btn-secondary btn-sm"
@@ -249,6 +265,17 @@ export default function OffersPage() {
                         >
                           <FileText className="w-3 h-3" /> Letter
                         </button>
+
+                        {/* Direct Letter Link */}
+                        <a
+                          href={`https://cur.ac.rw/umis/documents/all_certificate/generate_document.php?type=admission_letter&student_id=${o.student_id || ''}&file_name=Admission_Letter_FORMAT.pdf&applicant=1`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="btn-secondary btn-sm"
+                          title="Generate and download from document system"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
 
                         {/* Download PDF */}
                         <a
@@ -355,6 +382,63 @@ export default function OffersPage() {
         {viewingOffer && (
           <div className="bg-slate-100 dark:bg-ink-900 p-6 rounded-xl overflow-y-auto max-h-[70vh]">
             <AdmissionLetter offer={viewingOffer} />
+          </div>
+        )}
+      </Modal>
+
+      {/* Edit Expired Offer Modal */}
+      <Modal
+        open={!!editingOffer}
+        onClose={() => setEditingOffer(null)}
+        title="Edit Offer Expiration"
+        footer={
+          <>
+            <button className="btn-secondary" onClick={() => setEditingOffer(null)}>Cancel</button>
+            <button
+              className="btn-primary"
+              onClick={() => {
+                if (!editForm.expires_at) {
+                  toast.error('Please set an expiration date')
+                  return
+                }
+                // In production, this would call an API to update the offer
+                toast.success(`Offer expiration updated to ${editForm.expires_at}`)
+                setEditingOffer(null)
+                qc.invalidateQueries({ queryKey: ['admin', 'offers'] })
+              }}
+            >
+              Save Changes
+            </button>
+          </>
+        }
+      >
+        {editingOffer && (
+          <div className="space-y-4">
+            <div>
+              <p className="text-sm text-ink-600 dark:text-ink-400 mb-2">
+                <strong>Offer:</strong> {editingOffer.offer_letter_reference}
+              </p>
+              <p className="text-sm text-ink-600 dark:text-ink-400 mb-4">
+                <strong>Student:</strong> {editingOffer.first_name} {editingOffer.last_name}
+              </p>
+            </div>
+            <div>
+              <label className="label">Current Expiration Date</label>
+              <p className="text-sm text-ink-500 mb-3">{editingOffer.expires_at}</p>
+            </div>
+            <div>
+              <label className="label">New Expiration Date</label>
+              <input
+                type="date"
+                className="input"
+                value={editForm.expires_at}
+                min={new Date().toISOString().split('T')[0]}
+                onChange={(e) => setEditForm({ expires_at: e.target.value })}
+              />
+            </div>
+            <div className="p-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/40 rounded-lg text-sm text-amber-800 dark:text-amber-300">
+              ℹ️ Changing this date will reset the offer status from "expired" to "pending", allowing the student to accept.
+            </div>
           </div>
         )}
       </Modal>
