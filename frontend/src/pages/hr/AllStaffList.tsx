@@ -33,10 +33,10 @@ export default function AllStaffList() {
   if (isLoading) return <Spinner />;
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-ink-950 p-6">
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-gray-50 dark:from-ink-950 dark:to-ink-900 p-4 md:p-8">
       <PageHeader
         title="All Staff"
-        description={`${dedupedStaff?.length || 0} unique employees (click to view duplicates)`}
+        description={`${dedupedStaff?.length || 0} unique employees`}
       />
 
       {error && (
@@ -92,29 +92,30 @@ export default function AllStaffList() {
       </div>
 
       {/* Staff List */}
-      <div className="bg-white dark:bg-ink-800 rounded-xl shadow-lg overflow-hidden border border-gray-100 dark:border-ink-700">
-        <table className="w-full">
-          <thead className="bg-gradient-to-r from-slate-900 to-slate-800 dark:from-slate-800 dark:to-slate-900">
-            <tr>
-              <th className="px-6 py-4 text-left w-12"></th>
-              <th className="px-6 py-4 text-left text-sm font-semibold text-white uppercase tracking-wider">Name</th>
-              <th className="px-6 py-4 text-left text-sm font-semibold text-white uppercase tracking-wider">Gender</th>
-              <th className="px-6 py-4 text-left text-sm font-semibold text-white uppercase tracking-wider">Position</th>
-              <th className="px-6 py-4 text-left text-sm font-semibold text-white uppercase tracking-wider">Department</th>
-              <th className="px-6 py-4 text-left text-sm font-semibold text-white uppercase tracking-wider">Phone</th>
-              <th className="px-6 py-4 text-left text-sm font-semibold text-white uppercase tracking-wider">Status</th>
-              <th className="px-6 py-4 text-center text-sm font-semibold text-white uppercase tracking-wider">Duplicates</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200 dark:divide-ink-700/50">
+      <div className="bg-white dark:bg-ink-800 rounded-2xl shadow-xl overflow-hidden border border-gray-200 dark:border-ink-700 mt-8">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 dark:from-slate-800 dark:via-slate-900 dark:to-slate-800 sticky top-0">
+              <tr>
+                <th className="px-4 md:px-6 py-5 text-left w-10"></th>
+                <th className="px-4 md:px-6 py-5 text-left font-bold text-white uppercase tracking-widest text-xs">Name</th>
+                <th className="px-4 md:px-6 py-5 text-left font-bold text-white uppercase tracking-widest text-xs hidden sm:table-cell">Gender</th>
+                <th className="px-4 md:px-6 py-5 text-left font-bold text-white uppercase tracking-widest text-xs hidden md:table-cell">Position</th>
+                <th className="px-4 md:px-6 py-5 text-left font-bold text-white uppercase tracking-widest text-xs hidden lg:table-cell">Department</th>
+                <th className="px-4 md:px-6 py-5 text-left font-bold text-white uppercase tracking-widest text-xs hidden xl:table-cell">Phone</th>
+                <th className="px-4 md:px-6 py-5 text-left font-bold text-white uppercase tracking-widest text-xs">Status</th>
+                <th className="px-4 md:px-6 py-5 text-center font-bold text-white uppercase tracking-widest text-xs">Issues</th>
+              </tr>
+            </thead>
+          <tbody className="divide-y divide-gray-100 dark:divide-ink-700/30">
             {dedupedStaff?.map((staff) => (
               <div key={staff.full_name}>
                 {/* Primary Record */}
                 <tr
-                  className={`hover:bg-slate-50 dark:hover:bg-ink-700/40 transition-all ${staff.duplicate_records.length > 0 ? 'cursor-pointer' : ''}`}
+                  className={`border-b border-gray-100 dark:border-ink-700/30 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors ${staff.duplicate_records.length > 0 ? 'cursor-pointer' : ''}`}
                   onClick={() => staff.duplicate_records.length > 0 && toggleExpanded(staff.full_name)}
                 >
-                  <td className="px-6 py-4">
+                  <td className="px-4 md:px-6 py-3.5">
                     {staff.duplicate_records.length > 0 ? (
                       expandedStaff.has(staff.full_name) ? (
                         <ChevronDown className="w-5 h-5 text-blue-600 dark:text-blue-400" />
@@ -123,22 +124,22 @@ export default function AllStaffList() {
                       )
                     ) : null}
                   </td>
-                  <td className="px-6 py-4 font-semibold text-ink-900 dark:text-white capitalize">{staff.full_name}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">
+                  <td className="px-4 md:px-6 py-3.5 font-semibold text-ink-900 dark:text-white">{staff.full_name}</td>
+                  <td className="px-4 md:px-6 py-3.5 text-gray-600 dark:text-gray-400 hidden sm:table-cell">
                     {staff.primary_record.employee_gender || '—'}
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">
+                  <td className="px-4 md:px-6 py-3.5 text-gray-600 dark:text-gray-400 hidden md:table-cell text-xs">
                     {staff.primary_record.employee_position || '—'}
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">
+                  <td className="px-4 md:px-6 py-3.5 text-gray-600 dark:text-gray-400 hidden lg:table-cell text-xs">
                     {staff.primary_record.employee_post || '—'}
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400 font-mono">
+                  <td className="px-4 md:px-6 py-3.5 text-gray-600 dark:text-gray-400 font-mono text-xs hidden xl:table-cell">
                     {staff.primary_record.employee_phone || '—'}
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-4 md:px-6 py-3.5">
                     <span
-                      className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold ${
+                      className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${
                         staff.primary_record.employee_status === 'Active'
                           ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300'
                           : staff.primary_record.employee_status === 'Terminated'
@@ -146,7 +147,7 @@ export default function AllStaffList() {
                           : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-400'
                       }`}
                     >
-                      <span className={`w-2 h-2 rounded-full ${
+                      <span className={`w-1.5 h-1.5 rounded-full ${
                         staff.primary_record.employee_status === 'Active'
                           ? 'bg-green-600 dark:bg-green-400'
                           : staff.primary_record.employee_status === 'Terminated'
@@ -156,10 +157,10 @@ export default function AllStaffList() {
                       {staff.primary_record.employee_status || 'Unknown'}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-center">
+                  <td className="px-4 md:px-6 py-3.5 text-center">
                     {staff.duplicate_records.length > 0 ? (
-                      <span className="inline-flex items-center gap-1 px-3 py-1.5 bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300 rounded-full text-xs font-semibold">
-                        <AlertCircle className="w-3.5 h-3.5" />
+                      <span className="inline-flex items-center gap-0.5 px-2 py-1 bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300 rounded-full text-xs font-semibold">
+                        <AlertCircle className="w-3 h-3" />
                         {staff.duplicate_records.length}
                       </span>
                     ) : (
@@ -171,26 +172,26 @@ export default function AllStaffList() {
                 {/* Duplicate Records */}
                 {expandedStaff.has(staff.full_name) &&
                   staff.duplicate_records.map((dup, idx) => (
-                    <tr key={`${staff.full_name}-dup-${idx}`} className="bg-orange-50/50 dark:bg-orange-900/10 border-l-4 border-orange-400">
-                      <td className="px-6 py-4"></td>
-                      <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400 italic font-mono">
+                    <tr key={`${staff.full_name}-dup-${idx}`} className="bg-orange-50/50 dark:bg-orange-900/5 border-l-4 border-orange-400">
+                      <td className="px-4 md:px-6 py-3"></td>
+                      <td className="px-4 md:px-6 py-3 text-xs text-gray-600 dark:text-gray-500 italic font-mono">
                         ID: {dup.employee_id}
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">
+                      <td className="px-4 md:px-6 py-3 text-xs text-gray-600 dark:text-gray-400 hidden sm:table-cell">
                         {dup.employee_gender || '—'}
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">
+                      <td className="px-4 md:px-6 py-3 text-xs text-gray-600 dark:text-gray-400 hidden md:table-cell">
                         {dup.employee_position || '—'}
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">
+                      <td className="px-4 md:px-6 py-3 text-xs text-gray-600 dark:text-gray-400 hidden lg:table-cell">
                         {dup.employee_post || '—'}
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400 font-mono">
+                      <td className="px-4 md:px-6 py-3 text-xs text-gray-600 dark:text-gray-400 font-mono hidden xl:table-cell">
                         {dup.employee_phone || '—'}
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-4 md:px-6 py-3">
                         <span
-                          className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold ${
+                          className={`inline-flex items-center gap-0.5 px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${
                             dup.employee_status === 'Active'
                               ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300'
                               : dup.employee_status === 'Terminated'
@@ -198,7 +199,7 @@ export default function AllStaffList() {
                               : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-400'
                           }`}
                         >
-                          <span className={`w-2 h-2 rounded-full ${
+                          <span className={`w-1.5 h-1.5 rounded-full ${
                             dup.employee_status === 'Active'
                               ? 'bg-green-600 dark:bg-green-400'
                               : dup.employee_status === 'Terminated'
@@ -208,9 +209,9 @@ export default function AllStaffList() {
                           {dup.employee_status || 'Unknown'}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-center">
-                        <span className="inline-flex items-center gap-1 px-2 py-1 bg-orange-100 dark:bg-orange-900/40 text-orange-600 dark:text-orange-300 rounded text-xs font-semibold">
-                          <Trash2 className="w-3 h-3" /> Duplicate
+                      <td className="px-4 md:px-6 py-3 text-center">
+                        <span className="inline-flex items-center gap-0.5 px-2 py-0.5 bg-orange-100 dark:bg-orange-900/40 text-orange-600 dark:text-orange-300 rounded text-xs font-semibold">
+                          <Trash2 className="w-2.5 h-2.5" /> Dup
                         </span>
                       </td>
                     </tr>
