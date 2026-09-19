@@ -57,6 +57,19 @@ const REQUIRED_DOCUMENTS: Record<string, string[]> = {
   ],
 }
 
+// Document aliases - maps different document names to the same requirement
+const DOCUMENT_ALIASES: Record<string, string[]> = {
+  'ID/Passport': ['National ID', 'Passport', 'National ID / Passport', 'identification', 'id'],
+  'Notarized A2 or equivalent': ['High School Diploma', 'Notified High School Diploma', 'Secondary School Certificate', 'A2 Certificate', 'Form 6'],
+  'Notarized A0': ['Bachelor Degree', 'University Degree', 'A0 Certificate'],
+  'Medical report': ['Medical', 'Health Certificate', 'Medical Examination'],
+  'A1 and transcripts (credit transfer)': ['A1', 'Transcripts', 'Academic Transcript', 'A1 Certificate'],
+  'Application letter': ['Application', 'Letter of Intent', 'Motivation Letter'],
+  'Criminal record': ['Police Clearance', 'Criminal Clearance', 'Background Check'],
+  'Health insurance': ['Insurance', 'Health Coverage'],
+  'Recommendation letter from employer or academician': ['Recommendation', 'Reference Letter', 'Letter of Recommendation'],
+}
+
 export default function DocumentChecklistModal({
   open,
   onClose,
@@ -94,9 +107,15 @@ export default function DocumentChecklistModal({
 
       const initialDocs = requiredDocs
         .map((doc, idx) => {
-          // Check if document type matches any uploaded document (case-insensitive)
+          // Get aliases for this document type
+          const aliases = DOCUMENT_ALIASES[doc] || [doc]
+          const searchTerms = [doc, ...aliases].map(term => term.toLowerCase())
+
+          // Check if document type matches any uploaded document (case-insensitive or by alias)
           const hasUpload = uploadedDocNames.some((uploaded: string) =>
-            doc.toLowerCase().includes(uploaded) || uploaded.includes(doc.toLowerCase())
+            searchTerms.some(term =>
+              term.includes(uploaded.trim()) || uploaded.trim().includes(term)
+            )
           )
 
           return {
