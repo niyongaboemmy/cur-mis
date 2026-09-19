@@ -300,7 +300,7 @@ export default function OffersPage() {
                             className="btn-secondary btn-sm"
                             title={`Generate letter (${o.regnumber ? `Reg: ${o.regnumber}, ID: ${o.student_db_id}` : `App: ${o.application_number}, ID: ${o.application_id}`})`}
                           >
-                            <FileText className="w-3 h-3" /> Letter
+                            <FileText className="w-3 h-3" /> Admission Letter
                           </a>
                         ) : (
                           <button
@@ -308,7 +308,7 @@ export default function OffersPage() {
                             title="No registration or application number found"
                             disabled
                           >
-                            <FileText className="w-3 h-3" /> Letter
+                            <FileText className="w-3 h-3" /> Admission Letter
                           </button>
                         )}
 
