@@ -973,25 +973,19 @@ class ApplicationService
         $letterData = $this->getLetterData($offerId);
         $token      = $offer['letter_token'] ?? bin2hex(random_bytes(32));
 
-        // Build download link - uses the document system with either student ID or application ID
+        // Build download link - uses the document system for enrolled students or API for applicants
         $downloadUrl = '';
         $studentDbId = isset($offer['student_db_id']) ? (int)$offer['student_db_id'] : 0;
-        $applicationId = isset($offer['application_id']) ? (int)$offer['application_id'] : 0;
 
         if ($studentDbId > 0) {
-            // Priority 1: Use student.id from student table (for enrolled students with registration number)
+            // For enrolled students: Use student.id from student table (document system supports this)
             $downloadUrl = 'https://cur.ac.rw/umis/documents/all_certificate/generate_document.php'
                 . '?type=admission_letter'
                 . '&student_id=' . rawurlencode((string)$studentDbId)
                 . '&file_name=Admission_Letter_FORMAT.pdf';
-        } elseif ($applicationId > 0) {
-            // Priority 2: Use student_applications.id (for applicants not yet enrolled, but in student_applications table)
-            $downloadUrl = 'https://cur.ac.rw/umis/documents/all_certificate/generate_document.php'
-                . '?type=admission_letter'
-                . '&student_id=' . rawurlencode((string)$applicationId)
-                . '&file_name=Admission_Letter_FORMAT.pdf';
         } else {
-            // Fallback: Use API token-based link (last resort)
+            // For applicants not yet enrolled: Use API token-based link (document system only supports student table lookups)
+            // This allows applicants like Elisabeth (APP-2026-00096) to download letters before getting registration number
             $apiBase     = rtrim((string)(getenv('APP_URL') ?: 'http://localhost:8888/cur-mis/backend/public'), '/');
             $downloadUrl = $apiBase . '/api/portal/admission-letter?token=' . $token;
         }
