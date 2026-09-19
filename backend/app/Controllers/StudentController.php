@@ -5575,16 +5575,40 @@ class StudentController extends BaseController
         }
 
         try {
-            // Save message to database (you may need to create this table)
-            // For now, we'll just verify it was received
             $message = trim($data['message']);
             $documentTypes = $data['document_types'];
+            $userId = $_SESSION['user_id'] ?? null;
 
-            // Log the message (can be stored in a notifications table later)
+            // Try to save to database if table exists
+            $dbPath = getenv('DB_PATH') ?: realpath(__DIR__ . '/../../..') . '/database.sqlite';
+
+            try {
+                $db = new \PDO('mysql:host=' . getenv('DB_HOST') . ';dbname=' . getenv('DB_DATABASE'),
+                              getenv('DB_USERNAME'),
+                              getenv('DB_PASSWORD'));
+
+                $stmt = $db->prepare("
+                    INSERT INTO missing_document_notes (student_id, message, document_types, sent_by_user_id)
+                    VALUES (?, ?, ?, ?)
+                ");
+
+                $stmt->execute([
+                    $studentId,
+                    $message,
+                    json_encode($documentTypes),
+                    $userId
+                ]);
+            } catch (\Exception $dbError) {
+                // Table might not exist yet, just log it
+                error_log("Note: Could not save to database - " . $dbError->getMessage());
+            }
+
+            // Log the message for backup
             error_log("Missing documents note for student $studentId: " . json_encode([
                 'message' => $message,
                 'documents' => $documentTypes,
-                'timestamp' => date('Y-m-d H:i:s')
+                'timestamp' => date('Y-m-d H:i:s'),
+                'user_id' => $userId
             ]));
 
             return $this->json([
