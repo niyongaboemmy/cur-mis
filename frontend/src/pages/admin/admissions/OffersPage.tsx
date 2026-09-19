@@ -138,6 +138,16 @@ export default function OffersPage() {
     return ''
   }
 
+  const getDocumentUrl = (offer: any) => {
+    const baseUrl = 'https://cur.ac.rw/umis/documents/all_certificate/generate_document.php?type=admission_letter&file_name=Admission_Letter_FORMAT.pdf'
+    const identifier = getDocumentIdentifier(offer)
+    if (!identifier) return ''
+
+    const isApplicant = !offer.regnumber || !offer.student_db_id
+    const url = `${baseUrl}&student_id=${identifier}`
+    return isApplicant ? `${url}&applicant=1` : url
+  }
+
   const filteredRows = useMemo(() => {
     if (!searchQuery.trim()) return rows
     const query = searchQuery.toLowerCase()
@@ -282,9 +292,9 @@ export default function OffersPage() {
                         )}
 
                         {/* Letter - Direct Link to Document System */}
-                        {getDocumentIdentifier(o) ? (
+                        {getDocumentUrl(o) ? (
                           <a
-                            href={`https://cur.ac.rw/umis/documents/all_certificate/generate_document.php?type=admission_letter&student_id=${getDocumentIdentifier(o)}&file_name=Admission_Letter_FORMAT.pdf`}
+                            href={getDocumentUrl(o)}
                             target="_blank"
                             rel="noreferrer"
                             className="btn-secondary btn-sm"
@@ -303,9 +313,9 @@ export default function OffersPage() {
                         )}
 
                         {/* Download PDF from System */}
-                        {getDocumentIdentifier(o) && (
+                        {getDocumentUrl(o) && (
                           <a
-                            href={`https://cur.ac.rw/umis/documents/all_certificate/generate_document.php?type=admission_letter&student_id=${getDocumentIdentifier(o)}&file_name=Admission_Letter_FORMAT.pdf`}
+                            href={getDocumentUrl(o)}
                             download
                             className="btn-secondary btn-sm"
                             title={`Download letter (${o.regnumber ? `Reg: ${o.regnumber}, ID: ${o.student_db_id}` : `App: ${o.application_number}, ID: ${o.application_id}`})`}
