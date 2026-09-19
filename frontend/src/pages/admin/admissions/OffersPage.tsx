@@ -52,7 +52,8 @@ export default function OffersPage() {
   const listQ = useQuery({
     queryKey: ['admin', 'offers', status],
     queryFn:  () => offerService.list({
-        status: status || undefined
+        status: status || undefined,
+        per_page: 100
     }),
   })
 
