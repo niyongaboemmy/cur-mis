@@ -149,13 +149,6 @@ export function ActiveTab({
   const cumulativeStats = allYearsStatsQ.data?.data ?? null;
   const cumulativeTotal = cumulativeStats?.active ?? 0;
 
-  // Get year-by-year breakdown from cumulative stats facets
-  const yearBreakdown = useMemo(() => {
-    if (!cumulativeStats?.facets?.acc_year) return [];
-    const years = cumulativeStats.facets.acc_year.map(f => f.label);
-    return years;
-  }, [cumulativeStats]);
-
   // Use cumulative stats for all metrics
   const displayStats = cumulativeStats ?? s;
   const activeGenderTot = cumulativeTotal;
@@ -199,11 +192,6 @@ export function ActiveTab({
                 <p className="text-xs text-green-600 dark:text-green-400 mt-1">
                   Cumulative across all years
                 </p>
-                {yearBreakdown.length > 0 && (
-                  <p className="text-xs text-green-700 dark:text-green-300 mt-2 leading-relaxed">
-                    {yearBreakdown.join(' • ')}
-                  </p>
-                )}
               </div>
               <div className="bg-green-200 dark:bg-green-900/40 p-3 rounded-lg">
                 <BadgeCheck className="w-6 h-6 text-green-600 dark:text-green-400" />
