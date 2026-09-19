@@ -123,6 +123,11 @@ export default function OffersPage() {
 
   const rows = listQ.data?.data?.data ?? []
 
+  // Get student identifier: registration_number (if student enrolled) or application_number (if applicant)
+  const getStudentIdentifier = (offer: any) => {
+    return offer.registration_number || offer.application_number || offer.student_id || ''
+  }
+
   const filteredRows = useMemo(() => {
     if (!searchQuery.trim()) return rows
     const query = searchQuery.toLowerCase()
@@ -267,20 +272,20 @@ export default function OffersPage() {
                         )}
 
                         {/* Letter - Direct Link to Document System */}
-                        {o.student_id ? (
+                        {getStudentIdentifier(o) ? (
                           <a
-                            href={`https://cur.ac.rw/umis/documents/all_certificate/generate_document.php?type=admission_letter&student_id=${o.student_id}&file_name=Admission_Letter_FORMAT.pdf&applicant=1`}
+                            href={`https://cur.ac.rw/umis/documents/all_certificate/generate_document.php?type=admission_letter&student_id=${getStudentIdentifier(o)}&file_name=Admission_Letter_FORMAT.pdf&applicant=1`}
                             target="_blank"
                             rel="noreferrer"
                             className="btn-secondary btn-sm"
-                            title="Generate admission letter from document system"
+                            title={`Generate admission letter (${o.registration_number ? 'Reg: ' : 'App: '}${getStudentIdentifier(o)})`}
                           >
                             <FileText className="w-3 h-3" /> Letter
                           </a>
                         ) : (
                           <button
                             className="btn-secondary btn-sm opacity-50 cursor-not-allowed"
-                            title="No student ID available"
+                            title="No registration or application number available"
                             disabled
                           >
                             <FileText className="w-3 h-3" /> Letter
@@ -288,12 +293,12 @@ export default function OffersPage() {
                         )}
 
                         {/* Download PDF from System */}
-                        {o.student_id && (
+                        {getStudentIdentifier(o) && (
                           <a
-                            href={`https://cur.ac.rw/umis/documents/all_certificate/generate_document.php?type=admission_letter&student_id=${o.student_id}&file_name=Admission_Letter_FORMAT.pdf&applicant=1`}
+                            href={`https://cur.ac.rw/umis/documents/all_certificate/generate_document.php?type=admission_letter&student_id=${getStudentIdentifier(o)}&file_name=Admission_Letter_FORMAT.pdf&applicant=1`}
                             download
                             className="btn-secondary btn-sm"
-                            title="Download admission letter PDF"
+                            title={`Download admission letter (${o.registration_number ? 'Reg: ' : 'App: '}${getStudentIdentifier(o)})`}
                           >
                             <Download className="w-3 h-3" />
                           </a>
