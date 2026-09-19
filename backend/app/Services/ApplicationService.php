@@ -973,17 +973,25 @@ class ApplicationService
         $letterData = $this->getLetterData($offerId);
         $token      = $offer['letter_token'] ?? bin2hex(random_bytes(32));
 
-        // Build download link - uses the document system if student has ID, otherwise fallback to API
+        // Build download link - uses the document system with either student ID or application ID
         $downloadUrl = '';
         $studentDbId = isset($offer['student_db_id']) ? (int)$offer['student_db_id'] : 0;
+        $applicationId = isset($offer['application_id']) ? (int)$offer['application_id'] : 0;
+
         if ($studentDbId > 0) {
-            // Use institutional document generator for enrolled students
+            // Priority 1: Use student.id from student table (for enrolled students with registration number)
             $downloadUrl = 'https://cur.ac.rw/umis/documents/all_certificate/generate_document.php'
                 . '?type=admission_letter'
                 . '&student_id=' . rawurlencode((string)$studentDbId)
                 . '&file_name=Admission_Letter_FORMAT.pdf';
+        } elseif ($applicationId > 0) {
+            // Priority 2: Use student_applications.id (for applicants not yet enrolled, but in student_applications table)
+            $downloadUrl = 'https://cur.ac.rw/umis/documents/all_certificate/generate_document.php'
+                . '?type=admission_letter'
+                . '&student_id=' . rawurlencode((string)$applicationId)
+                . '&file_name=Admission_Letter_FORMAT.pdf';
         } else {
-            // Fallback for applicants not yet enrolled
+            // Fallback: Use API token-based link (last resort)
             $apiBase     = rtrim((string)(getenv('APP_URL') ?: 'http://localhost:8888/cur-mis/backend/public'), '/');
             $downloadUrl = $apiBase . '/api/portal/admission-letter?token=' . $token;
         }
