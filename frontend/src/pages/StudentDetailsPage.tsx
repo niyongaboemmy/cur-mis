@@ -4253,6 +4253,70 @@ function DocumentsTab({
     { verified: 0, pending: 0, rejected: 0 } as Record<string, number>,
   );
 
+  // Get required documents based on programme (from DocumentChecklistModal logic)
+  const REQUIRED_DOCS: Record<string, string[]> = {
+    UNDERGRADUATE: [
+      'Notarized A2 or equivalent',
+      'A1 and transcripts (credit transfer)',
+      'Medical report',
+      'ID/Passport',
+      'Application letter',
+      'Criminal record',
+      'Health insurance',
+    ],
+    MASTERS: [
+      'Notarized A2 or equivalent',
+      'Notarized A0',
+      'Medical report',
+      'ID/Passport',
+      'Application letter',
+      'Criminal record',
+      'Health insurance',
+      'Recommendation letter from employer or academician',
+    ],
+    PGDE: [
+      'Notarized A2 or equivalent',
+      'Notarized A0',
+      'Medical report',
+      'ID/Passport',
+      'Application letter',
+      'Criminal record',
+      'Health insurance',
+    ],
+  }
+
+  const DOCUMENT_ALIASES: Record<string, string[]> = {
+    'ID/Passport': ['National ID', 'Passport', 'National ID / Passport', 'identification', 'id'],
+    'Notarized A2 or equivalent': ['High School Diploma', 'Notified High School Diploma', 'Secondary School Certificate', 'A2 Certificate', 'Form 6'],
+    'Notarized A0': ['Bachelor Degree', 'University Degree', 'A0 Certificate'],
+    'Medical report': ['Medical', 'Health Certificate', 'Medical Examination'],
+    'A1 and transcripts (credit transfer)': ['A1', 'Transcripts', 'Academic Transcript', 'A1 Certificate'],
+    'Application letter': ['Application', 'Letter of Intent', 'Motivation Letter'],
+    'Criminal record': ['Police Clearance', 'Criminal Clearance', 'Background Check'],
+    'Health insurance': ['Insurance', 'Health Coverage'],
+    'Recommendation letter from employer or academician': ['Recommendation', 'Reference Letter', 'Letter of Recommendation'],
+  }
+
+  // Calculate missing documents
+  const getMissingDocuments = () => {
+    const programme = 'UNDERGRADUATE'.toUpperCase().replace(/\s+/g, '')
+    const requiredDocs = REQUIRED_DOCS[programme] || REQUIRED_DOCS.UNDERGRADUATE
+    const uploadedDocNames = documents.map((d: any) => (d.type_name || d.document_type_name || '').toLowerCase())
+
+    return requiredDocs
+      .map((doc, idx) => {
+        const aliases = DOCUMENT_ALIASES[doc] || [doc]
+        const searchTerms = [doc, ...aliases].map(term => term.toLowerCase())
+        const hasUpload = uploadedDocNames.some((uploaded: string) =>
+          searchTerms.some(term => term.includes(uploaded.trim()) || uploaded.trim().includes(term))
+        )
+        return { id: `missing-${idx}`, name: doc, uploaded: hasUpload }
+      })
+      .filter((doc: any) => !doc.uploaded)
+  }
+
+  const missingDocuments = getMissingDocuments()
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -4356,31 +4420,27 @@ function DocumentsTab({
           <div>
             <h3 className="text-sm font-semibold text-red-700 dark:text-red-300 mb-3 flex items-center gap-2">
               <AlertCircle className="w-4 h-4" />
-              Missing Documents ({documents.filter((d: any) => {
-                const s = String(d.verification_status || 'pending').toLowerCase();
-                return s === 'pending' || s === 'rejected';
-              }).length})
+              Missing Documents ({missingDocuments.length})
             </h3>
             <div className="space-y-3">
-              {documents
-                .filter((d: any) => {
-                  const s = String(d.verification_status || 'pending').toLowerCase();
-                  return s === 'pending' || s === 'rejected';
-                })
-                .map((d: any) => (
-                  <div key={d.id} className="card p-4 border-l-4 border-red-500 bg-red-50 dark:bg-red-900/10">
-                    <DocumentRow
-                      doc={d}
-                      studentId={studentId}
-                      selfMode={selfMode}
-                    />
+              {missingDocuments.length > 0 ? (
+                missingDocuments.map((doc: any) => (
+                  <div key={doc.id} className="card p-4 border-l-4 border-red-500 bg-red-50 dark:bg-red-900/10">
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-red-200 dark:bg-red-900/40 flex items-center justify-center shrink-0 mt-0.5">
+                        <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="text-sm font-semibold text-red-900 dark:text-red-300">{doc.name}</h4>
+                        <p className="text-xs text-red-700 dark:text-red-400 mt-0.5">Not uploaded yet</p>
+                      </div>
+                    </div>
                   </div>
-                ))}
-              {documents.filter((d: any) => {
-                const s = String(d.verification_status || 'pending').toLowerCase();
-                return s === 'pending' || s === 'rejected';
-              }).length === 0 && (
-                <div className="text-xs text-ink-500 py-4 text-center">All documents verified!</div>
+                ))
+              ) : (
+                <div className="text-xs text-emerald-600 dark:text-emerald-400 py-4 text-center font-semibold">
+                  ✓ All documents complete!
+                </div>
               )}
             </div>
           </div>
