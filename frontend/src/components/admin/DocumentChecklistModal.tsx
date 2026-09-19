@@ -92,21 +92,25 @@ export default function DocumentChecklistModal({
       const requiredDocs = REQUIRED_DOCUMENTS[programmeKey] || REQUIRED_DOCUMENTS.UNDERGRADUATE
       const uploadedDocNames = studentDocs?.data?.map((d: any) => d.document_type?.toLowerCase() || '') || []
 
-      const initialDocs = requiredDocs.map((doc, idx) => {
-        // Check if document type matches any uploaded document (case-insensitive)
-        const hasUpload = uploadedDocNames.some((uploaded: string) =>
-          doc.toLowerCase().includes(uploaded) || uploaded.includes(doc.toLowerCase())
-        )
+      const initialDocs = requiredDocs
+        .map((doc, idx) => {
+          // Check if document type matches any uploaded document (case-insensitive)
+          const hasUpload = uploadedDocNames.some((uploaded: string) =>
+            doc.toLowerCase().includes(uploaded) || uploaded.includes(doc.toLowerCase())
+          )
 
-        return {
-          id: `doc-${idx}`,
-          name: doc,
-          verified: hasUpload ? true : null, // Auto-green if uploaded, otherwise neutral
-          verified_at: hasUpload ? new Date().toISOString().split('T')[0] : undefined,
-          verified_by: hasUpload ? 'System' : undefined,
-          uploaded: hasUpload,
-        }
-      })
+          return {
+            id: `doc-${idx}`,
+            name: doc,
+            verified: hasUpload ? true : false, // Auto-green if uploaded, auto-red if missing
+            verified_at: hasUpload ? new Date().toISOString().split('T')[0] : undefined,
+            verified_by: hasUpload ? 'System' : 'Missing',
+            uploaded: hasUpload,
+          }
+        })
+        // Filter to show ONLY missing documents (not uploaded)
+        .filter((doc: DocumentItem) => !doc.uploaded)
+
       setDocuments(initialDocs)
     }
   }, [open, programmeKey, studentDocs])
