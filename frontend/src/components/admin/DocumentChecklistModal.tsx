@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { CheckCircle2, XCircle, Loader2, AlertCircle } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 
@@ -8,6 +9,7 @@ interface DocumentItem {
   verified: boolean | null
   verified_at?: string
   verified_by?: string
+  uploaded?: boolean
 }
 
 interface MissingDocument {
@@ -70,19 +72,44 @@ export default function DocumentChecklistModal({
   const [saving, setSaving] = useState(false)
   const programmeKey = programme.toUpperCase().replace(/\s+/g, '')
 
+  // Fetch uploaded documents for this student
+  const { data: studentDocs } = useQuery({
+    queryKey: ['student-documents', studentId],
+    queryFn: async () => {
+      try {
+        const res = await fetch(`/api/students/${studentId}/documents`)
+        if (!res.ok) return null
+        return res.json()
+      } catch {
+        return null
+      }
+    },
+    enabled: !!studentId && open,
+  })
+
   useEffect(() => {
     if (open) {
       const requiredDocs = REQUIRED_DOCUMENTS[programmeKey] || REQUIRED_DOCUMENTS.UNDERGRADUATE
-      const initialDocs = requiredDocs.map((doc, idx) => ({
-        id: `doc-${idx}`,
-        name: doc,
-        verified: null,
-        verified_at: undefined,
-        verified_by: undefined,
-      }))
+      const uploadedDocNames = studentDocs?.data?.map((d: any) => d.document_type?.toLowerCase() || '') || []
+
+      const initialDocs = requiredDocs.map((doc, idx) => {
+        // Check if document type matches any uploaded document (case-insensitive)
+        const hasUpload = uploadedDocNames.some((uploaded: string) =>
+          doc.toLowerCase().includes(uploaded) || uploaded.includes(doc.toLowerCase())
+        )
+
+        return {
+          id: `doc-${idx}`,
+          name: doc,
+          verified: hasUpload ? true : null, // Auto-green if uploaded, otherwise neutral
+          verified_at: hasUpload ? new Date().toISOString().split('T')[0] : undefined,
+          verified_by: hasUpload ? 'System' : undefined,
+          uploaded: hasUpload,
+        }
+      })
       setDocuments(initialDocs)
     }
-  }, [open, programmeKey])
+  }, [open, programmeKey, studentDocs])
 
   const toggleDocument = (id: string) => {
     setDocuments((docs) =>
