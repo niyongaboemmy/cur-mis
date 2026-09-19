@@ -554,10 +554,9 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
 
   const user = useAuthStore((s) => s.user);
 
-  // Only Academic Secretary, Admin, Registrar, Superadmin, and Director of Finance & Administration can generate documents
-  const allowedRoles = ['Academic Secretary', 'Admin', 'Registrar', 'superadmin', 'Director of Finance and Administration'];
+  // Only Academic Secretary, Admin, registrar, superadmin, and Director of Finance and Administration can generate documents
+  const allowedRoles = ['Academic Secretary', 'Admin', 'registrar', 'superadmin', 'Director of Finance and Administration'];
   const canGenerateDocuments = !!(user?.role_name && allowedRoles.includes(user.role_name));
-  console.log('=== DEBUG ===', 'User:', user?.role_name, 'Allowed:', allowedRoles, 'Can Generate:', canGenerateDocuments);
 
   // Entity data for filters. Departments + programs are loaded once and
   // shown flat — no faculty cascade — so the user can pick either directly.
