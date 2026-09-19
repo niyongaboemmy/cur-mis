@@ -1099,7 +1099,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-slate-50/50 dark:bg-ink-900">
-      <header className="bg-white dark:bg-ink-800 border-b border-ink-100 dark:border-ink-700 py-4 px-4 sm:px-6 sticky top-0 z-50">
+      <header className="bg-gradient-to-r from-slate-900 to-blue-900 dark:from-slate-800 dark:to-blue-800 border-b border-blue-800 dark:border-blue-700 py-4 px-4 sm:px-6 sticky top-0 z-50">
         <div className="w-full max-w-7xl mx-auto flex items-center justify-between">
           <Logo />
           <div className="flex items-center gap-4">
@@ -1109,25 +1109,25 @@ function Shell({ children }: { children: React.ReactNode }) {
                   href={applyUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 text-[13px] font-medium text-brand hover:underline"
+                  className="inline-flex items-center gap-1.5 text-[13px] font-medium text-white hover:text-blue-100 transition-colors"
                   title="Watch the step-by-step guide on how to apply"
                 >
                   <PlayCircle className="w-4 h-4" />
                   Watch: How to apply
                 </a>
-                <div className="w-px h-4 bg-ink-200 dark:bg-ink-700" />
+                <div className="w-px h-4 bg-blue-700" />
               </>
             )}
             {isAuthenticated && user ? (
               <div className="flex items-center gap-3">
-                <span className="text-[13px] font-medium text-ink-900 dark:text-white">
+                <span className="text-[13px] font-medium text-white">
                   Welcome, {user.full_name || user.username || 'Applicant'}
                 </span>
-                <div className="w-px h-4 bg-ink-200 dark:bg-ink-700" />
+                <div className="w-px h-4 bg-blue-700" />
                 <button
                   onClick={() => logoutM.mutate()}
                   disabled={logoutM.isPending}
-                  className="text-[13px] text-ink-600 dark:text-ink-300 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                  className="text-[13px] text-blue-100 hover:text-red-300 transition-colors"
                 >
                   {logoutM.isPending ? 'Signing out...' : 'Sign Out'}
                 </button>
@@ -1136,14 +1136,14 @@ function Shell({ children }: { children: React.ReactNode }) {
               <>
                 <Link
                   to="/apply/track"
-                  className="text-[13px] text-ink-600 dark:text-ink-300 hover:text-brand"
+                  className="text-[13px] text-white hover:text-blue-100 transition-colors"
                 >
                   Track Status
                 </Link>
-                <div className="w-px h-4 bg-ink-200 dark:bg-ink-700" />
+                <div className="w-px h-4 bg-blue-700" />
                 <Link
                   to="/login"
-                  className="text-[13px] text-ink-600 dark:text-ink-300 hover:text-brand"
+                  className="text-[13px] text-white hover:text-blue-100 transition-colors"
                 >
                   Staff Access
                 </Link>
