@@ -376,7 +376,7 @@ export const meritService = {
  * permission: MANAGE_ADMISSIONS
  * ─────────────────────────────────────────────────────────────── */
 export const offerService = {
-  list: (params: { status?: string; department_id?: number; intake?: string; enrolled_only?: '0' | '1' } = {}, signal?: AbortSignal) =>
+  list: (params: { status?: string; department_id?: number; intake?: string; enrolled_only?: '0' | '1'; per_page?: number; page?: number } = {}, signal?: AbortSignal) =>
     api.get<PaginatedResponse<AdmissionOffer>>('/admin/admissions/offers', params, signal),
 
   create: (d: { application_id: number; expires_at: string; notes?: string }) =>
