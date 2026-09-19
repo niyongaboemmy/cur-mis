@@ -346,7 +346,7 @@ const NAV_TREE: NavNode[] = [
       },
       {
         to: "/admin/admissions/offers",
-        label: "Offers",
+        label: "Manage Offers & Letters",
         permissions: [PERMISSIONS.MANAGE_ADMISSIONS],
       },
       {
