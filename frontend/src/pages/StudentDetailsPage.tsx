@@ -4182,95 +4182,90 @@ function DocumentUploadSection() {
   );
 }
 
-function MissingDocumentCard({
-  doc,
+function MissingDocumentsMessageBox({
   studentId,
-  selfMode,
+  missingDocuments,
 }: {
-  doc: any;
   studentId: number;
-  selfMode?: boolean;
+  missingDocuments: any[];
 }) {
   const [message, setMessage] = useState('');
-  const [showMessages, setShowMessages] = useState(false);
+  const [showMessage, setShowMessage] = useState(false);
   const qc = useQueryClient();
 
   const addMessageMutation = useMutation({
     mutationFn: async (text: string) => {
-      const res = await fetch(`/api/students/${studentId}/missing-document-note`, {
+      const res = await fetch(`/api/students/${studentId}/missing-documents-note`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ document_type: doc.name, message: text }),
+        body: JSON.stringify({
+          document_types: missingDocuments.map((d) => d.name),
+          message: text,
+        }),
       });
-      if (!res.ok) throw new Error('Failed to add message');
+      if (!res.ok) throw new Error('Failed to send message');
       return res.json();
     },
     onSuccess: () => {
       setMessage('');
-      toast.success('Message sent to student');
+      setShowMessage(false);
+      toast.success('Message sent to student for all missing documents');
       qc.invalidateQueries({ queryKey: ['student-documents', studentId] });
     },
     onError: () => toast.error('Failed to send message'),
   });
 
-  const handleAddMessage = () => {
+  const handleSendMessage = () => {
     if (message.trim()) {
       addMessageMutation.mutate(message);
     }
   };
 
   return (
-    <div className="card border-l-4 border-red-500 bg-red-50 dark:bg-red-900/10 overflow-hidden">
-      <div className="p-4">
-        <div className="flex items-start gap-3">
-          <div className="w-8 h-8 rounded-lg bg-red-200 dark:bg-red-900/40 flex items-center justify-center shrink-0 mt-0.5">
-            <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h4 className="text-sm font-semibold text-red-900 dark:text-red-300">{doc.name}</h4>
-            <p className="text-xs text-red-700 dark:text-red-400 mt-0.5">Not uploaded yet</p>
-          </div>
+    <div className="card border-l-4 border-amber-500 bg-amber-50 dark:bg-amber-900/10 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h4 className="text-sm font-semibold text-amber-900 dark:text-amber-300">
+            Notify Student
+          </h4>
+          <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+            Send a message to the student about the {missingDocuments.length} missing document{missingDocuments.length !== 1 ? 's' : ''}
+          </p>
         </div>
+        <button
+          type="button"
+          onClick={() => setShowMessage(!showMessage)}
+          className="text-xs font-semibold text-amber-700 dark:text-amber-300 hover:text-amber-900 dark:hover:text-amber-200 whitespace-nowrap px-2 py-1 rounded hover:bg-amber-100 dark:hover:bg-amber-900/30 transition"
+        >
+          {showMessage ? '▼ Hide' : '▶ Show'}
+        </button>
       </div>
 
-      {/* Message Section - Only visible to staff */}
-      {!selfMode && (
-        <div className="border-t border-red-200 dark:border-red-800/50 p-4 bg-red-100/30 dark:bg-red-900/5">
-          <button
-            type="button"
-            onClick={() => setShowMessages(!showMessages)}
-            className="text-xs font-semibold text-red-700 dark:text-red-300 hover:text-red-900 dark:hover:text-red-200 flex items-center gap-1"
-          >
-            {showMessages ? '▼' : '▶'} Add Message to Student
-          </button>
-
-          {showMessages && (
-            <div className="mt-3 space-y-2">
-              <textarea
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                placeholder="e.g., 'Please upload your National ID. You can scan or take a clear photo.'"
-                className="input w-full text-sm min-h-16 resize-none"
-              />
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={handleAddMessage}
-                  disabled={!message.trim() || addMessageMutation.isPending}
-                  className="btn-primary btn-sm text-xs flex-1"
-                >
-                  {addMessageMutation.isPending ? 'Sending...' : 'Send Message'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowMessages(false)}
-                  className="btn-secondary btn-sm text-xs px-3"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
+      {showMessage && (
+        <div className="mt-3 space-y-2">
+          <textarea
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            placeholder="e.g., 'Please upload the following missing documents: National ID and Medical Report. You can scan or take clear photos.'"
+            className="input w-full text-sm min-h-20 resize-none"
+          />
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleSendMessage}
+              disabled={!message.trim() || addMessageMutation.isPending}
+              className="btn-primary btn-sm text-xs flex-1"
+            >
+              {addMessageMutation.isPending ? 'Sending...' : 'Send Message to Student'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowMessage(false)}
+              className="btn-secondary btn-sm text-xs px-3"
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -4517,24 +4512,38 @@ function DocumentsTab({
               <AlertCircle className="w-4 h-4" />
               Missing Documents ({missingDocuments.length})
             </h3>
-            <div className="space-y-3">
-              {missingDocuments.length > 0 ? (
-                <>
+            {missingDocuments.length > 0 ? (
+              <div className="space-y-3">
+                {/* Single Message Box for All Missing Documents - Staff Only */}
+                {!selfMode && (
+                  <MissingDocumentsMessageBox
+                    studentId={studentId}
+                    missingDocuments={missingDocuments}
+                  />
+                )}
+
+                {/* List of Missing Documents */}
+                <div className="space-y-2">
                   {missingDocuments.map((doc: any) => (
-                    <MissingDocumentCard
-                      key={doc.id}
-                      doc={doc}
-                      studentId={studentId}
-                      selfMode={selfMode}
-                    />
+                    <div key={doc.id} className="card p-3 border-l-4 border-red-500 bg-red-50 dark:bg-red-900/10">
+                      <div className="flex items-start gap-3">
+                        <div className="w-7 h-7 rounded-lg bg-red-200 dark:bg-red-900/40 flex items-center justify-center shrink-0 mt-0.5">
+                          <AlertCircle className="w-3.5 h-3.5 text-red-600 dark:text-red-400" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h4 className="text-sm font-semibold text-red-900 dark:text-red-300">{doc.name}</h4>
+                          <p className="text-xs text-red-700 dark:text-red-400 mt-0.5">Not uploaded yet</p>
+                        </div>
+                      </div>
+                    </div>
                   ))}
-                </>
-              ) : (
-                <div className="text-xs text-emerald-600 dark:text-emerald-400 py-4 text-center font-semibold">
-                  ✓ All documents complete!
                 </div>
-              )}
-            </div>
+              </div>
+            ) : (
+              <div className="text-xs text-emerald-600 dark:text-emerald-400 py-4 text-center font-semibold">
+                ✓ All documents complete!
+              </div>
+            )}
           </div>
         </div>
       )}
