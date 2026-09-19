@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import {
   Handshake, Loader2, Send, Layers, Download, Mail,
-  MailCheck, FileText, Search, X,
+  MailCheck, FileText, Search, X, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 import { offerService, intakeService } from '@/services/admissionService'
@@ -25,6 +25,7 @@ export default function OffersPage() {
   const qc = useQueryClient()
   const [status, setStatus] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
   const [newOpen, setNewOpen] = useState(false)
   const [bulkOpen, setBulkOpen] = useState(false)
   const [bulkSendOpen, setBulkSendOpen] = useState(false)
@@ -50,10 +51,11 @@ export default function OffersPage() {
   })
 
   const listQ = useQuery({
-    queryKey: ['admin', 'offers', status],
+    queryKey: ['admin', 'offers', status, currentPage],
     queryFn:  () => offerService.list({
         status: status || undefined,
-        per_page: 100
+        per_page: 100,
+        page: currentPage
     }),
   })
 
@@ -295,6 +297,34 @@ export default function OffersPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* Pagination Controls */}
+        {rows.length > 0 && (
+          <div className="p-4 border-t border-ink-200 dark:border-ink-800 flex items-center justify-between">
+            <div className="text-sm text-ink-600 dark:text-ink-400">
+              {rows.length === 100 ? `Page ${currentPage} (100 offers shown)` : `${rows.length} offers shown`}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1 || listQ.isLoading}
+                className="btn-secondary btn-sm disabled:opacity-50"
+                title="Previous page"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="px-3 text-sm font-medium">Page {currentPage}</span>
+              <button
+                onClick={() => setCurrentPage(p => p + 1)}
+                disabled={rows.length < 100 || listQ.isLoading}
+                className="btn-secondary btn-sm disabled:opacity-50"
+                title="Next page"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         )}
       </div>
