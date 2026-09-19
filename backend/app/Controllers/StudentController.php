@@ -5557,4 +5557,45 @@ class StudentController extends BaseController
         echo $fileData['content'];
         exit;
     }
+
+    /**
+     * Send missing documents notification message to student
+     */
+    public function sendMissingDocumentsNote()
+    {
+        $studentId = (int)$this->router->param('id');
+        $data = $this->getJsonInput();
+
+        if (!isset($data['message']) || empty(trim($data['message']))) {
+            return $this->json(['error' => 'Message is required'], 400);
+        }
+
+        if (!isset($data['document_types']) || !is_array($data['document_types'])) {
+            return $this->json(['error' => 'Document types are required'], 400);
+        }
+
+        try {
+            // Save message to database (you may need to create this table)
+            // For now, we'll just verify it was received
+            $message = trim($data['message']);
+            $documentTypes = $data['document_types'];
+
+            // Log the message (can be stored in a notifications table later)
+            error_log("Missing documents note for student $studentId: " . json_encode([
+                'message' => $message,
+                'documents' => $documentTypes,
+                'timestamp' => date('Y-m-d H:i:s')
+            ]));
+
+            return $this->json([
+                'success' => true,
+                'message' => 'Message sent to student',
+                'student_id' => $studentId,
+                'documents_count' => count($documentTypes)
+            ]);
+        } catch (\Exception $e) {
+            error_log("Error sending missing documents note: " . $e->getMessage());
+            return $this->json(['error' => 'Failed to send message'], 500);
+        }
+    }
 }

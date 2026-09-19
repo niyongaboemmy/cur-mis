@@ -99,6 +99,7 @@ $router->group('/api/students', function ($router) {
     $router->post('/profile-change-requests/:id/decide', [StudentController::class, 'decideProfileChangeRequest']);
     $router->post('/:id/status',         [StudentController::class, 'updateStatus']);
     $router->post('/:id/assign-registry', [StudentController::class, 'assignRegistryOfficer']);
+    $router->post('/:id/missing-documents-note', [StudentController::class, 'sendMissingDocumentsNote']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_STUDENTS)]);
 
 // Module exemptions — admin-only override that records a mark for a module
