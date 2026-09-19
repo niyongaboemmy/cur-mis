@@ -90,12 +90,6 @@ export const DOCUMENT_TYPES: DocumentTypeDef[] = [
 
   // Degrees & diplomas
   {
-    slug: 'transcript',
-    label: 'Academic Transcript',
-    fileName: 'Academic_Transcript.pdf',
-    group: 'Degrees & diplomas',
-  },
-  {
     slug: 'degree_certificate',
     label: 'Degree Certificate',
     fileName: 'Degree_Certificate.pdf',
