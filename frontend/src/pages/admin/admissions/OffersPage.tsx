@@ -266,38 +266,38 @@ export default function OffersPage() {
                           </button>
                         )}
 
-                        {/* View Letter */}
-                        <button
-                          className="btn-secondary btn-sm"
-                          onClick={() => {
-                            const url = offerService.letterPdfUrl(o.id, o.student_id)
-                            if (url) window.open(url, '_blank', 'noopener,noreferrer')
-                          }}
-                        >
-                          <FileText className="w-3 h-3" /> Letter
-                        </button>
+                        {/* Letter - Direct Link to Document System */}
+                        {o.student_id ? (
+                          <a
+                            href={`https://cur.ac.rw/umis/documents/all_certificate/generate_document.php?type=admission_letter&student_id=${o.student_id}&file_name=Admission_Letter_FORMAT.pdf&applicant=1`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="btn-secondary btn-sm"
+                            title="Generate admission letter from document system"
+                          >
+                            <FileText className="w-3 h-3" /> Letter
+                          </a>
+                        ) : (
+                          <button
+                            className="btn-secondary btn-sm opacity-50 cursor-not-allowed"
+                            title="No student ID available"
+                            disabled
+                          >
+                            <FileText className="w-3 h-3" /> Letter
+                          </button>
+                        )}
 
-                        {/* Direct Letter Link */}
-                        <a
-                          href={`https://cur.ac.rw/umis/documents/all_certificate/generate_document.php?type=admission_letter&student_id=${o.student_id || ''}&file_name=Admission_Letter_FORMAT.pdf&applicant=1`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="btn-secondary btn-sm"
-                          title="Generate and download from document system"
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                        </a>
-
-                        {/* Download PDF */}
-                        <a
-                          href={offerService.letterPdfUrl(o.id, o.student_id)}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="btn-secondary btn-sm"
-                          title="Download PDF"
-                        >
-                          <Download className="w-3 h-3" />
-                        </a>
+                        {/* Download PDF from System */}
+                        {o.student_id && (
+                          <a
+                            href={`https://cur.ac.rw/umis/documents/all_certificate/generate_document.php?type=admission_letter&student_id=${o.student_id}&file_name=Admission_Letter_FORMAT.pdf&applicant=1`}
+                            download
+                            className="btn-secondary btn-sm"
+                            title="Download admission letter PDF"
+                          >
+                            <Download className="w-3 h-3" />
+                          </a>
+                        )}
 
                         {/* Send Letter */}
                         {canManage && ['pending', 'accepted'].includes(o.status) && (
