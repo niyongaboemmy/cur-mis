@@ -109,9 +109,9 @@ export default function AllStaffList() {
             </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-ink-700/30">
             {dedupedStaff?.map((staff) => (
-              <div key={staff.full_name}>
+              <>
                 {/* Primary Record */}
-                <tr
+                <tr key={staff.full_name}
                   className={`border-b border-gray-100 dark:border-ink-700/30 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors ${staff.duplicate_records.length > 0 ? 'cursor-pointer' : ''}`}
                   onClick={() => staff.duplicate_records.length > 0 && toggleExpanded(staff.full_name)}
                 >
@@ -216,7 +216,7 @@ export default function AllStaffList() {
                       </td>
                     </tr>
                   ))}
-              </div>
+              </>
             ))}
           </tbody>
         </table>

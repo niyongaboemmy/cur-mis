@@ -555,7 +555,7 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
   const user = useAuthStore((s) => s.user);
 
   // Only Academic Secretary, Admin, Registrar, Superadmin, and Director of Finance & Administration can generate documents
-  const allowedRoles = ['Academic Secretary', 'Admin', 'Registrar', 'Superadmin', 'Director of Finance and Administration'];
+  const allowedRoles = ['Academic Secretary', 'Admin', 'Registrar', 'superadmin', 'Director of Finance and Administration'];
   const canGenerateDocuments = !!(user?.role_name && allowedRoles.includes(user.role_name));
 
   // Entity data for filters. Departments + programs are loaded once and
