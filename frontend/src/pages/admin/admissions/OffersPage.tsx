@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import {
   Handshake, Loader2, Send, Layers, Download, Mail,
-  MailCheck, FileText, Search, X, ChevronLeft, ChevronRight, Edit2, ExternalLink,
+  MailCheck, FileText, Search, X, ChevronLeft, ChevronRight, Edit2,
 } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 import { offerService, intakeService } from '@/services/admissionService'
