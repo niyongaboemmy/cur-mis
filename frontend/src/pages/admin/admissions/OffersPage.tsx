@@ -52,12 +52,13 @@ export default function OffersPage() {
     enabled:  bulkOpen || bulkSendOpen,
   })
 
+  // When searching, fetch all results to search across
   const listQ = useQuery({
-    queryKey: ['admin', 'offers', status, currentPage],
+    queryKey: ['admin', 'offers', status, currentPage, searchQuery],
     queryFn:  () => offerService.list({
         status: status || undefined,
-        per_page: 100,
-        page: currentPage
+        per_page: searchQuery ? 500 : 100,  // Fetch more when searching
+        page: searchQuery ? 1 : currentPage  // Always start from page 1 when searching
     }),
   })
 
@@ -131,9 +132,13 @@ export default function OffersPage() {
       row.last_name?.toLowerCase().includes(query) ||
       row.email?.toLowerCase().includes(query) ||
       row.department_name?.toLowerCase().includes(query) ||
+      row.application_number?.toLowerCase().includes(query) ||
       `${row.first_name} ${row.last_name}`.toLowerCase().includes(query)
     )
   }, [rows, searchQuery])
+
+  const totalResults = filteredRows.length
+  const searchActive = searchQuery.trim().length > 0
 
   return (
     <section className="space-y-4">
@@ -142,19 +147,25 @@ export default function OffersPage() {
         <Handshake className="w-5 h-5 text-brand" />
         <div>
           <h2 className="section-title">Registered Applications</h2>
-          <p className="section-sub">{filteredRows.length} of {rows.length} student{rows.length === 1 ? '' : 's'}</p>
+          <p className="section-sub">
+            {searchActive
+              ? `${totalResults} result${totalResults === 1 ? '' : 's'} found across all pages`
+              : `${rows.length} student${rows.length === 1 ? '' : 's'} on this page`
+            }
+          </p>
         </div>
         <div className="flex-1" />
 
-        {/* Inline Search */}
+        {/* Inline Search - Searches Across All Pages */}
         <div className="relative w-64">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-ink-400 pointer-events-none" />
           <input
             type="text"
-            placeholder="Search by name, email, reference..."
+            placeholder="Search all pages..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="input pl-9 pr-9 w-full text-sm"
+            title="Search across all offers (name, email, reference, application #)"
           />
           {searchQuery && (
             <button
@@ -327,8 +338,8 @@ export default function OffersPage() {
           </div>
         )}
 
-        {/* Pagination Controls */}
-        {rows.length > 0 && (
+        {/* Pagination Controls - Hide When Searching */}
+        {rows.length > 0 && !searchActive && (
           <div className="p-4 border-t border-ink-200 dark:border-ink-800 flex items-center justify-between">
             <div className="text-sm text-ink-600 dark:text-ink-400">
               {rows.length === 100 ? `Page ${currentPage} (100 offers shown)` : `${rows.length} offers shown`}
