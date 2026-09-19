@@ -148,7 +148,6 @@ export function ActiveTab({
 
   const cumulativeStats = allYearsStatsQ.data?.data ?? null;
   const cumulativeTotal = cumulativeStats?.active ?? 0;
-  const activeTotal = s?.active ?? 0;
 
   // Get year-by-year breakdown from cumulative stats facets
   const yearBreakdown = useMemo(() => {
@@ -156,12 +155,14 @@ export function ActiveTab({
     const years = cumulativeStats.facets.acc_year.map(f => f.label);
     return years;
   }, [cumulativeStats]);
-  // All buckets (including Unknown) sum to the full active total so nothing on this tab
-  // exceeds the active count.
-  const activeGenderTot = activeTotal;
-  const activeNationTot = activeTotal;
-  const unknownGender = s?.active_unknown_gender ?? 0;
-  const unknownNation = s?.active_unknown_nationality ?? 0;
+
+  // Use cumulative stats for all metrics
+  const displayStats = cumulativeStats ?? s;
+  const activeGenderTot = cumulativeTotal;
+  const activeNationTot = cumulativeTotal;
+  const unknownGender = cumulativeStats?.active_unknown_gender ?? 0;
+  const unknownNation = cumulativeStats?.active_unknown_nationality ?? 0;
+  // Note: activeTotal is the selected year total; cumulativeTotal is across all years
 
   return (
     <div className="space-y-5">
@@ -177,9 +178,8 @@ export function ActiveTab({
               </h2>
             </div>
             <p className="text-[12.5px] text-ink-500 mt-1">
-              Live metrics scoped to {fmt(activeTotal)} active student
-              {activeTotal === 1 ? "" : "s"} only. Click any card or chart to
-              open the list pre-filtered.
+              Cumulative metrics across all academic years: {fmt(cumulativeTotal)} active student
+              {cumulativeTotal === 1 ? "" : "s"}. Click any card or chart to open the list pre-filtered.
             </p>
           </div>
           {(loading || fetching) && (
@@ -212,19 +212,19 @@ export function ActiveTab({
           </div>
           <ClickableStat
             label="Faculties"
-            value={fmt(s?.active_faculties)}
+            value={fmt(displayStats?.active_faculties)}
             icon={Building2}
             tone="sky"
           />
           <ClickableStat
             label="Departments"
-            value={fmt(s?.active_departments)}
+            value={fmt(displayStats?.active_departments)}
             icon={GraduationCap}
             tone="lilac"
           />
           <ClickableStat
             label="Academic years"
-            value={fmt(s?.active_academic_years)}
+            value={fmt(displayStats?.active_academic_years)}
             icon={Globe2}
             tone="peach"
           />
@@ -232,7 +232,7 @@ export function ActiveTab({
       </section>
 
       {/* Active students — gender split donut */}
-      {s && activeGenderTot > 0 && (
+      {displayStats && activeGenderTot > 0 && (
         <section className="card p-6">
           <div className="flex items-start justify-between gap-3 flex-wrap mb-2">
             <div>
@@ -241,11 +241,11 @@ export function ActiveTab({
                   <BadgeCheck className="w-3 h-3" /> Active students
                 </span>
                 <h3 className="text-[15px] font-semibold text-ink-900 dark:text-white">
-                  Gender split
+                  Gender split (Cumulative)
                 </h3>
               </div>
               <p className="text-[12px] text-ink-500 mt-1">
-                Every active student is counted — including those with no
+                Every active student across all years is counted — including those with no
                 recorded gender. Click a card to open the filtered list.
               </p>
             </div>
@@ -254,8 +254,8 @@ export function ActiveTab({
           <div className="flex flex-col md:flex-row items-center gap-8">
             <DonutChart
               segments={[
-                { label: "Male", value: s.active_male, color: "#0A2A5E" },
-                { label: "Female", value: s.active_female, color: "#F5C400" },
+                { label: "Male", value: displayStats.active_male, color: "#0A2A5E" },
+                { label: "Female", value: displayStats.active_female, color: "#F5C400" },
                 { label: "Unknown", value: unknownGender, color: "#94A3B8" },
               ]}
               centerTop="Active"
@@ -264,8 +264,8 @@ export function ActiveTab({
             <div className="flex-1 w-full grid grid-cols-1 sm:grid-cols-3 gap-3">
               <LegendCard
                 label="Male"
-                value={s.active_male}
-                percent={pct(s.active_male, activeGenderTot)}
+                value={displayStats.active_male}
+                percent={pct(displayStats.active_male, activeGenderTot)}
                 color="#0A2A5E"
                 onClick={() =>
                   onDrill({ student_state: "active", gender: "M" })
@@ -273,8 +273,8 @@ export function ActiveTab({
               />
               <LegendCard
                 label="Female"
-                value={s.active_female}
-                percent={pct(s.active_female, activeGenderTot)}
+                value={displayStats.active_female}
+                percent={pct(displayStats.active_female, activeGenderTot)}
                 color="#F5C400"
                 onClick={() =>
                   onDrill({ student_state: "active", gender: "F" })
@@ -295,26 +295,26 @@ export function ActiveTab({
       )}
 
       {/* Nationality — active-only, with percentages; Unknown included */}
-      {s && activeNationTot > 0 && (
+      {displayStats && activeNationTot > 0 && (
         <section className="card p-6">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="chip-success">
               <BadgeCheck className="w-3 h-3" /> Active students
             </span>
             <h3 className="text-[15px] font-semibold text-ink-900 dark:text-white">
-              Nationality
+              Nationality (Cumulative)
             </h3>
           </div>
           <p className="text-[12px] text-ink-500 mt-1">
-            Share of active students by origin. Click a card to open the
+            Share of active students across all years by origin. Click a card to open the
             filtered list.
           </p>
 
           <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
             <NationalityCard
               label="Rwandan"
-              value={s.active_rwandan}
-              percent={pct(s.active_rwandan, activeNationTot)}
+              value={displayStats.active_rwandan}
+              percent={pct(displayStats.active_rwandan, activeNationTot)}
               color="#10B981"
               onClick={() =>
                 onDrill({ student_state: "active", nationality: "rwandan" })
@@ -322,8 +322,8 @@ export function ActiveTab({
             />
             <NationalityCard
               label="Foreign"
-              value={s.active_foreign}
-              percent={pct(s.active_foreign, activeNationTot)}
+              value={displayStats.active_foreign}
+              percent={pct(displayStats.active_foreign, activeNationTot)}
               color="#4FB4FF"
               onClick={() =>
                 onDrill({ student_state: "active", nationality: "foreign" })
