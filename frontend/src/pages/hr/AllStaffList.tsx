@@ -107,7 +107,7 @@ export default function AllStaffList() {
                 <th className="px-4 md:px-6 py-5 text-center font-bold text-white uppercase tracking-widest text-xs">Issues</th>
               </tr>
             </thead>
-          <tbody className="divide-y divide-gray-100 dark:divide-ink-700/30">
+            <tbody className="divide-y divide-gray-100 dark:divide-ink-700/30">
             {dedupedStaff?.map((staff) => (
               <>
                 {/* Primary Record */}
@@ -218,8 +218,9 @@ export default function AllStaffList() {
                   ))}
               </>
             ))}
-          </tbody>
-        </table>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {(!dedupedStaff || dedupedStaff.length === 0) && !isLoading && (
