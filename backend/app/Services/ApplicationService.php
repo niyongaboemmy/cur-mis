@@ -973,20 +973,17 @@ class ApplicationService
         $letterData = $this->getLetterData($offerId);
         $token      = $offer['letter_token'] ?? bin2hex(random_bytes(32));
 
-        // Generate PDF binary
-        $pdfBinary = AdmissionLetterPdf::renderPdfBinary($letterData);
-
-        // Build download URL. Prefer the legacy institutional generator when the
-        // student record is already available so the applicant receives the exact
-        // same document URL used elsewhere in the admissions flow.
+        // Build download link - uses the document system if student has ID, otherwise fallback to API
         $downloadUrl = '';
-        $studentId = isset($offer['student_id']) ? (int)$offer['student_id'] : 0;
-        if ($studentId > 0) {
+        $studentDbId = isset($offer['student_db_id']) ? (int)$offer['student_db_id'] : 0;
+        if ($studentDbId > 0) {
+            // Use institutional document generator for enrolled students
             $downloadUrl = 'https://cur.ac.rw/umis/documents/all_certificate/generate_document.php'
                 . '?type=admission_letter'
-                . '&student_id=' . rawurlencode((string)$studentId)
+                . '&student_id=' . rawurlencode((string)$studentDbId)
                 . '&file_name=Admission_Letter_FORMAT.pdf';
         } else {
+            // Fallback for applicants not yet enrolled
             $apiBase     = rtrim((string)(getenv('APP_URL') ?: 'http://localhost:8888/cur-mis/backend/public'), '/');
             $downloadUrl = $apiBase . '/api/portal/admission-letter?token=' . $token;
         }
@@ -1003,15 +1000,9 @@ class ApplicationService
         );
         $subject = 'Your Admission Letter — ' . $letterData['offer_letter_reference'];
 
-        // Attach PDF if available
-        if ($pdfBinary) {
-            $this->mailService->sendWithAttachment(
-                $offer['email'], $subject, $html, strip_tags($html),
-                $pdfBinary, 'admission-letter-' . $letterData['application_number'] . '.pdf'
-            );
-        } else {
-            $this->mailService->send($offer['email'], $subject, $html, strip_tags($html));
-        }
+        // Send email with link only (no PDF attachment)
+        // Student will open the link to download the document
+        $this->mailService->send($offer['email'], $subject, $html, strip_tags($html));
 
         // Record dispatch
         $this->db->execute(
