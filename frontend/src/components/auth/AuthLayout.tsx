@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { ExternalLink } from "lucide-react";
 import Logo from "@/components/brand/Logo";
 import ThemeToggle from "../ui/ThemeToggle";
+import BlueBanner from "@/components/layout/BlueBanner";
 
 interface AuthLayoutProps {
   children: ReactNode;
@@ -18,7 +19,9 @@ export default function AuthLayout({
   const isDev = import.meta.env.DEV;
 
   return (
-    <div className="min-h-screen flex bg-[rgb(var(--bg-app))] dark:bg-ink-900 transition-colors duration-300">
+    <div className="min-h-screen flex flex-col bg-[rgb(var(--bg-app))] dark:bg-ink-900 transition-colors duration-300">
+      <BlueBanner />
+      <div className="flex flex-1">
       {/* ── Left brand panel ─────────────────────────────────────── */}
       <div className="hidden lg:flex lg:w-1/2 xl:w-[55%] relative flex-col justify-between overflow-hidden bg-brand dark:bg-brand-active p-12">
         {/* Hero photograph — swap the file at /public/login-hero.jpg to change the photo. */}
@@ -104,6 +107,7 @@ export default function AuthLayout({
             </a>
           </footer>
         )}
+      </div>
       </div>
 
       {/* ── Account Info Banner ──────────────────────────────────── */}

@@ -38,6 +38,7 @@ import {
   useState,
 } from "react";
 import TopBar from "@/components/layout/TopBar";
+import BlueBanner from "@/components/layout/BlueBanner";
 
 import Logo from "@/components/brand/Logo";
 // import AiChatWidget from "@/components/layout/AiChatWidget"; // re-enable when ANTHROPIC_API_KEY is set
@@ -1463,7 +1464,12 @@ export default function MainLayout() {
   const sidebarWidth = collapsed ? 72 : 240;
 
   return (
-    <div className="h-screen flex bg-[rgb(var(--bg-app))] text-ink-800 dark:text-ink-100 overflow-hidden">
+    <div className="h-screen flex flex-col bg-[rgb(var(--bg-app))] text-ink-800 dark:text-ink-100 overflow-hidden">
+      {/* Blue banner */}
+      <BlueBanner />
+
+      {/* Main content area */}
+      <div className="flex flex-1 overflow-hidden">
       {/* ───────────────────────── Sidebar ───────────────────────── */}
       <aside
         style={{ width: sidebarWidth }}
@@ -1668,6 +1674,7 @@ export default function MainLayout() {
           </motion.div>
         )}
       </AnimatePresence>
+      </div>
     </div>
   );
 }
