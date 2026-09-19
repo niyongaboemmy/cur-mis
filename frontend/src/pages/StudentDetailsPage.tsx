@@ -4182,6 +4182,101 @@ function DocumentUploadSection() {
   );
 }
 
+function MissingDocumentCard({
+  doc,
+  studentId,
+  selfMode,
+}: {
+  doc: any;
+  studentId: number;
+  selfMode?: boolean;
+}) {
+  const [message, setMessage] = useState('');
+  const [showMessages, setShowMessages] = useState(false);
+  const qc = useQueryClient();
+
+  const addMessageMutation = useMutation({
+    mutationFn: async (text: string) => {
+      const res = await fetch(`/api/students/${studentId}/missing-document-note`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ document_type: doc.name, message: text }),
+      });
+      if (!res.ok) throw new Error('Failed to add message');
+      return res.json();
+    },
+    onSuccess: () => {
+      setMessage('');
+      toast.success('Message sent to student');
+      qc.invalidateQueries({ queryKey: ['student-documents', studentId] });
+    },
+    onError: () => toast.error('Failed to send message'),
+  });
+
+  const handleAddMessage = () => {
+    if (message.trim()) {
+      addMessageMutation.mutate(message);
+    }
+  };
+
+  return (
+    <div className="card border-l-4 border-red-500 bg-red-50 dark:bg-red-900/10 overflow-hidden">
+      <div className="p-4">
+        <div className="flex items-start gap-3">
+          <div className="w-8 h-8 rounded-lg bg-red-200 dark:bg-red-900/40 flex items-center justify-center shrink-0 mt-0.5">
+            <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h4 className="text-sm font-semibold text-red-900 dark:text-red-300">{doc.name}</h4>
+            <p className="text-xs text-red-700 dark:text-red-400 mt-0.5">Not uploaded yet</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Message Section - Only visible to staff */}
+      {!selfMode && (
+        <div className="border-t border-red-200 dark:border-red-800/50 p-4 bg-red-100/30 dark:bg-red-900/5">
+          <button
+            type="button"
+            onClick={() => setShowMessages(!showMessages)}
+            className="text-xs font-semibold text-red-700 dark:text-red-300 hover:text-red-900 dark:hover:text-red-200 flex items-center gap-1"
+          >
+            {showMessages ? '▼' : '▶'} Add Message to Student
+          </button>
+
+          {showMessages && (
+            <div className="mt-3 space-y-2">
+              <textarea
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                placeholder="e.g., 'Please upload your National ID. You can scan or take a clear photo.'"
+                className="input w-full text-sm min-h-16 resize-none"
+              />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleAddMessage}
+                  disabled={!message.trim() || addMessageMutation.isPending}
+                  className="btn-primary btn-sm text-xs flex-1"
+                >
+                  {addMessageMutation.isPending ? 'Sending...' : 'Send Message'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowMessages(false)}
+                  className="btn-secondary btn-sm text-xs px-3"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DocumentsTab({
   student,
   selfMode = false,
@@ -4424,19 +4519,16 @@ function DocumentsTab({
             </h3>
             <div className="space-y-3">
               {missingDocuments.length > 0 ? (
-                missingDocuments.map((doc: any) => (
-                  <div key={doc.id} className="card p-4 border-l-4 border-red-500 bg-red-50 dark:bg-red-900/10">
-                    <div className="flex items-start gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-red-200 dark:bg-red-900/40 flex items-center justify-center shrink-0 mt-0.5">
-                        <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h4 className="text-sm font-semibold text-red-900 dark:text-red-300">{doc.name}</h4>
-                        <p className="text-xs text-red-700 dark:text-red-400 mt-0.5">Not uploaded yet</p>
-                      </div>
-                    </div>
-                  </div>
-                ))
+                <>
+                  {missingDocuments.map((doc: any) => (
+                    <MissingDocumentCard
+                      key={doc.id}
+                      doc={doc}
+                      studentId={studentId}
+                      selfMode={selfMode}
+                    />
+                  ))}
+                </>
               ) : (
                 <div className="text-xs text-emerald-600 dark:text-emerald-400 py-4 text-center font-semibold">
                   ✓ All documents complete!
