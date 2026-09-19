@@ -66,10 +66,9 @@ export default function LoginPage() {
                 </p>
                 <Link
                   to="/apply"
-                  className="inline-flex items-center text-xs font-semibold text-primary-700 dark:text-primary-300 hover:text-primary-800 dark:hover:text-primary-200 transition-colors group"
+                  className="inline-flex items-center gap-2 px-6 py-2.5 rounded-full bg-primary-900 hover:bg-primary-800 text-white text-sm font-semibold transition-colors"
                 >
-                  Apply now
-                  <span className="ml-1 inline-block transition-transform group-hover:translate-x-1">→</span>
+                  Apply Now
                 </Link>
               </div>
             </div>
