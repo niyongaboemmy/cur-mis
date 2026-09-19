@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Generate Documents Dropdown Mockup</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+      background: #f5f7fa;
+      padding: 40px 20px;
+      color: #333;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      margin-bottom: 10px;
+      font-size: 24px;
+    }
+
+    .subtitle {
+      color: #666;
+      margin-bottom: 30px;
+      font-size: 14px;
+    }
+
+    /* Table Structure */
+    .table-wrapper {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    thead {
+      background: #f8f9fa;
+      border-bottom: 2px solid #e9ecef;
+    }
+
+    th {
+      padding: 12px 16px;
+      text-align: left;
+      font-weight: 600;
+      font-size: 12px;
+      color: #495057;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    td {
+      padding: 12px 16px;
+      border-bottom: 1px solid #e9ecef;
+    }
+
+    tbody tr:hover {
+      background: #f8f9fa;
+    }
+
+    /* Student cell */
+    .student-cell {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 6px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      font-size: 12px;
+    }
+
+    .student-info h4 {
+      margin: 0;
+      font-size: 13px;
+      color: #212529;
+    }
+
+    .student-info p {
+      margin: 2px 0 0 0;
+      font-size: 11px;
+      color: #6c757d;
+    }
+
+    /* Actions cell */
+    .actions-cell {
+      text-align: right;
+    }
+
+    .action-buttons {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .btn {
+      padding: 6px 12px;
+      border: 1px solid #dee2e6;
+      border-radius: 6px;
+      background: white;
+      color: #495057;
+      font-size: 12px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+
+    .btn:hover {
+      border-color: #adb5bd;
+      background: #f8f9fa;
+      color: #212529;
+    }
+
+    .btn-docs {
+      position: relative;
+    }
+
+    .btn-docs:hover {
+      border-color: #0d6efd;
+      color: #0d6efd;
+    }
+
+    /* Dropdown Menu */
+    .dropdown-menu {
+      position: absolute;
+      top: 100%;
+      right: 0;
+      margin-top: 4px;
+      background: white;
+      border: 1px solid #dee2e6;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      min-width: 280px;
+      z-index: 1000;
+      animation: slideDown 0.2s ease-out;
+    }
+
+    @keyframes slideDown {
+      from {
+        opacity: 0;
+        transform: translateY(-4px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .dropdown-header {
+      padding: 8px 12px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      color: #adb5bd;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    .dropdown-item {
+      display: block;
+      width: 100%;
+      padding: 8px 12px;
+      border: none;
+      background: none;
+      color: #495057;
+      font-size: 13px;
+      text-align: left;
+      cursor: pointer;
+      transition: all 0.15s;
+      text-decoration: none;
+    }
+
+    .dropdown-item:hover {
+      background: #f8f9fa;
+      color: #0d6efd;
+    }
+
+    .dropdown-item:active {
+      background: #e9ecef;
+    }
+
+    /* Demo: Show/Hide dropdown */
+    .demo-note {
+      background: #e7f3ff;
+      border-left: 4px solid #0d6efd;
+      padding: 12px;
+      margin-bottom: 20px;
+      border-radius: 4px;
+      font-size: 13px;
+      color: #0c5aa0;
+    }
+
+    .relative-container {
+      position: relative;
+      display: inline-block;
+      width: 100%;
+    }
+
+    /* Column widths */
+    .col-checkbox { width: 40px; }
+    .col-student { width: 25%; }
+    .col-reg { width: 12%; }
+    .col-contact { width: 18%; }
+    .col-campus { width: 12%; }
+    .col-gender { width: 8%; }
+    .col-nationality { width: 10%; }
+    .col-actions { width: 15%; text-align: right; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📋 Students List with Generate Documents</h1>
+    <p class="subtitle">New dropdown button in the Actions column to generate various documents for each student</p>
+
+    <div class="demo-note">
+      <strong>Structure:</strong> Each row now has two action buttons: "📄 Docs" (new dropdown) and "👁️ View" (existing). The dropdown opens a menu with grouped document types.
+    </div>
+
+    <!-- Table -->
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th class="col-checkbox">☑</th>
+            <th class="col-student">Student</th>
+            <th class="col-reg">Reg / Index</th>
+            <th class="col-contact">Contact</th>
+            <th class="col-campus">Campus</th>
+            <th class="col-gender">Gender</th>
+            <th class="col-nationality">Nationality</th>
+            <th class="col-actions">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Row 1 -->
+          <tr>
+            <td><input type="checkbox"></td>
+            <td>
+              <div class="student-cell">
+                <div class="avatar">IM</div>
+                <div class="student-info">
+                  <h4>Iyamuremye Evariste</h4>
+                  <p>ID #24022</p>
+                </div>
+              </div>
+            </td>
+            <td><span style="font-family: monospace; font-size: 12px;">1CUR26AX013060</span></td>
+            <td><span style="font-size: 12px;">levariste380@gmail.com</span></td>
+            <td>Taba Campus</td>
+            <td>M</td>
+            <td>Rwandan</td>
+            <td class="actions-cell">
+              <div class="action-buttons">
+                <button class="btn btn-docs" title="Generate document">📄</button>
+                <button class="btn">View</button>
+              </div>
+            </td>
+          </tr>
+
+          <!-- Row 2: With dropdown open (mockup) -->
+          <tr>
+            <td><input type="checkbox"></td>
+            <td>
+              <div class="student-cell">
+                <div class="avatar" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">CA</div>
+                <div class="student-info">
+                  <h4>Cyezayire Ange</h4>
+                  <p>ID #24021</p>
+                </div>
+              </div>
+            </td>
+            <td><span style="font-family: monospace; font-size: 12px;">2CUR26AX013032</span></td>
+            <td><span style="font-size: 12px;">cyezayire2018@gmail.com</span></td>
+            <td>Save Campus</td>
+            <td>F</td>
+            <td>Rwandan</td>
+            <td class="actions-cell">
+              <div class="action-buttons" style="position: relative;">
+                <button class="btn btn-docs" title="Generate document" style="border-color: #0d6efd; color: #0d6efd;">📄</button>
+
+                <!-- Dropdown Menu -->
+                <div class="dropdown-menu">
+                  <div class="dropdown-header">📮 Letters & Attestations</div>
+                  <a href="#" class="dropdown-item">Admission Letter</a>
+                  <a href="#" class="dropdown-item">Enrollment Letter</a>
+                  <a href="#" class="dropdown-item">To Whom It May Concern – Visa</a>
+                  <a href="#" class="dropdown-item">Recommendation Letter</a>
+                  <a href="#" class="dropdown-item">Internship Letter</a>
+                  <a href="#" class="dropdown-item">Completion Letter</a>
+
+                  <div class="dropdown-header" style="margin-top: 4px;">✅ Certificates & Clearance</div>
+                  <a href="#" class="dropdown-item">English Proficiency</a>
+                  <a href="#" class="dropdown-item">Payment Proof</a>
+                  <a href="#" class="dropdown-item">Financial Clearance</a>
+                  <a href="#" class="dropdown-item">Completed Modules Letter</a>
+                  <a href="#" class="dropdown-item">Completed Modules (Full List)</a>
+
+                  <div class="dropdown-header" style="margin-top: 4px;">🎓 Degrees & Diplomas</div>
+                  <a href="#" class="dropdown-item">Academic Transcript</a>
+                  <a href="#" class="dropdown-item">Degree Certificate <span style="color: #ffc107; font-size: 10px;">SERIALISED</span></a>
+                  <a href="#" class="dropdown-item">Diploma Certificate <span style="color: #ffc107; font-size: 10px;">SERIALISED</span></a>
+                  <a href="#" class="dropdown-item">Degree Supplement</a>
+                  <a href="#" class="dropdown-item">Diploma Supplement</a>
+
+                  <div class="dropdown-header" style="margin-top: 4px;">📋 Registration</div>
+                  <a href="#" class="dropdown-item">Registration Form</a>
+                </div>
+
+                <button class="btn">View</button>
+              </div>
+            </td>
+          </tr>
+
+          <!-- Row 3 -->
+          <tr>
+            <td><input type="checkbox"></td>
+            <td>
+              <div class="student-cell">
+                <div class="avatar" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">UD</div>
+                <div class="student-info">
+                  <h4>Uwiringiyimana Donatienne</h4>
+                  <p>ID #24020</p>
+                </div>
+              </div>
+            </td>
+            <td><span style="font-family: monospace; font-size: 12px;">1CUR26AX013059</span></td>
+            <td><span style="font-size: 12px;">uwirinyimanadonatienne@gmail.com</span></td>
+            <td>Taba Campus</td>
+            <td>F</td>
+            <td>Rwandan</td>
+            <td class="actions-cell">
+              <div class="action-buttons">
+                <button class="btn btn-docs" title="Generate document">📄</button>
+                <button class="btn">View</button>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Structure Details -->
+    <div style="margin-top: 40px; background: white; padding: 20px; border-radius: 8px;">
+      <h2 style="font-size: 18px; margin-bottom: 15px;">📐 Implementation Structure</h2>
+
+      <h3 style="font-size: 14px; margin-top: 15px; margin-bottom: 8px;">1. Constants File: documentTypes.ts</h3>
+      <pre style="background: #f5f5f5; padding: 12px; border-radius: 4px; overflow-x: auto; font-size: 12px;"><code>interface DocumentTypeDef {
+  slug: string          // 'admission_letter', 'english_proficiency', etc.
+  label: string         // 'Admission Letter', 'English Proficiency', etc.
+  fileName: string      // 'Admission_Letter_FORMAT.pdf'
+  group: string         // 'Letters & attestations', 'Certificates & clearance', etc.
+}
+
+const DOCUMENT_TYPES = [
+  { slug: 'admission_letter', label: 'Admission Letter',
+    fileName: 'Admission_Letter_FORMAT.pdf',
+    group: 'Letters & attestations' },
+  { slug: 'enrollment_letter', label: 'Enrollment Letter',
+    fileName: 'Enrollment_Letter.pdf',
+    group: 'Letters & attestations' },
+  // ... 17 more types
+]</code></pre>
+
+      <h3 style="font-size: 14px; margin-top: 15px; margin-bottom: 8px;">2. Component: DocumentGenerateMenu.tsx</h3>
+      <pre style="background: #f5f5f5; padding: 12px; border-radius: 4px; overflow-x: auto; font-size: 12px;"><code>// Anchored popover dropdown (like GenderEditPopover)
+// - Takes: anchorRect, studentId, onClose
+// - Renders portal with grouped document items
+// - Each item is an &lt;a&gt; href to:
+//   https://cur.ac.rw/umis/documents/all_certificate/
+//   generate_document.php?type={slug}&student_id={studentId}
+//   &file_name={fileName}
+// - Closes on outside click / Escape</code></pre>
+
+      <h3 style="font-size: 14px; margin-top: 15px; margin-bottom: 8px;">3. Integration: StudentsPage.tsx Changes</h3>
+      <ul style="margin-left: 20px; font-size: 13px; line-height: 1.8;">
+        <li><strong>AllTab:</strong> Compute <code>canGenerateDocuments = usePermission(PERMISSIONS.GENERATE_DOCUMENTS)</code></li>
+        <li><strong>StudentRow prop:</strong> Add <code>canGenerateDocuments: boolean</code></li>
+        <li><strong>Actions cell:</strong> Add new button with <code>📄</code> icon next to existing View button</li>
+        <li><strong>Button click:</strong> Sets <code>docMenuAnchor</code> state to button's DOMRect</li>
+        <li><strong>Conditional render:</strong> Show <code>&lt;DocumentGenerateMenu&gt;</code> when anchor is set</li>
+        <li><strong>Table header:</strong> Widen trailing <code>&lt;th&gt;</code> from w-[60px] to w-[100px]</li>
+      </ul>
+    </div>
+
+    <!-- URL Examples -->
+    <div style="margin-top: 20px; background: #e7f3ff; padding: 15px; border-radius: 8px; border-left: 4px solid #0d6efd;">
+      <h3 style="font-size: 14px; margin-bottom: 10px; color: #0c5aa0;">✅ Generated URLs (examples)</h3>
+      <code style="display: block; background: white; padding: 8px; margin-bottom: 8px; border-radius: 4px; font-size: 11px; word-break: break-all;">
+        https://cur.ac.rw/umis/documents/all_certificate/generate_document.php?type=admission_letter&student_id=24022&file_name=Admission_Letter_FORMAT.pdf
+      </code>
+      <code style="display: block; background: white; padding: 8px; border-radius: 4px; font-size: 11px; word-break: break-all;">
+        https://cur.ac.rw/umis/documents/all_certificate/generate_document.php?type=enrollment_letter&student_id=24021&file_name=Enrollment_Letter.pdf
+      </code>
+    </div>
+  </div>
+</body>
+</html>

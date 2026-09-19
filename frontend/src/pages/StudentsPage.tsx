@@ -139,7 +139,23 @@ export function ActiveTab({
 }) {
   const s = stats;
 
+  // Fetch cumulative stats (all years) for the main number
+  const allYearsStatsQ = useQuery({
+    queryKey: ["student-stats-all-years"],
+    queryFn: () => studentService.stats({ acc_year: undefined }),
+    staleTime: 60_000,
+  });
+
+  const cumulativeStats = allYearsStatsQ.data?.data ?? null;
+  const cumulativeTotal = cumulativeStats?.active ?? 0;
   const activeTotal = s?.active ?? 0;
+
+  // Get year-by-year breakdown from cumulative stats facets
+  const yearBreakdown = useMemo(() => {
+    if (!cumulativeStats?.facets?.acc_year) return [];
+    const years = cumulativeStats.facets.acc_year.map(f => f.label);
+    return years;
+  }, [cumulativeStats]);
   // All buckets (including Unknown) sum to the full active total so nothing on this tab
   // exceeds the active count.
   const activeGenderTot = activeTotal;
@@ -172,13 +188,28 @@ export function ActiveTab({
         </div>
 
         <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-          <ClickableStat
-            label="Active students"
-            value={fmt(activeTotal)}
-            icon={BadgeCheck}
-            tone="mint"
+          <div
+            className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 rounded-lg p-4 border border-green-200 dark:border-green-700/50 shadow-sm hover:shadow-md transition cursor-pointer"
             onClick={() => onDrill({ student_state: "active" })}
-          />
+          >
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <p className="text-sm font-medium text-green-600 dark:text-green-400">Active students</p>
+                <p className="text-3xl font-bold text-green-900 dark:text-green-100 mt-2">{fmt(cumulativeTotal)}</p>
+                <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                  Cumulative across all years
+                </p>
+                {yearBreakdown.length > 0 && (
+                  <p className="text-xs text-green-700 dark:text-green-300 mt-2 leading-relaxed">
+                    {yearBreakdown.join(' • ')}
+                  </p>
+                )}
+              </div>
+              <div className="bg-green-200 dark:bg-green-900/40 p-3 rounded-lg">
+                <BadgeCheck className="w-6 h-6 text-green-600 dark:text-green-400" />
+              </div>
+            </div>
+          </div>
           <ClickableStat
             label="Faculties"
             value={fmt(s?.active_faculties)}
