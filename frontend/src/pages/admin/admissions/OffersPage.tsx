@@ -123,12 +123,18 @@ export default function OffersPage() {
 
   const rows = listQ.data?.data?.data ?? []
 
-  // Get document identifier: student.id (if enrolled) or student_applications.id (if applicant)
+  // Get document identifier from database lookup results:
+  // Priority 1: If enrolled (has regnumber): use student.id from student table
+  // Priority 2: If applicant only: use student_applications.id
   const getDocumentIdentifier = (offer: any) => {
-    // If student is enrolled: use student.id
-    if (offer.student_id) return offer.student_id
-    // If applicant not enrolled: use application_id
-    if (offer.application_id) return offer.application_id
+    // If student is enrolled with regnumber → use student.id from student table
+    if (offer.regnumber && offer.student_db_id) {
+      return offer.student_db_id
+    }
+    // If applicant not yet enrolled → use student_applications.id
+    if (offer.application_id) {
+      return offer.application_id
+    }
     return ''
   }
 
@@ -282,14 +288,14 @@ export default function OffersPage() {
                             target="_blank"
                             rel="noreferrer"
                             className="btn-secondary btn-sm"
-                            title={`Generate admission letter (${o.student_id ? 'Student ID: ' : 'Application ID: '}${getDocumentIdentifier(o)})`}
+                            title={`Generate letter (${o.regnumber ? `Reg: ${o.regnumber}, ID: ${o.student_db_id}` : `App: ${o.application_number}, ID: ${o.application_id}`})`}
                           >
                             <FileText className="w-3 h-3" /> Letter
                           </a>
                         ) : (
                           <button
                             className="btn-secondary btn-sm opacity-50 cursor-not-allowed"
-                            title="No student or application ID available"
+                            title="No registration or application number found"
                             disabled
                           >
                             <FileText className="w-3 h-3" /> Letter
@@ -302,7 +308,7 @@ export default function OffersPage() {
                             href={`https://cur.ac.rw/umis/documents/all_certificate/generate_document.php?type=admission_letter&student_id=${getDocumentIdentifier(o)}&file_name=Admission_Letter_FORMAT.pdf&applicant=1`}
                             download
                             className="btn-secondary btn-sm"
-                            title={`Download admission letter (${o.student_id ? 'Student ID: ' : 'Application ID: '}${getDocumentIdentifier(o)})`}
+                            title={`Download letter (${o.regnumber ? `Reg: ${o.regnumber}, ID: ${o.student_db_id}` : `App: ${o.application_number}, ID: ${o.application_id}`})`}
                           >
                             <Download className="w-3 h-3" />
                           </a>

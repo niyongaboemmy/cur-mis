@@ -85,11 +85,13 @@ class AdmissionController extends BaseController
 
         $rows = $db->fetchAll(
             "SELECT ao.*, sa.first_name, sa.last_name, sa.email,
-                    sa.application_number, sa.intake, sa.department_id,
-                    d.dep_name AS department_name
+                    sa.application_number, sa.intake, sa.department_id, sa.id as application_id,
+                    d.dep_name AS department_name,
+                    s.id as student_db_id, s.regnumber
              FROM `admission_offers` ao
              JOIN `student_applications` sa ON sa.id    = ao.application_id
              JOIN `departements`         d  ON d.dep_id = sa.department_id
+             LEFT JOIN `student` s ON s.id = ao.student_id
              {$where}
              ORDER BY ao.id DESC
              LIMIT ? OFFSET ?",
