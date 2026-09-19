@@ -4328,15 +4328,62 @@ function DocumentsTab({
             : "No documents have been attached to this student's admission application."}
         </div>
       ) : (
-        <div className="card divide-y divide-ink-100 dark:divide-ink-800 overflow-hidden">
-          {documents.map((d: any) => (
-            <DocumentRow
-              key={d.id}
-              doc={d}
-              studentId={studentId}
-              selfMode={selfMode}
-            />
-          ))}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Verified Documents - Left Side */}
+          <div>
+            <h3 className="text-sm font-semibold text-emerald-700 dark:text-emerald-300 mb-3 flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4" />
+              Verified Documents ({documents.filter((d: any) => String(d.verification_status || '').toLowerCase() === 'verified').length})
+            </h3>
+            <div className="space-y-3">
+              {documents
+                .filter((d: any) => String(d.verification_status || '').toLowerCase() === 'verified')
+                .map((d: any) => (
+                  <DocumentRow
+                    key={d.id}
+                    doc={d}
+                    studentId={studentId}
+                    selfMode={selfMode}
+                  />
+                ))}
+              {documents.filter((d: any) => String(d.verification_status || '').toLowerCase() === 'verified').length === 0 && (
+                <div className="text-xs text-ink-500 py-4 text-center">No verified documents yet</div>
+              )}
+            </div>
+          </div>
+
+          {/* Missing Documents - Right Side */}
+          <div>
+            <h3 className="text-sm font-semibold text-red-700 dark:text-red-300 mb-3 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4" />
+              Missing Documents ({documents.filter((d: any) => {
+                const s = String(d.verification_status || 'pending').toLowerCase();
+                return s === 'pending' || s === 'rejected';
+              }).length})
+            </h3>
+            <div className="space-y-3">
+              {documents
+                .filter((d: any) => {
+                  const s = String(d.verification_status || 'pending').toLowerCase();
+                  return s === 'pending' || s === 'rejected';
+                })
+                .map((d: any) => (
+                  <div key={d.id} className="card p-4 border-l-4 border-red-500 bg-red-50 dark:bg-red-900/10">
+                    <DocumentRow
+                      doc={d}
+                      studentId={studentId}
+                      selfMode={selfMode}
+                    />
+                  </div>
+                ))}
+              {documents.filter((d: any) => {
+                const s = String(d.verification_status || 'pending').toLowerCase();
+                return s === 'pending' || s === 'rejected';
+              }).length === 0 && (
+                <div className="text-xs text-ink-500 py-4 text-center">All documents verified!</div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
