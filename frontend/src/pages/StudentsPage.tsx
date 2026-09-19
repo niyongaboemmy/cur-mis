@@ -17,6 +17,7 @@ import {
   Eye,
   Download,
   Upload,
+  FileText,
 } from "lucide-react";
 import {
   studentService,
@@ -42,6 +43,9 @@ import { academicsMgmtService } from "@/services/academicsMgmtService";
 import type { Student } from "@/types/academic";
 import ProfileChangeReviewPanel from '@/components/students/ProfileChangeReviewPanel'
 import GenderEditPopover from '@/components/students/GenderEditPopover'
+import DocumentGenerateMenu from '@/components/students/DocumentGenerateMenu'
+import { usePermission } from "@/utils/permissions";
+import { PERMISSIONS } from "@/constants/permissions";
 
 const PER_PAGE = 15;
 
@@ -548,6 +552,7 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
 
   const selectedCampusId = useCampusFilterStore((s) => s.selectedCampusId);
   const selectedCategory = useCategoryFilterStore((s) => s.selectedCategory);
+  const canGenerateDocuments = usePermission(PERMISSIONS.GENERATE_DOCUMENTS);
 
   // Entity data for filters. Departments + programs are loaded once and
   // shown flat — no faculty cascade — so the user can pick either directly.
@@ -1202,16 +1207,17 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
                       onSort={handleSort}
                     />
                     <th className="text-sm font-semibold text-ink-700 dark:text-ink-300 px-4">Documents</th>
-                    <th className="w-[60px]"></th>
+                    <th className="w-[120px]"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map((s) => (
-                    <StudentRow 
-                      key={s.id} 
-                      s={s} 
-                      searchParams={sp} 
+                    <StudentRow
+                      key={s.id}
+                      s={s}
+                      searchParams={sp}
                       isSelected={selectedIds.has(s.id)}
+                      canGenerateDocuments={canGenerateDocuments}
                       onToggleSelect={(checked) => {
                         const next = new Set(selectedIds);
                         if (checked) next.add(s.id);
@@ -1318,14 +1324,17 @@ function StudentRow({
   s,
   searchParams,
   isSelected,
+  canGenerateDocuments,
   onToggleSelect,
 }: {
   s: Student;
   searchParams?: URLSearchParams;
   isSelected?: boolean;
+  canGenerateDocuments?: boolean;
   onToggleSelect?: (checked: boolean) => void;
 }) {
   const navigate = useNavigate();
+  const [docMenuAnchor, setDocMenuAnchor] = useState<DOMRect | null>(null);
   const name = [s.fname, s.lname].filter(Boolean).join(" ") || "—";
   const initials = name
     .split(" ")
@@ -1432,15 +1441,39 @@ function StudentRow({
         />
       </td>
       <td className="text-right pr-4">
-        <Link
-          to={`/students/${s.id}`}
-          state={{ fromSearch: searchParams?.toString() }}
-          className="btn-secondary btn-sm px-3 py-1.5 rounded-md text-ink-600 dark:text-ink-300 hover:text-brand inline-flex items-center gap-1.5 whitespace-nowrap"
-          title="View Student"
-        >
-          <Eye className="w-3.5 h-3.5" />
-          <span>View</span>
-        </Link>
+        <div className="flex items-center justify-end gap-1.5" style={{ position: 'relative' }}>
+          {canGenerateDocuments && (
+            <>
+              <button
+                type="button"
+                className="btn-secondary btn-sm px-2.5 py-1.5 rounded-md text-ink-600 dark:text-ink-300 hover:text-brand inline-flex items-center gap-1.5 whitespace-nowrap"
+                title="Generate document"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDocMenuAnchor((e.currentTarget as HTMLElement).getBoundingClientRect());
+                }}
+              >
+                <FileText className="w-3.5 h-3.5" />
+              </button>
+              {docMenuAnchor && (
+                <DocumentGenerateMenu
+                  studentId={s.id}
+                  anchorRect={docMenuAnchor}
+                  onClose={() => setDocMenuAnchor(null)}
+                />
+              )}
+            </>
+          )}
+          <Link
+            to={`/students/${s.id}`}
+            state={{ fromSearch: searchParams?.toString() }}
+            className="btn-secondary btn-sm px-3 py-1.5 rounded-md text-ink-600 dark:text-ink-300 hover:text-brand inline-flex items-center gap-1.5 whitespace-nowrap"
+            title="View Student"
+          >
+            <Eye className="w-3.5 h-3.5" />
+            <span>View</span>
+          </Link>
+        </div>
       </td>
     </tr>
   );
