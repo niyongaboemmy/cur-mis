@@ -5563,6 +5563,9 @@ class StudentController extends BaseController
      */
     public function sendMissingDocumentsNote()
     {
+        // Quick test to see if route is reached
+        return $this->json(['test' => 'route_hit', 'timestamp' => date('Y-m-d H:i:s')]);
+
         $studentId = (int)$this->router->param('id');
         $data = $this->getJsonInput();
 
