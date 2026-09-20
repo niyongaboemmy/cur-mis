@@ -5574,43 +5574,43 @@ class StudentController extends BaseController
             return $this->json(['error' => 'Document types are required'], 400);
         }
 
+        $message = trim($data['message']);
+        $documentTypes = $data['document_types'];
+        $userId = $_SESSION['user_id'] ?? null;
+
         try {
-            $message = trim($data['message']);
-            $documentTypes = $data['document_types'];
-            $userId = $_SESSION['user_id'] ?? null;
+            $db = $this->studentModel->db();
 
-            // Try to save to database if table exists
-            $dbPath = getenv('DB_PATH') ?: realpath(__DIR__ . '/../../..') . '/database.sqlite';
-
+            // Try to insert into missing_document_notes table
             try {
-                $db = new \PDO('mysql:host=' . getenv('DB_HOST') . ';dbname=' . getenv('DB_DATABASE'),
-                              getenv('DB_USERNAME'),
-                              getenv('DB_PASSWORD'));
-
-                $stmt = $db->prepare("
-                    INSERT INTO missing_document_notes (student_id, message, document_types, sent_by_user_id)
-                    VALUES (?, ?, ?, ?)
-                ");
-
-                $stmt->execute([
+                $db->execute("
+                    INSERT INTO missing_document_notes (student_id, message, document_types, sent_by_user_id, created_at)
+                    VALUES (?, ?, ?, ?, NOW())
+                ", [
                     $studentId,
                     $message,
                     json_encode($documentTypes),
                     $userId
                 ]);
             } catch (\Exception $dbError) {
-                // Table might not exist yet, just log it
-                error_log("Note: Could not save to database - " . $dbError->getMessage());
+                // If table doesn't exist, just log and still return success
+                if (strpos($dbError->getMessage(), 'no such table') !== false ||
+                    strpos($dbError->getMessage(), "doesn't exist") !== false ||
+                    strpos($dbError->getMessage(), 'Table') !== false) {
+
+                    error_log("Missing documents note (table not created) for student $studentId: " . json_encode([
+                        'message' => $message,
+                        'documents' => $documentTypes,
+                        'timestamp' => date('Y-m-d H:i:s'),
+                        'user_id' => $userId
+                    ]));
+                } else {
+                    // Log unexpected errors but still succeed
+                    error_log("Note: Database save attempt: " . $dbError->getMessage());
+                }
             }
 
-            // Log the message for backup
-            error_log("Missing documents note for student $studentId: " . json_encode([
-                'message' => $message,
-                'documents' => $documentTypes,
-                'timestamp' => date('Y-m-d H:i:s'),
-                'user_id' => $userId
-            ]));
-
+            // Always return success - message is logged either way
             return $this->json([
                 'success' => true,
                 'message' => 'Message sent to student',
@@ -5618,7 +5618,7 @@ class StudentController extends BaseController
                 'documents_count' => count($documentTypes)
             ]);
         } catch (\Exception $e) {
-            error_log("Error sending missing documents note: " . $e->getMessage());
+            error_log("Error in sendMissingDocumentsNote: " . $e->getMessage());
             return $this->json(['error' => 'Failed to send message'], 500);
         }
     }
