@@ -5566,11 +5566,17 @@ class StudentController extends BaseController
         $studentId = (int)$this->router->param('id');
         $data = $this->getJsonInput();
 
+        error_log("=== sendMissingDocumentsNote START ===");
+        error_log("studentId: $studentId");
+        error_log("data: " . json_encode($data));
+
         if (!isset($data['message']) || empty(trim($data['message']))) {
+            error_log("ERROR: Message is required");
             return $this->json(['error' => 'Message is required'], 400);
         }
 
         if (!isset($data['document_types']) || !is_array($data['document_types'])) {
+            error_log("ERROR: Document types are required");
             return $this->json(['error' => 'Document types are required'], 400);
         }
 
@@ -5578,8 +5584,13 @@ class StudentController extends BaseController
         $documentTypes = $data['document_types'];
         $userId = $_SESSION['user_id'] ?? null;
 
+        error_log("userId: $userId");
+        error_log("message: $message");
+        error_log("documentTypes: " . json_encode($documentTypes));
+
         try {
             $db = $this->studentModel->db();
+            error_log("DB connection established");
 
             // Fetch student's registration number
             $studentRow = $db->fetchOne(
@@ -5587,16 +5598,21 @@ class StudentController extends BaseController
                 [$studentId]
             );
 
+            error_log("studentRow: " . json_encode($studentRow));
+
             if (!$studentRow) {
+                error_log("ERROR: Student not found");
                 return $this->json(['error' => 'Student not found'], 404);
             }
 
             $regNumber = $studentRow['reg_number'] ?? null;
+            error_log("regNumber: $regNumber");
 
             // Try to insert into missing_document_notes table
             try {
                 // Try with reg_number column first (new schema)
                 try {
+                    error_log("Attempting INSERT with reg_number column");
                     $db->execute("
                         INSERT INTO missing_document_notes (student_id, reg_number, message, document_types, sent_by_user_id, created_at)
                         VALUES (?, ?, ?, ?, ?, NOW())
@@ -5607,9 +5623,12 @@ class StudentController extends BaseController
                         json_encode($documentTypes),
                         $userId
                     ]);
+                    error_log("INSERT successful with reg_number");
                 } catch (\Exception $colError) {
+                    error_log("Column error: " . $colError->getMessage());
                     // If reg_number column doesn't exist, fall back to old schema
                     if (strpos($colError->getMessage(), 'Unknown column') !== false) {
+                        error_log("Falling back to INSERT without reg_number column");
                         $db->execute("
                             INSERT INTO missing_document_notes (student_id, message, document_types, sent_by_user_id, created_at)
                             VALUES (?, ?, ?, ?, NOW())
@@ -5619,11 +5638,13 @@ class StudentController extends BaseController
                             json_encode($documentTypes),
                             $userId
                         ]);
+                        error_log("INSERT successful without reg_number");
                     } else {
                         throw $colError;
                     }
                 }
             } catch (\Exception $dbError) {
+                error_log("DB error: " . $dbError->getMessage());
                 // If table doesn't exist, just log and still return success
                 if (strpos($dbError->getMessage(), 'no such table') !== false ||
                     strpos($dbError->getMessage(), "doesn't exist") !== false ||
@@ -5642,6 +5663,7 @@ class StudentController extends BaseController
                 }
             }
 
+            error_log("=== sendMissingDocumentsNote SUCCESS ===");
             // Always return success - message is logged either way
             return $this->json([
                 'success' => true,
@@ -5651,7 +5673,9 @@ class StudentController extends BaseController
                 'documents_count' => count($documentTypes)
             ]);
         } catch (\Exception $e) {
+            error_log("=== sendMissingDocumentsNote FATAL ERROR ===");
             error_log("Error in sendMissingDocumentsNote: " . $e->getMessage());
+            error_log("Stack trace: " . $e->getTraceAsString());
             return $this->json(['error' => 'Failed to send message'], 500);
         }
     }
