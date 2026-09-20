@@ -5581,13 +5581,26 @@ class StudentController extends BaseController
         try {
             $db = $this->studentModel->db();
 
+            // Fetch student's registration number
+            $studentRow = $db->fetchOne(
+                "SELECT id, reg_number FROM students WHERE id = ?",
+                [$studentId]
+            );
+
+            if (!$studentRow) {
+                return $this->json(['error' => 'Student not found'], 404);
+            }
+
+            $regNumber = $studentRow['reg_number'] ?? null;
+
             // Try to insert into missing_document_notes table
             try {
                 $db->execute("
-                    INSERT INTO missing_document_notes (student_id, message, document_types, sent_by_user_id, created_at)
-                    VALUES (?, ?, ?, ?, NOW())
+                    INSERT INTO missing_document_notes (student_id, reg_number, message, document_types, sent_by_user_id, created_at)
+                    VALUES (?, ?, ?, ?, ?, NOW())
                 ", [
                     $studentId,
+                    $regNumber,
                     $message,
                     json_encode($documentTypes),
                     $userId
@@ -5599,6 +5612,7 @@ class StudentController extends BaseController
                     strpos($dbError->getMessage(), 'Table') !== false) {
 
                     error_log("Missing documents note (table not created) for student $studentId: " . json_encode([
+                        'reg_number' => $regNumber,
                         'message' => $message,
                         'documents' => $documentTypes,
                         'timestamp' => date('Y-m-d H:i:s'),
@@ -5615,6 +5629,7 @@ class StudentController extends BaseController
                 'success' => true,
                 'message' => 'Message sent to student',
                 'student_id' => $studentId,
+                'reg_number' => $regNumber,
                 'documents_count' => count($documentTypes)
             ]);
         } catch (\Exception $e) {
