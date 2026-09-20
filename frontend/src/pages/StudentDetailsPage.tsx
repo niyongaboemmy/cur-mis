@@ -4195,7 +4195,7 @@ function MissingDocumentsMessageBox({
 
   const addMessageMutation = useMutation({
     mutationFn: async (text: string) => {
-      const res = await fetch(`/api/students/${studentId}/missing-documents-note`, {
+      const res = await fetch(`/api/students/${studentId}/missing_documents_note`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
