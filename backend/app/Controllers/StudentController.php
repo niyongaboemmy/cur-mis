@@ -5595,16 +5595,34 @@ class StudentController extends BaseController
 
             // Try to insert into missing_document_notes table
             try {
-                $db->execute("
-                    INSERT INTO missing_document_notes (student_id, reg_number, message, document_types, sent_by_user_id, created_at)
-                    VALUES (?, ?, ?, ?, ?, NOW())
-                ", [
-                    $studentId,
-                    $regNumber,
-                    $message,
-                    json_encode($documentTypes),
-                    $userId
-                ]);
+                // Try with reg_number column first (new schema)
+                try {
+                    $db->execute("
+                        INSERT INTO missing_document_notes (student_id, reg_number, message, document_types, sent_by_user_id, created_at)
+                        VALUES (?, ?, ?, ?, ?, NOW())
+                    ", [
+                        $studentId,
+                        $regNumber,
+                        $message,
+                        json_encode($documentTypes),
+                        $userId
+                    ]);
+                } catch (\Exception $colError) {
+                    // If reg_number column doesn't exist, fall back to old schema
+                    if (strpos($colError->getMessage(), 'Unknown column') !== false) {
+                        $db->execute("
+                            INSERT INTO missing_document_notes (student_id, message, document_types, sent_by_user_id, created_at)
+                            VALUES (?, ?, ?, ?, NOW())
+                        ", [
+                            $studentId,
+                            $message,
+                            json_encode($documentTypes),
+                            $userId
+                        ]);
+                    } else {
+                        throw $colError;
+                    }
+                }
             } catch (\Exception $dbError) {
                 // If table doesn't exist, just log and still return success
                 if (strpos($dbError->getMessage(), 'no such table') !== false ||
