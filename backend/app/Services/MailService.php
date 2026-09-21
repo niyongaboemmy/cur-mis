@@ -23,8 +23,8 @@ class MailService
             $this->mailer->SMTPAuth   = true;
             $this->mailer->Username   = $_ENV['MAIL_USERNAME'] ?? 'info@hts.rw';
             $this->mailer->Password   = $_ENV['MAIL_PASSWORD'] ?? '';
-            $this->mailer->SMTPSecure = $_ENV['MAIL_ENCRYPTION'] ?? PHPMailer::ENCRYPTION_SMTPS;
-            $this->mailer->Port       = (int)($_ENV['MAIL_PORT'] ?? 465);
+            $this->mailer->SMTPSecure = $_ENV['MAIL_ENCRYPTION'] ?? PHPMailer::ENCRYPTION_STARTTLS;
+            $this->mailer->Port       = (int)($_ENV['MAIL_PORT'] ?? 587);
             $this->mailer->SMTPDebug  = 0;
             // Short timeout — prevents requests from blocking when SMTP host is unreachable.
             $this->mailer->Timeout    = (int)($_ENV['MAIL_TIMEOUT'] ?? 6);
