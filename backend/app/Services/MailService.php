@@ -20,12 +20,21 @@ class MailService
         if ($driver === 'smtp') {
             $this->mailer->isSMTP();
             $this->mailer->Host       = $_ENV['MAIL_HOST'] ?? 'mail.hts.rw';
-            $this->mailer->SMTPAuth   = true;
-            $this->mailer->Username   = $_ENV['MAIL_USERNAME'] ?? 'info@hts.rw';
-            $this->mailer->Password   = $_ENV['MAIL_PASSWORD'] ?? '';
-            $this->mailer->SMTPSecure = $_ENV['MAIL_ENCRYPTION'] ?? PHPMailer::ENCRYPTION_STARTTLS;
             $this->mailer->Port       = (int)($_ENV['MAIL_PORT'] ?? 587);
             $this->mailer->SMTPDebug  = 0;
+
+            $encryption = $_ENV['MAIL_ENCRYPTION'] ?? 'tls';
+            if (!empty($encryption)) {
+                $this->mailer->SMTPSecure = $encryption === 'ssl' ? PHPMailer::ENCRYPTION_SMTPS : PHPMailer::ENCRYPTION_STARTTLS;
+            }
+
+            $username = $_ENV['MAIL_USERNAME'] ?? '';
+            $password = $_ENV['MAIL_PASSWORD'] ?? '';
+            if (!empty($username) && !empty($password)) {
+                $this->mailer->SMTPAuth = true;
+                $this->mailer->Username = $username;
+                $this->mailer->Password = $password;
+            }
             // Short timeout — prevents requests from blocking when SMTP host is unreachable.
             $this->mailer->Timeout    = (int)($_ENV['MAIL_TIMEOUT'] ?? 6);
 
