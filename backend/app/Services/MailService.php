@@ -19,12 +19,12 @@ class MailService
         $driver = $_ENV['MAIL_DRIVER'] ?? 'smtp';
         if ($driver === 'smtp') {
             $this->mailer->isSMTP();
-            $this->mailer->Host       = $_ENV['MAIL_HOST'] ?? 'mail.hts.rw';
+            $this->mailer->Host       = $_ENV['MAIL_HOST'] ?? '';
             $this->mailer->SMTPAuth   = true;
-            $this->mailer->Username   = $_ENV['MAIL_USERNAME'] ?? 'info@hts.rw';
+            $this->mailer->Username   = $_ENV['MAIL_USERNAME'] ?? '';
             $this->mailer->Password   = $_ENV['MAIL_PASSWORD'] ?? '';
-            $this->mailer->SMTPSecure = $_ENV['MAIL_ENCRYPTION'] ?? PHPMailer::ENCRYPTION_STARTTLS;
-            $this->mailer->Port       = (int)($_ENV['MAIL_PORT'] ?? 587);
+            $this->mailer->SMTPSecure = $_ENV['MAIL_ENCRYPTION'] ?? PHPMailer::ENCRYPTION_SMTPS;
+            $this->mailer->Port       = (int)($_ENV['MAIL_PORT'] ?? 465);
             $this->mailer->SMTPDebug  = 0;
             // Short timeout — prevents requests from blocking when SMTP host is unreachable.
             $this->mailer->Timeout    = (int)($_ENV['MAIL_TIMEOUT'] ?? 6);
@@ -41,7 +41,7 @@ class MailService
             }
         }
 
-        $fromAddress = $_ENV['MAIL_FROM_ADDRESS'] ?? 'info@hts.rw';
+        $fromAddress = $_ENV['MAIL_FROM_ADDRESS'] ?? '';
         $fromName    = $_ENV['MAIL_FROM_NAME'] ?? 'CUR UMS';
         $this->mailer->setFrom($fromAddress, $fromName);
 
