@@ -418,11 +418,79 @@ export interface AdmissionOfferSummary {
   application_number: string | null
 }
 
+/** One row of the required-documents checklist for the student's
+ *  programme category — a `programme_document_requirements` entry matched
+ *  (by document_type_id) against what the student actually uploaded. */
+export type DocumentRequirementStatus = 'verified' | 'pending' | 'rejected' | 'missing'
+
+export interface DocumentRequirementItem {
+  requirement_id:       number
+  document_type_id:     number
+  name:                 string
+  slug:                 string
+  description:          string | null
+  notes:                string | null
+  is_required:          boolean
+  status:               DocumentRequirementStatus
+  document_id:          number | null
+  file_original_name:   string | null
+  uploaded_at:          string | null
+  verified_at:          string | null
+  verifier_name:        string | null
+  verification_comment: string | null
+}
+
+export interface MissingDocumentNotice {
+  id:             number
+  message:        string
+  document_types: { id: number; name: string; status?: string }[]
+  in_app_sent:    boolean
+  email_to:       string | null
+  email_sent:     boolean
+  email_error:    string | null
+  sent_by_name:   string | null
+  created_at:     string
+}
+
+export interface DocumentChecklist {
+  programme_category:       'undergraduate' | 'postgraduate' | 'masters' | string
+  programme_category_label: string
+  /** false when no checklist has been configured for the category yet. */
+  configured:               boolean
+  requirements:             DocumentRequirementItem[]
+  /** Required items that are missing or rejected — what a notice lists. */
+  outstanding:              DocumentRequirementItem[]
+  /** Uploaded application_documents ids that aren't on the checklist. */
+  extra_document_ids:       number[]
+  summary: {
+    required_total:   number
+    verified:         number
+    pending:          number
+    rejected:         number
+    missing:          number
+    optional_missing: number
+  }
+  /** Every required document is verified. */
+  is_complete:              boolean
+  last_notice:              MissingDocumentNotice | null
+}
+
 export interface StudentDocumentsResponse {
   application_id:   number | null
   documents:        ApplicationDocument[]
   admission_offer:  AdmissionOfferSummary | null
+  checklist?:       DocumentChecklist
+  /** Admin view only — whether a notice can actually reach the student. */
+  student_contact?: { email: string | null; has_portal_account: boolean }
   can_upload?:      boolean
+}
+
+export interface NotifyMissingDocumentsResult {
+  note_id:            number
+  documents:          { id: number; name: string; status: string }[]
+  in_app:             boolean
+  has_portal_account: boolean
+  email:              { to: string | null; sent: boolean; error: string | null }
 }
 
 /**
@@ -810,6 +878,23 @@ export const studentService = {
   listDocuments: (id: number | string, signal?: AbortSignal) =>
     api.get<StudentDocumentsResponse>(
       `/api/students/${id}/documents`, {}, signal,
+    ),
+
+  /** Notify the student (portal notification + email) about outstanding
+   *  required documents. Both fields optional: the server lists every
+   *  outstanding requirement unless `document_type_ids` narrows it. */
+  notifyMissingDocuments: (
+    id: number | string,
+    body: { message?: string; document_type_ids?: number[] } = {},
+  ) =>
+    api.post<NotifyMissingDocumentsResult>(
+      `/api/students/${id}/missing-documents/notify`, body,
+    ),
+
+  /** Notices previously sent to the student, newest first. */
+  missingDocumentNotices: (id: number | string, signal?: AbortSignal) =>
+    api.get<{ notices: MissingDocumentNotice[] }>(
+      `/api/students/${id}/missing-documents/notices`, {}, signal,
     ),
 
   /** Public token-gated URL for the admission letter PDF. Works for both

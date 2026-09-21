@@ -17,6 +17,7 @@ use App\Models\OptionModel;
 use App\Helpers\ValidationHelper;
 use App\Helpers\FileServerClient;
 use App\Services\SystemLogService;
+use App\Services\StudentDocumentComplianceService;
 
 class StudentController extends BaseController
 {
@@ -98,6 +99,10 @@ class StudentController extends BaseController
 
         $documents = $applicationId ? $this->docModel->getForApplication($applicationId) : [];
 
+        // Required-documents checklist for the student's programme category,
+        // computed before the synthetic visa row is added (it has its own flow).
+        $checklist = StudentDocumentComplianceService::checklist($student, $documents);
+
         // International students always get the synthetic Visa row injected
         // at the top — mirrors the self-service /me/documents behavior so
         // admins viewing the page see the same list of expected docs.
@@ -109,6 +114,11 @@ class StudentController extends BaseController
             'application_id'  => $applicationId,
             'documents'       => $documents,
             'admission_offer' => $offer,
+            'checklist'       => $checklist,
+            'student_contact' => [
+                'email'              => $student['email'] ?? null,
+                'has_portal_account' => !empty($student['user_id']),
+            ],
         ], 'Documents fetched successfully.');
     }
 
@@ -533,6 +543,8 @@ class StudentController extends BaseController
 
         $documents = $applicationId ? $this->docModel->getForApplication($applicationId) : [];
 
+        $checklist = StudentDocumentComplianceService::checklist($student, $documents);
+
         // International students always get a synthetic "Visa" entry at the
         // top of their document list — either pointing to the file they've
         // already uploaded, or a placeholder asking them to upload one.
@@ -544,6 +556,7 @@ class StudentController extends BaseController
             'application_id'  => $applicationId,
             'documents'       => $documents,
             'admission_offer' => $offer,
+            'checklist'       => $checklist,
             'can_upload'      => true,
         ], 'Documents fetched successfully.');
     }
@@ -5559,99 +5572,82 @@ class StudentController extends BaseController
     }
 
     /**
-     * Send missing documents notification message to student
+     * POST /api/students/:id/missing-documents/notify
+     * Notify the student about outstanding required documents — in-app
+     * notification (when they have a portal account) + email (when they
+     * have an address) — and record the notice for the audit trail.
+     *
+     * Body (all optional):
+     *   message            staff-written note prepended to the document list
+     *   document_type_ids  subset of the outstanding types to list; defaults
+     *                      to every outstanding required document
      */
-    public function sendMissingDocumentsNote()
+    public function sendMissingDocumentsNote(Request $request, Response $response): never
     {
-        $studentId = (int)$this->router->param('id');
-        $data = $this->getJsonInput();
-
-        if (!isset($data['message']) || empty(trim($data['message']))) {
-            return $this->json(['error' => 'Message is required'], 400);
+        $id      = (int)$request->param('id');
+        $student = $this->studentModel->find($id);
+        if (!$student) {
+            $this->error($response, 'Student not found', 404);
         }
 
-        if (!isset($data['document_types']) || !is_array($data['document_types'])) {
-            return $this->json(['error' => 'Document types are required'], 400);
+        $data     = $request->body();
+        $authUser = (array) $request->param('_auth_user');
+        $message  = trim((string)($data['message'] ?? ''));
+        if (mb_strlen($message) > 2000) {
+            $this->error($response, 'Message is too long (2000 characters max).', 422);
         }
 
-        $message = trim($data['message']);
-        $documentTypes = $data['document_types'];
-        $userId = $_SESSION['user_id'] ?? null;
+        $typeIds = null;
+        if (isset($data['document_type_ids'])) {
+            if (!is_array($data['document_type_ids'])) {
+                $this->error($response, 'document_type_ids must be a list.', 422);
+            }
+            $typeIds = array_values(array_filter(array_map('intval', $data['document_type_ids'])));
+        }
+
+        $applicationId = $this->resolveApplicationId($id);
+        $documents     = $applicationId ? $this->docModel->getForApplication($applicationId) : [];
+        $checklist     = StudentDocumentComplianceService::checklist($student, $documents);
+
+        if (!$checklist['configured']) {
+            $this->error($response, 'No required-documents checklist is configured for the '
+                . $checklist['programme_category_label'] . ' category yet.', 422);
+        }
 
         try {
-            $db = $this->studentModel->db();
-
-            // Fetch student's registration number
-            $studentRow = $db->fetchOne(
-                "SELECT id, reg_number FROM students WHERE id = ?",
-                [$studentId]
+            $result = StudentDocumentComplianceService::notify(
+                $student, $checklist, $authUser, $message !== '' ? $message : null, $typeIds
             );
-
-            if (!$studentRow) {
-                return $this->json(['error' => 'Student not found'], 404);
-            }
-
-            $regNumber = $studentRow['reg_number'] ?? null;
-
-            // Try to insert into missing_document_notes table
-            try {
-                // Try with reg_number column first (new schema)
-                try {
-                    $db->execute("
-                        INSERT INTO missing_document_notes (student_id, reg_number, message, document_types, sent_by_user_id, created_at)
-                        VALUES (?, ?, ?, ?, ?, NOW())
-                    ", [
-                        $studentId,
-                        $regNumber,
-                        $message,
-                        json_encode($documentTypes),
-                        $userId
-                    ]);
-                } catch (\Exception $colError) {
-                    // If reg_number column doesn't exist, fall back to old schema
-                    if (strpos($colError->getMessage(), 'Unknown column') !== false) {
-                        $db->execute("
-                            INSERT INTO missing_document_notes (student_id, message, document_types, sent_by_user_id, created_at)
-                            VALUES (?, ?, ?, ?, NOW())
-                        ", [
-                            $studentId,
-                            $message,
-                            json_encode($documentTypes),
-                            $userId
-                        ]);
-                    } else {
-                        throw $colError;
-                    }
-                }
-            } catch (\Exception $dbError) {
-                // If table doesn't exist, just log and still return success
-                if (strpos($dbError->getMessage(), 'no such table') !== false ||
-                    strpos($dbError->getMessage(), "doesn't exist") !== false ||
-                    strpos($dbError->getMessage(), 'Table') !== false) {
-
-                    error_log("Missing documents note for student $studentId: " . json_encode([
-                        'reg_number' => $regNumber,
-                        'message' => $message,
-                        'documents' => $documentTypes,
-                        'timestamp' => date('Y-m-d H:i:s'),
-                        'user_id' => $userId
-                    ]));
-                } else {
-                    error_log("Note: Database save attempt: " . $dbError->getMessage());
-                }
-            }
-
-            // Always return success - message is logged either way
-            return $this->json([
-                'success' => true,
-                'message' => 'Message sent to student',
-                'student_id' => $studentId,
-                'reg_number' => $regNumber,
-                'documents_count' => count($documentTypes)
-            ]);
-        } catch (\Exception $e) {
-            error_log("Error in sendMissingDocumentsNote: " . $e->getMessage());
-            return $this->json(['error' => 'Failed to send message'], 500);
+        } catch (\InvalidArgumentException $e) {
+            $this->error($response, $e->getMessage(), 422);
         }
+
+        $channels = [];
+        if ($result['in_app'])        $channels[] = 'portal notification';
+        if ($result['email']['sent']) $channels[] = 'email to ' . $result['email']['to'];
+
+        $summary = $channels
+            ? 'Student notified via ' . implode(' and ', $channels) . '.'
+            : 'Notice recorded, but it could not be delivered: '
+              . ($result['has_portal_account'] ? '' : 'the student has no portal account; ')
+              . ($result['email']['error'] ?? 'email not sent') . '.';
+
+        $this->success($response, $result, $summary);
+    }
+
+    /**
+     * GET /api/students/:id/missing-documents/notices
+     * Notices previously sent to this student, newest first.
+     */
+    public function missingDocumentsNotices(Request $request, Response $response): never
+    {
+        $id = (int)$request->param('id');
+        if (!$this->studentModel->find($id)) {
+            $this->error($response, 'Student not found', 404);
+        }
+
+        $this->success($response, [
+            'notices' => StudentDocumentComplianceService::notices($id, 50),
+        ], 'Notices fetched.');
     }
 }

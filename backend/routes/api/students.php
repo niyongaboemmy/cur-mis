@@ -66,6 +66,8 @@ $router->group('/api/students', function ($router) {
     $router->get('/:id/photo',                            [StudentController::class, 'downloadPhoto']);
     $router->get('/:id/documents',                        [StudentController::class, 'documents']);
     $router->get('/:id/documents/:document_id/download',  [StudentController::class, 'downloadDocument']);
+    // History of "missing documents" notices sent to this student.
+    $router->get('/:id/missing-documents/notices',        [StudentController::class, 'missingDocumentsNotices']);
     $router->get('/:id/program-modules',                  [StudentController::class, 'programModules']);
     $router->get('/:id/program-modules/export',           [StudentController::class, 'programModulesExport']);
     // Status audit trail + the evidence behind one change. Read-only, so
@@ -99,7 +101,11 @@ $router->group('/api/students', function ($router) {
     $router->post('/profile-change-requests/:id/decide', [StudentController::class, 'decideProfileChangeRequest']);
     $router->post('/:id/status',         [StudentController::class, 'updateStatus']);
     $router->post('/:id/assign-registry', [StudentController::class, 'assignRegistryOfficer']);
-    $router->post('/:id/missing_documents_note', [StudentController::class, 'sendMissingDocumentsNote']);
+    // Notify the student (in-app + email) about outstanding required
+    // documents. Kebab-case path; the old snake_case one is kept as an
+    // alias so nothing cached in a browser 404s.
+    $router->post('/:id/missing-documents/notify', [StudentController::class, 'sendMissingDocumentsNote']);
+    $router->post('/:id/missing_documents_note',   [StudentController::class, 'sendMissingDocumentsNote']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_STUDENTS)]);
 
 // Module exemptions — admin-only override that records a mark for a module

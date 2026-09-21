@@ -14,6 +14,9 @@ class MailService
     public function __construct()
     {
         $this->mailer = new PHPMailer(true);
+        // Bodies and subjects carry UTF-8 (names, "—", "•"); the PHPMailer
+        // default is ISO-8859-1, which garbles them in most clients.
+        $this->mailer->CharSet = PHPMailer::CHARSET_UTF8;
 
         // Server settings
         $driver = $_ENV['MAIL_DRIVER'] ?? 'smtp';
