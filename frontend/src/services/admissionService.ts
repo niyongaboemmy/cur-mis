@@ -103,8 +103,57 @@ export const portalService = {
 export const documentTypeService = {
   list:   (signal?: AbortSignal) => api.get<DocumentType[]>('/admin/document-types', {}, signal),
   create: (d: Partial<DocumentType>) => api.post<{ id: number }>('/admin/document-types', d),
-  update: (id: number, d: Partial<DocumentType>) => api.put<null>(`/admin/document-types/${id}`, d),
+  // Backend registers this as POST /:id (not PUT) — match its verb.
+  update: (id: number, d: Partial<DocumentType>) => api.post<null>(`/admin/document-types/${id}`, d),
   remove: (id: number) => api.delete<null>(`/admin/document-types/${id}`),
+}
+
+/* ───────────────────────────────────────────────────────────────
+ * Admin — required documents per programme category
+ * (undergraduate / postgraduate / masters). What the student Documents
+ * tab checks uploads against. permission: MANAGE_ADMISSION_REQUIREMENTS
+ * ─────────────────────────────────────────────────────────────── */
+export type ProgrammeCategoryKey = 'undergraduate' | 'postgraduate' | 'masters'
+
+export interface ProgrammeDocumentRequirement {
+  id:                   number
+  programme_category:   ProgrammeCategoryKey
+  document_type_id:     number
+  is_required:          0 | 1
+  is_active:            0 | 1
+  notes:                string | null
+  sort_order:           number
+  document_type_name:   string | null
+  document_type_slug:   string | null
+  document_description: string | null
+  document_type_active: 0 | 1
+  created_at?:          string
+  updated_at?:          string
+}
+
+export const programmeDocumentRequirementService = {
+  list: (signal?: AbortSignal) =>
+    api.get<{
+      categories:      { key: ProgrammeCategoryKey; label: string }[]
+      requirements:    ProgrammeDocumentRequirement[]
+      available_types: DocumentType[]
+    }>('/admin/programme-document-requirements', {}, signal),
+
+  create: (d: {
+    programme_category: ProgrammeCategoryKey
+    document_type_id:   number
+    is_required?:       boolean | 0 | 1
+    notes?:             string | null
+  }) => api.post<{ id: number }>('/admin/programme-document-requirements', d),
+
+  // Backend registers this as POST /:id (not PUT) — match its verb.
+  update: (id: number, d: { is_required?: boolean | 0 | 1; is_active?: boolean | 0 | 1; notes?: string | null; sort_order?: number }) =>
+    api.post<{ id: number }>(`/admin/programme-document-requirements/${id}`, d),
+
+  reorder: (programme_category: ProgrammeCategoryKey, ids: number[]) =>
+    api.post<{ ids: number[] }>('/admin/programme-document-requirements/reorder', { programme_category, ids }),
+
+  remove: (id: number) => api.delete<null>(`/admin/programme-document-requirements/${id}`),
 }
 
 /* ───────────────────────────────────────────────────────────────

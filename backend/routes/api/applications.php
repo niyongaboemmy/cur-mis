@@ -9,6 +9,7 @@ use App\Controllers\MeritListController;
 use App\Controllers\AdmissionController;
 use App\Controllers\AdmissionRequirementController;
 use App\Controllers\DocumentTypeController;
+use App\Controllers\ProgrammeDocumentRequirementController;
 use App\Controllers\IntakeController;
 use App\Middleware\AuthMiddleware;
 use App\Middleware\PermissionMiddleware;
@@ -75,6 +76,18 @@ $router->group('/api/admin', function ($router) {
         $router->get('/:id',    [DocumentTypeController::class, 'show']);
         $router->post('/:id',    [DocumentTypeController::class, 'update']);
         $router->delete('/:id', [DocumentTypeController::class, 'delete']);
+    }, [new PermissionMiddleware(Permissions::MANAGE_ADMISSION_REQUIREMENTS)]);
+
+    // ── 1b. Required documents per programme category ───────────────────────
+    // What the student Documents tab checks uploads against (replaces the
+    // hardcoded REQUIRED_DOCS list). Same gate as the catalogue above.
+    $router->group('/programme-document-requirements', function ($router) {
+        $router->get('',            [ProgrammeDocumentRequirementController::class, 'index']);
+        $router->post('',           [ProgrammeDocumentRequirementController::class, 'create']);
+        // Literal path before /:id so it isn't swallowed by the matcher.
+        $router->post('/reorder',   [ProgrammeDocumentRequirementController::class, 'reorder']);
+        $router->post('/:id',       [ProgrammeDocumentRequirementController::class, 'update']);
+        $router->delete('/:id',     [ProgrammeDocumentRequirementController::class, 'delete']);
     }, [new PermissionMiddleware(Permissions::MANAGE_ADMISSION_REQUIREMENTS)]);
 
     // ── 2. Admission requirements (per-faculty document checklist) ──────────

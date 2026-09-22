@@ -14,6 +14,9 @@ class MailService
     public function __construct()
     {
         $this->mailer = new PHPMailer(true);
+        // Bodies and subjects carry UTF-8 (names, "—", "•"); the PHPMailer
+        // default is ISO-8859-1, which garbles them in most clients.
+        $this->mailer->CharSet = PHPMailer::CHARSET_UTF8;
 
         // Server settings
         $driver = $_ENV['MAIL_DRIVER'] ?? 'smtp';
@@ -50,7 +53,7 @@ class MailService
             }
         }
 
-        $fromAddress = $_ENV['MAIL_FROM_ADDRESS'] ?? 'info@hts.rw';
+        $fromAddress = $_ENV['MAIL_FROM_ADDRESS'] ?? '';
         $fromName    = $_ENV['MAIL_FROM_NAME'] ?? 'CUR UMS';
         $this->mailer->setFrom($fromAddress, $fromName);
 

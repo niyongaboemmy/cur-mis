@@ -101,6 +101,12 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { useLevels } from "@/hooks/useLevels";
 import DocumentChecklistModal from "@/components/admin/DocumentChecklistModal";
 import {
+  ComplianceSummary,
+  RequirementList,
+  NotifyStudentPanel,
+  NoticeHistory,
+} from "@/components/students/DocumentCompliancePanel";
+import {
   COUNTRY_BY_NAME,
   COUNTRY_BY_NATIONALITY,
   countryFlag,
@@ -366,16 +372,16 @@ export default function StudentDetailsPage({
         />
       )}
 
-      <DocumentChecklistModal
-        open={showDocumentChecklist}
-        onClose={() => setShowDocumentChecklist(false)}
-        studentId={student.regnumber || student.index_number || String(student.id)}
-        studentName={`${student.fname} ${student.lname}`}
-        programme={String(student.programme_name || (student.application as any)?.program_name || "Not specified")}
-        onSave={() => {
-          toast.success("Document checklist saved successfully");
-        }}
-      />
+      {!selfMode && (
+        <DocumentChecklistModal
+          open={showDocumentChecklist}
+          onClose={() => setShowDocumentChecklist(false)}
+          studentId={student.id}
+          regNumber={student.regnumber || student.index_number || null}
+          studentName={`${student.fname} ${student.lname}`}
+          programme={String(student.programme_name || (student.application as any)?.program_name || "")}
+        />
+      )}
     </div>
   );
 }
@@ -4182,96 +4188,6 @@ function DocumentUploadSection() {
   );
 }
 
-function MissingDocumentsMessageBox({
-  studentId,
-  missingDocuments,
-}: {
-  studentId: number;
-  missingDocuments: any[];
-}) {
-  const [message, setMessage] = useState('');
-  const [showMessage, setShowMessage] = useState(false);
-  const qc = useQueryClient();
-
-  const addMessageMutation = useMutation({
-    mutationFn: async (text: string) => {
-      const res = await fetch(`/api/students/${studentId}/missing_documents_note`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          document_types: missingDocuments.map((d) => d.name),
-          message: text,
-        }),
-      });
-      if (!res.ok) throw new Error('Failed to send message');
-      return res.json();
-    },
-    onSuccess: () => {
-      setMessage('');
-      setShowMessage(false);
-      toast.success('Message sent to student for all missing documents');
-      qc.invalidateQueries({ queryKey: ['student-documents', studentId] });
-    },
-    onError: () => toast.error('Failed to send message'),
-  });
-
-  const handleSendMessage = () => {
-    if (message.trim()) {
-      addMessageMutation.mutate(message);
-    }
-  };
-
-  return (
-    <div className="card border-l-4 border-amber-500 bg-amber-50 dark:bg-amber-900/10 p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h4 className="text-sm font-semibold text-amber-900 dark:text-amber-300">
-            Notify Student
-          </h4>
-          <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
-            Send a message to the student about the {missingDocuments.length} missing document{missingDocuments.length !== 1 ? 's' : ''}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setShowMessage(!showMessage)}
-          className="text-xs font-semibold text-amber-700 dark:text-amber-300 hover:text-amber-900 dark:hover:text-amber-200 whitespace-nowrap px-2 py-1 rounded hover:bg-amber-100 dark:hover:bg-amber-900/30 transition"
-        >
-          {showMessage ? '▼ Hide' : '▶ Show'}
-        </button>
-      </div>
-
-      {showMessage && (
-        <div className="mt-3 space-y-2">
-          <textarea
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            placeholder="e.g., 'Please upload the following missing documents: National ID and Medical Report. You can scan or take clear photos.'"
-            className="input w-full text-sm min-h-20 resize-none"
-          />
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={handleSendMessage}
-              disabled={!message.trim() || addMessageMutation.isPending}
-              className="btn-primary btn-sm text-xs flex-1"
-            >
-              {addMessageMutation.isPending ? 'Sending...' : 'Send Message to Student'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowMessage(false)}
-              className="btn-secondary btn-sm text-xs px-3"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function DocumentsTab({
   student,
   selfMode = false,
@@ -4282,6 +4198,14 @@ function DocumentsTab({
   onOpenChecklist?: () => void;
 }) {
   const studentId = student.id;
+  // "Notify student" in the summary banner scrolls to and opens the compose
+  // panel further down instead of duplicating the form.
+  const [composeOpen, setComposeOpen] = useState(false);
+  const notifyRef = useRef<HTMLDivElement | null>(null);
+  const openCompose = () => {
+    setComposeOpen(true);
+    notifyRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   const docsQ = useQuery({
     queryKey: selfMode
@@ -4315,6 +4239,10 @@ function DocumentsTab({
   const documents = docsQ.data?.data?.documents ?? [];
   const offer = docsQ.data?.data?.admission_offer ?? null;
   const canUpload = docsQ.data?.data?.can_upload ?? false;
+  // Required-documents checklist for the student's programme category,
+  // computed server-side from the admin-configured requirements.
+  const checklist = docsQ.data?.data?.checklist ?? null;
+  const contact = docsQ.data?.data?.student_contact;
 
   if (!applicationId && !offer && !canUpload) {
     return (
@@ -4343,77 +4271,23 @@ function DocumentsTab({
     { verified: 0, pending: 0, rejected: 0 } as Record<string, number>,
   );
 
-  // Get required documents based on programme (from DocumentChecklistModal logic)
-  const REQUIRED_DOCS: Record<string, string[]> = {
-    UNDERGRADUATE: [
-      'Notarized A2 or equivalent',
-      'A1 and transcripts (credit transfer)',
-      'Medical report',
-      'ID/Passport',
-      'Application letter',
-      'Criminal record',
-      'Health insurance',
-    ],
-    MASTERS: [
-      'Notarized A2 or equivalent',
-      'Notarized A0',
-      'Medical report',
-      'ID/Passport',
-      'Application letter',
-      'Criminal record',
-      'Health insurance',
-      'Recommendation letter from employer or academician',
-    ],
-    PGDE: [
-      'Notarized A2 or equivalent',
-      'Notarized A0',
-      'Medical report',
-      'ID/Passport',
-      'Application letter',
-      'Criminal record',
-      'Health insurance',
-    ],
-  }
-
-  const DOCUMENT_ALIASES: Record<string, string[]> = {
-    'ID/Passport': ['National ID', 'Passport', 'National ID / Passport', 'identification', 'id'],
-    'Notarized A2 or equivalent': ['High School Diploma', 'Notified High School Diploma', 'Secondary School Certificate', 'A2 Certificate', 'Form 6'],
-    'Notarized A0': ['Bachelor Degree', 'University Degree', 'A0 Certificate'],
-    'Medical report': ['Medical', 'Health Certificate', 'Medical Examination'],
-    'A1 and transcripts (credit transfer)': ['A1', 'Transcripts', 'Academic Transcript', 'A1 Certificate'],
-    'Application letter': ['Application', 'Letter of Intent', 'Motivation Letter'],
-    'Criminal record': ['Police Clearance', 'Criminal Clearance', 'Background Check'],
-    'Health insurance': ['Insurance', 'Health Coverage'],
-    'Recommendation letter from employer or academician': ['Recommendation', 'Reference Letter', 'Letter of Recommendation'],
-  }
-
-  // Calculate missing documents
-  const getMissingDocuments = () => {
-    const programme = 'UNDERGRADUATE'.toUpperCase().replace(/\s+/g, '')
-    const requiredDocs = REQUIRED_DOCS[programme] || REQUIRED_DOCS.UNDERGRADUATE
-    const uploadedDocNames = documents.map((d: any) => (d.type_name || d.document_type_name || '').toLowerCase())
-
-    return requiredDocs
-      .map((doc, idx) => {
-        const aliases = DOCUMENT_ALIASES[doc] || [doc]
-        const searchTerms = [doc, ...aliases].map(term => term.toLowerCase())
-        const hasUpload = uploadedDocNames.some((uploaded: string) =>
-          searchTerms.some(term => term.includes(uploaded.trim()) || uploaded.trim().includes(term))
-        )
-        return { id: `missing-${idx}`, name: doc, uploaded: hasUpload }
-      })
-      .filter((doc: any) => !doc.uploaded)
-  }
-
-  const missingDocuments = getMissingDocuments()
+  const outstanding = checklist?.outstanding.length ?? 0;
+  const orderRank: Record<string, number> = { rejected: 0, pending: 1, required: 1, verified: 2 };
+  // Rejected and pending first — those are the rows that need someone's
+  // attention; verified ones are the settled majority.
+  const sortedDocs = [...documents].sort(
+    (a: any, b: any) =>
+      (orderRank[String(a.verification_status || "pending").toLowerCase()] ?? 1) -
+      (orderRank[String(b.verification_status || "pending").toLowerCase()] ?? 1),
+  );
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <SummaryCard
           tone="ink"
           icon={FileText}
-          label="Total"
+          label="Uploaded"
           value={documents.length + (offer ? 1 : 0)}
         />
         <SummaryCard
@@ -4434,119 +4308,85 @@ function DocumentsTab({
           label="Rejected"
           value={counts.rejected ?? 0}
         />
+        <SummaryCard
+          tone={outstanding > 0 ? "brand" : "emerald"}
+          icon={outstanding > 0 ? AlertCircle : CheckCircle}
+          label="Missing"
+          value={checklist?.configured ? outstanding : 0}
+        />
       </div>
 
-      {/* Document Checklist Card - Full Width */}
-      {!selfMode && onOpenChecklist && (
-        <button
-          onClick={onOpenChecklist}
-          className="card p-4 bg-yellow-50 dark:bg-yellow-900/20 border-2 border-yellow-200 dark:border-yellow-700 hover:bg-yellow-100 dark:hover:bg-yellow-900/30 transition-colors flex items-center gap-4 w-full text-left"
-        >
-          <div className="flex items-center justify-center flex-shrink-0">
-            <div className="w-12 h-12 rounded-lg bg-yellow-200 dark:bg-yellow-900/40 flex items-center justify-center">
-              <CheckCircle className="w-6 h-6 text-yellow-600 dark:text-yellow-400" />
-            </div>
-          </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-semibold text-yellow-900 dark:text-yellow-300">
-              Document Checklist
-            </h3>
-            <p className="text-xs text-yellow-700 dark:text-yellow-400 mt-0.5">
-              Verify and track student document completion
-            </p>
-          </div>
-          <div className="flex-shrink-0">
-            <button
-              onClick={onOpenChecklist}
-              className="btn-primary btn-sm flex items-center gap-2 whitespace-nowrap"
-            >
-              <CheckCircle className="w-4 h-4" />
-              Open Checklist
-            </button>
-          </div>
-        </button>
+      {checklist && (
+        <ComplianceSummary
+          checklist={checklist}
+          selfMode={selfMode}
+          onOpenChecklist={!selfMode ? onOpenChecklist : undefined}
+          onNotify={!selfMode ? openCompose : undefined}
+        />
       )}
 
       {offer && <AdmissionLetterRow offer={offer} studentId={studentId} />}
 
-      {documents.length === 0 && !applicationId ? (
-        <div className="card p-8 text-center text-ink-500 text-sm">
-          {selfMode
-            ? "No documents have been attached to your profile yet."
-            : "No documents have been attached to this student's profile yet."}
-        </div>
-      ) : documents.length === 0 ? (
-        <div className="card p-8 text-center text-ink-500 text-sm">
-          {selfMode
-            ? "No documents have been attached to your admission application."
-            : "No documents have been attached to this student's admission application."}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* Verified Documents - Left Side */}
-          <div>
-            <h3 className="text-sm font-semibold text-emerald-700 dark:text-emerald-300 mb-3 flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4" />
-              Verified Documents ({documents.filter((d: any) => String(d.verification_status || '').toLowerCase() === 'verified').length})
-            </h3>
-            <div className="space-y-3">
-              {documents
-                .filter((d: any) => String(d.verification_status || '').toLowerCase() === 'verified')
-                .map((d: any) => (
-                  <DocumentRow
-                    key={d.id}
-                    doc={d}
-                    studentId={studentId}
-                    selfMode={selfMode}
-                  />
-                ))}
-              {documents.filter((d: any) => String(d.verification_status || '').toLowerCase() === 'verified').length === 0 && (
-                <div className="text-xs text-ink-500 py-4 text-center">No verified documents yet</div>
-              )}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+        {/* Uploaded documents — every file on record, whatever its status */}
+        <div>
+          <h3 className="text-sm font-semibold text-ink-800 dark:text-ink-100 mb-3 flex items-center gap-2">
+            <FileText className="w-4 h-4" />
+            Uploaded documents ({documents.length})
+          </h3>
+          {documents.length === 0 ? (
+            <div className="card p-8 text-center text-ink-500 text-sm">
+              {selfMode
+                ? "No documents have been attached to your admission application yet."
+                : "No documents have been attached to this student's admission application yet."}
             </div>
-          </div>
-
-          {/* Missing Documents - Right Side */}
-          <div>
-            <h3 className="text-sm font-semibold text-red-700 dark:text-red-300 mb-3 flex items-center gap-2">
-              <AlertCircle className="w-4 h-4" />
-              Missing Documents ({missingDocuments.length})
-            </h3>
-            {missingDocuments.length > 0 ? (
-              <div className="space-y-3">
-                {/* Single Message Box for All Missing Documents - Staff Only */}
-                {!selfMode && (
-                  <MissingDocumentsMessageBox
-                    studentId={studentId}
-                    missingDocuments={missingDocuments}
-                  />
-                )}
-
-                {/* List of Missing Documents */}
-                <div className="space-y-2">
-                  {missingDocuments.map((doc: any) => (
-                    <div key={doc.id} className="card p-3 border-l-4 border-red-500 bg-red-50 dark:bg-red-900/10">
-                      <div className="flex items-start gap-3">
-                        <div className="w-7 h-7 rounded-lg bg-red-200 dark:bg-red-900/40 flex items-center justify-center shrink-0 mt-0.5">
-                          <AlertCircle className="w-3.5 h-3.5 text-red-600 dark:text-red-400" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h4 className="text-sm font-semibold text-red-900 dark:text-red-300">{doc.name}</h4>
-                          <p className="text-xs text-red-700 dark:text-red-400 mt-0.5">Not uploaded yet</p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div className="text-xs text-emerald-600 dark:text-emerald-400 py-4 text-center font-semibold">
-                ✓ All documents complete!
-              </div>
-            )}
-          </div>
+          ) : (
+            <div className="card p-0 divide-y divide-ink-100 dark:divide-ink-800 overflow-hidden">
+              {sortedDocs.map((d: any) => (
+                <DocumentRow
+                  key={d.id}
+                  doc={d}
+                  studentId={studentId}
+                  selfMode={selfMode}
+                />
+              ))}
+            </div>
+          )}
         </div>
-      )}
+
+        {/* Required-documents checklist + notify */}
+        <div className="space-y-3" ref={notifyRef}>
+          <h3 className="text-sm font-semibold text-ink-800 dark:text-ink-100 mb-3 flex items-center gap-2">
+            <CheckCircle className="w-4 h-4" />
+            Required documents
+            {checklist?.configured && (
+              <span className="text-[11px] font-medium text-ink-400">
+                · {checklist.programme_category_label}
+              </span>
+            )}
+          </h3>
+          {checklist && !selfMode && checklist.configured && outstanding > 0 && (
+            <NotifyStudentPanel
+              studentId={studentId}
+              checklist={checklist}
+              contact={contact}
+              defaultOpen={composeOpen}
+            />
+          )}
+          {checklist ? (
+            <RequirementList
+              checklist={checklist}
+              studentId={studentId}
+              selfMode={selfMode}
+            />
+          ) : (
+            <div className="card p-6 text-center text-ink-500 text-sm">
+              Checklist unavailable.
+            </div>
+          )}
+          {!selfMode && checklist?.configured && <NoticeHistory studentId={studentId} />}
+        </div>
+      </div>
 
       {selfMode && canUpload && (
         <DocumentUploadSection />

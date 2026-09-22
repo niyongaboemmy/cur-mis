@@ -360,6 +360,11 @@ const NAV_TREE: NavNode[] = [
         permissions: [PERMISSIONS.MANAGE_ADMISSION_REQUIREMENTS],
       },
       {
+        to: "/admin/admissions/student-documents",
+        label: "Required student documents",
+        permissions: [PERMISSIONS.MANAGE_ADMISSION_REQUIREMENTS],
+      },
+      {
         to: "/admin/admissions/intakes",
         label: "Intakes",
         permissions: [PERMISSIONS.MANAGE_ADMISSIONS],
@@ -1014,6 +1019,10 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
   "/admin/admissions/document-types": {
     title: "Document types",
     sub: "Catalogue of possible admission documents",
+  },
+  "/admin/admissions/student-documents": {
+    title: "Required student documents",
+    sub: "Checklist per programme category — drives the student Documents tab",
   },
 
   "/applicant": {

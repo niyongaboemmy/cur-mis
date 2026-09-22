@@ -88,6 +88,7 @@ import MeritPage from "@/pages/admin/admissions/MeritPage";
 import OffersPage from "@/pages/admin/admissions/OffersPage";
 import RequirementsPage from "@/pages/admin/admissions/RequirementsPage";
 import DocumentTypesPage from "@/pages/admin/admissions/DocumentTypesPage";
+import ProgrammeDocumentRequirementsPage from "@/pages/admin/admissions/ProgrammeDocumentRequirementsPage";
 import IntakesManagementPage from "@/pages/admin/admissions/IntakesManagementPage";
 import ApplicantOverviewPage from "@/pages/applicant/ApplicantOverviewPage";
 import ApplicantDocumentsPage from "@/pages/applicant/ApplicantDocumentsPage";
@@ -727,7 +728,10 @@ function App() {
                     path="document-types"
                     element={<DocumentTypesPage />}
                   />
-                  <Route path="intakes" element={<IntakesManagementPage />} />
+                  <Route
+                    path="student-documents"
+                    element={<ProgrammeDocumentRequirementsPage />}
+                  />
                   <Route path="intakes" element={<IntakesManagementPage />} />
                   {/* Task 1.14 — applicant statistics report. */}
                   <Route
