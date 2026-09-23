@@ -251,9 +251,59 @@ export default function AdmissionFeesPanel({
               <p className="text-[12px] text-amber-700 dark:text-amber-200 mt-1">
                 You have an unpaid balance. Complete payment below to receive your registration number and proceed to enrollment.
               </p>
+              {/* Payment Progress */}
+              <div className="mt-3 space-y-2">
+                <div className="flex justify-between items-center text-[12px]">
+                  <span className="text-amber-700 dark:text-amber-300">
+                    Paid: {fmt(summary.total_paid)} / {fmt(summary.total_due)} RWF
+                  </span>
+                  <span className="font-semibold text-amber-600 dark:text-amber-400">
+                    {Math.round((summary.total_paid / summary.total_due) * 100)}%
+                  </span>
+                </div>
+                <div className="w-full h-2 bg-amber-200 dark:bg-amber-900/50 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-amber-600 dark:bg-amber-500 transition-all"
+                    style={{ width: `${Math.min(100, (summary.total_paid / summary.total_due) * 100)}%` }}
+                  />
+                </div>
+              </div>
             </div>
             <p className="text-[24px] font-black tabular-nums text-amber-600 dark:text-amber-400 shrink-0">
               {fmt(summary.balance)} RWF
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Validator Alert: Insufficient Payment */}
+      {isValidator && summary && summary.balance > 0 && canManage && (
+        <div className="p-4 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] font-semibold text-red-900 dark:text-red-100">
+              Payment Incomplete - Action Required
+            </p>
+            <p className="text-[12px] text-red-700 dark:text-red-200 mt-1">
+              This applicant has not paid the full amount required for admission. Current balance:{' '}
+              <span className="font-bold">{fmt(summary.balance)} RWF</span>
+            </p>
+            <div className="mt-3 space-y-2 bg-white dark:bg-red-900/20 p-3 rounded">
+              <div className="flex justify-between text-[12px]">
+                <span className="text-red-700 dark:text-red-300">Total Required:</span>
+                <span className="font-bold">{fmt(summary.total_due)} RWF</span>
+              </div>
+              <div className="flex justify-between text-[12px]">
+                <span className="text-red-700 dark:text-red-300">Paid to Date:</span>
+                <span className="font-bold">{fmt(summary.total_paid)} RWF</span>
+              </div>
+              <div className="border-t border-red-200 dark:border-red-700 pt-2 mt-2 flex justify-between text-[12px]">
+                <span className="text-red-900 dark:text-red-100 font-semibold">Balance Due:</span>
+                <span className="font-black text-red-600 dark:text-red-400">{fmt(summary.balance)} RWF</span>
+              </div>
+            </div>
+            <p className="text-[11px] text-red-600 dark:text-red-300 mt-2">
+              ⚠️ Registration number cannot be issued until full payment is received.
             </p>
           </div>
         </div>
@@ -300,22 +350,47 @@ export default function AdmissionFeesPanel({
       {/* The bills */}
       <div className="rounded-xl border border-ink-100 dark:border-ink-800 divide-y divide-ink-100 dark:divide-ink-800 overflow-hidden">
         {bills.map((bill) => (
-          <div key={bill.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <p className="text-[13.5px] font-semibold text-ink-900 dark:text-white">{bill.label}</p>
-                <StatusChip status={bill.status} />
+          <div key={bill.id} className="flex flex-col gap-3 px-4 py-3.5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-[13.5px] font-semibold text-ink-900 dark:text-white">{bill.label}</p>
+                  <StatusChip status={bill.status} />
+                </div>
+                <p className="text-[12px] text-ink-500 dark:text-ink-400 mt-0.5 tabular-nums">
+                  Amount Due: <span className="font-semibold text-ink-700 dark:text-ink-300">{fmt(bill.amount_due)} {bill.currency}</span>
+                  {bill.amount_paid > 0 && (
+                    <> · Paid: <span className="font-semibold text-emerald-600 dark:text-emerald-400">{fmt(bill.amount_paid)} {bill.currency}</span></>
+                  )}
+                  {bill.status === 'paid' && bill.transaction_id && (
+                    <> · Ref <span className="font-mono text-[11px]">{bill.transaction_id}</span></>
+                  )}
+                </p>
               </div>
-              <p className="text-[12px] text-ink-500 dark:text-ink-400 mt-0.5 tabular-nums">
-                {fmt(bill.amount_due)} {bill.currency}
-                {bill.amount_paid > 0 && bill.status !== 'paid' && (
-                  <> · {fmt(bill.amount_paid)} paid · <span className="text-amber-600 dark:text-amber-400 font-semibold">{fmt(bill.balance)} left</span></>
-                )}
-                {bill.status === 'paid' && bill.transaction_id && (
-                  <> · Ref <span className="font-mono">{bill.transaction_id}</span></>
-                )}
-              </p>
+
+              {/* Balance Badge */}
+              {bill.balance > 0 && bill.status !== 'paid' && (
+                <div className="flex items-center gap-2 shrink-0 bg-amber-50 dark:bg-amber-900/20 px-3 py-1.5 rounded-lg border border-amber-200 dark:border-amber-800">
+                  <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-300 uppercase tracking-wide">Balance</span>
+                  <span className="text-[14px] font-black tabular-nums text-amber-600 dark:text-amber-400">{fmt(bill.balance)}</span>
+                </div>
+              )}
             </div>
+
+            {/* Progress bar for partial payments */}
+            {bill.amount_due > 0 && bill.amount_paid > 0 && bill.status !== 'paid' && (
+              <div className="space-y-1.5">
+                <div className="w-full h-2 bg-ink-200 dark:bg-ink-700 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-amber-500 dark:bg-amber-400 transition-all"
+                    style={{ width: `${Math.min(100, (bill.amount_paid / bill.amount_due) * 100)}%` }}
+                  />
+                </div>
+                <p className="text-[11px] text-ink-400 text-right">
+                  {Math.round((bill.amount_paid / bill.amount_due) * 100)}% paid
+                </p>
+              </div>
+            )}
 
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 shrink-0 w-full">
               {bill.status === 'paid' ? (
