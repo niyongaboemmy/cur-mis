@@ -74,32 +74,23 @@ export default function ApplicationFeeProgress({
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Could not record the payment.'),
   })
 
+  /**
+   * Open the server-built deep link — never the bare `/pay-now` page.
+   *
+   * The link carries mhcd, pycd, sccd and amnt, so the payer lands on the
+   * payment method with the merchant, their payer code, the service and the
+   * outstanding amount already filled in. The bare page ignores all of that and
+   * asks them to type the payer code themselves, which is how a payment ends up
+   * matched to nobody.
+   */
   const payNow = () => {
-    if (!checkout?.merchant_code || !checkout?.payer_code) {
+    if (!checkout?.checkout_url) {
       toast.error('Payment information is not ready — please try again.')
       checkoutQ.refetch()
       return
     }
 
-    // POST rather than a link: the hosted checkout reads the merchant and payer
-    // codes from the form body, the same way AdmissionFeesPanel opens it.
-    const form = document.createElement('form')
-    form.method = 'POST'
-    form.action = 'https://urubutopay.rw/pay-now?origin=internal'
-    form.target = '_blank'
-    for (const [name, value] of [
-      ['merchant_code', checkout.merchant_code],
-      ['payer_code', checkout.payer_code],
-    ] as const) {
-      const input = document.createElement('input')
-      input.type = 'hidden'
-      input.name = name
-      input.value = value
-      form.appendChild(input)
-    }
-    document.body.appendChild(form)
-    form.submit()
-    document.body.removeChild(form)
+    window.open(checkout.checkout_url, '_blank', 'noopener,noreferrer')
 
     setOpened(true)
     toast.success('Complete the payment in the Urubuto Pay tab, then come back here.')

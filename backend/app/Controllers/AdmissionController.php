@@ -502,20 +502,33 @@ class AdmissionController extends BaseController
 
         $feeType     = strtoupper(trim((string)($request->query('fee_type') ?? '')));
         $serviceCode = null;
+        $invoices    = new \App\Models\ApplicationInvoiceModel();
+
         if ($feeType !== '') {
-            $bill = (new \App\Models\ApplicationInvoiceModel())->findByFeeType($appId, $feeType);
+            $bill = $invoices->findByFeeType($appId, $feeType);
             if (!$bill) {
                 $this->error($response, 'This applicant has not been billed for ' . $feeType . '.', 404);
             }
             $serviceCode = $bill['service_code'] ?: null;
+            $amount      = round((float)$bill['amount_due'] - (float)$bill['amount_paid'], 2);
+        } else {
+            $amount = (float)($invoices->summaryFor($appId)['balance'] ?? 0);
         }
 
         $billing = new AdmissionBillingService();
 
+        // No fee type named — one link for everything still outstanding, which
+        // names the service itself when only one bill is open.
+        $checkoutUrl = $feeType !== ''
+            ? $billing->checkoutUrl((string)$application['application_number'], $serviceCode, $amount)
+            : $billing->outstandingCheckoutUrl($appId, (string)$application['application_number']);
+
         $this->success($response, [
-            'checkout_url'       => $billing->checkoutUrl((string)$application['application_number'], $serviceCode),
+            'checkout_url'       => $checkoutUrl,
             'payer_code'         => (string)$application['application_number'],
             'service_code'       => $serviceCode,
+            'amount'             => $amount,
+            'currency'           => 'RWF',
             'application_number' => (string)$application['application_number'],
         ], 'Checkout link generated.');
     }

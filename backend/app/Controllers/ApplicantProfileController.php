@@ -381,8 +381,14 @@ class ApplicantProfileController extends BaseController
             $amount      = round((float)$bill['amount_due'] - (float)$bill['amount_paid'], 2);
         }
 
+        // No fee type named — one link for everything still outstanding, which
+        // names the service itself when only one bill is open.
+        $checkoutUrl = $feeType !== ''
+            ? $billing->checkoutUrl((string)$application['application_number'], $serviceCode, $amount)
+            : $billing->outstandingCheckoutUrl($appId, (string)$application['application_number']);
+
         $this->success($response, [
-            'checkout_url'       => $billing->checkoutUrl((string)$application['application_number'], $serviceCode),
+            'checkout_url'       => $checkoutUrl,
             'payer_code'         => (string)$application['application_number'],
             'service_code'       => $serviceCode,
             'amount'             => $amount,

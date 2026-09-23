@@ -1940,33 +1940,23 @@ function PaymentStep({
     onError: (e: any) => toast.error(e?.message || 'Could not simulate the payment.'),
   });
 
+  /**
+   * Open the server-built deep link — never the bare `/pay-now` page.
+   *
+   * `checkout_url` carries mhcd, pycd, sccd and amnt, so the applicant lands on
+   * the payment method with the merchant, their application number, the service
+   * and the amount still owed already filled in. The bare page ignores those and
+   * makes them retype the payer code, which is how a payment ends up matched to
+   * no application.
+   */
   const payNow = () => {
-    if (!checkout?.merchant_code || !checkout?.payer_code) {
+    if (!checkout?.checkout_url) {
       toast.error('Payment information not ready — please try again.');
       checkoutQuery.refetch();
       return;
     }
 
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = 'https://urubutopay.rw/pay-now?origin=internal';
-    form.target = '_blank';
-
-    const merchantInput = document.createElement('input');
-    merchantInput.type = 'hidden';
-    merchantInput.name = 'merchant_code';
-    merchantInput.value = checkout.merchant_code;
-
-    const payerInput = document.createElement('input');
-    payerInput.type = 'hidden';
-    payerInput.name = 'payer_code';
-    payerInput.value = checkout.payer_code;
-
-    form.appendChild(merchantInput);
-    form.appendChild(payerInput);
-    document.body.appendChild(form);
-    form.submit();
-    document.body.removeChild(form);
+    window.open(checkout.checkout_url, '_blank', 'noopener,noreferrer');
 
     setOpened(true);
     toast.success('Complete your payment in the Urubuto Pay tab, then return here.');

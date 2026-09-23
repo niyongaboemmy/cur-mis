@@ -406,7 +406,11 @@ class AdmissionBillingService
                 'paid_at'        => $bill['paid_at'] ?: null,
                 'billed_at'      => $bill['billed_at'] ?: null,
                 'checkout_url'   => $balance > 0
-                    ? $this->checkoutUrl((string)$application['application_number'], $bill['service_code'] ?: null)
+                    ? $this->checkoutUrl(
+                        (string)$application['application_number'],
+                        $bill['service_code'] ?: null,
+                        round($balance, 2)
+                      )
                     : null,
                 'merchant_code'  => $merchantCode,
                 'payer_code'     => (string)$application['application_number'],
@@ -427,9 +431,10 @@ class AdmissionBillingService
             'fully_paid'         => $summary['fully_paid'],
             'merchant_code'      => $merchantCode,
             'payer_code'         => (string)($application['application_number'] ?? ''),
-            'checkout_url'       => $summary['balance'] > 0
-                ? $this->checkoutUrl((string)$application['application_number'], null)
-                : null,
+            'checkout_url'       => $this->outstandingCheckoutUrl(
+                $applicationId,
+                (string)($application['application_number'] ?? '')
+            ),
             'offer_status'       => $offer['status'] ?? null,
             'enrollment_initiated' => $offer ? (int)$offer['enrollment_initiated'] === 1 : false,
             'registration_number'  => $application['enrolled_student_id'] ?: null,
@@ -438,24 +443,22 @@ class AdmissionBillingService
     }
 
     /**
-     * UrubutoPay's pre-filled deep link. Same shape the application fee uses:
-     * the payer code is the application number, which is what routes the
-     * callback back to this applicant.
+     * UrubutoPay's pre-filled deep link. Same shape — and now the same builder —
+     * as the application fee: the payer code is the application number, which is
+     * what routes the callback back to this applicant, and `amnt` quotes what is
+     * still owed so the payer is not asked to retype it.
+     *
+     * @param float|null $amount balance to pre-fill; null leaves the gateway to ask
      */
-    public function checkoutUrl(string $applicationNumber, ?string $serviceCode): string
+    public function checkoutUrl(string $applicationNumber, ?string $serviceCode, ?float $amount = null): string
     {
-        $base = $_ENV['URUBUTOPAY_CHECKOUT_URL'] ?? self::CHECKOUT_BASE;
-
-        $url = rtrim($base, '/') . '/initiate'
-             . '?origin=internal'
-             . '&mhcd=' . urlencode($this->merchantCode())
-             . '&pycd=' . urlencode($applicationNumber);
-
-        if ($serviceCode !== null && $serviceCode !== '') {
-            $url .= '&sccd=' . urlencode($serviceCode);
-        }
-
-        return $url;
+        return UrubutoPayService::checkoutLink(
+            $this->merchantCode(),
+            $applicationNumber,
+            $serviceCode,
+            $amount,
+            $_ENV['URUBUTOPAY_CHECKOUT_URL'] ?? self::CHECKOUT_BASE
+        );
     }
 
     private function merchantCode(): string
@@ -500,6 +503,35 @@ class AdmissionBillingService
     public function hasOpenBills(int $applicationId): bool
     {
         return $this->invoices->openForApplication($applicationId) !== [];
+    }
+
+    /**
+     * The "settle everything outstanding" link for an application.
+     *
+     * When exactly one bill is still open the link names its service too, so the
+     * payer skips the gateway's service menu entirely. With several open bills
+     * there is no single honest answer, so `sccd` is left off and the payer
+     * chooses — the waterfall in applyGatewayPayment() then applies whatever
+     * they send, starting with the service they picked.
+     */
+    public function outstandingCheckoutUrl(int $applicationId, string $applicationNumber): ?string
+    {
+        $open = $this->invoices->openForApplication($applicationId);
+        if (!$open) {
+            return null;
+        }
+
+        $balance = 0.0;
+        foreach ($open as $bill) {
+            $balance += max(0.0, (float)$bill['amount_due'] - (float)$bill['amount_paid']);
+        }
+        if ($balance <= 0) {
+            return null;
+        }
+
+        $serviceCode = count($open) === 1 ? ($open[0]['service_code'] ?: null) : null;
+
+        return $this->checkoutUrl($applicationNumber, $serviceCode, round($balance, 2));
     }
 
     // ─────────────────────────────────────────────────────────────────────────

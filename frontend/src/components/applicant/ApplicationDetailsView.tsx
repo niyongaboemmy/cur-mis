@@ -114,6 +114,46 @@ export default function ApplicationDetailsView({
         </div>
       )}
 
+      {/* ── Application fee ──────────────────────────────────────
+        First thing on the page, above the application itself: an
+        outstanding balance is the one thing the applicant has to act on,
+        and it stops the application moving until it is cleared. Urubuto
+        Pay accepts any amount, so this is a balance, not a paid flag. */}
+      <ApplicationFeeProgress
+        applicationId={application.id}
+        paymentSlip={app.payment_slip_file_id ? (
+          <div className="p-3 rounded-xl border border-ink-100 dark:border-ink-800 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-9 h-9 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 flex items-center justify-center shrink-0">
+                <FileText className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[13px] font-bold text-ink-900 dark:text-white">
+                  Payment Slip
+                </p>
+                <p className="text-[11px] text-ink-500">
+                  Uploaded with this application — click to preview.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() =>
+                setPreviewDoc({
+                  __payment_slip: true,
+                  document_id: app.id,
+                  document_type_name: "Payment Slip",
+                  file_mime: (app as any).payment_slip_mime ?? undefined,
+                })
+              }
+              className="p-1.5 rounded-lg hover:bg-ink-100 dark:hover:bg-ink-700 text-ink-500 transition-colors shrink-0"
+              title="Preview payment slip"
+            >
+              <Eye className="w-4 h-4" />
+            </button>
+          </div>
+        ) : undefined}
+      />
+
       {/* ── Hero card ────────────────────────────────────────────── */}
       <Card className="overflow-hidden p-0">
         <div className="relative bg-gradient-to-br from-primary-700 via-primary-700 to-primary-900 p-6 sm:p-8 text-white">
@@ -477,43 +517,6 @@ export default function ApplicationDetailsView({
             </div>
           </Card>
 
-          {/* Application fee — what is owed, what has reached the account and
-              what is left. Urubuto Pay accepts any amount, so this is a
-              balance, not a paid/unpaid flag. */}
-          <ApplicationFeeProgress
-            applicationId={application.id}
-            paymentSlip={app.payment_slip_file_id ? (
-              <div className="p-3 rounded-xl border border-ink-100 dark:border-ink-800 flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-9 h-9 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 flex items-center justify-center shrink-0">
-                    <FileText className="w-4 h-4" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[13px] font-bold text-ink-900 dark:text-white">
-                      Payment Slip
-                    </p>
-                    <p className="text-[11px] text-ink-500">
-                      Uploaded with this application — click to preview.
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() =>
-                    setPreviewDoc({
-                      __payment_slip: true,
-                      document_id: app.id,
-                      document_type_name: "Payment Slip",
-                      file_mime: (app as any).payment_slip_mime ?? undefined,
-                    })
-                  }
-                  className="p-1.5 rounded-lg hover:bg-ink-100 dark:hover:bg-ink-700 text-ink-500 transition-colors shrink-0"
-                  title="Preview payment slip"
-                >
-                  <Eye className="w-4 h-4" />
-                </button>
-              </div>
-            ) : undefined}
-          />
         </div>
 
         {/* ── Side panel ─────────────────────────────────────────── */}
@@ -695,9 +698,12 @@ export default function ApplicationDetailsView({
                     </div>
                   )}
 
+                  {/* The server-built deep link, not the bare /pay-now page: it
+                      carries mhcd, pycd, sccd and amnt, so the applicant lands on
+                      the payment method with everything already filled in. */}
                   {billsData.summary?.balance > 0 ? (
                     <a
-                      href="https://urubutopay.rw/pay-now?origin=internal"
+                      href={billsData.checkout_url ?? undefined}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="btn-primary w-full inline-flex items-center justify-center gap-2"

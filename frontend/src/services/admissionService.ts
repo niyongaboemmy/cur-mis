@@ -635,8 +635,9 @@ export const admissionBillingService = {
       data,
     ),
 
+  /** `checkout_url` is null when the applicant owes nothing — there is no link to open. */
   checkout: (appId: number, feeType?: string, signal?: AbortSignal) =>
-    api.get<{ checkout_url: string; payer_code: string; service_code: string | null; application_number: string }>(
+    api.get<{ checkout_url: string | null; payer_code: string; service_code: string | null; amount: number | null; currency: string; application_number: string }>(
       `/admin/applications/${appId}/bills/checkout`,
       feeType ? { fee_type: feeType } : {},
       signal,
@@ -818,10 +819,13 @@ export const applicantService = {
   getAdmissionBills: (signal?: AbortSignal) =>
     api.get<AdmissionBillingOverview>('/applicant/application/bills', {}, signal),
 
-  /** Fresh checkout link for one bill, or for the whole balance when omitted. */
+  /**
+   * Fresh checkout link for one bill, or for the whole balance when omitted.
+   * Null when nothing is outstanding — there is no link to open.
+   */
   getAdmissionBillCheckout: (feeType?: string, signal?: AbortSignal) =>
     api.get<{
-      checkout_url:       string
+      checkout_url:       string | null
       payer_code:         string
       service_code:       string | null
       amount:             number | null

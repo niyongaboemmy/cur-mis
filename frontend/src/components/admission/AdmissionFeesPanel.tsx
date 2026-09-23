@@ -103,33 +103,23 @@ export default function AdmissionFeesPanel({
       toast.error(e?.response?.data?.message || 'Could not raise the admission fees.'),
   })
 
-  const payNow = async () => {
-    if (!data?.merchant_code || !data?.payer_code) {
+  /**
+   * Open the server-built deep link — never the bare `/pay-now` page, which
+   * ignores the merchant and payer codes and asks the payer to retype them.
+   *
+   * Given a bill, its own link is used: that one carries the bill's service code
+   * and ITS balance in `amnt`, so paying the Registration fee quotes the
+   * Registration fee. Without one, the whole-balance link is opened.
+   */
+  const payNow = async (bill?: AdmissionBill) => {
+    const url = bill?.checkout_url ?? data?.checkout_url
+    if (!url) {
       toast.error('Payment information not ready — please try again.')
       billsQ.refetch()
       return
     }
 
-    const form = document.createElement('form')
-    form.method = 'POST'
-    form.action = 'https://urubutopay.rw/pay-now?origin=internal'
-    form.target = '_blank'
-
-    const merchantInput = document.createElement('input')
-    merchantInput.type = 'hidden'
-    merchantInput.name = 'merchant_code'
-    merchantInput.value = data.merchant_code
-
-    const payerInput = document.createElement('input')
-    payerInput.type = 'hidden'
-    payerInput.name = 'payer_code'
-    payerInput.value = data.payer_code
-
-    form.appendChild(merchantInput)
-    form.appendChild(payerInput)
-    document.body.appendChild(form)
-    form.submit()
-    document.body.removeChild(form)
+    window.open(url, '_blank', 'noopener,noreferrer')
 
     setOpenedCheckout(true)
     toast.success(
@@ -403,7 +393,7 @@ export default function AdmissionFeesPanel({
                   {!isValidator && (
                     <button
                       className="btn-primary font-semibold"
-                      onClick={() => payNow()}
+                      onClick={() => payNow(bill)}
                       title="Pay via Urubuto (MTN MoMo / Airtel Money)"
                     >
                       <CreditCard className="w-4 h-4" />
@@ -413,7 +403,7 @@ export default function AdmissionFeesPanel({
 
                   {/* Validator: Open payment page */}
                   {isValidator && (
-                    <button className="btn-primary" onClick={() => payNow()}>
+                    <button className="btn-primary" onClick={() => payNow(bill)}>
                       <CreditCard className="w-4 h-4" />
                       Open payment page
                     </button>

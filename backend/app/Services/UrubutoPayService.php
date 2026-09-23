@@ -926,6 +926,51 @@ class UrubutoPayService
 
     // ── Checkout URL ──────────────────────────────────────────────────────────
 
+    /**
+     * UrubutoPay's PRE-FILLED deep link — the one shape every checkout in this
+     * system hands the payer.
+     *
+     * The `/pay-now/initiate` route reads origin/mhcd/pycd/sccd/amnt from the
+     * query, skips the merchant + payer entry form, and goes straight to
+     * choosing a payment method. The bare `/pay-now` page IGNORES these params
+     * (verified against their JS bundle), so a link or form POST to it drops the
+     * payer at an empty form and invites a typo in the payer code — which is how
+     * a payment ends up matched to nobody.
+     *
+     *   mhcd = merchant code
+     *   pycd = payer code (regnumber / application number / request code)
+     *   sccd = the registered service the payment settles
+     *   amnt = the amount to pre-fill, in RWF — what is STILL OWED, so a payer
+     *          returning after a part payment is quoted the remainder
+     *
+     * sccd and amnt are omitted when unknown rather than sent empty: an empty
+     * param is a value to the gateway, a missing one lets it use its own default.
+     */
+    public static function checkoutLink(
+        string $merchantCode,
+        string $payerCode,
+        ?string $serviceCode = null,
+        float|int|null $amount = null,
+        ?string $base = null
+    ): string {
+        $base = $base ?? ($_ENV['URUBUTOPAY_CHECKOUT_URL'] ?? self::CHECKOUT_BASE);
+
+        $url = rtrim($base, '/') . '/initiate'
+             . '?origin=internal'
+             . '&mhcd=' . urlencode($merchantCode)
+             . '&pycd=' . urlencode($payerCode);
+
+        if ($serviceCode !== null && trim($serviceCode) !== '') {
+            $url .= '&sccd=' . urlencode(trim($serviceCode));
+        }
+
+        if ($amount !== null && (float)$amount > 0) {
+            $url .= '&amnt=' . urlencode((string)(int)round((float)$amount));
+        }
+
+        return $url;
+    }
+
     public function generateCheckoutUrl(string $regNumber): array
     {
         // Prefer .env, then fall back to the merchant_code stored in api_authorization (DB is authoritative)
@@ -934,15 +979,20 @@ class UrubutoPayService
             $row = $this->db->fetchOne('SELECT merchant_code FROM api_authorization LIMIT 1', []);
             $merchantCode = (string)($row['merchant_code'] ?? '');
         }
-        $checkoutBase = $_ENV['URUBUTOPAY_CHECKOUT_URL']  ?? self::CHECKOUT_BASE;
-        $checkoutUrl  = $checkoutBase . '?mhcd=' . urlencode($merchantCode) . '&pycd=' . urlencode($regNumber);
-
-        $balance = $this->getOutstandingBalance($regNumber);
+        // Was the bare `/pay-now` page carrying only mhcd + pycd, which the
+        // gateway ignores — the student arrived at an empty form. Now the same
+        // pre-filled deep link every other payer gets, quoting what they owe.
+        $balance     = $this->getOutstandingBalance($regNumber);
+        $serviceCode = $this->studentServiceCode();
+        $checkoutUrl = self::checkoutLink($merchantCode, $regNumber, $serviceCode, $balance);
 
         return [
-            'checkout_url' => $checkoutUrl,
-            'amount_due'   => $balance,
-            'currency'     => 'RWF',
+            'checkout_url'  => $checkoutUrl,
+            'merchant_code' => $merchantCode,
+            'payer_code'    => $regNumber,
+            'service_code'  => $serviceCode,
+            'amount_due'    => $balance,
+            'currency'      => 'RWF',
         ];
     }
 
@@ -981,12 +1031,7 @@ class UrubutoPayService
         // which is why the fields showed up empty before.
         //   mhcd = merchant code, pycd = payer code (= application number),
         //   sccd = service code, amnt = amount in RWF, origin=internal marks an institutional deep link.
-        $checkoutUrl = rtrim($checkoutBase, '/') . '/initiate'
-            . '?origin=internal'
-            . '&mhcd=' . urlencode($merchantCode)
-            . '&pycd=' . urlencode($appNumber)
-            . '&sccd=' . urlencode($serviceCode)
-            . '&amnt=' . urlencode((string)$prefill);
+        $checkoutUrl = self::checkoutLink($merchantCode, $appNumber, $serviceCode, $prefill, $checkoutBase);
 
         return [
             'checkout_url'  => $checkoutUrl,
@@ -1410,6 +1455,34 @@ class UrubutoPayService
         return $row ? (string)$row['service_name'] : 'APPLICATION FEE';
     }
 
+    /**
+     * The gateway service a STUDENT's own payment settles on.
+     *
+     * Env override first (one deploy can be re-pointed), then the catalogue's
+     * TUITION entry, then whatever the student menu leads with. Null when the
+     * catalogue says nothing — the link then omits `sccd` and the payer picks
+     * from the gateway's own menu, which is the pre-existing behaviour.
+     */
+    private function studentServiceCode(): ?string
+    {
+        $env = trim((string)($_ENV['URUBUTOPAY_STUDENT_SERVICE_CODE'] ?? ''));
+        if ($env !== '') {
+            return $env;
+        }
+
+        try {
+            $code = $this->serviceCatalog->codeForFeeType('TUITION', 'STUDENT');
+            if ($code) {
+                return $code;
+            }
+
+            $menu = $this->serviceCatalog->menuFor('STUDENT');
+            return $menu ? (string)$menu[0]['service_code'] : null;
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
     /** Look up an applicant by application number (used as the UrubutoPay payer code). */
     private function lookupApplication(string $payerCode): ?array
     {
@@ -1452,11 +1525,13 @@ class UrubutoPayService
         $serviceCode  = $this->serviceRequestServiceCode((string)($request['service_name'] ?? ''));
         $checkoutBase = $_ENV['URUBUTOPAY_CHECKOUT_URL'] ?? self::CHECKOUT_BASE;
 
-        $checkoutUrl = rtrim($checkoutBase, '/') . '/initiate'
-            . '?origin=internal'
-            . '&mhcd=' . urlencode($merchantCode)
-            . '&pycd=' . urlencode($request['request_code'])
-            . '&sccd=' . urlencode($serviceCode);
+        $checkoutUrl = self::checkoutLink(
+            $merchantCode,
+            (string)$request['request_code'],
+            $serviceCode,
+            (float)$request['fee_amount'],
+            $checkoutBase
+        );
 
         return [
             'checkout_url'  => $checkoutUrl,
