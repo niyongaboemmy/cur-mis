@@ -213,12 +213,18 @@ class ApplicationAdminController extends BaseController
             [$id]
         );
 
+        // The application fee as a BALANCE, not a flag: the gateway accepts part
+        // payments, so the desk must see the same required / paid / outstanding
+        // figures the applicant is looking at.
+        $applicationFee = (new \App\Services\ApplicationFeeService())->summaryFor($id, $application);
+
         $this->success($response, [
-            'application'    => $application,
-            'documents'      => $documents,
-            'status_log'     => $statusLog,
-            'merit_criteria' => $meritCriteria ?: null,
-            'merit_listing'  => $meritListing  ?: null,
+            'application'     => $application,
+            'documents'       => $documents,
+            'status_log'      => $statusLog,
+            'merit_criteria'  => $meritCriteria ?: null,
+            'merit_listing'   => $meritListing  ?: null,
+            'application_fee' => $applicationFee,
         ], 'Application details fetched.');
     }
 

@@ -1912,9 +1912,11 @@ function PaymentStep({
   const status = statusQuery.data?.data;
   const txId = status?.transaction_id ?? checkout?.transaction_id ?? null;
 
+  // `fully_paid`, not "money arrived": Urubuto Pay accepts part payments, and
+  // the wizard only unlocks when the whole fee is settled.
   useEffect(() => {
-    if (status?.paid || checkout?.paid) onPaidChange(true);
-  }, [status?.paid, checkout?.paid, onPaidChange]);
+    if (status?.fully_paid || checkout?.fully_paid) onPaidChange(true);
+  }, [status?.fully_paid, checkout?.fully_paid, onPaidChange]);
 
   const copy = (label: string, value?: string | null) => {
     if (!value) return;

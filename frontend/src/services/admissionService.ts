@@ -222,6 +222,8 @@ export const applicationAdminService = {
       status_log?: ApplicationStatusLog[];
       merit_criteria?: MeritCriteria | null;
       merit_listing?: MeritListRow | null;
+      /** Required / paid / outstanding on the application fee — a balance, not a flag. */
+      application_fee?: ApplicationFeeSummary | null;
     }>(
       `/admin/applications/${id}`, {}, signal,
     ),
@@ -509,6 +511,59 @@ export interface AdmissionBill {
   payer_code:     string
 }
 
+/**
+ * Where an applicant stands on the APPLICATION (processing) fee.
+ *
+ * `required` is the published price — a `fee_structures` row of fee_type
+ * APPLICATION matched to the applicant's year / department / level / category,
+ * not the admission-fee mapping setting. `paid` is the sum of the ledger, so a
+ * gateway payment smaller than the fee shows as progress rather than as a
+ * settled fee.
+ */
+export interface ApplicationFeeSummary {
+  application_id: number
+  currency:       string
+  required:       number
+  paid:           number
+  balance:        number
+  /** 0–100, capped. */
+  percent:        number
+  status:         'unpaid' | 'partial' | 'paid' | 'overpaid'
+  fully_paid:     boolean
+  quote: {
+    amount:           number
+    currency:         string
+    fee_structure_id: number | null
+    label:            string
+    /** Which rule priced it — surfaced so a misconfiguration is visible, not silent. */
+    source:
+      | 'frozen_quote'
+      | 'fee_structure_match'
+      | 'fee_structure_institution_wide'
+      | 'mapped_setting'
+      | 'settings_amount'
+      | 'default'
+    frozen:           boolean
+  }
+  payments: ApplicationFeePayment[]
+  first_paid_at:  string | null
+  last_paid_at:   string | null
+  transaction_id: string | null
+}
+
+export interface ApplicationFeePayment {
+  id:               number
+  amount:           number
+  currency:         string
+  payment_method:   string
+  reference_number: string
+  receipt_number:   string
+  service_code:     string | null
+  source:           'GATEWAY' | 'MANUAL' | 'SIMULATED'
+  notes:            string | null
+  paid_at:          string
+}
+
 export interface AdmissionBillPayment {
   id:               number
   amount:           number
@@ -624,41 +679,52 @@ export const applicantService = {
       merchant_code:      string
       merchant_codes:     string[]
       payer_code:         string
+      /** The full fee. */
       amount:             number
+      /** What the checkout is pre-filled with — the remaining balance. */
+      amount_due:         number
+      /** Amount received so far — `fully_paid` is the flag. */
+      paid:               number
+      balance:            number
+      fully_paid:         boolean
       currency:           string
       service_code:       string
-      paid:               boolean
+      summary:            ApplicationFeeSummary
       transaction_id:     string | null
       application_number: string
       /** True only on a local dev backend — enables the simulate-payment shortcut. */
       dev_mode:           boolean
     }>('/applicant/application/payment/checkout', {}, signal),
 
-  /** Urubuto Pay — poll whether the application fee has been confirmed. */
+  /**
+   * Urubuto Pay — where the applicant stands on the application fee.
+   *
+   * `paid` means SETTLED, not "money arrived": the gateway lets the payer name
+   * the amount, so a 5,000 RWF fee can be met in instalments. Read `balance`
+   * and `payments` for the progress.
+   */
   getPaymentStatus: (signal?: AbortSignal) =>
-    api.get<{
-      paid:               boolean
-      transaction_id:     string | null
+    api.get<ApplicationFeeSummary & {
+      amount:             number
       paid_at:            string | null
-      amount:             number | null
-      currency:           string
+      transaction_id:     string | null
       application_number: string | null
-      status:             string | null
+      application_status: string | null
       dev_mode:           boolean
     }>('/applicant/application/payment/status', {}, signal),
 
   /**
-   * Dev only — mark the application fee paid without the gateway. The backend
-   * answers 403 unless it runs locally (APP_ENV=local + APP_DEBUG=true), so this
-   * is inert in production.
+   * Dev only — settle the application fee without the gateway. Pass an `amount`
+   * to simulate a PART payment (the balance-tracking path); omit it to clear
+   * whatever is still owed. The backend answers 403 unless it runs locally
+   * (APP_ENV=local + APP_DEBUG=true), so this is inert in production.
    */
-  simulatePayment: () =>
-    api.post<{
-      paid:           boolean
-      transaction_id: string
-      paid_at:        string
+  simulatePayment: (amount?: number) =>
+    api.post<ApplicationFeeSummary & {
+      amount:         number
+      transaction_id: string | null
       simulated:      boolean
-    }>('/applicant/application/payment/simulate', {}),
+    }>('/applicant/application/payment/simulate', amount ? { amount } : {}),
 
   listApplications: (signal?: AbortSignal) =>
     api.get<StudentApplication[]>('/applicant/application', {}, signal),

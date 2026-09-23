@@ -67,6 +67,10 @@ const STATUS_OPTIONS: ApplicationStatus[] = [
   ApplicationStatus.WITHDRAWN,
 ];
 
+/** RWF amounts on this page are whole numbers — decimals only add noise. */
+const feeMoney = (n: number, currency = 'RWF') =>
+  `${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(Math.round(n))} ${currency}`
+
 function getStepForStatus(s: ApplicationStatus): number {
   if (
     [
@@ -364,6 +368,7 @@ export default function ApplicationDetailPage() {
   const app = appData?.application;
   const criteria = appData?.merit_criteria;
   const listing = appData?.merit_listing;
+  const fee = appData?.application_fee ?? null;
   const status =
     (app?.status as ApplicationStatus) || ApplicationStatus.SUBMITTED;
   const maxStep = getStepForStatus(status);
@@ -692,10 +697,48 @@ export default function ApplicationDetailPage() {
                     sub="Bank slip and transaction details."
                     icon={CreditCard}
                   />
+                  {/* Urubuto Pay accepts any amount, so a payment on file is not
+                      proof the fee is settled — the desk sees the balance. */}
+                  {fee && (
+                    <div className={`mt-5 rounded-xl border p-4 ${
+                      fee.fully_paid
+                        ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50/60 dark:bg-emerald-950/20'
+                        : 'border-amber-200 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-950/20'
+                    }`}>
+                      <div className="flex items-center justify-between gap-3 flex-wrap">
+                        <p className={`text-[13px] font-bold ${
+                          fee.fully_paid
+                            ? 'text-emerald-800 dark:text-emerald-200'
+                            : 'text-amber-900 dark:text-amber-100'
+                        }`}>
+                          {fee.fully_paid
+                            ? 'Application fee settled in full'
+                            : `${feeMoney(fee.balance)} outstanding of ${feeMoney(fee.required)}`}
+                        </p>
+                        <p className="text-[12px] font-semibold text-ink-500 tabular-nums">
+                          {feeMoney(fee.paid)} paid · {fee.percent}%
+                        </p>
+                      </div>
+                      <div className="mt-2.5 h-2 w-full rounded-full bg-ink-100 dark:bg-ink-800 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${fee.fully_paid ? 'bg-emerald-500' : 'bg-amber-500'}`}
+                          style={{ width: `${Math.max(fee.paid > 0 ? 2 : 0, Math.min(100, fee.percent))}%` }}
+                        />
+                      </div>
+                      {fee.payments.length > 1 && (
+                        <p className="text-[11.5px] text-ink-500 mt-2">
+                          {fee.payments.length} part payments received.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5 mt-6">
-                    <InfoGroup label="Amount Paid" value={(app as any).payment_amount != null ? `${(app as any).payment_amount} ${(app as any).payment_currency ?? 'RWF'}` : '—'} icon={CreditCard} />
+                    <InfoGroup label="Fee Required" value={fee ? feeMoney(fee.required) : '—'} icon={CreditCard} />
+                    <InfoGroup label="Amount Paid" value={fee ? feeMoney(fee.paid) : ((app as any).payment_amount != null ? `${(app as any).payment_amount} ${(app as any).payment_currency ?? 'RWF'}` : '—')} icon={CreditCard} />
+                    <InfoGroup label="Outstanding" value={fee ? feeMoney(fee.balance) : '—'} />
                     <InfoGroup label="Transaction ID" value={(app as any).transaction_id || '—'} />
-                    <InfoGroup label="Paid At" value={(app as any).paid_at ? new Date((app as any).paid_at).toLocaleString() : '—'} />
+                    <InfoGroup label="Settled At" value={(app as any).paid_at ? new Date((app as any).paid_at).toLocaleString() : '—'} />
                   </div>
                   {(app as any).payment_slip_file_id ? (
                     <div className="mt-6 p-3 rounded-xl border border-ink-100 dark:border-ink-800 flex items-center justify-between gap-4">

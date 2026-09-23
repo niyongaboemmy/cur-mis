@@ -39,6 +39,7 @@ import {
   COUNTRY_BY_NATIONALITY,
   countryFlag,
 } from "@/data/countries";
+import ApplicationFeeProgress from "@/components/applicant/ApplicationFeeProgress";
 import DocumentPreviewModal from "../ui/DocumentPreviewModal";
 import Modal from "../ui/Modal";
 import { useLevels } from "@/hooks/useLevels";
@@ -476,37 +477,13 @@ export default function ApplicationDetailsView({
             </div>
           </Card>
 
-          {/* Payment */}
-          <Card>
-            <SectionHeader
-              title="Application Fee Payment"
-              sub="Bank slip and transaction details."
-              icon={CreditCard}
-            />
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5 mt-6">
-              <InfoGroup
-                label="Amount Paid"
-                value={
-                  app.payment_amount != null
-                    ? `${app.payment_amount} ${app.payment_currency ?? "RWF"}`
-                    : "—"
-                }
-                icon={CreditCard}
-              />
-              <InfoGroup
-                label="Transaction ID"
-                value={app.transaction_id || "—"}
-                icon={Hash}
-              />
-              <InfoGroup
-                label="Paid At"
-                value={app.paid_at ? fmt(app.paid_at) : "—"}
-                icon={Clock}
-              />
-            </div>
-
-            {app.payment_slip_file_id ? (
-              <div className="mt-6 p-3 rounded-xl border border-ink-100 dark:border-ink-800 flex items-center justify-between gap-4">
+          {/* Application fee — what is owed, what has reached the account and
+              what is left. Urubuto Pay accepts any amount, so this is a
+              balance, not a paid/unpaid flag. */}
+          <ApplicationFeeProgress
+            applicationId={application.id}
+            paymentSlip={app.payment_slip_file_id ? (
+              <div className="p-3 rounded-xl border border-ink-100 dark:border-ink-800 flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="w-9 h-9 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 flex items-center justify-center shrink-0">
                     <FileText className="w-4 h-4" />
@@ -535,12 +512,8 @@ export default function ApplicationDetailsView({
                   <Eye className="w-4 h-4" />
                 </button>
               </div>
-            ) : (
-              <p className="mt-6 text-[12px] text-ink-400 italic">
-                No payment slip on file.
-              </p>
-            )}
-          </Card>
+            ) : undefined}
+          />
         </div>
 
         {/* ── Side panel ─────────────────────────────────────────── */}

@@ -15,6 +15,7 @@ use App\Models\AdmissionRequirementModel;
 use App\Services\ApplicationService;
 use App\Services\UrubutoPayService;
 use App\Services\AdmissionBillingService;
+use App\Services\ApplicationFeeService;
 use App\Helpers\ValidationHelper;
 use App\Helpers\FileServerClient;
 
@@ -178,8 +179,13 @@ class ApplicantProfileController extends BaseController
 
         $data = (new UrubutoPayService())->generateApplicationCheckoutUrl($appNumber);
 
-        // Reflect any payment already recorded so the UI can short-circuit polling.
-        $data['paid']               = !empty($app['paid_at']) && !empty($app['transaction_id']);
+        // Reflect what has already been paid so the UI can short-circuit polling
+        // — and, when the fee was only part-paid, quote the remaining balance.
+        $summary                    = (new ApplicationFeeService())->summaryFor($appId, $app);
+        $data['fully_paid']         = $summary['fully_paid'];
+        $data['paid']               = $summary['paid'];
+        $data['balance']            = $summary['balance'];
+        $data['summary']            = $summary;
         $data['transaction_id']     = $app['transaction_id'] ?? null;
         $data['application_number'] = $appNumber;
         // Local development can never reach the real gateway, so the wizard is
@@ -208,18 +214,22 @@ class ApplicantProfileController extends BaseController
             $this->error($response, 'Application not found.', 404);
         }
 
-        $paid = !empty($app['paid_at']) && !empty($app['transaction_id']);
+        // `paid` is the SETTLED flag, not "money has arrived": UrubutoPay lets the
+        // payer name the amount, so an applicant can be several instalments short.
+        // The balance and the ledger travel with it so the portal can show exactly
+        // how far along they are.
+        $summary = (new ApplicationFeeService())->summaryFor($appId, $app);
 
-        $this->success($response, [
-            'paid'               => $paid,
-            'transaction_id'     => $app['transaction_id'] ?? null,
+        // `paid` stays the AMOUNT and `fully_paid` is the flag — one word, one
+        // meaning, on both this endpoint and the checkout one.
+        $this->success($response, array_merge($summary, [
+            'amount'             => $summary['paid'],
             'paid_at'            => $app['paid_at'] ?? null,
-            'amount'             => isset($app['payment_amount']) && $app['payment_amount'] !== null ? (float)$app['payment_amount'] : null,
-            'currency'           => $app['payment_currency'] ?? 'RWF',
+            'transaction_id'     => $app['transaction_id'] ?? null,
             'application_number' => $app['application_number'] ?? null,
-            'status'             => $app['status'] ?? null,
+            'application_status' => $app['status'] ?? null,
             'dev_mode'           => $this->isDevEnvironment(),
-        ], 'Payment status fetched.');
+        ]), 'Payment status fetched.');
     }
 
     /**
@@ -261,37 +271,47 @@ class ApplicantProfileController extends BaseController
             $this->error($response, 'Application not found.', 404);
         }
 
+        $fees    = new ApplicationFeeService();
+        $summary = $fees->summaryFor($appId, $app);
+
         // Already settled — report it rather than overwrite a real payment.
-        if (!empty($app['paid_at']) && !empty($app['transaction_id'])) {
-            $this->success($response, [
-                'paid'           => true,
+        if ($summary['fully_paid']) {
+            $this->success($response, array_merge($summary, [
                 'transaction_id' => $app['transaction_id'],
                 'paid_at'        => $app['paid_at'],
                 'simulated'      => false,
-            ], 'Application fee already paid.');
+            ]), 'Application fee already paid.');
         }
 
         $appNumber = trim((string)($app['application_number'] ?? ''));
-        $checkout  = (new UrubutoPayService())->generateApplicationCheckoutUrl($appNumber);
 
-        $transactionId = 'DEV-SIM-' . ($appNumber !== '' ? $appNumber . '-' : '') . date('YmdHis');
-        $paidAt        = date('Y-m-d H:i:s');
+        // An optional amount lets the part-payment path be exercised locally —
+        // which is the whole point of the balance tracking. Without one the
+        // simulation clears whatever is still owed.
+        $requested = (float)($request->body()['amount'] ?? 0);
+        $amount    = $requested > 0 ? min($requested, $summary['balance']) : $summary['balance'];
 
-        $this->appModel->update($appId, [
-            'transaction_id'   => $transactionId,
-            'payment_amount'   => (float)($checkout['amount'] ?? 0),
-            'payment_currency' => (string)($checkout['currency'] ?? 'RWF'),
-            'paid_at'          => $paidAt,
-        ]);
+        $result = $fees->recordPayment(
+            $app,
+            'DEV-SIM-' . ($appNumber !== '' ? $appNumber . '-' : '') . date('YmdHis'),
+            $amount,
+            (string)$summary['currency'],
+            date('Y-m-d H:i:s'),
+            '',
+            'SIMULATED',
+            (int)($request->param('_auth_user')['id'] ?? 0) ?: null,
+            'Simulated in development mode.'
+        );
 
-        $this->success($response, [
-            'paid'           => true,
-            'transaction_id' => $transactionId,
-            'paid_at'        => $paidAt,
-            'amount'         => (float)($checkout['amount'] ?? 0),
-            'currency'       => (string)($checkout['currency'] ?? 'RWF'),
+        $after = $result['summary'];
+
+        $this->success($response, array_merge($after, [
+            'amount'         => $result['applied'],
+            'transaction_id' => $after['transaction_id'],
             'simulated'      => true,
-        ], 'Payment simulated (development mode).');
+        ]), $after['fully_paid']
+            ? 'Payment simulated (development mode).'
+            : 'Part payment simulated — ' . number_format($after['balance'], 0) . ' ' . $after['currency'] . ' still outstanding.');
     }
 
 

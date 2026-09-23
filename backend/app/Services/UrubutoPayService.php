@@ -961,8 +961,18 @@ class UrubutoPayService
         $merchantCodes = $this->applicationMerchantCodes($merchantCode);
         $displayMerchantCode = $merchantCodes[0] ?? $merchantCode;
         $serviceCode  = $this->applicationServiceCode();
-        $fee          = $this->applicationFee();
         $checkoutBase = $_ENV['URUBUTOPAY_CHECKOUT_URL'] ?? self::CHECKOUT_BASE; // .../pay-now
+
+        // Price and progress come from ApplicationFeeService so the gateway, the
+        // portal and the admin desk quote one number. The amount pre-filled on
+        // the checkout is what is STILL OWED — an applicant who paid 100 of
+        // 5,000 must be taken back to a 4,900 prompt, not to the full fee again.
+        $application  = $this->lookupApplication($appNumber);
+        $summary      = $application
+            ? (new ApplicationFeeService())->summaryFor((int)$application['id'], $application)
+            : null;
+        $fee          = $summary ? (int)round($summary['required']) : $this->applicationFee();
+        $prefill      = $summary && $summary['balance'] > 0 ? (int)round($summary['balance']) : $fee;
 
         // UrubutoPay's PRE-FILLED deep link is the `/pay-now/initiate` route — it
         // reads origin/mhcd/pycd/sccd/amnt from the query, skips the merchant+payer
@@ -976,7 +986,7 @@ class UrubutoPayService
             . '&mhcd=' . urlencode($merchantCode)
             . '&pycd=' . urlencode($appNumber)
             . '&sccd=' . urlencode($serviceCode)
-            . '&amnt=' . urlencode((string)$fee);
+            . '&amnt=' . urlencode((string)$prefill);
 
         return [
             'checkout_url'  => $checkoutUrl,
@@ -984,7 +994,11 @@ class UrubutoPayService
             'merchant_codes' => $merchantCodes,
             'payer_code'    => $appNumber,
             'amount'        => $fee,
-            'currency'      => 'RWF',
+            'amount_due'    => $prefill,
+            'paid'          => $summary ? $summary['paid'] : 0.0,
+            'balance'       => $summary ? $summary['balance'] : (float)$fee,
+            'fully_paid'    => $summary ? $summary['fully_paid'] : false,
+            'currency'      => $summary ? $summary['currency'] : 'RWF',
             'service_code'  => $serviceCode,
         ];
     }
@@ -995,10 +1009,21 @@ class UrubutoPayService
      * The application number is the payer code for both debts an applicant can
      * carry, so this is the fork between them:
      *
-     *   processing fee unpaid  → settle it, and submit the application on the
-     *                            applicant's behalf (see autoSubmitApplication)
-     *   processing fee settled → it is an admission fee (Registration, CURSU …)
-     *                            and AdmissionBillingService applies it
+     *   processing fee outstanding → pay it down (the gateway lets the payer
+     *                                name the amount, so this may be a part
+     *                                payment: ApplicationFeeService keeps the
+     *                                ledger and only the LAST instalment
+     *                                submits the application)
+     *   processing fee settled     → it is an admission fee (Registration,
+     *                                CURSU …) and AdmissionBillingService
+     *                                applies it
+     *
+     * The fork is on the BALANCE, not on `paid_at`: an applicant who sent 100
+     * against a 5,000 fee still owes the application fee, and their next
+     * payment must land there rather than on the admission bills.
+     *
+     * An overpayment is split — the part that clears the fee is taken here and
+     * the surplus spills onto the admission bills when any are open.
      *
      * Idempotent on transaction_id either way.
      */
@@ -1010,16 +1035,29 @@ class UrubutoPayService
         string $paymentDate,
         string $serviceCode
     ): array {
-        $appId      = (int)($application['id'] ?? 0);
-        $appNumber  = (string)($application['application_number'] ?? '');
-        $phone      = (string)($application['phone'] ?? '');
-        $appFeePaid = !empty($application['paid_at']) && !empty($application['transaction_id']);
+        $appId     = (int)($application['id'] ?? 0);
+        $appNumber = (string)($application['application_number'] ?? '');
+        $phone     = (string)($application['phone'] ?? '');
 
-        // Idempotency — same transaction already recorded as the processing fee.
-        if ($appFeePaid && (string)($application['transaction_id'] ?? '') === $txCode) {
+        $fees   = new ApplicationFeeService();
+        $before = $fees->summaryFor($appId, $application);
+
+        // Nothing left owing on the processing fee — this is an admission fee.
+        if ($before['fully_paid']) {
+            return (new AdmissionBillingService())->applyGatewayPayment(
+                $application, $txCode, $amount, $currency, $paymentDate, $serviceCode
+            );
+        }
+
+        $result = $fees->recordPayment(
+            $application, $txCode, $amount, $currency, $paymentDate, $serviceCode, 'GATEWAY'
+        );
+
+        // Idempotency — the gateway retries its callback.
+        if ($result['status'] === 'duplicate') {
             return [
                 'status'             => 'duplicate',
-                'payment_id'         => $appId,
+                'payment_id'         => $result['payment_id'],
                 'message'            => 'Payment already recorded',
                 'internal_tx_id'     => $appNumber,
                 'external_tx_id'     => $txCode,
@@ -1027,40 +1065,59 @@ class UrubutoPayService
             ];
         }
 
-        if ($appFeePaid) {
-            return (new AdmissionBillingService())->applyGatewayPayment(
-                $application, $txCode, $amount, $currency, $paymentDate, $serviceCode
-            );
-        }
-
-        $this->db->execute(
-            "UPDATE `student_applications`
-                SET transaction_id   = ?,
-                    payment_amount   = ?,
-                    payment_currency = ?,
-                    paid_at          = ?
-              WHERE id = ?",
-            [$txCode, $amount, ($currency ?: 'RWF'), $paymentDate, $appId]
-        );
+        $summary = $result['summary'];
+        $applied = (float)$result['applied'];
 
         SystemLogService::log(
             'CREATE',
             'ADMISSIONS',
-            "UrubutoPay application fee: tx={$txCode}, application={$appNumber}, amount={$amount} RWF.",
+            "UrubutoPay application fee: tx={$txCode}, application={$appNumber}, amount={$applied} RWF, "
+                . 'paid=' . number_format($summary['paid'], 0) . '/' . number_format($summary['required'], 0)
+                . ' RWF, balance=' . number_format($summary['balance'], 0) . ' RWF.',
             $appId,
             'student_application',
-            ['transaction_code' => $txCode, 'amount' => $amount, 'service_code' => $serviceCode]
+            [
+                'transaction_code' => $txCode,
+                'amount'           => $amount,
+                'applied'          => $applied,
+                'service_code'     => $serviceCode,
+                'balance'          => $summary['balance'],
+                'fee_source'       => $summary['quote']['source'],
+            ]
         );
 
-        // The payment IS the applicant's last step — carrying them over the
-        // submit button rather than waiting for them to come back and press it.
-        $autoSubmitted = $this->autoSubmitApplication($appId);
+        // The LAST instalment is the applicant's final step — carrying them over
+        // the submit button rather than waiting for them to come back and press
+        // it. A part payment leaves the draft where it is: the application is
+        // not submitted on a fee that is not settled.
+        $autoSubmitted = $summary['fully_paid'] && $this->autoSubmitApplication($appId);
 
-        $this->announceApplicationFee($application, $txCode, $amount, $currency, $autoSubmitted);
+        $this->announceApplicationFee(
+            $application, $txCode, $applied, $currency, $autoSubmitted, $summary
+        );
+
+        // Overpayment spills onto the admission bills rather than sitting here.
+        if ($result['surplus'] > 0.009) {
+            try {
+                $billing = new AdmissionBillingService();
+                if ($billing->hasOpenBills($appId)) {
+                    $billing->applyGatewayPayment(
+                        $application,
+                        $txCode . '-SPILL',
+                        (float)$result['surplus'],
+                        $currency,
+                        $paymentDate,
+                        $serviceCode
+                    );
+                }
+            } catch (\Throwable $e) {
+                error_log('[UrubutoPay] application-fee surplus spill failed: ' . $e->getMessage());
+            }
+        }
 
         return [
             'status'             => 'recorded',
-            'payment_id'         => $appId,
+            'payment_id'         => $result['payment_id'] ?? $appId,
             'message'            => 'Payment recorded',
             'internal_tx_id'     => $appNumber,
             'external_tx_id'     => $txCode,
@@ -1168,18 +1225,32 @@ class UrubutoPayService
         string $txCode,
         float  $amount,
         string $currency,
-        bool   $autoSubmitted
+        bool   $autoSubmitted,
+        ?array $summary = null
     ): void {
         $appId = (int)$application['id'];
         $name  = trim(($application['first_name'] ?? '') . ' ' . ($application['last_name'] ?? ''));
-        $label = number_format($amount, 0) . ' ' . ($currency ?: 'RWF');
+        $cur   = $currency ?: 'RWF';
+        $label = number_format($amount, 0) . ' ' . $cur;
+
+        // A part payment must say so, and say what is left — the applicant's
+        // next action depends entirely on that number.
+        $balance   = $summary ? (float)$summary['balance'] : 0.0;
+        $isPartial = $balance > 0.009;
+        $shortfall = $isPartial
+            ? ' ' . number_format($balance, 0) . ' ' . $cur . ' of the '
+                . number_format((float)$summary['required'], 0) . ' ' . $cur
+                . ' application fee is still outstanding.'
+            : '';
 
         try {
             $to = trim((string)($application['email'] ?? ''));
             if ($to !== '') {
                 (new MailService())->send(
                     $to,
-                    'Application Fee Received — Catholic University of Rwanda',
+                    ($isPartial
+                        ? 'Part Payment Received — Application Fee Balance Outstanding'
+                        : 'Application Fee Received') . ' — Catholic University of Rwanda',
                     \App\Helpers\EmailTemplateHelper::applicationFeeReceivedTemplate(
                         $name,
                         (string)($application['application_number'] ?? ''),
@@ -1187,7 +1258,8 @@ class UrubutoPayService
                         $txCode,
                         $autoSubmitted
                     ),
-                    "Dear {$name}, we have received your application fee of {$label}. Reference {$txCode}."
+                    "Dear {$name}, we have received {$label} towards your application fee. Reference {$txCode}."
+                        . $shortfall
                         . ($autoSubmitted ? ' Your application has been submitted automatically.' : '')
                 );
             }
@@ -1203,13 +1275,14 @@ class UrubutoPayService
             NotificationService::push(
                 (int)($row['user_id'] ?? 0),
                 'admissions',
-                'Application fee received',
+                $isPartial ? 'Part payment received — balance outstanding' : 'Application fee received',
                 $label . ' received — reference ' . $txCode . '.'
+                    . $shortfall
                     . ($autoSubmitted ? ' Your application has been submitted.' : ''),
                 '/applicant',
                 'student_application',
                 $appId,
-                'success'
+                $isPartial ? 'warning' : 'success'
             );
         } catch (\Throwable $e) {
             error_log('[UrubutoPay] application-fee notification failed: ' . $e->getMessage());
