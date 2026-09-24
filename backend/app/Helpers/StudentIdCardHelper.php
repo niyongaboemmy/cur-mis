@@ -70,92 +70,99 @@ class StudentIdCardHelper
 
         return <<<HTML
         <!DOCTYPE html><html><head><meta charset="utf-8"><style>
-            @page { margin: 10mm; }
-            * { font-family: 'Times New Roman', Times, serif; }
-            body { margin:0; }
+            @page { size: A5 landscape; margin: 0; }
+            * { font-family: 'Times New Roman', Times, serif; box-sizing: border-box; }
+            body { margin: 0; padding: 0; }
             .card {
-                width: 150mm; border: 1.4pt solid #1e40af; border-radius: 2mm;
-                border-collapse: separate; background:#fff; margin-bottom: 8mm;
+                width: 148mm; height: 100mm; border: 2pt solid #1e40af;
+                background:#fff; margin: 5mm; page-break-after: always; display: table;
             }
             .spine {
-                width: 11mm; background:#000; color:#fff; text-align:center;
-                font-weight:bold; font-size:8.5pt; letter-spacing:1px; line-height:4.4mm;
-                vertical-align:middle; border-top-left-radius:2mm; border-bottom-left-radius:2mm;
+                width: 12mm; background:#000; color:#fff; text-align:center;
+                font-weight:bold; font-size:8pt; letter-spacing:1px; line-height:3.5mm;
+                vertical-align:top; padding-top:2mm;
             }
-            .main { padding: 0; vertical-align: top; }
-            .uni { color:#1e40af; font-weight:bold; font-size:17pt; letter-spacing:.5px; }
-            .motto { color:#1e3a8a; font-style:italic; font-weight:bold; font-size:9pt; }
-            .hr { border:0; border-top:1.2pt solid #1e40af; margin:1.5mm 0 0 0; }
-            .lbl { font-weight:bold; color:#0f172a; font-size:10.5pt; }
-            .val { color:#1d4ed8; font-size:10.5pt; }
-            .nm  { color:#1e40af; font-weight:bold; font-size:12.5pt; }
-            .reg .lbl, .reg .val { font-size:11pt; }
-            .valid { color:#dc2626; font-weight:bold; font-size:10pt; }
-            .scan { font-size:6.5pt; color:#64748b; text-align:center; }
-            .backnote { padding:5mm; font-size:8pt; color:#334155; line-height:1.6; }
-            .backnote .h { color:#1e40af; font-weight:bold; font-size:9.5pt; margin-bottom:1.5mm; }
+            .main { padding: 0; vertical-align: top; width: 136mm; }
+            .card-header { padding: 3mm 4mm 1mm 4mm; text-align:center; border-bottom: 1.5pt solid #1e40af; }
+            .uni { color:#1e40af; font-weight:bold; font-size:16pt; letter-spacing:0.5px; line-height:1.2; }
+            .motto { color:#1e3a8a; font-style:italic; font-weight:bold; font-size:8pt; margin-top:1mm; }
+            .card-body { padding: 3mm 4mm; display: flex; gap: 3mm; }
+            .photo-section { width: 28mm; text-align:center; }
+            .photo-section img { width: 24mm; height: 30mm; border: 1px solid #94a3b8; object-fit:cover; }
+            .info-section { flex: 1; }
+            .nm { color:#000; font-weight:bold; font-size:12pt; margin-bottom:1mm; }
+            .lbl { font-weight:bold; color:#000; font-size:9pt; }
+            .val { color:#1d4ed8; font-size:9pt; }
+            .details-row { margin-bottom:0.5mm; }
+            .qr-section { width: 28mm; text-align:center; }
+            .qr-section img { width: 24mm; height: 24mm; }
+            .scan { font-size:6pt; color:#64748b; margin-top:0.5mm; }
+            .card-footer { padding: 2mm 4mm; border-top: 1pt solid #1e40af; display: flex; justify-content:space-between; align-items:center; }
+            .reg { font-size:9pt; }
+            .reg .val { font-weight:bold; color:#000; }
+            .valid { color:#dc2626; font-weight:bold; font-size:9pt; }
+            .crest-sm { width: 12mm; height: 12mm; }
+            .backnote { padding: 4mm; font-size: 9pt; line-height: 1.6; }
+            .back-header { text-align:center; border-bottom: 1.5pt solid #1e40af; padding-bottom:2mm; }
+            .back-header .uni { font-size:14pt; }
+            .contact-info { margin: 2mm 0; font-size:9pt; color:#000; text-align:center; }
+            .contact-label { font-weight:bold; }
+            .back-footer { margin-top:2mm; text-align:center; border-top: 1pt solid #1e40af; padding-top:1mm; }
+            .signature-line { margin: 2mm 0; font-size:8pt; }
+            .motto-bottom { font-style:italic; color:#1e3a8a; font-weight:bold; font-size:8pt; margin-top:1mm; }
         </style></head><body>
 
         <!-- ───────── FRONT ───────── -->
-        <table class="card" cellpadding="0" cellspacing="0"><tr>
-            <td class="spine">{$spine}</td>
-            <td class="main">
-                <table width="100%" cellpadding="0" cellspacing="0">
-                    <!-- Header -->
-                    <tr><td style="padding:3mm 4mm 0 4mm; text-align:center;">
-                        <div class="uni">{$institution}</div>
-                        <div class="motto">Audi et Aude</div>
-                        <div style="margin-top:0.5mm;">{$crestImg}</div>
-                        <hr class="hr"/>
-                    </td></tr>
-                    <!-- Body -->
-                    <tr><td style="padding:3mm 4mm;">
-                        <table width="100%" cellpadding="0" cellspacing="0"><tr>
-                            <td width="26mm" style="vertical-align:top;">{$photoCell}</td>
-                            <td style="vertical-align:top; padding-left:5mm;">
-                                <div class="nm">{$name}</div>
-                                <table cellpadding="0" cellspacing="0" style="margin-top:1.5mm;">
-                                    <tr><td class="lbl">Faculty:&nbsp;</td><td class="val">{$faculty}</td></tr>
-                                    <tr><td class="lbl">Dep:&nbsp;</td><td class="val">{$dept}</td></tr>
-                                    <tr><td class="lbl">Class:&nbsp;</td><td class="val">{$level}</td></tr>
-                                    <tr><td class="lbl">Mode:&nbsp;</td><td class="val">{$mode}</td></tr>
-                                </table>
-                            </td>
-                            <td width="30mm" style="vertical-align:top; text-align:center;">
-                                {$qr}
-                                <div class="scan">Scan to verify</div>
-                            </td>
-                        </tr></table>
-                    </td></tr>
-                    <!-- Footer -->
-                    <tr><td style="padding:0 4mm 3mm 4mm;">
-                        <table width="100%" cellpadding="0" cellspacing="0"><tr>
-                            <td style="vertical-align:bottom;">
-                                <div class="reg"><span class="lbl">RegNo:&nbsp;</span><span class="val">{$reg}</span></div>
-                                <div class="valid">Valid academic year for {$acadYear}</div>
-                            </td>
-                            <td width="16mm" style="text-align:right; vertical-align:bottom;">{$crestSm}</td>
-                        </tr></table>
-                    </td></tr>
-                </table>
-            </td>
-        </tr></table>
+        <div class="card"><div class="spine">{$spine}</div><div class="main">
+            <div class="card-header">
+                <div class="uni">{$institution}</div>
+                <div class="motto">Audi et Aude</div>
+                <div style="margin-top:1mm;">{$crestImg}</div>
+            </div>
+            <div class="card-body">
+                <div class="photo-section">{$photoCell}</div>
+                <div class="info-section">
+                    <div class="nm">{$name}</div>
+                    <div class="details-row"><span class="lbl">Faculty:</span> <span class="val">{$faculty}</span></div>
+                    <div class="details-row"><span class="lbl">Dep:</span> <span class="val">{$dept}</span></div>
+                    <div class="details-row"><span class="lbl">Class:</span> <span class="val">{$level}</span></div>
+                    <div class="details-row"><span class="lbl">Program:</span> <span class="val">{$mode}</span></div>
+                </div>
+                <div class="qr-section">
+                    {$qr}
+                    <div class="scan">Scan to verify</div>
+                </div>
+            </div>
+            <div class="card-footer">
+                <div>
+                    <div class="reg"><span class="lbl">Registration No:</span> <span class="val">{$reg}</span></div>
+                    <div class="valid">Valid academic year for {$acadYear}</div>
+                </div>
+                <div>{$crestSm}</div>
+            </div>
+        </div></div>
 
         <!-- ───────── BACK ───────── -->
-        <table class="card" cellpadding="0" cellspacing="0"><tr>
-            <td class="main">
-                <div class="backnote">
-                    <div class="h">{$institution}</div>
-                    <div class="h" style="font-size:8.5pt;color:#0f172a;">Conditions of use</div>
-                    This card remains the property of the University. It is strictly personal and
-                    non-transferable, and must be presented on request. If found, please return it to
-                    the University Registry, P.O. Box 49, Butare/Huye — RWANDA.<br><br>
-                    Issued: {$issue} &nbsp;·&nbsp; Expires: {$expiry} &nbsp;·&nbsp; Card No: {$barcode}<br><br>
-                    Holder's signature: ____________________________ &nbsp;&nbsp;&nbsp;
-                    Registrar: ____________________________
+        <div class="card"><div class="spine" style="writing-mode: vertical-rl; transform: rotate(180deg);">STUDENT CARD</div><div class="main">
+            <div class="backnote">
+                <div class="back-header">
+                    <div style="font-size:6pt; margin-bottom:1mm;">This student card remains a property of</div>
+                    <div class="uni">{$institution}</div>
                 </div>
-            </td>
-        </tr></table>
+                <div class="contact-info">
+                    <div><span class="contact-label">Email:</span> catholic.university.rwanda@cur.ac.rw</div>
+                    <div><span class="contact-label">Phone:</span> +250733214677</div>
+                </div>
+                <div style="text-align:center; margin:2mm 0; font-size:9pt; color:#000;">
+                    If found please return it to the university
+                </div>
+                <div class="back-footer">
+                    <div class="signature-line" style="margin:3mm 0;">_________________________</div>
+                    <div style="font-size:8pt; margin-top:-2mm;">Academic Vice Rector</div>
+                    <div class="motto-bottom">Audi et Aude</div>
+                </div>
+            </div>
+        </div></div>
 
         </body></html>
         HTML;
