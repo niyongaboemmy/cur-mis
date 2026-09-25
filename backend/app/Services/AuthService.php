@@ -152,7 +152,21 @@ class AuthService
         $htmlBody = EmailTemplateHelper::otpTemplate($user['full_name'] ?? 'User', $otp, '10 minutes');
         $emailSent = $this->mailService->send($email, 'New Verification Code', $htmlBody, $htmlBody);
 
+        $debug = filter_var($_ENV['APP_DEBUG'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+        // DEV fallback — mirrors login(). The OTP above has already replaced the
+        // one in `users.otp_code`, so bailing out here would leave the client
+        // holding a code the database no longer accepts.
         if (!$emailSent) {
+            if ($debug) {
+                error_log("[DEV OTP] Resent OTP for {$email}: {$otp}");
+                return [
+                    'success' => true,
+                    'message' => 'Mailer unavailable — OTP logged to PHP error log (dev mode).',
+                    'data'    => ['email' => $email, 'dev_otp' => $otp],
+                ];
+            }
+
             return [
                 'success' => false,
                 'message' => 'Failed to resend verification code.',
@@ -160,7 +174,6 @@ class AuthService
             ];
         }
 
-        $debug = filter_var($_ENV['APP_DEBUG'] ?? false, FILTER_VALIDATE_BOOLEAN);
         $responseData = ['email' => $email];
         if ($debug) {
             $responseData['dev_otp'] = $otp;

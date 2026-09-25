@@ -90,7 +90,7 @@ class AuthController extends BaseController
         }
 
         SystemLogService::log('UPDATE', 'AUTH', "OTP resent to {$data['email']}.", null, 'user', ['email' => $data['email']]);
-        $this->success($response, null, $result['message']);
+        $this->success($response, $result['data'], $result['message']);
     }
 
     public function register(Request $request, Response $response): never
