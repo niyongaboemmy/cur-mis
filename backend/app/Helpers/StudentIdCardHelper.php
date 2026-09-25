@@ -18,13 +18,51 @@ use chillerlan\QRCode\QROptions;
  * Layout is built with TABLES (not flexbox) because DOMPDF does not support
  * CSS flexbox/grid.
  *
+ * SIZE
+ * ────
+ * Every dimension below is written for the 165 x 94mm CUR card and then scaled
+ * by `width / 165`, so a preset only has to state its millimetres: fonts, the
+ * photo, the QR and the spine all follow. Without that the 16pt heading on an
+ * 85.6mm CR80 card would run off the edge.
+ *
  * @param array $opts {
  *   photo_data_uri?: string|null  pre-fetched data: URI for the student photo
  *   verify_url?:     string       URL the QR code resolves to (public verify page)
+ *   size?:           string       a key of self::SIZES; unknown falls back to default
  * }
  */
 class StudentIdCardHelper
 {
+    /** The design these measurements were drawn at; everything scales off it. */
+    private const BASE_W = 165.0;
+
+    /** Printable presets, widest first. `default` is what an unset size gets. */
+    public const SIZES = [
+        'cur'   => ['w' => 165.0, 'h' => 94.0,  'label' => 'CUR standard (165 x 94 mm)'],
+        'a5'    => ['w' => 148.0, 'h' => 100.0, 'label' => 'Large / A5 (148 x 100 mm)'],
+        'cr80'  => ['w' => 85.6,  'h' => 54.0,  'label' => 'Plastic card CR80 (85.6 x 54 mm)'],
+    ];
+
+    public const SIZE_DEFAULT = 'cur';
+
+    /**
+     * Resolve a size key to its millimetres.
+     *
+     * An unknown or missing key returns the default rather than failing: a card
+     * that prints at the wrong size is recoverable, one that 500s mid-print run
+     * is not.
+     *
+     * @return array{w: float, h: float, key: string, label: string}
+     */
+    public static function sizeSpec(mixed $key): array
+    {
+        $k = is_string($key) ? strtolower(trim($key)) : '';
+        if (!isset(self::SIZES[$k])) {
+            $k = self::SIZE_DEFAULT;
+        }
+        return self::SIZES[$k] + ['key' => $k];
+    }
+
     public static function buildHtml(array $student, array $card, array $opts = []): string
     {
         $name    = trim(((string) ($student['fname'] ?? '')) . ' ' . ((string) ($student['lname'] ?? '')));
@@ -51,65 +89,151 @@ class StudentIdCardHelper
         $photoSrc  = ($photoUri !== null && $photoUri !== '') ? $photoUri : $photoUrl;
         $verifyUrl = (string) ($opts['verify_url'] ?? ('https://cur.ac.rw/umis/verify/student?code=' . rawurlencode($barcode)));
 
+        // ── Size ────────────────────────────────────────────────────────────
+        // Resolved first because every measurement below is scaled by it.
+        $spec = self::sizeSpec($opts['size'] ?? null);
+        $cw   = $spec['w'];
+        $ch   = $spec['h'];
+        $k    = $cw / self::BASE_W;
+
+        // Scaled millimetres / points, trimmed so the CSS stays readable.
+        $u  = static function (float $v) use ($k): string {
+            $n = round($v * $k, 2);
+            return rtrim(rtrim(number_format($n, 2, '.', ''), '0'), '.') ?: '0';
+        };
+        $mm = static fn (float $v): string => $u($v) . 'mm';
+        $pt = static fn (float $v): string => $u($v) . 'pt';
+
+        // Absolute millimetres — the card and page are stated in real-world
+        // units, NOT scaled. Only measurements drawn against the 165mm design
+        // go through $mm()/$pt(); passing $cw through the scaler shrinks the
+        // card by its own scale factor (148mm came out as 133mm).
+        $abs = static function (float $v): string {
+            return (rtrim(rtrim(number_format(round($v, 2), 2, '.', ''), '0'), '.') ?: '0') . 'mm';
+        };
+
+        // The page hugs the card plus its margin, so a CR80 run does not come
+        // out centred on a sheet of A5 with 90mm of blank around it.
+        $mgV    = 5.0;
+        // DOMPDF renders the 2pt border outside the declared box, so the card
+        // occupies ~1.5mm more than $cw x $ch. Budget for that plus a hair,
+        // measured from the rendered PDF — without it every card spills a
+        // blank sheet after itself.
+        $slack  = 3.0;
+        $pageW  = $abs($cw + $mgV * 2 + $slack);
+        $pageH  = $abs($ch + $mgV * 2 + $slack);
+        $margin = $abs($mgV);
+
+        $cardW  = $abs($cw);
+        $cardH  = $abs($ch);
+        $spineW = $mm(12);                 // design unit — scales
+        $mainW  = $abs($cw - 12 * $k);     // whatever the spine leaves
+
+        $photoW  = $mm(24);
+        $photoH  = $mm(30);
+        $photoFs = $pt(15);
+        $qrMm    = max(8, (int) round(26 * $k));
+
         // data-card-photo lets the browser preview JS find and swap in a data URI.
         $photoCell = ($photoSrc !== null && $photoSrc !== '')
-            ? '<img data-card-photo="1" src="' . htmlspecialchars((string) $photoSrc, ENT_QUOTES) . '" style="width:24mm;height:30mm;object-fit:cover;border:1px solid #94a3b8;" />'
-            : '<div data-card-photo="1" style="width:24mm;height:30mm;border:1px solid #94a3b8;background:#e2e8f0;color:#64748b;font-size:15pt;font-weight:bold;text-align:center;line-height:30mm;">'
+            ? '<img data-card-photo="1" src="' . htmlspecialchars((string) $photoSrc, ENT_QUOTES) . '" style="width:' . $photoW . ';height:' . $photoH . ';object-fit:cover;border:1px solid #94a3b8;" />'
+            : '<div data-card-photo="1" style="width:' . $photoW . ';height:' . $photoH . ';border:1px solid #94a3b8;background:#e2e8f0;color:#64748b;font-size:' . $photoFs . ';font-weight:bold;text-align:center;line-height:' . $photoH . ';">'
                 . htmlspecialchars(self::initials($name)) . '</div>';
 
         $crest   = self::imageDataUri(dirname(__DIR__, 2) . '/public/logo.png');
-        $crestImg = $crest ? '<img src="' . $crest . '" style="height:9mm;" />' : '';
-        $crestSm  = $crest ? '<img src="' . $crest . '" style="height:11mm;" />' : '';
-        $qr       = self::qrTag($verifyUrl, 26);
+        $crestImg = $crest ? '<img src="' . $crest . '" style="height:' . $mm(9) . ';" />' : '';
+        $crestSm  = $crest ? '<img src="' . $crest . '" style="height:' . $mm(11) . ';" />' : '';
+        $qr       = self::qrTag($verifyUrl, $qrMm);
 
-        // Vertical spine — one letter per line (DOMPDF-safe alternative to rotation).
+        // ── Scaled CSS values used inside the template below ────────────────
+        $bdW      = $pt(2);    $hdBd    = $pt(1.5);  $ftBd    = $pt(1);
+        $spFs     = $pt(8);    $spLh    = $mm(3.5);  $spPad   = $mm(2);
+        $spGap    = $mm(2.2);
+        $hdPad    = $mm(3) . ' ' . $mm(4) . ' ' . $mm(1) . ' ' . $mm(4);
+        $uniFs    = $pt(16);   $mottoFs = $pt(8);    $mottoMt = $mm(1);
+        $crestMt  = $mm(1);
+        $bodyPad  = $mm(3) . ' ' . $mm(4);
+        $colW     = $mm(28);
+        $nmFs     = $pt(12);   $nmMb    = $mm(1);
+        $lblFs    = $pt(9);    $rowMb   = $mm(0.5);
+        $scanFs   = $pt(6);    $scanMt  = $mm(0.5);
+        $ftPad    = $mm(2) . ' ' . $mm(4);
+        $regFs    = $pt(9);    $validFs = $pt(9);
+        $bnPad    = $mm(4);    $bnFs    = $pt(9);
+        $bhPb     = $mm(2);    $bhUniFs = $pt(14);   $propFs  = $pt(6);
+        $ciMy     = $mm(2);    $ciFs    = $pt(9);
+        $bfMt     = $mm(2);    $bfPt    = $mm(1);
+        $slMy     = $mm(3);    $slFs    = $pt(8);
+        $mbFs     = $pt(8);    $mbMt    = $mm(1);
+        $noteFs   = $pt(9);
+
+        // Vertical spine — one letter per line (DOMPDF-safe alternative to
+        // rotation, which DOMPDF ignores).
+        $spineText = 'STUDENT CARD';
         $spine = '';
-        foreach (str_split('STUDENT CARD') as $ch) {
-            $spine .= ($ch === ' ') ? '<div style="height:2.2mm;"></div>' : '<div>' . $ch . '</div>';
+        foreach (str_split($spineText) as $chr) {
+            $spine .= ($chr === ' ')
+                ? '<div style="height:' . $mm(2.2) . ';"></div>'
+                : '<div>' . $chr . '</div>';
+        }
+        // Pad the spine down to the card's height. Setting `height` on the cell
+        // instead makes DOMPDF add that height to the flow and spill an extra
+        // page per card, so the black band is filled with a spacer rather than
+        // sized — otherwise it stops three-quarters of the way down.
+        $letters   = strlen($spineText) - substr_count($spineText, ' ');
+        $spineUsed = (2.0 + $letters * 3.5 + substr_count($spineText, ' ') * 2.2) * $k;
+        if ($ch - $spineUsed > 1) {
+            $spine .= '<div style="height:' . $abs($ch - $spineUsed) . ';font-size:0;line-height:0;">&nbsp;</div>';
         }
 
         return <<<HTML
         <!DOCTYPE html><html><head><meta charset="utf-8"><style>
-            @page { size: A5 landscape; margin: 0; }
+            @page { size: {$pageW} {$pageH}; margin: {$margin}; }
             * { font-family: 'Times New Roman', Times, serif; box-sizing: border-box; }
             body { margin: 0; padding: 0; }
+            /* Every length here is scaled from the 165mm design — see the class
+               docblock. Change a number and change it there, not per preset. */
             .card {
-                width: 148mm; height: 100mm; border: 2pt solid #1e40af;
-                background:#fff; margin: 5mm; page-break-after: always; display: table;
+                width: {$cardW}; height: {$cardH}; border: {$bdW} solid #1e40af;
+                background:#fff; margin: 0; display: table;
             }
             .spine {
-                width: 12mm; background:#000; color:#fff; text-align:center;
-                font-weight:bold; font-size:8pt; letter-spacing:1px; line-height:3.5mm;
-                vertical-align:top; padding-top:2mm;
+                width: {$spineW}; background:#000; color:#fff; text-align:center;
+                font-weight:bold; font-size:{$spFs}; letter-spacing:1px; line-height:{$spLh};
+                vertical-align:top; padding-top:{$spPad}; display: table-cell;
             }
-            .main { padding: 0; vertical-align: top; width: 136mm; }
-            .card-header { padding: 3mm 4mm 1mm 4mm; text-align:center; border-bottom: 1.5pt solid #1e40af; }
-            .uni { color:#1e40af; font-weight:bold; font-size:16pt; letter-spacing:0.5px; line-height:1.2; }
-            .motto { color:#1e3a8a; font-style:italic; font-weight:bold; font-size:8pt; margin-top:1mm; }
-            .card-body { padding: 3mm 4mm; display: flex; gap: 3mm; }
-            .photo-section { width: 28mm; text-align:center; }
-            .photo-section img { width: 24mm; height: 30mm; border: 1px solid #94a3b8; object-fit:cover; }
-            .info-section { flex: 1; }
-            .nm { color:#000; font-weight:bold; font-size:12pt; margin-bottom:1mm; }
-            .lbl { font-weight:bold; color:#000; font-size:9pt; }
-            .val { color:#1d4ed8; font-size:9pt; }
-            .details-row { margin-bottom:0.5mm; }
-            .qr-section { width: 28mm; text-align:center; }
-            .qr-section img { width: 24mm; height: 24mm; }
-            .scan { font-size:6pt; color:#64748b; margin-top:0.5mm; }
-            .card-footer { padding: 2mm 4mm; border-top: 1pt solid #1e40af; display: flex; justify-content:space-between; align-items:center; }
-            .reg { font-size:9pt; }
-            .reg .val { font-weight:bold; color:#000; }
-            .valid { color:#dc2626; font-weight:bold; font-size:9pt; }
-            .crest-sm { width: 12mm; height: 12mm; }
-            .backnote { padding: 4mm; font-size: 9pt; line-height: 1.6; }
-            .back-header { text-align:center; border-bottom: 1.5pt solid #1e40af; padding-bottom:2mm; }
-            .back-header .uni { font-size:14pt; }
-            .contact-info { margin: 2mm 0; font-size:9pt; color:#000; text-align:center; }
+            .main { padding: 0; vertical-align: top; width: {$mainW}; display: table-cell; }
+            .card-header { padding: {$hdPad}; text-align:center; border-bottom: {$hdBd} solid #1e40af; }
+            .uni { color:#1e40af; font-weight:bold; font-size:{$uniFs}; letter-spacing:0.5px; line-height:1.2; }
+            .motto { color:#1e3a8a; font-style:italic; font-weight:bold; font-size:{$mottoFs}; margin-top:{$mottoMt}; }
+            /* Tables, not flexbox: DOMPDF ignores `display:flex`, which stacked
+               the photo, details and QR vertically and spilled the card across
+               five pages. Browsers render these identically, so the in-app
+               preview is unchanged. */
+            .card-body { padding: {$bodyPad}; }
+            .body-tbl, .footer-tbl { width: 100%; border-collapse: collapse; }
+            .body-tbl > tr > td { vertical-align: top; padding: 0; }
+            .photo-section { width: {$colW}; text-align:center; vertical-align: top; }
+            .info-section { vertical-align: top; }
+            .qr-section { width: {$colW}; text-align:center; vertical-align: top; }
+            .nm { color:#000; font-weight:bold; font-size:{$nmFs}; margin-bottom:{$nmMb}; }
+            .lbl { font-weight:bold; color:#000; font-size:{$lblFs}; }
+            .val { color:#1d4ed8; font-size:{$lblFs}; }
+            .details-row { margin-bottom:{$rowMb}; }
+            .scan { font-size:{$scanFs}; color:#64748b; margin-top:{$scanMt}; }
+            .card-footer { padding: {$ftPad}; border-top: {$ftBd} solid #1e40af; }
+            .footer-tbl > tr > td { vertical-align: middle; padding: 0; }
+            .reg { font-size:{$regFs}; }
+            .reg .val { font-weight:bold; color:#000; font-size:{$regFs}; }
+            .valid { color:#dc2626; font-weight:bold; font-size:{$validFs}; }
+            .backnote { padding: {$bnPad}; font-size: {$bnFs}; line-height: 1.6; }
+            .back-header { text-align:center; border-bottom: {$hdBd} solid #1e40af; padding-bottom:{$bhPb}; }
+            .back-header .uni { font-size:{$bhUniFs}; }
+            .contact-info { margin: {$ciMy} 0; font-size:{$ciFs}; color:#000; text-align:center; }
             .contact-label { font-weight:bold; }
-            .back-footer { margin-top:2mm; text-align:center; border-top: 1pt solid #1e40af; padding-top:1mm; }
-            .signature-line { margin: 2mm 0; font-size:8pt; }
-            .motto-bottom { font-style:italic; color:#1e3a8a; font-weight:bold; font-size:8pt; margin-top:1mm; }
+            .back-footer { margin-top:{$bfMt}; text-align:center; border-top: {$ftBd} solid #1e40af; padding-top:{$bfPt}; }
+            .signature-line { margin: {$slMy} 0; font-size:{$slFs}; }
+            .motto-bottom { font-style:italic; color:#1e3a8a; font-weight:bold; font-size:{$mbFs}; margin-top:{$mbMt}; }
         </style></head><body>
 
         <!-- ───────── FRONT ───────── -->
@@ -117,33 +241,39 @@ class StudentIdCardHelper
             <div class="card-header">
                 <div class="uni">{$institution}</div>
                 <div class="motto">Audi et Aude</div>
-                <div style="margin-top:1mm;">{$crestImg}</div>
+                <div style="margin-top:{$crestMt};">{$crestImg}</div>
             </div>
             <div class="card-body">
-                <div class="photo-section">{$photoCell}</div>
-                <div class="info-section">
-                    <div class="nm">{$name}</div>
-                    <div class="details-row"><span class="lbl">Faculty:</span> <span class="val">{$faculty}</span></div>
-                    <div class="details-row"><span class="lbl">Dep:</span> <span class="val">{$dept}</span></div>
-                    <div class="details-row"><span class="lbl">Class:</span> <span class="val">{$level}</span></div>
-                    <div class="details-row"><span class="lbl">Program:</span> <span class="val">{$mode}</span></div>
-                </div>
-                <div class="qr-section">
-                    {$qr}
-                    <div class="scan">Scan to verify</div>
-                </div>
+                <table class="body-tbl"><tr>
+                    <td class="photo-section">{$photoCell}</td>
+                    <td class="info-section">
+                        <div class="nm">{$name}</div>
+                        <div class="details-row"><span class="lbl">Faculty:</span> <span class="val">{$faculty}</span></div>
+                        <div class="details-row"><span class="lbl">Dep:</span> <span class="val">{$dept}</span></div>
+                        <div class="details-row"><span class="lbl">Class:</span> <span class="val">{$level}</span></div>
+                        <div class="details-row"><span class="lbl">Program:</span> <span class="val">{$mode}</span></div>
+                    </td>
+                    <td class="qr-section">
+                        {$qr}
+                        <div class="scan">Scan to verify</div>
+                    </td>
+                </tr></table>
             </div>
             <div class="card-footer">
-                <div>
-                    <div class="reg"><span class="lbl">Registration No:</span> <span class="val">{$reg}</span></div>
-                    <div class="valid">Valid academic year for {$acadYear}</div>
-                </div>
-                <div>{$crestSm}</div>
+                <table class="footer-tbl"><tr>
+                    <td>
+                        <div class="reg"><span class="lbl">Registration No:</span> <span class="val">{$reg}</span></div>
+                        <div class="valid">Valid academic year for {$acadYear}</div>
+                    </td>
+                    <td style="text-align:right;">{$crestSm}</td>
+                </tr></table>
             </div>
         </div></div>
 
+        <div style="page-break-after: always; height:0; font-size:0; line-height:0;"></div>
+
         <!-- ───────── BACK ───────── -->
-        <div class="card"><div class="spine" style="writing-mode: vertical-rl; transform: rotate(180deg);">STUDENT CARD</div><div class="main">
+        <div class="card"><div class="spine">{$spine}</div><div class="main">
             <div class="backnote">
                 <div class="back-header">
                     <div style="font-size:6pt; margin-bottom:1mm;">This student card remains a property of</div>

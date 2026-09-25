@@ -18,6 +18,8 @@ $router->group('/api/student-ids', function ($router) {
     // workspace lists; it is readable by anyone who can already see students.
     $router->group('', function ($r) {
         $r->get('',                      [StudentIdController::class, 'index']);
+        // Declared before the :id routes so "card-sizes" is not swallowed as an id.
+        $r->get('/card-sizes',           [StudentIdController::class, 'cardSizes']);
         $r->get('/by-student/:id',       [StudentIdController::class, 'history']);
         $r->get('/by-student/:id/card',  [StudentIdController::class, 'card']);
     }, [new MaybePermissionMiddleware([
