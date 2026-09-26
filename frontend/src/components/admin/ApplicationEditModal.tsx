@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Save } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { applicantService } from '@/services/admissionService';
+import { applicationAdminService } from '@/services/admissionService';
 import Modal from '@/components/ui/Modal';
 import { StudentApplication } from '@/types/admission';
 
@@ -38,7 +38,7 @@ export default function ApplicationEditModal({
   const updateMutation = useMutation({
     mutationFn: async () => {
       if (!application?.id) throw new Error('Application ID missing');
-      return applicantService.updateApplication(application.id, formData as any);
+      return applicationAdminService.update(application.id, formData as any);
     },
     onSuccess: () => {
       toast.success('Application updated successfully');

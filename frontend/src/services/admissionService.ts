@@ -285,6 +285,9 @@ export const applicationAdminService = {
   acceptOfferByAppId: (id: number) =>
     api.post<{ offer_id: number }>(`/admin/applications/${id}/accept-offer`),
 
+  update: (id: number, data: Partial<StudentApplication>) =>
+    api.post<StudentApplication>(`/admin/applications/${id}`, data),
+
   paymentSlipUrl: (id: number) => {
     const token = useAuthStore.getState().token;
     const base = (import.meta.env.VITE_API_URL ?? "") + "/api";
