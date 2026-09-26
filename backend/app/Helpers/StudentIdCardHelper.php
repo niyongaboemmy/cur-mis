@@ -73,6 +73,46 @@ class StudentIdCardHelper
         $level   = htmlspecialchars(LevelHelper::name($student['level_name'] ?? $student['current_level'] ?? null, '—'));
         $mode    = htmlspecialchars(self::normalizeMode((string) ($student['program'] ?? '')));
 
+        // ── Postgraduate vs undergraduate ───────────────────────────────────
+        // Masters and postgraduate students sit under the Centre for Post
+        // Graduate Studies, not a faculty, so their card names the centre and
+        // splits the award into programme + specialisation. `programme_category`
+        // is the only column that reliably says which: `programme_level` and
+        // `category` still read "undergraduate" on every postgraduate row, so
+        // they are not usable. The registration prefix is the same signal the
+        // category was derived from, kept as a fallback for rows predating it.
+        $isPostgrad = strtolower(trim((string) ($student['programme_category'] ?? ''))) === 'postgraduate'
+            || str_starts_with(strtoupper((string) ($student['regnumber'] ?? '')), '2CUR');
+
+        [$award, $specialisation] = self::splitAward(
+            (string) ($student['dep_name'] ?? ($student['option_name'] ?? '')),
+        );
+        $awardTxt = htmlspecialchars($award !== '' ? $award : (string) ($student['dep_name'] ?? '—'));
+        $specTxt  = htmlspecialchars($specialisation);
+
+        // `student.program` mixes the study mode with subject names ("Day",
+        // "Weekend", but also "Public Health"). Only print it as the mode when
+        // it actually is one, rather than repeating the programme.
+        $isMode   = in_array(strtolower(trim((string) ($student['program'] ?? ''))),
+                             ['day', 'weekend', 'holiday', 'evening'], true);
+
+        if ($isPostgrad) {
+            $detailRows = '<div class="details-row"><span class="lbl">Center of Post Graduate Studies</span></div>'
+                . '<div class="details-row"><span class="lbl">Program:</span> <span class="val">' . $awardTxt . '</span></div>';
+            if ($specTxt !== '') {
+                $detailRows .= '<div class="details-row"><span class="lbl">Specialization:</span> <span class="val">' . $specTxt . '</span></div>';
+            }
+            $detailRows .= '<div class="details-row"><span class="lbl">Class:</span> <span class="val">' . $level . '</span></div>';
+            if ($isMode) {
+                $detailRows .= '<div class="details-row"><span class="lbl">Mode:</span> <span class="val">' . $mode . '</span></div>';
+            }
+        } else {
+            $detailRows = '<div class="details-row"><span class="lbl">Faculty:</span> <span class="val">' . $faculty . '</span></div>'
+                . '<div class="details-row"><span class="lbl">Dep:</span> <span class="val">' . $dept . '</span></div>'
+                . '<div class="details-row"><span class="lbl">Class:</span> <span class="val">' . $level . '</span></div>'
+                . '<div class="details-row"><span class="lbl">Program:</span> <span class="val">' . $mode . '</span></div>';
+        }
+
         $barcode = (string) ($card['barcode'] ?? $reg);
         $issue   = self::fmt($card['issue_date'] ?? null);
         $expiry  = self::fmt($card['expiry_date'] ?? null);
@@ -136,8 +176,8 @@ class StudentIdCardHelper
 
         // data-card-photo lets the browser preview JS find and swap in a data URI.
         $photoCell = ($photoSrc !== null && $photoSrc !== '')
-            ? '<img data-card-photo="1" src="' . htmlspecialchars((string) $photoSrc, ENT_QUOTES) . '" style="width:' . $photoW . ';height:' . $photoH . ';object-fit:cover;border:1px solid #94a3b8;" />'
-            : '<div data-card-photo="1" style="width:' . $photoW . ';height:' . $photoH . ';border:1px solid #94a3b8;background:#e2e8f0;color:#64748b;font-size:' . $photoFs . ';font-weight:bold;text-align:center;line-height:' . $photoH . ';">'
+            ? '<img data-card-photo="1" src="' . htmlspecialchars((string) $photoSrc, ENT_QUOTES) . '" style="width:' . $photoW . ';height:' . $photoH . ';object-fit:cover;border:1px solid #B5C7E3;" />'
+            : '<div data-card-photo="1" style="width:' . $photoW . ';height:' . $photoH . ';border:1px solid #B5C7E3;background:#F0F4FA;color:#2B5FA8;font-size:' . $photoFs . ';font-weight:bold;text-align:center;line-height:' . $photoH . ';">'
                 . htmlspecialchars(self::initials($name)) . '</div>';
 
         $crest   = self::imageDataUri(dirname(__DIR__, 2) . '/public/logo.png');
@@ -186,90 +226,11 @@ class StudentIdCardHelper
             $spine .= '<div style="height:' . $abs($ch - $spineUsed) . ';font-size:0;line-height:0;">&nbsp;</div>';
         }
 
-        return <<<HTML
-        <!DOCTYPE html><html><head><meta charset="utf-8"><style>
-            @page { size: {$pageW} {$pageH}; margin: {$margin}; }
-            * { font-family: 'Times New Roman', Times, serif; box-sizing: border-box; }
-            body { margin: 0; padding: 0; }
-            /* Every length here is scaled from the 165mm design — see the class
-               docblock. Change a number and change it there, not per preset. */
-            .card {
-                width: {$cardW}; height: {$cardH}; border: {$bdW} solid #1e40af;
-                background:#fff; margin: 0; display: table;
-            }
-            .spine {
-                width: {$spineW}; background:#000; color:#fff; text-align:center;
-                font-weight:bold; font-size:{$spFs}; letter-spacing:1px; line-height:{$spLh};
-                vertical-align:top; padding-top:{$spPad}; display: table-cell;
-            }
-            .main { padding: 0; vertical-align: top; width: {$mainW}; display: table-cell; }
-            .card-header { padding: {$hdPad}; text-align:center; border-bottom: {$hdBd} solid #1e40af; }
-            .uni { color:#1e40af; font-weight:bold; font-size:{$uniFs}; letter-spacing:0.5px; line-height:1.2; }
-            .motto { color:#1e3a8a; font-style:italic; font-weight:bold; font-size:{$mottoFs}; margin-top:{$mottoMt}; }
-            /* Tables, not flexbox: DOMPDF ignores `display:flex`, which stacked
-               the photo, details and QR vertically and spilled the card across
-               five pages. Browsers render these identically, so the in-app
-               preview is unchanged. */
-            .card-body { padding: {$bodyPad}; }
-            .body-tbl, .footer-tbl { width: 100%; border-collapse: collapse; }
-            .body-tbl > tr > td { vertical-align: top; padding: 0; }
-            .photo-section { width: {$colW}; text-align:center; vertical-align: top; }
-            .info-section { vertical-align: top; }
-            .qr-section { width: {$colW}; text-align:center; vertical-align: top; }
-            .nm { color:#000; font-weight:bold; font-size:{$nmFs}; margin-bottom:{$nmMb}; }
-            .lbl { font-weight:bold; color:#000; font-size:{$lblFs}; }
-            .val { color:#1d4ed8; font-size:{$lblFs}; }
-            .details-row { margin-bottom:{$rowMb}; }
-            .scan { font-size:{$scanFs}; color:#64748b; margin-top:{$scanMt}; }
-            .card-footer { padding: {$ftPad}; border-top: {$ftBd} solid #1e40af; }
-            .footer-tbl > tr > td { vertical-align: middle; padding: 0; }
-            .reg { font-size:{$regFs}; }
-            .reg .val { font-weight:bold; color:#000; font-size:{$regFs}; }
-            .valid { color:#dc2626; font-weight:bold; font-size:{$validFs}; }
-            .backnote { padding: {$bnPad}; font-size: {$bnFs}; line-height: 1.6; }
-            .back-header { text-align:center; border-bottom: {$hdBd} solid #1e40af; padding-bottom:{$bhPb}; }
-            .back-header .uni { font-size:{$bhUniFs}; }
-            .contact-info { margin: {$ciMy} 0; font-size:{$ciFs}; color:#000; text-align:center; }
-            .contact-label { font-weight:bold; }
-            .back-footer { margin-top:{$bfMt}; text-align:center; border-top: {$ftBd} solid #1e40af; padding-top:{$bfPt}; }
-            .signature-line { margin: {$slMy} 0; font-size:{$slFs}; }
-            .motto-bottom { font-style:italic; color:#1e3a8a; font-weight:bold; font-size:{$mbFs}; margin-top:{$mbMt}; }
-        </style></head><body>
-
-        <!-- ───────── FRONT ───────── -->
-        <div class="card"><div class="spine">{$spine}</div><div class="main">
-            <div class="card-header">
-                <div class="uni">{$institution}</div>
-                <div class="motto">Audi et Aude</div>
-                <div style="margin-top:{$crestMt};">{$crestImg}</div>
-            </div>
-            <div class="card-body">
-                <table class="body-tbl"><tr>
-                    <td class="photo-section">{$photoCell}</td>
-                    <td class="info-section">
-                        <div class="nm">{$name}</div>
-                        <div class="details-row"><span class="lbl">Faculty:</span> <span class="val">{$faculty}</span></div>
-                        <div class="details-row"><span class="lbl">Dep:</span> <span class="val">{$dept}</span></div>
-                        <div class="details-row"><span class="lbl">Class:</span> <span class="val">{$level}</span></div>
-                        <div class="details-row"><span class="lbl">Program:</span> <span class="val">{$mode}</span></div>
-                    </td>
-                    <td class="qr-section">
-                        {$qr}
-                        <div class="scan">Scan to verify</div>
-                    </td>
-                </tr></table>
-            </div>
-            <div class="card-footer">
-                <table class="footer-tbl"><tr>
-                    <td>
-                        <div class="reg"><span class="lbl">Registration No:</span> <span class="val">{$reg}</span></div>
-                        <div class="valid">Valid academic year for {$acadYear}</div>
-                    </td>
-                    <td style="text-align:right;">{$crestSm}</td>
-                </tr></table>
-            </div>
-        </div></div>
-
+        // The back face is the second printed page. The in-app preview shows a
+        // card, not a print run, so it asks for the front alone — two stacked
+        // faces in a short iframe cut the front in half.
+        $frontOnly = !empty($opts['front_only']);
+        $backFace  = $frontOnly ? '' : <<<BACKHTML
         <div style="page-break-after: always; height:0; font-size:0; line-height:0;"></div>
 
         <!-- ───────── BACK ───────── -->
@@ -293,6 +254,96 @@ class StudentIdCardHelper
                 </div>
             </div>
         </div></div>
+BACKHTML;
+
+        return <<<HTML
+        <!DOCTYPE html><html><head><meta charset="utf-8"><style>
+            @page { size: {$pageW} {$pageH}; margin: {$margin}; }
+            * { font-family: 'Times New Roman', Times, serif; box-sizing: border-box; }
+            body { margin: 0; padding: 0; }
+            /* Screen only — browsers ignore @page margins, so without this the
+               preview renders flush against the top-left of the iframe. */
+            @media screen {
+                body { padding: {$margin}; background: #F0F4FA; }
+                .card { margin: 0 auto; box-shadow: 0 1px 6px rgba(0,0,0,0.15); }
+            }
+            /* Every length here is scaled from the 165mm design — see the class
+               docblock. Change a number and change it there, not per preset. */
+            .card {
+                width: {$cardW}; height: {$cardH}; border: {$bdW} solid #0A2A5E;
+                background:#fff; margin: 0; display: table;
+            }
+            .spine {
+                width: {$spineW}; background:#000; color:#fff; text-align:center;
+                font-weight:bold; font-size:{$spFs}; letter-spacing:1px; line-height:{$spLh};
+                vertical-align:top; padding-top:{$spPad}; display: table-cell;
+            }
+            .main { padding: 0; vertical-align: top; width: {$mainW}; display: table-cell; }
+            .card-header { padding: {$hdPad}; text-align:center; border-bottom: {$hdBd} solid #0A2A5E; }
+            .uni { color:#0A2A5E; font-weight:bold; font-size:{$uniFs}; letter-spacing:0.5px; line-height:1.2; }
+            .motto { color:#0A2A5E; font-style:italic; font-weight:bold; font-size:{$mottoFs}; margin-top:{$mottoMt}; }
+            /* Tables, not flexbox: DOMPDF ignores `display:flex`, which stacked
+               the photo, details and QR vertically and spilled the card across
+               five pages. Browsers render these identically, so the in-app
+               preview is unchanged. */
+            .card-body { padding: {$bodyPad}; }
+            .body-tbl, .footer-tbl { width: 100%; border-collapse: collapse; }
+            .body-tbl > tr > td { vertical-align: top; padding: 0; }
+            .photo-section { width: {$colW}; text-align:center; vertical-align: top; }
+            .info-section { vertical-align: top; }
+            .qr-section { width: {$colW}; text-align:center; vertical-align: top; }
+            .nm { color:#000; font-weight:bold; font-size:{$nmFs}; margin-bottom:{$nmMb}; }
+            .lbl { font-weight:bold; color:#000; font-size:{$lblFs}; }
+            .val { color:#1A4A8C; font-size:{$lblFs}; }
+            .details-row { margin-bottom:{$rowMb}; }
+            .scan { font-size:{$scanFs}; color:#2B5FA8; margin-top:{$scanMt}; }
+            .card-footer { padding: {$ftPad}; border-top: {$ftBd} solid #0A2A5E; }
+            .footer-tbl > tr > td { vertical-align: middle; padding: 0; }
+            .reg { font-size:{$regFs}; }
+            .reg .val { font-weight:bold; color:#000; font-size:{$regFs}; }
+            .valid { color:#dc2626; font-weight:bold; font-size:{$validFs}; }
+            .backnote { padding: {$bnPad}; font-size: {$bnFs}; line-height: 1.6; }
+            .back-header { text-align:center; border-bottom: {$hdBd} solid #0A2A5E; padding-bottom:{$bhPb}; }
+            .back-header .uni { font-size:{$bhUniFs}; }
+            .contact-info { margin: {$ciMy} 0; font-size:{$ciFs}; color:#000; text-align:center; }
+            .contact-label { font-weight:bold; }
+            .back-footer { margin-top:{$bfMt}; text-align:center; border-top: {$ftBd} solid #0A2A5E; padding-top:{$bfPt}; }
+            .signature-line { margin: {$slMy} 0; font-size:{$slFs}; }
+            .motto-bottom { font-style:italic; color:#0A2A5E; font-weight:bold; font-size:{$mbFs}; margin-top:{$mbMt}; }
+        </style></head><body>
+
+        <!-- ───────── FRONT ───────── -->
+        <div class="card"><div class="spine">{$spine}</div><div class="main">
+            <div class="card-header">
+                <div class="uni">{$institution}</div>
+                <div class="motto">Audi et Aude</div>
+                <div style="margin-top:{$crestMt};">{$crestImg}</div>
+            </div>
+            <div class="card-body">
+                <table class="body-tbl"><tr>
+                    <td class="photo-section">{$photoCell}</td>
+                    <td class="info-section">
+                        <div class="nm">{$name}</div>
+                        {$detailRows}
+                    </td>
+                    <td class="qr-section">
+                        {$qr}
+                        <div class="scan">Scan to verify</div>
+                    </td>
+                </tr></table>
+            </div>
+            <div class="card-footer">
+                <table class="footer-tbl"><tr>
+                    <td>
+                        <div class="reg"><span class="lbl">Registration No:</span> <span class="val">{$reg}</span></div>
+                        <div class="valid">Valid academic year for {$acadYear}</div>
+                    </td>
+                    <td style="text-align:right;">{$crestSm}</td>
+                </tr></table>
+            </div>
+        </div></div>
+
+        {$backFace}
 
         </body></html>
         HTML;
@@ -356,6 +407,10 @@ class StudentIdCardHelper
                 $opts = new \Dompdf\Options();
                 $opts->set('isHtml5ParserEnabled', true);
                 $opts->set('isRemoteEnabled', true);
+                // DOMPDF defaults to the "screen" media type, so it would apply
+                // the preview-only @media screen rules and page the card out
+                // across seven sheets. This is a print document.
+                $opts->set('defaultMediaType', 'print');
                 $pdf = new \Dompdf\Dompdf($opts);
                 $pdf->loadHtml($html);
                 $pdf->setPaper('A4', 'portrait');
@@ -479,6 +534,35 @@ class StudentIdCardHelper
      * Mode of learning (student.program holds Day / Evening / Weekend / Holiday).
      * Normalises casing/whitespace; returns "—" when blank.
      */
+    /**
+     * Split a postgraduate award into its programme and its specialisation.
+     *
+     * There is no specialisation column on `student` — the award name carries
+     * it: "Master of Public Health in Maternal and Child Health" is a Master of
+     * Public Health specialising in Maternal and Child Health. Splitting on the
+     * first " in " reproduces exactly the split the printed cards use.
+     *
+     * Names with no " in " ("Master of Education Technology and Instructional
+     * Design") have no specialisation to show, and return the whole name with
+     * an empty second element so the caller can omit the row rather than print
+     * an empty label.
+     *
+     * @return array{0: string, 1: string} [programme, specialisation]
+     */
+    private static function splitAward(string $award): array
+    {
+        $award = trim(preg_replace('/\s+/u', ' ', $award) ?? $award);
+        if ($award === '') {
+            return ['', ''];
+        }
+        // Case-insensitive so "Master of Science In Human Nutrition" splits too.
+        $parts = preg_split('/\s+in\s+/iu', $award, 2);
+        if (!is_array($parts) || count($parts) < 2 || trim($parts[1]) === '') {
+            return [$award, ''];
+        }
+        return [trim($parts[0]), trim($parts[1])];
+    }
+
     private static function normalizeMode(string $mode): string
     {
         $mode = ucfirst(strtolower(trim($mode)));

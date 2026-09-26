@@ -253,6 +253,9 @@ class StudentIdController extends BaseController
             // Unknown or missing falls back to the default inside the helper,
             // so a stale bookmark prints at the standard size instead of 500ing.
             'size'       => (string) ($request->query('size') ?? ''),
+            // The preview is a look at the card, not a print run: show the
+            // front alone. Printing still gets both faces.
+            'front_only' => (bool) $request->query('preview'),
         ];
 
         // Always try to embed as a data URI first — this is the only approach
