@@ -5153,12 +5153,12 @@ class StudentController extends BaseController
     private function buildInternationalFilters(Request $request): array
     {
         $clauses  = [
-            // International scope = explicit flag OR a non-Rwandan nationality.
+            // International scope = explicit flag OR a non-Rwandan nationality OR category 'foreign'.
             "(s.is_international = 1 OR (
                 s.nationality IS NOT NULL AND TRIM(s.nationality) <> ''
                 AND LOWER(TRIM(s.nationality))
-                    NOT IN ('rwanda','rwandan','rwandese','rwandaise')
-            ))",
+                    NOT IN ('rwanda','rwandan','rwandese','rwandaise','')
+            ) OR LOWER(TRIM(s.nationality)) = 'foreign')",
         ];
         $bindings = [];
 
