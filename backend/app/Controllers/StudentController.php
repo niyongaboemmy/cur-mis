@@ -3203,7 +3203,11 @@ class StudentController extends BaseController
             } elseif ($col === 'nationality' && $lower === 'rwandan') {
                 $clauses[] = "LOWER({$p}nationality) IN ('rwandan','rwandana','rwandese')";
             } elseif ($col === 'nationality' && $lower === 'foreign') {
-                $clauses[] = "({$p}nationality IS NOT NULL AND {$p}nationality <> '' AND LOWER({$p}nationality) NOT IN ('rwandan','rwandana','rwandese'))";
+                $clauses[] = "({$p}is_international = 1 OR (
+                    {$p}nationality IS NOT NULL AND {$p}nationality <> ''
+                    AND LOWER(TRIM({$p}nationality))
+                        NOT IN ('rwanda','rwandan','rwandese','rwandaise','')
+                ) OR LOWER(TRIM({$p}nationality)) = 'foreign')";
             } elseif ($col === 'nationality' && $lower === 'unknown') {
                 $clauses[] = "({$p}nationality IS NULL OR {$p}nationality = '')";
             } elseif ($col === 'gender') {
