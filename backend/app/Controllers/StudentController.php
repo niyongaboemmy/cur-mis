@@ -35,6 +35,81 @@ class StudentController extends BaseController
     }
 
     /**
+     * Normalize country names using fuzzy pattern matching.
+     * Maps spelling variants (Burundi, Burundaise, Burundese) → "Burundi"
+     */
+    private static function normalizeCountryName(string $country): string
+    {
+        $v = strtolower(trim($country));
+
+        // East Africa
+        if (strpos($v, 'rwa') === 0) return 'Rwanda';
+        if (strpos($v, 'uga') === 0 || $v === 'ug') return 'Uganda';
+        if (strpos($v, 'ken') === 0) return 'Kenya';
+        if (strpos($v, 'tanz') === 0 || strpos($v, 'tanzania') !== false) return 'Tanzania';
+        if (strpos($v, 'bur') === 0) return 'Burundi';
+        if (strpos($v, 'south sudan') !== false || strpos($v, 's. sudan') !== false) return 'South Sudan';
+        if (strpos($v, 'congo') !== false || strpos($v, 'drc') !== false || $v === 'cd') return 'Democratic Republic of the Congo';
+        if (strpos($v, 'zamb') !== false) return 'Zambia';
+        if (strpos($v, 'zimbabw') !== false) return 'Zimbabwe';
+
+        // West Africa
+        if (strpos($v, 'liber') !== false) return 'Liberia';
+        if (strpos($v, 'sierra leone') !== false) return 'Sierra Leone';
+        if (strpos($v, 'ghana') !== false || $v === 'gh') return 'Ghana';
+        if (strpos($v, 'niger') !== false && strpos($v, 'nigeria') === false) return 'Niger';
+        if (strpos($v, 'nigeria') !== false) return 'Nigeria';
+        if (strpos($v, 'senegal') !== false) return 'Senegal';
+
+        // Asia-Pacific
+        if (strpos($v, 'india') !== false || $v === 'in') return 'India';
+        if (strpos($v, 'chin') !== false || $v === 'cn') return 'China';
+        if (strpos($v, 'japan') !== false || $v === 'jp') return 'Japan';
+        if (strpos($v, 'singapor') !== false) return 'Singapore';
+        if (strpos($v, 'malays') !== false) return 'Malaysia';
+        if (strpos($v, 'thai') !== false) return 'Thailand';
+        if (strpos($v, 'philip') !== false) return 'Philippines';
+        if (strpos($v, 'indon') !== false) return 'Indonesia';
+        if (strpos($v, 'vietnam') !== false) return 'Vietnam';
+        if (strpos($v, 'banglad') !== false) return 'Bangladesh';
+        if (strpos($v, 'pakist') !== false) return 'Pakistan';
+
+        // Europe
+        if (strpos($v, 'franc') !== false || $v === 'fr') return 'France';
+        if (strpos($v, 'german') !== false || strpos($v, 'germa') !== false || $v === 'de') return 'Germany';
+        if (strpos($v, 'ital') !== false) return 'Italy';
+        if (strpos($v, 'spain') !== false || strpos($v, 'spai') !== false) return 'Spain';
+        if (strpos($v, 'nether') !== false) return 'Netherlands';
+        if (strpos($v, 'belg') !== false) return 'Belgium';
+        if (strpos($v, 'austri') !== false && strpos($v, 'australia') === false) return 'Austria';
+        if (strpos($v, 'poland') !== false || strpos($v, 'polan') !== false) return 'Poland';
+        if (strpos($v, 'portug') !== false) return 'Portugal';
+        if (strpos($v, 'greec') !== false || strpos($v, 'gree') !== false) return 'Greece';
+        if (strpos($v, 'swed') !== false) return 'Sweden';
+        if (strpos($v, 'norwav') !== false || strpos($v, 'norwa') !== false) return 'Norway';
+
+        // Middle East
+        if (strpos($v, 'saudi') !== false) return 'Saudi Arabia';
+        if (strpos($v, 'emira') !== false || $v === 'ae') return 'United Arab Emirates';
+        if (strpos($v, 'qatar') !== false || strpos($v, 'qata') !== false) return 'Qatar';
+        if (strpos($v, 'kuwai') !== false) return 'Kuwait';
+        if (strpos($v, 'oman') !== false) return 'Oman';
+        if (strpos($v, 'jordan') !== false) return 'Jordan';
+        if (strpos($v, 'lebanon') !== false) return 'Lebanon';
+
+        // Americas
+        if (strpos($v, 'united states') !== false || $v === 'us' || $v === 'usa') return 'United States';
+        if (strpos($v, 'canada') !== false) return 'Canada';
+        if (strpos($v, 'mexico') !== false) return 'Mexico';
+        if (strpos($v, 'brazil') !== false) return 'Brazil';
+        if (strpos($v, 'argentin') !== false) return 'Argentina';
+        if (strpos($v, 'chil') !== false) return 'Chile';
+        if (strpos($v, 'colomb') !== false) return 'Colombia';
+
+        return $country;
+    }
+
+    /**
      * Resolve the application_id linked to a student through their admission offer.
      * Returns null if the student has no offer (e.g. manually created student).
      */
@@ -4925,14 +5000,10 @@ class StudentController extends BaseController
               ORDER BY o.name ASC"
         );
 
-        // CONVERT both branches to a single collation so the UNION doesn't
-        // trip MySQL error 1271 — `student.nationality` and
-        // `student_visa_records.country_of_origin` may be declared with
-        // different collations even when both are utf8mb4. Also filter out
-        // junk-shaped values (national ID numbers stored in `nationality`
-        // by mistake) so the dropdown stays clean.
-        $countryFacet = $db->fetchAll(
-            "SELECT DISTINCT TRIM(country) AS value, TRIM(country) AS label
+        // Fetch all distinct countries and normalize them to clean up spelling variants
+        // (Burundi, Burundaise, Burundese all become "Burundi", etc.)
+        $countryRows = $db->fetchAll(
+            "SELECT DISTINCT TRIM(country) AS raw_country
                FROM (
                  SELECT CONVERT(v2.country_of_origin USING utf8mb4)
                           COLLATE utf8mb4_unicode_ci AS country
@@ -4952,8 +5023,22 @@ class StudentController extends BaseController
               WHERE TRIM(c.country) <> ''
                 AND TRIM(c.country) REGEXP '[A-Za-z]'
                 AND TRIM(c.country) NOT REGEXP '^[0-9]+$'
-              ORDER BY value ASC"
+              ORDER BY raw_country ASC"
         );
+
+        // Normalize countries and deduplicate (all Burundi variants → "Burundi")
+        $normalizedCountries = [];
+        foreach ($countryRows as $row) {
+            $normalized = self::normalizeCountryName($row['raw_country']);
+            if (!isset($normalizedCountries[$normalized])) {
+                $normalizedCountries[$normalized] = [
+                    'value' => $normalized,
+                    'label' => $normalized,
+                ];
+            }
+        }
+        ksort($normalizedCountries);
+        $countryFacet = array_values($normalizedCountries);
 
         $this->success($response, [
             'data'       => $rows,
@@ -5083,11 +5168,14 @@ class StudentController extends BaseController
 
         $country = trim((string)($request->query('country') ?? ''));
         if ($country !== '') {
-            // Match against either the visa-record country OR the
-            // nationality string, case-insensitively.
-            $clauses[]  = "(LOWER(TRIM(v.country_of_origin)) = LOWER(?) OR LOWER(TRIM(s.nationality)) = LOWER(?))";
-            $bindings[] = $country;
-            $bindings[] = $country;
+            // Fuzzy pattern matching for country names: convert "burundi" to "%burund%"
+            // so that Burundi, Burundaise, Burundese all match
+            $pattern = '%' . preg_replace('/[^a-z0-9]/i', '%', $country) . '%';
+
+            $clauses[]  = "(LOWER(TRIM(v.country_of_origin)) LIKE LOWER(?)
+                            OR LOWER(TRIM(s.nationality)) LIKE LOWER(?))";
+            $bindings[] = $pattern;
+            $bindings[] = $pattern;
         }
 
         $hasVisa = strtolower(trim((string)($request->query('has_visa_document') ?? '')));
