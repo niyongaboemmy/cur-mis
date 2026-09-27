@@ -126,7 +126,12 @@ class AdminDashboardController extends BaseController
 
         $intlActive = (int)$safe(fn() => $db->fetchOne("
             SELECT COUNT(*) AS n FROM student s
-            WHERE s.is_international = 1 AND LOWER(s.student_state) = 'active' {$studentScope}
+            WHERE (s.is_international = 1 OR (
+                s.nationality IS NOT NULL AND TRIM(s.nationality) <> ''
+                AND LOWER(TRIM(s.nationality))
+                    NOT IN ('rwanda','rwandan','rwandese','rwandaise','')
+            ) OR LOWER(TRIM(s.nationality)) = 'foreign')
+            AND LOWER(s.student_state) = 'active' {$studentScope}
         ", $studentBind)['n'] ?? 0);
 
         $yearStart   = date('Y') . '-01-01';
