@@ -199,6 +199,29 @@ class StudentIdController extends BaseController
      * Render the printable card for a student's active ID.
      * `?preview=1` returns { html } JSON for an iframe; otherwise streams a PDF.
      */
+    // ── GET /api/student-ids/card-sizes ───────────────────────────────────────
+    /**
+     * The print sizes the card renderer supports.
+     *
+     * Served rather than hardcoded in the UI so the list cannot drift from what
+     * the renderer will actually accept — a size the dropdown offers but the
+     * helper rejects would silently print at the default.
+     */
+    public function cardSizes(Request $request, Response $response): never
+    {
+        $out = [];
+        foreach (StudentIdCardHelper::SIZES as $key => $spec) {
+            $out[] = [
+                'key'      => $key,
+                'label'    => $spec['label'],
+                'width_mm' => $spec['w'],
+                'height_mm'=> $spec['h'],
+                'default'  => $key === StudentIdCardHelper::SIZE_DEFAULT,
+            ];
+        }
+        $this->success($response, ['sizes' => $out], 'Card sizes fetched.');
+    }
+
     public function card(Request $request, Response $response): never
     {
         $studentId = (int) $request->param('id');
@@ -225,7 +248,15 @@ class StudentIdController extends BaseController
 
         $legacyUrl = \App\Helpers\PhotoHelper::legacyUrl($photo);
 
-        $opts = ['verify_url' => $this->verifyUrl((string) $card['barcode'], $request)];
+        $opts = [
+            'verify_url' => $this->verifyUrl((string) $card['barcode'], $request),
+            // Unknown or missing falls back to the default inside the helper,
+            // so a stale bookmark prints at the standard size instead of 500ing.
+            'size'       => (string) ($request->query('size') ?? ''),
+            // The preview is a look at the card, not a print run: show the
+            // front alone. Printing still gets both faces.
+            'front_only' => (bool) $request->query('preview'),
+        ];
 
         // Always try to embed as a data URI first — this is the only approach
         // that works reliably in the iframe srcDoc preview AND in PDFs.
@@ -257,6 +288,9 @@ class StudentIdController extends BaseController
     public function batchPrint(Request $request, Response $response): never
     {
         $body = $request->body();
+        // One size applies to the whole run — a sheet of mixed-size cards is
+        // not something anyone wants to cut out.
+        $batchSize = (string) ($body['size'] ?? '');
 
         $ids = array_values(array_unique(array_filter(
             array_map('intval', (array) ($body['student_ids'] ?? [])),
@@ -284,7 +318,10 @@ class StudentIdController extends BaseController
                 continue;
             }
 
-            $opts = ['verify_url' => $this->verifyUrl((string) $card['barcode'], $request)];
+            $opts = [
+                'verify_url' => $this->verifyUrl((string) $card['barcode'], $request),
+                'size'       => $batchSize,
+            ];
 
             $dataUri = StudentIdCardHelper::resolvePhotoDataUri($student['photo'] ?? null);
             if ($dataUri !== null) {

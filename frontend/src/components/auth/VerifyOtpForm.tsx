@@ -23,8 +23,12 @@ export default function VerifyOtpForm({
   onSuccess?: (data: any) => void;
 }) {
   const verifyMutation = useVerifyOtp({ onSuccess });
-  const resendMutation = useResendOtp();
   const [resendTimer, setResendTimer] = useState(60);
+
+  // `devOtp` arrives via router state and is frozen for the life of the page,
+  // but a resend rotates the code server-side. Track the live one separately so
+  // the banner and the inputs can never show a code the backend has replaced.
+  const [activeOtp, setActiveOtp] = useState<string | undefined>(devOtp);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -46,11 +50,24 @@ export default function VerifyOtpForm({
     defaultValues: { otp: devOtp ?? "" },
   });
 
+  const resendMutation = useResendOtp({
+    onNewCode: (code) => {
+      setActiveOtp(code);
+      // Whether or not a dev code came back, whatever is in the boxes belongs
+      // to the superseded OTP — never leave it there to be submitted.
+      setValue("otp", code && code.length === 6 ? code : "");
+    },
+  });
+
   useEffect(() => {
-    if (devOtp && devOtp.length === 6) {
-      setValue("otp", devOtp);
+    setActiveOtp(devOtp);
+  }, [devOtp]);
+
+  useEffect(() => {
+    if (activeOtp && activeOtp.length === 6) {
+      setValue("otp", activeOtp);
     }
-  }, [devOtp, setValue]);
+  }, [activeOtp, setValue]);
 
   const onSubmit = (data: OtpFormValues) => {
     if (email) verifyMutation.mutate({ email, otp: data.otp });
@@ -67,7 +84,7 @@ export default function VerifyOtpForm({
 
   return (
     <div className="space-y-6">
-      {devOtp && (
+      {activeOtp && (
         <div className="rounded-xl border border-blue-200 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-900/40 px-4 py-3 text-blue-800 dark:text-blue-200 text-xs mb-2">
           <p className="font-semibold flex items-center gap-1.5">
             <span className="relative flex h-2 w-2">
@@ -76,7 +93,7 @@ export default function VerifyOtpForm({
             </span>
             Dev Mode — Verification Code
           </p>
-          <p className="mt-0.5 ml-3.5">Auto-filled: <span className="font-mono font-bold tracking-widest">{devOtp}</span></p>
+          <p className="mt-0.5 ml-3.5">Auto-filled: <span className="font-mono font-bold tracking-widest">{activeOtp}</span></p>
         </div>
       )}
 

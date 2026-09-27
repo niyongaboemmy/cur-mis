@@ -5795,6 +5795,63 @@ function tFmt(v: string | number | null | undefined): string {
 
 /* ─── ID Card tab ─────────────────────────────────────────────────────── */
 
+/** Natural size of the preview document: a 165 x 94mm card plus the 5mm of
+ *  page margin around it, at CSS 96dpi. The iframe is laid out at this size and
+ *  then scaled, so the card is always drawn at full fidelity and never reflowed. */
+const PREVIEW_W = Math.round((165 + 10) * 96 / 25.4);
+const PREVIEW_H = Math.round((94 + 10) * 96 / 25.4);
+
+/**
+ * The card preview, scaled to fill whatever room the dialog has.
+ *
+ * A plain iframe rendered the card at its physical size inside whatever box the
+ * dialog happened to be, which on a laptop left it small and clipped. Measuring
+ * the container and scaling to it means the card is as large as the space
+ * allows on any screen, and stays sharp because it is a transform rather than a
+ * re-layout.
+ */
+function CardPreviewFrame({ html }: { html: string }) {
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const [scale, setScale] = useState(1);
+
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const fit = () => {
+      const { width, height } = el.getBoundingClientRect();
+      if (!width || !height) return;
+      // Never upscale past 2x — beyond that a 165mm card just looks blurry.
+      setScale(Math.min(width / PREVIEW_W, height / PREVIEW_H, 2));
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  return (
+    <div
+      ref={wrapRef}
+      className="flex-1 min-h-[420px] overflow-auto bg-ink-100 dark:bg-ink-900 p-4 grid place-items-center"
+    >
+      <div style={{ width: PREVIEW_W * scale, height: PREVIEW_H * scale }}>
+        <iframe
+          srcDoc={html}
+          title="ID card preview"
+          scrolling="no"
+          className="border-0 bg-white"
+          style={{
+            width: PREVIEW_W,
+            height: PREVIEW_H,
+            transform: `scale(${scale})`,
+            transformOrigin: "top left",
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
 function IdCardTab({ student }: { student: any }) {
   const studentId = student?.id as number | string | undefined;
   const canManage = usePermission(PERMISSIONS.MANAGE_STUDENT_IDS);
@@ -6007,14 +6064,14 @@ function IdCardTab({ student }: { student: any }) {
       {/* Preview modal */}
       {preview !== null && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/60 backdrop-blur-sm p-4">
-          <div className="card w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+          <div className="card w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
             <div className="flex items-center justify-between px-5 py-3 border-b border-ink-100 dark:border-ink-700">
               <h3 className="font-semibold text-ink-900 dark:text-ink-50">ID card preview</h3>
               <button className="p-1 text-ink-400 hover:text-ink-700" onClick={() => setPreview(null)}>
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <iframe srcDoc={preview} title="ID card preview" className="w-full flex-1 min-h-[420px] bg-white" />
+            <CardPreviewFrame html={preview} />
           </div>
         </div>
       )}

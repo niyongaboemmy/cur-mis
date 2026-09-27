@@ -32,6 +32,15 @@ export interface StudentIdRosterRow {
   card_state:    'none' | 'active' | 'expired' | 'revoked'
 }
 
+/** A print size the card renderer supports. */
+export interface CardSize {
+  key:       string
+  label:     string
+  width_mm:  number
+  height_mm: number
+  default:   boolean
+}
+
 export interface StudentIdRosterFilters {
   page?:      number
   per_page?:  number
@@ -143,45 +152,52 @@ export const studentIdService = {
     return api.get<{ html: string }>(`/api/student-ids/by-student/${studentId}/card`, params)
   },
 
-  /** One PDF holding every selected student's active card. */
-  batchCards: async (studentIds: number[]) => {
+  /** The print sizes the renderer supports — served so the UI cannot offer
+   *  a size the backend would quietly reject. */
+  cardSizes: (signal?: AbortSignal) =>
+    api.get<{ sizes: CardSize[] }>('/api/student-ids/card-sizes', {}, signal),
+
+  /** One PDF holding every selected student's active card.
+   *  `size` is a key from cardSizes(); omitted prints at the default. */
+  batchCards: async (studentIds: number[], size?: string) => {
     const res = await apiClient.post(
       '/student-ids/batch-print',
-      { student_ids: studentIds },
+      { student_ids: studentIds, ...(size ? { size } : {}) },
       { responseType: 'blob' },
     ).catch(rethrowBlobError)
     return asPdf(res, `id-cards-${studentIds.length}.pdf`)
   },
 
   /** Save every selected student's card to disk as one PDF. */
-  batchDownload: async (studentIds: number[]) => {
-    const { blob, name } = await studentIdService.batchCards(studentIds)
+  batchDownload: async (studentIds: number[], size?: string) => {
+    const { blob, name } = await studentIdService.batchCards(studentIds, size)
     saveBlob(blob, name)
   },
 
   /** Send every selected student's card straight to the print dialog. */
-  batchPrint: async (studentIds: number[]) => {
-    const { blob } = await studentIdService.batchCards(studentIds)
+  batchPrint: async (studentIds: number[], size?: string) => {
+    const { blob } = await studentIdService.batchCards(studentIds, size)
     printBlob(blob)
   },
 
   /** One student's active card as a PDF blob (carries the auth header). */
-  card: async (studentId: number | string) => {
+  card: async (studentId: number | string, size?: string) => {
     const res = await apiClient.get(`/api/student-ids/by-student/${studentId}/card`, {
       responseType: 'blob',
+      ...(size ? { params: { size } } : {}),
     }).catch(rethrowBlobError)
     return asPdf(res, `id-card-${studentId}.pdf`)
   },
 
   /** Save one student's card to disk. */
-  download: async (studentId: number | string) => {
-    const { blob, name } = await studentIdService.card(studentId)
+  download: async (studentId: number | string, size?: string) => {
+    const { blob, name } = await studentIdService.card(studentId, size)
     saveBlob(blob, name)
   },
 
   /** Send one student's card straight to the print dialog. */
-  print: async (studentId: number | string) => {
-    const { blob } = await studentIdService.card(studentId)
+  print: async (studentId: number | string, size?: string) => {
+    const { blob } = await studentIdService.card(studentId, size)
     printBlob(blob)
   },
 }

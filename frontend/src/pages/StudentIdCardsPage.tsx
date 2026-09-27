@@ -5,7 +5,6 @@ import {
   CreditCard,
   Search,
   Printer,
-  Download,
   BadgeCheck,
   Ban,
   RefreshCcw,
@@ -14,6 +13,7 @@ import {
   studentIdService,
   type StudentIdRosterRow,
 } from "@/services/studentIdService";
+import CardSizeDialog from "@/components/students/CardSizeDialog";
 import { PERMISSIONS } from "@/constants/permissions";
 import { usePermission } from "@/utils/permissions";
 import { cn } from "@/utils/helpers";
@@ -103,30 +103,39 @@ export default function StudentIdCardsPage() {
     onError: (e: any) => toast.error(e?.response?.data?.message ?? "Could not revoke the card."),
   });
 
-  const printM = useMutation({
-    mutationFn: () => studentIdService.batchPrint(selected),
-    onError: (e: any) => toast.error(e?.response?.data?.message ?? "Could not build the print file."),
-  });
-
-  const batchDownloadM = useMutation({
-    mutationFn: () => studentIdService.batchDownload(selected),
-    onSuccess: () => toast.success("Cards downloaded."),
-    onError: (e: any) => toast.error(e?.response?.data?.message ?? "Could not build the print file."),
-  });
-
   // Per-row print / download. `pendingCard` tracks which row is busy so only
   // that row's buttons show a spinner, not every row's.
   const [pendingCard, setPendingCard] = useState<number | null>(null);
 
-  const rowCard = async (studentId: number, mode: "print" | "download") => {
-    setPendingCard(studentId);
+  /* ── Size is chosen before the PDF is built ────────────────────────────
+   * The renderer scales the whole layout to the chosen size, so it has to be
+   * known up front — there is no resizing a PDF afterwards. Every print and
+   * download route goes through this dialog; `sizeFor` holds which run it is
+   * about (a student id, or "selected" for the batch). */
+  const [sizeFor, setSizeFor] = useState<number | "selected" | null>(null);
+  const [printing, setPrinting] = useState(false);
+
+  const runWithSize = async (size: string, action: "print" | "download") => {
+    const target = sizeFor;
+    if (target === null) return;
+    setPrinting(true);
+    if (typeof target === "number") setPendingCard(target);
     try {
-      await (mode === "print"
-        ? studentIdService.print(studentId)
-        : studentIdService.download(studentId));
+      if (target === "selected") {
+        action === "print"
+          ? await studentIdService.batchPrint(selected, size)
+          : await studentIdService.batchDownload(selected, size);
+        if (action === "download") toast.success("Cards downloaded.");
+      } else {
+        action === "print"
+          ? await studentIdService.print(target, size)
+          : await studentIdService.download(target, size);
+      }
+      setSizeFor(null);
     } catch (e: any) {
-      toast.error(e?.response?.data?.message ?? "Could not build the card.");
+      toast.error(e?.response?.data?.message ?? "Could not build the print file.");
     } finally {
+      setPrinting(false);
       setPendingCard(null);
     }
   };
@@ -210,23 +219,13 @@ export default function StudentIdCardsPage() {
               </button>
               <button
                 type="button"
-                onClick={() => printM.mutate()}
-                disabled={selected.length === 0 || printM.isPending}
+                onClick={() => setSizeFor("selected")}
+                disabled={selected.length === 0 || printing}
                 className="btn-secondary disabled:opacity-50"
-                title="Open the selected cards in the print dialog"
+                title="Choose a size, then print or download the selected cards"
               >
                 <Printer className="w-3.5 h-3.5" />
-                {printM.isPending ? "Building…" : "Print selected"}
-              </button>
-              <button
-                type="button"
-                onClick={() => batchDownloadM.mutate()}
-                disabled={selected.length === 0 || batchDownloadM.isPending}
-                className="btn-secondary disabled:opacity-50"
-                title="Save the selected cards as one PDF"
-              >
-                <Download className="w-3.5 h-3.5" />
-                {batchDownloadM.isPending ? "Building…" : "Download selected"}
+                {printing ? "Building…" : "Print selected"}
               </button>
             </div>
           )}
@@ -303,21 +302,12 @@ export default function StudentIdCardsPage() {
                         <div className="inline-flex items-center gap-3">
                           <button
                             type="button"
-                            onClick={() => rowCard(r.student_id, "print")}
+                            onClick={() => setSizeFor(r.student_id)}
                             disabled={pendingCard === r.student_id}
-                            title={`Print ${r.regnumber}'s card`}
+                            title={`Choose a size, then print or save ${r.regnumber}'s card`}
                             className="inline-flex items-center gap-1 text-xs font-bold text-ink-600 dark:text-ink-300 hover:text-brand hover:underline disabled:opacity-50"
                           >
                             <Printer className="w-3.5 h-3.5" /> Print
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => rowCard(r.student_id, "download")}
-                            disabled={pendingCard === r.student_id}
-                            title={`Download ${r.regnumber}'s card as PDF`}
-                            className="inline-flex items-center gap-1 text-xs font-bold text-ink-600 dark:text-ink-300 hover:text-brand hover:underline disabled:opacity-50"
-                          >
-                            <Download className="w-3.5 h-3.5" /> PDF
                           </button>
                         </div>
                       ) : (
@@ -373,6 +363,14 @@ export default function StudentIdCardsPage() {
           </div>
         )}
       </div>
+
+      <CardSizeDialog
+        open={sizeFor !== null}
+        count={sizeFor === "selected" ? selected.length : 1}
+        busy={printing}
+        onCancel={() => setSizeFor(null)}
+        onConfirm={runWithSize}
+      />
     </div>
   );
 }

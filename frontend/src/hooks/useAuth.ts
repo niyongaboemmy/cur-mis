@@ -100,12 +100,15 @@ export function useVerifyOtp(options?: { onSuccess?: (response: any) => void }) 
 /**
  * Resend the OTP code.
  */
-export function useResendOtp() {
+export function useResendOtp(options?: { onNewCode?: (devOtp?: string) => void }) {
   return useMutation({
     mutationFn: (email: string) =>
-      api.post('/auth/resend-otp', { email }),
+      api.post<{ email: string; dev_otp?: string }>('/auth/resend-otp', { email }),
     onSuccess: (response) => {
       if (response.success) {
+        // A resend rotates `users.otp_code`, so any code already on screen is
+        // now dead. Hand the fresh one back so the caller can re-sync.
+        options?.onNewCode?.((response.data as any)?.dev_otp)
         toast.success(response.message || 'New code sent!')
       } else {
         toast.error(response.message || 'Failed to resend code')
