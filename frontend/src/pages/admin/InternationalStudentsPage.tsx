@@ -22,16 +22,133 @@ import {
   countryFlag,
 } from '@/data/countries'
 
-/** Renders a flag emoji + country/nationality name, with fallbacks. */
+/** Normalize country name from user input — handles common variations. */
+function normalizeCountryName(value: string | null | undefined): string {
+  if (!value) return ''
+  const v = value.trim().toLowerCase()
+
+  // East Africa
+  if (v.startsWith('rwa')) return 'Rwanda'
+  if (v.startsWith('ug')) return 'Uganda'
+  if (v.startsWith('ken')) return 'Kenya'
+  if (v.startsWith('tanz') || v.includes('tanzania')) return 'Tanzania'
+  if (v.startsWith('bur')) return 'Burundi'
+  if (v.includes('south sudan') || v.includes('s. sudan')) return 'South Sudan'
+  if (v.includes('congo') || v.includes('drc') || v === 'cd') return 'Democratic Republic of the Congo'
+  if (v.includes('zambia')) return 'Zambia'
+  if (v.includes('zimbabwe')) return 'Zimbabwe'
+
+  // West Africa
+  if (v.includes('liberia')) return 'Liberia'
+  if (v.includes('sierra leone')) return 'Sierra Leone'
+  if (v.startsWith('gh')) return 'Ghana'
+  if (v.startsWith('nig')) return 'Nigeria'
+  if (v.startsWith('sen')) return 'Senegal'
+
+  // Asia-Pacific
+  if (v.startsWith('india') || v === 'in') return 'India'
+  if (v.startsWith('chin') || v === 'cn') return 'China'
+  if (v.startsWith('japan') || v === 'jp') return 'Japan'
+  if (v.includes('singapore')) return 'Singapore'
+  if (v.includes('malaysia')) return 'Malaysia'
+  if (v.startsWith('thai')) return 'Thailand'
+  if (v.startsWith('philip')) return 'Philippines'
+  if (v.startsWith('indon')) return 'Indonesia'
+  if (v.startsWith('vietnam')) return 'Vietnam'
+  if (v.includes('bangladesh')) return 'Bangladesh'
+  if (v.includes('pakistan')) return 'Pakistan'
+
+  // Europe
+  if (v.startsWith('fr') || v.startsWith('fran')) return 'France'
+  if (v.startsWith('ger') || v === 'de') return 'Germany'
+  if (v.startsWith('ital')) return 'Italy'
+  if (v.startsWith('sp')) return 'Spain'
+  if (v.startsWith('neth') || v.includes('netherlands')) return 'Netherlands'
+  if (v.startsWith('belg')) return 'Belgium'
+  if (v.startsWith('aust') && v.includes('ria')) return 'Austria'
+  if (v.startsWith('pol')) return 'Poland'
+  if (v.startsWith('port')) return 'Portugal'
+  if (v.startsWith('gre')) return 'Greece'
+  if (v.startsWith('sw')) return 'Sweden'
+  if (v.startsWith('nor')) return 'Norway'
+
+  // Middle East
+  if (v.startsWith('saud')) return 'Saudi Arabia'
+  if (v.startsWith('emirates') || v === 'ae') return 'United Arab Emirates'
+  if (v.startsWith('qat')) return 'Qatar'
+  if (v.startsWith('kuw')) return 'Kuwait'
+  if (v.startsWith('oman')) return 'Oman'
+  if (v.startsWith('jord')) return 'Jordan'
+  if (v.startsWith('leb')) return 'Lebanon'
+
+  // Americas
+  if (v.startsWith('united states') || v === 'us' || v === 'usa') return 'United States'
+  if (v.startsWith('can')) return 'Canada'
+  if (v.startsWith('mex')) return 'Mexico'
+  if (v.startsWith('braz')) return 'Brazil'
+  if (v.startsWith('arg')) return 'Argentina'
+  if (v.startsWith('chil')) return 'Chile'
+  if (v.startsWith('colom')) return 'Colombia'
+
+  return value
+}
+
+/** Get region/category for a country name — useful for filtering/styling by region. */
+function getCountryRegion(countryName: string): string {
+  const v = countryName.trim().toLowerCase()
+
+  const eastAfrica = ['rwanda', 'uganda', 'kenya', 'tanzania', 'burundi', 'south sudan', 'democratic republic of the congo']
+  const westAfrica = ['liberia', 'sierra leone', 'ghana', 'nigeria', 'senegal']
+  const southAfrica = ['zambia', 'zimbabwe', 'south africa']
+  const asiaPacific = ['india', 'china', 'japan', 'singapore', 'malaysia', 'thailand', 'philippines', 'indonesia', 'vietnam', 'bangladesh', 'pakistan']
+  const europe = ['france', 'germany', 'italy', 'spain', 'netherlands', 'belgium', 'austria', 'poland', 'portugal', 'greece', 'sweden', 'norway']
+  const middleEast = ['saudi arabia', 'united arab emirates', 'qatar', 'kuwait', 'oman', 'jordan', 'lebanon']
+  const americas = ['united states', 'canada', 'mexico', 'brazil', 'argentina', 'chile', 'colombia']
+
+  if (eastAfrica.some(c => v.includes(c))) return 'East Africa'
+  if (westAfrica.some(c => v.includes(c))) return 'West Africa'
+  if (southAfrica.some(c => v.includes(c))) return 'Southern Africa'
+  if (asiaPacific.some(c => v.includes(c))) return 'Asia-Pacific'
+  if (europe.some(c => v.includes(c))) return 'Europe'
+  if (middleEast.some(c => v.includes(c))) return 'Middle East'
+  if (americas.some(c => v.includes(c))) return 'Americas'
+  return 'Other'
+}
+
+/** Get color class for a region — for visual differentiation. */
+function getRegionColorClass(region: string): string {
+  const regionColors: Record<string, string> = {
+    'East Africa':     'bg-emerald-50 dark:bg-emerald-500/10',
+    'West Africa':     'bg-sky-50 dark:bg-sky-500/10',
+    'Southern Africa': 'bg-cyan-50 dark:bg-cyan-500/10',
+    'Asia-Pacific':    'bg-purple-50 dark:bg-purple-500/10',
+    'Europe':          'bg-amber-50 dark:bg-amber-500/10',
+    'Middle East':     'bg-rose-50 dark:bg-rose-500/10',
+    'Americas':        'bg-brand/5',
+    'Other':           'bg-ink-50 dark:bg-ink-800/30',
+  }
+  return regionColors[region] || 'bg-ink-50 dark:bg-ink-800/30'
+}
+
+/** Renders a flag emoji + country/nationality name with region badge, with fallbacks. */
 function countryCell(value: string | null | undefined): React.ReactNode {
   if (!value) return <span className="text-ink-400">—</span>
-  const v = value.trim().toLowerCase()
+
+  const normalized = normalizeCountryName(value)
+  const v = normalized.trim().toLowerCase()
   const country = COUNTRY_BY_NAME[v] ?? COUNTRY_BY_NATIONALITY[v]
-  if (!country) return value
+  const displayName = country?.name ?? normalized
+  const region = getCountryRegion(displayName)
+
   return (
-    <span className="inline-flex items-center gap-1.5">
-      <span aria-hidden className="text-[16px] leading-none">{countryFlag(country.code)}</span>
-      <span>{country.name}</span>
+    <span className="inline-flex flex-col gap-1">
+      <span className="inline-flex items-center gap-1.5">
+        {country && <span aria-hidden className="text-[16px] leading-none">{countryFlag(country.code)}</span>}
+        <span className="font-medium">{displayName}</span>
+      </span>
+      <span className={`text-[10px] font-semibold w-fit px-2 py-0.5 rounded-full ${getRegionColorClass(region)} text-ink-700 dark:text-ink-300`}>
+        {region}
+      </span>
     </span>
   )
 }
@@ -263,11 +380,23 @@ export default function InternationalStudentsPage() {
                     s.days_to_expiry != null && s.days_to_expiry <= 7 && s.days_to_expiry >= 0
                   const expired = s.days_to_expiry != null && s.days_to_expiry < 0
                   const uploaded = !!s.visa_document_file_id
+                  const countryValue = s.country_of_origin ?? s.nationality
+                  const normalized = countryValue ? normalizeCountryName(countryValue) : ''
+                  const region = getCountryRegion(normalized)
                   return (
                     <tr
                       key={s.id}
                       onClick={() => navigate(`/students/${s.id}`)}
-                      className="cursor-pointer hover:bg-ink-50/60 dark:hover:bg-ink-800/40 transition-colors"
+                      className={`cursor-pointer hover:opacity-75 transition-all border-l-4 ${
+                        region === 'East Africa' ? 'border-l-emerald-500' :
+                        region === 'West Africa' ? 'border-l-sky-500' :
+                        region === 'Southern Africa' ? 'border-l-cyan-500' :
+                        region === 'Asia-Pacific' ? 'border-l-purple-500' :
+                        region === 'Europe' ? 'border-l-amber-500' :
+                        region === 'Middle East' ? 'border-l-rose-500' :
+                        region === 'Americas' ? 'border-l-brand' :
+                        'border-l-ink-300'
+                      }`}
                     >
                       <td className="font-mono text-[12px] text-ink-700 dark:text-ink-200">
                         {s.regnumber ?? '—'}
