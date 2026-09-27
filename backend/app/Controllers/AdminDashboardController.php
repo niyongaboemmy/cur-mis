@@ -309,4 +309,110 @@ class AdminDashboardController extends BaseController
             'activity' => $activity,
         ], 'Dashboard data fetched.');
     }
+
+    /**
+     * GET /api/admin/active-students-by-year
+     *
+     * Returns ACTIVE students (case-insensitive) across all years and per academic year.
+     * Academic year formats are normalized (2020/2021 or 2020-2021 both map to "2020/2021").
+     * Default shows cumulative active students across all years.
+     *
+     * Response includes:
+     * - total_active: Total active students across all years
+     * - by_year: Array of academic years with active student counts
+     * - all_years_list: Array of all academic years for filtering
+     */
+    public function activeStudentsByYear(Request $request, Response $response): never
+    {
+        $db = Database::getInstance();
+
+        // Total active students across all years (case-insensitive)
+        $totalRow = $db->fetchOne(
+            "SELECT COUNT(*) AS total
+               FROM `student`
+              WHERE LOWER(TRIM(student_state)) = 'active'"
+        ) ?: [];
+        $totalActive = (int)($totalRow['total'] ?? 0);
+
+        // Active students grouped by academic year
+        $yearRows = $db->fetchAll(
+            "SELECT acc_year, COUNT(*) AS count
+               FROM `student`
+              WHERE LOWER(TRIM(student_state)) = 'active'
+                AND acc_year IS NOT NULL
+                AND TRIM(acc_year) <> ''
+              GROUP BY LOWER(TRIM(acc_year))
+              ORDER BY acc_year DESC"
+        ) ?: [];
+
+        // Normalize academic years (2020-2021 → 2020/2021, etc.)
+        $normalizedYears = [];
+        foreach ($yearRows as $row) {
+            $normalized = self::normalizeAcademicYear($row['acc_year']);
+            if (!isset($normalizedYears[$normalized])) {
+                $normalizedYears[$normalized] = 0;
+            }
+            $normalizedYears[$normalized] += (int)$row['count'];
+        }
+        krsort($normalizedYears); // Sort by year descending
+
+        // Format for response
+        $byYear = [];
+        foreach ($normalizedYears as $year => $count) {
+            $byYear[] = [
+                'academic_year' => $year,
+                'active_students' => $count,
+            ];
+        }
+
+        // All academic years list (for filtering UI)
+        $allYearsRows = $db->fetchAll(
+            "SELECT DISTINCT TRIM(acc_year) AS year
+               FROM `student`
+              WHERE acc_year IS NOT NULL
+                AND TRIM(acc_year) <> ''
+              ORDER BY acc_year DESC"
+        ) ?: [];
+
+        $allYears = array_map(function ($row) {
+            return self::normalizeAcademicYear($row['year']);
+        }, $allYearsRows);
+        $allYears = array_unique($allYears);
+        rsort($allYears);
+
+        $this->success($response, [
+            'total_active_cumulative' => $totalActive,
+            'active_by_year' => $byYear,
+            'all_academic_years' => $allYears,
+            'default_view' => 'cumulative_all_years',
+        ], 'Active students by year fetched.');
+    }
+
+    /**
+     * Normalize academic year format.
+     * Converts: 2020-2021, 2020 - 2021, etc. → 2020/2021
+     */
+    private static function normalizeAcademicYear(string $year): string
+    {
+        $v = trim($year);
+
+        // Already in correct format (YYYY/YYYY)
+        if (preg_match('/^\d{4}\/\d{4}$/', $v)) {
+            return $v;
+        }
+
+        // Convert dash formats to slash
+        // 2020-2021 → 2020/2021
+        if (preg_match('/^(\d{4})\s*[-–]\s*(\d{4})$/', $v, $matches)) {
+            return $matches[1] . '/' . $matches[2];
+        }
+
+        // Handle shorthand (2020/21 → 2020/2021)
+        if (preg_match('/^(\d{4})\/(\d{2})$/', $v, $matches)) {
+            return $matches[1] . '/' . $matches[1] . substr($matches[2], -2);
+        }
+
+        // Just return as-is if no pattern matches
+        return $v;
+    }
 }
