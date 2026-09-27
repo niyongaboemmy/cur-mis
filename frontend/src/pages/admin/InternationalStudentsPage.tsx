@@ -155,6 +155,7 @@ function countryCell(value: string | null | undefined): React.ReactNode {
 
 type ExpiryStatus = '' | 'active' | 'expiring' | 'expired' | 'missing'
 type VisaUploaded = '' | 'yes' | 'no'
+type StudentStatus = 'active' | 'inactive' | 'all'
 
 export default function InternationalStudentsPage() {
   const navigate = useNavigate()
@@ -168,6 +169,8 @@ export default function InternationalStudentsPage() {
   const [country, setCountry]         = useState<string>('')
   const [expiryStatus, setExpiry]     = useState<ExpiryStatus>('')
   const [hasVisaDoc, setHasVisaDoc]   = useState<VisaUploaded>('')
+  const [academicYear, setAcademicYear] = useState<string>('')
+  const [studentStatus, setStudentStatus] = useState<StudentStatus>('active')
 
   // Reset to page 1 whenever any filter changes.
   const resetPage = <T,>(setter: (v: T) => void) => (v: T) => {
@@ -176,7 +179,7 @@ export default function InternationalStudentsPage() {
   }
 
   const listQ = useQuery({
-    queryKey: ['students', 'international', { page, perPage, q, program, country, expiryStatus, hasVisaDoc }],
+    queryKey: ['students', 'international', { page, perPage, q, program, country, expiryStatus, hasVisaDoc, academicYear, studentStatus }],
     queryFn: () =>
       studentService.listInternational({
         page,
@@ -186,6 +189,8 @@ export default function InternationalStudentsPage() {
         country:           country || undefined,
         expiry_status:     expiryStatus || undefined,
         has_visa_document: hasVisaDoc || undefined,
+        acc_year:          academicYear || undefined,
+        student_state:     studentStatus !== 'all' ? studentStatus : undefined,
       }),
     placeholderData: keepPreviousData,
   })
@@ -198,8 +203,8 @@ export default function InternationalStudentsPage() {
   const lastPage   = data?.last_page ?? 1
 
   const hasFilters = useMemo(
-    () => !!(q || program || country || expiryStatus || hasVisaDoc),
-    [q, program, country, expiryStatus, hasVisaDoc],
+    () => !!(q || program || country || expiryStatus || hasVisaDoc || academicYear || studentStatus !== 'active'),
+    [q, program, country, expiryStatus, hasVisaDoc, academicYear, studentStatus],
   )
 
   const exportUrl = studentService.internationalExportUrl({
@@ -208,10 +213,12 @@ export default function InternationalStudentsPage() {
     country:           country || undefined,
     expiry_status:     expiryStatus || undefined,
     has_visa_document: hasVisaDoc || undefined,
+    acc_year:          academicYear || undefined,
+    student_state:     studentStatus !== 'all' ? studentStatus : undefined,
   })
 
   const clearFilters = () => {
-    setQ(''); setProgram(''); setCountry(''); setExpiry(''); setHasVisaDoc('')
+    setQ(''); setProgram(''); setCountry(''); setExpiry(''); setHasVisaDoc(''); setAcademicYear(''); setStudentStatus('active')
     setPage(1)
   }
 
@@ -337,6 +344,33 @@ export default function InternationalStudentsPage() {
             <option value="">Any</option>
             <option value="yes">Yes</option>
             <option value="no">No</option>
+          </select>
+        </div>
+
+        <div className="min-w-[180px]">
+          <label className="label">Academic Year</label>
+          <select
+            className="input"
+            value={academicYear}
+            onChange={(e) => resetPage(setAcademicYear)(e.target.value)}
+          >
+            <option value="">All years</option>
+            {facets.all_academic_years?.map((year) => (
+              <option key={year} value={year}>{year}</option>
+            )) || []}
+          </select>
+        </div>
+
+        <div className="min-w-[160px]">
+          <label className="label">Student Status</label>
+          <select
+            className="input"
+            value={studentStatus}
+            onChange={(e) => resetPage(setStudentStatus)(e.target.value as StudentStatus)}
+          >
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+            <option value="all">All</option>
           </select>
         </div>
 

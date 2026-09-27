@@ -960,6 +960,8 @@ export const studentService = {
       country?:            string
       expiry_status?:      '' | 'active' | 'expiring' | 'expired' | 'missing'
       has_visa_document?:  '' | 'yes' | 'no'
+      acc_year?:           string
+      student_state?:      string
     } = {},
     signal?: AbortSignal,
   ) => {
@@ -994,6 +996,7 @@ export const studentService = {
       facets: {
         program: Array<{ value: string | number; label: string }>
         country: Array<{ value: string; label: string }>
+        all_academic_years?: string[]
       }
       /** Legacy keys kept for backwards-compatibility with older callers. */
       students: any[]
@@ -1010,6 +1013,8 @@ export const studentService = {
     country?:           string
     expiry_status?:     string
     has_visa_document?: string
+    acc_year?:          string
+    student_state?:     string
   } = {}) => {
     const token = useAuthStore.getState().token
     const base  = (import.meta.env.VITE_API_URL ?? '') + '/api'

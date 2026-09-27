@@ -5040,6 +5040,16 @@ class StudentController extends BaseController
         ksort($normalizedCountries);
         $countryFacet = array_values($normalizedCountries);
 
+        // Fetch all distinct academic years for the year filter dropdown
+        $allYearsResult = $db->fetchAll(
+            "SELECT DISTINCT TRIM(acc_year) AS year
+               FROM `student` s
+              WHERE s.acc_year IS NOT NULL
+                AND TRIM(s.acc_year) <> ''
+              ORDER BY s.acc_year DESC"
+        );
+        $allAcademicYears = array_column($allYearsResult, 'year');
+
         $this->success($response, [
             'data'       => $rows,
             'page'       => $page,
@@ -5056,6 +5066,7 @@ class StudentController extends BaseController
             'facets'     => [
                 'program' => $programFacet,
                 'country' => $countryFacet,
+                'all_academic_years' => $allAcademicYears,
             ],
             // Legacy keys preserved so older callers (admin International page
             // before the pagination rework) still work without surprises.
@@ -5197,6 +5208,20 @@ class StudentController extends BaseController
                            AND DATEDIFF(v.visa_expiry_date, CURDATE()) > 7)";
         } elseif ($expiry === 'missing' || $expiry === 'unknown') {
             $clauses[] = "v.visa_expiry_date IS NULL";
+        }
+
+        // Academic year filter
+        $accYear = trim((string)($request->query('acc_year') ?? ''));
+        if ($accYear !== '') {
+            $clauses[]  = "s.acc_year = ?";
+            $bindings[] = $accYear;
+        }
+
+        // Student status filter (active, inactive, etc.)
+        $studentState = strtolower(trim((string)($request->query('student_state') ?? '')));
+        if ($studentState !== '' && $studentState !== 'all') {
+            $clauses[]  = "LOWER(TRIM(s.student_state)) = ?";
+            $bindings[] = $studentState;
         }
 
         return [implode(' AND ', $clauses), $bindings];
