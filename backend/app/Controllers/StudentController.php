@@ -3522,14 +3522,15 @@ class StudentController extends BaseController
         $row = $db->fetchOne("
             SELECT
               COUNT(*) AS total,
-              SUM(CASE WHEN LOWER(student_state) = 'active'   THEN 1 ELSE 0 END) AS active,
+              SUM(CASE WHEN LOWER(TRIM(student_state)) = 'active'   THEN 1 ELSE 0 END) AS active,
               SUM(CASE WHEN LOWER(student_state) = 'inactive' THEN 1 ELSE 0 END) AS inactive,
               SUM(CASE WHEN LOWER(gender) IN ('m','male')     THEN 1 ELSE 0 END) AS male,
               SUM(CASE WHEN LOWER(gender) IN ('f','female')   THEN 1 ELSE 0 END) AS female,
-              SUM(CASE WHEN LOWER(nationality) IN ('rwandan','rwandana','rwandese') THEN 1 ELSE 0 END) AS rwandan,
-              SUM(CASE WHEN nationality IS NOT NULL
-                        AND nationality <> ''
-                        AND LOWER(nationality) NOT IN ('rwandan','rwandana','rwandese')
+              SUM(CASE WHEN LOWER(TRIM(nationality)) IN ('rwandan','rwandana','rwandese') THEN 1 ELSE 0 END) AS rwandan,
+              SUM(CASE WHEN is_international = 1 OR (
+                        nationality IS NOT NULL AND TRIM(nationality) <> ''
+                        AND LOWER(TRIM(nationality)) NOT IN ('rwanda','rwandan','rwandese','rwandaise','')
+                    ) OR LOWER(TRIM(nationality)) = 'foreign'
                         THEN 1 ELSE 0 END) AS foreign_students,
               COUNT(DISTINCT faculty) AS faculties,
               COUNT(DISTINCT acc_year) AS academic_years,
@@ -3540,13 +3541,16 @@ class StudentController extends BaseController
               SUM(CASE WHEN LOWER(student_state) = 'active'
                         AND (gender IS NULL OR gender = '' OR LOWER(gender) NOT IN ('m','male','f','female'))
                         THEN 1 ELSE 0 END) AS active_unknown_gender,
-              SUM(CASE WHEN LOWER(student_state) = 'active' AND LOWER(nationality) IN ('rwandan','rwandana','rwandese') THEN 1 ELSE 0 END) AS active_rwandan,
-              SUM(CASE WHEN LOWER(student_state) = 'active'
-                        AND nationality IS NOT NULL AND nationality <> ''
-                        AND LOWER(nationality) NOT IN ('rwandan','rwandana','rwandese')
+              SUM(CASE WHEN LOWER(TRIM(student_state)) = 'active' AND LOWER(TRIM(nationality)) IN ('rwandan','rwandana','rwandese') THEN 1 ELSE 0 END) AS active_rwandan,
+              SUM(CASE WHEN LOWER(TRIM(student_state)) = 'active' AND (
+                        is_international = 1 OR (
+                            nationality IS NOT NULL AND TRIM(nationality) <> ''
+                            AND LOWER(TRIM(nationality)) NOT IN ('rwanda','rwandan','rwandese','rwandaise','')
+                        ) OR LOWER(TRIM(nationality)) = 'foreign'
+                    )
                         THEN 1 ELSE 0 END) AS active_foreign,
-              SUM(CASE WHEN LOWER(student_state) = 'active'
-                        AND (nationality IS NULL OR nationality = '')
+              SUM(CASE WHEN LOWER(TRIM(student_state)) = 'active'
+                        AND (nationality IS NULL OR TRIM(nationality) = '')
                         THEN 1 ELSE 0 END) AS active_unknown_nationality,
               -- Only count faculty/department references that resolve to a real
               -- catalogue row — some legacy student rows hold stray TEXT in these

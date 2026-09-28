@@ -131,7 +131,7 @@ class AdminDashboardController extends BaseController
                 AND LOWER(TRIM(s.nationality))
                     NOT IN ('rwanda','rwandan','rwandese','rwandaise','')
             ) OR LOWER(TRIM(s.nationality)) = 'foreign')
-            AND LOWER(s.student_state) = 'active' {$studentScope}
+            AND LOWER(TRIM(s.student_state)) = 'active' {$studentScope}
         ", $studentBind)['n'] ?? 0);
 
         $yearStart   = date('Y') . '-01-01';
