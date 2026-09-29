@@ -1116,10 +1116,10 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
         )}
       </section>
 
-      {/* Learning mode summary card - shows total count for selected or all modes */}
+      {/* Learning mode summary card - shows total count with export button */}
       <section className="card p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border border-blue-200 dark:border-blue-800">
-        <div className="flex items-center justify-between">
-          <div>
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex-1">
             <p className="text-[11px] uppercase tracking-[0.2em] font-bold text-blue-600 dark:text-blue-400 mb-1">
               Learning Mode Summary
             </p>
@@ -1135,13 +1135,23 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
               )}
             </p>
           </div>
-          <div className="text-right">
-            <p className="text-4xl font-bold text-blue-600 dark:text-blue-400">
-              {total.toLocaleString()}
-            </p>
-            <p className="text-[11px] text-ink-500">
-              {total === 1 ? "student" : "students"}
-            </p>
+          <div className="flex items-center gap-4">
+            <div className="text-right">
+              <p className="text-4xl font-bold text-blue-600 dark:text-blue-400">
+                {total.toLocaleString()}
+              </p>
+              <p className="text-[11px] text-ink-500">
+                {total === 1 ? "student" : "students"}
+              </p>
+            </div>
+            <button
+              onClick={() => setExportOpen(true)}
+              className="btn-primary btn-sm inline-flex items-center gap-2 shrink-0"
+              title="Export selected students"
+            >
+              <Download className="w-4 h-4" />
+              Export CSV
+            </button>
           </div>
         </div>
       </section>

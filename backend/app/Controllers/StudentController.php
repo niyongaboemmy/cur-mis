@@ -4242,6 +4242,7 @@ class StudentController extends BaseController
             'intake'           => ['label' => 'Intake',               'group' => 'Academics', 'sql' => "s.intake",                                      'alias' => 'intake'],
             'acc_year'         => ['label' => 'Academic Year',        'group' => 'Academics', 'sql' => "s.acc_year",                                    'alias' => 'acc_year'],
             'student_state'    => ['label' => 'Status',               'group' => 'Academics', 'sql' => "s.student_state",                               'alias' => 'student_state'],
+            'learning_mode'    => ['label' => 'Learning Mode',        'group' => 'Academics', 'sql' => "s.learning_mode",                               'alias' => 'learning_mode'],
             'sponsor'          => ['label' => 'Sponsorship',          'group' => 'Academics', 'sql' => "s.sponsor",                                     'alias' => 'sponsor'],
             'program_code'     => ['label' => 'Programme Code',       'group' => 'Academics', 'sql' => "o.code",                                        'alias' => 'program_code'],
 
@@ -4643,7 +4644,7 @@ class StudentController extends BaseController
     private const DEFAULT_EXPORT_COLUMNS = [
         'regnumber', 'full_name', 'gender', 'birthdate', 'email', 'phone',
         'faculty_name', 'department_name', 'program_name', 'current_level',
-        'acc_year', 'student_state', 'country', 'province', 'district', 'sector',
+        'acc_year', 'student_state', 'learning_mode', 'campus_name', 'country', 'province', 'district', 'sector',
     ];
 
     /**
