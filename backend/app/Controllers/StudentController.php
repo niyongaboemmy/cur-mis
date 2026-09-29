@@ -4611,7 +4611,7 @@ class StudentController extends BaseController
             LEFT JOIN `departements` d   ON d.dep_id     = CAST(NULLIF(s.department, '') AS UNSIGNED)
             LEFT JOIN `schools`      sch ON sch.school_id = f.school_id
             LEFT JOIN `options`      o   ON o.id         = CAST(NULLIF(s.std_option, '') AS UNSIGNED)
-            LEFT JOIN `campuses`     c   ON c.id         = CAST(NULLIF(s.campus, '')     AS UNSIGNED)
+            LEFT JOIN `campuses`     c   ON c.id         = s.campus AND (s.campus IS NOT NULL AND s.campus <> '')
             LEFT JOIN `levels`       lvl ON lvl.id       = CAST(NULLIF(s.current_level, '') AS UNSIGNED)
             " . ($where !== '' ? " WHERE {$where}" : "") . "
             ORDER BY s.id DESC
