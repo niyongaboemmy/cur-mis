@@ -3179,8 +3179,8 @@ class StudentController extends BaseController
             $lower = strtolower((string)$val);
 
             if ($col === 'learning_mode') {
-                // Maps to the legacy `program` column on `student`.
-                $clauses[]  = "LOWER(TRIM({$p}program)) = LOWER(?)";
+                // Use the actual learning_mode column (day, weekend, holiday, evening)
+                $clauses[]  = "LOWER(TRIM({$p}learning_mode)) = LOWER(?)";
                 $bindings[] = trim((string)$val);
                 continue;
             }
@@ -3620,12 +3620,12 @@ class StudentController extends BaseController
         // not the curriculum. Aggregated separately so the UI can show it on
         // its own card instead of conflating it with the real programme.
         $byLearningMode = $db->fetchAll("
-            SELECT program AS value, program AS label, COUNT(*) AS total
+            SELECT learning_mode AS value, learning_mode AS label, COUNT(*) AS total
             FROM student
-            WHERE LOWER(student_state) = 'active'
-              AND program IS NOT NULL AND program <> ''
+            WHERE LOWER(TRIM(student_state)) = 'active'
+              AND learning_mode IS NOT NULL AND TRIM(learning_mode) <> ''
               {$combined}
-            GROUP BY program
+            GROUP BY LOWER(TRIM(learning_mode))
             ORDER BY total DESC
             LIMIT 20
         ", $bind);
