@@ -4260,7 +4260,7 @@ class StudentController extends BaseController
             'department_name'  => ['label' => 'Department',           'group' => 'Academics', 'sql' => "d.dep_name",                                    'alias' => 'department_name'],
             'school_name'      => ['label' => 'School',               'group' => 'Academics', 'sql' => "sch.school_name",                               'alias' => 'school_name'],
             'program_name'     => ['label' => 'Programme Name',       'group' => 'Academics', 'sql' => "COALESCE(o.name, s.program)",                   'alias' => 'program_name'],
-            'campus_name'      => ['label' => 'Campus',               'group' => 'Academics', 'sql' => "c.name",                                        'alias' => 'campus_name'],
+            'campus_name'      => ['label' => 'Campus',               'group' => 'Academics', 'sql' => "s.campus",                                       'alias' => 'campus_name'],
             'current_level'    => ['label' => 'Current Level',        'group' => 'Academics', 'sql' => "COALESCE(lvl.name, s.current_level)",           'alias' => 'current_level'],
             'programme_level'  => ['label' => 'Qualification Level',  'group' => 'Academics', 'sql' => "s.programme_level",                             'alias' => 'programme_level'],
             'category'         => ['label' => 'Category',             'group' => 'Academics', 'sql' => "s.category",                                    'alias' => 'category'],
@@ -4611,7 +4611,6 @@ class StudentController extends BaseController
             LEFT JOIN `departements` d   ON d.dep_id     = CAST(NULLIF(s.department, '') AS UNSIGNED)
             LEFT JOIN `schools`      sch ON sch.school_id = f.school_id
             LEFT JOIN `options`      o   ON o.id         = CAST(NULLIF(s.std_option, '') AS UNSIGNED)
-            LEFT JOIN `campuses`     c   ON c.id         = s.campus AND (s.campus IS NOT NULL AND s.campus <> '')
             LEFT JOIN `levels`       lvl ON lvl.id       = CAST(NULLIF(s.current_level, '') AS UNSIGNED)
             " . ($where !== '' ? " WHERE {$where}" : "") . "
             ORDER BY s.id DESC
