@@ -739,19 +739,7 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
     label: `${f.label} (${f.total.toLocaleString()})`,
   });
 
-  const facultyFacets: FacetOption[] = useMemo(
-    () => (filterOpts?.faculties ?? []).map(withCount),
-    [filterOpts],
-  );
-
-  // Departments narrow to the chosen faculty; with none chosen, all are shown.
-  // The counts already respect the faculty — the server excludes only the
-  // dimension being counted — so this filter is purely about what to offer.
-  const departmentFacetsScoped: FacetOption[] = useMemo(() => {
-    const all = filterOpts?.departments ?? [];
-    const scoped = faculty ? all.filter((d) => d.faculty_id === faculty) : all;
-    return scoped.map(withCount);
-  }, [filterOpts, faculty]);
+  // Faculty and Department facets removed — use Learning mode for attendance mode reports
 
   // Districts belong to a province, sectors to a district — the pairings come
   // from the data, so cascading never offers a combination nobody lives in.
@@ -885,12 +873,7 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
     return progs.map((o: any) => ({ value: String(o.id), label: String(o.name) }));
   }, [allPrograms, department]);
 
-  /** Department is the entry point: choosing one reveals the (dept-scoped)
-   *  programme picker. Switching department clears any programme that belonged
-   *  to the previous one so we never send a mismatched pair. */
-  const onDepartmentChange = (v: string | undefined) => {
-    update({ department: v || undefined, program: undefined });
-  };
+  // onDepartmentChange removed — Faculty and Department filters removed
 
   const onProgramChange = (v: string | undefined) => {
     update({ program: v || undefined });
@@ -993,24 +976,7 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
             placeholder="All years"
             className="w-full sm:w-48"
           />
-          {/* Faculty narrows the department list below it. */}
-          <FilterSelect
-            label="Faculty"
-            value={faculty}
-            onChange={(v) => update({ faculty: v, department: "", program: "" })}
-            options={facultyFacets}
-            placeholder="All faculties"
-            className="w-full sm:w-64"
-          />
-          {/* Department — scoped to the faculty when one is picked. */}
-          <FilterSelect
-            label="Department"
-            value={department}
-            onChange={onDepartmentChange}
-            options={departmentFacetsScoped}
-            placeholder="Select department…"
-            className="w-full sm:w-56"
-          />
+          {/* Faculty and Department filters removed — use Learning mode instead for attendance reports */}
           {/* Option is Education-only — see showOptionFilter. */}
           {showOptionFilter && (
             <FilterSelect
@@ -1062,15 +1028,18 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
             className="w-full sm:w-44"
           />
           <FilterSelect
-            label="Learning mode"
+            label="Learning mode / Attendance"
             value={learning_mode}
             onChange={(v) => update({ learning_mode: v })}
-            options={(stats?.active_breakdown?.by_learning_mode ?? []).map(
-              (r: BreakdownRow) => ({
-                value: r.value,
-                label: r.label ?? r.value,
-              }),
-            )}
+            options={[
+              { value: "", label: "All modes" },
+              ...(stats?.active_breakdown?.by_learning_mode ?? []).map(
+                (r: BreakdownRow) => ({
+                  value: r.value,
+                  label: r.label ?? r.value,
+                }),
+              ),
+            ]}
             placeholder="Select mode…"
             className="w-full sm:w-44"
           />
