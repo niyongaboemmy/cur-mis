@@ -1145,12 +1145,34 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
               </p>
             </div>
             <button
-              onClick={() => setExportOpen(true)}
+              onClick={() => {
+                const columns = ['regnumber', 'full_name', 'email', 'phone', 'campus_name', 'gender', 'nationality', 'learning_mode'];
+                const url = studentService.exportUrl({
+                  columns,
+                  filters: {
+                    q: q || undefined,
+                    program: program || undefined,
+                    current_level: level || undefined,
+                    campus: campus || undefined,
+                    gender: gender || undefined,
+                    nationality: nationality || undefined,
+                    acc_year: accYear || undefined,
+                    student_state: state !== 'all' ? state : undefined,
+                    learning_mode: learning_mode || undefined,
+                    intake: intake || undefined,
+                    sector: sector || undefined,
+                    age_min: ageMin || undefined,
+                    age_max: ageMax || undefined,
+                  },
+                  format: 'xlsx',
+                });
+                studentService.downloadExport(url);
+              }}
               className="btn-primary btn-sm inline-flex items-center gap-2 shrink-0"
-              title="Export selected students"
+              title="Download as Excel"
             >
               <Download className="w-4 h-4" />
-              Export CSV
+              Download
             </button>
           </div>
         </div>
