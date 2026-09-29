@@ -44,6 +44,8 @@ const PENDING_FILTER = 'pending' as const       // submitted OR documents_under_
 const IN_REVIEW_FILTER = 'in_review' as const   // documents_under_review OR documents_verified — matches the "In Review" tile.
 const OFFERS_FILTER = 'offers_queue' as const   // offered OR offer_accepted — matches the "Offers" tile.
 const ACTION_FILTER = 'action_needed' as const  // documents_rejected OR requested_changes — matches the "Action" tile.
+const WITHDRAWN_FILTER = ApplicationStatus.WITHDRAWN as const
+const OFFER_DECLINED_FILTER = ApplicationStatus.OFFER_DECLINED as const
 
 const STATUSES: { value: string; label: string }[] = [
   { value: '',                                       label: 'All statuses' },
@@ -170,7 +172,9 @@ export default function ApplicationsListPage() {
     const offers = (counts.offered ?? 0) + (counts.offer_accepted ?? 0)
     const enrolled = counts.enrolled ?? 0
     const actionNeeded = (counts.documents_rejected ?? 0) + (counts.requested_changes ?? 0)
-    return { totalAll, submitted, pending, inReview, offers, enrolled, actionNeeded }
+    const withdrawn = counts.withdrawn ?? 0
+    const offerDeclined = counts.offer_declined ?? 0
+    return { totalAll, submitted, pending, inReview, offers, enrolled, actionNeeded, withdrawn, offerDeclined }
   }, [statsQ.data])
 
   const modeOptions = useMemo(() => {
@@ -284,7 +288,7 @@ export default function ApplicationsListPage() {
 
           {/* Stats strip — clicking a tile applies the matching status filter. */}
           <div className="card p-5 bg-white dark:bg-ink-900 shadow-sm border border-white dark:border-ink-800/50">
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-8 gap-2.5">
             <StatTile
               icon={FileText} label="Total Applications" value={stats.totalAll}
               accent="bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
@@ -322,6 +326,18 @@ export default function ApplicationsListPage() {
               highlight={stats.actionNeeded > 0}
               active={status === ACTION_FILTER}
               onClick={() => { setStatus(ACTION_FILTER); setPage(1) }}
+            />
+            <StatTile
+              icon={X} label="Withdrawn" value={stats.withdrawn}
+              accent="bg-slate-50 text-slate-700 dark:bg-slate-900/30 dark:text-slate-300"
+              active={status === WITHDRAWN_FILTER}
+              onClick={() => { setStatus(WITHDRAWN_FILTER); setPage(1) }}
+            />
+            <StatTile
+              icon={Archive} label="Declined" value={stats.offerDeclined}
+              accent="bg-slate-50 text-slate-700 dark:bg-slate-900/30 dark:text-slate-300"
+              active={status === OFFER_DECLINED_FILTER}
+              onClick={() => { setStatus(OFFER_DECLINED_FILTER); setPage(1) }}
             />
             </div>
           </div>
