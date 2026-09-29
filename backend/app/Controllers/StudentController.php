@@ -781,6 +781,14 @@ class StudentController extends BaseController
             $data['regnumber'] = 'CUR/' . $year . '/' . str_pad((string)random_int(1, 99999), 5, '0', STR_PAD_LEFT);
         }
 
+        // Default to Taba Campus if not provided
+        $campusId = null;
+        if (!empty($data['campus'])) {
+            $campusId = $this->resolveCampusByIdOrName((string)$data['campus']);
+        } else {
+            $campusId = $this->getTabaCampusId();
+        }
+
         $id = $this->studentModel->create([
             'regnumber'         => $data['regnumber'],
             'fname'             => trim($data['fname']),
@@ -797,6 +805,7 @@ class StudentController extends BaseController
             'current_level'     => $data['current_level'] ?? null,
             'registration_date' => $data['registration_date'] ?? date('Y-m-d'),
             'student_state'     => $data['student_state'] ?? 'active',
+            'campus'            => $campusId,
         ]);
 
         $this->success($response, ['id' => $id], 'Student created successfully.', 201);
@@ -843,12 +852,18 @@ class StudentController extends BaseController
             'intake', 'acc_year', 'sponsor', 'marital_status', 'spouse',
             'disability', 'father', 'mother', 'reference', 'id_card',
             'country', 'province', 'district', 'sector', 'cell', 'village',
-            'student_state',
+            'student_state', 'campus',
         ];
         foreach ($stringCols as $col) {
             if (array_key_exists($col, $data)) {
                 $val = $data[$col];
-                $patch[$col] = is_string($val) ? trim($val) : $val;
+                if ($col === 'campus' && $val !== '') {
+                    // Resolve campus name/id to numeric id
+                    $resolved = $this->resolveCampusByIdOrName((string)$val);
+                    $patch[$col] = $resolved ?: null;
+                } else {
+                    $patch[$col] = is_string($val) ? trim($val) : $val;
+                }
             }
         }
 
@@ -1244,6 +1259,14 @@ class StudentController extends BaseController
         return $row ? (string)(int)$row['id'] : false;
     }
 
+    private function getTabaCampusId(): null|string
+    {
+        $row = $this->studentModel->db()->fetchOne(
+            "SELECT id FROM `campuses` WHERE LOWER(name) = LOWER('Taba') LIMIT 1"
+        );
+        return $row ? (string)(int)$row['id'] : null;
+    }
+
     /**
      * POST /api/students/bulk-validate
      * Dry-run preview: parses the uploaded CSV, normalises rows, checks
@@ -1405,9 +1428,8 @@ class StudentController extends BaseController
                     $results['skipped']++;
                     continue;
                 }
-                // Resolve campus name/id → numeric id string. Blank stays
-                // blank; an unrecognised value blocks the row instead of
-                // silently dropping the column.
+                // Resolve campus name/id → numeric id string. If blank, default
+                // to Taba Campus; an unrecognised value blocks the row.
                 $campusVal = (string)($assoc['campus'] ?? '');
                 $campusId  = null;
                 if ($campusVal !== '') {
@@ -1418,6 +1440,9 @@ class StudentController extends BaseController
                         continue;
                     }
                     $campusId = $resolved;
+                } else {
+                    // Default to Taba Campus if none provided
+                    $campusId = $this->getTabaCampusId();
                 }
 
                 $regnum = trim((string)($assoc['regnumber'] ?? ''));
