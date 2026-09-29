@@ -1116,6 +1116,30 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
         )}
       </section>
 
+      {/* Learning mode summary card */}
+      {learning_mode && (
+        <section className="card p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border border-blue-200 dark:border-blue-800">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.2em] font-bold text-blue-600 dark:text-blue-400 mb-1">
+                Learning Mode Filter
+              </p>
+              <p className="text-sm text-ink-600 dark:text-ink-300">
+                Showing students in <span className="font-semibold text-ink-900 dark:text-ink-100">{learning_mode}</span> mode
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-4xl font-bold text-blue-600 dark:text-blue-400">
+                {total.toLocaleString()}
+              </p>
+              <p className="text-[11px] text-ink-500">
+                {total === 1 ? "student" : "students"}
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Table */}
       <section className="card p-0 overflow-hidden">
         <Header
@@ -1194,6 +1218,13 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
                     <SortableHeader
                       label="Nationality"
                       field="nationality"
+                      currentSort={sort_by}
+                      currentDir={sort_dir}
+                      onSort={handleSort}
+                    />
+                    <SortableHeader
+                      label="Learning Mode"
+                      field="learning_mode"
                       currentSort={sort_by}
                       currentDir={sort_dir}
                       onSort={handleSort}
@@ -1422,6 +1453,11 @@ function StudentRow({
         <GenderCell studentId={s.id} gender={s.gender as string | null | undefined} />
       </td>
       <td>{s.nationality || "—"}</td>
+      <td className="text-[12.5px] text-ink-700 dark:text-ink-200">
+        <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-ink-100 dark:bg-ink-700/50 text-ink-700 dark:text-ink-300 font-medium">
+          {s.learning_mode || "—"}
+        </span>
+      </td>
       <td className="px-4">
         <DocumentCompletionBadge
           status={documentStatus}
