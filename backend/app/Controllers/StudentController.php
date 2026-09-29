@@ -4642,9 +4642,7 @@ class StudentController extends BaseController
      * identify each student and see the cut the filter made.
      */
     private const DEFAULT_EXPORT_COLUMNS = [
-        'regnumber', 'full_name', 'gender', 'birthdate', 'email', 'phone',
-        'faculty_name', 'department_name', 'program_name', 'current_level',
-        'acc_year', 'student_state', 'learning_mode', 'campus_name', 'country', 'province', 'district', 'sector',
+        'regnumber', 'full_name', 'email', 'phone', 'campus_name', 'gender', 'nationality', 'learning_mode',
     ];
 
     /**
