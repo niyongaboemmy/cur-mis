@@ -4256,8 +4256,8 @@ class StudentController extends BaseController
             'disability_type'  => ['label' => 'Disability Type',      'group' => 'Disability', 'sql' => "s.disability",                                 'alias' => 'disability_type'],
 
             // ── Academics ──
-            'faculty_name'     => ['label' => 'Faculty',              'group' => 'Academics', 'sql' => "f.fac_name",                                    'alias' => 'faculty_name'],
-            'department_name'  => ['label' => 'Department',           'group' => 'Academics', 'sql' => "d.dep_name",                                    'alias' => 'department_name'],
+            'faculty_name'     => ['label' => 'Faculty',              'group' => 'Academics', 'sql' => "COALESCE(f.fac_name, s.faculty)",               'alias' => 'faculty_name'],
+            'department_name'  => ['label' => 'Department',           'group' => 'Academics', 'sql' => "COALESCE(d.dep_name, s.department)",           'alias' => 'department_name'],
             'school_name'      => ['label' => 'School',               'group' => 'Academics', 'sql' => "sch.school_name",                               'alias' => 'school_name'],
             'program_name'     => ['label' => 'Programme Name',       'group' => 'Academics', 'sql' => "COALESCE(o.name, s.program)",                   'alias' => 'program_name'],
             'campus_name'      => ['label' => 'Campus',               'group' => 'Academics', 'sql' => "s.campus",                                       'alias' => 'campus_name'],
