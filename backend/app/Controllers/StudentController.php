@@ -3547,8 +3547,8 @@ class StudentController extends BaseController
         $row = $db->fetchOne("
             SELECT
               COUNT(*) AS total,
-              SUM(CASE WHEN LOWER(TRIM(student_state)) = 'active'   THEN 1 ELSE 0 END) AS active,
-              SUM(CASE WHEN LOWER(student_state) = 'inactive' THEN 1 ELSE 0 END) AS inactive,
+              SUM(CASE WHEN LOWER(TRIM(student_state)) IN ('active', 'resume')   THEN 1 ELSE 0 END) AS active,
+              SUM(CASE WHEN LOWER(TRIM(student_state)) IN ('inactive', 'in-active', 'in active') THEN 1 ELSE 0 END) AS inactive,
               SUM(CASE WHEN LOWER(gender) IN ('m','male')     THEN 1 ELSE 0 END) AS male,
               SUM(CASE WHEN LOWER(gender) IN ('f','female')   THEN 1 ELSE 0 END) AS female,
               SUM(CASE WHEN LOWER(TRIM(nationality)) IN ('rwandan','rwandana','rwandese') THEN 1 ELSE 0 END) AS rwandan,
@@ -3561,29 +3561,29 @@ class StudentController extends BaseController
               COUNT(DISTINCT acc_year) AS academic_years,
 
               -- ─── Active-only slices (for the Active Students tab) ───
-              SUM(CASE WHEN LOWER(TRIM(student_state)) = 'active' AND LOWER(gender) IN ('m','male')   THEN 1 ELSE 0 END) AS active_male,
-              SUM(CASE WHEN LOWER(TRIM(student_state)) = 'active' AND LOWER(gender) IN ('f','female') THEN 1 ELSE 0 END) AS active_female,
-              SUM(CASE WHEN LOWER(TRIM(student_state)) = 'active'
+              SUM(CASE WHEN LOWER(TRIM(student_state)) IN ('active', 'resume') AND LOWER(gender) IN ('m','male')   THEN 1 ELSE 0 END) AS active_male,
+              SUM(CASE WHEN LOWER(TRIM(student_state)) IN ('active', 'resume') AND LOWER(gender) IN ('f','female') THEN 1 ELSE 0 END) AS active_female,
+              SUM(CASE WHEN LOWER(TRIM(student_state)) IN ('active', 'resume')
                         AND (gender IS NULL OR gender = '' OR LOWER(gender) NOT IN ('m','male','f','female'))
                         THEN 1 ELSE 0 END) AS active_unknown_gender,
-              SUM(CASE WHEN LOWER(TRIM(student_state)) = 'active' AND LOWER(TRIM(nationality)) IN ('rwandan','rwandana','rwandese') THEN 1 ELSE 0 END) AS active_rwandan,
-              SUM(CASE WHEN LOWER(TRIM(student_state)) = 'active' AND (
+              SUM(CASE WHEN LOWER(TRIM(student_state)) IN ('active', 'resume') AND LOWER(TRIM(nationality)) IN ('rwandan','rwandana','rwandese') THEN 1 ELSE 0 END) AS active_rwandan,
+              SUM(CASE WHEN LOWER(TRIM(student_state)) IN ('active', 'resume') AND (
                         is_international = 1 OR (
                             nationality IS NOT NULL AND TRIM(nationality) <> ''
                             AND LOWER(TRIM(nationality)) NOT IN ('rwanda','rwandan','rwandese','rwandaise','')
                         ) OR LOWER(TRIM(nationality)) = 'foreign'
                     )
                         THEN 1 ELSE 0 END) AS active_foreign,
-              SUM(CASE WHEN LOWER(TRIM(student_state)) = 'active'
+              SUM(CASE WHEN LOWER(TRIM(student_state)) IN ('active', 'resume')
                         AND (nationality IS NULL OR TRIM(nationality) = '')
                         THEN 1 ELSE 0 END) AS active_unknown_nationality,
               -- Only count faculty/department references that resolve to a real
               -- catalogue row — some legacy student rows hold stray TEXT in these
               -- numeric-id columns (e.g. 'Faculty of Education', 'DMC') which would
               -- otherwise inflate the distinct count.
-              COUNT(DISTINCT CASE WHEN LOWER(TRIM(student_state)) = 'active' AND faculty  <> '' AND faculty    IN (SELECT fac_id FROM faculty)      THEN faculty    END) AS active_faculties,
-              COUNT(DISTINCT CASE WHEN LOWER(TRIM(student_state)) = 'active' AND department <> '' AND department IN (SELECT dep_id FROM departements) THEN department END) AS active_departments,
-              COUNT(DISTINCT CASE WHEN LOWER(TRIM(student_state)) = 'active' AND acc_year <> '' THEN acc_year END) AS active_academic_years
+              COUNT(DISTINCT CASE WHEN LOWER(TRIM(student_state)) IN ('active', 'resume') AND faculty  <> '' AND faculty    IN (SELECT fac_id FROM faculty)      THEN faculty    END) AS active_faculties,
+              COUNT(DISTINCT CASE WHEN LOWER(TRIM(student_state)) IN ('active', 'resume') AND department <> '' AND department IN (SELECT dep_id FROM departements) THEN department END) AS active_departments,
+              COUNT(DISTINCT CASE WHEN LOWER(TRIM(student_state)) IN ('active', 'resume') AND acc_year <> '' THEN acc_year END) AS active_academic_years
             FROM student
             WHERE 1=1{$combined}
         ", $bind) ?: [];
