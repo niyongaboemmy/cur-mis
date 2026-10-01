@@ -116,7 +116,7 @@ export const DOCUMENT_TYPES: DocumentTypeDef[] = [
 
   // Registration
   {
-    slug: 'generic_document',
+    slug: 'registration_form',
     label: 'Registration Form',
     fileName: 'Registration_Form.pdf',
     group: 'Registration',
