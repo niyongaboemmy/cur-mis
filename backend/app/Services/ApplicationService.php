@@ -539,6 +539,19 @@ class ApplicationService
             }
         }
 
+        // Fetch applicant's profile photo to carry forward to the student record
+        $applicantPhoto = null;
+        if ($applicationId > 0) {
+            $photoRow = $this->db->fetchOne(
+                "SELECT COALESCE(ap.profile_photo_id, u.photo) AS photo_id
+                 FROM `applicant_profiles` ap
+                 LEFT JOIN `users` u ON u.id = ap.user_id
+                 WHERE ap.application_id = ? LIMIT 1",
+                [$applicationId]
+            );
+            $applicantPhoto = $photoRow['photo_id'] ?? null;
+        }
+
         // Map application → student table columns. `std_option` carries the
         // option/program id selected on the application; the curriculum
         // endpoint joins on it to pull the program's modules.
@@ -573,6 +586,7 @@ class ApplicationService
             'intake'            => $offer['intake'] ?? '',
             'acc_year'          => $accYearLabel,
             'index_number'      => $applicantNid ?: null,
+            'photo'             => $applicantPhoto,
         ];
 
         $studentId = (int)$this->studentModel->create($studentData);
