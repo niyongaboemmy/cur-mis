@@ -47,7 +47,6 @@ import ProfileChangeReviewPanel from '@/components/students/ProfileChangeReviewP
 import GenderEditPopover from '@/components/students/GenderEditPopover'
 import DocumentGenerateMenu from '@/components/students/DocumentGenerateMenu'
 import { useAuthStore } from "@/store/authStore";
-import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 const PER_PAGE = 15;
 

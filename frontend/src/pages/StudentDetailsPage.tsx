@@ -225,7 +225,7 @@ export default function StudentDetailsPage({
 
   const student = studentQ.data?.data;
   const stats = statsQ.data?.data;
-  const applicantPhoto = applicantPhotoQ.data;
+  const applicantPhoto: { applicationId: number; applicant_photo_id: string } | null | undefined = applicantPhotoQ.data;
 
   if (studentQ.isLoading) {
     return (
