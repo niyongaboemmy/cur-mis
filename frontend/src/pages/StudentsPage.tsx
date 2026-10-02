@@ -580,6 +580,9 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
   const allowedRoles = ['Academic Secretary', 'Admin', 'registrar', 'superadmin', 'Director of Finance and Administration'];
   const canGenerateDocuments = !!(user?.role_name && allowedRoles.includes(user.role_name));
 
+  // Admin, Registrar, and Super Admin can delete students
+  const canDeleteStudents = !!(user?.role_name && ['Admin', 'registrar', 'superadmin'].includes(user.role_name));
+
   // Entity data for filters. Departments + programs are loaded once and
   // shown flat — no faculty cascade — so the user can pick either directly.
   // Departments now come from /students/filter-options together with their
@@ -1313,7 +1316,7 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
                         else next.delete(s.id);
                         setSelectedIds(next);
                       }}
-                      onDelete={(studentId) => deleteMutation.mutate(studentId)}
+                      onDelete={canDeleteStudents ? (studentId) => deleteMutation.mutate(studentId) : undefined}
                     />
                   ))}
                 </tbody>
