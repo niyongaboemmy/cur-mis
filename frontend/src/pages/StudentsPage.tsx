@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams, Link, useNavigate } from "react-router-dom";
+import toast from "react-hot-toast";
 import {
   Search,
   Loader2,
@@ -18,6 +19,7 @@ import {
   Download,
   Upload,
   FileText,
+  Trash2,
 } from "lucide-react";
 import {
   studentService,
@@ -45,6 +47,7 @@ import ProfileChangeReviewPanel from '@/components/students/ProfileChangeReviewP
 import GenderEditPopover from '@/components/students/GenderEditPopover'
 import DocumentGenerateMenu from '@/components/students/DocumentGenerateMenu'
 import { useAuthStore } from "@/store/authStore";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 const PER_PAGE = 15;
 
@@ -706,10 +709,35 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
     sort_dir,
   ]);
 
+  const qc = useQueryClient();
+
   const listQ = useQuery({
     queryKey: ["students", listParams, selectedCampusId, selectedCategory ?? "all"],
     queryFn: () => studentService.list(listParams),
     placeholderData: (prev) => prev,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (studentId: number) => {
+      const response = await fetch(`/api/students/${studentId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${useAuthStore.getState().token}`,
+        },
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to delete student');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      toast.success('Student deleted successfully');
+      qc.invalidateQueries({ queryKey: ["students"] });
+    },
+    onError: (error: any) => {
+      toast.error(error.message);
+    },
   });
 
   // Values for the filter bar, each carrying the number of students it would
@@ -1285,6 +1313,7 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
                         else next.delete(s.id);
                         setSelectedIds(next);
                       }}
+                      onDelete={(studentId) => deleteMutation.mutate(studentId)}
                     />
                   ))}
                 </tbody>
@@ -1387,12 +1416,14 @@ function StudentRow({
   isSelected,
   canGenerateDocuments,
   onToggleSelect,
+  onDelete,
 }: {
   s: Student;
   searchParams?: URLSearchParams;
   isSelected?: boolean;
   canGenerateDocuments?: boolean;
   onToggleSelect?: (checked: boolean) => void;
+  onDelete?: (studentId: number) => void;
 }) {
   const navigate = useNavigate();
   const [docMenuAnchor, setDocMenuAnchor] = useState<DOMRect | null>(null);
@@ -1539,6 +1570,21 @@ function StudentRow({
             <Eye className="w-3.5 h-3.5" />
             <span>View</span>
           </Link>
+          {onDelete && (
+            <button
+              type="button"
+              className="btn-secondary btn-sm px-2.5 py-1.5 rounded-md text-red-600 dark:text-red-400 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/10 inline-flex items-center gap-1.5 whitespace-nowrap"
+              title="Delete Student"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (window.confirm(`Delete ${[s.fname, s.lname].filter(Boolean).join(" ")}? This cannot be undone.`)) {
+                  onDelete(s.id);
+                }
+              }}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </td>
     </tr>

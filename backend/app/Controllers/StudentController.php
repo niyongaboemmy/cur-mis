@@ -1071,7 +1071,9 @@ class StudentController extends BaseController
     }
 
     /**
-     * Delete a student record.
+     * DELETE /api/students/:id
+     * Permanently delete a student from all tables if they have no marks or paid fees.
+     * Only allowed for admin and registrar roles.
      */
     public function delete(Request $request, Response $response): never
     {
@@ -1082,8 +1084,33 @@ class StudentController extends BaseController
             $this->error($response, 'Student not found', 404);
         }
 
+        // Check for marks
+        $marksCount = $this->db->fetchOne(
+            "SELECT COUNT(*) AS cnt FROM `student_marks` WHERE student_id = ?",
+            [$id]
+        );
+        if (($marksCount['cnt'] ?? 0) > 0) {
+            $this->error($response, 'Cannot delete student with existing marks', 422);
+        }
+
+        // Check for paid invoices/transactions
+        $paidCount = $this->db->fetchOne(
+            "SELECT COUNT(*) AS cnt FROM `student_invoices` WHERE student_id = ? AND status = 'paid'",
+            [$id]
+        );
+        if (($paidCount['cnt'] ?? 0) > 0) {
+            $this->error($response, 'Cannot delete student with paid invoices', 422);
+        }
+
+        // Delete from related tables
+        $this->db->execute("DELETE FROM `student_marks` WHERE student_id = ?", [$id]);
+        $this->db->execute("DELETE FROM `student_invoices` WHERE student_id = ?", [$id]);
+        $this->db->execute("DELETE FROM `student_attendance` WHERE student_id = ?", [$id]);
+        $this->db->execute("DELETE FROM `student_exemptions` WHERE student_id = ?", [$id]);
+
+        // Delete the student record
         $this->studentModel->delete($id);
-        $this->success($response, null, 'Student deleted successfully.');
+        $this->success($response, null, 'Student deleted permanently from all tables.');
     }
 
     /* ─────────────────────────────────────────────────────────────────
