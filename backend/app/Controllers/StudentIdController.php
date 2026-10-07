@@ -57,7 +57,7 @@ class StudentIdController extends BaseController
                 'total'        => $total,
                 'last_page'    => (int) max(1, ceil($total / $perPage)),
             ],
-        ], 'ID card roster fetched.');
+        ], 'ID card list fetched.');
     }
 
     // ── POST /api/student-ids/batch-issue ─────────────────────────────────────

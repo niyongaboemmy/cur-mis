@@ -9,7 +9,7 @@ import {
 import { teacherService, type TeacherClassStudent } from '@/services/teacherService'
 import { useAuthStore } from '@/store/authStore'
 import Modal from '@/components/ui/Modal'
-// The very same date-strip + roster editor the /attendance page uses, so a
+// The very same date-strip + attendance editor the /attendance page uses, so a
 // lecturer records attendance in place instead of being sent off to re-pick the
 // module they already have open.
 import { RecordTab, DateStrip, mostRecentAllowedDate } from '@/pages/AttendancePage'
@@ -512,7 +512,7 @@ export default function TeacherCourseDetailPage() {
   }
 
   const [search, setSearch] = useState('')
-  /** Attendance tab: false = review the history, true = the editable roster. */
+  /** Attendance tab: false = review the history, true = the editable attendance list (enrollment). */
   const [recording, setRecording] = useState(false)
   /** Marks tab: false = read-only summary, true = the editable mark sheet. */
   const [editingMarks, setEditingMarks] = useState(false)
@@ -576,7 +576,7 @@ export default function TeacherCourseDetailPage() {
   )
   // ── What was recorded on the selected day ───────────────────────────────
   // Two hops, both already lecturer-scoped server-side: find the session for
-  // (module, date), then load its roster with each student's marked status.
+  // (module, date), then load its enrollment list with each student's marked status.
   const findQ = useQuery({
     queryKey: ['teacher', 'findSession', id, sessionDate],
     queryFn:  () => attendanceService.findSession({
@@ -736,7 +736,7 @@ export default function TeacherCourseDetailPage() {
           INSIDE that stacking context — so they resolve against 30. A z-30
           page header appears later in the DOM and therefore won the tie,
           clipping those menus. 25 keeps this header above the page content and
-          above the embedded roster's own `sticky z-20` bar, while staying
+          above the embedded attendance editor's own `sticky z-20` bar, while staying
           under the topbar.
 
           1. Horizontally, the negative margins + matching padding let the
@@ -974,7 +974,7 @@ export default function TeacherCourseDetailPage() {
                     isLoading={false}
                     isError={dayQ.isError}
                     isEmpty={dayRoster.length === 0}
-                    emptyText={search ? 'No student matches that search.' : 'No students on this roster.'}
+                    emptyText={search ? 'No student matches that search.' : 'No students in the enrollment list for this session.'}
                   >
                     {dayRoster.map((r) => {
                       const name = `${r.fname ?? ''} ${r.lname ?? ''}`.trim() || r.regnumber

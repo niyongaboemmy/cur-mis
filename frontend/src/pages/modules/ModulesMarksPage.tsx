@@ -1348,7 +1348,7 @@ export function MarksEditor({
   const canUnlock  = canConfirm
   const canImport  = canExport && canWrite && (!isLocked || canUnlock)
   const importHint = !canExport
-    ? 'Nothing to import into — this module has no roster for the term.'
+    ? 'Nothing to import into — this module has no student enrollment list for the term.'
     : isLocked
       ? (canUnlock
           ? `These marks are ${status} and locked — importing re-opens the sheet for editing first.`
@@ -2780,7 +2780,7 @@ function ImportPreviewModal({
                               ? <span className="text-ink-400 inline-flex items-center gap-1">Kept as is</span>
                               : <span className="text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Update</span>)
                           : <span className="text-ink-400">Unchanged</span>)
-                      : <span className="text-amber-700 dark:text-amber-300 inline-flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Not in roster</span>}
+                      : <span className="text-amber-700 dark:text-amber-300 inline-flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Not in enrollment list</span>}
                   </td>
                   <td className="px-3 py-1.5 font-mono">{e.regnumber}</td>
                   <td className="px-3 py-1.5">{e.matched ? `${e.fname} ${e.lname}` : '—'}</td>

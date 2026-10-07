@@ -95,7 +95,7 @@ class AttendanceReportPdf
     <div class="kpi big"><span>Attendance</span><b>{$attendancePct}%</b></div>
   </section>
 
-  <table class="roster">
+  <table class="enrollment-list">
     <thead>
       <tr>
         <th class="num">#</th>

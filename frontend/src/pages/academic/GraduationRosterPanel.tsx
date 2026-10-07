@@ -30,9 +30,9 @@ const STATUSES: GraduandStatus[] = ['waiting', 'pending', 'approved', 'graduated
  * How a suggested class was arrived at, for the cell's tooltip: the levels
  * assessed, the credit majority that carried it, and anything the record could
  * not confirm. A registrar committing a class needs to be able to see the
- * working without leaving the roster.
+ * working without leaving the graduation list.
  */
-function rosterClassWorking(r: ReadyRow): string | undefined {
+function classificationWorking(r: ReadyRow): string | undefined {
   const c = r.classification
   if (!c || c.modules === 0) return undefined
 
@@ -618,7 +618,7 @@ export default function GraduationRosterPanel() {
                       read the same — the status column already says whether it
                       has been committed. The title carries the working, since
                       the class is not something the average alone explains. */}
-                  <span title={rosterClassWorking(r)}>
+                  <span title={classificationWorking(r)}>
                     {r.degree_class ?? r.suggested_class ?? '—'}
                   </span>
                 </td>

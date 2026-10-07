@@ -686,7 +686,7 @@
             <li>Audit the distinct values in <code>student.intake</code> first. Everything else depends on how far the real data is from the three intended intakes — do this before writing the migration, not after.</li>
             <li>Migration 146: seed January / May / September in <code>intakes</code>, add <code>student.intake_id</code> as a proper foreign key, backfill from the free-text column, and add <code>student.mode_of_study</code> backfilled from the linked application. Keep the legacy text column beside the id rather than replacing it, per the project's convention for id-plus-name columns.</li>
             <li>Anything that will not map cleanly gets reported for the registry to resolve by hand — never guessed.</li>
-            <li>Add <code>intake_id</code>, <code>mode_of_study</code> and <code>level</code> to the lecturer's students query and course roster, and filter controls in the teacher portal, with each student's intake visible on the row so a mixed class reads at a glance.</li>
+            <li>Add <code>intake_id</code>, <code>mode_of_study</code> and <code>level</code> to the lecturer's students query and course enrollment list, and filter controls in the teacher portal, with each student's intake visible on the row so a mixed class reads at a glance.</li>
           </ul>
         </div>
 

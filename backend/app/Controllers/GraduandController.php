@@ -767,7 +767,7 @@ class GraduandController extends BaseController
                 'students' => (int)$y['students'],
             ], $years),
             'computed_at' => GraduationAuditService::snapshotComputedAt(),
-        ], 'Graduation roster fetched.');
+        ], 'Graduation list fetched.');
     }
 
 
