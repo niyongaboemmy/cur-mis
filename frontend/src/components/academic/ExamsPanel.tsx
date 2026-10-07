@@ -507,7 +507,7 @@ export default function ExamsPanel() {
                             }`}
                             title={row.registered_count > 0
                               ? `${row.registered_count} student${row.registered_count === 1 ? '' : 's'} registered — click to view attendance list`
-                              : 'No students enrolled for this exam yet — click to view enrollment list (roster)'}
+                              : 'No students enrolled for this exam yet — click to view enrollment list'}
                             onClick={(e) => { e.stopPropagation(); setAttendanceId(row.id) }}
                           >
                             <Users className="w-3.5 h-3.5" />
