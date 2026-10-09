@@ -69,7 +69,14 @@ class StudentIdCardHelper
         $name    = htmlspecialchars(strtoupper($name) ?: '—');
         $reg     = htmlspecialchars((string) ($student['regnumber'] ?? '—'));
         $faculty = htmlspecialchars((string) ($student['fac_name'] ?? ($student['faculty'] ?? '—')));
-        $dept    = htmlspecialchars((string) ($student['dep_name'] ?? ($student['department'] ?? '—')));
+
+        // Check if department column contains text (non-numeric); if so, use program instead
+        $deptValue = (string) ($student['department'] ?? '');
+        $deptDisplay = (!is_numeric($deptValue) && $deptValue !== '')
+            ? (string) ($student['program'] ?? '—')
+            : (string) ($student['dep_name'] ?? ($student['department'] ?? '—'));
+        $dept    = htmlspecialchars($deptDisplay);
+
         $level   = htmlspecialchars(LevelHelper::name($student['level_name'] ?? $student['current_level'] ?? null, '—'));
         $mode    = htmlspecialchars(self::normalizeMode((string) ($student['learning_mode'] ?? '')));
 
