@@ -71,7 +71,7 @@ class StudentIdCardHelper
         $faculty = htmlspecialchars((string) ($student['fac_name'] ?? ($student['faculty'] ?? '—')));
         $dept    = htmlspecialchars((string) ($student['dep_name'] ?? ($student['department'] ?? '—')));
         $level   = htmlspecialchars(LevelHelper::name($student['level_name'] ?? $student['current_level'] ?? null, '—'));
-        $mode    = htmlspecialchars(self::normalizeMode((string) ($student['program'] ?? '')));
+        $mode    = htmlspecialchars(self::normalizeMode((string) ($student['learning_mode'] ?? '')));
 
         // ── Postgraduate vs undergraduate ───────────────────────────────────
         // Masters and postgraduate students sit under the Centre for Post
@@ -110,7 +110,7 @@ class StudentIdCardHelper
             $detailRows = '<div class="details-row"><span class="lbl">Faculty:</span> <span class="val">' . $faculty . '</span></div>'
                 . '<div class="details-row"><span class="lbl">Dep:</span> <span class="val">' . $dept . '</span></div>'
                 . '<div class="details-row"><span class="lbl">Class:</span> <span class="val">' . $level . '</span></div>'
-                . '<div class="details-row"><span class="lbl">Program:</span> <span class="val">' . $mode . '</span></div>';
+                . '<div class="details-row"><span class="lbl">Learning Mode:</span> <span class="val">' . $mode . '</span></div>';
         }
 
         $barcode = (string) ($card['barcode'] ?? $reg);
