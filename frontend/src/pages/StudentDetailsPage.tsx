@@ -12,7 +12,6 @@ import {
   type StudentPatch,
   type ProgramModuleRow,
 } from "@/services/studentService";
-import { applicationAdminService } from "@/services/admissionService";
 import { authService } from "@/services/authService";
 import {
   marksService,
@@ -193,40 +192,8 @@ export default function StudentDetailsPage({
     enabled: !selfMode,
   });
 
-  // Fetch applicant profile photo as fallback when student.photo is empty
-  // This pulls photos for enrolled students whose applicant profiles have photos
-  const applicantPhotoQ = useQuery({
-    queryKey: ["student", id, "applicant-photo"],
-    queryFn: async () => {
-      // Find the application for this student and get applicant_photo_id
-      try {
-        const response = await fetch(
-          `/api/admin/applications?search=${encodeURIComponent(String(id))}&per_page=1`,
-          {
-            headers: {
-              Authorization: `Bearer ${authService.getToken()}`,
-            },
-          }
-        );
-        if (!response.ok) return null;
-        const data = await response.json();
-        const app = data.data?.[0];
-        if (!app?.id || !app?.applicant_photo_id) return null;
-        return {
-          applicationId: app.id,
-          applicant_photo_id: app.applicant_photo_id,
-        };
-      } catch {
-        return null;
-      }
-    },
-    enabled: !selfMode && !!id && !studentQ.data?.data?.photo,
-    staleTime: Infinity,
-  });
-
   const student = studentQ.data?.data;
   const stats = statsQ.data?.data;
-  const applicantPhoto: { applicationId: number; applicant_photo_id: string } | null | undefined = applicantPhotoQ.data;
 
   if (studentQ.isLoading) {
     return (
@@ -507,7 +474,6 @@ function OverviewTab({
             student={student}
             initials={initials}
             selfMode={selfMode}
-            applicantPhoto={applicantPhoto}
           />
 
           <div className="flex-1 min-w-0">
@@ -2225,12 +2191,10 @@ function ProfileHeroPhoto({
   student,
   initials,
   selfMode,
-  applicantPhoto,
 }: {
   student: any;
   initials: string;
   selfMode: boolean;
-  applicantPhoto?: { applicationId: number; applicant_photo_id: string } | null;
 }) {
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -2326,8 +2290,6 @@ function ProfileHeroPhoto({
       ? selfMode
         ? studentService.myPhotoUrl(`${student.photo}-${v}`)
         : studentService.photoUrl(student.id, `${student.photo}-${v}`)
-      : applicantPhoto && applicantPhoto.applicationId
-      ? applicationAdminService.photoUrl(applicantPhoto.applicationId, applicantPhoto.applicant_photo_id)
       : null);
 
   const busy     = upload.isPending || remove.isPending;
