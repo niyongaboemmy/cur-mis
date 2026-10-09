@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { applicantService, portalService } from "@/services/admissionService";
 import { systemService } from "@/services/systemService";
+import { useAuthStore } from "@/store/authStore";
 import { ApplicationStatus } from "@/types/admission";
 import Modal from "@/components/ui/Modal";
 import { Field } from "@/components/applicant/ApplicantPortalShared";
@@ -886,10 +887,32 @@ function EditApplicationModal({
     queryKey: ["portal", "levels"],
     queryFn: () => portalService.getLevels(),
   });
+  const programmeTypesQ = useQuery({
+    queryKey: ["portal", "programme-types"],
+    queryFn: () => portalService.getProgrammeTypes(),
+  });
+  const optionsQ = useQuery({
+    queryKey: ["portal", "departments", form?.department_id, "options"],
+    queryFn: async () => {
+      const response = await fetch(
+        `/api/portal/departments/${form?.department_id}/options`,
+        {
+          headers: {
+            Authorization: `Bearer ${useAuthStore.getState().token}`,
+          },
+        }
+      );
+      if (!response.ok) throw new Error("Failed to load options");
+      return response.json();
+    },
+    enabled: !!form?.department_id,
+  });
 
   const faculties = facultiesQ.data?.data ?? [];
   const departments = departmentsQ.data?.data ?? [];
   const levels = levelsQ.data?.data ?? [];
+  const programmeTypes = programmeTypesQ.data?.data ?? [];
+  const options = optionsQ.data?.data ?? [];
 
   useEffect(() => {
     if (app && !form) {
@@ -1197,13 +1220,31 @@ function EditApplicationModal({
                     className="input"
                     value={form.department_id ?? ""}
                     onChange={(e) =>
-                      setForm({ ...form, department_id: e.target.value ? Number(e.target.value) : "" })
+                      setForm({ ...form, department_id: e.target.value ? Number(e.target.value) : "", program_id: "" })
                     }
                   >
                     <option value="">Select a department...</option>
                     {departments.map((d: any) => (
                       <option key={d.id} value={d.id}>
                         {d.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              )}
+              {form.department_id && options.length > 0 && (
+                <Field label="Programme Option">
+                  <select
+                    className="input"
+                    value={form.program_id ?? ""}
+                    onChange={(e) =>
+                      setForm({ ...form, program_id: e.target.value ? Number(e.target.value) : "" })
+                    }
+                  >
+                    <option value="">Select a programme option...</option>
+                    {options.map((opt: any) => (
+                      <option key={opt.id} value={opt.id}>
+                        {opt.name}
                       </option>
                     ))}
                   </select>
@@ -1226,14 +1267,20 @@ function EditApplicationModal({
                 </select>
               </Field>
               <Field label="Mode of Study">
-                <input
+                <select
                   className="input"
                   value={form.mode_of_study ?? ""}
                   onChange={(e) =>
                     setForm({ ...form, mode_of_study: e.target.value })
                   }
-                  placeholder="e.g., Full-time, Part-time"
-                />
+                >
+                  <option value="">Select mode of study...</option>
+                  {programmeTypes.map((pt: any) => (
+                    <option key={pt.id} value={pt.name}>
+                      {pt.display_name}
+                    </option>
+                  ))}
+                </select>
               </Field>
             </>
           )}
