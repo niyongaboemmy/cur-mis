@@ -1265,6 +1265,8 @@ class ApplicantProfileController extends BaseController
             'serial_number'        => $data['serial_number']        ?? null,
             // Program selection
             'program_id'           => isset($data['program_id'])    ? (int)$data['program_id']    : null,
+            'faculty_id'           => isset($data['faculty_id'])    ? (int)$data['faculty_id']    : null,
+            'department_id'        => isset($data['department_id'])  ? (int)$data['department_id'] : null,
             'campus_id'            => isset($data['campus_id'])     ? (int)$data['campus_id']     : null,
             'mode_of_study'        => $data['mode_of_study']        ?? null,
             'level_id'             => isset($data['level_id'])      ? (int)$data['level_id']      : null,

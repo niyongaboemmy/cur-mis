@@ -21,7 +21,7 @@ import {
   XCircle,
   PlayCircle,
 } from "lucide-react";
-import { applicantService } from "@/services/admissionService";
+import { applicantService, portalService } from "@/services/admissionService";
 import { systemService } from "@/services/systemService";
 import { ApplicationStatus } from "@/types/admission";
 import Modal from "@/components/ui/Modal";
@@ -872,6 +872,25 @@ function EditApplicationModal({
   const app = applicationQ.data?.data;
   const [form, setForm] = useState<any>(null);
 
+  // Query for dropdowns
+  const facultiesQ = useQuery({
+    queryKey: ["portal", "faculties"],
+    queryFn: () => portalService.getFaculties(),
+  });
+  const departmentsQ = useQuery({
+    queryKey: ["portal", "faculties", form?.faculty_id, "departments"],
+    queryFn: () => portalService.getFacultyDepartments(form?.faculty_id),
+    enabled: !!form?.faculty_id,
+  });
+  const levelsQ = useQuery({
+    queryKey: ["portal", "levels"],
+    queryFn: () => portalService.getLevels(),
+  });
+
+  const faculties = facultiesQ.data?.data ?? [];
+  const departments = departmentsQ.data?.data ?? [];
+  const levels = levelsQ.data?.data ?? [];
+
   useEffect(() => {
     if (app && !form) {
       setForm({
@@ -896,6 +915,8 @@ function EditApplicationModal({
         campus_id: app.campus_id ?? "",
         mode_of_study: app.mode_of_study ?? "",
         level_id: app.level_id ?? "",
+        faculty_id: app.faculty_id ?? "",
+        department_id: app.department_id ?? "",
       });
     }
   }, [app, form]);
@@ -1151,9 +1172,59 @@ function EditApplicationModal({
                   Programme Selection
                 </h4>
                 <p className="text-[12px] text-ink-500 dark:text-ink-400 mt-1">
-                  You can change your programme choice and study mode.
+                  You can change your programme choice, faculty, department, and study mode.
                 </p>
               </div>
+              <Field label="Faculty">
+                <select
+                  className="input"
+                  value={form.faculty_id ?? ""}
+                  onChange={(e) =>
+                    setForm({ ...form, faculty_id: e.target.value ? Number(e.target.value) : "", department_id: "" })
+                  }
+                >
+                  <option value="">Select a faculty...</option>
+                  {faculties.map((f: any) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              {form.faculty_id && (
+                <Field label="Department">
+                  <select
+                    className="input"
+                    value={form.department_id ?? ""}
+                    onChange={(e) =>
+                      setForm({ ...form, department_id: e.target.value ? Number(e.target.value) : "" })
+                    }
+                  >
+                    <option value="">Select a department...</option>
+                    {departments.map((d: any) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              )}
+              <Field label="Level">
+                <select
+                  className="input"
+                  value={form.level_id ?? ""}
+                  onChange={(e) =>
+                    setForm({ ...form, level_id: e.target.value ? Number(e.target.value) : "" })
+                  }
+                >
+                  <option value="">Select a level...</option>
+                  {levels.map((l: any) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
               <Field label="Mode of Study">
                 <input
                   className="input"
