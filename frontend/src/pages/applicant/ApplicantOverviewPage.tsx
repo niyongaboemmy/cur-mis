@@ -891,6 +891,11 @@ function EditApplicationModal({
         // International (non-Rwandan) applicants — visa fields
         visa_obtained_date: (app as any).visa_obtained_date ?? "",
         visa_expiration_date: (app as any).visa_expiration_date ?? "",
+        // Programme selection fields
+        program_id: app.program_id ?? "",
+        campus_id: app.campus_id ?? "",
+        mode_of_study: app.mode_of_study ?? "",
+        level_id: app.level_id ?? "",
       });
     }
   }, [app, form]);
@@ -1138,6 +1143,29 @@ function EditApplicationModal({
               }
             />
           </Field>
+
+          {(app.status === 'documents_rejected' || app.status === 'requested_changes') && (
+            <>
+              <div className="sm:col-span-2 pt-4 border-t border-ink-50 dark:border-ink-800 mt-2">
+                <h4 className="text-[13px] font-bold text-ink-900 dark:text-white">
+                  Programme Selection
+                </h4>
+                <p className="text-[12px] text-ink-500 dark:text-ink-400 mt-1">
+                  You can change your programme choice and study mode.
+                </p>
+              </div>
+              <Field label="Mode of Study">
+                <input
+                  className="input"
+                  value={form.mode_of_study ?? ""}
+                  onChange={(e) =>
+                    setForm({ ...form, mode_of_study: e.target.value })
+                  }
+                  placeholder="e.g., Full-time, Part-time"
+                />
+              </Field>
+            </>
+          )}
         </div>
       ) : (
         <div className="space-y-6">
