@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { Loader2, Save } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { applicationAdminService } from '@/services/admissionService';
+import { academicsMgmtService } from '@/services/academicsMgmtService';
 import Modal from '@/components/ui/Modal';
 import { StudentApplication } from '@/types/admission';
+import type { Faculty, Department } from '@/types/academic';
 
 interface ApplicationEditModalProps {
   open: boolean;
@@ -21,6 +23,35 @@ export default function ApplicationEditModal({
   const [formData, setFormData] = useState<Partial<StudentApplication>>(
     application || {}
   );
+
+  const { data: facultiesData } = useQuery({
+    queryKey: ['faculties'],
+    queryFn: () => academicsMgmtService.list<Faculty>('faculties', { per_page: 100 }),
+    enabled: open,
+  });
+
+  const { data: departmentsData } = useQuery({
+    queryKey: ['departments'],
+    queryFn: () => academicsMgmtService.list<Department>('departments', { per_page: 100 }),
+    enabled: open,
+  });
+
+  const { data: campusesData } = useQuery({
+    queryKey: ['campuses'],
+    queryFn: () => academicsMgmtService.list<any>('campuses', { per_page: 100 }),
+    enabled: open,
+  });
+
+  const { data: levelsData } = useQuery({
+    queryKey: ['levels'],
+    queryFn: () => academicsMgmtService.list<any>('levels', { per_page: 100 }),
+    enabled: open,
+  });
+
+  const faculties = facultiesData?.data || [];
+  const departments = departmentsData?.data || [];
+  const campuses = campusesData?.data || [];
+  const levels = levelsData?.data || [];
 
   useEffect(() => {
     if (application) {
@@ -144,28 +175,34 @@ export default function ApplicationEditModal({
           <h3 className="text-[14px] font-bold text-ink-900 dark:text-white mb-4">Academic Information</h3>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">Faculty ID</label>
-              <input
-                type="number"
-                className="input mt-1"
+              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">Faculty</label>
+              <select
+                className="input appearance-none pr-8 mt-1"
                 value={(formData as any).faculty_id || ''}
                 onChange={(e) => handleChange('faculty_id' as any, parseInt(e.target.value) || '')}
-              />
-              {application?.faculty_name && (
-                <p className="text-[11px] text-red-600 dark:text-red-400 font-semibold mt-1">{application.faculty_name}</p>
-              )}
+              >
+                <option value="">Select Faculty</option>
+                {faculties.map((faculty) => (
+                  <option key={faculty.fac_id} value={faculty.fac_id}>
+                    {faculty.fac_name}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
-              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">Department ID</label>
-              <input
-                type="number"
-                className="input mt-1"
+              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">Department</label>
+              <select
+                className="input appearance-none pr-8 mt-1"
                 value={(formData as any).department_id || ''}
                 onChange={(e) => handleChange('department_id' as any, parseInt(e.target.value) || '')}
-              />
-              {application?.department_name && (
-                <p className="text-[11px] text-red-600 dark:text-red-400 font-semibold mt-1">{application.department_name}</p>
-              )}
+              >
+                <option value="">Select Department</option>
+                {departments.map((department) => (
+                  <option key={department.dep_id} value={department.dep_id}>
+                    {department.dep_name}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">Intake</label>
@@ -252,28 +289,34 @@ export default function ApplicationEditModal({
           <h3 className="text-[14px] font-bold text-ink-900 dark:text-white mb-4">Programme Selection</h3>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">Campus ID</label>
-              <input
-                type="number"
-                className="input mt-1"
+              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">Campus</label>
+              <select
+                className="input appearance-none pr-8 mt-1"
                 value={(formData as any).campus_id || ''}
                 onChange={(e) => handleChange('campus_id' as any, parseInt(e.target.value) || '')}
-              />
-              {application?.campus_name && (
-                <p className="text-[11px] text-red-600 dark:text-red-400 font-semibold mt-1">{application.campus_name}</p>
-              )}
+              >
+                <option value="">Select Campus</option>
+                {campuses.map((campus: any) => (
+                  <option key={campus.id || campus.campus_id} value={campus.id || campus.campus_id}>
+                    {campus.name || campus.campus_name}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
-              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">Level ID</label>
-              <input
-                type="number"
-                className="input mt-1"
+              <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">Level</label>
+              <select
+                className="input appearance-none pr-8 mt-1"
                 value={(formData as any).level_id || ''}
                 onChange={(e) => handleChange('level_id' as any, parseInt(e.target.value) || '')}
-              />
-              {application?.level_name && (
-                <p className="text-[11px] text-red-600 dark:text-red-400 font-semibold mt-1">{application.level_name}</p>
-              )}
+              >
+                <option value="">Select Level</option>
+                {levels.map((level: any) => (
+                  <option key={level.id} value={level.id}>
+                    {level.name}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="text-[12px] font-medium text-ink-700 dark:text-ink-200">Mode of Study</label>
