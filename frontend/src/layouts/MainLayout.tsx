@@ -1658,14 +1658,14 @@ export default function MainLayout() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-ink-900/50 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4"
+            className="fixed inset-0 z-50 bg-ink-900/50 backdrop-blur-sm flex items-center justify-center p-0.5 sm:p-1"
             onClick={() => setCampusStatisticsOpen(false)}
           >
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="w-full h-full max-h-[90vh] max-w-7xl bg-white dark:bg-ink-800 rounded-lg shadow-2xl flex flex-col"
+              className="w-[calc(100vw-1rem)] h-[calc(100vh-2rem)] max-h-[95vh] sm:w-[calc(100vw-2rem)] sm:max-w-[98vw] bg-white dark:bg-ink-800 rounded-lg shadow-2xl flex flex-col"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Modal header */}
@@ -1702,14 +1702,14 @@ export default function MainLayout() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-ink-900/50 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4"
+            className="fixed inset-0 z-50 bg-ink-900/50 backdrop-blur-sm flex items-center justify-center p-0.5 sm:p-1"
             onClick={() => setSupportReportingOpen(false)}
           >
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="w-full h-full max-h-[90vh] max-w-7xl bg-white dark:bg-ink-800 rounded-lg shadow-2xl flex flex-col"
+              className="w-[calc(100vw-1rem)] h-[calc(100vh-2rem)] max-h-[95vh] sm:w-[calc(100vw-2rem)] sm:max-w-[98vw] bg-white dark:bg-ink-800 rounded-lg shadow-2xl flex flex-col"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Modal header */}
