@@ -113,6 +113,15 @@ const NAV_TREE: NavNode[] = [
     hideForRoles: ["student", "applicant"],
   },
   {
+    id: "support-reporting",
+    label: "Support & Reporting",
+    icon: LayoutDashboard,
+    action: "support-reporting",
+    permissions: [PERMISSIONS.VIEW_DASHBOARD],
+    // Admin metrics only — hide from external portal roles.
+    hideForRoles: ["student", "applicant"],
+  },
+  {
     id: "student-profile",
     label: "Profile",
     icon: UserIcon,
@@ -1294,6 +1303,7 @@ export default function MainLayout() {
   const [query, setQuery] = useState("");
   const [scrolled, setScrolled] = useState(false);
   const [campusStatisticsOpen, setCampusStatisticsOpen] = useState(false);
+  const [supportReportingOpen, setSupportReportingOpen] = useState(false);
 
   const initiallyOpen = useMemo<Set<string>>(() => {
     const set = new Set<string>();
@@ -1540,6 +1550,7 @@ export default function MainLayout() {
               activeUrl={activeUrl}
               onToggle={toggleGroup}
               onCampusStatisticsOpen={() => setCampusStatisticsOpen(true)}
+              onSupportReportingOpen={() => setSupportReportingOpen(true)}
             />
           ))}
 
@@ -1683,6 +1694,50 @@ export default function MainLayout() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Support & Reporting Modal */}
+      <AnimatePresence>
+        {supportReportingOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-ink-900/50 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setSupportReportingOpen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="w-full h-full max-w-7xl bg-white dark:bg-ink-800 rounded-lg shadow-2xl flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal header */}
+              <div className="flex items-center justify-between p-4 border-b border-ink-200 dark:border-ink-700">
+                <h2 className="text-lg font-semibold text-ink-900 dark:text-white">
+                  Support & Reporting
+                </h2>
+                <button
+                  onClick={() => setSupportReportingOpen(false)}
+                  className="p-1 rounded-lg hover:bg-ink-100 dark:hover:bg-ink-700 text-ink-500 hover:text-ink-900 dark:hover:text-white transition-colors"
+                  aria-label="Close modal"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* Modal body with iframe */}
+              <div className="flex-1 overflow-hidden">
+                <iframe
+                  src="https://cur.ac.rw/umis/documents/registrar_report/index.php"
+                  className="w-full h-full border-0"
+                  title="Support & Reporting"
+                />
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       </div>
     </div>
   );
@@ -1705,6 +1760,7 @@ type NavNodeItemProps = {
   activeUrl: string | null;
   onToggle: (id: string) => void;
   onCampusStatisticsOpen?: () => void;
+  onSupportReportingOpen?: () => void;
 };
 
 const NavNodeItem = memo(function NavNodeItem({
@@ -1714,6 +1770,7 @@ const NavNodeItem = memo(function NavNodeItem({
   activeUrl,
   onToggle,
   onCampusStatisticsOpen,
+  onSupportReportingOpen,
 }: NavNodeItemProps) {
   // Leaf route
   if (!node.children) {
@@ -1729,12 +1786,26 @@ const NavNodeItem = memo(function NavNodeItem({
         ? "text-ink-500 hover:bg-ink-50 hover:text-ink-900 dark:text-ink-400 dark:hover:bg-ink-700/50 dark:hover:text-white"
         : "nav-link-idle");
 
-    // Handle action-based navigation (e.g., campus-statistics)
+    // Handle action-based navigation (e.g., campus-statistics, support-reporting)
     if (node.action === "campus-statistics") {
       return (
         <button
           type="button"
           onClick={onCampusStatisticsOpen}
+          title={collapsed ? node.label : undefined}
+          className={idleClasses}
+        >
+          <node.icon className="h-[18px] w-[18px] shrink-0" />
+          {!collapsed && <span className="truncate">{node.label}</span>}
+        </button>
+      );
+    }
+
+    if (node.action === "support-reporting") {
+      return (
+        <button
+          type="button"
+          onClick={onSupportReportingOpen}
           title={collapsed ? node.label : undefined}
           className={idleClasses}
         >
