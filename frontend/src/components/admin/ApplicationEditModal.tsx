@@ -182,7 +182,7 @@ export default function ApplicationEditModal({
                 onChange={(e) => handleChange('faculty_id' as any, parseInt(e.target.value) || '')}
               >
                 <option value="">Select Faculty</option>
-                {faculties.map((faculty) => (
+                {faculties.map((faculty: Faculty) => (
                   <option key={faculty.fac_id} value={faculty.fac_id}>
                     {faculty.fac_name}
                   </option>
@@ -197,7 +197,7 @@ export default function ApplicationEditModal({
                 onChange={(e) => handleChange('department_id' as any, parseInt(e.target.value) || '')}
               >
                 <option value="">Select Department</option>
-                {departments.map((department) => (
+                {departments.map((department: Department) => (
                   <option key={department.dep_id} value={department.dep_id}>
                     {department.dep_name}
                   </option>
