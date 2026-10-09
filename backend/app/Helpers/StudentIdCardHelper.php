@@ -69,7 +69,7 @@ class StudentIdCardHelper
         $name    = htmlspecialchars(strtoupper($name) ?: '—');
         $reg     = htmlspecialchars((string) ($student['regnumber'] ?? '—'));
         $faculty = htmlspecialchars((string) ($student['fac_name'] ?? ($student['faculty'] ?? '—')));
-        $dept    = htmlspecialchars((string) ($student['dep_name'] ?? ($student['department'] ?? '—')));
+        $dept    = htmlspecialchars((string) ($student['program'] ?? '—'));
         $level   = htmlspecialchars(LevelHelper::name($student['level_name'] ?? $student['current_level'] ?? null, '—'));
         $mode    = htmlspecialchars(self::normalizeMode((string) ($student['learning_mode'] ?? '')));
 
