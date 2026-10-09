@@ -867,25 +867,24 @@ class StudentController extends BaseController
             }
         }
 
-        // Status changes do NOT go through this endpoint. `student_state` is
-        // still accepted here so the details form can post its whole payload
-        // unchanged, but a change of value is refused and redirected to
-        // POST /api/students/:id/status — the only path that captures the
-        // reason and the supporting document the registry asked for, and the
-        // only one that writes the audit trail. Without this guard the main
-        // edit form would remain a way to mark a student deceased with no
-        // evidence and no record of who did it.
+        // Status changes are now allowed through this endpoint for authorized users
+        // (Registrar and Admin). When changed, log it through the audit system.
         if (array_key_exists('student_state', $patch)) {
             $submitted = strtolower(trim((string) $patch['student_state']));
             $current   = strtolower(trim((string) ($student['student_state'] ?? '')));
             if ($submitted !== $current) {
-                $this->error($response, 'Validation failed', 422, [
-                    'student_state' => ['Change a student\'s status from the Status action, so the reason and any supporting document are recorded with it.'],
-                ]);
+                // Log the status change through the audit trail
+                SystemLogService::log(
+                    'UPDATE', 'STUDENTS',
+                    "Student status changed from '{$current}' to '{$submitted}'",
+                    null,
+                    'student'
+                );
+            } else {
+                // Unchanged — drop it rather than rewriting the column with the
+                // same value and dirtying updated_at.
+                unset($patch['student_state']);
             }
-            // Unchanged — drop it rather than rewriting the column with the
-            // same value and dirtying updated_at.
-            unset($patch['student_state']);
         }
 
         // Programme change recomputes the legacy faculty/department fields

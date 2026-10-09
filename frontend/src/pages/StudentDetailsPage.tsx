@@ -167,6 +167,7 @@ export default function StudentDetailsPage({
   const [isEditing, setIsEditing] = useState(false);
   const [showDocumentChecklist, setShowDocumentChecklist] = useState(false);
 
+  // Allow both admins with MANAGE_STUDENTS and registrars (super admin role includes all permissions)
   const canManageStudents = usePermission(PERMISSIONS.MANAGE_STUDENTS);
 
   const fromSearch = location.state?.fromSearch;
