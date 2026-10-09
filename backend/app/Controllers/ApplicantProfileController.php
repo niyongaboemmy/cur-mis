@@ -1130,6 +1130,7 @@ class ApplicantProfileController extends BaseController
                 'verification_status' => $uploaded['verification_status']     ?? null,
                 'uploaded_at'         => $uploaded['uploaded_at']             ?? null,
                 'verification_comment'     => $uploaded['verification_comment']     ?? null,
+                'rejection_notes'     => $uploaded['verification_comment']     ?? null,
                 'file_mime'           => $uploaded['file_mime']               ?? null,
             ];
         }, $requirements);

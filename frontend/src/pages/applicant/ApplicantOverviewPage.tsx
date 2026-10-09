@@ -925,8 +925,8 @@ function EditApplicationModal({
           toast.success('All documents replaced! Application resubmitted for review.');
           onSuccess();
         } catch (error) {
+          console.error('Auto-submit failed:', error);
           // Silently fail - user can manually submit if needed
-          console.log('Auto-submit skipped');
         }
       }
     }
@@ -1170,10 +1170,9 @@ function EditApplicationModal({
             }
             onUpload={async ({ document_type_id, file }) => {
               await applicantService.uploadDocument({ document_type_id, file });
-              // Check and auto-submit documents if all rejected ones are replaced
-              setTimeout(() => {
-                checkAndAutoSubmitDocuments();
-              }, 500);
+              // Invalidate and wait for refetch, then check for auto-submit
+              await applicationQ.refetch();
+              checkAndAutoSubmitDocuments();
             }}
             invalidateKeys={[["applicant", "application", appId]]}
           />
