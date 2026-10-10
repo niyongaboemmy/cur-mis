@@ -107,9 +107,10 @@ export default function StudentLedgerPage() {
 
   const ledger = ledgerQ.data?.data;
   const invoices = ledger?.invoices ?? [];
-  // Only expose confirmed payments — pending/rejected are internal officer state
+  // Only expose confirmed payments — pending/rejected are internal officer state.
+  // Reversal rows are hidden from the history; the totals above still net them.
   const payments = (ledger?.payments ?? []).filter(
-    (p: any) => p.status === "confirmed",
+    (p: any) => p.status === "confirmed" && !p._is_reversal,
   );
   const totals = ledger?.totals;
 
