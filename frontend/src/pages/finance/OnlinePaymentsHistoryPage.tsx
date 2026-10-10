@@ -410,7 +410,7 @@ export default function OnlinePaymentsHistoryPage() {
                         <div className="flex items-center justify-center gap-2">
                           {hasStudent && (
                             <button
-                              onClick={() => navigate(`/students/${p.student_db_id}`)}
+                              onClick={() => navigate(`/students/${p.student_db_id}?tab=finance`)}
                               className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium bg-brand/10 text-brand hover:bg-brand/20 dark:bg-brand/20 dark:hover:bg-brand/30 transition-colors"
                               title="View student details"
                             >
