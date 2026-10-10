@@ -866,7 +866,9 @@ class FeeController extends BaseController
 
         $offset = ($page - 1) * $perPage;
 
-        $whereClause = "1=1";
+        // Reversals (payment_notifi = 'Credit') are left out of the listing,
+        // its totals, and the Excel export, which all read this endpoint.
+        $whereClause = "COALESCE(LOWER(p.`payment_notifi`), '') <> 'credit'";
         $params = [];
 
         if ($channel !== '') {
@@ -914,7 +916,7 @@ class FeeController extends BaseController
         $data = $this->db->fetchAll($query, $params);
 
         // Fetch basic dashboard metrics for online payments
-        $metricsQuery = "SELECT COUNT(*) as total_tx, SUM(amount) as total_amount FROM `payment`";
+        $metricsQuery = "SELECT COUNT(*) as total_tx, SUM(amount) as total_amount FROM `payment` p WHERE COALESCE(LOWER(p.`payment_notifi`), '') <> 'credit'";
         $metrics = $this->db->fetchOne($metricsQuery);
 
         // Options for the channel / service pickers. Channels come from the
