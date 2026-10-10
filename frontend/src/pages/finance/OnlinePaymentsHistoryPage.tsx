@@ -68,6 +68,18 @@ export default function OnlinePaymentsHistoryPage() {
   });
 
   const payments = data?.data?.data || [];
+  // One row per student, keeping the server's date order. Covers only the
+  // rows on the current page, so a student whose payments span two pages
+  // appears in both.
+  const groups = Object.values(
+    payments.reduce((acc: Record<string, { key: string; rows: any[]; total: number }>, p: any) => {
+      const key = String(p.student_db_id ?? p.student_regnumber ?? p.student ?? p.id);
+      acc[key] ??= { key, rows: [], total: 0 };
+      acc[key].rows.push(p);
+      acc[key].total += parseFloat(p.amount || "0");
+      return acc;
+    }, {})
+  );
   // Options come back with the page so the pickers can never drift from what
   // the gateway is actually writing.
   const filterOptions = {
@@ -314,15 +326,11 @@ export default function OnlinePaymentsHistoryPage() {
           <table className="w-full text-sm text-left whitespace-nowrap">
             <thead className="bg-ink-50 dark:bg-ink-900/50 text-ink-500 dark:text-ink-400 uppercase text-[11px] font-semibold tracking-wider">
               <tr>
-                <th className="px-4 py-3">Date</th>
+                <th className="px-4 py-3">Latest Date</th>
                 <th className="px-4 py-3">Reg Number</th>
                 <th className="px-4 py-3">Student Name</th>
-                <th className="px-4 py-3">Slip No</th>
-                <th className="px-4 py-3">Trans Code</th>
-                <th className="px-4 py-3">Service Paid For</th>
-                <th className="px-4 py-3 text-right">Amount (RWF)</th>
-                <th className="px-4 py-3">Channel</th>
-                <th className="px-4 py-3 text-center">Status</th>
+                <th className="px-4 py-3">Payments</th>
+                <th className="px-4 py-3 text-right">Total (RWF)</th>
                 <th className="px-4 py-3 text-center">Action</th>
               </tr>
             </thead>
@@ -341,21 +349,22 @@ export default function OnlinePaymentsHistoryPage() {
                   </td>
                 </tr>
               ) : (
-                payments.map((p: any) => {
-                  const hasStudent = !!p.student_db_id;
+                groups.map((g) => {
+                  const first = g.rows[0];
+                  const hasStudent = !!first.student_db_id;
                   const fullName =
-                    p.student_fname || p.student_lname
-                      ? `${p.student_fname ?? ""} ${p.student_lname ?? ""}`.trim()
+                    first.student_fname || first.student_lname
+                      ? `${first.student_fname ?? ""} ${first.student_lname ?? ""}`.trim()
                       : null;
-                  const regNumber = p.student_regnumber || p.student || "-";
+                  const regNumber = first.student_regnumber || first.student || "-";
 
                   return (
                     <tr
-                      key={p.id}
-                      className={`transition-colors hover:bg-ink-50 dark:hover:bg-ink-800/50`}
+                      key={g.key}
+                      className="align-top transition-colors hover:bg-ink-50 dark:hover:bg-ink-800/50"
                     >
                       <td className="px-4 py-3 text-ink-500 dark:text-ink-400">
-                        {fmtDate(p.date)}
+                        {fmtDate(first.date)}
                       </td>
                       <td className="px-4 py-3 font-mono text-[13px]">
                         <span className="font-semibold text-ink-900 dark:text-ink-100">
@@ -372,70 +381,65 @@ export default function OnlinePaymentsHistoryPage() {
                           <span className="text-ink-500 dark:text-ink-400">-</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 font-mono text-[13px] text-ink-500">
-                        {p.slip_no || "-"}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-[13px] text-brand">
-                        {p.trans_code || "-"}
-                      </td>
                       <td className="px-4 py-3">
-                        {(() => {
-                          const svc = serviceOf(p);
-                          return (
-                            <div className="leading-tight">
-                              <div className="font-medium text-ink-900 dark:text-ink-100">
-                                {svc.name}
-                              </div>
-                              {svc.category && (
-                                <div className="text-[11px] text-ink-500 dark:text-ink-400">
-                                  {svc.category}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })()}
+                        <ul className="space-y-2">
+                          {g.rows.map((p: any) => {
+                            const svc = serviceOf(p);
+                            return (
+                              <li
+                                key={p.id}
+                                className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]"
+                              >
+                                <span className="text-ink-500 dark:text-ink-400">
+                                  {fmtDate(p.date)}
+                                </span>
+                                <span className="font-mono text-ink-500">{p.slip_no || "-"}</span>
+                                <span className="font-mono text-brand">{p.trans_code || "-"}</span>
+                                <span className="font-medium text-ink-900 dark:text-ink-100">
+                                  {svc.name}
+                                </span>
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-ink-100 text-ink-700 dark:bg-ink-800 dark:text-ink-300">
+                                  {p.payment_chanel || p.mode || "Unknown"}
+                                </span>
+                                <span className="font-semibold">
+                                  {parseFloat(p.amount || "0").toLocaleString()}
+                                </span>
+                                {getStatusBadge(p)}
+                                {p.slip_no && (
+                                  <a
+                                    href={`https://urubutopay.rw/receipt?transaction_id=${encodeURIComponent(
+                                      p.slip_no || ""
+                                    )}&amount=${encodeURIComponent(String(p.amount || ""))}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:hover:bg-emerald-900/50 transition-colors"
+                                    title="Download receipt from Urubuto Pay"
+                                  >
+                                    <ExternalLink className="w-3 h-3" />
+                                    <span>Receipt</span>
+                                  </a>
+                                )}
+                              </li>
+                            );
+                          })}
+                        </ul>
                       </td>
-                      <td className="px-4 py-3 text-right font-semibold">
-                        {parseFloat(p.amount || "0").toLocaleString()}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-ink-100 text-ink-700 dark:bg-ink-800 dark:text-ink-300">
-                          {p.payment_chanel || p.mode || "Unknown"}
-                        </span>
+                      <td className="px-4 py-3 text-right font-bold text-ink-900 dark:text-ink-100">
+                        {g.total.toLocaleString()}
                       </td>
                       <td className="px-4 py-3 text-center">
-                        {getStatusBadge(p)}
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <div className="flex items-center justify-center gap-2">
-                          {hasStudent && (
-                            <button
-                              onClick={() => navigate(`/students/${p.student_db_id}?tab=finance`)}
-                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium bg-brand/10 text-brand hover:bg-brand/20 dark:bg-brand/20 dark:hover:bg-brand/30 transition-colors"
-                              title="View student details"
-                            >
-                              <Eye className="w-3.5 h-3.5" />
-                              <span>View</span>
-                            </button>
-                          )}
-                          {p.slip_no && (
-                            <a
-                              href={`https://urubutopay.rw/receipt?transaction_id=${encodeURIComponent(
-                                p.slip_no || ""
-                              )}&amount=${encodeURIComponent(String(p.amount || ""))}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:hover:bg-emerald-900/50 transition-colors"
-                              title="Download receipt from Urubuto Pay"
-                            >
-                              <ExternalLink className="w-3.5 h-3.5" />
-                              <span>Receipt</span>
-                            </a>
-                          )}
-                          {!hasStudent && !p.slip_no && (
-                            <span className="text-xs text-ink-400 dark:text-ink-500">-</span>
-                          )}
-                        </div>
+                        {hasStudent ? (
+                          <button
+                            onClick={() => navigate(`/students/${first.student_db_id}?tab=finance`)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium bg-brand/10 text-brand hover:bg-brand/20 dark:bg-brand/20 dark:hover:bg-brand/30 transition-colors"
+                            title="View student details"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>View</span>
+                          </button>
+                        ) : (
+                          <span className="text-xs text-ink-400 dark:text-ink-500">-</span>
+                        )}
                       </td>
                     </tr>
                   );
