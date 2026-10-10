@@ -6,7 +6,7 @@ import * as XLSX from 'xlsx'
 import { feeStructureService, feeTypeService } from '@/services/financeService'
 import { academicsMgmtService } from '@/services/academicsMgmtService'
 import { academicService as academicSvc } from '@/services/academicService'
-import type { FeeStructure, CreateFeeStructurePayload, PaymentPlan, FeeTypeRecord, StudentCategory } from '@/types/finance'
+import type { FeeStructure, CreateFeeStructurePayload, PaymentPlan, FeeTypeRecord, StudentCategory, ProgrammeCategory } from '@/types/finance'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import Pagination from '@/components/ui/Pagination'
 import { useSystemStore } from '@/store/systemStore'
@@ -27,6 +27,15 @@ const STUDENT_CATEGORY_OPTIONS: { value: StudentCategory; label: string }[] = [
 
 const studentCategoryLabel = (v?: string | null) =>
   STUDENT_CATEGORY_OPTIONS.find((o) => o.value === v)?.label ?? null
+
+const PROGRAMME_OPTIONS: { value: ProgrammeCategory; label: string }[] = [
+  { value: 'undergraduate', label: 'Undergraduate' },
+  { value: 'postgraduate',  label: 'PGDE' },
+  { value: 'masters',       label: 'Masters' },
+]
+
+const programmeLabel = (v?: string | null) =>
+  PROGRAMME_OPTIONS.find((o) => o.value === v)?.label ?? null
 
 export default function FeeStructuresPage() {
   const canManage = usePermission(PERMISSIONS.MANAGE_FINANCE)
@@ -437,7 +446,10 @@ export default function FeeStructuresPage() {
                           : row.department_name ?? <span className="italic text-ink-300">All</span>}
                       </td>
                       <td className="px-4 py-2.5 text-ink-500">{row.level_name ?? <span className="italic text-ink-300">All</span>}</td>
-                      <td className="px-4 py-2.5 text-ink-500">{studentCategoryLabel(row.student_category) ?? <span className="italic text-ink-300">All</span>}</td>
+                      <td className="px-4 py-2.5 text-ink-500">
+                        {studentCategoryLabel(row.student_category) ?? <span className="italic text-ink-300">All</span>}
+                        {programmeLabel(row.programme_category) && <span className="ml-1.5 text-[11px] text-ink-400">· {programmeLabel(row.programme_category)}</span>}
+                      </td>
                       <td className="px-4 py-2.5 text-ink-500">{row.semester ? `S${row.semester}` : '—'}</td>
                       <td className="px-4 py-2.5 text-right font-mono font-semibold">
                         {row.currency && row.currency !== 'RWF'
@@ -615,6 +627,7 @@ function FeeStructureModal({ years, departments, levels, campuses, faculties, op
     campus_id:         initial?.campus_id ?? null,
     option_ids:        parseInitialOptions(),
     student_category:  initial?.student_category ?? null,
+    programme_category: initial?.programme_category ?? null,
     fee_type:          (initial?.fee_type ?? 'TUITION') as string,
     label:             initial?.label ?? '',
     amount:            initial?.amount ?? 0,
@@ -824,6 +837,15 @@ function FeeStructureModal({ years, departments, levels, campuses, faculties, op
                     onChange={v => set('student_category', v ? (v as StudentCategory) : null)}
                     placeholder="All categories"
                     allLabel="All categories"
+                  />
+                </Field>
+                <Field label="Programme">
+                  <SearchableSelect
+                    options={PROGRAMME_OPTIONS}
+                    value={form.programme_category ?? ''}
+                    onChange={v => set('programme_category', v ? (v as ProgrammeCategory) : null)}
+                    placeholder="All programmes"
+                    allLabel="All programmes"
                   />
                 </Field>
               </div>

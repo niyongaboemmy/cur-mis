@@ -132,11 +132,12 @@ class AdmissionBillingService
         $departmentId = (int)($application['department_id'] ?? 0) ?: null;
         $levelId      = (int)($application['level_id'] ?? 0) ?: null;
         $category     = $this->studentCategory($application);
+        $programme    = $this->programmeCategory($application);
 
         $out = [];
         foreach ($this->billableFeeTypes() as $feeType) {
             $structure = $yearId > 0
-                ? $this->matchStructure($yearId, $feeType, $departmentId, $levelId, $category)
+                ? $this->matchStructure($yearId, $feeType, $departmentId, $levelId, $category, $programme)
                 : false;
 
             if (!$structure) {
@@ -181,18 +182,30 @@ class AdmissionBillingService
         string $feeType,
         ?int $departmentId,
         ?int $levelId,
-        string $category
+        string $category,
+        ?string $programme = null
     ): array|false {
         try {
-            $match = $this->structures->findBestMatch($yearId, $feeType, $departmentId, $levelId, null, $category);
+            $match = $this->structures->findBestMatch($yearId, $feeType, $departmentId, $levelId, null, $category, $programme);
             if (!$match && $category !== 'local') {
-                $match = $this->structures->findBestMatch($yearId, $feeType, $departmentId, $levelId, null, 'local');
+                $match = $this->structures->findBestMatch($yearId, $feeType, $departmentId, $levelId, null, 'local', $programme);
             }
             return $match;
         } catch (\Throwable $e) {
             error_log('[AdmissionBilling] fee structure lookup failed: ' . $e->getMessage());
             return false;
         }
+    }
+
+    /**
+     * The programme tier the applicant chose on the apply wizard, which decides
+     * the Registration fee: undergraduate, postgraduate (PGDE) or masters.
+     * Null for legacy rows with no tier, which then match untiered prices only.
+     */
+    private function programmeCategory(array $application): ?string
+    {
+        $cat = strtolower(trim((string)($application['programme_category'] ?? '')));
+        return in_array($cat, ['undergraduate', 'postgraduate', 'masters'], true) ? $cat : null;
     }
 
     private function studentCategory(array $application): string
@@ -946,12 +959,19 @@ class AdmissionBillingService
                 . ($application['application_number'] ?? '') . ' as the payer code.'
         );
 
+        // The Registration fee is mandatory, so name it explicitly when it is billed.
+        $registration = array_values(array_filter($bills, static fn (array $b): bool => $b['fee_type'] === 'REGISTRATION'));
+        $registrationNote = $registration
+            ? ' You must pay the Registration fee of ' . number_format((float)$registration[0]['amount_due'], 0) . ' RWF.'
+            : '';
+
         NotificationService::push(
             $this->applicantUserId($applicationId),
             'admission_billing',
-            'Admission fees ready to pay',
+            $registration ? 'Registration fee to pay' : 'Admission fees ready to pay',
             'Your admission fees (' . implode(', ', array_column($bills, 'fee_type')) . ') total '
-                . number_format($summary['total_due'], 0) . ' RWF. Pay them to receive your registration number.',
+                . number_format($summary['total_due'], 0) . ' RWF.' . $registrationNote
+                . ' Pay them to receive your registration number.',
             '/applicant',
             'student_application',
             $applicationId,

@@ -8,7 +8,7 @@ class FeeStructureModel extends BaseModel
 {
     protected string $table = 'fee_structures';
     protected array $fillable = [
-        'academic_year_id', 'department_id', 'level_id', 'campus_id', 'student_category',
+        'academic_year_id', 'department_id', 'level_id', 'campus_id', 'student_category', 'programme_category',
         'fee_type', 'label', 'amount', 'currency', 'semester', 'payment_plan', 'installment_count',
         'is_active',
     ];
@@ -79,6 +79,10 @@ class FeeStructureModel extends BaseModel
      * $studentCategory resolution mirrors $semester: passing null only matches structures with
      * student_category IS NULL (category-agnostic); passing a value matches that value OR NULL,
      * with an exact match ranked above a NULL (universal) structure.
+     *
+     * $programmeCategory (undergraduate | postgraduate | masters) works the same way and is
+     * ranked first: a structure priced for the applicant's programme always beats a
+     * programme-agnostic one, whatever its department or level.
      */
     public function findBestMatch(
         int $academicYearId,
@@ -86,11 +90,14 @@ class FeeStructureModel extends BaseModel
         ?int $departmentId,
         ?int $levelId,
         ?int $semester = null,
-        ?string $studentCategory = null
+        ?string $studentCategory = null,
+        ?string $programmeCategory = null
     ): array|false {
         $semesterSql = $semester !== null ? 'AND (fs.semester = ? OR fs.semester IS NULL)' : 'AND fs.semester IS NULL';
         $categorySql = $studentCategory !== null ? 'AND (fs.student_category = ? OR fs.student_category IS NULL)' : 'AND fs.student_category IS NULL';
         $categoryOrderSql = $studentCategory !== null ? ', (fs.student_category = ?) DESC' : '';
+        $programmeSql = $programmeCategory !== null ? 'AND (fs.programme_category = ? OR fs.programme_category IS NULL)' : '';
+        $programmeOrderSql = $programmeCategory !== null ? '(fs.programme_category = ?) DESC,' : '';
 
         $bindings = [$academicYearId, $feeType];
         if ($semester !== null) {
@@ -99,11 +106,19 @@ class FeeStructureModel extends BaseModel
         if ($studentCategory !== null) {
             $bindings[] = $studentCategory;
         }
+        if ($programmeCategory !== null) {
+            $bindings[] = $programmeCategory;
+        }
 
         // dept match bindings: used in WHERE (×2 for EXISTS) and ORDER BY (×2)
         $bindings = array_merge($bindings, [
             $departmentId, $departmentId,  // WHERE dept check
             $levelId,                       // WHERE level check
+        ]);
+        if ($programmeCategory !== null) {
+            $bindings[] = $programmeCategory; // ORDER BY programme priority (first)
+        }
+        $bindings = array_merge($bindings, [
             $departmentId, $departmentId,  // ORDER BY dept priority
             $levelId,                       // ORDER BY level priority
         ]);
@@ -119,6 +134,7 @@ class FeeStructureModel extends BaseModel
                AND fs.is_active = 1
                {$semesterSql}
                {$categorySql}
+               {$programmeSql}
                AND (
                      fs.department_id = ?
                   OR fs.department_id IS NULL
@@ -129,6 +145,7 @@ class FeeStructureModel extends BaseModel
                )
                AND (fs.level_id = ? OR fs.level_id IS NULL)
              ORDER BY
+               {$programmeOrderSql}
                (fs.department_id = ? OR EXISTS (
                   SELECT 1 FROM `fee_structure_departments` fsd3
                   WHERE fsd3.fee_structure_id = fs.id AND fsd3.department_id = ?

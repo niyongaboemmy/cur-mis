@@ -241,6 +241,11 @@ export default function AdmissionFeesPanel({
               <p className="text-[12px] text-amber-700 dark:text-amber-200 mt-1">
                 You have an unpaid balance. Complete payment below to receive your registration number and proceed to enrollment.
               </p>
+              {bills.some(b => b.fee_type === 'REGISTRATION' && b.balance > 0) && (
+                <p className="text-[12px] font-semibold text-amber-900 dark:text-amber-100 mt-2">
+                  You must pay the Registration fee of {fmt(bills.find(b => b.fee_type === 'REGISTRATION')?.balance ?? 0)} RWF before your registration number can be issued.
+                </p>
+              )}
               {/* Payment Progress */}
               <div className="mt-3 space-y-2">
                 <div className="flex justify-between items-center text-[12px]">

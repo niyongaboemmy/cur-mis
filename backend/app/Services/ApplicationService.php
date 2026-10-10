@@ -441,6 +441,18 @@ class ApplicationService
             );
         }
 
+        // The Registration fee is mandatory: no registration number without it,
+        // even when Finance has not billed it. The 5,000 RWF application fee does
+        // not count towards it.
+        $registrationBill = (new \App\Models\ApplicationInvoiceModel())->findByFeeType($applicationId, 'REGISTRATION');
+        if (!$registrationBill
+            || (float)$registrationBill['amount_paid'] + 0.009 < (float)$registrationBill['amount_due']
+        ) {
+            throw new \RuntimeException(
+                'The Registration fee must be paid before a registration number can be issued.'
+            );
+        }
+
         // Detect returning students. A "returning" applicant already has a
         // `student` row (typically because they completed an undergraduate
         // programme here and are now enrolling in a Masters/PGDE). We DO NOT
