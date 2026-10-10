@@ -673,6 +673,15 @@ const NAV_TREE: NavNode[] = [
         permissions: [PERMISSIONS.VIEW_FINANCE_REPORTS],
       },
       {
+        to: "/finance/online-payments",
+        label: "Online Payments",
+        permissions: [
+          PERMISSIONS.VIEW_ONLINE_PAYMENTS_HISTORY,
+          PERMISSIONS.VIEW_MOBILE_PAYMENTS,
+          PERMISSIONS.MANAGE_FINANCE,
+        ],
+      },
+      {
         to: "/finance/fines",
         label: "Fines",
         permissions: [PERMISSIONS.VIEW_FINES, PERMISSIONS.MANAGE_FINES],
