@@ -576,7 +576,15 @@ export default function ApplicationsListPage() {
                           {a.intake ? ` · ${a.intake}` : ''}
                         </p>
                       </td>
-                      <td><span className={STATUS_TONE[a.status] ?? 'chip-soft'}>{STATUS_LABEL[a.status] ?? a.status}</span></td>
+                      <td>
+                        {a.status === ApplicationStatus.OFFER_ACCEPTED && (a as any).registration_fee?.status !== 'paid' ? (
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300">
+                            Waiting to pay registration fee
+                          </span>
+                        ) : (
+                          <span className={STATUS_TONE[a.status] ?? 'chip-soft'}>{STATUS_LABEL[a.status] ?? a.status}</span>
+                        )}
+                      </td>
                       <td className="text-[12px] text-ink-600 whitespace-nowrap">{fmt(a.submitted_at ?? a.created_at)}</td>
                       <td onClick={(e) => e.stopPropagation()} className="max-w-[260px]">
                         <button
