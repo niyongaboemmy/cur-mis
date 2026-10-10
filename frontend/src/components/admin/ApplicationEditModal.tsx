@@ -48,10 +48,10 @@ export default function ApplicationEditModal({
     enabled: open,
   });
 
-  const faculties = facultiesData?.data || [];
-  const departments = departmentsData?.data || [];
-  const campuses = campusesData?.data || [];
-  const levels = levelsData?.data || [];
+  const faculties = facultiesData?.data?.data ?? [];
+  const departments = departmentsData?.data?.data ?? [];
+  const campuses = campusesData?.data?.data ?? [];
+  const levels = levelsData?.data?.data ?? [];
 
   useEffect(() => {
     if (application) {
