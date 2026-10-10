@@ -201,19 +201,24 @@ export default function AdmissionFeesPanel({
         </div>
 
         {canManage && (
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="rounded-2xl border-2 border-blue-500 bg-blue-50 dark:bg-blue-950/30 p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="flex-1">
+              <p className="text-[15px] font-black text-blue-900 dark:text-blue-100 uppercase tracking-tight">
+                Action needed: bill the Registration fee
+              </p>
+              <p className="text-[12px] text-blue-800 dark:text-blue-200 mt-1">
+                The applicant cannot pay or receive a registration number until this is done. They are emailed and notified straight away.
+              </p>
+            </div>
             <button
-              className="btn-primary"
+              className="btn-primary w-full sm:w-auto px-8 py-4 text-[16px] font-black shadow-lg"
               disabled={raiseBills.isPending || (data.billable ?? []).every((b) => b.amount === null)}
               onClick={() => raiseBills.mutate()}
             >
               {raiseBills.isPending
-                ? <><Loader2 className="w-4 h-4 animate-spin" /> Billing…</>
-                : <><ReceiptText className="w-4 h-4" /> Bill applicant</>}
+                ? <><Loader2 className="w-5 h-5 animate-spin" /> Billing…</>
+                : <><ReceiptText className="w-5 h-5" /> Bill applicant</>}
             </button>
-            <p className="text-[12px] text-ink-500 dark:text-ink-400">
-              The applicant is emailed and notified, and can pay straight away.
-            </p>
           </div>
         )}
 
