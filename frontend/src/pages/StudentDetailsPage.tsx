@@ -4726,6 +4726,8 @@ function StudentFinanceTab({
   // Separate MIS payments vs UrubutoPay legacy transactions
   const misPayments = allPayments.filter((p) => p._source !== "urubutopay");
   const bankTxns    = allPayments.filter((p) => p._source === "urubutopay");
+  // Reversal rows are left out of the UrubutoPay table; the totals above still net them.
+  const visibleBankTxns = bankTxns.filter((p) => !p._is_reversal);
 
   const totalInvoiced = invoices.reduce((s: number, i: any) => s + Number(i.amount_due ?? 0), 0);
   const totalMisPaid  = misPayments
@@ -4848,10 +4850,10 @@ function StudentFinanceTab({
           <TrendingUp className="w-4 h-4 text-blue-500" />
           <span>UrubutoPay / Bank Transactions</span>
           <span className="text-[10px] bg-ink-100 dark:bg-ink-700 px-1.5 py-0.5 rounded text-ink-500 font-mono">
-            {bankTxns.length}
+            {visibleBankTxns.length}
           </span>
         </div>
-        {bankTxns.length === 0 ? (
+        {visibleBankTxns.length === 0 ? (
           <div className="text-center py-8 text-ink-400 text-sm">
             <TrendingUp className="w-7 h-7 mx-auto mb-2 opacity-30" />
             <p>No UrubutoPay/bank transactions found.</p>
@@ -4872,7 +4874,7 @@ function StudentFinanceTab({
                 </tr>
               </thead>
               <tbody className="divide-y divide-ink-100 dark:divide-ink-700">
-                {bankTxns.map((p: any, idx: number) => (
+                {visibleBankTxns.map((p: any, idx: number) => (
                   <tr
                     key={p.receipt_number || idx}
                     className={`hover:bg-ink-50/50 dark:hover:bg-ink-700/30 ${p._is_reversal ? "opacity-60" : ""}`}
