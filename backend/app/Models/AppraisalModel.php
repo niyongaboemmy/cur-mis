@@ -97,9 +97,26 @@ class AppraisalModel extends BaseModel
         $this->db->execute("UPDATE appraisal_periods SET " . implode(', ', $sets) . " WHERE id = ?", $bindings);
     }
 
+    /**
+     * Deletes a period together with its criteria, employee appraisals and
+     * their ratings. The tables have no foreign keys, so children go first.
+     */
     public function deletePeriod(int $id): void
     {
-        $this->db->execute('DELETE FROM appraisal_periods WHERE id = ?', [$id]);
+        $this->db->beginTransaction();
+        try {
+            $this->db->execute(
+                'DELETE FROM appraisal_ratings WHERE appraisal_id IN (SELECT id FROM appraisals WHERE period_id = ?)',
+                [$id]
+            );
+            $this->db->execute('DELETE FROM appraisals WHERE period_id = ?', [$id]);
+            $this->db->execute('DELETE FROM appraisal_criteria WHERE period_id = ?', [$id]);
+            $this->db->execute('DELETE FROM appraisal_periods WHERE id = ?', [$id]);
+            $this->db->commit();
+        } catch (\Throwable $e) {
+            $this->db->rollBack();
+            throw $e;
+        }
     }
 
     /* ── Criteria ───────────────────────────────────────────────────────── */

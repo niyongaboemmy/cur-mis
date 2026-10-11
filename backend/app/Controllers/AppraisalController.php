@@ -103,10 +103,6 @@ class AppraisalController extends BaseController
         $row = $this->model->findPeriod($id);
         if (!$row) $this->error($response, 'Period not found', 404);
 
-        if ((int)$row['appraisal_count'] > 0) {
-            $this->error($response, 'Cannot delete a period with existing appraisals.', 409);
-        }
-
         $this->model->deletePeriod($id);
         $this->success($response, null, 'Period deleted.');
     }

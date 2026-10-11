@@ -1086,7 +1086,11 @@ export default function AppraisalPage() {
                       ><Pencil className="w-3.5 h-3.5" /></button>
                       <button
                         className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-ink-400 hover:text-red-600 transition-colors"
-                        onClick={() => { if (confirm(`Delete "${p.title}"?`)) deletePeriodMut.mutate(p.id); }}
+                        onClick={() => {
+                          const n = p.appraisal_count ?? 0;
+                          const warning = n > 0 ? `\n\nThis also permanently deletes ${n} employee appraisal(s) and their ratings.` : "";
+                          if (confirm(`Delete "${p.title}"?${warning}`)) deletePeriodMut.mutate(p.id);
+                        }}
                         title="Delete period"
                       ><Trash2 className="w-3.5 h-3.5" /></button>
                     </div>
