@@ -36,6 +36,9 @@ const STATES = [
   { value: "revoked", label: "Card revoked" },
 ] as const;
 
+// Issue years offered in the year filter: the current year and the four before it.
+const YEARS = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i);
+
 const STATE_STYLES: Record<StudentIdRosterRow["card_state"], string> = {
   none: "bg-ink-100 text-ink-600 dark:bg-ink-800 dark:text-ink-300",
   active: "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400",
@@ -61,15 +64,19 @@ export default function StudentIdCardsPage() {
   const [keyword, setKeyword] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [state, setState] = useState("active");
+  const [year, setYear] = useState("");
   const [validityYears, setValidityYears] = useState(4);
   const [selected, setSelected] = useState<number[]>([]);
 
   const rosterQ = useQuery({
-    queryKey: ["student-ids", "roster", page, keyword, state],
-    // A typed search covers every student, so the card-state filter only
-    // applies when browsing without a search term.
+    queryKey: ["student-ids", "roster", page, keyword, state, year],
+    // A typed search covers every student, so the card-state and year filters
+    // only apply when browsing without a search term.
     queryFn: ({ signal }) =>
-      studentIdService.roster({ page, per_page: 25, keyword, state: keyword ? "" : state }, signal),
+      studentIdService.roster(
+        { page, per_page: 25, keyword, state: keyword ? "" : state, year: keyword ? 0 : Number(year) || 0 },
+        signal,
+      ),
     placeholderData: keepPreviousData,
   });
 
@@ -193,6 +200,19 @@ export default function StudentIdCardsPage() {
             >
               {STATES.map((s) => (
                 <option key={s.value} value={s.value}>{s.label}</option>
+              ))}
+            </select>
+
+            <label className="sr-only" htmlFor="card-year">Issue year</label>
+            <select
+              id="card-year"
+              className="input w-full sm:w-36"
+              value={year}
+              onChange={(e) => { setYear(e.target.value); setPage(1); setSelected([]); }}
+            >
+              <option value="">All years</option>
+              {YEARS.map((y) => (
+                <option key={y} value={y}>{y}</option>
               ))}
             </select>
           </div>

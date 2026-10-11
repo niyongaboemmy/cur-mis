@@ -43,6 +43,7 @@ class StudentIdController extends BaseController
         $result = $this->model->roster([
             'keyword'   => (string) ($request->query('keyword') ?? ''),
             'state'     => (string) ($request->query('state') ?? ''),
+            'year'      => (int) ($request->query('year') ?? 0),
             'campus'    => (string) ($request->query('campus') ?? ''),
             'option_id' => (int) ($request->query('option_id') ?? 0),
         ], $page, $perPage);
