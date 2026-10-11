@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import {
@@ -155,9 +155,20 @@ export default function StudentIdCardsPage() {
       allSelected ? s.filter((id) => !selectableIds.includes(id)) : [...new Set([...s, ...selectableIds])],
     );
 
+  // Search runs as the user types: the term is applied 300ms after the last
+  // keystroke, so the roster isn't re-queried on every letter.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setKeyword(searchInput.trim());
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  // Enter applies the term straight away instead of waiting for the delay.
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    setKeyword(searchInput);
+    setKeyword(searchInput.trim());
     setPage(1);
   };
 
@@ -184,11 +195,7 @@ export default function StudentIdCardsPage() {
                 type="text"
                 placeholder="Search by name or registration number…"
                 value={searchInput}
-                onChange={(e) => {
-                  setSearchInput(e.target.value);
-                  // Clearing the box clears the search straight away.
-                  if (e.target.value === "") { setKeyword(""); setPage(1); }
-                }}
+                onChange={(e) => setSearchInput(e.target.value)}
                 className="input pl-9 w-full"
               />
             </form>
