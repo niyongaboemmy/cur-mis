@@ -60,14 +60,16 @@ export default function StudentIdCardsPage() {
   const [page, setPage] = useState(1);
   const [keyword, setKeyword] = useState("");
   const [searchInput, setSearchInput] = useState("");
-  const [state, setState] = useState("");
+  const [state, setState] = useState("active");
   const [validityYears, setValidityYears] = useState(4);
   const [selected, setSelected] = useState<number[]>([]);
 
   const rosterQ = useQuery({
     queryKey: ["student-ids", "roster", page, keyword, state],
+    // A typed search covers every student, so the card-state filter only
+    // applies when browsing without a search term.
     queryFn: ({ signal }) =>
-      studentIdService.roster({ page, per_page: 25, keyword, state }, signal),
+      studentIdService.roster({ page, per_page: 25, keyword, state: keyword ? "" : state }, signal),
     placeholderData: keepPreviousData,
   });
 
