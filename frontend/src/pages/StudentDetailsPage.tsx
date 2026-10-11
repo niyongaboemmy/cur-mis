@@ -24,7 +24,6 @@ import {
   studentIdService,
   type StudentIdCard,
 } from "@/services/studentIdService";
-import { isPhotoUuid, legacyPhotoUrl } from "@/services/photoHelper";
 import { transcriptService } from "@/services/transcriptService";
 import { normalizeGrade } from "@/utils/gradingScale";
 import { academicService } from "@/services/academicService";
@@ -5799,69 +5798,12 @@ function tFmt(v: string | number | null | undefined): string {
 
 /* ─── ID Card tab ─────────────────────────────────────────────────────── */
 
-/** Natural size of the preview document: a 165 x 94mm card plus the 5mm of
- *  page margin around it, at CSS 96dpi. The iframe is laid out at this size and
- *  then scaled, so the card is always drawn at full fidelity and never reflowed. */
-const PREVIEW_W = Math.round((165 + 10) * 96 / 25.4);
-const PREVIEW_H = Math.round((94 + 10) * 96 / 25.4);
-
-/**
- * The card preview, scaled to fill whatever room the dialog has.
- *
- * A plain iframe rendered the card at its physical size inside whatever box the
- * dialog happened to be, which on a laptop left it small and clipped. Measuring
- * the container and scaling to it means the card is as large as the space
- * allows on any screen, and stays sharp because it is a transform rather than a
- * re-layout.
- */
-function CardPreviewFrame({ html }: { html: string }) {
-  const wrapRef = useRef<HTMLDivElement | null>(null);
-  const [scale, setScale] = useState(1);
-
-  useEffect(() => {
-    const el = wrapRef.current;
-    if (!el) return;
-    const fit = () => {
-      const { width, height } = el.getBoundingClientRect();
-      if (!width || !height) return;
-      // Never upscale past 2x — beyond that a 165mm card just looks blurry.
-      setScale(Math.min(width / PREVIEW_W, height / PREVIEW_H, 2));
-    };
-    fit();
-    const ro = new ResizeObserver(fit);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  return (
-    <div
-      ref={wrapRef}
-      className="flex-1 min-h-[420px] overflow-auto bg-ink-100 dark:bg-ink-900 p-4 grid place-items-center"
-    >
-      <div style={{ width: PREVIEW_W * scale, height: PREVIEW_H * scale }}>
-        <iframe
-          srcDoc={html}
-          title="ID card preview"
-          scrolling="no"
-          className="border-0 bg-white"
-          style={{
-            width: PREVIEW_W,
-            height: PREVIEW_H,
-            transform: `scale(${scale})`,
-            transformOrigin: "top left",
-          }}
-        />
-      </div>
-    </div>
-  );
-}
-
 function IdCardTab({ student }: { student: any }) {
   const studentId = student?.id as number | string | undefined;
   const canManage = usePermission(PERMISSIONS.MANAGE_STUDENT_IDS);
 
   const qc = useQueryClient();
-  const [preview, setPreview] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   const histQ = useQuery({
     queryKey: ["student-id-card", studentId],
@@ -5885,68 +5827,6 @@ function IdCardTab({ student }: { student: any }) {
       qc.invalidateQueries({ queryKey: ["student-id-card", studentId] });
     },
     onError: (e: any) => toast.error(e?.response?.data?.message ?? "Could not revoke card."),
-  });
-
-  const downloadMut = useMutation({
-    mutationFn: () => studentIdService.download(studentId as number),
-    onError: (e: any) => toast.error(e?.response?.data?.message ?? "Could not download card."),
-  });
-
-  const printMut = useMutation({
-    mutationFn: () => studentIdService.print(studentId as number),
-    onError: (e: any) => toast.error(e?.response?.data?.message ?? "Could not print card."),
-  });
-
-  const previewMut = useMutation({
-    mutationFn: async () => {
-      const photo = student?.photo as string | null | undefined;
-      // Pass the photo value so the backend can embed it even when student.photo
-      // is null in the DB (legacy students whose photo column wasn't migrated).
-      const res = await studentIdService.preview(studentId as number, photo ?? undefined);
-      let html = res.data?.html ?? '';
-
-      // If the server already embedded a data URI we're done — no client fetch needed.
-      if (html.includes('data:image/')) return html;
-
-      // Server set an external URL (couldn't fetch server-side) or showed initials.
-      // Try to fetch the photo client-side and swap it in as a data URI so the
-      // iframe has no cross-origin dependency.
-      if (photo && !isPhotoUuid(photo)) {
-        const photoUrl = legacyPhotoUrl(photo);
-        try {
-          const imgRes = await fetch(photoUrl);
-          if (imgRes.ok) {
-            const blob = await imgRes.blob();
-            const dataUri = await new Promise<string>((resolve, reject) => {
-              const reader = new FileReader();
-              reader.onload  = () => resolve(reader.result as string);
-              reader.onerror = reject;
-              reader.readAsDataURL(blob);
-            });
-            // Replace whichever element the backend used as the photo cell:
-            // – an <img data-card-photo> with a legacy URL
-            // – a <div data-card-photo> with initials (when server has no photo)
-            html = html.replace(
-              /<(?:img|div)\s[^>]*data-card-photo="1"[^>]*>(?:[^<]*<\/div>)?/,
-              `<img data-card-photo="1" src="${dataUri}" style="width:24mm;height:30mm;object-fit:cover;border:1px solid #94a3b8;" />`
-            );
-          }
-        } catch {
-          // Fetch failed (CORS). If the backend left an external URL in the img,
-          // the browser will load it directly in the iframe (img tags bypass CORS).
-          // If the backend left initials, replace with an img pointing to the URL —
-          // it will load in the iframe even across origins.
-          html = html.replace(
-            /<div\s[^>]*data-card-photo="1"[^>]*>[^<]*<\/div>/,
-            `<img data-card-photo="1" src="${photoUrl}" style="width:24mm;height:30mm;object-fit:cover;border:1px solid #94a3b8;" />`
-          );
-        }
-      }
-
-      return html;
-    },
-    onSuccess: (html) => setPreview(html),
-    onError: (e: any) => toast.error(e?.response?.data?.message ?? "Could not load preview."),
   });
 
   if (!studentId) {
@@ -5994,17 +5874,9 @@ function IdCardTab({ student }: { student: any }) {
         <div className="flex items-center gap-2 ml-auto">
           {active && (
             <>
-              <button className="btn-ghost btn-sm" disabled={previewMut.isPending} onClick={() => previewMut.mutate()}>
-                {previewMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Eye className="w-3.5 h-3.5" />}
-                Preview
-              </button>
-              <button className="btn-primary btn-sm" disabled={printMut.isPending} onClick={() => printMut.mutate()}>
-                {printMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Printer className="w-3.5 h-3.5" />}
-                {printMut.isPending ? "Preparing…" : "Print"}
-              </button>
-              <button className="btn-ghost btn-sm" disabled={downloadMut.isPending} onClick={() => downloadMut.mutate()}>
-                {downloadMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-                {downloadMut.isPending ? "Preparing…" : "Download PDF"}
+              <button className="btn-primary btn-sm" onClick={() => navigate("/students/id-cards")}>
+                <Printer className="w-3.5 h-3.5" />
+                Print
               </button>
             </>
           )}
@@ -6065,20 +5937,6 @@ function IdCardTab({ student }: { student: any }) {
         </div>
       )}
 
-      {/* Preview modal */}
-      {preview !== null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/60 backdrop-blur-sm p-4">
-          <div className="card w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between px-5 py-3 border-b border-ink-100 dark:border-ink-700">
-              <h3 className="font-semibold text-ink-900 dark:text-ink-50">ID card preview</h3>
-              <button className="p-1 text-ink-400 hover:text-ink-700" onClick={() => setPreview(null)}>
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <CardPreviewFrame html={preview} />
-          </div>
-        </div>
-      )}
     </div>
   );
 }
