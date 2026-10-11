@@ -60,6 +60,65 @@ self.addEventListener('fetch', (event) => {
   }
 });
 
+/*
+ * Device alerts. The server sends an encrypted JSON payload:
+ *   { title, body, url, tag, badge }
+ * Every push must show a notification (browsers penalise silent pushes), and
+ * the icon badge follows the user's unread count even when the app is closed.
+ */
+self.addEventListener('push', (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = { title: 'CUR-MIS', body: event.data ? event.data.text() : '' };
+  }
+
+  const icon = SCOPE_PATH + 'icons/icon-192.png';
+  const show = self.registration.showNotification(data.title || 'CUR-MIS', {
+    body: data.body || '',
+    icon,
+    badge: icon,
+    tag: data.tag || 'cur-mis',
+    renotify: Boolean(data.tag),
+    data: { url: data.url || '/' },
+  });
+
+  event.waitUntil(Promise.all([show, updateBadge(data.badge)]));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+
+  // Payload urls are app-relative ("/applicant"); the app may live under a sub-folder.
+  const path = String(event.notification.data?.url || '/').replace(/^\//, '');
+  const target = new URL(SCOPE_PATH + path, self.location.origin).href;
+
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const existing = windows.find((c) => c.url.startsWith(self.registration.scope));
+    if (existing) {
+      await existing.focus();
+      if ('navigate' in existing) await existing.navigate(target);
+      return;
+    }
+    await self.clients.openWindow(target);
+  })());
+});
+
+async function updateBadge(count) {
+  if (typeof count !== 'number' || !self.navigator) return;
+  try {
+    if (count > 0 && self.navigator.setAppBadge) {
+      await self.navigator.setAppBadge(count);
+    } else if (self.navigator.clearAppBadge) {
+      await self.navigator.clearAppBadge();
+    }
+  } catch {
+    // Badging is optional; a refusal must not hide the notification itself.
+  }
+}
+
 async function networkFirstShell(request) {
   try {
     const response = await fetch(request);

@@ -9,6 +9,7 @@ use Core\Response;
 use Core\Database;
 use App\Models\AnnouncementModel;
 use App\Helpers\ValidationHelper;
+use App\Services\NotificationService;
 use App\Services\SystemLogService;
 
 /**
@@ -80,6 +81,24 @@ class AnnouncementController extends BaseController
             "User {$actor['id']} posted announcement {$id} to '{$payload['audience']}'.",
             $id, 'announcement', ['audience' => $payload['audience'], 'priority' => $payload['priority']], $actor
         );
+
+        // Tell everyone the announcement is visible to, on their devices too.
+        $urgent = $payload['priority'] === 'urgent';
+        try {
+            NotificationService::pushToAudience(
+                (string) $payload['audience'],
+                'announcement',
+                $urgent ? 'Urgent: ' . $payload['title'] : (string) $payload['title'],
+                (string) $payload['body'],
+                '/announcements',
+                'announcement',
+                $id,
+                $urgent ? 'danger' : 'info',
+                [(int) $actor['id']]
+            );
+        } catch (\Throwable $e) {
+            error_log('[Announcements] notifying audience failed: ' . $e->getMessage());
+        }
 
         $this->success($response, $this->model->findWithAuthor($id), 'Announcement posted.', 201);
     }
