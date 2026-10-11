@@ -70,11 +70,9 @@ export default function StudentIdCardsPage() {
 
   const rosterQ = useQuery({
     queryKey: ["student-ids", "roster", page, keyword, state, year],
-    // A typed search covers every student, so the card-state and year filters
-    // only apply when browsing without a search term.
     queryFn: ({ signal }) =>
       studentIdService.roster(
-        { page, per_page: 25, keyword, state: keyword ? "" : state, year: keyword ? 0 : Number(year) || 0 },
+        { page, per_page: 25, keyword, state, year: Number(year) || 0 },
         signal,
       ),
     placeholderData: keepPreviousData,
@@ -186,7 +184,11 @@ export default function StudentIdCardsPage() {
                 type="text"
                 placeholder="Search by name or registration number…"
                 value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
+                onChange={(e) => {
+                  setSearchInput(e.target.value);
+                  // Clearing the box clears the search straight away.
+                  if (e.target.value === "") { setKeyword(""); setPage(1); }
+                }}
                 className="input pl-9 w-full"
               />
             </form>
