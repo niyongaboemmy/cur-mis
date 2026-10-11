@@ -35,7 +35,7 @@ export const graduation: HelpModule = {
         {
           type: "steps",
           steps: [
-            { title: "Open **Academic Records → Graduand list**", route: "/academic/graduands" },
+            { title: "Open **Academics → Graduation List**", route: "/academic/graduands?tab=list" },
             { title: "Filter to the programme, level and academic year" },
             { title: "Rebuild the completion list", detail: "This re-runs the audit against current marks. Do it after the last [[deliberation]], not before." },
             { title: "Read the exceptions", detail: "Missing [[credit]]s, unpassed compulsory modules, unresolved resits, outstanding [[clearance]]." },
@@ -89,7 +89,7 @@ export const graduation: HelpModule = {
         {
           type: "steps",
           steps: [
-            { title: "Open **Academic Records → Graduand list**", route: "/academic/graduands" },
+            { title: "Open **Academics → Graduation List**", route: "/academic/graduands?tab=list" },
             { title: "Approve the audited candidates onto the list" },
             { title: "Defer anyone who is not ready", detail: "Deferring keeps them for the next ceremony rather than removing their record." },
             { title: "Export the list for the booklet", detail: "Check name spellings against identification — this is the version that gets printed." },

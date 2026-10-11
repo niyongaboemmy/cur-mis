@@ -404,6 +404,8 @@ const NAV_TREE: NavNode[] = [
       PERMISSIONS.MANAGE_ACADEMIC_TERMS,
       PERMISSIONS.VIEW_TIMETABLE,
       PERMISSIONS.MANAGE_TIMETABLE,
+      PERMISSIONS.VIEW_GRADUANDS,
+      PERMISSIONS.MANAGE_GRADUANDS,
     ],
     children: [
       // Student self-service — opens the same Program & Marks view that
@@ -462,6 +464,16 @@ const NAV_TREE: NavNode[] = [
         label: "Scheduling",
         permissions: [
           PERMISSIONS.MANAGE_MODULE_SCHEDULES,
+        ],
+        hideForRoles: ["student", "applicant"],
+      },
+      // Graduation list — opens straight on the roster (see GraduandManagementPage).
+      {
+        to: "/academic/graduands?tab=list",
+        label: "Graduation List",
+        permissions: [
+          PERMISSIONS.VIEW_GRADUANDS,
+          PERMISSIONS.MANAGE_GRADUANDS,
         ],
         hideForRoles: ["student", "applicant"],
       },
@@ -558,14 +570,6 @@ const NAV_TREE: NavNode[] = [
         to: "/exams/revaluations",
         label: "Revaluations",
         permissions: [PERMISSIONS.MANAGE_REVALUATIONS],
-      },
-      {
-        to: "/academic/graduands",
-        label: "Graduand list",
-        permissions: [
-          PERMISSIONS.VIEW_GRADUANDS,
-          PERMISSIONS.MANAGE_GRADUANDS,
-        ],
       },
       {
         to: "/academic/transcript-requests",
