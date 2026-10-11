@@ -137,6 +137,67 @@ class NotificationService
     }
 
     /**
+     * Notify people about ongoing activity in one place (a conversation, a forum
+     * thread, a chat room). Each person has ONE unread notification per place:
+     * new activity updates it in place rather than stacking up a notification
+     * per message, so a busy room cannot bury the bell.
+     *
+     * A person who has already read the previous notification gets a new one.
+     *
+     * @param int[] $userIds
+     * @param int[] $excludeUserIds e.g. the author; nobody is pinged for their own message
+     * @return int how many people were notified
+     */
+    public static function pushDigest(
+        array $userIds,
+        string $type,
+        string $entityType,
+        int $entityId,
+        string $title,
+        string $message,
+        ?string $link,
+        string $severity = 'info',
+        array $excludeUserIds = []
+    ): int {
+        $exclude  = array_map('intval', $excludeUserIds);
+        $title    = mb_substr($title, 0, 150);
+        $link     = $link !== null ? mb_substr($link, 0, 255) : null;
+        $severity = in_array($severity, self::SEVERITIES, true) ? $severity : 'info';
+        $notified = 0;
+
+        foreach (array_unique(array_map('intval', $userIds)) as $userId) {
+            if ($userId <= 0 || in_array($userId, $exclude, true)) {
+                continue;
+            }
+
+            try {
+                $updated = Database::getInstance()->execute(
+                    'UPDATE notifications
+                        SET title = ?, message = ?, link = ?, severity = ?, created_at = NOW()
+                      WHERE user_id = ? AND type = ? AND entity_type = ? AND entity_id = ? AND is_read = 0',
+                    [$title, $message, $link, $severity, $userId, $type, $entityType, $entityId]
+                );
+            } catch (\Throwable $e) {
+                error_log('[NotificationService] digest update failed: ' . $e->getMessage());
+                continue;
+            }
+
+            if ($updated > 0) {
+                // Existing notification refreshed; the device still hears about the new activity.
+                self::deliverToDevices([$userId], $title, $message, $link, 'cur-mis-' . $entityType . '-' . $entityId);
+                $notified++;
+                continue;
+            }
+
+            if (self::push($userId, $type, $title, $message, $link, $entityType, $entityId, $severity) !== null) {
+                $notified++;
+            }
+        }
+
+        return $notified;
+    }
+
+    /**
      * Device push for one or more people. Best-effort: a device failure must
      * never undo or fail the notification that is already stored in-app.
      *
