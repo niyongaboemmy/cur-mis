@@ -653,6 +653,15 @@ const NAV_TREE: NavNode[] = [
         permissions: [PERMISSIONS.VIEW_FINANCE_OVERVIEW],
       },
       {
+        to: "/finance/online-payments",
+        label: "Online Payments",
+        permissions: [
+          PERMISSIONS.VIEW_ONLINE_PAYMENTS_HISTORY,
+          PERMISSIONS.VIEW_MOBILE_PAYMENTS,
+          PERMISSIONS.MANAGE_FINANCE,
+        ],
+      },
+      {
         to: "/finance/billing",
         label: "Billing",
         permissions: [PERMISSIONS.VIEW_FINANCE_BILLING],
@@ -671,15 +680,6 @@ const NAV_TREE: NavNode[] = [
         to: "/finance/reports",
         label: "Reports",
         permissions: [PERMISSIONS.VIEW_FINANCE_REPORTS],
-      },
-      {
-        to: "/finance/online-payments",
-        label: "Online Payments",
-        permissions: [
-          PERMISSIONS.VIEW_ONLINE_PAYMENTS_HISTORY,
-          PERMISSIONS.VIEW_MOBILE_PAYMENTS,
-          PERMISSIONS.MANAGE_FINANCE,
-        ],
       },
       {
         to: "/finance/fines",
