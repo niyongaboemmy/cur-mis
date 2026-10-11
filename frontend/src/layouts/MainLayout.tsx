@@ -38,6 +38,7 @@ import {
   useState,
 } from "react";
 import TopBar from "@/components/layout/TopBar";
+import LaunchNotificationsDigest from "@/components/layout/LaunchNotificationsDigest";
 import BlueBanner from "@/components/layout/BlueBanner";
 
 import Logo from "@/components/brand/Logo";
@@ -1636,6 +1637,8 @@ export default function MainLayout() {
             user.role !== "student"
           }
         />
+
+        <LaunchNotificationsDigest />
 
         {/* Scrollable page content (fills remaining height) */}
         <motion.main
