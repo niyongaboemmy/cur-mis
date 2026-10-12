@@ -611,6 +611,8 @@ export interface AdmissionBillingOverview {
   is_billed:            boolean
   fully_paid:           boolean
   merchant_code:        string
+  /** Kigali Campus merchant code from api_authorization; null when none is configured. */
+  kigali_merchant_code: string | null
   payer_code:           string
   checkout_url:         string | null
   offer_status:         string | null

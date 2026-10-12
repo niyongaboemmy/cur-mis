@@ -443,6 +443,7 @@ class AdmissionBillingService
             'is_billed'          => $summary['count'] > 0,
             'fully_paid'         => $summary['fully_paid'],
             'merchant_code'      => $merchantCode,
+            'kigali_merchant_code' => $this->kigaliMerchantCode($merchantCode),
             'payer_code'         => (string)($application['application_number'] ?? ''),
             'checkout_url'       => $this->outstandingCheckoutUrl(
                 $applicationId,
@@ -486,6 +487,35 @@ class AdmissionBillingService
             }
         }
         return $code;
+    }
+
+    /**
+     * The Kigali Campus merchant code: the second TH-prefixed row in api_authorization
+     * (the first is the primary merchant shown above). Null when no second code exists.
+     */
+    private function kigaliMerchantCode(string $primaryCode): ?string
+    {
+        try {
+            $rows = $this->db->fetchAll(
+                "SELECT merchant_code
+                 FROM api_authorization
+                 WHERE merchant_code IS NOT NULL
+                   AND TRIM(merchant_code) <> ''
+                   AND merchant_code LIKE 'TH%'
+                 ORDER BY id ASC
+                 LIMIT 2"
+            );
+        } catch (\Throwable $e) {
+            return null;
+        }
+
+        $codes = array_values(array_unique(array_filter(array_map(
+            static fn(array $row): string => trim((string)($row['merchant_code'] ?? '')),
+            $rows
+        ))));
+
+        $second = $codes[1] ?? null;
+        return ($second !== null && $second !== $primaryCode) ? $second : null;
     }
 
     /**

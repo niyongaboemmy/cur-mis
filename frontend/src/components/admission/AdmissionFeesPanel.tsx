@@ -345,6 +345,13 @@ export default function AdmissionFeesPanel({
           value={data.merchant_code || '—'}
           onCopy={() => copy('Merchant code', data.merchant_code)}
         />
+        {data.kigali_merchant_code && (
+          <DetailRow
+            label="Kigali Campus Merchant code"
+            value={data.kigali_merchant_code}
+            onCopy={() => copy('Kigali Campus Merchant code', data.kigali_merchant_code)}
+          />
+        )}
       </div>
 
       {/* The bills */}
