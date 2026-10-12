@@ -54,6 +54,7 @@ export default function AdmissionFeesPanel({
   const [openedCheckout, setOpenedCheckout] = useState(false)
   const [showBordereauForm, setShowBordereauForm] = useState(false)
   const [showBankSlipModal, setShowBankSlipModal] = useState(false)
+  const [merchantChoice, setMerchantChoice] = useState<'main' | 'kigali'>('main')
 
   const billsQ = useQuery({
     queryKey,
@@ -112,12 +113,18 @@ export default function AdmissionFeesPanel({
    * Registration fee. Without one, the whole-balance link is opened.
    */
   const payNow = async (bill?: AdmissionBill) => {
-    const url = bill?.checkout_url ?? data?.checkout_url
-    if (!url) {
+    const baseUrl = bill?.checkout_url ?? data?.checkout_url
+    if (!baseUrl) {
       toast.error('Payment information not ready — please try again.')
       billsQ.refetch()
       return
     }
+
+    // The checkout link carries the merchant code as `mhcd`; swap it for the
+    // Kigali Campus code when that option is selected.
+    const url = merchantChoice === 'kigali' && data?.kigali_merchant_code
+      ? withMerchantCode(baseUrl, data.kigali_merchant_code)
+      : baseUrl
 
     window.open(url, '_blank', 'noopener,noreferrer')
 
@@ -353,6 +360,33 @@ export default function AdmissionFeesPanel({
           />
         )}
       </div>
+
+      {/* Which merchant the Pay buttons settle into */}
+      {data.kigali_merchant_code && (
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+          <p className="text-[11px] font-bold uppercase tracking-widest text-ink-400">Pay to</p>
+          <div className="inline-flex rounded-lg border border-ink-200 dark:border-ink-700 p-0.5 self-start">
+            {([
+              { key: 'main', label: 'Main merchant', code: data.merchant_code },
+              { key: 'kigali', label: 'Kigali Campus', code: data.kigali_merchant_code },
+            ] as const).map((opt) => (
+              <button
+                key={opt.key}
+                type="button"
+                aria-pressed={merchantChoice === opt.key}
+                onClick={() => setMerchantChoice(opt.key)}
+                className={`px-3 h-8 rounded-md text-[12px] font-semibold transition-colors ${
+                  merchantChoice === opt.key
+                    ? 'bg-primary-600 text-white'
+                    : 'text-ink-600 dark:text-ink-300 hover:bg-ink-100 dark:hover:bg-ink-800'
+                }`}
+              >
+                {opt.label} <span className="font-mono opacity-80">{opt.code}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* The bills */}
       <div className="rounded-xl border border-ink-100 dark:border-ink-800 divide-y divide-ink-100 dark:divide-ink-800 overflow-hidden">
@@ -733,6 +767,17 @@ function Header({ title, sub }: { title: string; sub: string }) {
       <p className="section-sub mt-1 max-w-2xl">{sub}</p>
     </div>
   )
+}
+
+/** Same Urubuto Pay link, pointed at another merchant (the `mhcd` parameter). */
+function withMerchantCode(url: string, merchantCode: string): string {
+  try {
+    const u = new URL(url)
+    u.searchParams.set('mhcd', merchantCode)
+    return u.toString()
+  } catch {
+    return url
+  }
 }
 
 function DetailRow({
