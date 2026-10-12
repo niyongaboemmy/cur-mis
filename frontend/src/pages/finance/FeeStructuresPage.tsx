@@ -619,6 +619,9 @@ function FeeStructureModal({ years, departments, levels, campuses, faculties, op
   const [selectedDepts, setSelectedDepts] = useState<number[]>(parseInitialDepts)
   const [selectedOptions, setSelectedOptions] = useState<number[]>(parseInitialOptions)
   const [selectedFacultyId, setSelectedFacultyId] = useState<number | null>(null)
+  const [selectedCampusIds, setSelectedCampusIds] = useState<number[]>(
+    () => (initial?.campus_id ? [initial.campus_id] : []),
+  )
   const [form, setForm] = useState<CreateFeeStructurePayload & { is_active: 0 | 1 }>({
     academic_year_id:  initial?.academic_year_id ?? defaultYearId ?? 0,
     department_id:     initial?.department_id ?? null,
@@ -656,6 +659,18 @@ function FeeStructureModal({ years, departments, levels, campuses, faculties, op
       setSelectedDepts(allIds)
       setForm(f => ({ ...f, department_ids: allIds, department_id: allIds[0] ?? null }))
     }
+  }
+
+  const toggleCampus = (campusId: number) => {
+    setSelectedCampusIds(prev =>
+      prev.includes(campusId) ? prev.filter(c => c !== campusId) : [...prev, campusId],
+    )
+  }
+
+  const toggleAllCampuses = () => {
+    setSelectedCampusIds(prev =>
+      prev.length === campuses.length ? [] : campuses.map((c: any) => c.id),
+    )
   }
 
   const toggleOption = (optionId: number) => {
@@ -702,12 +717,21 @@ function FeeStructureModal({ years, departments, levels, campuses, faculties, op
       : formatRWF(n)
 
   const mutation = useMutation({
-    mutationFn: (): Promise<any> =>
-      initial
-        ? feeStructureService.update(initial.id, { ...form })
-        : feeStructureService.create(form),
+    mutationFn: (): Promise<any> => {
+      if (initial) return feeStructureService.update(initial.id, { ...form })
+      // One structure per selected campus; none selected = all campuses (campus_id null).
+      const targets = selectedCampusIds.length > 0 ? selectedCampusIds : [null]
+      return Promise.all(
+        targets.map(campusId => feeStructureService.create({ ...form, campus_id: campusId })),
+      )
+    },
     onSuccess: () => {
-      toast.success(initial ? 'Fee structure updated' : 'Fee structure created')
+      const count = selectedCampusIds.length
+      toast.success(
+        initial ? 'Fee structure updated'
+          : count > 1 ? `${count} fee structures created`
+          : 'Fee structure created',
+      )
       onSaved()
     },
     onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Save failed'),
@@ -878,15 +902,64 @@ function FeeStructureModal({ years, departments, levels, campuses, faculties, op
             {/* ── Right: Scope + Payment Plan ── */}
             <div className="space-y-4">
               {/* Campus */}
-              <Field label="Campus">
-                <SearchableSelect
-                  options={campusOptions}
-                  value={form.campus_id ?? ''}
-                  onChange={v => set('campus_id', v ? Number(v) : null)}
-                  placeholder="All campuses"
-                  allLabel="All campuses"
-                />
-              </Field>
+              {/* Campus: a single select when editing; multi-select when creating */}
+              {initial ? (
+                <Field label="Campus">
+                  <SearchableSelect
+                    options={campusOptions}
+                    value={form.campus_id ?? ''}
+                    onChange={v => set('campus_id', v ? Number(v) : null)}
+                    placeholder="All campuses"
+                    allLabel="All campuses"
+                  />
+                </Field>
+              ) : (
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400">
+                      Campuses
+                      <span className="normal-case font-normal ml-1 text-ink-300">(leave empty = all campuses)</span>
+                    </label>
+                    {campuses.length > 0 && (
+                      <button
+                        type="button"
+                        className="text-[11px] text-brand hover:underline"
+                        onClick={toggleAllCampuses}
+                      >
+                        {selectedCampusIds.length === campuses.length ? 'Deselect all' : 'Select all'}
+                      </button>
+                    )}
+                  </div>
+                  <div className="border border-ink-200 dark:border-ink-600 rounded-xl p-2 max-h-44 overflow-y-auto space-y-0.5 bg-ink-50/50 dark:bg-ink-900/30">
+                    {campuses.length === 0 && (
+                      <p className="text-xs text-ink-400 py-1 px-1">No campuses loaded</p>
+                    )}
+                    {campusOptions.map(c => (
+                      <label
+                        key={c.value}
+                        className={`flex items-center gap-2.5 cursor-pointer rounded-lg px-2 py-1.5 transition-colors ${
+                          selectedCampusIds.includes(Number(c.value))
+                            ? 'bg-brand/10 dark:bg-brand/20'
+                            : 'hover:bg-ink-100 dark:hover:bg-ink-700/40'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          className="rounded accent-brand"
+                          checked={selectedCampusIds.includes(Number(c.value))}
+                          onChange={() => toggleCampus(Number(c.value))}
+                        />
+                        <span className="text-xs leading-none">{c.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                  {selectedCampusIds.length > 1 && (
+                    <p className="text-[11px] text-brand mt-1.5 font-medium">
+                      {selectedCampusIds.length} campuses selected — one fee structure will be created for each
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* Faculty */}
               <Field label="Faculty">
