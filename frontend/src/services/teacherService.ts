@@ -364,9 +364,11 @@ export const teacherService = {
    * MANAGE_MODULE_REGISTRATIONS, which lecturers do not hold, so the portal has
    * its own scoped endpoint — it only accepts modules you actually teach.
    */
-  enrolStudents: (moduleId: number, regnumbers: string[], signal?: AbortSignal) =>
+  enrolStudents: (moduleId: number, regnumbers: string[], signal?: AbortSignal, termId?: number) =>
     api.post<{ added: number; already: number }>(
-      `/api/teacher/courses/${moduleId}/students`, { regnumbers }, signal,
+      `/api/teacher/courses/${moduleId}/students`
+        + (termId ? `?term_id=${termId}` : ''),
+      { regnumbers }, signal,
     ),
 
   /**

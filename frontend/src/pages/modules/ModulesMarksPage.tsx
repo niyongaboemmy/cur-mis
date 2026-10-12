@@ -32,6 +32,7 @@ import {
   type MyMarksRow,
 } from '@/services/marksService'
 import { moduleRegistrationService } from '@/services/modulesService'
+import { teacherService } from '@/services/teacherService'
 
 interface RowDraft {
   /** CAT total out of 60 — what CUR actually records and what the sheet asks
@@ -1149,20 +1150,35 @@ export function MarksEditor({
   }
 
   /* ── Enrol students found in an upload but missing from the roster ───────
-   * Same endpoint and `force` as the registry's Registrations page, since the
-   * person here is deliberately choosing these students. Afterwards the roster
-   * is re-read and the sheet re-matched, so the new students become ordinary
-   * matched rows ready to take marks. */
-  const canEnroll = useAnyPermission([PERMISSIONS.MANAGE_MODULE_REGISTRATIONS])
+   * Registry users (MANAGE_MODULE_REGISTRATIONS) use the same endpoint and
+   * `force` as the Registrations page. Lecturers who may record marks but do
+   * not hold that permission use the portal's scoped endpoint instead, which
+   * the backend only accepts for modules they actually teach. Afterwards the
+   * roster is re-read and the sheet re-matched, so the new students become
+   * ordinary matched rows ready to take marks — no re-upload needed. */
+  const canWrite = useAnyPermission([PERMISSIONS.RECORD_MODULE_MARKS, PERMISSIONS.MANAGE_MODULE_MARKS])
+  const canRegister = useAnyPermission([PERMISSIONS.MANAGE_MODULE_REGISTRATIONS])
+  const canEnroll = canRegister || canWrite
   const enrollMut = useMutation({
-    mutationFn: (regs: string[]) => moduleRegistrationService.bulkRegister({
-      module_id: moduleId,
-      academic_term_id: writeTermId,
-      student_regnumbers: regs,
-      force: true,
-    }),
-    onSuccess: async (res: any) => {
-      const data = res.data
+    mutationFn: async (regs: string[]) => {
+      if (canRegister) {
+        const res = await moduleRegistrationService.bulkRegister({
+          module_id: moduleId,
+          academic_term_id: writeTermId,
+          student_regnumbers: regs,
+          force: true,
+        })
+        return res.data
+      }
+      const res = await teacherService.enrolStudents(moduleId, regs, undefined, writeTermId)
+      const added = Number((res.data as any)?.added ?? 0)
+      return {
+        created: added,
+        skipped: Number((res.data as any)?.already ?? 0),
+        errors: [] as Array<{ regnumber: string; reason: string }>,
+      }
+    },
+    onSuccess: async (data: any) => {
       if (data?.created > 0) toast.success(`${data.created} student${data.created === 1 ? '' : 's'} added to the module`)
       else toast(`Nothing added — ${data?.skipped ?? 0} skipped`)
       data?.errors?.slice(0, 5).forEach((e: any) => toast.error(`${e.regnumber}: ${e.reason}`, { duration: 5000 }))
@@ -1178,8 +1194,6 @@ export function MarksEditor({
     },
     onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Could not add students to the module'),
   })
-
-  const canWrite = useAnyPermission([PERMISSIONS.RECORD_MODULE_MARKS, PERMISSIONS.MANAGE_MODULE_MARKS])
 
   // Confirming locks the sheet and re-opening it is the only way back — both are
   // registry acts, deliberately NOT implied by being able to record marks. The
