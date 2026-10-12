@@ -2830,12 +2830,12 @@ function ImportPreviewModal({
           )}
           {canEnroll && summary.unmatched > 0 && (
             <button
-              className="btn-ghost btn-sm"
+              className="btn-primary btn-sm"
               disabled={enrolling}
               onClick={() => onEnroll(unmatchedRegs)}
             >
               {enrolling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserPlus className="w-3.5 h-3.5" />}
-              Add all {summary.unmatched} to module
+              Enrol all {summary.unmatched} to this module
             </button>
           )}
           <span className="ml-auto text-ink-400">{entries.length} row(s) read</span>
@@ -2884,11 +2884,11 @@ function ImportPreviewModal({
                   <td className="px-3 py-1.5">
                     {e.matched ? `${e.fname} ${e.lname}` : canEnroll ? (
                       <button
-                        className="btn-ghost btn-sm py-0.5 px-2 text-[11.5px] inline-flex items-center gap-1"
+                        className="btn-primary btn-sm py-0.5 px-2 text-[11.5px] inline-flex items-center gap-1"
                         disabled={enrolling}
                         onClick={() => onEnroll([e.regnumber])}
                       >
-                        <UserPlus className="w-3 h-3" /> Add to module
+                        <UserPlus className="w-3 h-3" /> Enrol to this module
                       </button>
                     ) : '—'}
                   </td>
