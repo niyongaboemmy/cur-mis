@@ -54,7 +54,9 @@ export default function AdmissionFeesPanel({
   const [openedCheckout, setOpenedCheckout] = useState(false)
   const [showBordereauForm, setShowBordereauForm] = useState(false)
   const [showBankSlipModal, setShowBankSlipModal] = useState(false)
-  const [merchantChoice, setMerchantChoice] = useState<'main' | 'kigali'>('main')
+  // No default: when two merchants exist the payer must pick one before paying.
+  const [merchantChoice, setMerchantChoice] = useState<'main' | 'kigali' | null>(null)
+  const merchantPending = Boolean(data?.kigali_merchant_code) && merchantChoice === null
 
   const billsQ = useQuery({
     queryKey,
@@ -113,6 +115,11 @@ export default function AdmissionFeesPanel({
    * Registration fee. Without one, the whole-balance link is opened.
    */
   const payNow = async (bill?: AdmissionBill) => {
+    if (merchantPending) {
+      toast.error('Choose where to pay first.')
+      return
+    }
+
     const baseUrl = bill?.checkout_url ?? data?.checkout_url
     if (!baseUrl) {
       toast.error('Payment information not ready — please try again.')
@@ -385,6 +392,11 @@ export default function AdmissionFeesPanel({
               </button>
             ))}
           </div>
+          {merchantPending && (
+            <p className="text-[12px] font-semibold text-amber-700 dark:text-amber-300">
+              Select where to pay to enable payment.
+            </p>
+          )}
         </div>
       )}
 
@@ -445,7 +457,8 @@ export default function AdmissionFeesPanel({
                     <button
                       className="btn-primary font-semibold"
                       onClick={() => payNow(bill)}
-                      title="Pay via Urubuto (MTN MoMo / Airtel Money)"
+                      disabled={merchantPending}
+                      title={merchantPending ? 'Select where to pay first' : 'Pay via Urubuto (MTN MoMo / Airtel Money)'}
                     >
                       <CreditCard className="w-4 h-4" />
                       Pay {fmt(bill.balance)} RWF
@@ -454,7 +467,12 @@ export default function AdmissionFeesPanel({
 
                   {/* Validator: Open payment page */}
                   {isValidator && (
-                    <button className="btn-primary" onClick={() => payNow(bill)}>
+                    <button
+                      className="btn-primary"
+                      onClick={() => payNow(bill)}
+                      disabled={merchantPending}
+                      title={merchantPending ? 'Select where to pay first' : undefined}
+                    >
                       <CreditCard className="w-4 h-4" />
                       Open payment page
                     </button>
