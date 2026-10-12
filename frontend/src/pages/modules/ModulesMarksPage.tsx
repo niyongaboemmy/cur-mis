@@ -31,6 +31,7 @@ import {
   type MarksWorkflowStatus,
   type MyMarksRow,
 } from '@/services/marksService'
+import { moduleRegistrationService } from '@/services/modulesService'
 
 interface RowDraft {
   /** CAT total out of 60 — what CUR actually records and what the sheet asks
@@ -986,6 +987,8 @@ export function MarksEditor({
 
   /* ── Import — parse file, show preview modal, apply on approve ──── */
   const [preview, setPreview] = useState<ImportPreview | null>(null)
+  // The parsed sheet, kept so it can be re-matched once students are enrolled.
+  const [importSource, setImportSource] = useState<ImportSource | null>(null)
 
   const handleImportFile = async (file: File) => {
     if (!roster) return
@@ -1076,61 +1079,19 @@ export function MarksEditor({
         return
       }
 
-      const normReg = (s: string) =>
-        s.replace(/^['’]+/, '')
-         .replace(/\s+/g, '')
-         .toUpperCase()
-      const rosterByReg = new Map(
-        roster.map((r) => [normReg(r.regnumber ?? ''), r])
-      )
-
-      const entries: ImportEntry[] = []
-      const cell = (row: any[], i: number) => i >= 0 ? String(row[i] ?? '').trim() : ''
-      let matched = 0
-      let unmatched = 0
-      let unchanged = 0
-
-      for (let i = 1; i < rows.length; i++) {
-        const row = rows[i]
-        if (row.every((c) => String(c ?? '').trim() === '')) continue
-        const rawReg = cell(row, iReg)
-        if (!rawReg) continue
-        const key = normReg(rawReg)
-        const target = rosterByReg.get(key)
-        if (!target) {
-          unmatched++
-          entries.push({
-            regnumber: rawReg, fname: '', lname: '', matched: false,
-            current: emptyDraft(), incoming: emptyDraft(), changed: false,
-          })
-          continue
-        }
-        const cur: RowDraft = drafts[target.regnumber] ?? emptyDraft()
-        const incoming: RowDraft = {
-          cats:    cell(row, iCats)    || cur.cats,
-          cat1:    cell(row, iCat1)    || cur.cat1,
-          cat2:    cell(row, iCat2)    || cur.cat2,
-          cat3:    cell(row, iCat3)    || cur.cat3,
-          partial: cell(row, iPartial) || cur.partial,
-          exam1:   cell(row, iExam1)   || cur.exam1,
-          exam2:   cell(row, iExam2)   || cur.exam2,
-          remarks: cell(row, iRemarks) || cur.remarks,
-        }
-        const changed = !sameDraft(cur, incoming)
-        if (changed) matched++; else unchanged++
-        entries.push({
-          regnumber: target.regnumber,
-          fname: target.fname, lname: target.lname,
-          matched: true, current: cur, incoming, changed,
-        })
+      const source: ImportSource = {
+        rows,
+        cols: { iReg, iCats, iCat1, iCat2, iCat3, iPartial, iExam1, iExam2, iRemarks },
       }
+      const built = matchImport(source, roster, drafts)
 
-      if (entries.length === 0) {
+      if (built.entries.length === 0) {
         toast.error('The file had no usable rows.')
         return
       }
 
-      setPreview({ entries, summary: { matched, unmatched, unchanged } })
+      setImportSource(source)
+      setPreview(built)
     } catch (err: any) {
       toast.error(err?.message ?? 'Could not parse the file.')
     }
@@ -1186,6 +1147,37 @@ export function MarksEditor({
     )
     setPreview(null)
   }
+
+  /* ── Enrol students found in an upload but missing from the roster ───────
+   * Same endpoint and `force` as the registry's Registrations page, since the
+   * person here is deliberately choosing these students. Afterwards the roster
+   * is re-read and the sheet re-matched, so the new students become ordinary
+   * matched rows ready to take marks. */
+  const canEnroll = useAnyPermission([PERMISSIONS.MANAGE_MODULE_REGISTRATIONS])
+  const enrollMut = useMutation({
+    mutationFn: (regs: string[]) => moduleRegistrationService.bulkRegister({
+      module_id: moduleId,
+      academic_term_id: writeTermId,
+      student_regnumbers: regs,
+      force: true,
+    }),
+    onSuccess: async (res: any) => {
+      const data = res.data
+      if (data?.created > 0) toast.success(`${data.created} student${data.created === 1 ? '' : 's'} added to the module`)
+      else toast(`Nothing added — ${data?.skipped ?? 0} skipped`)
+      data?.errors?.slice(0, 5).forEach((e: any) => toast.error(`${e.regnumber}: ${e.reason}`, { duration: 5000 }))
+
+      const fresh = await listQ.refetch()
+      const freshBase = fresh.data?.data?.roster
+      if (freshBase && importSource) {
+        const seen = new Set(freshBase.map((r) => r.regnumber))
+        const merged = [...freshBase, ...Object.values(extras).filter((r) => !seen.has(r.regnumber))]
+        // Functional update: the review may have been closed while this ran.
+        setPreview((prev) => (prev ? matchImport(importSource, merged, drafts) : prev))
+      }
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Could not add students to the module'),
+  })
 
   const canWrite = useAnyPermission([PERMISSIONS.RECORD_MODULE_MARKS, PERMISSIONS.MANAGE_MODULE_MARKS])
 
@@ -1391,6 +1383,9 @@ export function MarksEditor({
         preview={preview}
         onCancel={() => setPreview(null)}
         onApprove={applyImport}
+        canEnroll={canEnroll && !isLocked}
+        enrolling={enrollMut.isPending}
+        onEnroll={(regs) => enrollMut.mutate(regs)}
       />
 
       <div className={`items-start justify-between gap-3 flex-wrap ${embedded ? 'hidden' : 'flex'}`}>
@@ -2685,14 +2680,91 @@ interface ImportPreview {
   summary: { matched: number; unmatched: number; unchanged: number }
 }
 
+interface ImportColumns {
+  iReg: number; iCats: number; iCat1: number; iCat2: number; iCat3: number
+  iPartial: number; iExam1: number; iExam2: number; iRemarks: number
+}
+
+/** A parsed sheet, kept so it can be matched again against a newer roster. */
+interface ImportSource {
+  rows: any[][]
+  cols: ImportColumns
+}
+
+const normReg = (s: string) =>
+  s.replace(/^['’]+/, '')
+   .replace(/\s+/g, '')
+   .toUpperCase()
+
+/** Match each row of an uploaded sheet against the roster. Unmatched rows are
+ *  kept (flagged) so the review can offer to enrol them. */
+function matchImport(
+  source: ImportSource,
+  roster: MarksRosterRow[],
+  drafts: Record<string, RowDraft>,
+): ImportPreview {
+  const { rows, cols } = source
+  const { iReg, iCats, iCat1, iCat2, iCat3, iPartial, iExam1, iExam2, iRemarks } = cols
+  const rosterByReg = new Map(
+    roster.map((r) => [normReg(r.regnumber ?? ''), r])
+  )
+
+  const entries: ImportEntry[] = []
+  const cell = (row: any[], i: number) => i >= 0 ? String(row[i] ?? '').trim() : ''
+  let matched = 0
+  let unmatched = 0
+  let unchanged = 0
+
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i]
+    if (row.every((c) => String(c ?? '').trim() === '')) continue
+    const rawReg = cell(row, iReg)
+    if (!rawReg) continue
+    const target = rosterByReg.get(normReg(rawReg))
+    if (!target) {
+      unmatched++
+      entries.push({
+        regnumber: rawReg, fname: '', lname: '', matched: false,
+        current: emptyDraft(), incoming: emptyDraft(), changed: false,
+      })
+      continue
+    }
+    const cur: RowDraft = drafts[target.regnumber] ?? emptyDraft()
+    const incoming: RowDraft = {
+      cats:    cell(row, iCats)    || cur.cats,
+      cat1:    cell(row, iCat1)    || cur.cat1,
+      cat2:    cell(row, iCat2)    || cur.cat2,
+      cat3:    cell(row, iCat3)    || cur.cat3,
+      partial: cell(row, iPartial) || cur.partial,
+      exam1:   cell(row, iExam1)   || cur.exam1,
+      exam2:   cell(row, iExam2)   || cur.exam2,
+      remarks: cell(row, iRemarks) || cur.remarks,
+    }
+    const changed = !sameDraft(cur, incoming)
+    if (changed) matched++; else unchanged++
+    entries.push({
+      regnumber: target.regnumber,
+      fname: target.fname, lname: target.lname,
+      matched: true, current: cur, incoming, changed,
+    })
+  }
+
+  return { entries, summary: { matched, unmatched, unchanged } }
+}
+
 /* ─── Import preview modal ──────────────────────────────────────────── */
 
 function ImportPreviewModal({
-  preview, onCancel, onApprove,
+  preview, onCancel, onApprove, canEnroll, enrolling, onEnroll,
 }: {
   preview:  ImportPreview | null
   onCancel: () => void
   onApprove: (keep: Set<string>, note: string) => void | Promise<void>
+  /** Whether this user may add unmatched students to the module. */
+  canEnroll: boolean
+  enrolling: boolean
+  /** Enrol the given registration numbers onto this module. */
+  onEnroll: (regs: string[]) => void
 }) {
   // Rows the user chose to leave as they are. A conflict defaults to taking
   // the uploaded value — that is why the file was uploaded — but every one of
@@ -2702,6 +2774,7 @@ function ImportPreviewModal({
   const [applying, setApplying] = useState(false)
   if (!preview) return null
   const { entries, summary } = preview
+  const unmatchedRegs = entries.filter((e) => !e.matched).map((e) => e.regnumber)
   const changedRegs = entries.filter((e) => e.matched && e.changed).map((e) => e.regnumber)
   // A "conflict" is a matched row that already holds a different mark.
   const conflicts = entries.filter(
@@ -2718,7 +2791,8 @@ function ImportPreviewModal({
           <div>
             <h3 className="text-base font-bold text-ink-900 dark:text-white">Review imported marks</h3>
             <p className="text-[12px] text-ink-500">
-              Approve to overwrite the marks for matched students. Unmatched rows are ignored.
+              Approve to overwrite the marks for matched students. Unmatched rows are ignored
+              until their student is added to the module.
             </p>
           </div>
           <button className="icon-btn" onClick={onCancel} aria-label="Close">
@@ -2739,6 +2813,16 @@ function ImportPreviewModal({
             <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300 font-semibold">
               <AlertTriangle className="w-3 h-3" /> {summary.unmatched} unmatched
             </span>
+          )}
+          {canEnroll && summary.unmatched > 0 && (
+            <button
+              className="btn-ghost btn-sm"
+              disabled={enrolling}
+              onClick={() => onEnroll(unmatchedRegs)}
+            >
+              {enrolling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserPlus className="w-3.5 h-3.5" />}
+              Add all {summary.unmatched} to module
+            </button>
           )}
           <span className="ml-auto text-ink-400">{entries.length} row(s) read</span>
         </div>
@@ -2783,7 +2867,17 @@ function ImportPreviewModal({
                       : <span className="text-amber-700 dark:text-amber-300 inline-flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Not in enrollment list</span>}
                   </td>
                   <td className="px-3 py-1.5 font-mono">{e.regnumber}</td>
-                  <td className="px-3 py-1.5">{e.matched ? `${e.fname} ${e.lname}` : '—'}</td>
+                  <td className="px-3 py-1.5">
+                    {e.matched ? `${e.fname} ${e.lname}` : canEnroll ? (
+                      <button
+                        className="btn-ghost btn-sm py-0.5 px-2 text-[11.5px] inline-flex items-center gap-1"
+                        disabled={enrolling}
+                        onClick={() => onEnroll([e.regnumber])}
+                      >
+                        <UserPlus className="w-3 h-3" /> Add to module
+                      </button>
+                    ) : '—'}
+                  </td>
                   {cols.map((c) => {
                     const before = e.current[c.k]
                     const after  = e.incoming[c.k]
