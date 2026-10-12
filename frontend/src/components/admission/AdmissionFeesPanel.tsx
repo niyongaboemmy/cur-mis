@@ -54,9 +54,7 @@ export default function AdmissionFeesPanel({
   const [openedCheckout, setOpenedCheckout] = useState(false)
   const [showBordereauForm, setShowBordereauForm] = useState(false)
   const [showBankSlipModal, setShowBankSlipModal] = useState(false)
-  // No default: when two merchants exist the payer must pick one before paying.
   const [merchantChoice, setMerchantChoice] = useState<'main' | 'kigali' | null>(null)
-  const merchantPending = Boolean(data?.kigali_merchant_code) && merchantChoice === null
 
   const billsQ = useQuery({
     queryKey,
@@ -79,6 +77,8 @@ export default function AdmissionFeesPanel({
   })
 
   const data = billsQ.data?.data
+  // No default: when two merchants exist the payer must pick one before paying.
+  const merchantPending = Boolean(data?.kigali_merchant_code) && merchantChoice === null
   const bills = data?.bills ?? []
   const summary = data?.summary
 
