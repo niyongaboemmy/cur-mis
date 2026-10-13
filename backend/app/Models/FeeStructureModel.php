@@ -6,6 +6,13 @@ namespace App\Models;
 
 class FeeStructureModel extends BaseModel
 {
+    /**
+     * Stored tuition amounts are a quarter of the programme total on the signed CUR schedule
+     * (e.g. 412,500 stored, 1,650,000 signed). The schedule export multiplies them by this factor
+     * so the total, per-semester and per-year columns match the signed layout.
+     */
+    public const TUITION_TOTAL_FACTOR = 4;
+
     protected string $table = 'fee_structures';
     protected array $fillable = [
         'academic_year_id', 'department_id', 'level_id', 'campus_id', 'student_category', 'programme_category',
@@ -335,6 +342,10 @@ class FeeStructureModel extends BaseModel
                         }
                     }
                     $row[$column] = $exact ?? $general;
+                }
+
+                if ($row['tuition_fee'] !== null) {
+                    $row['tuition_fee'] = $row['tuition_fee'] * self::TUITION_TOTAL_FACTOR;
                 }
 
                 $rows[] = $row;
