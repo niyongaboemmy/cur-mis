@@ -233,6 +233,8 @@ class FeeStructureModel extends BaseModel
                     f.fac_id,
                     d.dep_id as option_id,
                     d.dep_name as option_name,
+                    d.duration_years,
+                    d.internship_count,
                     fs.semester,
                     fs.level_id,
                     l.name as level_name,
