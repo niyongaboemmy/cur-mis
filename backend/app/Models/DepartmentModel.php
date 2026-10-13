@@ -11,7 +11,7 @@ class DepartmentModel extends BaseModel
     protected array  $fillable   = [
         'dep_name', 'dep_acronym', 'dep_code', 'dep_description',
         'fac_id', 'school_id', 'dep_author', 'index_number',
-        'allowed_combinations', 'program_level',
+        'allowed_combinations', 'program_level', 'duration_years', 'internship_count',
     ];
     protected array $hidden = [];
 }
