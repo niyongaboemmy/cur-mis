@@ -8,42 +8,42 @@
 SET @db = DATABASE();
 
 SET @sql = (SELECT IF(COUNT(*) = 0,
-  'ALTER TABLE `hr_payroll` ADD COLUMN `base_gross` DECIMAL(15,2) NOT NULL DEFAULT 0.00 COMMENT ''Step 4: basic + housing + transport'' AFTER `other_allowances`',
+  'ALTER TABLE `hr_payroll` ADD COLUMN `base_gross` DECIMAL(15,2) NOT NULL DEFAULT 0.00 COMMENT ''Step 4: basic + housing + transport''',
   'SELECT 1')
   FROM information_schema.COLUMNS
   WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'hr_payroll' AND COLUMN_NAME = 'base_gross');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 SET @sql = (SELECT IF(COUNT(*) = 0,
-  'ALTER TABLE `hr_payroll` ADD COLUMN `responsibility_allowance` DECIMAL(15,2) NOT NULL DEFAULT 0.00 COMMENT ''Step 5'' AFTER `base_gross`',
+  'ALTER TABLE `hr_payroll` ADD COLUMN `responsibility_allowance` DECIMAL(15,2) NOT NULL DEFAULT 0.00 COMMENT ''Step 5''',
   'SELECT 1')
   FROM information_schema.COLUMNS
   WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'hr_payroll' AND COLUMN_NAME = 'responsibility_allowance');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 SET @sql = (SELECT IF(COUNT(*) = 0,
-  'ALTER TABLE `hr_payroll` ADD COLUMN `arrears` DECIMAL(15,2) NOT NULL DEFAULT 0.00 COMMENT ''Step 6'' AFTER `responsibility_allowance`',
+  'ALTER TABLE `hr_payroll` ADD COLUMN `arrears` DECIMAL(15,2) NOT NULL DEFAULT 0.00 COMMENT ''Step 6''',
   'SELECT 1')
   FROM information_schema.COLUMNS
   WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'hr_payroll' AND COLUMN_NAME = 'arrears');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 SET @sql = (SELECT IF(COUNT(*) = 0,
-  'ALTER TABLE `hr_payroll` ADD COLUMN `maternity_base` DECIMAL(15,2) NOT NULL DEFAULT 0.00 COMMENT ''Step 9: total gross minus transport'' AFTER `arrears`',
+  'ALTER TABLE `hr_payroll` ADD COLUMN `maternity_base` DECIMAL(15,2) NOT NULL DEFAULT 0.00 COMMENT ''Step 9: total gross minus transport''',
   'SELECT 1')
   FROM information_schema.COLUMNS
   WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'hr_payroll' AND COLUMN_NAME = 'maternity_base');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 SET @sql = (SELECT IF(COUNT(*) = 0,
-  'ALTER TABLE `hr_payroll` ADD COLUMN `employer_rama` DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT ''Step 17: CUR share of RAMA'' AFTER `employer_cbhi`',
+  'ALTER TABLE `hr_payroll` ADD COLUMN `employer_rama` DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT ''Step 17: CUR share of RAMA''',
   'SELECT 1')
   FROM information_schema.COLUMNS
   WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'hr_payroll' AND COLUMN_NAME = 'employer_rama');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 SET @sql = (SELECT IF(COUNT(*) = 0,
-  'ALTER TABLE `hr_payroll` ADD COLUMN `employer_occupational` DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT ''Step 11: 2% employer-only'' AFTER `employer_rama`',
+  'ALTER TABLE `hr_payroll` ADD COLUMN `employer_occupational` DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT ''Step 11: 2% employer-only''',
   'SELECT 1')
   FROM information_schema.COLUMNS
   WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'hr_payroll' AND COLUMN_NAME = 'employer_occupational');
@@ -51,7 +51,7 @@ PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 -- ── employees: current responsibility role (drives step 5 each month) ─────
 SET @sql = (SELECT IF(COUNT(*) = 0,
-  'ALTER TABLE `employees` ADD COLUMN `responsibility_role` VARCHAR(40) NULL DEFAULT NULL COMMENT ''Step 5 role code, see PayrollCalculator::RESPONSIBILITY_ROLES'' AFTER `salary`',
+  'ALTER TABLE `employees` ADD COLUMN `responsibility_role` VARCHAR(40) NULL DEFAULT NULL COMMENT ''Step 5 role code, see PayrollCalculator::RESPONSIBILITY_ROLES''',
   'SELECT 1')
   FROM information_schema.COLUMNS
   WHERE TABLE_SCHEMA = @db AND TABLE_NAME = 'employees' AND COLUMN_NAME = 'responsibility_role');
