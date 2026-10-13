@@ -2283,7 +2283,7 @@ function ProfileHeroPhoto({
   };
 
   // Try student photo first; if not available, check applicant profile via application
-  let photoSrc =
+  const photoSrc =
     preview ??
     (student.photo
       ? selfMode

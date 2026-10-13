@@ -13,6 +13,7 @@ import { cn, timeAgo } from '@/utils/helpers'
 import { useAuthStore } from '@/store/authStore'
 import { PERMISSIONS } from '@/constants/permissions'
 import { StudentAuditModal } from './GraduationAuditPanel'
+import { buildCeremonyPdf, fetchAllReady } from './graduationCeremonyPdf'
 import {
   graduandService,
   type DegreeClass, type GraduandStatus, type ReadyRow, type ReadySummary,
@@ -53,12 +54,21 @@ const STATUS_CHIP: Record<GraduandStatus, string> = {
 
 type StatusFilter = '' | GraduandStatus
 
+/** What each stored status means to the registry. The database keeps the
+ *  four codes; the screen speaks in the terms a ceremony list uses. */
+const STATUS_LABEL: Record<GraduandStatus, string> = {
+  waiting:   'Waiting',
+  pending:   'Candidates',
+  approved:  'Graduands',
+  graduated: 'Graduated',
+}
+
 const STATUS_TABS: Array<{ key: StatusFilter; label: string; countKey: keyof ReadySummary }> = [
-  { key: '',          label: 'Ready to graduate', countKey: 'ready' },
-  { key: 'waiting',   label: 'Waiting',           countKey: 'waiting' },
-  { key: 'pending',   label: 'Pending',           countKey: 'pending' },
-  { key: 'approved',  label: 'Approved',          countKey: 'approved' },
-  { key: 'graduated', label: 'Graduated',         countKey: 'graduated' },
+  { key: '',          label: 'All ready to graduate', countKey: 'ready' },
+  { key: 'waiting',   label: 'Waiting for review',    countKey: 'waiting' },
+  { key: 'pending',   label: 'Candidates',            countKey: 'pending' },
+  { key: 'approved',  label: 'Graduands (confirmed)', countKey: 'approved' },
+  { key: 'graduated', label: 'Graduated',             countKey: 'graduated' },
 ]
 
 export default function GraduationRosterPanel() {
@@ -85,6 +95,18 @@ export default function GraduationRosterPanel() {
   const [bulkClass, setBulkClass]      = useState<DegreeClass | ''>('')
   const [gradDate, setGradDate]        = useState(new Date().toISOString().slice(0, 10))
   const [ceremony, setCeremony]        = useState('')
+
+  // Ceremony PDF dialog
+  const [ceremonyOpen, setCeremonyOpen]   = useState(false)
+  const [ceremonyTitle, setCeremonyTitle] = useState('Graduation Ceremony')
+  const [ceremonyNo, setCeremonyNo]       = useState('')
+  const [ceremonyDate, setCeremonyDate]   = useState('')
+  const [ceremonyBusy, setCeremonyBusy]   = useState(false)
+
+  // HEC template dialog
+  const [hecOpen, setHecOpen]       = useState(false)
+  const [hecYear, setHecYear]       = useState('')
+  const [hecBusy, setHecBusy]       = useState(false)
 
   const search = useDebounce(searchInput, 400)
 
@@ -211,6 +233,75 @@ export default function GraduationRosterPanel() {
     else              next.add(id)
     return next
   })
+
+  /* ── Ceremony PDF ──────────────────────────────────────────────────────── */
+
+  /** Downloads every student matching the current filters and status tab —
+   *  not just the rows on screen — grouped for printing. */
+  const handleCeremonyPdf = async () => {
+    setCeremonyBusy(true)
+    try {
+      const all = await fetchAllReady(params)
+      if (all.length === 0) { toast.error('No students match these filters.'); return }
+
+      const filters = [
+        `Status: ${status ? STATUS_LABEL[status] : 'all ready to graduate'}`,
+        department
+          ? `Department: ${roster?.departments.find((d) => String(d.id) === department)?.name ?? department}`
+          : null,
+        option
+          ? `Programme: ${programs.find((p) => String(p.id) === option)?.name ?? option}`
+          : null,
+        intakeYear ? `Registered: ${intakeYear}` : null,
+      ].filter((v): v is string => v !== null)
+
+      const date = ceremonyDate
+        ? new Date(`${ceremonyDate}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+        : ''
+
+      const doc = buildCeremonyPdf(all, {
+        title:          ceremonyTitle.trim() || 'Graduation Ceremony',
+        ceremonyNumber: ceremonyNo.trim(),
+        date,
+        filters,
+        computedAt:     roster?.computed_at ?? null,
+      })
+      const stamp = ceremonyDate || new Date().toISOString().slice(0, 10)
+      doc.save(`ceremony-list-${status || 'all'}-${stamp}.pdf`)
+      toast.success(`Ceremony list: ${all.length} students.`)
+      setCeremonyOpen(false)
+    } catch {
+      toast.error('Could not build the ceremony list.')
+    } finally {
+      setCeremonyBusy(false)
+    }
+  }
+
+  /* ── HEC template ──────────────────────────────────────────────────────── */
+
+  /** The HEC workbook for the current status tab and filters, one sheet per programme. */
+  const handleHecTemplate = async () => {
+    setHecBusy(true)
+    try {
+      await graduandService.downloadHecTemplate({
+        academic_year:    hecYear.trim(),
+        graduand_status:  status || undefined,
+        department:       department || undefined,
+        std_option:       option || undefined,
+        intake_year:      intakeYear || undefined,
+        include_failures: includeFailures ? '1' : undefined,
+      })
+      toast.success('HEC template downloaded.')
+      setHecOpen(false)
+    } catch (e: unknown) {
+      toast.error(
+        (e as { response?: { data?: { message?: string } } })?.response?.data?.message
+          ?? 'Could not build the HEC template.',
+      )
+    } finally {
+      setHecBusy(false)
+    }
+  }
 
   /* ── Export ────────────────────────────────────────────────────────────── */
 
@@ -347,6 +438,20 @@ export default function GraduationRosterPanel() {
             <button onClick={handlePdf} className="btn-ghost btn-sm" title="Download the rows below as PDF">
               <Download className="h-3.5 w-3.5" /> PDF
             </button>
+            <button
+              onClick={() => setHecOpen(true)}
+              className="btn-ghost btn-sm"
+              title="HEC graduation workbook: one sheet per programme, in the Higher Education Council layout"
+            >
+              <Download className="h-3.5 w-3.5" /> HEC template
+            </button>
+            <button
+              onClick={() => setCeremonyOpen(true)}
+              className="btn-ghost btn-sm"
+              title="Ceremony list PDF: every student matching these filters, grouped by department and programme, with sign-off"
+            >
+              <Download className="h-3.5 w-3.5" /> Ceremony PDF
+            </button>
             {canWrite && (
               <button
                 onClick={() => rebuildMut.mutate()}
@@ -362,6 +467,49 @@ export default function GraduationRosterPanel() {
           </div>
         </div>
       </div>
+
+      {/* Confirmation guide — tells the registry what is still to be decided */}
+      {canWrite && summary && (() => {
+        const unconfirmed = summary.waiting + summary.pending
+        return (
+          <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-900/40 dark:bg-blue-900/20">
+            <div className="flex items-center gap-2 text-sm font-semibold text-blue-900 dark:text-blue-200">
+              <UserCheck className="h-4 w-4" /> Confirm the graduation list
+            </div>
+            <p className="mt-1 text-sm text-blue-900/80 dark:text-blue-200/80">
+              {unconfirmed > 0
+                ? `${unconfirmed.toLocaleString()} ready student${unconfirmed !== 1 ? 's are' : ' is'} not yet confirmed. Review them, check clearance, then select the students to confirm and set them to Graduands.`
+                : 'Every ready student has been confirmed. After the ceremony, set the graduands to Graduated.'}
+            </p>
+            <ol className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+              <li className="rounded-lg bg-white/70 px-3 py-2 dark:bg-ink-900/40">
+                <span className="font-semibold">1 · Waiting</span>
+                <span className="block text-gray-600 dark:text-ink-300">Ready, not yet reviewed ({summary.waiting.toLocaleString()})</span>
+              </li>
+              <li className="rounded-lg bg-white/70 px-3 py-2 dark:bg-ink-900/40">
+                <span className="font-semibold">2 · Candidates</span>
+                <span className="block text-gray-600 dark:text-ink-300">Put forward, awaiting sign-off ({summary.pending.toLocaleString()})</span>
+              </li>
+              <li className="rounded-lg bg-white/70 px-3 py-2 dark:bg-ink-900/40">
+                <span className="font-semibold">3 · Graduands</span>
+                <span className="block text-gray-600 dark:text-ink-300">Confirmed for the ceremony ({summary.approved.toLocaleString()})</span>
+              </li>
+              <li className="rounded-lg bg-white/70 px-3 py-2 dark:bg-ink-900/40">
+                <span className="font-semibold">4 · Graduated</span>
+                <span className="block text-gray-600 dark:text-ink-300">Ceremony held ({summary.graduated.toLocaleString()})</span>
+              </li>
+            </ol>
+            {summary.waiting > 0 && (
+              <button
+                onClick={() => reset(setStatus)('waiting')}
+                className="mt-3 text-xs font-medium text-blue-700 hover:underline dark:text-blue-300"
+              >
+                Review the {summary.waiting.toLocaleString()} waiting students →
+              </button>
+            )}
+          </div>
+        )
+      })()}
 
       {/* Lifecycle counters, doubling as filters */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
@@ -497,7 +645,7 @@ export default function GraduationRosterPanel() {
                 STATUS_CHIP[s],
               )}
             >
-              {s}
+              {STATUS_LABEL[s]}
             </button>
           ))}
         </div>
@@ -668,6 +816,86 @@ export default function GraduationRosterPanel() {
       <StudentAuditModal row={openStudent} onClose={() => setOpenStudent(null)} />
 
       <DiagnosticsModal open={showDiag} onClose={() => setShowDiag(false)} />
+
+      {/* HEC template details */}
+      <Modal
+        open={hecOpen}
+        title="HEC graduation template"
+        onClose={() => !hecBusy && setHecOpen(false)}
+        footer={
+          <>
+            <button onClick={() => setHecOpen(false)} disabled={hecBusy}
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-ink-700 dark:text-ink-200 dark:hover:bg-ink-700/50">
+              Cancel
+            </button>
+            <button onClick={handleHecTemplate}
+              disabled={hecBusy || !/^\d{4}\s*[-/]\s*\d{4}$/.test(hecYear.trim())}
+              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+              {hecBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              {hecBusy ? 'Building…' : 'Download workbook'}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4 p-1">
+          <p className="text-sm text-gray-600 dark:text-ink-300">
+            One sheet per programme, laid out as the HEC template: institution, faculty, academic year and award at the top,
+            then identification, admission criteria and the average for each level. Uses the current status tab and filters.
+          </p>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-ink-300">Academic year</label>
+            <input value={hecYear} onChange={(e) => setHecYear(e.target.value)} placeholder="e.g. 2025-2026"
+              className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:border-ink-700 dark:bg-ink-900 dark:text-white" />
+          </div>
+          <p className="text-xs text-gray-500 dark:text-ink-400">
+            Left blank in the file: transferred credits (not recorded by the system) and the level averages where a student has no marks for that level.
+          </p>
+        </div>
+      </Modal>
+
+      {/* Ceremony PDF details */}
+      <Modal
+        open={ceremonyOpen}
+        title="Ceremony list PDF"
+        onClose={() => !ceremonyBusy && setCeremonyOpen(false)}
+        footer={
+          <>
+            <button onClick={() => setCeremonyOpen(false)} disabled={ceremonyBusy}
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-ink-700 dark:text-ink-200 dark:hover:bg-ink-700/50">
+              Cancel
+            </button>
+            <button onClick={handleCeremonyPdf} disabled={ceremonyBusy}
+              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+              {ceremonyBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              {ceremonyBusy ? 'Building…' : 'Download PDF'}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4 p-1">
+          <p className="text-sm text-gray-600 dark:text-ink-300">
+            Includes every student matching the current status tab and filters — not only this page.
+            Students are grouped by department and programme, with totals and a sign-off block.
+          </p>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-ink-300">Title</label>
+            <input value={ceremonyTitle} onChange={(e) => setCeremonyTitle(e.target.value)}
+              className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:border-ink-700 dark:bg-ink-900 dark:text-white" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-ink-300">Ceremony number</label>
+              <input value={ceremonyNo} onChange={(e) => setCeremonyNo(e.target.value)} placeholder="e.g. 3"
+                className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:border-ink-700 dark:bg-ink-900 dark:text-white" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-ink-300">Ceremony date</label>
+              <input type="date" value={ceremonyDate} onChange={(e) => setCeremonyDate(e.target.value)}
+                className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:border-ink-700 dark:bg-ink-900 dark:text-white" />
+            </div>
+          </div>
+        </div>
+      </Modal>
 
       {/* Bulk status confirmation */}
       <Modal

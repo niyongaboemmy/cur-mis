@@ -22,6 +22,8 @@ $router->group('/api/graduands', function ($router) {
         $r->get('/completion',       [GraduandController::class, 'completionList']);
         // Students who have finished — what the graduation list is built from.
         $r->get('/ready',            [GraduandController::class, 'readyList']);
+        // HEC workbook for the graduation list (one sheet per programme).
+        $r->get('/hec-template',     [GraduandController::class, 'hecTemplate']);
         $r->get('',                  [GraduandController::class, 'list']);
     }, [new PermissionMiddleware(Permissions::VIEW_GRADUANDS)]);
 

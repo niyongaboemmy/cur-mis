@@ -622,6 +622,9 @@ function FeeStructureModal({ years, departments, levels, campuses, faculties, op
   const [selectedCampusIds, setSelectedCampusIds] = useState<number[]>(
     () => (initial?.campus_id ? [initial.campus_id] : []),
   )
+  const [selectedLevelIds, setSelectedLevelIds] = useState<number[]>(
+    () => (initial?.level_id ? [initial.level_id] : []),
+  )
   const [form, setForm] = useState<CreateFeeStructurePayload & { is_active: 0 | 1 }>({
     academic_year_id:  initial?.academic_year_id ?? defaultYearId ?? 0,
     department_id:     initial?.department_id ?? null,
@@ -693,6 +696,18 @@ function FeeStructureModal({ years, departments, levels, campuses, faculties, op
     }
   }
 
+  const toggleLevel = (levelId: number) => {
+    setSelectedLevelIds(prev =>
+      prev.includes(levelId) ? prev.filter(l => l !== levelId) : [...prev, levelId],
+    )
+  }
+
+  const toggleAllLevels = () => {
+    setSelectedLevelIds(prev =>
+      prev.length === levels.length ? [] : levels.map((l: any) => l.id),
+    )
+  }
+
   const set = (k: keyof typeof form, v: any) => setForm(f => ({ ...f, [k]: v }))
 
   const yearOptions  = years.map((y: any) => ({ value: y.id, label: y.label }))
@@ -719,14 +734,19 @@ function FeeStructureModal({ years, departments, levels, campuses, faculties, op
   const mutation = useMutation({
     mutationFn: (): Promise<any> => {
       if (initial) return feeStructureService.update(initial.id, { ...form })
-      // One structure per selected campus; none selected = all campuses (campus_id null).
-      const targets = selectedCampusIds.length > 0 ? selectedCampusIds : [null]
+      // One structure per selected campus and level; none selected = all (null).
+      const campusTargets = selectedCampusIds.length > 0 ? selectedCampusIds : [null]
+      const levelTargets = selectedLevelIds.length > 0 ? selectedLevelIds : [null]
       return Promise.all(
-        targets.map(campusId => feeStructureService.create({ ...form, campus_id: campusId })),
+        campusTargets.flatMap(campusId =>
+          levelTargets.map(levelId =>
+            feeStructureService.create({ ...form, campus_id: campusId, level_id: levelId }),
+          ),
+        ),
       )
     },
     onSuccess: () => {
-      const count = selectedCampusIds.length
+      const count = Math.max(1, selectedCampusIds.length) * Math.max(1, selectedLevelIds.length)
       toast.success(
         initial ? 'Fee structure updated'
           : count > 1 ? `${count} fee structures created`
@@ -844,7 +864,8 @@ function FeeStructureModal({ years, departments, levels, campuses, faculties, op
                 </p>
               )}
 
-              <div className="grid grid-cols-2 gap-3">
+              {/* Level: a single select when editing; multi-select when creating */}
+              {initial ? (
                 <Field label="Level">
                   <SearchableSelect
                     options={levelOptions}
@@ -854,6 +875,55 @@ function FeeStructureModal({ years, departments, levels, campuses, faculties, op
                     allLabel="All levels"
                   />
                 </Field>
+              ) : (
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-[11px] font-semibold uppercase tracking-wider text-ink-400">
+                      Levels
+                      <span className="normal-case font-normal ml-1 text-ink-300">(leave empty = all levels)</span>
+                    </label>
+                    {levels.length > 0 && (
+                      <button
+                        type="button"
+                        className="text-[11px] text-brand hover:underline"
+                        onClick={toggleAllLevels}
+                      >
+                        {selectedLevelIds.length === levels.length ? 'Deselect all' : 'Select all'}
+                      </button>
+                    )}
+                  </div>
+                  <div className="border border-ink-200 dark:border-ink-600 rounded-xl p-2 max-h-44 overflow-y-auto space-y-0.5 bg-ink-50/50 dark:bg-ink-900/30">
+                    {levels.length === 0 && (
+                      <p className="text-xs text-ink-400 py-1 px-1">No levels loaded</p>
+                    )}
+                    {levelOptions.map(l => (
+                      <label
+                        key={l.value}
+                        className={`flex items-center gap-2.5 cursor-pointer rounded-lg px-2 py-1.5 transition-colors ${
+                          selectedLevelIds.includes(Number(l.value))
+                            ? 'bg-brand/10 dark:bg-brand/20'
+                            : 'hover:bg-ink-100 dark:hover:bg-ink-700/40'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          className="rounded accent-brand"
+                          checked={selectedLevelIds.includes(Number(l.value))}
+                          onChange={() => toggleLevel(Number(l.value))}
+                        />
+                        <span className="text-xs leading-none">{l.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                  {selectedLevelIds.length > 1 && (
+                    <p className="text-[11px] text-brand mt-1.5 font-medium">
+                      {selectedLevelIds.length} levels selected — one fee structure will be created for each
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
                 <Field label="Student Category">
                   <SearchableSelect
                     options={STUDENT_CATEGORY_OPTIONS}

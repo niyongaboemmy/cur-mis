@@ -438,4 +438,41 @@ export const graduandService = {
     })
     return `${base}/graduands/completion/export?${qs.toString()}`
   },
+
+  /** The HEC graduation workbook (one sheet per programme), downloaded as a
+   *  file. Goes through the authenticated client so the token stays out of the URL. */
+  downloadHecTemplate: async (params: HecTemplateParams) => {
+    const res = await apiClient.get('/api/graduands/hec-template', {
+      params,
+      responseType: 'blob',
+    }).catch(async (e: any) => {
+      // Errors arrive as a Blob under responseType:'blob'; unwrap the JSON so
+      // the caller can show the server's message.
+      const body = e?.response?.data
+      if (body instanceof Blob && body.type.includes('json')) {
+        try { e.response.data = JSON.parse(await body.text()) } catch { /* leave as-is */ }
+      }
+      throw e
+    })
+    const blob = res.data instanceof Blob ? res.data : new Blob([res.data])
+    const cd   = (res.headers['content-disposition'] as string | undefined) ?? ''
+    const m    = /filename="?([^";]+)"?/i.exec(cd)
+    const url  = window.URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href = url
+    a.download = m?.[1] ?? 'hec-graduation-list.xlsx'
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    window.URL.revokeObjectURL(url)
+  },
+}
+
+export interface HecTemplateParams {
+  academic_year:    string
+  graduand_status?: GraduandStatus
+  department?:      number | string
+  std_option?:      number | string
+  intake_year?:     number
+  include_failures?: '1'
 }
