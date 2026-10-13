@@ -10,9 +10,13 @@ import {
   Pencil,
   Trash2,
   X,
-  Calculator,
 } from "lucide-react";
-import { hrService, type PayrollEntry } from "@/services/hrService";
+import {
+  hrService,
+  type PayrollEntry,
+  type PayrollRules,
+} from "@/services/hrService";
+import { computePayroll, responsibilityAmount } from "@/utils/payrollCalc";
 import type { HrEmployee } from "@/types/academic";
 import { PERMISSIONS } from "@/constants";
 import { usePermission } from "@/utils/permissions";
@@ -102,7 +106,15 @@ export default function PayrollSlipPage() {
     enabled: empId > 0,
   });
 
-  const employee: HrEmployee | undefined = data?.data?.employee;
+  const employee: (HrEmployee & { responsibility_role?: string | null }) | undefined =
+    data?.data?.employee;
+
+  const { data: rulesRes } = useQuery({
+    queryKey: ["hr-payroll-rules"],
+    queryFn: ({ signal }) => hrService.getPayrollRules(signal),
+    staleTime: 5 * 60 * 1000,
+  });
+  const rules = rulesRes?.data;
   const slips: PayrollEntry[] = data?.data?.slips ?? [];
 
   /* totals */
@@ -594,10 +606,12 @@ export default function PayrollSlipPage() {
       </div>
 
       {/* Edit modal */}
-      {editing && (
+      {editing && rules && (
         <PayrollEntryModal
           empId={empId}
           entry={editing}
+          defaultRole={employee?.responsibility_role ?? null}
+          rules={rules}
           onClose={() => setEditing(null)}
         />
       )}
@@ -609,28 +623,25 @@ export default function PayrollSlipPage() {
 function PayrollEntryModal({
   empId,
   entry,
+  defaultRole,
+  rules,
   onClose,
 }: {
   empId: number;
   entry?: PayrollEntry;
+  defaultRole: string | null;
+  rules: PayrollRules;
   onClose: () => void;
 }) {
   const qc = useQueryClient();
 
-  const [form, setForm] = useState<PayrollEntry>({
-    emp_id: empId,
+  // Only the procedure inputs are entered. Every amount is calculated.
+  const [form, setForm] = useState({
     period_year: entry?.period_year ?? CUR_Y,
     period_month: entry?.period_month ?? CUR_M,
     basic_salary: Number(entry?.basic_salary ?? 0),
-    housing_allowance: Number(entry?.housing_allowance ?? 0),
-    transport_allowance: Number(entry?.transport_allowance ?? 0),
-    other_allowances: Number(entry?.other_allowances ?? 0),
-    gross_salary: Number(entry?.gross_salary ?? 0),
-    paye: Number(entry?.paye ?? 0),
-    rssb: Number(entry?.rssb ?? 0),
-    cbhi: Number(entry?.cbhi ?? 0),
-    net_salary: Number(entry?.net_salary ?? 0),
-    notes: entry?.notes ?? "",
+    responsibility_role: defaultRole ?? "",
+    arrears: Number(entry?.arrears ?? 0),
   });
 
   // Live deductions for the selected period
@@ -644,33 +655,36 @@ function PayrollEntryModal({
     queryFn: ({ signal }) =>
       hrService.activeEmployeeDeductions(
         empId,
-        form.period_year!,
-        form.period_month!,
+        form.period_year,
+        form.period_month,
         signal,
       ),
     staleTime: 30_000,
   });
   const activeDeds = dedRes?.data?.deductions ?? [];
-  const otherDedTotal =
-    dedRes?.data?.total ?? Number(entry?.other_deductions ?? 0);
+  const otherDedTotal = dedRes?.data?.total ?? 0;
 
-  const gross =
-    form.basic_salary +
-    form.housing_allowance +
-    form.transport_allowance +
-    form.other_allowances;
-  const net = Math.max(
-    0,
-    gross - form.paye - form.rssb - form.cbhi - otherDedTotal,
+  const calc = computePayroll(
+    {
+      basicSalary: form.basic_salary,
+      responsibilityAmount: responsibilityAmount(rules, form.responsibility_role || null),
+      arrears: form.arrears,
+      otherDeductions: otherDedTotal,
+    },
+    rules,
   );
+  const r = rules.rates;
 
   const save = useMutation({
     mutationFn: () =>
       hrService.payrollUpsert({
-        ...form,
-        gross_salary: gross,
+        emp_id: empId,
+        period_year: form.period_year,
+        period_month: form.period_month,
+        basic_salary: form.basic_salary,
+        responsibility_role: form.responsibility_role || null,
+        arrears: form.arrears,
         other_deductions: otherDedTotal,
-        net_salary: net,
       }),
     onSuccess: () => {
       toast.success(entry ? "Entry updated." : "Entry added.");
@@ -682,9 +696,17 @@ function PayrollEntryModal({
       toast.error(e?.response?.data?.message ?? "Save failed"),
   });
 
-  const n =
-    (field: keyof PayrollEntry) => (e: React.ChangeEvent<HTMLInputElement>) =>
-      setForm((f) => ({ ...f, [field]: parseFloat(e.target.value) || 0 }));
+  const lines: { label: string; value: number; tone: string }[] = [
+    { label: "Housing (basic ÷ 7)", value: calc.housing_allowance, tone: "text-ink-700 dark:text-ink-200" },
+    { label: "Transport (basic ÷ 7)", value: calc.transport_allowance, tone: "text-ink-700 dark:text-ink-200" },
+    { label: "Total gross", value: calc.gross, tone: "text-ink-900 dark:text-white font-bold" },
+    { label: "PAYE", value: calc.paye, tone: "text-red-600 dark:text-red-400" },
+    { label: `Pension (${Number((r.pension_employee * 100).toFixed(2))}%)`, value: calc.pension_employee, tone: "text-orange-600 dark:text-orange-400" },
+    { label: `Maternity (${Number((r.maternity_employee * 100).toFixed(2))}%)`, value: calc.maternity_employee, tone: "text-orange-600 dark:text-orange-400" },
+    { label: `RAMA (${Number((r.rama_employee * 100).toFixed(2))}%)`, value: calc.rama_employee, tone: "text-orange-600 dark:text-orange-400" },
+    { label: `CBHI (${Number((r.cbhi_employee * 100).toFixed(2))}% of net salary)`, value: calc.cbhi, tone: "text-sky-600 dark:text-sky-400" },
+    { label: "Other deductions", value: otherDedTotal, tone: "text-violet-600 dark:text-violet-400" },
+  ];
 
   return (
     <ModalPortal>
@@ -707,10 +729,7 @@ function PayrollEntryModal({
                   className="input text-[13px]"
                   value={form.period_month}
                   onChange={(e) =>
-                    setForm((f) => ({
-                      ...f,
-                      period_month: parseInt(e.target.value),
-                    }))
+                    setForm((f) => ({ ...f, period_month: parseInt(e.target.value) }))
                   }
                 >
                   {monthOptions.map((o) => (
@@ -725,10 +744,7 @@ function PayrollEntryModal({
                   className="input text-[13px]"
                   value={form.period_year}
                   onChange={(e) =>
-                    setForm((f) => ({
-                      ...f,
-                      period_year: parseInt(e.target.value),
-                    }))
+                    setForm((f) => ({ ...f, period_year: parseInt(e.target.value) }))
                   }
                 >
                   {yearOptions.map((o) => (
@@ -742,104 +758,82 @@ function PayrollEntryModal({
 
             <hr className="border-ink-100 dark:border-ink-700" />
             <p className="text-[11px] font-bold text-ink-400 uppercase tracking-wider">
-              Salary components
+              Inputs
             </p>
 
             <div className="grid grid-cols-2 gap-3">
               <Field label="Basic Salary">
                 <NumInput
                   value={form.basic_salary}
-                  onChange={n("basic_salary")}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, basic_salary: parseFloat(e.target.value) || 0 }))
+                  }
                 />
               </Field>
-              <Field label="Housing Allowance">
+              <Field label="Arrears (if any)">
                 <NumInput
-                  value={form.housing_allowance}
-                  onChange={n("housing_allowance")}
-                />
-              </Field>
-              <Field label="Transport Allowance">
-                <NumInput
-                  value={form.transport_allowance}
-                  onChange={n("transport_allowance")}
-                />
-              </Field>
-              <Field label="Other Allowances">
-                <NumInput
-                  value={form.other_allowances}
-                  onChange={n("other_allowances")}
+                  value={form.arrears}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, arrears: parseFloat(e.target.value) || 0 }))
+                  }
                 />
               </Field>
             </div>
 
-            <div className="rounded-lg bg-ink-50 dark:bg-ink-700/30 px-4 py-2.5 flex items-center justify-between">
-              <span className="text-[12px] font-semibold text-ink-600 dark:text-ink-300 flex items-center gap-1.5">
-                <Calculator className="w-3.5 h-3.5" /> Gross Salary
-              </span>
-              <span className="text-[14px] font-bold text-ink-900 dark:text-white tabular-nums">
-                {gross.toLocaleString("en-US")}
-              </span>
-            </div>
+            <Field label="Responsibility Allowance">
+              <select
+                className="input text-[13px]"
+                value={form.responsibility_role}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, responsibility_role: e.target.value }))
+                }
+              >
+                <option value="">None</option>
+                {rules.responsibility_roles.map((role) => (
+                  <option key={role.code} value={role.code}>
+                    {role.label} — {role.amount.toLocaleString("en-US")}
+                  </option>
+                ))}
+              </select>
+            </Field>
 
             <hr className="border-ink-100 dark:border-ink-700" />
             <p className="text-[11px] font-bold text-ink-400 uppercase tracking-wider">
-              Deductions
+              Calculated (CUR procedure)
             </p>
 
-            <div className="grid grid-cols-3 gap-3">
-              <Field label="PAYE (TPR)">
-                <NumInput value={form.paye} onChange={n("paye")} />
-              </Field>
-              <Field label="RSSB">
-                <NumInput value={form.rssb} onChange={n("rssb")} />
-              </Field>
-              <Field label="CBHI">
-                <NumInput value={form.cbhi} onChange={n("cbhi")} />
-              </Field>
-            </div>
-
-            {activeDeds.length > 0 && (
-              <div className="rounded-lg border border-violet-100 dark:border-violet-800 overflow-hidden">
-                <div className="px-3 py-1.5 bg-violet-50 dark:bg-violet-900/20 text-[10px] font-bold text-violet-500 uppercase tracking-wider">
-                  Employee deductions
+            <div className="rounded-lg border border-ink-100 dark:border-ink-700 divide-y divide-ink-100 dark:divide-ink-700 overflow-hidden">
+              {lines.map((line) => (
+                <div key={line.label} className="flex items-center justify-between px-4 py-2">
+                  <span className="text-[12px] text-ink-600 dark:text-ink-400">{line.label}</span>
+                  <span className={`text-[13px] tabular-nums ${line.tone}`}>
+                    {line.value.toLocaleString("en-US", { maximumFractionDigits: 2 })}
+                  </span>
                 </div>
-                {activeDeds.map((d) => (
-                  <div
-                    key={d.id}
-                    className="flex items-center justify-between px-3 py-2 border-t border-violet-100 dark:border-violet-800"
-                  >
-                    <span className="text-[12px] text-ink-600 dark:text-ink-300">
-                      {d.label}{" "}
-                      <span className="text-[10px] text-ink-400">
-                        ({d.deduction_type})
-                      </span>
-                    </span>
-                    <span className="text-[12px] font-semibold text-violet-700 dark:text-violet-300 tabular-nums">
-                      –{Number(d.monthly_amount).toLocaleString("en-US")}
-                    </span>
-                  </div>
-                ))}
+              ))}
+              {activeDeds.map((d) => (
+                <div key={d.id} className="flex items-center justify-between px-4 py-2">
+                  <span className="text-[12px] text-ink-600 dark:text-ink-400">
+                    {d.label} <span className="text-[10px] text-ink-400">({d.deduction_type})</span>
+                  </span>
+                  <span className="text-[13px] tabular-nums text-violet-700 dark:text-violet-300">
+                    {Number(d.monthly_amount).toLocaleString("en-US")}
+                  </span>
+                </div>
+              ))}
+              <div className="flex items-center justify-between px-4 py-2.5 bg-emerald-50 dark:bg-emerald-500/10">
+                <span className="text-[12px] font-semibold text-emerald-700 dark:text-emerald-300">
+                  Net Pay
+                </span>
+                <span className="text-[14px] font-bold text-emerald-800 dark:text-emerald-200 tabular-nums">
+                  {calc.net_pay.toLocaleString("en-US", { maximumFractionDigits: 2 })}
+                </span>
               </div>
-            )}
-
-            <div className="rounded-lg bg-emerald-50 dark:bg-emerald-500/10 px-4 py-2.5 flex items-center justify-between">
-              <span className="text-[12px] font-semibold text-emerald-700 dark:text-emerald-300">
-                Net Salary
-              </span>
-              <span className="text-[14px] font-bold text-emerald-800 dark:text-emerald-200 tabular-nums">
-                {net.toLocaleString("en-US")}
-              </span>
             </div>
 
-            <Field label="Notes (optional)">
-              <input
-                className="input text-[13px]"
-                value={form.notes ?? ""}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, notes: e.target.value }))
-                }
-              />
-            </Field>
+            <p className="text-[11px] text-ink-400 dark:text-ink-500 bg-ink-50 dark:bg-ink-700/20 rounded px-3 py-2">
+              Amounts are recalculated by the server when you save.
+            </p>
           </div>
 
           <div className="flex justify-end gap-2 px-5 py-4 border-t border-ink-100 dark:border-ink-700">
@@ -849,7 +843,7 @@ function PayrollEntryModal({
             <button
               className="btn-primary"
               onClick={() => save.mutate()}
-              disabled={save.isPending}
+              disabled={save.isPending || form.basic_salary <= 0}
             >
               {save.isPending && (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />

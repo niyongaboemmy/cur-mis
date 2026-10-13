@@ -7,6 +7,7 @@ namespace App\Controllers;
 use Core\Request;
 use Core\Response;
 use App\Models\HrPayrollModel;
+use App\Services\HrPayrollRecalculator;
 
 /**
  * Per-employee voluntary/assigned deductions.
@@ -27,42 +28,7 @@ class EmployeeDeductionController extends BaseController
      */
     private function recalcPayrollNets(int $empId): void
     {
-        $db = $this->db();
-        $payrolls = $db->fetchAll(
-            "SELECT id, period_year, period_month, gross, tax, pension, cbhi
-             FROM hr_payroll WHERE emp_id = ?",
-            [$empId]
-        ) ?: [];
-
-        foreach ($payrolls as $p) {
-            $year  = (int)$p['period_year'];
-            $month = (int)$p['period_month'];
-
-            $dedRows = $db->fetchAll(
-                "SELECT monthly_amount FROM hr_employee_deductions
-                 WHERE emp_id = ?
-                   AND status = 'Active'
-                   AND (start_year < ? OR (start_year = ? AND start_month <= ?))
-                   AND (end_year IS NULL
-                        OR end_year > ?
-                        OR (end_year = ? AND end_month >= ?))",
-                [$empId, $year, $year, $month, $year, $year, $month]
-            ) ?: [];
-
-            $otherDed = array_sum(array_column($dedRows, 'monthly_amount'));
-            $net      = max(0,
-                (float)$p['gross']
-                - (float)$p['tax']
-                - (float)$p['pension']
-                - (float)$p['cbhi']
-                - $otherDed
-            );
-
-            $db->execute(
-                "UPDATE hr_payroll SET other_deductions = ?, net = ? WHERE id = ?",
-                [$otherDed, $net, (int)$p['id']]
-            );
-        }
+        HrPayrollRecalculator::refreshPendingForEmployee($this->db(), $empId);
     }
 
     private function ensureTable(): void

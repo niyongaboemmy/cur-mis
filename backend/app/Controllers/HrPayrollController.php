@@ -10,6 +10,8 @@ use App\Models\HrPayrollModel;
 use App\Models\HrEmployeeModel;
 use App\Helpers\ValidationHelper;
 use App\Services\SystemLogService;
+use App\Services\PayrollCalculator;
+use App\Services\HrPayrollRecalculator;
 
 class HrPayrollController extends BaseController
 {
@@ -102,13 +104,26 @@ class HrPayrollController extends BaseController
                p.pay_month,
                p.period_year,
                p.period_month,
+               e.responsibility_role                           AS responsibility_role,
                p.basic_salary,
                p.housing_allowance,
                p.transport_allowance,
                p.other_allowances,
+               p.base_gross,
+               p.responsibility_allowance,
+               p.arrears,
                p.gross                            AS gross_salary,
                p.tax                              AS paye,
                (p.pension + p.rama + p.maternity) AS rssb,
+               p.pension                          AS pension_employee,
+               p.maternity                        AS maternity_employee,
+               p.rama                             AS rama_employee,
+               p.maternity_base,
+               p.employer_pension,
+               p.employer_maternity,
+               p.employer_rama,
+               p.employer_occupational,
+               p.gross_cost,
                p.cbhi,
                COALESCE(p.other_deductions, 0)    AS other_deductions,
                p.net                              AS net_salary,
@@ -174,7 +189,8 @@ class HrPayrollController extends BaseController
                e.employee_reg_date                             AS start_date,
                e.employee_phone                                AS phone,
                NULL                                            AS email,
-               e.salary                                        AS salary
+               e.salary                                        AS salary,
+               e.responsibility_role                           AS responsibility_role
              FROM employees e WHERE e.employee_id = ? LIMIT 1",
             [$empId]
         );
@@ -308,6 +324,10 @@ class HrPayrollController extends BaseController
     /**
      * POST /api/hr/payroll
      * Create or update (upsert) a payroll entry for a given employee + period.
+     *
+     * Only the procedure inputs are read from the client (basic salary, responsibility
+     * role, arrears, other-deduction override). Every amount, including PAYE, RSSB,
+     * RAMA and CBHI, is calculated here by PayrollCalculator.
      */
     public function upsert(Request $request, Response $response): never
     {
@@ -317,7 +337,6 @@ class HrPayrollController extends BaseController
             'emp_id'       => ['required', 'numeric'],
             'period_year'  => ['required', 'numeric'],
             'period_month' => ['required', 'numeric'],
-            'gross_salary' => ['required', 'numeric'],
         ]);
 
         if (!empty($errors)) {
@@ -328,7 +347,8 @@ class HrPayrollController extends BaseController
         $year  = (int)$data['period_year'];
         $month = (int)$data['period_month'];
 
-        if (!$this->employeeModel->find($empId)) {
+        $employee = $this->employeeModel->find($empId);
+        if (!$employee) {
             $this->error($response, 'Employee not found.', 404);
         }
 
@@ -336,77 +356,85 @@ class HrPayrollController extends BaseController
                        'July','August','September','October','November','December'];
         $payMonth = ($monthNames[$month - 1] ?? '') . ' ' . $year;
 
-        // Auto-sum active per-employee deductions for this period.
-        $db = $this->payrollModel->db();
-        $dedRows = $db->fetchAll(
-            "SELECT monthly_amount
-             FROM hr_employee_deductions
-             WHERE emp_id = ?
-               AND status = 'Active'
-               AND (start_year < ? OR (start_year = ? AND start_month <= ?))
-               AND (end_year IS NULL
-                    OR end_year > ?
-                    OR (end_year = ? AND end_month >= ?))",
-            [$empId, $year, $year, $month, $year, $year, $month]
-        ) ?: [];
-        $autoOtherDed = array_sum(array_column($dedRows, 'monthly_amount'));
-
-        // Allow frontend override; fall back to auto-calculated sum.
-        $otherDeductions = isset($data['other_deductions']) && $data['other_deductions'] !== ''
-            ? (float)$data['other_deductions']
-            : $autoOtherDed;
-
-        // Map frontend field names → real DB column names.
-        // RSSB total is stored in `pension`; rama and maternity default to 0.
-        $grossVal = (float)($data['gross_salary'] ?? 0);
-        $payeVal  = (float)($data['paye']         ?? 0);
-        $rssbVal  = (float)($data['rssb']         ?? 0);
-        $maternityVal = (float)($data['maternity'] ?? 0);
-        $cbhiVal  = (float)($data['cbhi']         ?? 0);
-
-        // Recalculate net including other_deductions
-        // CBHI is now deducted from net salary (after PAYE and RSSB)
-        $netBeforeCbhi = max(0, $grossVal - $payeVal - $rssbVal - $otherDeductions);
-        $cbhiVal = max(0, $netBeforeCbhi * (0.05));
-        $netVal = max(0, $netBeforeCbhi - $cbhiVal);
-
-        $payload = [
-            'emp_id'              => $empId,
-            'pay_month'           => $payMonth,
-            'period_year'         => $year,
-            'period_month'        => $month,
-            'basic_salary'        => (float)($data['basic_salary']        ?? 0),
-            'housing_allowance'   => (float)($data['housing_allowance']   ?? 0),
-            'transport_allowance' => (float)($data['transport_allowance'] ?? 0),
-            'other_allowances'    => (float)($data['other_allowances']    ?? 0),
-            'gross'               => $grossVal,
-            'tax'                 => $payeVal,
-            'pension'             => $rssbVal,
-            'rama'                => 0,
-            'maternity'           => $maternityVal,
-            'cbhi'                => $cbhiVal,
-            'other_deductions'    => $otherDeductions,
-            'net'                 => $netVal,
-            'status'              => $data['payroll_status'] ?? 'Pending',
-        ];
-
-        // Keep employees.salary in sync with the latest gross entered
-        $this->employeeModel->update($empId, ['salary' => $payload['gross']]);
+        $inputs = $this->payrollInputs($data, $employee, $empId, $year, $month, $response);
+        $calc   = PayrollCalculator::calculate($inputs['basic'], $inputs['role'], $inputs['arrears'], $inputs['other']);
 
         $existing = $this->payrollModel->findByPeriod($empId, $year, $month);
 
+        // Keep the current status when the caller does not send one, so editing an
+        // approved entry does not quietly send it back to Pending.
+        $status = $data['payroll_status'] ?? ($existing['status'] ?? 'Pending');
+
+        $payload = array_merge([
+            'emp_id'           => $empId,
+            'pay_month'        => $payMonth,
+            'period_year'      => $year,
+            'period_month'     => $month,
+            'other_allowances' => 0,
+            'status'           => $status,
+        ], HrPayrollRecalculator::columnsFor($calc));
+
+        // The basic salary and responsibility role are kept on the employee record
+        // so the next month's payroll starts from the same values.
+        $this->employeeModel->update($empId, [
+            'salary'              => $calc['basic_salary'],
+            'responsibility_role' => $inputs['role'],
+        ]);
+
         $actor = (array) $request->param('_auth_user');
+        $netVal = $calc['net_pay'];
         if ($existing) {
             $this->payrollModel->update((int)$existing['id'], $payload);
             $updated = $this->payrollModel->find((int)$existing['id']);
-            SystemLogService::log('UPDATE', 'HR', "Updated payroll for emp {$empId} ({$payMonth}). Net: {$netVal}.", (int) $existing['id'], 'hr_payroll', ['emp_id' => $empId, 'period' => $payMonth], $actor ?: null);
+            SystemLogService::log('UPDATE', 'HR', "Updated payroll for emp {$empId} ({$payMonth}). Net pay: {$netVal}.", (int) $existing['id'], 'hr_payroll', ['emp_id' => $empId, 'period' => $payMonth], $actor ?: null);
             $this->success($response, $updated, 'Payroll entry updated.');
         } else {
             $id  = $this->payrollModel->create($payload);
             $new = $this->payrollModel->find($id);
-            SystemLogService::log('CREATE', 'HR', "Created payroll for emp {$empId} ({$payMonth}). Net: {$netVal}.", (int) $id, 'hr_payroll', ['emp_id' => $empId, 'period' => $payMonth], $actor ?: null);
+            SystemLogService::log('CREATE', 'HR', "Created payroll for emp {$empId} ({$payMonth}). Net pay: {$netVal}.", (int) $id, 'hr_payroll', ['emp_id' => $empId, 'period' => $payMonth], $actor ?: null);
             $this->success($response, $new, 'Payroll entry created.', 201);
         }
+    }
+
+    /**
+     * GET /api/hr/payroll/rules
+     * Rates, PAYE bands and responsibility roles used by every payroll calculation.
+     */
+    public function rules(Request $request, Response $response): never
+    {
+        $this->success($response, PayrollCalculator::rules(), 'Payroll rules fetched.');
+    }
+
+    /**
+     * Reads the inputs to the procedure from the request, falling back to the employee
+     * record when a value is not sent. Unknown responsibility roles are rejected.
+     *
+     * @return array{basic: float, role: ?string, arrears: float, other: float}
+     */
+    private function payrollInputs(array $data, array $employee, int $empId, int $year, int $month, Response $response): array
+    {
+        $basic = isset($data['basic_salary']) && $data['basic_salary'] !== ''
+            ? (float)$data['basic_salary']
+            : (float)($employee['salary'] ?? 0);
+
+        if (array_key_exists('responsibility_role', $data)) {
+            $role = trim((string)($data['responsibility_role'] ?? ''));
+            $role = $role === '' ? null : $role;
+        } else {
+            $role = $employee['responsibility_role'] ?? null;
+        }
+        if ($role !== null && !isset(PayrollCalculator::RESPONSIBILITY_ROLES[$role])) {
+            $this->error($response, "Unknown responsibility role: {$role}.", 422);
+        }
+
+        $arrears = isset($data['arrears']) && $data['arrears'] !== '' ? (float)$data['arrears'] : 0.0;
+
+        // Other deductions default to the sum of active per-employee deductions.
+        $other = isset($data['other_deductions']) && $data['other_deductions'] !== ''
+            ? (float)$data['other_deductions']
+            : HrPayrollRecalculator::activeDeductionTotal($this->payrollModel->db(), $empId, $year, $month);
+
+        return ['basic' => $basic, 'role' => $role, 'arrears' => $arrears, 'other' => $other];
     }
 
     /**
@@ -473,7 +501,10 @@ class HrPayrollController extends BaseController
         $db     = $this->payrollModel->db();
         $source = $db->fetchAll(
             "SELECT emp_id, basic_salary, housing_allowance, transport_allowance,
-                    other_allowances, gross, tax, pension, rama, maternity, cbhi, net
+                    other_allowances, base_gross, responsibility_allowance, arrears,
+                    gross, tax, pension, rama, maternity, maternity_base, cbhi, net,
+                    other_deductions, employer_pension, employer_maternity,
+                    employer_rama, employer_occupational, gross_cost
              FROM hr_payroll
              WHERE period_year = ? AND period_month = ?",
             [$fromYear, $fromMonth]
@@ -497,13 +528,23 @@ class HrPayrollController extends BaseController
                     'housing_allowance'   => $row['housing_allowance'],
                     'transport_allowance' => $row['transport_allowance'],
                     'other_allowances'    => $row['other_allowances'],
+                    'base_gross'          => $row['base_gross'],
+                    'responsibility_allowance' => $row['responsibility_allowance'],
+                    'arrears'             => $row['arrears'],
                     'gross'               => $row['gross'],
                     'tax'                 => $row['tax'],
                     'pension'             => $row['pension'],
                     'rama'                => $row['rama'],
                     'maternity'           => $row['maternity'],
+                    'maternity_base'      => $row['maternity_base'],
                     'cbhi'                => $row['cbhi'],
+                    'other_deductions'    => $row['other_deductions'],
                     'net'                 => $row['net'],
+                    'employer_pension'    => $row['employer_pension'],
+                    'employer_maternity'  => $row['employer_maternity'],
+                    'employer_rama'       => $row['employer_rama'],
+                    'employer_occupational' => $row['employer_occupational'],
+                    'gross_cost'          => $row['gross_cost'],
                     'status'              => 'Pending',
                 ]);
                 $copied++;
@@ -721,47 +762,12 @@ class HrPayrollController extends BaseController
     }
 
     /**
-     * Recalculate other_deductions and net for every hr_payroll row of
-     * a given employee based on current hr_employee_deductions data.
-     * Called when loading payslips so historical rows stay consistent.
+     * Recalculate every still-Pending hr_payroll row of a given employee with the
+     * payroll procedure, using current hr_employee_deductions. Approved and Paid
+     * rows are left as they were issued. Called when loading payslips.
      */
     private function syncPayrollNets(int $empId, \Core\Database $db): void
     {
-        $payrolls = $db->fetchAll(
-            "SELECT id, period_year, period_month, gross, tax, pension, cbhi
-             FROM hr_payroll WHERE emp_id = ?",
-            [$empId]
-        ) ?: [];
-
-        foreach ($payrolls as $p) {
-            $year  = (int)$p['period_year'];
-            $month = (int)$p['period_month'];
-
-            $dedRows = $db->fetchAll(
-                "SELECT monthly_amount FROM hr_employee_deductions
-                 WHERE emp_id = ?
-                   AND status = 'Active'
-                   AND (start_year < ? OR (start_year = ? AND start_month <= ?))
-                   AND (end_year IS NULL
-                        OR end_year > ?
-                        OR (end_year = ? AND end_month >= ?))",
-                [$empId, $year, $year, $month, $year, $year, $month]
-            ) ?: [];
-
-            $otherDed = array_sum(array_column($dedRows, 'monthly_amount'));
-            $netBeforeCbhi = max(0,
-                (float)$p['gross']
-                - (float)$p['tax']
-                - (float)$p['pension']
-                - $otherDed
-            );
-            $cbhi = $netBeforeCbhi * 0.05;
-            $net = max(0, $netBeforeCbhi - $cbhi);
-
-            $db->execute(
-                "UPDATE hr_payroll SET other_deductions = ?, net = ? WHERE id = ?",
-                [$otherDed, $net, (int)$p['id']]
-            );
-        }
+        HrPayrollRecalculator::refreshPendingForEmployee($db, $empId);
     }
 }

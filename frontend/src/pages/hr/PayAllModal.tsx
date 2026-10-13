@@ -19,9 +19,16 @@ import {
   hrService,
   type PaymentMethod,
   type PayrollRow,
-  type PayrollConfig,
 } from "@/services/hrService";
 import ModalPortal from "@/components/ui/ModalPortal";
+import { computePayroll, responsibilityAmount } from "@/utils/payrollCalc";
+
+/** What the bulk-pay list shows for each employee. */
+interface PayAmounts {
+  gross: number;
+  paye: number;
+  net: number;
+}
 
 const MONTHS = [
   "January",
@@ -43,62 +50,6 @@ const fmt = (v: number) =>
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   });
-
-/* ── PAYE formula ────────────────────────────────────────────────────── */
-interface FormulaConfig {
-  b1: number;
-  b2: number;
-  b3: number;
-  r1: number;
-  r2: number;
-  r3: number;
-}
-const DEFAULT_FORMULA: FormulaConfig = {
-  b1: 60_000,
-  b2: 100_000,
-  b3: 200_000,
-  r1: 0.1,
-  r2: 0.2,
-  r3: 0.3,
-};
-function calcPaye(gross: number, f = DEFAULT_FORMULA): number {
-  if (gross <= 0 || gross <= f.b1) return 0;
-  const c1 = (f.b2 - f.b1) * f.r1;
-  if (gross <= f.b2) return (gross - f.b1) * f.r1;
-  const c2 = c1 + (f.b3 - f.b2) * f.r2;
-  if (gross <= f.b3) return c1 + (gross - f.b2) * f.r2;
-  return c2 + (gross - f.b3) * f.r3;
-}
-function loadFormula(): FormulaConfig {
-  try {
-    const r = localStorage.getItem("cur-mis-paye-formula");
-    return r ? { ...DEFAULT_FORMULA, ...JSON.parse(r) } : DEFAULT_FORMULA;
-  } catch {
-    return DEFAULT_FORMULA;
-  }
-}
-function computeBreakdown(
-  gross: number,
-  cfg: PayrollConfig,
-  formula: FormulaConfig,
-) {
-  const paye = calcPaye(gross, formula);
-  const maternity = gross * (cfg.maternity_employee_rate / 100);
-  const rssb =
-    gross * ((cfg.rssb_employee_rate + cfg.maternity_employee_rate) / 100);
-  const netBeforeCbhi = Math.max(0, gross - paye - rssb);
-  const cbhi = netBeforeCbhi * (cfg.cbhi_employee_rate / 100);
-  const net = Math.max(0, netBeforeCbhi - cbhi);
-  return { gross, paye, rssb, maternity, cbhi, net };
-}
-const DEFAULT_CFG: PayrollConfig = {
-  rssb_employee_rate: 6,
-  rssb_employer_rate: 6,
-  maternity_employee_rate: 0.3,
-  maternity_employer_rate: 0.3,
-  cbhi_employee_rate: 5,
-  cbhi_employer_rate: 5,
-};
 
 // Payroll rows are real employees, so their id is numeric — narrow the id that
 // HrEmployee widened to `number | string` (for the directory's "user-<id>" rows)
@@ -127,8 +78,6 @@ export default function PayAllModal({
   onClose,
   onDone,
 }: PayAllModalProps) {
-  const formula = useMemo(loadFormula, []);
-
   /* ── Global payment settings ──────────────────────────────────────── */
   const [method, setMethod] = useState<PaymentMethod>("Bank Transfer");
   const [reference, setReference] = useState("");
@@ -168,13 +117,13 @@ export default function PayAllModal({
         signal,
       ),
   });
-  const { data: cfgRes } = useQuery({
-    queryKey: ["hr-payroll-config"],
-    queryFn: ({ signal }) => hrService.getPayrollConfig(signal),
+  const { data: rulesRes } = useQuery({
+    queryKey: ["hr-payroll-rules"],
+    queryFn: ({ signal }) => hrService.getPayrollRules(signal),
     staleTime: 5 * 60_000,
   });
+  const rules = rulesRes?.data;
 
-  const cfg = cfgRes?.data ?? DEFAULT_CFG;
   const allRows = (payrollRes?.data?.data ?? []) as RowEx[];
 
   /* ── Eligible ─────────────────────────────────────────────────────── */
@@ -193,23 +142,31 @@ export default function PayAllModal({
 
   /* ── Pre-computed amounts ─────────────────────────────────────────── */
   const amounts = useMemo(() => {
-    const map: Record<string | number, ReturnType<typeof computeBreakdown>> = {};
+    const map: Record<string | number, PayAmounts> = {};
+    if (!rules) return map;
     for (const r of eligible) {
       if (r.payroll_id != null && Number(r.net_salary ?? 0) > 0) {
         map[r.id] = {
           gross: Number(r.gross_salary ?? r.salary ?? 0),
           paye: Number(r.paye ?? 0),
-          rssb: Number(r.rssb ?? 0),
-          maternity: 0,
-          cbhi: Number(r.cbhi ?? 0),
           net: Number(r.net_salary ?? 0),
         };
       } else {
-        map[r.id] = computeBreakdown(Number(r.salary ?? 0), cfg, formula);
+        // New entry: the server runs the same procedure on save. This is the preview.
+        const calc = computePayroll(
+          {
+            basicSalary: Number(r.salary ?? 0),
+            responsibilityAmount: responsibilityAmount(rules, r.responsibility_role),
+            arrears: 0,
+            otherDeductions: 0,
+          },
+          rules,
+        );
+        map[r.id] = { gross: calc.gross, paye: calc.paye, net: calc.net_pay };
       }
     }
     return map;
-  }, [eligible, cfg, formula]);
+  }, [eligible, rules]);
 
   /* ── Seed selection on first load ─────────────────────────────────── */
   if (!seeded && eligible.length > 0) {
@@ -283,22 +240,16 @@ export default function PayAllModal({
         let pid = row.payroll_id as number | undefined;
 
         if (isNew) {
+          // The server calculates every amount from these inputs.
           const res = await hrService.payrollUpsert({
             emp_id: row.id,
             period_year: periodYear,
             period_month: periodMonth,
-            basic_salary: bd.gross,
-            housing_allowance: 0,
-            transport_allowance: 0,
-            other_allowances: 0,
-            gross_salary: bd.gross,
-            paye: bd.paye,
-            rssb: bd.rssb - bd.maternity,
-            maternity: bd.maternity,
-            cbhi: bd.cbhi,
-            net_salary: bd.net,
+            basic_salary: Number(row.salary ?? 0),
+            responsibility_role: row.responsibility_role ?? null,
+            arrears: 0,
             payroll_status: "Approved",
-          } as any);
+          });
           pid = (res as any)?.data?.id;
           if (!pid) throw new Error("upsert returned no id");
         }
@@ -539,7 +490,7 @@ export default function PayAllModal({
 
           {/* ── Employee list ── */}
           <div className="overflow-y-auto flex-1">
-            {isLoading ? (
+            {isLoading || !rules ? (
               <div className="py-12 text-center">
                 <Loader2 className="w-6 h-6 animate-spin mx-auto text-brand" />
               </div>

@@ -24,6 +24,7 @@ $router->group('/api/me/payroll', function ($router) {
 // Read: VIEW_PAYROLL
 $router->group('/api/hr/payroll', function ($router) {
     $router->get('',                 [HrPayrollController::class, 'index']);
+    $router->get('/rules',           [HrPayrollController::class, 'rules']);
     $router->get('/:emp_id/slips',   [HrPayrollController::class, 'slips']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::VIEW_PAYROLL)]);
 

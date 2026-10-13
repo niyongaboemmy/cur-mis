@@ -25,7 +25,7 @@ class HrEmployeeModel extends BaseModel
         'employee_fname', 'employee_lname', 'employee_gender',
         'employee_position', 'employee_post', 'employee_phone',
         'employee_status', 'account_status', 'employee_reg_date',
-        'employee_bank', 'employee_account', 'faculty', 'salary',
+        'employee_bank', 'employee_account', 'faculty', 'salary', 'responsibility_role',
         // Previously missing — silently discarded on every write.
         'employee_username',   // the staff email address
         'employee_idcard',

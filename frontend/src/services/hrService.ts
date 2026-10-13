@@ -102,22 +102,77 @@ export interface PayrollEntry {
   other_deductions?: number
   net_salary: number
   notes?: string | null
+  /** Procedure components, returned by the slips endpoint. */
+  arrears?: number
+  responsibility_allowance?: number
+  base_gross?: number
+  maternity_base?: number
+  pension_employee?: number
+  maternity_employee?: number
+  rama_employee?: number
+}
+
+/** Inputs the server needs. Every amount (PAYE, RSSB, RAMA, CBHI, net) is calculated on save. */
+export interface PayrollUpsertInput {
+  emp_id: number
+  period_year: number
+  period_month: number
+  /** Step 1. Defaults to the employee's basic salary when omitted. */
+  basic_salary?: number
+  /** Step 5 role code, or null for none. Defaults to the employee's role when omitted. */
+  responsibility_role?: string | null
+  /** Step 6. */
+  arrears?: number
+  /** Step 21 override. Defaults to the sum of active deductions for the month. */
+  other_deductions?: number
+  payroll_status?: 'Pending' | 'Approved' | 'Paid'
+}
+
+export interface PayeBand {
+  upper: number | null
+  rate: number
+}
+
+export interface ResponsibilityRole {
+  code: string
+  label: string
+  amount: number
+}
+
+/** Procedure rules served by GET /api/hr/payroll/rules. */
+export interface PayrollRules {
+  rates: Record<string, number>
+  paye_bands: PayeBand[]
+  responsibility_roles: ResponsibilityRole[]
 }
 
 export interface PayrollRow extends HrEmployee {
   payroll_id?: number | null
   period_year?: number | null
   period_month?: number | null
+  responsibility_role?: string | null
   basic_salary?: number | null
   housing_allowance?: number | null
   transport_allowance?: number | null
   other_allowances?: number | null
+  base_gross?: number | null
+  responsibility_allowance?: number | null
+  arrears?: number | null
   gross_salary?: number | null
   paye?: number | null
   rssb?: number | null
+  pension_employee?: number | null
+  maternity_employee?: number | null
+  rama_employee?: number | null
+  maternity_base?: number | null
   cbhi?: number | null
   other_deductions?: number | null
   net_salary?: number | null
+  employer_pension?: number | null
+  employer_maternity?: number | null
+  employer_rama?: number | null
+  employer_occupational?: number | null
+  gross_cost?: number | null
   notes?: string | null
 }
 
@@ -137,7 +192,7 @@ export interface PayrollListResponse {
 }
 
 export interface PayrollSlipsResponse {
-  employee: HrEmployee
+  employee: HrEmployee & { responsibility_role?: string | null }
   slips: PayrollEntry[]
 }
 
@@ -343,8 +398,12 @@ export const hrService = {
   payrollMySlips: (params?: { from_year?: number; from_month?: number; to_year?: number; to_month?: number }, signal?: AbortSignal) =>
     api.get<MyPayrollSlipsResponse>('/me/payroll', (params ?? {}) as Record<string, unknown>, signal),
 
-  payrollUpsert: (data: PayrollEntry) =>
+  payrollUpsert: (data: PayrollUpsertInput) =>
     api.post<PayrollEntry>('/hr/payroll', data),
+
+  /** Rates, PAYE bands and responsibility roles used by the payroll procedure. */
+  getPayrollRules: (signal?: AbortSignal) =>
+    api.get<PayrollRules>('/hr/payroll/rules', {}, signal),
 
   payrollDelete: (id: number) =>
     api.delete<void>(`/api/hr/payroll/${id}`),
