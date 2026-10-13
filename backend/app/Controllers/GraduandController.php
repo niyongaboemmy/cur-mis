@@ -7,6 +7,8 @@ namespace App\Controllers;
 use Core\Database;
 use Core\Request;
 use Core\Response;
+use App\Helpers\HecGraduationTemplate;
+use App\Helpers\MarksTemplateExcel;
 use App\Services\DegreeClassificationService;
 use App\Services\GraduationAuditService;
 use App\Services\SystemLogService;
@@ -887,6 +889,155 @@ class GraduandController extends BaseController
             'legacy'     => $legacy,
             'migrations' => $migrations,
         ], 'Graduation audit diagnostics.');
+    }
+
+    /**
+     * GET /api/graduands/hec-template?academic_year=2025-2026
+     *
+     * The graduation list as an HEC workbook: one sheet per programme, laid
+     * out as the registry's template. Takes the same status and programme
+     * filters as the roster. Students who still carry a failed module are
+     * left out unless `include_failures=1`, and are then marked "Not Eligible".
+     */
+    public function hecTemplate(Request $request, Response $response): never
+    {
+        $this->requireSnapshotTable($response);
+
+        $academicYear = trim((string)($request->query('academic_year') ?? ''));
+        if (!preg_match('/^\d{4}\s*[-\/]\s*\d{4}$/', $academicYear)) {
+            $this->error($response, 'academic_year must look like 2025-2026.', 422);
+        }
+        $includeFailures = (string)($request->query('include_failures') ?? '0') === '1';
+
+        $where = ['ga.is_complete = 1'];
+        $args  = [];
+        if (!$includeFailures) {
+            $where[] = 'ga.failed = 0';
+        }
+        $gstatus = trim((string)($request->query('graduand_status') ?? ''));
+        if ($gstatus === 'waiting') {
+            $where[] = "(g.id IS NULL OR g.status = 'waiting')";
+        } elseif (in_array($gstatus, ['pending', 'approved', 'graduated'], true)) {
+            $where[] = 'g.status = ?';
+            $args[]  = $gstatus;
+        }
+        $option = trim((string)($request->query('std_option') ?? ''));
+        if ($option !== '') {
+            $where[] = 'ga.option_id = ?';
+            $args[]  = (int)$option;
+        }
+        $dept = trim((string)($request->query('department') ?? ''));
+        if ($dept !== '') {
+            $where[] = 'o.department_id = ?';
+            $args[]  = (int)$dept;
+        }
+        $intake = (int)($request->query('intake_year') ?? 0);
+        if ($intake > 0) {
+            $where[] = 'ga.intake_year = ?';
+            $args[]  = $intake;
+        }
+
+        $students = $this->db->fetchAll(
+            "SELECT ga.student_id AS id, ga.regnumber, ga.intake_year, ga.weighted_avg, ga.failed,
+                    s.fname, s.lname, s.gender, s.birthdate, s.phone, s.email, s.id_card,
+                    s.nationality, s.sponsor, s.father, s.mother, s.combination, s.principle_pass,
+                    o.name AS option_name, o.acro AS option_acro, d.dep_name,
+                    g.status AS graduand_status, g.graduation_date
+             FROM `graduation_audit` ga
+             JOIN `student`        s ON s.id         = ga.student_id
+             LEFT JOIN `graduands` g ON g.student_id = ga.student_id
+             LEFT JOIN `options`   o ON o.id         = ga.option_id
+             LEFT JOIN `departements` d ON d.dep_id  = o.department_id
+             WHERE " . implode(' AND ', $where) . "
+             ORDER BY o.name ASC, s.lname ASC, s.fname ASC",
+            $args
+        );
+        if (!$students) {
+            $this->error($response, 'No students match these filters.', 404);
+        }
+
+        // Average per level: each module's best attempt, weighted by its
+        // credits, within each level. Same rule the honours calculation uses.
+        $levels = [];
+        $regs   = array_values(array_unique(array_filter(array_column($students, 'regnumber'))));
+        foreach (array_chunk($regs, 500) as $chunk) {
+            $ph = implode(',', array_fill(0, count($chunk), '?'));
+            $levelRows = $this->db->fetchAll(
+                "SELECT x.reg, x.level_id, SUM(x.best * x.credits) / NULLIF(SUM(x.credits), 0) AS avg_pct
+                 FROM (
+                    SELECT mm.student_regnumber AS reg, mm.module_id,
+                           COALESCE(ml.level_id, m.level)  AS level_id,
+                           COALESCE(m.module_credits, 0)   AS credits,
+                           MAX(mm.percentage)              AS best
+                    FROM `module_marks` mm
+                    JOIN `modules` m ON m.module_id = mm.module_id
+                    LEFT JOIN `module_levels` ml ON ml.module_id = m.module_id
+                    WHERE mm.student_regnumber IN ({$ph}) AND mm.percentage IS NOT NULL
+                    GROUP BY mm.student_regnumber, mm.module_id, level_id, credits
+                 ) x
+                 WHERE x.level_id IS NOT NULL
+                 GROUP BY x.reg, x.level_id",
+                $chunk
+            );
+            foreach ($levelRows as $lr) {
+                $levels[(string)$lr['reg']][(int)$lr['level_id']] =
+                    $lr['avg_pct'] !== null ? (float)$lr['avg_pct'] : null;
+            }
+        }
+
+        // One sheet per programme, in programme-name order.
+        $byProgramme = [];
+        foreach ($students as $r) {
+            $key = (string)($r['option_name'] ?? '') !== '' ? (string)$r['option_name'] : 'Unassigned programme';
+            $byProgramme[$key][] = $r;
+        }
+        ksort($byProgramme);
+
+        $programmes = [];
+        foreach ($byProgramme as $name => $rows) {
+            $first = $rows[0];
+            $seq   = 0;
+            $shaped = [];
+            foreach ($rows as $r) {
+                $shaped[] = HecGraduationTemplate::rowFor([
+                    'lname'           => $r['lname'],
+                    'fname'           => $r['fname'],
+                    'gender'          => $r['gender'],
+                    'birthdate'       => $r['birthdate'],
+                    'phone'           => $r['phone'],
+                    'email'           => $r['email'],
+                    'id_card'         => $r['id_card'],
+                    'nationality'     => $r['nationality'],
+                    'regnumber'       => $r['regnumber'],
+                    'sponsor'         => $r['sponsor'],
+                    'father'          => $r['father'],
+                    'mother'          => $r['mother'],
+                    'combination'     => $r['combination'],
+                    'principle_pass'  => $r['principle_pass'],
+                    'intake_year'     => $r['intake_year'],
+                    'weighted_avg'    => $r['weighted_avg'],
+                    'failed'          => $r['failed'],
+                    'graduation_date' => $r['graduand_status'] === 'graduated' ? $r['graduation_date'] : null,
+                    'levels'          => $levels[(string)$r['regnumber']] ?? [],
+                ], ++$seq);
+            }
+            $programmes[] = [
+                'sheet'    => (string)($first['option_acro'] ?: $name),
+                'faculty'  => (string)($first['dep_name'] ?? ''),
+                'award'    => $name,
+                'students' => $shaped,
+            ];
+        }
+
+        $book = HecGraduationTemplate::build($programmes, $academicYear);
+
+        $safeYear = preg_replace('/[^0-9-]/', '', $academicYear) ?: 'year';
+        SystemLogService::log(
+            'EXPORT', 'STUDENTS',
+            'HEC graduation template issued for ' . count($students) . " student(s), {$academicYear}",
+            null, 'graduand'
+        );
+        MarksTemplateExcel::stream($book, "hec-graduation-list_{$safeYear}.xlsx");
     }
 
     /**

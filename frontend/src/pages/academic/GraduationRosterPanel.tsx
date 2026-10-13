@@ -103,6 +103,11 @@ export default function GraduationRosterPanel() {
   const [ceremonyDate, setCeremonyDate]   = useState('')
   const [ceremonyBusy, setCeremonyBusy]   = useState(false)
 
+  // HEC template dialog
+  const [hecOpen, setHecOpen]       = useState(false)
+  const [hecYear, setHecYear]       = useState('')
+  const [hecBusy, setHecBusy]       = useState(false)
+
   const search = useDebounce(searchInput, 400)
 
   // A filter change invalidates both the page number and the selection —
@@ -272,6 +277,32 @@ export default function GraduationRosterPanel() {
     }
   }
 
+  /* ── HEC template ──────────────────────────────────────────────────────── */
+
+  /** The HEC workbook for the current status tab and filters, one sheet per programme. */
+  const handleHecTemplate = async () => {
+    setHecBusy(true)
+    try {
+      await graduandService.downloadHecTemplate({
+        academic_year:    hecYear.trim(),
+        graduand_status:  status || undefined,
+        department:       department || undefined,
+        std_option:       option || undefined,
+        intake_year:      intakeYear || undefined,
+        include_failures: includeFailures ? '1' : undefined,
+      })
+      toast.success('HEC template downloaded.')
+      setHecOpen(false)
+    } catch (e: unknown) {
+      toast.error(
+        (e as { response?: { data?: { message?: string } } })?.response?.data?.message
+          ?? 'Could not build the HEC template.',
+      )
+    } finally {
+      setHecBusy(false)
+    }
+  }
+
   /* ── Export ────────────────────────────────────────────────────────────── */
 
   /** One flat record per visible student — the shape both exports render. */
@@ -406,6 +437,13 @@ export default function GraduationRosterPanel() {
             </button>
             <button onClick={handlePdf} className="btn-ghost btn-sm" title="Download the rows below as PDF">
               <Download className="h-3.5 w-3.5" /> PDF
+            </button>
+            <button
+              onClick={() => setHecOpen(true)}
+              className="btn-ghost btn-sm"
+              title="HEC graduation workbook: one sheet per programme, in the Higher Education Council layout"
+            >
+              <Download className="h-3.5 w-3.5" /> HEC template
             </button>
             <button
               onClick={() => setCeremonyOpen(true)}
@@ -778,6 +816,42 @@ export default function GraduationRosterPanel() {
       <StudentAuditModal row={openStudent} onClose={() => setOpenStudent(null)} />
 
       <DiagnosticsModal open={showDiag} onClose={() => setShowDiag(false)} />
+
+      {/* HEC template details */}
+      <Modal
+        open={hecOpen}
+        title="HEC graduation template"
+        onClose={() => !hecBusy && setHecOpen(false)}
+        footer={
+          <>
+            <button onClick={() => setHecOpen(false)} disabled={hecBusy}
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-ink-700 dark:text-ink-200 dark:hover:bg-ink-700/50">
+              Cancel
+            </button>
+            <button onClick={handleHecTemplate}
+              disabled={hecBusy || !/^\d{4}\s*[-/]\s*\d{4}$/.test(hecYear.trim())}
+              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+              {hecBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              {hecBusy ? 'Building…' : 'Download workbook'}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4 p-1">
+          <p className="text-sm text-gray-600 dark:text-ink-300">
+            One sheet per programme, laid out as the HEC template: institution, faculty, academic year and award at the top,
+            then identification, admission criteria and the average for each level. Uses the current status tab and filters.
+          </p>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-ink-300">Academic year</label>
+            <input value={hecYear} onChange={(e) => setHecYear(e.target.value)} placeholder="e.g. 2025-2026"
+              className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:border-ink-700 dark:bg-ink-900 dark:text-white" />
+          </div>
+          <p className="text-xs text-gray-500 dark:text-ink-400">
+            Left blank in the file: transferred credits (not recorded by the system) and the level averages where a student has no marks for that level.
+          </p>
+        </div>
+      </Modal>
 
       {/* Ceremony PDF details */}
       <Modal
