@@ -1255,8 +1255,10 @@ class DocumentHelper
         $generatedDate = $meta['generated_date'] ?? date('Y-m-d');
         $semesters     = self::FEE_SCHEDULE_SEMESTERS;
 
-        // Letterhead is painted on the canvas by PdfLayout::stampHeader(); reserve its band here.
-        $headerSpace = 190;
+        // Letterhead is painted on the canvas by PdfLayout::stampHeader() on EVERY page. It is
+        // 137pt tall at A4 landscape width (ends ~143pt from the top), so the @page top margin
+        // must clear that. A margin reserves the band on every page, unlike a body spacer.
+        $headerSpace = 200;
         $dash = '—';
 
         // Plain amounts: the column headers already say RWF, as on the signed schedule.
@@ -1344,10 +1346,10 @@ class DocumentHelper
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Academic Fees Structure {$acYearSafe}</title>
             <style>
+                @page { margin: {$headerSpace}px 0 12mm 0; }
                 * { margin: 0; padding: 0; box-sizing: border-box; }
                 body { font-family: 'Times New Roman', Times, serif; font-size: 10px; color: #222; line-height: 1.15; }
-                .page { margin: 0 auto; padding: 0 12mm 6mm 12mm; background: white; }
-                .letterhead-spacer { height: {$headerSpace}px; }
+                .page { margin: 0 auto; padding: 0 12mm; background: white; }
                 .title { font-size: 11px; font-weight: bold; margin: 0 0 6px 0; text-align: center; text-decoration: underline; }
                 .subtitle { font-size: 10px; font-weight: bold; margin: 8px 0 3px 0; }
                 table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
@@ -1368,7 +1370,6 @@ class DocumentHelper
         </head>
         <body>
             <div class="page">
-                <div class="letterhead-spacer"></div>
                 <div class="title">{$title}</div>
                 <table>
                     <thead>
