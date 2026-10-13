@@ -229,49 +229,124 @@ class FeeStructureModel extends BaseModel
     {
         // A structure covering several departments is stored once, with its first department
         // in fs.department_id and every department in fee_structure_departments. Read both, so
-        // each selected department gets its own row. UNION drops the duplicate pair for the
-        // first department. International-only rows are excluded: this schedule is for
-        // Rwandan and EAC students.
-        $rows = $this->db->fetchAll(
-            "SELECT
-                    f.fac_name,
-                    f.fac_id,
-                    d.dep_id as option_id,
-                    d.dep_name as option_name,
-                    d.duration_years,
-                    d.internship_count,
-                    x.semester,
-                    x.level_id,
-                    l.name as level_name,
-                    MAX(CASE WHEN x.fee_type = 'APPLICATION' THEN x.amount ELSE NULL END) as application_fee,
-                    MAX(CASE WHEN x.fee_type = 'REGISTRATION' THEN x.amount ELSE NULL END) as registration_fee,
-                    MAX(CASE WHEN x.fee_type = 'CURSU' THEN x.amount ELSE NULL END) as cursu_fee,
-                    MAX(CASE WHEN x.fee_type = 'TUITION' THEN x.amount ELSE NULL END) as tuition_fee,
-                    MAX(CASE WHEN x.fee_type = 'INTERNSHIP' THEN x.amount ELSE NULL END) as internship_fee,
-                    MAX(CASE WHEN x.fee_type = 'FINAL_PROJECT' THEN x.amount ELSE NULL END) as final_project_fee,
-                    MAX(CASE WHEN x.fee_type = 'GRADUATION' THEN x.amount ELSE NULL END) as graduation_fee
+        // each selected department is included. International-only rows are excluded: this
+        // schedule is for Rwandan and EAC students.
+        $fees = $this->db->fetchAll(
+            "SELECT x.dep_id, x.level_id, x.fee_type, MAX(x.amount) AS amount
              FROM (
-                    SELECT fs.fee_type, fs.amount, fs.semester, fs.level_id, fsd.department_id AS dep_id
+                    SELECT fsd.department_id AS dep_id, fs.level_id, fs.fee_type, fs.amount
                     FROM `fee_structures` fs
                     INNER JOIN `fee_structure_departments` fsd ON fsd.fee_structure_id = fs.id
                     WHERE fs.academic_year_id = ? AND fs.is_active = 1
                       AND (fs.student_category IS NULL OR fs.student_category <> 'international')
                     UNION
-                    SELECT fs.fee_type, fs.amount, fs.semester, fs.level_id, fs.department_id AS dep_id
+                    SELECT fs.department_id AS dep_id, fs.level_id, fs.fee_type, fs.amount
                     FROM `fee_structures` fs
                     WHERE fs.academic_year_id = ? AND fs.is_active = 1
                       AND fs.department_id IS NOT NULL
                       AND (fs.student_category IS NULL OR fs.student_category <> 'international')
              ) x
-             INNER JOIN `departements` d ON d.dep_id = x.dep_id
-             LEFT JOIN `faculty` f ON f.fac_id = d.fac_id
-             LEFT JOIN `levels` l ON l.id = x.level_id
-             GROUP BY f.fac_id, d.dep_id, x.semester, x.level_id
-             ORDER BY f.fac_name ASC, d.dep_name ASC",
+             GROUP BY x.dep_id, x.level_id, x.fee_type",
             [$academicYearId, $academicYearId]
+        ) ?: [];
+
+        if ($fees === []) {
+            return [];
+        }
+
+        $depIds = array_values(array_unique(array_map(static fn ($r) => (int)$r['dep_id'], $fees)));
+        $placeholders = implode(',', array_fill(0, count($depIds), '?'));
+        $departments = [];
+        foreach ($this->db->fetchAll(
+            "SELECT d.dep_id, d.dep_name, d.duration_years, d.internship_count, f.fac_id, f.fac_name
+             FROM `departements` d
+             LEFT JOIN `faculty` f ON f.fac_id = d.fac_id
+             WHERE d.dep_id IN ({$placeholders})",
+            $depIds
+        ) ?: [] as $d) {
+            $departments[(int)$d['dep_id']] = $d;
+        }
+
+        $levelNames = [];
+        foreach ($this->db->fetchAll("SELECT id, name FROM `levels`") ?: [] as $l) {
+            $levelNames[(int)$l['id']] = $l['name'];
+        }
+
+        // Fee column per fee type, as read by the schedule PDF.
+        $columns = [
+            'APPLICATION'   => 'application_fee',
+            'REGISTRATION'  => 'registration_fee',
+            'CURSU'         => 'cursu_fee',
+            'TUITION'       => 'tuition_fee',
+            'INTERNSHIP'    => 'internship_fee',
+            'FINAL_PROJECT' => 'final_project_fee',
+            'GRADUATION'    => 'graduation_fee',
+        ];
+
+        // Group the fee rows by department.
+        $byDept = [];
+        foreach ($fees as $f) {
+            $byDept[(int)$f['dep_id']][] = $f;
+        }
+
+        // One row per programme band. A band is a level/semester the department has fees for.
+        // A fee on a band's own level wins. A fee with no level applies to every band of the
+        // department. The signed CUR schedule works this way: the application fee sits on the
+        // first band only, and a level-less tuition applies to all bands.
+        $rows = [];
+        foreach ($byDept as $depId => $depFees) {
+            $dept = $departments[$depId] ?? null;
+            if ($dept === null) {
+                continue;
+            }
+
+            $levels = array_values(array_unique(array_filter(array_map(
+                static fn ($f) => $f['level_id'] !== null ? (int)$f['level_id'] : null,
+                $depFees
+            ), static fn ($v) => $v !== null)));
+            sort($levels);
+            $bands = $levels !== [] ? $levels : [null];
+
+            foreach ($bands as $levelId) {
+                $row = [
+                    'fac_name'          => $dept['fac_name'],
+                    'fac_id'            => $dept['fac_id'],
+                    'option_id'         => $depId,
+                    'option_name'       => $dept['dep_name'],
+                    'duration_years'    => $dept['duration_years'],
+                    'internship_count'  => $dept['internship_count'],
+                    'semester'          => null,
+                    'level_id'          => $levelId,
+                    'level_name'        => $levelId !== null ? ($levelNames[$levelId] ?? null) : null,
+                ];
+
+                foreach ($columns as $feeType => $column) {
+                    $exact = null;
+                    $general = null;
+                    foreach ($depFees as $f) {
+                        if ($f['fee_type'] !== $feeType) {
+                            continue;
+                        }
+                        $amount = (float)$f['amount'];
+                        if ($f['level_id'] === null) {
+                            $general = max($general ?? $amount, $amount);
+                        } elseif ($levelId !== null && (int)$f['level_id'] === $levelId) {
+                            $exact = max($exact ?? $amount, $amount);
+                        }
+                    }
+                    $row[$column] = $exact ?? $general;
+                }
+
+                $rows[] = $row;
+            }
+        }
+
+        usort($rows, static fn ($a, $b) =>
+            [$a['fac_name'] ?? '', $a['option_name'], $a['level_id'] ?? 0]
+            <=> [$b['fac_name'] ?? '', $b['option_name'], $b['level_id'] ?? 0]
         );
 
-        return $rows ?? [];
+        return $rows;
     }
 
     /**
