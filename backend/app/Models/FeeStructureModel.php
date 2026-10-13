@@ -227,6 +227,11 @@ class FeeStructureModel extends BaseModel
      */
     public function scheduleExport(int $academicYearId): array
     {
+        // A structure covering several departments is stored once, with its first department
+        // in fs.department_id and every department in fee_structure_departments. Read both, so
+        // each selected department gets its own row. UNION drops the duplicate pair for the
+        // first department. International-only rows are excluded: this schedule is for
+        // Rwandan and EAC students.
         $rows = $this->db->fetchAll(
             "SELECT
                     f.fac_name,
@@ -235,24 +240,35 @@ class FeeStructureModel extends BaseModel
                     d.dep_name as option_name,
                     d.duration_years,
                     d.internship_count,
-                    fs.semester,
-                    fs.level_id,
+                    x.semester,
+                    x.level_id,
                     l.name as level_name,
-                    MAX(CASE WHEN fs.fee_type = 'APPLICATION' THEN fs.amount ELSE NULL END) as application_fee,
-                    MAX(CASE WHEN fs.fee_type = 'REGISTRATION' THEN fs.amount ELSE NULL END) as registration_fee,
-                    MAX(CASE WHEN fs.fee_type = 'CURSU' THEN fs.amount ELSE NULL END) as cursu_fee,
-                    MAX(CASE WHEN fs.fee_type = 'TUITION' THEN fs.amount ELSE NULL END) as tuition_fee,
-                    MAX(CASE WHEN fs.fee_type = 'INTERNSHIP' THEN fs.amount ELSE NULL END) as internship_fee,
-                    MAX(CASE WHEN fs.fee_type = 'FINAL_PROJECT' THEN fs.amount ELSE NULL END) as final_project_fee,
-                    MAX(CASE WHEN fs.fee_type = 'GRADUATION' THEN fs.amount ELSE NULL END) as graduation_fee
-             FROM `fee_structures` fs
-             INNER JOIN `departements` d ON d.dep_id = fs.department_id
+                    MAX(CASE WHEN x.fee_type = 'APPLICATION' THEN x.amount ELSE NULL END) as application_fee,
+                    MAX(CASE WHEN x.fee_type = 'REGISTRATION' THEN x.amount ELSE NULL END) as registration_fee,
+                    MAX(CASE WHEN x.fee_type = 'CURSU' THEN x.amount ELSE NULL END) as cursu_fee,
+                    MAX(CASE WHEN x.fee_type = 'TUITION' THEN x.amount ELSE NULL END) as tuition_fee,
+                    MAX(CASE WHEN x.fee_type = 'INTERNSHIP' THEN x.amount ELSE NULL END) as internship_fee,
+                    MAX(CASE WHEN x.fee_type = 'FINAL_PROJECT' THEN x.amount ELSE NULL END) as final_project_fee,
+                    MAX(CASE WHEN x.fee_type = 'GRADUATION' THEN x.amount ELSE NULL END) as graduation_fee
+             FROM (
+                    SELECT fs.fee_type, fs.amount, fs.semester, fs.level_id, fsd.department_id AS dep_id
+                    FROM `fee_structures` fs
+                    INNER JOIN `fee_structure_departments` fsd ON fsd.fee_structure_id = fs.id
+                    WHERE fs.academic_year_id = ? AND fs.is_active = 1
+                      AND (fs.student_category IS NULL OR fs.student_category <> 'international')
+                    UNION
+                    SELECT fs.fee_type, fs.amount, fs.semester, fs.level_id, fs.department_id AS dep_id
+                    FROM `fee_structures` fs
+                    WHERE fs.academic_year_id = ? AND fs.is_active = 1
+                      AND fs.department_id IS NOT NULL
+                      AND (fs.student_category IS NULL OR fs.student_category <> 'international')
+             ) x
+             INNER JOIN `departements` d ON d.dep_id = x.dep_id
              LEFT JOIN `faculty` f ON f.fac_id = d.fac_id
-             LEFT JOIN `levels` l ON l.id = fs.level_id
-             WHERE fs.academic_year_id = ? AND fs.is_active = 1
-             GROUP BY f.fac_id, d.dep_id, fs.semester, fs.level_id
+             LEFT JOIN `levels` l ON l.id = x.level_id
+             GROUP BY f.fac_id, d.dep_id, x.semester, x.level_id
              ORDER BY f.fac_name ASC, d.dep_name ASC",
-            [$academicYearId]
+            [$academicYearId, $academicYearId]
         );
 
         return $rows ?? [];
