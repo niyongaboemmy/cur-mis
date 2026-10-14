@@ -325,7 +325,7 @@ class DocumentHelper
           </p>
 
           <div class="sign">
-            <p class="bold">Mutayomba Sylvestre</p>
+            <p class="bold">{$registrar}</p>
             <p>The Academic Registrar</p>
           </div>
 
@@ -1337,6 +1337,63 @@ class DocumentHelper
         $title = htmlspecialchars('ACADEMIC FEES STRUCTURE FOR ACADEMIC YEAR ' . $acYear . ' (Rwandan and East African community (EAC) students)', ENT_QUOTES, 'UTF-8');
         $acYearSafe = htmlspecialchars((string)$acYear, ENT_QUOTES, 'UTF-8');
         $generatedSafe = htmlspecialchars((string)$generatedDate, ENT_QUOTES, 'UTF-8');
+        // Registrar name comes from the Signatories setting, not a literal, so a change of officeholder needs no deploy.
+        $registrarSafe = htmlspecialchars(Signatories::academicRegistrar(), ENT_QUOTES, 'UTF-8');
+
+        // Annex: every active fee structure for the year, unfiltered, as on the Fee Rates page.
+        // The programme table above only carries the pivoted tuition/application/registration/...
+        // columns, so structures outside them (other fee types, international, per-semester
+        // or per-installment rows) would otherwise not appear in the PDF at all.
+        $e = static fn ($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
+        $annexSection = '';
+        $register = $meta['register'] ?? [];
+        if ($register !== []) {
+            $annexRows = '';
+            $n = 1;
+            foreach ($register as $s) {
+                $type = ucfirst(strtolower(str_replace('_', ' ', (string)$s['fee_type'])));
+                $dept = !empty($s['department_names']) ? $s['department_names'] : 'All';
+                $level = !empty($s['level_name']) ? $s['level_name'] : 'All';
+                $category = trim(implode(' · ', array_filter([
+                    !empty($s['student_category']) ? ucfirst(str_replace('_', ' ', (string)$s['student_category'])) : null,
+                    !empty($s['programme_category']) ? ucfirst((string)$s['programme_category']) : null,
+                ]))) ?: 'All';
+                $semester = ($s['semester'] !== null && $s['semester'] !== '') ? 'S' . (int)$s['semester'] : $dash;
+                $plan = match ($s['payment_plan'] ?? 'full_year') {
+                    'per_semester'    => 'Per semester',
+                    'per_installment' => (!empty($s['installment_count']) ? (int)$s['installment_count'] : '?') . '× installments',
+                    default           => 'Full year',
+                };
+                $annexRows .= '<tr>'
+                    . '<td class="c">' . $n . '</td>'
+                    . '<td>' . $e($type) . '</td>'
+                    . '<td>' . $e($s['label']) . '</td>'
+                    . '<td>' . $e($dept) . '</td>'
+                    . '<td>' . $e($level) . '</td>'
+                    . '<td>' . $e($category) . '</td>'
+                    . '<td class="c">' . $e($semester) . '</td>'
+                    . '<td>' . $e($plan) . '</td>'
+                    . '<td class="r b">' . $fmt($s['amount']) . ' ' . $e($s['currency'] ?? 'RWF') . '</td>'
+                    . '</tr>';
+                $n++;
+            }
+            $annexSection = '<div class="annex">'
+                . '<div class="title">ANNEX: ALL FEE STRUCTURES FOR ACADEMIC YEAR ' . $acYearSafe . ' (' . count($register) . ' active)</div>'
+                . '<table>'
+                . '<thead><tr>'
+                . '<th style="width: 4%;">S/N</th>'
+                . '<th style="width: 12%;">Fee type</th>'
+                . '<th style="width: 18%;">Label</th>'
+                . '<th style="width: 22%;">Department</th>'
+                . '<th style="width: 10%;">Level</th>'
+                . '<th style="width: 14%;">Category</th>'
+                . '<th style="width: 6%;">Semester</th>'
+                . '<th style="width: 7%;">Payment plan</th>'
+                . '<th style="width: 7%;">Amount</th>'
+                . '</tr></thead>'
+                . '<tbody>' . $annexRows . '</tbody>'
+                . '</table></div>';
+        }
 
         return <<<HTML
         <!DOCTYPE html>
@@ -1366,6 +1423,8 @@ class DocumentHelper
                 .signatures td { border: none; text-align: center; font-size: 9px; padding: 0; }
                 .signatures .name { font-weight: bold; }
                 .footer { margin-top: 6px; padding-top: 3px; border-top: 1px solid #ddd; font-size: 7.5px; color: #888; text-align: center; }
+                .annex { page-break-before: always; }
+                .annex td { font-size: 8px; }
             </style>
         </head>
         <body>
@@ -1402,7 +1461,7 @@ class DocumentHelper
 
                 <table class="signatures">
                     <tr>
-                        <td><div class="name">Mutayomba Slyvestre</div><div>Registrar</div></td>
+                        <td><div class="name">{$registrarSafe}</div><div>Academic Registrar</div></td>
                         <td><div class="name">Ndayishimiye J.Damascene</div><div>Chief Accountant</div></td>
                         <td><div class="name">GASANGO Lilianne</div><div>Director of Administration and Finance</div></td>
                     </tr>
@@ -1412,6 +1471,7 @@ class DocumentHelper
                     <p>Academic Year: {$acYearSafe} | Generated: {$generatedSafe}</p>
                 </div>
             </div>
+            {$annexSection}
         </body>
         </html>
         HTML;
