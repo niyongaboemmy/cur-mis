@@ -29,7 +29,6 @@ export default function ResponsibilityRolesInput({
     if (incoming.join(",") !== current.join(",")) {
       setWindows(incoming.length > 0 ? incoming : [""]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 
   const commit = (next: string[]) => {
