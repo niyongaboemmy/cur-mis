@@ -1345,6 +1345,11 @@ class DocumentHelper
         // columns, so structures outside them (other fee types, international, per-semester
         // or per-installment rows) would otherwise not appear in the PDF at all.
         $e = static fn ($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
+        // Dompdf ignores the @page top margin, so the letterhead band is reserved by a first row
+        // of <thead>. A thead repeats on every page, so each page keeps the band clear of the table.
+        $letterheadBand = '<tr class="band"><td colspan="14" style="height:' . $headerSpace . 'px;border:none;background:none;padding:0;"></td></tr>';
+        $titleRow = '<tr><td colspan="14" style="border:none;background:none;text-align:center;font-size:11px;font-weight:bold;text-decoration:underline;padding:0 0 6px 0;">' . $title . '</td></tr>';
+
         $annexSection = '';
         $register = $meta['register'] ?? [];
         if ($register !== []) {
@@ -1377,10 +1382,10 @@ class DocumentHelper
                     . '</tr>';
                 $n++;
             }
+            $annexTitle = '<tr><td colspan="9" style="border:none;background:none;text-align:center;font-size:11px;font-weight:bold;text-decoration:underline;padding:0 0 6px 0;">ANNEX: ALL FEE STRUCTURES FOR ACADEMIC YEAR ' . $acYearSafe . ' (' . count($register) . ' active)</td></tr>';
             $annexSection = '<div class="annex">'
-                . '<div class="title">ANNEX: ALL FEE STRUCTURES FOR ACADEMIC YEAR ' . $acYearSafe . ' (' . count($register) . ' active)</div>'
                 . '<table>'
-                . '<thead><tr>'
+                . '<thead>' . str_replace('colspan="14"', 'colspan="9"', $letterheadBand) . $annexTitle . '<tr>'
                 . '<th style="width: 4%;">S/N</th>'
                 . '<th style="width: 12%;">Fee type</th>'
                 . '<th style="width: 18%;">Label</th>'
@@ -1403,7 +1408,7 @@ class DocumentHelper
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Academic Fees Structure {$acYearSafe}</title>
             <style>
-                @page { margin: {$headerSpace}px 0 12mm 0; }
+                @page { margin: 0 0 12mm 0; }
                 * { margin: 0; padding: 0; box-sizing: border-box; }
                 body { font-family: 'Times New Roman', Times, serif; font-size: 10px; color: #222; line-height: 1.15; }
                 .page { margin: 0 auto; padding: 0 12mm; background: white; }
@@ -1429,9 +1434,10 @@ class DocumentHelper
         </head>
         <body>
             <div class="page">
-                <div class="title">{$title}</div>
                 <table>
                     <thead>
+                        {$letterheadBand}
+                        {$titleRow}
                         <tr>
                             <th style="width: 3%;">S/N</th>
                             <th style="width: 19%;">Program</th>
