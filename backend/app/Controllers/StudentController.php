@@ -4340,6 +4340,9 @@ class StudentController extends BaseController
             'marital_status'   => ['label' => 'Marital Status',       'group' => 'Identity', 'sql' => "s.marital_status",                               'alias' => 'marital_status'],
             'student_id'       => ['label' => 'Student ID',           'group' => 'Identity', 'sql' => "s.id",                                           'alias' => 'student_id'],
             'index_number'     => ['label' => 'Index Number',         'group' => 'Identity', 'sql' => "s.index_number",                                 'alias' => 'index_number'],
+            // Derived in PHP (resolveTemplateCell) from birthdate / regnumber /
+            // faculty, so they match the list page. No SQL of their own.
+            '__age'            => ['label' => 'Age',                  'group' => 'Identity', 'sql' => '', 'alias' => '__age'],
 
             // ── Contact ──
             'email'            => ['label' => 'Email',                'group' => 'Contact',  'sql' => "s.email",                                        'alias' => 'email'],
@@ -4376,6 +4379,8 @@ class StudentController extends BaseController
             'learning_mode'    => ['label' => 'Learning Mode',        'group' => 'Academics', 'sql' => "s.learning_mode",                               'alias' => 'learning_mode'],
             'sponsor'          => ['label' => 'Sponsorship',          'group' => 'Academics', 'sql' => "s.sponsor",                                     'alias' => 'sponsor'],
             'program_code'     => ['label' => 'Programme Code',       'group' => 'Academics', 'sql' => "o.code",                                        'alias' => 'program_code'],
+            '__start_year'     => ['label' => 'Start Year',           'group' => 'Academics', 'sql' => '', 'alias' => '__start_year'],
+            '__end_year'       => ['label' => 'End Year',             'group' => 'Academics', 'sql' => '', 'alias' => '__end_year'],
 
             // ── Academic Progress (computed live from module_marks / module_programs) ──
             // Each is a correlated sub-query keyed on the student's regnumber
@@ -4694,6 +4699,12 @@ class StudentController extends BaseController
                     $neededKeys['programme_level'] = true;
                     $neededKeys['program_name']    = true;
                 }
+                if ($k === '__age') {
+                    $neededKeys['birthdate'] = true;
+                }
+                if ($k === '__end_year') {
+                    $neededKeys['faculty_name'] = true;
+                }
                 continue;
             }
             $neededKeys[$k] = true;
@@ -5009,6 +5020,18 @@ class StudentController extends BaseController
                 $lvl === 'undergraduate' || str_contains($lvl, 'under')        => 'Bachelors Degree',
                 default                                                        => '',
             };
+        }
+
+        // Cohort columns: same rules as the list page (decorateCohortColumns).
+        if ($key === '__age') {
+            $age = self::ageFromBirthdate($row['birthdate'] ?? null);
+            return $age === null ? '' : (string)$age;
+        }
+        if ($key === '__start_year' || $key === '__end_year') {
+            $isHealth = stripos((string)($row['faculty_name'] ?? ''), 'health') !== false;
+            $parsed   = \App\Helpers\RegNumberHelper::tryParse($row['regnumber'] ?? null, $isHealth);
+            if ($parsed === null) return '';
+            return (string)($key === '__start_year' ? $parsed['startYear'] : $parsed['endYear']);
         }
 
         if ($key === 'disability_status') {
