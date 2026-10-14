@@ -673,8 +673,6 @@ function PayrollEntryModal({
     },
     rules,
   );
-  const r = rules.rates;
-
   const save = useMutation({
     mutationFn: () =>
       hrService.payrollUpsert({
@@ -696,18 +694,6 @@ function PayrollEntryModal({
       toast.error(e?.response?.data?.message ?? "Save failed"),
   });
 
-  const lines: { label: string; value: number; tone: string }[] = [
-    { label: "Housing (basic ÷ 7)", value: calc.housing_allowance, tone: "text-ink-700 dark:text-ink-200" },
-    { label: "Transport (basic ÷ 7)", value: calc.transport_allowance, tone: "text-ink-700 dark:text-ink-200" },
-    { label: "Total gross", value: calc.gross, tone: "text-ink-900 dark:text-white font-bold" },
-    { label: "PAYE", value: calc.paye, tone: "text-red-600 dark:text-red-400" },
-    { label: `Pension (${Number((r.pension_employee * 100).toFixed(2))}%)`, value: calc.pension_employee, tone: "text-orange-600 dark:text-orange-400" },
-    { label: `Maternity (${Number((r.maternity_employee * 100).toFixed(2))}%)`, value: calc.maternity_employee, tone: "text-orange-600 dark:text-orange-400" },
-    { label: `RAMA (${Number((r.rama_employee * 100).toFixed(2))}%)`, value: calc.rama_employee, tone: "text-orange-600 dark:text-orange-400" },
-    { label: `CBHI (${Number((r.cbhi_employee * 100).toFixed(2))}% of net salary)`, value: calc.cbhi, tone: "text-sky-600 dark:text-sky-400" },
-    { label: "Other deductions", value: otherDedTotal, tone: "text-violet-600 dark:text-violet-400" },
-  ];
-
   return (
     <ModalPortal>
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/60 backdrop-blur-sm p-4">
@@ -721,7 +707,7 @@ function PayrollEntryModal({
             </button>
           </div>
 
-          <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+          <div className="p-5 space-y-5 max-h-[70vh] overflow-y-auto">
             {/* Period */}
             <div className="grid grid-cols-2 gap-3">
               <Field label="Month">
@@ -756,80 +742,107 @@ function PayrollEntryModal({
               </Field>
             </div>
 
-            <hr className="border-ink-100 dark:border-ink-700" />
-            <p className="text-[11px] font-bold text-ink-400 uppercase tracking-wider">
-              Inputs
-            </p>
-
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Basic Salary">
-                <NumInput
-                  value={form.basic_salary}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, basic_salary: parseFloat(e.target.value) || 0 }))
-                  }
-                />
-              </Field>
-              <Field label="Arrears (if any)">
-                <NumInput
-                  value={form.arrears}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, arrears: parseFloat(e.target.value) || 0 }))
-                  }
-                />
-              </Field>
-            </div>
-
-            <Field label="Responsibility Allowance">
-              <select
-                className="input text-[13px]"
-                value={form.responsibility_role}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, responsibility_role: e.target.value }))
-                }
-              >
-                <option value="">None</option>
-                {rules.responsibility_roles.map((role) => (
-                  <option key={role.code} value={role.code}>
-                    {role.label} — {role.amount.toLocaleString("en-US")}
-                  </option>
-                ))}
-              </select>
-            </Field>
-
-            <hr className="border-ink-100 dark:border-ink-700" />
-            <p className="text-[11px] font-bold text-ink-400 uppercase tracking-wider">
-              Calculated (CUR procedure)
-            </p>
-
-            <div className="rounded-lg border border-ink-100 dark:border-ink-700 divide-y divide-ink-100 dark:divide-ink-700 overflow-hidden">
-              {lines.map((line) => (
-                <div key={line.label} className="flex items-center justify-between px-4 py-2">
-                  <span className="text-[12px] text-ink-600 dark:text-ink-400">{line.label}</span>
-                  <span className={`text-[13px] tabular-nums ${line.tone}`}>
-                    {line.value.toLocaleString("en-US", { maximumFractionDigits: 2 })}
-                  </span>
-                </div>
-              ))}
-              {activeDeds.map((d) => (
-                <div key={d.id} className="flex items-center justify-between px-4 py-2">
-                  <span className="text-[12px] text-ink-600 dark:text-ink-400">
-                    {d.label} <span className="text-[10px] text-ink-400">({d.deduction_type})</span>
-                  </span>
-                  <span className="text-[13px] tabular-nums text-violet-700 dark:text-violet-300">
-                    {Number(d.monthly_amount).toLocaleString("en-US")}
-                  </span>
-                </div>
-              ))}
-              <div className="flex items-center justify-between px-4 py-2.5 bg-emerald-50 dark:bg-emerald-500/10">
-                <span className="text-[12px] font-semibold text-emerald-700 dark:text-emerald-300">
-                  Net Pay
-                </span>
-                <span className="text-[14px] font-bold text-emerald-800 dark:text-emerald-200 tabular-nums">
-                  {calc.net_pay.toLocaleString("en-US", { maximumFractionDigits: 2 })}
-                </span>
+            {/* Salary components */}
+            <Section title="Salary Components">
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Basic Salary">
+                  <NumInput
+                    value={form.basic_salary}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, basic_salary: parseFloat(e.target.value) || 0 }))
+                    }
+                  />
+                </Field>
+                <CalcField label="Housing Allowance" value={calc.housing_allowance} />
               </div>
-            </div>
+              <div className="grid grid-cols-2 gap-3">
+                <CalcField label="Transport Allowance" value={calc.transport_allowance} />
+                <CalcField
+                  label="Other Allowances"
+                  value={calc.responsibility_allowance + calc.arrears}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Arrears (if any)">
+                  <NumInput
+                    value={form.arrears}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, arrears: parseFloat(e.target.value) || 0 }))
+                    }
+                  />
+                </Field>
+                <Field label="Responsibility Allowance">
+                  <select
+                    className="input text-[13px]"
+                    value={form.responsibility_role}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, responsibility_role: e.target.value }))
+                    }
+                  >
+                    <option value="">None</option>
+                    {rules.responsibility_roles.map((role) => (
+                      <option key={role.code} value={role.code}>
+                        {role.label} — {role.amount.toLocaleString("en-US")}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+              <TotalBar label="Gross Salary" value={calc.gross} />
+            </Section>
+
+            {/* Deductions */}
+            <Section title="Deductions">
+              <div className="grid grid-cols-2 gap-3">
+                <CalcField
+                  label="PAYE (TPR)"
+                  value={calc.paye}
+                  tone="text-red-600 dark:text-red-400"
+                />
+                <CalcField
+                  label="RSSB"
+                  value={calc.rssb_employee_total}
+                  tone="text-orange-600 dark:text-orange-400"
+                />
+                <CalcField
+                  label="RAMA"
+                  value={calc.rama_employee}
+                  tone="text-orange-600 dark:text-orange-400"
+                />
+                <CalcField
+                  label="CBHI"
+                  value={calc.cbhi}
+                  tone="text-sky-600 dark:text-sky-400"
+                />
+              </div>
+
+              {activeDeds.length > 0 && (
+                <div className="rounded-lg border border-ink-100 dark:border-ink-700 overflow-hidden">
+                  <div className="px-4 py-2 bg-violet-50 dark:bg-violet-500/10 text-[10px] font-bold text-violet-700 dark:text-violet-300 uppercase tracking-wider">
+                    Employee deductions
+                  </div>
+                  <div className="divide-y divide-ink-100 dark:divide-ink-700">
+                    {activeDeds.map((d) => (
+                      <div key={d.id} className="flex items-center justify-between px-4 py-2">
+                        <span className="text-[12px] text-ink-600 dark:text-ink-400">
+                          {d.label}{" "}
+                          <span className="text-[10px] text-ink-400">({d.deduction_type})</span>
+                        </span>
+                        <span className="text-[13px] font-semibold tabular-nums text-violet-700 dark:text-violet-300">
+                          −{Number(d.monthly_amount).toLocaleString("en-US")}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <TotalBar
+                label="Net Salary"
+                value={calc.net_pay}
+                tone="emerald"
+              />
+            </Section>
 
             <p className="text-[11px] text-ink-400 dark:text-ink-500 bg-ink-50 dark:bg-ink-700/20 rounded px-3 py-2">
               Amounts are recalculated by the server when you save.
@@ -871,6 +884,74 @@ function Field({
         {label}
       </label>
       {children}
+    </div>
+  );
+}
+
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-3">
+      <p className="text-[11px] font-bold text-ink-400 uppercase tracking-wider">
+        {title}
+      </p>
+      {children}
+    </div>
+  );
+}
+
+/* Read-only figure the server recalculates on save. */
+function CalcField({
+  label,
+  value,
+  tone = "text-ink-800 dark:text-ink-100",
+}: {
+  label: string;
+  value: number;
+  tone?: string;
+}) {
+  return (
+    <div className="space-y-1">
+      <span className="block text-[10px] font-bold text-ink-500 uppercase tracking-wider">
+        {label}
+      </span>
+      <div className="input text-[13px] text-right tabular-nums bg-ink-50 dark:bg-ink-700/30 cursor-default select-none">
+        <span className={`font-semibold ${tone}`}>
+          {value.toLocaleString("en-US", { maximumFractionDigits: 2 })}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function TotalBar({
+  label,
+  value,
+  tone = "gray",
+}: {
+  label: string;
+  value: number;
+  tone?: "gray" | "emerald";
+}) {
+  const box =
+    tone === "emerald"
+      ? "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/30"
+      : "bg-ink-50 dark:bg-ink-700/30 border-ink-100 dark:border-ink-700";
+  const text =
+    tone === "emerald"
+      ? "text-emerald-700 dark:text-emerald-300"
+      : "text-ink-800 dark:text-white";
+  return (
+    <div className={`flex items-center justify-between rounded-lg border px-4 py-2.5 ${box}`}>
+      <span className={`text-[12px] font-semibold ${text}`}>{label}</span>
+      <span className={`text-[14px] font-bold tabular-nums ${text}`}>
+        {value.toLocaleString("en-US", { maximumFractionDigits: 2 })}
+      </span>
     </div>
   );
 }
