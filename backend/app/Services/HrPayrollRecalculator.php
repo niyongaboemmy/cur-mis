@@ -81,6 +81,9 @@ final class HrPayrollRecalculator
         ) ?: [];
 
         $settings = PayrollSettings::calculatorInputs(PayrollSettings::load($db));
+        $empRow    = $db->fetchOne("SELECT insurance_type, insurance_premium FROM employees WHERE id = ?", [$empId]) ?: [];
+        $insurance = PayrollCalculator::insuranceOf($empRow['insurance_type'] ?? null);
+        $premium   = (float) ($empRow['insurance_premium'] ?? 0);
 
         foreach ($rows as $row) {
             if ((float)$row['basic_salary'] <= 0) {
@@ -99,7 +102,9 @@ final class HrPayrollRecalculator
                 (float)$row['responsibility_allowance'],
                 (float)$row['arrears'],
                 $other,
-                $settings
+                $settings,
+                $insurance,
+                $premium
             );
 
             $columns = self::columnsFor($calc);

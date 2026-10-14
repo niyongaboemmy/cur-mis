@@ -119,8 +119,12 @@ export interface PayrollUpsertInput {
   period_month: number
   /** Step 1. Defaults to the employee's basic salary when omitted. */
   basic_salary?: number
-  /** Step 5 role code, or null for none. Defaults to the employee's role when omitted. */
+  /** Step 5 role codes, comma-separated, or null for none. Defaults to the employee's role when omitted. */
   responsibility_role?: string | null
+  /** RAMA, or OTHER for another insurer. Defaults to the employee's setting when omitted. */
+  insurance_type?: "RAMA" | "OTHER"
+  /** RADIANT premium per month (step 18). Defaults to the employee's amount when omitted. */
+  insurance_premium?: number
   /** Step 6. */
   arrears?: number
   /** Step 21 override. Defaults to the sum of active deductions for the month. */
@@ -151,6 +155,8 @@ export interface PayrollRow extends HrEmployee {
   period_year?: number | null
   period_month?: number | null
   responsibility_role?: string | null
+  insurance_type?: string | null
+  insurance_premium?: number | null
   basic_salary?: number | null
   housing_allowance?: number | null
   transport_allowance?: number | null

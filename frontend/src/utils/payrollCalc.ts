@@ -14,6 +14,10 @@ export interface PayrollInput {
   responsibilityAmount: number;
   arrears: number;
   otherDeductions: number;
+  /** RAMA (default) or OTHER for insurers such as RADIANT, where no RAMA is charged. */
+  insurance?: "RAMA" | "OTHER";
+  /** RADIANT premium per month (step 18), used only when insurance is OTHER. */
+  insurancePremium?: number;
 }
 
 export interface PayrollBreakdown {
@@ -45,12 +49,25 @@ export interface PayrollBreakdown {
 
 const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
-/** Responsibility allowance for a role code (0 for none or an unknown code). */
+/** Role codes in a stored list ("dean,internal_auditor"); empty for none. */
+export function parseRoleCodes(value: string | null | undefined): string[] {
+  const codes = (value ?? "")
+    .split(",")
+    .map((c) => c.trim())
+    .filter((c) => c !== "");
+  return [...new Set(codes)];
+}
+
+/** Responsibility allowance for a role list: the sum of each role's amount (0 for none). */
 export function responsibilityAmount(
   rules: PayrollRules,
-  code: string | null | undefined,
+  roles: string | null | undefined,
 ): number {
-  return rules.responsibility_roles.find((r) => r.code === code)?.amount ?? 0;
+  return parseRoleCodes(roles).reduce(
+    (sum, code) =>
+      sum + (rules.responsibility_roles.find((r) => r.code === code)?.amount ?? 0),
+    0,
+  );
 }
 
 /** Progressive monthly PAYE on total gross (procedure step 8). */
@@ -91,11 +108,15 @@ export function computePayroll(
   const occupationalEmployer = round2(maternityBase * r.occupational_employer);
   const maternityEmployee = round2(maternityBase * r.maternity_employee);
   const maternityEmployer = round2(maternityBase * r.maternity_employer);
-  const ramaEmployee = round2(maternityBase * r.rama_employee);
-  const ramaEmployer = round2(maternityBase * r.rama_employer);
+  // Employees on another insurer pay no RAMA, and CUR pays no RAMA share.
+  const otherInsurance = input.insurance === "OTHER";
+  const ramaEmployee = otherInsurance ? 0 : round2(maternityBase * r.rama_employee);
+  const ramaEmployer = otherInsurance ? 0 : round2(maternityBase * r.rama_employer);
 
   const rssbEmployeeTotal = round2(pensionEmployee + maternityEmployee);
-  const netSalary = round2(Math.max(0, gross - paye - rssbEmployeeTotal - ramaEmployee));
+  // Steps 18–19: RADIANT premium for an employee on another insurer, taken before CBHI.
+  const radiant = input.insurance === "OTHER" ? round2(Math.max(0, input.insurancePremium ?? 0)) : 0;
+  const netSalary = round2(Math.max(0, gross - paye - rssbEmployeeTotal - ramaEmployee - radiant));
 
   const cbhi = round2(netSalary * r.cbhi_employee);
   const cbhiEmployer = round2(gross * r.cbhi_employer);

@@ -50,6 +50,7 @@ import {
   responsibilityAmount,
 } from "@/utils/payrollCalc";
 import ModalPortal from "@/components/ui/ModalPortal";
+import ResponsibilityRolesInput from "@/components/hr/ResponsibilityRolesInput";
 
 /* ══════════════════════════════════════════════════════════════════════
    HELPERS
@@ -833,6 +834,10 @@ function EditPayrollModal({
   const qc = useQueryClient();
   const [basic, setBasic] = useState(n0(row.basic_salary) || n0(row.salary));
   const [role, setRole] = useState<string>(row.responsibility_role ?? "");
+  const [insurance, setInsurance] = useState<"RAMA" | "OTHER">(
+    row.insurance_type === "OTHER" ? "OTHER" : "RAMA",
+  );
+  const [premium, setPremium] = useState<number>(Number(row.insurance_premium ?? 0));
   const [arrears, setArrears] = useState(n0(row.arrears));
 
   // Auto-fetch active per-employee deductions for this period
@@ -856,6 +861,8 @@ function EditPayrollModal({
       responsibilityAmount: responsibilityAmount(rules, role),
       arrears,
       otherDeductions: otherDedTotal,
+      insurance,
+      insurancePremium: premium,
     },
     rules,
   );
@@ -869,6 +876,8 @@ function EditPayrollModal({
         period_month: periodMonth,
         basic_salary: basic,
         responsibility_role: role || null,
+        insurance_type: insurance,
+        insurance_premium: premium,
         arrears,
         other_deductions: otherDedTotal,
       }),
@@ -924,19 +933,41 @@ function EditPayrollModal({
               <label className="block text-[10px] font-bold text-ink-500 uppercase tracking-wider mb-1">
                 Responsibility Allowance
               </label>
+              <ResponsibilityRolesInput
+                value={role}
+                onChange={setRole}
+                roles={rules.responsibility_roles}
+              />
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-bold text-ink-500 uppercase tracking-wider mb-1">
+                Health Insurance
+              </label>
               <select
                 className="input text-[13px]"
-                value={role}
-                onChange={(e) => setRole(e.target.value)}
+                value={insurance}
+                onChange={(e) => setInsurance(e.target.value as "RAMA" | "OTHER")}
               >
-                <option value="">None</option>
-                {rules.responsibility_roles.map((r) => (
-                  <option key={r.code} value={r.code}>
-                    {r.label} — {fmt(r.amount)}
-                  </option>
-                ))}
+                <option value="RAMA">RAMA</option>
+                <option value="OTHER">Other insurer (e.g. RADIANT) — no RAMA</option>
               </select>
             </div>
+
+            {insurance === "OTHER" && (
+              <div>
+                <label className="block text-[10px] font-bold text-ink-500 uppercase tracking-wider mb-1">
+                  RADIANT premium (RWF / month)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  className="input text-right text-[13px]"
+                  value={premium || ""}
+                  onChange={(e) => setPremium(parseFloat(e.target.value) || 0)}
+                />
+              </div>
+            )}
 
             <div>
               <label className="block text-[10px] font-bold text-ink-500 uppercase tracking-wider mb-1">

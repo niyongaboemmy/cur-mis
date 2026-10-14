@@ -106,6 +106,8 @@ class HrPayrollController extends BaseController
                p.period_year,
                p.period_month,
                e.responsibility_role                           AS responsibility_role,
+               e.insurance_type                                AS insurance_type,
+               e.insurance_premium                             AS insurance_premium,
                p.basic_salary,
                p.housing_allowance,
                p.transport_allowance,
@@ -191,7 +193,9 @@ class HrPayrollController extends BaseController
                e.employee_phone                                AS phone,
                NULL                                            AS email,
                e.salary                                        AS salary,
-               e.responsibility_role                           AS responsibility_role
+               e.responsibility_role                           AS responsibility_role,
+               e.insurance_type                                AS insurance_type,
+               e.insurance_premium                             AS insurance_premium
              FROM employees e WHERE e.employee_id = ? LIMIT 1",
             [$empId]
         );
@@ -358,7 +362,15 @@ class HrPayrollController extends BaseController
         $payMonth = ($monthNames[$month - 1] ?? '') . ' ' . $year;
 
         $inputs = $this->payrollInputs($data, $employee, $empId, $year, $month, $response);
-        $calc   = PayrollCalculator::calculate($inputs['basic'], $inputs['role'], $inputs['arrears'], $inputs['other'], $this->payrollSettings());
+        // Health insurance: RAMA, or OTHER for insurers such as RADIANT. Kept on the employee record.
+        $insurance = PayrollCalculator::insuranceOf(array_key_exists('insurance_type', $data)
+            ? (string) $data['insurance_type']
+            : (string) ($employee['insurance_type'] ?? ''));
+        // RADIANT premium (step 18): only for employees on another insurer.
+        $premium = (float) (array_key_exists('insurance_premium', $data)
+            ? ($data['insurance_premium'] ?? 0)
+            : ($employee['insurance_premium'] ?? 0));
+        $calc   = PayrollCalculator::calculate($inputs['basic'], $inputs['role'], $inputs['arrears'], $inputs['other'], $this->payrollSettings(), $insurance, $premium);
 
         $existing = $this->payrollModel->findByPeriod($empId, $year, $month);
 
@@ -380,6 +392,8 @@ class HrPayrollController extends BaseController
         $this->employeeModel->update($empId, [
             'salary'              => $calc['basic_salary'],
             'responsibility_role' => $inputs['role'],
+            'insurance_type'     => $insurance,
+            'insurance_premium' => $insurance === PayrollCalculator::INSURANCE_OTHER ? max(0.0, $premium) : 0.0,
         ]);
 
         $actor = (array) $request->param('_auth_user');
@@ -424,15 +438,16 @@ class HrPayrollController extends BaseController
             ? (float)$data['basic_salary']
             : (float)($employee['salary'] ?? 0);
 
-        if (array_key_exists('responsibility_role', $data)) {
-            $role = trim((string)($data['responsibility_role'] ?? ''));
-            $role = $role === '' ? null : $role;
-        } else {
-            $role = $employee['responsibility_role'] ?? null;
+        // A person can hold several responsibilities: the role codes are stored as a comma-separated list.
+        $rawRoles = array_key_exists('responsibility_role', $data)
+            ? (string)($data['responsibility_role'] ?? '')
+            : (string)($employee['responsibility_role'] ?? '');
+        try {
+            $codes = PayrollCalculator::parseRoles($rawRoles);
+        } catch (\InvalidArgumentException $e) {
+            $this->error($response, $e->getMessage() . '.', 422);
         }
-        if ($role !== null && !isset(PayrollCalculator::RESPONSIBILITY_ROLES[$role])) {
-            $this->error($response, "Unknown responsibility role: {$role}.", 422);
-        }
+        $role = $codes ? implode(',', $codes) : null;
 
         $arrears = isset($data['arrears']) && $data['arrears'] !== '' ? (float)$data['arrears'] : 0.0;
 

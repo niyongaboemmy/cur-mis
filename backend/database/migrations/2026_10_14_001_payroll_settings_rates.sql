@@ -29,14 +29,14 @@ INSERT IGNORE INTO `payroll_config` (`config_key`, `config_value`) VALUES
   ('paye_band_4_rate',           '30'),
 
   -- Responsibility allowances (step 5), keyed by role code
-  ('resp_academic_secretary',          '120000'),
-  ('resp_dean',                        '150000'),
-  ('resp_registrar',                   '150000'),
-  ('resp_director_research',           '150000'),
-  ('resp_cpa_coordinator',             '150000'),
-  ('resp_international_student_coord', '150000'),
-  ('resp_planning_cooperation',        '150000'),
-  ('resp_internal_auditor',            '150000'),
-  ('resp_sponsored_student_coord',     '150000'),
-  ('resp_head_of_unit',                '150000'),
-  ('resp_head_of_department',          '100000');
+  ('resp_academic_secretary',          '136015'),
+  ('resp_dean',                        '170018'),
+  ('resp_registrar',                   '170018'),
+  ('resp_director_research',           '170018'),
+  ('resp_cpa_coordinator',             '170018'),
+  ('resp_international_student_coord', '170018'),
+  ('resp_planning_cooperation',        '170018'),
+  ('resp_internal_auditor',            '170018'),
+  ('resp_sponsored_student_coord',     '170018'),
+  ('resp_head_of_unit',                '170018'),
+  ('resp_head_of_department',          '113346');

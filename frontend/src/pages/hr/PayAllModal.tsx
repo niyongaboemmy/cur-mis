@@ -159,6 +159,8 @@ export default function PayAllModal({
             responsibilityAmount: responsibilityAmount(rules, r.responsibility_role),
             arrears: 0,
             otherDeductions: 0,
+            insurance: r.insurance_type === "OTHER" ? "OTHER" : "RAMA",
+            insurancePremium: Number(r.insurance_premium ?? 0),
           },
           rules,
         );
@@ -247,6 +249,7 @@ export default function PayAllModal({
             period_month: periodMonth,
             basic_salary: Number(row.salary ?? 0),
             responsibility_role: row.responsibility_role ?? null,
+            insurance_type: row.insurance_type === "OTHER" ? "OTHER" : "RAMA",
             arrears: 0,
             payroll_status: "Approved",
           });

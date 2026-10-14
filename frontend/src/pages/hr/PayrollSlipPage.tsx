@@ -21,6 +21,7 @@ import type { HrEmployee } from "@/types/academic";
 import { PERMISSIONS } from "@/constants";
 import { usePermission } from "@/utils/permissions";
 import ModalPortal from "@/components/ui/ModalPortal";
+import ResponsibilityRolesInput from "@/components/hr/ResponsibilityRolesInput";
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
 
@@ -106,7 +107,7 @@ export default function PayrollSlipPage() {
     enabled: empId > 0,
   });
 
-  const employee: (HrEmployee & { responsibility_role?: string | null }) | undefined =
+  const employee: (HrEmployee & { responsibility_role?: string | null; insurance_type?: string | null; insurance_premium?: number | null }) | undefined =
     data?.data?.employee;
 
   const { data: rulesRes } = useQuery({
@@ -611,6 +612,8 @@ export default function PayrollSlipPage() {
           empId={empId}
           entry={editing}
           defaultRole={employee?.responsibility_role ?? null}
+          defaultInsurance={employee?.insurance_type ?? null}
+          defaultPremium={Number(employee?.insurance_premium ?? 0)}
           rules={rules}
           onClose={() => setEditing(null)}
         />
@@ -624,12 +627,16 @@ function PayrollEntryModal({
   empId,
   entry,
   defaultRole,
+  defaultInsurance,
+  defaultPremium,
   rules,
   onClose,
 }: {
   empId: number;
   entry?: PayrollEntry;
   defaultRole: string | null;
+  defaultInsurance: string | null;
+  defaultPremium: number;
   rules: PayrollRules;
   onClose: () => void;
 }) {
@@ -641,6 +648,8 @@ function PayrollEntryModal({
     period_month: entry?.period_month ?? CUR_M,
     basic_salary: Number(entry?.basic_salary ?? 0),
     responsibility_role: defaultRole ?? "",
+    insurance: (defaultInsurance === "OTHER" ? "OTHER" : "RAMA") as "RAMA" | "OTHER",
+    insurancePremium: defaultPremium,
     arrears: Number(entry?.arrears ?? 0),
   });
 
@@ -670,6 +679,8 @@ function PayrollEntryModal({
       responsibilityAmount: responsibilityAmount(rules, form.responsibility_role || null),
       arrears: form.arrears,
       otherDeductions: otherDedTotal,
+      insurance: form.insurance,
+      insurancePremium: form.insurancePremium,
     },
     rules,
   );
@@ -681,6 +692,8 @@ function PayrollEntryModal({
         period_month: form.period_month,
         basic_salary: form.basic_salary,
         responsibility_role: form.responsibility_role || null,
+        insurance_type: form.insurance,
+        insurance_premium: form.insurancePremium,
         arrears: form.arrears,
         other_deductions: otherDedTotal,
       }),
@@ -772,21 +785,36 @@ function PayrollEntryModal({
                   />
                 </Field>
                 <Field label="Responsibility Allowance">
+                  <ResponsibilityRolesInput
+                    value={form.responsibility_role}
+                    onChange={(value) =>
+                      setForm((f) => ({ ...f, responsibility_role: value }))
+                    }
+                    roles={rules.responsibility_roles}
+                  />
+                </Field>
+                <Field label="Health Insurance">
                   <select
                     className="input text-[13px]"
-                    value={form.responsibility_role}
+                    value={form.insurance}
                     onChange={(e) =>
-                      setForm((f) => ({ ...f, responsibility_role: e.target.value }))
+                      setForm((f) => ({ ...f, insurance: e.target.value as "RAMA" | "OTHER" }))
                     }
                   >
-                    <option value="">None</option>
-                    {rules.responsibility_roles.map((role) => (
-                      <option key={role.code} value={role.code}>
-                        {role.label} — {role.amount.toLocaleString("en-US")}
-                      </option>
-                    ))}
+                    <option value="RAMA">RAMA</option>
+                    <option value="OTHER">Other insurer (e.g. RADIANT) — no RAMA</option>
                   </select>
                 </Field>
+                {form.insurance === "OTHER" && (
+                  <Field label="RADIANT premium (RWF / month)">
+                    <NumInput
+                      value={form.insurancePremium}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, insurancePremium: parseFloat(e.target.value) || 0 }))
+                      }
+                    />
+                  </Field>
+                )}
               </div>
               <TotalBar label="Gross Salary" value={calc.gross} />
             </Section>

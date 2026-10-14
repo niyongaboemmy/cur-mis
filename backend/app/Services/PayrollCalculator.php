@@ -22,6 +22,10 @@ use InvalidArgumentException;
  */
 final class PayrollCalculator
 {
+    /** Health insurance an employee is on. RAMA is the default; OTHER covers insurers such as RADIANT. */
+    public const INSURANCE_RAMA  = 'RAMA';
+    public const INSURANCE_OTHER = 'OTHER';
+
     /** Responsibility roles (step 5). Codes and labels are fixed here; amounts come from settings. */
     public const RESPONSIBILITY_ROLES = [
         'academic_secretary'            => ['label' => 'Academic Secretary'],
@@ -38,22 +42,45 @@ final class PayrollCalculator
     ];
 
     /**
-     * Responsibility allowance for a role code. Null/empty means no role.
+     * Splits a stored role list ("dean,internal_auditor") into unique role codes.
+     * Null or empty means no roles. A person can hold more than one responsibility.
+     *
+     * @return list<string>
+     *
+     * @throws InvalidArgumentException for an unknown role code
+     */
+    public static function parseRoles(?string $roles): array
+    {
+        $codes = [];
+        foreach (explode(',', (string) $roles) as $code) {
+            $code = trim($code);
+            if ($code === '' || in_array($code, $codes, true)) {
+                continue;
+            }
+            if (!isset(self::RESPONSIBILITY_ROLES[$code])) {
+                throw new InvalidArgumentException("Unknown responsibility role: {$code}");
+            }
+            $codes[] = $code;
+        }
+        return $codes;
+    }
+
+    /**
+     * Responsibility allowance for a role list: the sum of each role's amount.
+     * Null or empty means no role.
      *
      * @param array|null $settings Output of PayrollSettings::calculatorInputs()
      *
      * @throws InvalidArgumentException for an unknown role code
      */
-    public static function responsibilityAmount(?string $role, ?array $settings = null): float
+    public static function responsibilityAmount(?string $roles, ?array $settings = null): float
     {
-        if ($role === null || $role === '') {
-            return 0.0;
-        }
-        if (!isset(self::RESPONSIBILITY_ROLES[$role])) {
-            throw new InvalidArgumentException("Unknown responsibility role: {$role}");
-        }
         $settings ??= PayrollSettings::calculatorDefaults();
-        return (float) ($settings['responsibility_amounts'][$role] ?? 0.0);
+        $total = 0.0;
+        foreach (self::parseRoles($roles) as $code) {
+            $total += (float) ($settings['responsibility_amounts'][$code] ?? 0.0);
+        }
+        return $total;
     }
 
     /**
@@ -100,6 +127,8 @@ final class PayrollCalculator
         float $arrears = 0.0,
         ?float $otherDeductions = 0.0,
         ?array $settings = null,
+        ?string $insurance = null,
+        float $insurancePremium = 0.0,
     ): array {
         $settings ??= PayrollSettings::calculatorDefaults();
         return self::compute(
@@ -108,6 +137,8 @@ final class PayrollCalculator
             $arrears,
             $otherDeductions,
             $settings,
+            $insurance,
+            $insurancePremium,
         );
     }
 
@@ -125,6 +156,8 @@ final class PayrollCalculator
         float $arrears = 0.0,
         ?float $otherDeductions = 0.0,
         ?array $settings = null,
+        ?string $insurance = null,
+        float $insurancePremium = 0.0,
     ): array {
         $settings ??= PayrollSettings::calculatorDefaults();
         $rates = $settings['rates'];
@@ -156,13 +189,22 @@ final class PayrollCalculator
         $ramaEmployee         = self::r2($maternityBase * $rates['rama_employee']);
         $ramaEmployer         = self::r2($maternityBase * $rates['rama_employer']);
 
+        // Employees on another insurer (for example RADIANT) pay no RAMA, and CUR pays no RAMA share.
+        // The insurer premium comes through the employee deductions instead.
+        if (self::insuranceOf($insurance) === self::INSURANCE_OTHER) {
+            $ramaEmployee = 0.0;
+            $ramaEmployer = 0.0;
+        }
+
         // Step 15 – employee RSSB total (pension + maternity)
         $rssbEmployeeTotal = self::r2($pensionEmployee + $maternityEmployee);
 
-        // Step 18 – net salary after PAYE, RSSB and RAMA
-        $netSalary = self::r2(max(0.0, $gross - $paye - $rssbEmployeeTotal - $ramaEmployee));
+        // Steps 18–19 – RADIANT (other insurer) premium, then net salary after PAYE, RSSB, RAMA and RADIANT.
+        // The premium is only taken for employees on another insurer.
+        $radiant = self::insuranceOf($insurance) === self::INSURANCE_OTHER ? self::r2(max(0.0, $insurancePremium)) : 0.0;
+        $netSalary = self::r2(max(0.0, $gross - $paye - $rssbEmployeeTotal - $ramaEmployee - $radiant));
 
-        // Steps 19–20 – CBHI on net salary, then deducted from it
+        // Steps 20–21 – CBHI 0.5% of that net salary, then deducted from it
         $cbhi         = self::r2($netSalary * $rates['cbhi_employee']);
         $netAfterCbhi = self::r2(max(0.0, $netSalary - $cbhi));
 
@@ -192,6 +234,7 @@ final class PayrollCalculator
             'rama_employee'             => $ramaEmployee,
             'rama_employer'             => $ramaEmployer,
             'net_salary'                => $netSalary,
+            'radiant'                   => $radiant,
             'cbhi'                      => $cbhi,
             'cbhi_employer'             => $cbhiEmployer,
             'net_after_cbhi'            => $netAfterCbhi,
@@ -226,6 +269,12 @@ final class PayrollCalculator
             'paye_bands'           => $settings['paye_bands'],
             'responsibility_roles' => $roles,
         ];
+    }
+
+    /** Normalises an insurance code; unknown or empty means RAMA. */
+    public static function insuranceOf(?string $insurance): string
+    {
+        return strtoupper(trim((string) $insurance)) === self::INSURANCE_OTHER ? self::INSURANCE_OTHER : self::INSURANCE_RAMA;
     }
 
     private static function r2(float $value): float

@@ -46,19 +46,25 @@ final class PayrollSettings
         4 => ['upper' => null,                'rate' => 'paye_band_4_rate', 'default_upper' => null,   'default_rate' => 30.0],
     ];
 
-    /** Responsibility role code => default monthly amount (step 5). */
+    /**
+     * Responsibility role code => default monthly amount (step 5), from the CUR
+     * procedure: academic secretary 136,015; Dean, Registrar, Director of Research,
+     * CPA Coordinator, International Student Coordinator, Planning and Cooperation,
+     * Internal Auditor, Sponsored Student Coordinator and Head of Unit 170,018;
+     * Head of Department 113,346.
+     */
     public const ROLE_DEFAULTS = [
-        'academic_secretary'          => 120000,
-        'dean'                        => 150000,
-        'registrar'                   => 150000,
-        'director_research'           => 150000,
-        'cpa_coordinator'             => 150000,
-        'international_student_coord' => 150000,
-        'planning_cooperation'        => 150000,
-        'internal_auditor'            => 150000,
-        'sponsored_student_coord'     => 150000,
-        'head_of_unit'                => 150000,
-        'head_of_department'          => 100000,
+        'academic_secretary'          => 136015,
+        'dean'                        => 170018,
+        'registrar'                   => 170018,
+        'director_research'           => 170018,
+        'cpa_coordinator'             => 170018,
+        'international_student_coord' => 170018,
+        'planning_cooperation'        => 170018,
+        'internal_auditor'            => 170018,
+        'sponsored_student_coord'     => 170018,
+        'head_of_unit'                => 170018,
+        'head_of_department'          => 113346,
     ];
 
     /** Config key prefix for responsibility amounts, e.g. resp_dean. */
