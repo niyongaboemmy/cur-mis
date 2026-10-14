@@ -125,6 +125,8 @@ export const academicsMgmtService = {
       year_of_study?:   number | null
       campus_id?:       number | null
       academic_year?:   string | null
+      /** Other programs that run this same block (combined classes). */
+      also_program_ids?: number[]
     }>
     delete_ids?: number[]
   }) =>

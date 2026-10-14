@@ -13,6 +13,6 @@ class ModuleOfferingModel extends BaseModel
         'mode', 'mode_order', 'semesters', 'module_order', 'campus_id',
         'start_date', 'end_date',
         'day_of_week', 'day_pattern', 'start_time', 'end_time', 'instructor_id',
-        'activity', 'instructor_name', 'year_of_study',
+        'activity', 'instructor_name', 'year_of_study', 'shared_block_key',
     ];
 }

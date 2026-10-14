@@ -1175,7 +1175,7 @@ class AcademicsManagementController extends BaseController
                     mo.academic_year, mo.mode_order,
                     mo.day_of_week, mo.day_pattern, mo.start_time, mo.end_time,
                     mo.instructor_id, mo.activity, mo.instructor_name, mo.year_of_study,
-                    mo.campus_id,
+                    mo.campus_id, mo.shared_block_key,
                     e.full_name AS instructor_full_name
              FROM `module_offerings` mo
              LEFT JOIN `hr_employees` e ON e.id = mo.instructor_id
@@ -1183,6 +1183,26 @@ class AcademicsManagementController extends BaseController
              ORDER BY mo.module_id ASC, mo.start_date ASC, mo.start_time ASC",
             [$programId, $modeKey],
         );
+
+        // Other programs that run each combined block (same shared_block_key,
+        // different option). Keyed by shared_block_key → [option_id, …].
+        $sharedKeys = array_values(array_unique(array_filter(
+            array_map(static fn ($o) => $o['shared_block_key'] ?? null, $offeringRows),
+        )));
+        $sharedPrograms = [];
+        if ($sharedKeys !== []) {
+            $placeholders = implode(',', array_fill(0, count($sharedKeys), '?'));
+            $siblingRows = $moduleModel->db()->fetchAll(
+                "SELECT shared_block_key, option_id
+                 FROM `module_offerings`
+                 WHERE shared_block_key IN ({$placeholders}) AND option_id <> ?",
+                [...$sharedKeys, $programId],
+            );
+            foreach ($siblingRows as $s) {
+                $sharedPrograms[$s['shared_block_key']][] = (int)$s['option_id'];
+            }
+        }
+
         $blocksByModule = [];
         foreach ($offeringRows as $o) {
             $mid = (int)$o['module_id'];
@@ -1209,6 +1229,7 @@ class AcademicsManagementController extends BaseController
                 'activity'        => $o['activity']        ?? null,
                 'year_of_study'   => isset($o['year_of_study']) && $o['year_of_study'] !== null ? (int)$o['year_of_study'] : null,
                 'campus_id'       => isset($o['campus_id']) && $o['campus_id'] !== null ? (int)$o['campus_id'] : null,
+                'also_program_ids' => $o['shared_block_key'] !== null ? array_values(array_unique($sharedPrograms[$o['shared_block_key']] ?? [])) : [],
             ];
         }
 
@@ -1255,6 +1276,15 @@ class AcademicsManagementController extends BaseController
         return InstructorDirectory::resolveName($this->models['modules']->db(), $instructorId);
     }
 
+    /** True when the module is curricular for the program (`module_programs` link). */
+    private function moduleLinkedToProgram(int $moduleId, int $programId): bool
+    {
+        return !empty($this->models['modules']->db()->fetchOne(
+            "SELECT 1 FROM `module_programs` WHERE module_id = ? AND option_id = ? LIMIT 1",
+            [$moduleId, $programId],
+        ));
+    }
+
     /**
      * POST /api/academics-management/schedules
      * Body: {
@@ -1269,6 +1299,12 @@ class AcademicsManagementController extends BaseController
      * A block with an `id` is updated; without an `id` it's created. A
      * single module can carry many blocks (e.g. several teaching weeks +
      * a final exam) under the same (program, mode).
+     *
+     * `also_program_ids` (optional, per block) lists other programs that
+     * run the same session (combined classes). Each program gets its own
+     * row, all sharing one `shared_block_key`. Edits to a combined block are
+     * copied to every row; removing a program from the list deletes only
+     * that program's row. Each program must already link the module.
      */
     public function saveSchedules(Request $request, Response $response): never
     {
@@ -1390,16 +1426,84 @@ class AcademicsManagementController extends BaseController
             ];
 
             try {
+                $existing = $blockId > 0 ? $offModel->find($blockId) : false;
+                if ($blockId > 0 && !$existing) {
+                    $failed[] = ['index' => $idx, 'error' => "Block #{$blockId} not found."];
+                    continue;
+                }
+                $targetModuleId = $existing ? (int)$existing['module_id'] : $moduleId;
+                $sharedKey      = $existing['shared_block_key'] ?? null;
+
+                // Combined block: the same session also runs for these programs.
+                // Checked before anything is written so a bad target never leaves
+                // the block half-saved.
+                $sendsAlso = array_key_exists('also_program_ids', $s);
+                $alsoIds   = [];
+                if ($sendsAlso && is_array($s['also_program_ids'])) {
+                    foreach ($s['also_program_ids'] as $pid) {
+                        $pid = (int)$pid;
+                        if ($pid > 0 && $pid !== $programId && !in_array($pid, $alsoIds, true)) $alsoIds[] = $pid;
+                    }
+                }
+                $unlinked = array_values(array_filter(
+                    $alsoIds,
+                    fn (int $pid) => !$this->moduleLinkedToProgram($targetModuleId, $pid),
+                ));
+                if ($unlinked !== []) {
+                    $failed[] = ['index' => $idx, 'error' => 'Module is not linked to program #' . implode(', #', $unlinked) . '. Link it there first.'];
+                    continue;
+                }
+
                 if ($blockId > 0) {
-                    $offModel->update($blockId, $payload);
+                    $key = $sharedKey ?? ($alsoIds !== [] ? bin2hex(random_bytes(16)) : null);
+                    $offModel->update($blockId, $payload + ['shared_block_key' => $key]);
                     $updated++;
+
+                    // Keep every copy of a combined block in step with this edit.
+                    $have = [];
+                    if ($key !== null) {
+                        $siblings = $offModel->db()->fetchAll(
+                            "SELECT id, option_id FROM `module_offerings` WHERE shared_block_key = ? AND id <> ?",
+                            [$key, $blockId],
+                        );
+                        foreach ($siblings as $sib) {
+                            $sid = (int)$sib['id'];
+                            $pid = (int)$sib['option_id'];
+                            if ($sendsAlso && !in_array($pid, $alsoIds, true)) {
+                                $offModel->delete($sid);
+                                $deleted++;
+                                continue;
+                            }
+                            $offModel->update($sid, $payload);
+                            $updated++;
+                            $have[] = $pid;
+                        }
+                    }
+                    foreach (array_values(array_diff($alsoIds, $have)) as $pid) {
+                        $offModel->create(array_merge($payload, [
+                            'module_id'        => $targetModuleId,
+                            'option_id'        => $pid,
+                            'mode'             => $modeKey,
+                            'shared_block_key' => $key,
+                        ]));
+                        $created++;
+                        $have[] = $pid;
+                    }
+                    // Last remaining copy is no longer shared — unlink it.
+                    if ($key !== null && $have === []) {
+                        $offModel->update($blockId, ['shared_block_key' => null]);
+                    }
                 } else {
-                    $offModel->create(array_merge($payload, [
-                        'module_id' => $moduleId,
-                        'option_id' => $programId,
-                        'mode'      => $modeKey,
-                    ]));
-                    $created++;
+                    $key = $alsoIds !== [] ? bin2hex(random_bytes(16)) : null;
+                    foreach (array_merge([$programId], $alsoIds) as $pid) {
+                        $offModel->create(array_merge($payload, [
+                            'module_id'        => $moduleId,
+                            'option_id'        => $pid,
+                            'mode'             => $modeKey,
+                            'shared_block_key' => $key,
+                        ]));
+                        $created++;
+                    }
                 }
             } catch (\Throwable $e) {
                 $failed[] = ['index' => $idx, 'error' => $e->getMessage()];
