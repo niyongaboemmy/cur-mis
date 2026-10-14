@@ -394,7 +394,7 @@ export default function AdmissionFeesPanel({
           </div>
           {merchantPending && (
             <p className="text-[12px] font-semibold text-amber-700 dark:text-amber-300">
-              Select {data.merchant_code} or {data.kigali_merchant_code} to enable payment.
+              Select where to pay to enable payment.
             </p>
           )}
         </div>
