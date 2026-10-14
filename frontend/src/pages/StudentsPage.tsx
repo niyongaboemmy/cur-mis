@@ -1290,6 +1290,10 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
                       currentDir={sort_dir}
                       onSort={handleSort}
                     />
+                    <th className="text-sm font-semibold text-ink-700 dark:text-ink-300 px-4">Age</th>
+                    <th className="text-sm font-semibold text-ink-700 dark:text-ink-300 px-4">District</th>
+                    <th className="text-sm font-semibold text-ink-700 dark:text-ink-300 px-4">Start year</th>
+                    <th className="text-sm font-semibold text-ink-700 dark:text-ink-300 px-4">End year</th>
                     <SortableHeader
                       label="Learning Mode"
                       field="learning_mode"
@@ -1524,6 +1528,10 @@ function StudentRow({
         <GenderCell studentId={s.id} gender={s.gender as string | null | undefined} />
       </td>
       <td>{s.nationality || "—"}</td>
+      <td className="text-[12.5px] text-ink-700 dark:text-ink-200">{s.age ?? "—"}</td>
+      <td className="text-[12.5px] text-ink-700 dark:text-ink-200">{s.district || "—"}</td>
+      <td className="text-[12.5px] text-ink-700 dark:text-ink-200">{s.start_year ?? "—"}</td>
+      <td className="text-[12.5px] text-ink-700 dark:text-ink-200">{s.end_year ?? "—"}</td>
       <td className="text-[12.5px] text-ink-700 dark:text-ink-200">
         <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-ink-100 dark:bg-ink-700/50 text-ink-700 dark:text-ink-300 font-medium">
           {s.learning_mode || "—"}

@@ -369,6 +369,8 @@ class StudentController extends BaseController
             }
             unset($r);
 
+            $rows = $this->decorateCohortColumns($rows);
+
             $paginated['data'] = $rows;
         }
 
@@ -424,6 +426,84 @@ class StudentController extends BaseController
         }
 
         $this->success($response, $paginated, 'Finance student directory fetched.');
+    }
+
+    /**
+     * Adds the cohort columns the Students list shows: age, faculty name,
+     * start year, end year and programme duration.
+     *
+     * Start year and end year come from the registration number (see
+     * RegNumberHelper). The end year needs to know whether the student is in
+     * Health Sciences, so the faculty is resolved first from `student.faculty`
+     * (a faculty id) against the `faculty` table. Each value is null when its
+     * source is missing or malformed, so one bad row never breaks the page.
+     *
+     * @param array<int, array<string, mixed>> $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private function decorateCohortColumns(array $rows): array
+    {
+        $facIds = [];
+        foreach ($rows as $r) {
+            $f = trim((string)($r['faculty'] ?? ''));
+            if ($f !== '') $facIds[$f] = true;
+        }
+
+        $facNameById = [];
+        if (!empty($facIds)) {
+            $ids = array_keys($facIds);
+            $ph  = implode(',', array_fill(0, count($ids), '?'));
+            $db  = $this->studentModel->db();
+            foreach ($db->fetchAll(
+                "SELECT fac_id, fac_name FROM `faculty` WHERE CAST(fac_id AS CHAR) IN ($ph)",
+                $ids
+            ) as $f) {
+                $facNameById[(string)$f['fac_id']] = trim((string)$f['fac_name']);
+            }
+        }
+
+        foreach ($rows as &$r) {
+            $facKey   = trim((string)($r['faculty'] ?? ''));
+            $facName  = $facKey !== '' && isset($facNameById[$facKey]) ? $facNameById[$facKey] : null;
+            $isHealth = $facName !== null && stripos($facName, 'health') !== false;
+            $parsed   = \App\Helpers\RegNumberHelper::tryParse($r['regnumber'] ?? null, $isHealth);
+
+            $r['faculty_name']     = $facName;
+            $r['age']              = self::ageFromBirthdate($r['birthdate'] ?? null);
+            $r['start_year']       = $parsed['startYear'] ?? null;
+            $r['end_year']         = $parsed['endYear'] ?? null;
+            $r['program_duration'] = $parsed['programDuration'] ?? null;
+        }
+        unset($r);
+
+        return $rows;
+    }
+
+    /**
+     * Whole years between a free-text birthdate and today. Accepts the two
+     * live formats (`YYYY-MM-DD` and `D/M/YYYY`, matching dobSql()). Returns
+     * null for anything unreadable or a date in the future.
+     */
+    private static function ageFromBirthdate(?string $raw): ?int
+    {
+        $raw = trim((string)$raw);
+        if ($raw === '') return null;
+
+        if (preg_match('/^(\d{4})-(\d{1,2})-(\d{1,2})/', $raw, $m)) {
+            [, $y, $mo, $d] = $m;
+        } elseif (preg_match('#^(\d{1,2})/(\d{1,2})/(\d{4})#', $raw, $m)) {
+            [, $d, $mo, $y] = $m;
+        } else {
+            return null;
+        }
+
+        if (!checkdate((int)$mo, (int)$d, (int)$y)) return null;
+
+        $dob   = new \DateTimeImmutable(sprintf('%04d-%02d-%02d', $y, $mo, $d));
+        $today = new \DateTimeImmutable('today');
+        if ($dob > $today) return null;
+
+        return (int)$today->diff($dob)->y;
     }
 
     /**

@@ -156,6 +156,13 @@ export interface Student {
   photo?:              string | null
   nationality?:        string | null
   learning_mode?:      'day' | 'evening' | 'weekend' | 'holiday'
+  district?:           string | null
+  /** Derived by the students list endpoint (StudentController::decorateCohortColumns). */
+  age?:                number | null
+  faculty_name?:       string | null
+  start_year?:         number | null
+  end_year?:           number | null
+  program_duration?:   number | null
   /** Derived by the students list endpoint from the documents on the student's
    *  admission application — see StudentController::deriveDocumentStatus. */
   document_status?:    'verified' | 'pending' | 'rejected' | 'none'
