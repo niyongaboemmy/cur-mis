@@ -381,6 +381,32 @@ class FeeStructureModel extends BaseModel
     }
 
     /**
+     * Every active fee structure for the year, one row per structure, with its department names
+     * resolved (a structure covering several departments lists all of them). Unlike
+     * scheduleExport(), nothing is pivoted or dropped, so this is the complete register that the
+     * Fee Rates page shows.
+     */
+    public function allActiveForExport(int $academicYearId): array
+    {
+        return $this->db->fetchAll(
+            "SELECT fs.id, fs.fee_type, fs.label, fs.amount, fs.currency, fs.student_category,
+                    fs.programme_category, fs.semester, fs.payment_plan, fs.installment_count,
+                    l.name AS level_name,
+                    (SELECT GROUP_CONCAT(DISTINCT d.dep_name ORDER BY d.dep_name SEPARATOR ', ')
+                       FROM `departements` d
+                      WHERE d.dep_id = fs.department_id
+                         OR d.dep_id IN (SELECT fsd.department_id FROM `fee_structure_departments` fsd
+                                          WHERE fsd.fee_structure_id = fs.id)
+                    ) AS department_names
+             FROM `fee_structures` fs
+             LEFT JOIN `levels` l ON l.id = fs.level_id
+             WHERE fs.academic_year_id = ? AND fs.is_active = 1
+             ORDER BY fs.fee_type ASC, fs.label ASC, fs.id ASC",
+            [$academicYearId]
+        ) ?: [];
+    }
+
+    /**
      * Pivot postgraduate (local/EAC) fee rows into a schedule export format: one row per
      * postgraduate department, with columns for each fee type. Mirrors the signed Finance
      * "Academic Fees Structure — Postgraduate Studies (Rwandan and EAC students)" schedule.

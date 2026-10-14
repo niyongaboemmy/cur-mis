@@ -2591,11 +2591,13 @@ class FeeController extends BaseController
 
         $rows        = $this->structureModel->scheduleExport($yearId);
         $generalFees = $this->structureModel->generalFeeRows($yearId);
+        // Every active structure, so the PDF covers the same set as the Fee Rates page.
+        $register    = $this->structureModel->allActiveForExport($yearId);
         $year        = $this->db->fetchOne("SELECT label FROM academic_years WHERE id = ?", [$yearId]);
         $yearLabel   = $year['label'] ?? 'Academic Year';
 
         // Stream PDF using the helper
-        \App\Helpers\FeeSchedulePdf::streamPdf($rows, $generalFees, ['academic_year' => $yearLabel], "Fee-Schedule-{$yearLabel}.pdf");
+        \App\Helpers\FeeSchedulePdf::streamPdf($rows, $generalFees, ['academic_year' => $yearLabel, 'register' => $register], "Fee-Schedule-{$yearLabel}.pdf");
     }
 
     /**
