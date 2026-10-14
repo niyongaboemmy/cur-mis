@@ -7,6 +7,7 @@ namespace App\Controllers;
 use Core\Request;
 use Core\Response;
 use App\Models\HrPayrollModel;
+use App\Services\PayrollSettings;
 
 class PayrollConfigController extends BaseController
 {
@@ -35,18 +36,12 @@ class PayrollConfigController extends BaseController
 
     /**
      * GET /api/hr/config
-     * Returns core payroll rates + custom deduction items.
+     * Returns every payroll setting (rates, PAYE bands, responsibility amounts; defaults
+     * for any not yet stored) plus custom deduction items.
      */
     public function index(Request $request, Response $response): never
     {
-        $rows = $this->db()->fetchAll(
-            "SELECT config_key, config_value FROM payroll_config ORDER BY id ASC"
-        );
-
-        $map = [];
-        foreach ($rows as $row) {
-            $map[$row['config_key']] = (float)$row['config_value'];
-        }
+        $map = PayrollSettings::load($this->db());
 
         // Attach custom deductions
         $this->ensureTable();
@@ -60,27 +55,44 @@ class PayrollConfigController extends BaseController
 
     /**
      * PUT /api/hr/config
-     * Bulk-update existing config keys (core rates only).
+     * Saves payroll settings. Only known setting keys are accepted; the values are
+     * checked as a whole so the PAYE bands stay in order.
      */
     public function update(Request $request, Response $response): never
     {
         $data    = $request->body();
         $db      = $this->db();
-        $updated = 0;
+        $allowed = array_flip(PayrollSettings::keys());
 
+        $changes = [];
+        $errors  = [];
         foreach ($data as $key => $value) {
-            if (!is_string($key) || trim($key) === '' || $key === 'custom_deductions') {
+            if (!is_string($key) || !isset($allowed[trim($key)])) {
                 continue;
             }
-            $affected = $db->execute(
-                "UPDATE payroll_config SET config_value = ? WHERE config_key = ?",
-                [(string)(float)$value, trim($key)]
-            );
-            if ($affected > 0) {
-                $updated++;
+            if (!is_numeric($value)) {
+                $errors[trim($key)] = 'Must be a number.';
+                continue;
             }
+            $changes[trim($key)] = (float)$value;
         }
 
+        // Check the saved values together with the ones being changed.
+        $merged = array_merge(PayrollSettings::load($db), $changes);
+        $errors = array_merge($errors, PayrollSettings::validate($merged));
+        if (!empty($errors)) {
+            $this->error($response, 'Validation failed.', 422, $errors);
+        }
+
+        foreach ($changes as $key => $value) {
+            $db->execute(
+                "INSERT INTO payroll_config (config_key, config_value) VALUES (?, ?)
+                 ON DUPLICATE KEY UPDATE config_value = VALUES(config_value)",
+                [$key, (string)$value]
+            );
+        }
+
+        $updated = count($changes);
         $this->success($response, ['updated' => $updated], "Updated {$updated} config entries.");
     }
 

@@ -5,32 +5,59 @@ import {
   Settings2, Save, Loader2, RefreshCw, Info,
   Plus, Trash2, Pencil, Check, X, ToggleLeft, ToggleRight,
 } from 'lucide-react'
-import { hrService, type PayrollConfig, type CustomDeduction } from '@/services/hrService'
-
-/* ── PAYE helper (Rwanda progressive brackets) ── */
-function calcPaye(gross: number): number {
-  if (gross <= 60_000)  return 0
-  const b1 = (Math.min(gross, 100_000) - 60_000) * 0.10
-  if (gross <= 100_000) return b1
-  const b2 = b1 + (Math.min(gross, 200_000) - 100_000) * 0.20
-  if (gross <= 200_000) return b2
-  return b2 + (gross - 200_000) * 0.30
-}
+import {
+  hrService, type PayrollConfig, type CustomDeduction, type PayrollRules,
+} from '@/services/hrService'
+import { computePayroll } from '@/utils/payrollCalc'
 
 const fmt = (v: number, d = 0) =>
   v.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d })
 
-const CORE_DEFAULTS: PayrollConfig = {
-  rssb_employee_rate: 6,
-  rssb_employer_rate: 6,
-  maternity_employee_rate: 0.3,
-  maternity_employer_rate: 0.3,
-  cbhi_employee_rate: 5,
-  cbhi_employer_rate: 5,
+/* Builds the rule set the payroll calculator uses from the settings on this page,
+   so the live preview gives the same figures as a payslip. Rates are stored as
+   percentages; the calculator works in fractions. */
+function rulesFromConfig(
+  form: PayrollConfig,
+  roles: PayrollRules['responsibility_roles'],
+): PayrollRules {
+  const rate = (key: string) => Number((form as unknown as Record<string, unknown>)[key] ?? 0) / 100
+  const amount = (key: string) => Number((form as unknown as Record<string, unknown>)[key] ?? 0)
+  return {
+    rates: {
+      pension_employee:      rate('rssb_employee_rate'),
+      pension_employer:      rate('rssb_employer_rate'),
+      occupational_employer: rate('occupational_employer_rate'),
+      maternity_employee:    rate('maternity_employee_rate'),
+      maternity_employer:    rate('maternity_employer_rate'),
+      rama_employee:         rate('rama_employee_rate'),
+      rama_employer:         rate('rama_employer_rate'),
+      cbhi_employee:         rate('cbhi_employee_rate'),
+      cbhi_employer:         rate('cbhi_employer_rate'),
+    },
+    paye_bands: [
+      { upper: amount('paye_band_1_upper'), rate: rate('paye_band_1_rate') },
+      { upper: amount('paye_band_2_upper'), rate: rate('paye_band_2_rate') },
+      { upper: amount('paye_band_3_upper'), rate: rate('paye_band_3_rate') },
+      { upper: null,                        rate: rate('paye_band_4_rate') },
+    ],
+    responsibility_roles: roles,
+  }
+}
+
+/* First message from a failed save: field errors from the server, else the message. */
+function saveErrorMessage(e: any): string {
+  const data = e?.response?.data
+  if (data?.errors && typeof data.errors === 'object') {
+    const first = Object.values(data.errors)[0]
+    if (typeof first === 'string') return first
+  }
+  return data?.message ?? 'Save failed'
 }
 
 /* ══════════════════════════════════════════════════════════════════════
    HR PAYROLL SETTINGS PAGE
+   Every number here is used by the CUR payroll calculation. The formulas
+   themselves are fixed in the backend (PayrollCalculator).
    ══════════════════════════════════════════════════════════════════════ */
 export default function HrSettingsPage() {
   const qc = useQueryClient()
@@ -40,16 +67,22 @@ export default function HrSettingsPage() {
     queryFn:  ({ signal }) => hrService.getPayrollConfig(signal),
   })
 
+  const { data: rulesRes } = useQuery({
+    queryKey: ['hr-payroll-rules'],
+    queryFn:  ({ signal }) => hrService.getPayrollRules(signal),
+    staleTime: 5 * 60 * 1000,
+  })
+
   const { data: dedRes } = useQuery({
     queryKey: ['hr-custom-deductions'],
     queryFn:  ({ signal }) => hrService.listCustomDeductions(signal),
   })
 
-  const config = res?.data ?? CORE_DEFAULTS
-  const customDeductions: CustomDeduction[] = dedRes?.data ?? (config.custom_deductions ?? [])
+  const roles = rulesRes?.data?.responsibility_roles ?? []
+  const customDeductions: CustomDeduction[] = dedRes?.data ?? []
 
-  const [form, setForm] = useState<PayrollConfig>(CORE_DEFAULTS)
-  const [preview, setPreview] = useState(500_000)
+  const [form, setForm] = useState<PayrollConfig | null>(null)
+  const [basic, setBasic] = useState(500_000)
   const [dirty, setDirty] = useState(false)
 
   useEffect(() => {
@@ -59,49 +92,41 @@ export default function HrSettingsPage() {
     }
   }, [res?.data])
 
-  const setRate = (key: keyof PayrollConfig) => (e: React.ChangeEvent<HTMLInputElement>) => {
-    setForm(prev => ({ ...prev, [key]: parseFloat(e.target.value) || 0 }))
+  const setValue = (key: string, value: number) => {
+    setForm(prev => (prev ? ({ ...prev, [key]: value } as PayrollConfig) : prev))
     setDirty(true)
   }
+  const numField = (key: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setValue(key, parseFloat(e.target.value) || 0)
 
   const save = useMutation({
-    mutationFn: () => hrService.updatePayrollConfig(form),
+    mutationFn: () => hrService.updatePayrollConfig(form ?? {}),
     onSuccess: () => {
-      toast.success('Payroll configuration saved.')
+      toast.success('Payroll settings saved.')
       qc.invalidateQueries({ queryKey: ['hr-payroll-config'] })
+      qc.invalidateQueries({ queryKey: ['hr-payroll-rules'] })
       setDirty(false)
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Save failed'),
+    onError: (e: any) => toast.error(saveErrorMessage(e)),
   })
 
   const reset = () => {
-    if (config) { setForm({ ...config }); setDirty(false) }
+    if (res?.data) { setForm({ ...res.data }); setDirty(false) }
   }
 
-  /* Live preview calculations */
-  const g              = preview
-  const paye           = calcPaye(g)
-  const rssbEmp        = g * (form.rssb_employee_rate / 100)
-  const maternityEmp   = g * (form.maternity_employee_rate / 100)
-  const cbhiEmp        = g * (form.cbhi_employee_rate / 100)
-  const activeCustom   = customDeductions.filter(d => d.is_active)
-  const customEmpTotal = activeCustom.reduce((s, d) => s + g * (Number(d.employee_rate) / 100), 0)
-  const totalEmpDed    = paye + rssbEmp + maternityEmp + cbhiEmp + customEmpTotal
-  const netEmp         = g - totalEmpDed
-
-  const rssbEmpr        = g * (form.rssb_employer_rate / 100)
-  const maternityEmpr   = g * (form.maternity_employer_rate / 100)
-  const cbhiEmpr        = g * (form.cbhi_employer_rate / 100)
-  const customEmprTotal = activeCustom.reduce((s, d) => s + g * (Number(d.employer_rate) / 100), 0)
-  const totalCost       = g + rssbEmpr + maternityEmpr + cbhiEmpr + customEmprTotal
-
-  if (isLoading) {
+  if (isLoading || !form) {
     return (
       <div className="flex items-center justify-center py-20">
         <Loader2 className="w-6 h-6 animate-spin text-brand" />
       </div>
     )
   }
+
+  /* Live preview: the same calculation a payslip uses, with no allowances or deductions */
+  const calc = computePayroll(
+    { basicSalary: basic, responsibilityAmount: 0, arrears: 0, otherDeductions: 0 },
+    rulesFromConfig(form, roles),
+  )
 
   return (
     <div className="space-y-6 animate-fade-in max-w-3xl">
@@ -111,7 +136,9 @@ export default function HrSettingsPage() {
           <h2 className="text-lg font-bold text-ink-900 dark:text-white flex items-center gap-2">
             <Settings2 className="w-5 h-5 text-brand" /> Payroll Settings
           </h2>
-         
+          <p className="text-[12px] text-ink-500 mt-0.5">
+            Rates, PAYE bands and allowance amounts used for every payroll calculation.
+          </p>
         </div>
         <div className="flex gap-2">
           {dirty && (
@@ -134,38 +161,69 @@ export default function HrSettingsPage() {
       <div className="card overflow-hidden">
         <div className="px-5 py-3 border-b border-ink-100 dark:border-ink-700 bg-ink-50 dark:bg-ink-700/30">
           <h3 className="font-bold text-[13px] text-ink-800 dark:text-ink-200">Employee Contribution Rates</h3>
-          <p className="text-[11px] text-ink-400 mt-0.5">Deducted from employee's gross salary</p>
+          <p className="text-[11px] text-ink-400 mt-0.5">
+            Pension and maternity use gross salary less transport; CBHI uses net salary.
+          </p>
         </div>
         <div className="divide-y divide-ink-100 dark:divide-ink-700">
-          <RateRow label="RSSB Pension"    description="Rwanda Social Security Board — employee share" value={form.rssb_employee_rate}      onChange={setRate('rssb_employee_rate')} />
-          <RateRow label="Maternity Fund"  description="Employee maternity contribution"               value={form.maternity_employee_rate} onChange={setRate('maternity_employee_rate')} />
-          <RateRow label="CBHI"            description="Community Based Health Insurance"              value={form.cbhi_employee_rate}      onChange={setRate('cbhi_employee_rate')} />
-        </div>
-        <div className="px-5 py-3 bg-ink-50 dark:bg-ink-700/30 text-[11px] text-ink-500 font-mono">
-          Statutory deduction (excl. PAYE):{' '}
-          <span className="font-bold text-ink-700 dark:text-ink-300">
-            {(form.rssb_employee_rate + form.maternity_employee_rate + form.cbhi_employee_rate).toFixed(1)}%
-          </span>
+          <RateRow label="RSSB Pension"  description="Rwanda Social Security Board — employee share" value={form.rssb_employee_rate}   onChange={numField('rssb_employee_rate')} />
+          <RateRow label="Maternity Fund" description="Employee maternity contribution"              value={form.maternity_employee_rate} onChange={numField('maternity_employee_rate')} />
+          <RateRow label="RAMA"          description="Mutuelle de santé — employee share"           value={form.rama_employee_rate}      onChange={numField('rama_employee_rate')} />
+          <RateRow label="CBHI"          description="Community Based Health Insurance (on net salary)" value={form.cbhi_employee_rate} onChange={numField('cbhi_employee_rate')} />
         </div>
       </div>
 
       {/* Employer Contribution Rates */}
       <div className="card overflow-hidden">
         <div className="px-5 py-3 border-b border-ink-100 dark:border-ink-700 bg-ink-50 dark:bg-ink-700/30">
-          <h3 className="font-bold text-[13px] text-ink-800 dark:text-ink-200">Employer Contribution Rates</h3>
+          <h3 className="font-bold text-[13px] text-ink-800 dark:text-ink-200">Employer (CUR) Contribution Rates</h3>
           <p className="text-[11px] text-ink-400 mt-0.5">Paid by the institution on top of gross salary</p>
         </div>
         <div className="divide-y divide-ink-100 dark:divide-ink-700">
-          <RateRow label="RSSB Pension"   description="Rwanda Social Security Board — employer share" value={form.rssb_employer_rate}      onChange={setRate('rssb_employer_rate')} />
-          <RateRow label="Maternity Fund" description="Employer maternity contribution"               value={form.maternity_employer_rate} onChange={setRate('maternity_employer_rate')} />
-          <RateRow label="CBHI"           description="Community Based Health Insurance — employer share" value={form.cbhi_employer_rate}  onChange={setRate('cbhi_employer_rate')} />
+          <RateRow label="RSSB Pension"           description="Rwanda Social Security Board — employer share" value={form.rssb_employer_rate}         onChange={numField('rssb_employer_rate')} />
+          <RateRow label="Occupational hazard"    description="Employer only, on maternity base"               value={form.occupational_employer_rate} onChange={numField('occupational_employer_rate')} />
+          <RateRow label="Maternity Fund"         description="Employer maternity contribution"                value={form.maternity_employer_rate}    onChange={numField('maternity_employer_rate')} />
+          <RateRow label="RAMA"                   description="Mutuelle de santé — employer share"             value={form.rama_employer_rate}         onChange={numField('rama_employer_rate')} />
+          <RateRow label="CBHI"                   description="Community Based Health Insurance — employer share (on gross)" value={form.cbhi_employer_rate} onChange={numField('cbhi_employer_rate')} />
         </div>
-        <div className="px-5 py-3 bg-ink-50 dark:bg-ink-700/30 text-[11px] text-ink-500 font-mono">
-          Total employer contribution:{' '}
-          <span className="font-bold text-ink-700 dark:text-ink-300">
-            {(form.rssb_employer_rate + form.maternity_employer_rate + form.cbhi_employer_rate).toFixed(1)}%
-          </span>
-          {' '}of gross
+      </div>
+
+      {/* PAYE bands */}
+      <div className="card overflow-hidden">
+        <div className="px-5 py-3 border-b border-ink-100 dark:border-ink-700 bg-ink-50 dark:bg-ink-700/30">
+          <h3 className="font-bold text-[13px] text-ink-800 dark:text-ink-200">PAYE Bands (monthly)</h3>
+          <p className="text-[11px] text-ink-400 mt-0.5">
+            Each rate applies only to the part of gross salary inside its band.
+          </p>
+        </div>
+        <div className="divide-y divide-ink-100 dark:divide-ink-700">
+          <BandRow label="Band 1" upper={form.paye_band_1_upper} onUpper={numField('paye_band_1_upper')}
+                   rate={form.paye_band_1_rate} onRate={numField('paye_band_1_rate')} />
+          <BandRow label="Band 2" upper={form.paye_band_2_upper} onUpper={numField('paye_band_2_upper')}
+                   rate={form.paye_band_2_rate} onRate={numField('paye_band_2_rate')} />
+          <BandRow label="Band 3" upper={form.paye_band_3_upper} onUpper={numField('paye_band_3_upper')}
+                   rate={form.paye_band_3_rate} onRate={numField('paye_band_3_rate')} />
+          <BandRow label="Above band 3" upper={null} rate={form.paye_band_4_rate} onRate={numField('paye_band_4_rate')} />
+        </div>
+      </div>
+
+      {/* Responsibility allowances */}
+      <div className="card overflow-hidden">
+        <div className="px-5 py-3 border-b border-ink-100 dark:border-ink-700 bg-ink-50 dark:bg-ink-700/30">
+          <h3 className="font-bold text-[13px] text-ink-800 dark:text-ink-200">Responsibility Allowances</h3>
+          <p className="text-[11px] text-ink-400 mt-0.5">Monthly amount for each role (RWF)</p>
+        </div>
+        <div className="divide-y divide-ink-100 dark:divide-ink-700">
+          {roles.map(role => (
+            <div key={role.code} className="flex items-center justify-between px-5 py-3">
+              <p className="text-[13px] font-semibold text-ink-800 dark:text-ink-200">{role.label}</p>
+              <input type="number" min="0" step="1000"
+                className="input py-1 text-[13px] text-right w-36 tabular-nums"
+                value={Number((form as unknown as Record<string, unknown>)[`resp_${role.code}`] ?? 0)}
+                onChange={numField(`resp_${role.code}`)}
+              />
+            </div>
+          ))}
         </div>
       </div>
 
@@ -174,20 +232,20 @@ export default function HrSettingsPage() {
 
       {/* Live Preview */}
       <div className="card overflow-hidden">
-        <div className="px-5 py-3 border-b border-ink-100 dark:border-ink-700 bg-ink-50 dark:bg-ink-700/30 flex items-center justify-between">
+        <div className="px-5 py-3 border-b border-ink-100 dark:border-ink-700 bg-ink-50 dark:bg-ink-700/30 flex items-center justify-between gap-3 flex-wrap">
           <div>
             <h3 className="font-bold text-[13px] text-ink-800 dark:text-ink-200 flex items-center gap-1.5">
               <Info className="w-3.5 h-3.5 text-brand" /> Live Preview
             </h3>
-            <p className="text-[11px] text-ink-400 mt-0.5">Sample payslip using current rate configuration</p>
+            <p className="text-[11px] text-ink-400 mt-0.5">Sample payslip using the settings above (unsaved changes included)</p>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-ink-400">Gross:</span>
+            <span className="text-[11px] text-ink-400">Basic salary:</span>
             <input
               type="number" min="0" step="50000"
               className="input py-1 text-[12px] text-right w-32 tabular-nums"
-              value={preview}
-              onChange={e => setPreview(parseFloat(e.target.value) || 0)}
+              value={basic}
+              onChange={e => setBasic(parseFloat(e.target.value) || 0)}
             />
             <span className="text-[11px] text-ink-400">RWF</span>
           </div>
@@ -198,48 +256,70 @@ export default function HrSettingsPage() {
           <div>
             <p className="text-[11px] font-bold text-ink-400 uppercase tracking-wider mb-2">Employee Receives</p>
             <div className="rounded-lg border border-ink-100 dark:border-ink-700 overflow-hidden">
-              <PreviewRow label="Gross Salary"                                          value={g}          accent="font-bold" />
-              <PreviewRow label="PAYE (progressive)"                                   value={-paye}      accent="text-red-600 dark:text-red-400" />
-              <PreviewRow label={`RSSB (${form.rssb_employee_rate}%)`}                 value={-rssbEmp}   accent="text-orange-600 dark:text-orange-400" />
-              <PreviewRow label={`Maternity (${form.maternity_employee_rate}%)`}        value={-maternityEmp} accent="text-orange-600 dark:text-orange-400" />
-              <PreviewRow label={`CBHI (${form.cbhi_employee_rate}%)`}                 value={-cbhiEmp}   accent="text-sky-600 dark:text-sky-400" />
-              {activeCustom.map(d => (
-                <PreviewRow key={d.id}
-                  label={`${d.label} (${Number(d.employee_rate)}%)`}
-                  value={-(g * Number(d.employee_rate) / 100)}
-                  accent="text-violet-600 dark:text-violet-400"
-                />
-              ))}
+              <PreviewRow label="Gross Salary"        value={calc.gross}            accent="font-bold" />
+              <PreviewRow label="PAYE"                value={-calc.paye}            accent="text-red-600 dark:text-red-400" />
+              <PreviewRow label="RSSB Pension"        value={-calc.pension_employee} accent="text-orange-600 dark:text-orange-400" />
+              <PreviewRow label="Maternity"           value={-calc.maternity_employee} accent="text-orange-600 dark:text-orange-400" />
+              <PreviewRow label="RAMA"                value={-calc.rama_employee}   accent="text-orange-600 dark:text-orange-400" />
+              <PreviewRow label="CBHI"                value={-calc.cbhi}            accent="text-sky-600 dark:text-sky-400" />
               <div className="flex items-center justify-between px-4 py-3 bg-emerald-50 dark:bg-emerald-500/10 border-t border-emerald-200 dark:border-emerald-700">
                 <span className="text-[12px] font-bold text-emerald-700 dark:text-emerald-300">Net Salary</span>
-                <span className="font-bold text-[14px] text-emerald-800 dark:text-emerald-200 tabular-nums">{fmt(Math.max(0, netEmp))}</span>
+                <span className="font-bold text-[14px] text-emerald-800 dark:text-emerald-200 tabular-nums">{fmt(calc.net_pay)}</span>
               </div>
             </div>
           </div>
 
           {/* Employer side */}
           <div>
-            <p className="text-[11px] font-bold text-ink-400 uppercase tracking-wider mb-2">Employer Total Cost</p>
+            <p className="text-[11px] font-bold text-ink-400 uppercase tracking-wider mb-2">CUR Total Cost</p>
             <div className="rounded-lg border border-ink-100 dark:border-ink-700 overflow-hidden">
-              <PreviewRow label="Gross Salary"                                              value={g}            accent="font-bold" />
-              <PreviewRow label={`RSSB (${form.rssb_employer_rate}%)`}                     value={rssbEmpr}     accent="text-orange-600 dark:text-orange-400" prefix="+" />
-              <PreviewRow label={`Maternity (${form.maternity_employer_rate}%)`}            value={maternityEmpr} accent="text-orange-600 dark:text-orange-400" prefix="+" />
-              <PreviewRow label={`CBHI (${form.cbhi_employer_rate}%)`}                     value={cbhiEmpr}     accent="text-sky-600 dark:text-sky-400" prefix="+" />
-              {activeCustom.filter(d => Number(d.employer_rate) > 0).map(d => (
-                <PreviewRow key={d.id}
-                  label={`${d.label} (${Number(d.employer_rate)}%)`}
-                  value={g * Number(d.employer_rate) / 100}
-                  accent="text-violet-600 dark:text-violet-400"
-                  prefix="+"
-                />
-              ))}
+              <PreviewRow label="Gross Salary"         value={calc.gross}                  accent="font-bold" />
+              <PreviewRow label="RSSB Pension"         value={calc.pension_employer}       prefix="+" accent="text-orange-600 dark:text-orange-400" />
+              <PreviewRow label="Occupational hazard"  value={calc.occupational_employer}  prefix="+" accent="text-orange-600 dark:text-orange-400" />
+              <PreviewRow label="Maternity"            value={calc.maternity_employer}     prefix="+" accent="text-orange-600 dark:text-orange-400" />
+              <PreviewRow label="RAMA"                 value={calc.rama_employer}          prefix="+" accent="text-orange-600 dark:text-orange-400" />
+              <PreviewRow label="CBHI"                 value={calc.cbhi_employer}          prefix="+" accent="text-sky-600 dark:text-sky-400" />
               <div className="flex items-center justify-between px-4 py-3 bg-blue-50 dark:bg-blue-500/10 border-t border-blue-200 dark:border-blue-700">
                 <span className="text-[12px] font-bold text-blue-700 dark:text-blue-300">Total Cost</span>
-                <span className="font-bold text-[14px] text-blue-800 dark:text-blue-200 tabular-nums">{fmt(totalCost)}</span>
+                <span className="font-bold text-[14px] text-blue-800 dark:text-blue-200 tabular-nums">{fmt(calc.employer_cost)}</span>
               </div>
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  )
+}
+
+/* ── PAYE Band Row Component ── */
+function BandRow({ label, upper, onUpper, rate, onRate }: {
+  label: string; upper: number | null; onUpper?: (e: React.ChangeEvent<HTMLInputElement>) => void
+  rate: number; onRate: (e: React.ChangeEvent<HTMLInputElement>) => void
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 flex-wrap px-5 py-3">
+      <p className="text-[13px] font-semibold text-ink-800 dark:text-ink-200">{label}</p>
+      <div className="flex items-center gap-3 flex-wrap">
+        {upper !== null && onUpper ? (
+          <label className="flex items-center gap-2 text-[11px] text-ink-500">
+            Up to
+            <input type="number" min="0" step="1000"
+              className="input py-1 text-[13px] text-right w-32 tabular-nums"
+              value={upper} onChange={onUpper}
+            />
+            RWF
+          </label>
+        ) : (
+          <span className="text-[11px] text-ink-400">No upper limit</span>
+        )}
+        <label className="flex items-center gap-2 text-[11px] text-ink-500">
+          Rate
+          <input type="number" min="0" max="100" step="0.1"
+            className="input py-1 text-[13px] text-right w-20 tabular-nums"
+            value={rate} onChange={onRate}
+          />
+          %
+        </label>
       </div>
     </div>
   )

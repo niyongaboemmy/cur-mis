@@ -9,6 +9,7 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/../../app/Services/PayrollSettings.php';
 require_once __DIR__ . '/../../app/Services/PayrollCalculator.php';
 
 use App\Services\PayrollCalculator as PC;
@@ -45,7 +46,8 @@ $assertEq('c1 net salary (18)',        402857.14, $r['net_salary']);
 $assertEq('c1 CBHI (19)',              2014.29,   $r['cbhi']);
 $assertEq('c1 net after CBHI (20)',    400842.85, $r['net_after_cbhi']);
 $assertEq('c1 net pay (22)',           400842.85, $r['net_pay']);
-$assertEq('c1 employer cost',          737428.57, $r['employer_cost']);
+// Includes employer CBHI: 0.5% of gross 642,857.14 = 3,214.29
+$assertEq('c1 employer cost',          740642.86, $r['employer_cost']);
 
 // ── Case 2: basic 150,000, Dean (150,000), other deductions 10,000 ─────────
 $r = PC::calculate(150000, 'dean', 0.0, 10000.0);

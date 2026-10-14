@@ -10,58 +10,41 @@ use InvalidArgumentException;
  * CUR payroll calculator.
  *
  * Single source of truth for monthly payroll, implementing the
- * "Calculation of Payroll" procedure (steps 1–22). Pure PHP, no database
- * access, so it can be exercised directly by tests and reused for previews.
+ * "Calculation of Payroll" procedure (steps 1–22). The formulas live here. The
+ * numbers they use (contribution rates, PAYE bands, responsibility amounts) come
+ * from PayrollSettings, which HR can change on the Payroll Settings page.
+ *
+ * Pure PHP, no database access. Callers pass the settings in; when they do not,
+ * the defaults in PayrollSettings are used.
  *
  * Every monetary value is rounded to 2 decimals and downstream steps use the
  * rounded value, so the stored payslip always adds up.
  */
 final class PayrollCalculator
 {
-    /** Contribution rates (fractions of the base shown in the procedure). */
-    public const RATES = [
-        'pension_employee'      => 0.06,   // step 10 – base: total gross
-        'pension_employer'      => 0.06,   // step 12 – base: total gross
-        'occupational_employer' => 0.02,   // step 11 – base: maternity base (employer only)
-        'maternity_employee'    => 0.003,  // step 13 – base: maternity base
-        'maternity_employer'    => 0.003,  // step 14 – base: maternity base
-        'rama_employee'         => 0.075,  // step 16 – base: maternity base
-        'rama_employer'         => 0.075,  // step 17 – base: maternity base
-        'cbhi_employee'         => 0.005,  // step 19 – base: net salary (after PAYE and RSSB/RAMA)
-    ];
-
-    /**
-     * Progressive monthly PAYE bands (step 8). A null upper bound is open-ended.
-     * Each band's rate applies only to the slice of income inside that band.
-     */
-    public const PAYE_BANDS = [
-        ['upper' => 60000,  'rate' => 0.00],
-        ['upper' => 100000, 'rate' => 0.10],
-        ['upper' => 200000, 'rate' => 0.20],
-        ['upper' => null,   'rate' => 0.30],
-    ];
-
-    /** Responsibility allowances (step 5). Each employee holds at most one role. */
+    /** Responsibility roles (step 5). Codes and labels are fixed here; amounts come from settings. */
     public const RESPONSIBILITY_ROLES = [
-        'academic_secretary'            => ['label' => 'Academic Secretary',                      'amount' => 120000],
-        'dean'                          => ['label' => 'Dean',                                    'amount' => 150000],
-        'registrar'                     => ['label' => 'Registrar',                               'amount' => 150000],
-        'director_research'             => ['label' => 'Director of Research',                    'amount' => 150000],
-        'cpa_coordinator'               => ['label' => 'CPA Coordinator',                         'amount' => 150000],
-        'international_student_coord'   => ['label' => 'International Student Coordinator',       'amount' => 150000],
-        'planning_cooperation'          => ['label' => 'Planning and Cooperation',                'amount' => 150000],
-        'internal_auditor'              => ['label' => 'Internal Auditor',                        'amount' => 150000],
-        'sponsored_student_coord'       => ['label' => 'Sponsored Student Coordinator (Chancen)', 'amount' => 150000],
-        'head_of_unit'                  => ['label' => 'Head of Unit (Director)',                 'amount' => 150000],
-        'head_of_department'            => ['label' => 'Head of Department',                      'amount' => 100000],
+        'academic_secretary'            => ['label' => 'Academic Secretary'],
+        'dean'                          => ['label' => 'Dean'],
+        'registrar'                     => ['label' => 'Registrar'],
+        'director_research'             => ['label' => 'Director of Research'],
+        'cpa_coordinator'               => ['label' => 'CPA Coordinator'],
+        'international_student_coord'   => ['label' => 'International Student Coordinator'],
+        'planning_cooperation'          => ['label' => 'Planning and Cooperation'],
+        'internal_auditor'              => ['label' => 'Internal Auditor'],
+        'sponsored_student_coord'       => ['label' => 'Sponsored Student Coordinator (Chancen)'],
+        'head_of_unit'                  => ['label' => 'Head of Unit (Director)'],
+        'head_of_department'            => ['label' => 'Head of Department'],
     ];
 
     /**
      * Responsibility allowance for a role code. Null/empty means no role.
      *
+     * @param array|null $settings Output of PayrollSettings::calculatorInputs()
+     *
      * @throws InvalidArgumentException for an unknown role code
      */
-    public static function responsibilityAmount(?string $role): float
+    public static function responsibilityAmount(?string $role, ?array $settings = null): float
     {
         if ($role === null || $role === '') {
             return 0.0;
@@ -69,19 +52,26 @@ final class PayrollCalculator
         if (!isset(self::RESPONSIBILITY_ROLES[$role])) {
             throw new InvalidArgumentException("Unknown responsibility role: {$role}");
         }
-        return (float) self::RESPONSIBILITY_ROLES[$role]['amount'];
+        $settings ??= PayrollSettings::calculatorDefaults();
+        return (float) ($settings['responsibility_amounts'][$role] ?? 0.0);
     }
 
-    /** Monthly PAYE on a total gross amount (step 8). */
-    public static function paye(float $taxableIncome): float
+    /**
+     * Monthly PAYE on a total gross amount (step 8).
+     *
+     * @param array|null $bands Output of PayrollSettings::calculatorInputs()['paye_bands']
+     */
+    public static function paye(float $taxableIncome, ?array $bands = null): float
     {
         if ($taxableIncome <= 0) {
             return 0.0;
         }
 
+        $bands ??= PayrollSettings::calculatorDefaults()['paye_bands'];
+
         $tax = 0.0;
         $lower = 0.0;
-        foreach (self::PAYE_BANDS as $band) {
+        foreach ($bands as $band) {
             if ($taxableIncome <= $lower) {
                 break;
             }
@@ -101,6 +91,7 @@ final class PayrollCalculator
      * @param string|null $responsibility  Step 5 – role code from RESPONSIBILITY_ROLES
      * @param float       $arrears         Step 6 – arrears for this period, if any
      * @param float|null  $otherDeductions Step 21 – total of other deductions, if known
+     * @param array|null  $settings        Output of PayrollSettings::calculatorInputs()
      * @return array<string, float> Every figure in the procedure, keyed by step name
      */
     public static function calculate(
@@ -108,8 +99,16 @@ final class PayrollCalculator
         ?string $responsibility = null,
         float $arrears = 0.0,
         ?float $otherDeductions = 0.0,
+        ?array $settings = null,
     ): array {
-        return self::compute($basicSalary, self::responsibilityAmount($responsibility), $arrears, $otherDeductions);
+        $settings ??= PayrollSettings::calculatorDefaults();
+        return self::compute(
+            $basicSalary,
+            self::responsibilityAmount($responsibility, $settings),
+            $arrears,
+            $otherDeductions,
+            $settings,
+        );
     }
 
     /**
@@ -117,6 +116,7 @@ final class PayrollCalculator
      * directly. Used to recompute a stored payroll row, which keeps the amount that
      * was in force when it was created.
      *
+     * @param array|null $settings Output of PayrollSettings::calculatorInputs()
      * @return array<string, float>
      */
     public static function compute(
@@ -124,7 +124,11 @@ final class PayrollCalculator
         float $responsibilityAmount,
         float $arrears = 0.0,
         ?float $otherDeductions = 0.0,
+        ?array $settings = null,
     ): array {
+        $settings ??= PayrollSettings::calculatorDefaults();
+        $rates = $settings['rates'];
+
         $basic = self::r2(max(0.0, $basicSalary));
 
         // Steps 2–4
@@ -138,19 +142,19 @@ final class PayrollCalculator
         $gross   = self::r2($baseGross + $responsibilityAllowance + $arrears);
 
         // Step 8 – PAYE on total gross
-        $paye = self::paye($gross);
+        $paye = self::paye($gross, $settings['paye_bands']);
 
         // Step 9 – maternity base excludes transport allowance
         $maternityBase = self::r2($gross - $transport);
 
         // Steps 10–17 – RSSB, maternity, RAMA (employee and employer shares)
-        $pensionEmployee      = self::r2($gross * self::RATES['pension_employee']);
-        $pensionEmployer      = self::r2($gross * self::RATES['pension_employer']);
-        $occupationalEmployer = self::r2($maternityBase * self::RATES['occupational_employer']);
-        $maternityEmployee    = self::r2($maternityBase * self::RATES['maternity_employee']);
-        $maternityEmployer    = self::r2($maternityBase * self::RATES['maternity_employer']);
-        $ramaEmployee         = self::r2($maternityBase * self::RATES['rama_employee']);
-        $ramaEmployer         = self::r2($maternityBase * self::RATES['rama_employer']);
+        $pensionEmployee      = self::r2($gross * $rates['pension_employee']);
+        $pensionEmployer      = self::r2($gross * $rates['pension_employer']);
+        $occupationalEmployer = self::r2($maternityBase * $rates['occupational_employer']);
+        $maternityEmployee    = self::r2($maternityBase * $rates['maternity_employee']);
+        $maternityEmployer    = self::r2($maternityBase * $rates['maternity_employer']);
+        $ramaEmployee         = self::r2($maternityBase * $rates['rama_employee']);
+        $ramaEmployer         = self::r2($maternityBase * $rates['rama_employer']);
 
         // Step 15 – employee RSSB total (pension + maternity)
         $rssbEmployeeTotal = self::r2($pensionEmployee + $maternityEmployee);
@@ -159,8 +163,11 @@ final class PayrollCalculator
         $netSalary = self::r2(max(0.0, $gross - $paye - $rssbEmployeeTotal - $ramaEmployee));
 
         // Steps 19–20 – CBHI on net salary, then deducted from it
-        $cbhi         = self::r2($netSalary * self::RATES['cbhi_employee']);
+        $cbhi         = self::r2($netSalary * $rates['cbhi_employee']);
         $netAfterCbhi = self::r2(max(0.0, $netSalary - $cbhi));
+
+        // Employer CBHI share – base: total gross (employer cost only, not deducted from pay)
+        $cbhiEmployer = self::r2($gross * $rates['cbhi_employer']);
 
         // Steps 21–22 – other deductions, then net pay
         $other  = self::r2(max(0.0, (float) ($otherDeductions ?? 0.0)));
@@ -186,25 +193,38 @@ final class PayrollCalculator
             'rama_employer'             => $ramaEmployer,
             'net_salary'                => $netSalary,
             'cbhi'                      => $cbhi,
+            'cbhi_employer'             => $cbhiEmployer,
             'net_after_cbhi'            => $netAfterCbhi,
             'other_deductions'          => $other,
             'net_pay'                   => $netPay,
             'employer_cost'             => self::r2($gross + $pensionEmployer + $occupationalEmployer
-                                            + $maternityEmployer + $ramaEmployer),
+                                            + $maternityEmployer + $ramaEmployer + $cbhiEmployer),
         ];
     }
 
-    /** Public rule set for the UI: rates, PAYE bands and responsibility roles. */
-    public static function rules(): array
+    /**
+     * Public rule set for the UI: rates, PAYE bands and responsibility roles with
+     * their current amounts.
+     *
+     * @param array|null $settings Output of PayrollSettings::calculatorInputs()
+     */
+    public static function rules(?array $settings = null): array
     {
+        $settings ??= PayrollSettings::calculatorDefaults();
+
+        $roles = [];
+        foreach (self::RESPONSIBILITY_ROLES as $code => $role) {
+            $roles[] = [
+                'code'   => $code,
+                'label'  => $role['label'],
+                'amount' => (float) ($settings['responsibility_amounts'][$code] ?? 0.0),
+            ];
+        }
+
         return [
-            'rates'                 => self::RATES,
-            'paye_bands'            => self::PAYE_BANDS,
-            'responsibility_roles'  => array_map(
-                static fn (string $code, array $r) => ['code' => $code, 'label' => $r['label'], 'amount' => $r['amount']],
-                array_keys(self::RESPONSIBILITY_ROLES),
-                array_values(self::RESPONSIBILITY_ROLES)
-            ),
+            'rates'                => $settings['rates'],
+            'paye_bands'           => $settings['paye_bands'],
+            'responsibility_roles' => $roles,
         ];
     }
 

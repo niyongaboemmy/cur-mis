@@ -220,14 +220,29 @@ export interface CustomDeduction {
   sort_order:    number
 }
 
+/** Payroll settings. Rates are percentages (6 = 6%); amounts are RWF. */
 export interface PayrollConfig {
-  rssb_employee_rate:      number
-  rssb_employer_rate:      number
-  maternity_employee_rate: number
-  maternity_employer_rate: number
-  cbhi_employee_rate:      number
-  cbhi_employer_rate:      number
-  custom_deductions?:      CustomDeduction[]
+  // Contribution rates (CUR procedure)
+  rssb_employee_rate:         number   // step 10: pension, employee
+  rssb_employer_rate:         number   // step 12: pension, CUR share
+  occupational_employer_rate: number   // step 11: occupational hazard, CUR only
+  maternity_employee_rate:    number   // step 13
+  maternity_employer_rate:    number   // step 14
+  rama_employee_rate:         number   // step 16
+  rama_employer_rate:         number   // step 17
+  cbhi_employee_rate:         number   // step 19: on net salary
+  cbhi_employer_rate:         number   // employer CBHI share: on gross salary
+  // PAYE bands (step 8): upper limits in RWF, rates in percent
+  paye_band_1_upper:          number
+  paye_band_1_rate:           number
+  paye_band_2_upper:          number
+  paye_band_2_rate:           number
+  paye_band_3_upper:          number
+  paye_band_3_rate:           number
+  paye_band_4_rate:           number
+  // Responsibility allowances (step 5): resp_<role code> = RWF per month
+  [key: `resp_${string}`]:    number
+  custom_deductions?:         CustomDeduction[]
 }
 
 /* ── Per-employee Deduction types ──────────────────────────────────────── */

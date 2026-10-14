@@ -80,6 +80,8 @@ final class HrPayrollRecalculator
             [$empId]
         ) ?: [];
 
+        $settings = PayrollSettings::calculatorInputs(PayrollSettings::load($db));
+
         foreach ($rows as $row) {
             if ((float)$row['basic_salary'] <= 0) {
                 continue;
@@ -96,7 +98,8 @@ final class HrPayrollRecalculator
                 (float)$row['basic_salary'],
                 (float)$row['responsibility_allowance'],
                 (float)$row['arrears'],
-                $other
+                $other,
+                $settings
             );
 
             $columns = self::columnsFor($calc);

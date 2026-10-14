@@ -11,6 +11,7 @@ use App\Models\HrEmployeeModel;
 use App\Helpers\ValidationHelper;
 use App\Services\SystemLogService;
 use App\Services\PayrollCalculator;
+use App\Services\PayrollSettings;
 use App\Services\HrPayrollRecalculator;
 
 class HrPayrollController extends BaseController
@@ -357,7 +358,7 @@ class HrPayrollController extends BaseController
         $payMonth = ($monthNames[$month - 1] ?? '') . ' ' . $year;
 
         $inputs = $this->payrollInputs($data, $employee, $empId, $year, $month, $response);
-        $calc   = PayrollCalculator::calculate($inputs['basic'], $inputs['role'], $inputs['arrears'], $inputs['other']);
+        $calc   = PayrollCalculator::calculate($inputs['basic'], $inputs['role'], $inputs['arrears'], $inputs['other'], $this->payrollSettings());
 
         $existing = $this->payrollModel->findByPeriod($empId, $year, $month);
 
@@ -402,7 +403,13 @@ class HrPayrollController extends BaseController
      */
     public function rules(Request $request, Response $response): never
     {
-        $this->success($response, PayrollCalculator::rules(), 'Payroll rules fetched.');
+        $this->success($response, PayrollCalculator::rules($this->payrollSettings()), 'Payroll rules fetched.');
+    }
+
+    /** Rates, PAYE bands and responsibility amounts currently saved in Payroll Settings. */
+    private function payrollSettings(): array
+    {
+        return PayrollSettings::calculatorInputs(PayrollSettings::load($this->payrollModel->db()));
     }
 
     /**

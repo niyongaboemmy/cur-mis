@@ -36,6 +36,7 @@ export interface PayrollBreakdown {
   rama_employer: number;
   net_salary: number;
   cbhi: number;
+  cbhi_employer: number;
   net_after_cbhi: number;
   other_deductions: number;
   net_pay: number;
@@ -97,6 +98,7 @@ export function computePayroll(
   const netSalary = round2(Math.max(0, gross - paye - rssbEmployeeTotal - ramaEmployee));
 
   const cbhi = round2(netSalary * r.cbhi_employee);
+  const cbhiEmployer = round2(gross * r.cbhi_employer);
   const netAfterCbhi = round2(Math.max(0, netSalary - cbhi));
 
   const other = round2(Math.max(0, input.otherDeductions));
@@ -122,11 +124,12 @@ export function computePayroll(
     rama_employer: ramaEmployer,
     net_salary: netSalary,
     cbhi,
+    cbhi_employer: cbhiEmployer,
     net_after_cbhi: netAfterCbhi,
     other_deductions: other,
     net_pay: netPay,
     employer_cost: round2(
-      gross + pensionEmployer + occupationalEmployer + maternityEmployer + ramaEmployer,
+      gross + pensionEmployer + occupationalEmployer + maternityEmployer + ramaEmployer + cbhiEmployer,
     ),
   };
 }
