@@ -74,7 +74,7 @@ export const academicsMgmtService = {
    * in the program but hasn't been planned for that mode yet.
    */
   getSchedules: (
-    programId: number,
+    programIds: number[],
     mode: string,
     signal?: AbortSignal,
   ) =>
@@ -87,8 +87,14 @@ export const academicsMgmtService = {
         module_name:    string
         module_credits: number | null
         level:          number | null
+        /** Selected programs that link this module. */
+        program_ids:    number[]
         blocks: Array<{
           id:              number
+          /** The block's own program (the copy this row represents). */
+          option_id:       number | null
+          /** Other programs running this same block. */
+          also_program_ids: number[]
           start_date:      string | null
           end_date:        string | null
           semesters:       string | null
@@ -104,7 +110,7 @@ export const academicsMgmtService = {
           campus_id:       number | null
         }>
       }>
-    }>(`/api/academics-management/schedules`, { program_id: programId, mode }, signal),
+    }>(`/api/academics-management/schedules`, { program_ids: programIds.join(','), mode }, signal),
 
   saveSchedules: (body: {
     program_id: number
@@ -125,6 +131,8 @@ export const academicsMgmtService = {
       year_of_study?:   number | null
       campus_id?:       number | null
       academic_year?:   string | null
+      /** The block's own program (its row). */
+      option_id?:        number
       /** Other programs that run this same block (combined classes). */
       also_program_ids?: number[]
     }>

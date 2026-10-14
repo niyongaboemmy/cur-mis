@@ -1136,42 +1136,73 @@ class AcademicsManagementController extends BaseController
     }
 
     /**
-     * GET /api/academics-management/schedules?program_id=:id&mode=:mode
+     * GET /api/academics-management/schedules?program_ids=1,2,3&mode=:mode
+     * (legacy: program_id=:id is still accepted)
      *
-     * Returns the modules linked to the program (ordered by their
-     * curricular position) with the start/end dates already saved for the
-     * given mode (Day / Weekend / Holiday). Modules without a saved
-     * offering for that mode come back with `start_date: null` so the UI
-     * can render an empty row ready to be filled in.
+     * Returns the modules linked to the selected programs (one row per module,
+     * ordered by curricular position) with their saved blocks for the given
+     * mode. Each module lists which selected programs link it (`program_ids`).
+     *
+     * A combined block (rows sharing a `shared_block_key`) is returned once:
+     * the lowest-id row among the selected programs stands for it, with
+     * `option_id` = that row's program and `also_program_ids` = every other
+     * program running it (including programs not in the current selection).
      */
     public function getSchedules(Request $request, Response $response): never
     {
-        $programId = (int)($request->query('program_id') ?? 0);
-        if ($programId <= 0) {
-            $this->error($response, 'program_id is required.', 422);
+        $raw = (string)($request->query('program_ids') ?? $request->query('program_id') ?? '');
+        $programIds = [];
+        foreach (explode(',', $raw) as $tok) {
+            $n = (int)trim($tok);
+            if ($n > 0 && !in_array($n, $programIds, true)) $programIds[] = $n;
+        }
+        if ($programIds === []) {
+            $this->error($response, 'program_ids is required.', 422);
         }
         $mode = trim((string)($request->query('mode') ?? ''));
         $modeKey = $mode === '' ? null : $mode;
+        $placeholders = implode(',', array_fill(0, count($programIds), '?'));
 
         /** @var ModuleModel $moduleModel */
         $moduleModel = $this->models['modules'];
+        $db = $moduleModel->db();
 
-        // Modules in the program, ordered by their curricular position.
-        $modules = $moduleModel->db()->fetchAll(
-            "SELECT mp.module_id, mp.module_order,
+        // Modules linked to the selected programs. A module shared by several
+        // selected programs is folded into one row in PHP below.
+        $moduleRows = $db->fetchAll(
+            "SELECT mp.module_id, mp.option_id, mp.module_order,
                     m.module_code, m.module_name, m.module_credits, m.level
              FROM `module_programs` mp
              JOIN `modules` m ON m.module_id = mp.module_id
-             WHERE mp.option_id = ?
+             WHERE mp.option_id IN ({$placeholders})
              ORDER BY mp.module_order ASC, m.module_code ASC",
-            [$programId],
+            $programIds,
         );
+        $modules = [];
+        foreach ($moduleRows as $r) {
+            $mid = (int)$r['module_id'];
+            if (!isset($modules[$mid])) {
+                $modules[$mid] = [
+                    'module_id'      => $mid,
+                    'module_order'   => $r['module_order'] !== null ? (int)$r['module_order'] : null,
+                    'module_code'    => (string)$r['module_code'],
+                    'module_name'    => (string)$r['module_name'],
+                    'module_credits' => $r['module_credits'] !== null ? (int)$r['module_credits'] : null,
+                    'level'          => $r['level'] !== null ? (int)$r['level'] : null,
+                    'program_ids'    => [],
+                ];
+            }
+            $modules[$mid]['program_ids'][] = (int)$r['option_id'];
+            // Keep the earliest curricular position across the selected programs.
+            if ($r['module_order'] !== null && ($modules[$mid]['module_order'] === null || (int)$r['module_order'] < $modules[$mid]['module_order'])) {
+                $modules[$mid]['module_order'] = (int)$r['module_order'];
+            }
+        }
 
-        // All saved offerings (blocks) for this (program, mode), grouped by
-        // module_id. Multiple blocks per module are normal (e.g. several
-        // weeks of teaching + a final exam).
-        $offeringRows = $moduleModel->db()->fetchAll(
-            "SELECT mo.id, mo.module_id, mo.start_date, mo.end_date, mo.semesters,
+        // Offerings for the selected programs in this mode. Lowest id first so
+        // the representative row of a combined block is deterministic.
+        $offeringRows = $db->fetchAll(
+            "SELECT mo.id, mo.option_id, mo.module_id, mo.start_date, mo.end_date, mo.semesters,
                     mo.academic_year, mo.mode_order,
                     mo.day_of_week, mo.day_pattern, mo.start_time, mo.end_time,
                     mo.instructor_id, mo.activity, mo.instructor_name, mo.year_of_study,
@@ -1179,34 +1210,39 @@ class AcademicsManagementController extends BaseController
                     e.full_name AS instructor_full_name
              FROM `module_offerings` mo
              LEFT JOIN `hr_employees` e ON e.id = mo.instructor_id
-             WHERE mo.option_id = ? AND mo.`mode` <=> ?
-             ORDER BY mo.module_id ASC, mo.start_date ASC, mo.start_time ASC",
-            [$programId, $modeKey],
+             WHERE mo.option_id IN ({$placeholders}) AND mo.`mode` <=> ?
+             ORDER BY mo.module_id ASC, mo.start_date ASC, mo.start_time ASC, mo.id ASC",
+            [...$programIds, $modeKey],
         );
 
-        // Other programs that run each combined block (same shared_block_key,
-        // different option). Keyed by shared_block_key → [option_id, …].
+        // Every program running each combined block, including programs outside
+        // the current selection. Keyed by shared_block_key → [option_id, …].
         $sharedKeys = array_values(array_unique(array_filter(
             array_map(static fn ($o) => $o['shared_block_key'] ?? null, $offeringRows),
         )));
-        $sharedPrograms = [];
+        $sharedOptions = [];
         if ($sharedKeys !== []) {
-            $placeholders = implode(',', array_fill(0, count($sharedKeys), '?'));
-            $siblingRows = $moduleModel->db()->fetchAll(
-                "SELECT shared_block_key, option_id
-                 FROM `module_offerings`
-                 WHERE shared_block_key IN ({$placeholders}) AND option_id <> ?",
-                [...$sharedKeys, $programId],
-            );
-            foreach ($siblingRows as $s) {
-                $sharedPrograms[$s['shared_block_key']][] = (int)$s['option_id'];
+            $keyPh = implode(',', array_fill(0, count($sharedKeys), '?'));
+            foreach ($db->fetchAll(
+                "SELECT shared_block_key, option_id FROM `module_offerings` WHERE shared_block_key IN ({$keyPh})",
+                $sharedKeys,
+            ) as $s) {
+                $sharedOptions[$s['shared_block_key']][] = (int)$s['option_id'];
             }
         }
 
         $blocksByModule = [];
+        $seenKeys = [];
         foreach ($offeringRows as $o) {
             $mid = (int)$o['module_id'];
+            $key = $o['shared_block_key'] ?? null;
+            // A combined block already shown via another of its rows.
+            if ($key !== null) {
+                if (isset($seenKeys[$key])) continue;
+                $seenKeys[$key] = true;
+            }
             $blocksByModule[$mid] ??= [];
+            $ownOption = (int)$o['option_id'];
             // Prefer the multi-day `day_pattern` when present; fall back to
             // the legacy single-day `day_of_week` so rows saved before this
             // feature still surface a value.
@@ -1216,6 +1252,7 @@ class AcademicsManagementController extends BaseController
             }
             $blocksByModule[$mid][] = [
                 'id'              => (int)$o['id'],
+                'option_id'       => $ownOption,
                 'start_date'      => $o['start_date']    ?? null,
                 'end_date'        => $o['end_date']      ?? null,
                 'semesters'       => $o['semesters']     ?? null,
@@ -1229,22 +1266,17 @@ class AcademicsManagementController extends BaseController
                 'activity'        => $o['activity']        ?? null,
                 'year_of_study'   => isset($o['year_of_study']) && $o['year_of_study'] !== null ? (int)$o['year_of_study'] : null,
                 'campus_id'       => isset($o['campus_id']) && $o['campus_id'] !== null ? (int)$o['campus_id'] : null,
-                'also_program_ids' => $o['shared_block_key'] !== null ? array_values(array_unique($sharedPrograms[$o['shared_block_key']] ?? [])) : [],
+                'also_program_ids' => $key !== null
+                    ? array_values(array_filter(array_unique($sharedOptions[$key] ?? []), static fn (int $p) => $p !== $ownOption))
+                    : [],
             ];
         }
 
         $rows = [];
-        foreach ($modules as $m) {
-            $mid = (int)$m['module_id'];
-            $rows[] = [
-                'module_id'      => $mid,
-                'module_order'   => $m['module_order'] !== null ? (int)$m['module_order'] : null,
-                'module_code'    => (string)$m['module_code'],
-                'module_name'    => (string)$m['module_name'],
-                'module_credits' => $m['module_credits'] !== null ? (int)$m['module_credits'] : null,
-                'level'          => $m['level'] !== null ? (int)$m['level'] : null,
-                'blocks'         => $blocksByModule[$mid] ?? [],
-            ];
+        foreach ($modules as $mid => $m) {
+            $m['program_ids'] = array_values(array_unique($m['program_ids']));
+            $m['blocks']      = $blocksByModule[$mid] ?? [];
+            $rows[] = $m;
         }
 
         $this->success($response, ['rows' => $rows, 'count' => count($rows)], 'Schedule fetched.');
@@ -1338,12 +1370,21 @@ class AcademicsManagementController extends BaseController
         };
 
         // Deletes go first so an admin can swap out blocks in one save.
+        // Deleting a combined block removes every program's copy of it.
         foreach ($deleteIds as $rawId) {
             $id = (int)$rawId;
             if ($id <= 0) continue;
             try {
-                $offModel->delete($id);
-                $deleted++;
+                $row = $offModel->find($id);
+                $key = $row ? ($row['shared_block_key'] ?? null) : null;
+                $ids = $key !== null
+                    ? array_map(static fn ($r) => (int)$r['id'], $offModel->db()->fetchAll(
+                        "SELECT id FROM `module_offerings` WHERE shared_block_key = ?", [$key]))
+                    : [$id];
+                foreach (array_unique($ids) as $delId) {
+                    $offModel->delete($delId);
+                    $deleted++;
+                }
             } catch (\Throwable $e) {
                 $failed[] = ['index' => "delete:{$id}", 'error' => $e->getMessage()];
             }
@@ -1433,6 +1474,9 @@ class AcademicsManagementController extends BaseController
                 }
                 $targetModuleId = $existing ? (int)$existing['module_id'] : $moduleId;
                 $sharedKey      = $existing['shared_block_key'] ?? null;
+                // The block's own program: the stored row on update, the payload's
+                // option_id (falling back to the request program) on create.
+                $ownOption      = $existing ? (int)$existing['option_id'] : ((int)($s['option_id'] ?? 0) ?: $programId);
 
                 // Combined block: the same session also runs for these programs.
                 // Checked before anything is written so a bad target never leaves
@@ -1442,7 +1486,7 @@ class AcademicsManagementController extends BaseController
                 if ($sendsAlso && is_array($s['also_program_ids'])) {
                     foreach ($s['also_program_ids'] as $pid) {
                         $pid = (int)$pid;
-                        if ($pid > 0 && $pid !== $programId && !in_array($pid, $alsoIds, true)) $alsoIds[] = $pid;
+                        if ($pid > 0 && $pid !== $ownOption && !in_array($pid, $alsoIds, true)) $alsoIds[] = $pid;
                     }
                 }
                 $unlinked = array_values(array_filter(
@@ -1495,7 +1539,7 @@ class AcademicsManagementController extends BaseController
                     }
                 } else {
                     $key = $alsoIds !== [] ? bin2hex(random_bytes(16)) : null;
-                    foreach (array_merge([$programId], $alsoIds) as $pid) {
+                    foreach (array_merge([$ownOption], $alsoIds) as $pid) {
                         $offModel->create(array_merge($payload, [
                             'module_id'        => $moduleId,
                             'option_id'        => $pid,
