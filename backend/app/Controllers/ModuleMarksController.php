@@ -1581,13 +1581,13 @@ class ModuleMarksController extends BaseController
     }
 
     /**
-     * A Level 9 (masters / postgraduate) student prints one sheet at Level 9.
+     * A masters or postgraduate student prints one sheet at Level 9.
      *
      * The sheet split follows each module's catalogue level, and the legacy
      * catalogue tags many PGDE modules as Level 8 semesters. That printed
-     * "LEVEL: 8 S1 & S2" and "LEVEL: 8 S3 & S4" on a Level 9 student's record.
-     * The student's own level is the authority, so every row for a Level 9
-     * student is filed under it.
+     * "LEVEL: 8 S1 & S2" and "LEVEL: 8 S3 & S4" on a postgraduate record.
+     * A student counts as postgraduate when their current level is Level 9 or
+     * their option or department is a postgraduate diploma or masters.
      *
      * @param  array<int,array<string,mixed>> $rows
      * @param  array<string,mixed>            $student
@@ -1595,8 +1595,18 @@ class ModuleMarksController extends BaseController
      */
     private function pinRowsToLevelNine(array $rows, array $student): array
     {
-        $levelId = (int)($student['current_level'] ?? 0);
-        if ($levelId <= 0 || LevelHelper::name($levelId) !== 'Level 9') {
+        $levelId = array_search('Level 9', LevelHelper::map(), true);
+        if ($levelId === false) {
+            return $rows;
+        }
+
+        $programme = implode(' ', [
+            (string)($student['option_name'] ?? ''),
+            (string)($student['dep_name'] ?? ''),
+        ]);
+        $isPostgraduate = (int)($student['current_level'] ?? 0) === $levelId
+            || preg_match('/post\s*-?\s*graduate|master|pgde/i', $programme) === 1;
+        if (!$isPostgraduate) {
             return $rows;
         }
 
