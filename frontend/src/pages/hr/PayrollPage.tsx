@@ -118,6 +118,34 @@ type DrawerRow = {
   };
 };
 
+/* Staff category filter buttons. Each has its own color when selected. */
+const CATEGORY_FILTERS = [
+  {
+    value: "",
+    label: "All",
+    active: "bg-ink-800 border-ink-800 text-white dark:bg-ink-100 dark:text-ink-900",
+    idle: "bg-white border-ink-200 text-ink-600 hover:bg-ink-50 dark:bg-transparent dark:border-ink-600 dark:text-ink-300",
+  },
+  {
+    value: "Academic",
+    label: "Academic",
+    active: "bg-blue-600 border-blue-600 text-white",
+    idle: "bg-white border-blue-200 text-blue-700 hover:bg-blue-50 dark:bg-transparent dark:border-blue-800 dark:text-blue-300",
+  },
+  {
+    value: "Administrative",
+    label: "Administrative",
+    active: "bg-emerald-600 border-emerald-600 text-white",
+    idle: "bg-white border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:bg-transparent dark:border-emerald-800 dark:text-emerald-300",
+  },
+  {
+    value: "unclassified",
+    label: "Not classified",
+    active: "bg-amber-500 border-amber-500 text-white",
+    idle: "bg-white border-amber-200 text-amber-700 hover:bg-amber-50 dark:bg-transparent dark:border-amber-800 dark:text-amber-300",
+  },
+];
+
 /* ══════════════════════════════════════════════════════════════════════
    MAIN PAGE
    ══════════════════════════════════════════════════════════════════════ */
@@ -171,6 +199,7 @@ export default function PayrollPage() {
   const [q, setQ] = useState(sp.get("q") ?? "");
   const dq = useDebounce(q, 300);
   const status = sp.get("status") ?? "";
+  const category = sp.get("staff_category") ?? "";
 
   const setF = (key: string, val: string) => {
     const c = new URLSearchParams(sp);
@@ -184,6 +213,7 @@ export default function PayrollPage() {
     per_page: PER_PAGE,
     q: dq || undefined,
     status: status || undefined,
+    staff_category: (category || undefined) as PayrollListParams["staff_category"],
     period_year: periodYear,
     period_month: periodMonth,
   };
@@ -403,6 +433,27 @@ export default function PayrollPage() {
             <option value="Inactive">Inactive</option>
             <option value="Terminated">Terminated</option>
           </select>
+        </div>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[11px] font-bold text-ink-400 uppercase tracking-wider mr-1">
+            Category
+          </span>
+          {CATEGORY_FILTERS.map((c) => {
+            const active = category === c.value;
+            return (
+              <button
+                key={c.value || "all"}
+                type="button"
+                aria-pressed={active}
+                onClick={() => setF("staff_category", c.value)}
+                className={`px-3 py-1.5 rounded-full text-[12px] font-semibold border transition-colors ${
+                  active ? c.active : c.idle
+                }`}
+              >
+                {c.label}
+              </button>
+            );
+          })}
         </div>
         {isFetching && !isLoading && (
           <Loader2 className="w-4 h-4 animate-spin text-ink-300" />

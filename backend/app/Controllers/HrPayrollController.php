@@ -58,6 +58,15 @@ class HrPayrollController extends BaseController
             $bindings[] = $statusVal;
         }
 
+        // staff category filter: Academic | Administrative | unclassified (not yet set)
+        $categoryVal = $request->query('staff_category');
+        if ($categoryVal === 'unclassified') {
+            $clauses[] = "(e.staff_category IS NULL OR e.staff_category = '')";
+        } elseif (in_array($categoryVal, ['Academic', 'Administrative'], true)) {
+            $clauses[]  = "e.staff_category = ?";
+            $bindings[] = $categoryVal;
+        }
+
         foreach (['employee_gender'] as $col) {
             $val = $request->query($col);
             if ($val !== null && $val !== '') {
