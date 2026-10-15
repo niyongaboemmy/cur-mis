@@ -10,6 +10,7 @@ use Core\Database;
 use App\Constants\Permissions;
 use App\Helpers\ValidationHelper;
 use App\Helpers\TranscriptPdf;
+use App\Helpers\LevelHelper;
 use App\Helpers\GradingScale;
 use App\Services\AuthService;
 use App\Services\DegreeClassificationService;
@@ -1574,7 +1575,39 @@ class ModuleMarksController extends BaseController
             $rows = array_merge($rows, $this->remainingCurriculumRows($reg, $student, $rows));
         }
 
+        $rows = $this->pinRowsToLevelNine($rows, $student);
+
         return [$rows, $totals, $student];
+    }
+
+    /**
+     * A Level 9 (masters / postgraduate) student prints one sheet at Level 9.
+     *
+     * The sheet split follows each module's catalogue level, and the legacy
+     * catalogue tags many PGDE modules as Level 8 semesters. That printed
+     * "LEVEL: 8 S1 & S2" and "LEVEL: 8 S3 & S4" on a Level 9 student's record.
+     * The student's own level is the authority, so every row for a Level 9
+     * student is filed under it.
+     *
+     * @param  array<int,array<string,mixed>> $rows
+     * @param  array<string,mixed>            $student
+     * @return array<int,array<string,mixed>>
+     */
+    private function pinRowsToLevelNine(array $rows, array $student): array
+    {
+        $levelId = (int)($student['current_level'] ?? 0);
+        if ($levelId <= 0 || LevelHelper::name($levelId) !== 'Level 9') {
+            return $rows;
+        }
+
+        $name = LevelHelper::name($levelId);
+        foreach ($rows as &$r) {
+            $r['level']      = $levelId;
+            $r['level_name'] = $name;
+        }
+        unset($r);
+
+        return $rows;
     }
 
     /**
