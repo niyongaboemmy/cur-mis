@@ -1773,8 +1773,9 @@ class ModuleMarksController extends BaseController
             // Identity is the normalised code alone — the catalogue carries the
             // same module under different levels ("NALP4322" at level 3 and
             // "NALP 4322" at level 4); keying on level printed it twice and
-            // counted its credits twice.
-            $key = strtoupper((string)preg_replace('/\s+/', '', $raw));
+            // counted its credits twice. Underscores count as noise too: the
+            // import wrote "PGDE6393_" beside "PGDE6393" for the same internship.
+            $key = strtoupper((string)preg_replace('/[\s_]+/', '', $raw));
             // A row with no code is not a duplicate of the next codeless row —
             // keep those apart by module_id rather than merging them all.
             if ($r['module_code'] === '') {
@@ -1943,10 +1944,10 @@ class ModuleMarksController extends BaseController
         ], $show ? 'Module will print on transcripts.' : 'Module will not print on transcripts.');
     }
 
-    /** Module identity used everywhere here: code, upper-cased, spaces stripped. */
+    /** Module identity used everywhere here: code, upper-cased, spaces and underscores stripped. */
     private static function identOf(mixed $code): string
     {
-        return strtoupper((string)preg_replace('/\s+/', '', (string)$code));
+        return strtoupper((string)preg_replace('/[\s_]+/', '', (string)$code));
     }
 
     /** `student.std_option` is free text that usually starts with the id. */
