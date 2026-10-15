@@ -1611,15 +1611,23 @@ class ModuleMarksController extends BaseController
             return $rows;
         }
 
-        foreach ($rows as &$r) {
+        // Everything lands on one sheet, so a module expanded into several
+        // level copies by expandRowsByLevel() must keep only its first copy —
+        // otherwise it prints twice and its credits are counted twice on the
+        // sheet's totals. The first copy is the one with `level_repeat` unset.
+        $pinned = [];
+        foreach ($rows as $r) {
+            if (!empty($r['level_repeat'])) {
+                continue;
+            }
             if ($levelId !== false) {
                 $r['level'] = $levelId;
             }
             $r['level_name'] = $name;
+            $pinned[] = $r;
         }
-        unset($r);
 
-        return $rows;
+        return $pinned;
     }
 
     /**
