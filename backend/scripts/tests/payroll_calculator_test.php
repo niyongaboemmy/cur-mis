@@ -149,6 +149,43 @@ $assertEq('manual + auto other',   60571.42,  $both['other_deductions']);
 $zero = PC::calculate(500000, null, 0.0, 0.0, null, null, 0.0, [['label' => 'x', 'base' => 'gross', 'employee_rate' => 0.0, 'employer_rate' => 0.0]]);
 $assertEq('zero rate adds nothing', 0.0, $zero['auto_deductions']);
 
+// ── Fixed amount deductions (RWF, taken from net pay) ─────────────────────
+//   Basic 500,000: net salary 402,857.14, CBHI 2,014.29, net after CBHI 400,842.85.
+//   fixed item: employee 25,000 RWF, employer 10,000 RWF
+//   net pay = 400,842.85 − 25,000 = 375,842.85; net salary and PAYE are unchanged.
+$fixed = [
+    ['label' => 'RADIANT', 'type' => 'fixed', 'base' => 'net', 'employee_rate' => 0.0, 'employer_rate' => 0.0,
+     'employee_amount' => 25000.0, 'employer_amount' => 10000.0],
+];
+$withFixed = PC::calculate(500000, null, 0.0, 0.0, null, null, 0.0, $fixed);
+$assertEq('fixed employee amount',   25000.0,   $withFixed['auto_deductions']);
+$assertEq('fixed employer amount',   10000.0,   $withFixed['auto_employer']);
+$assertEq('fixed in other (21)',     25000.0,   $withFixed['other_deductions']);
+$assertEq('fixed net pay (22)',      375842.85, $withFixed['net_pay']);
+$assertEq('fixed net salary unchanged', 402857.14, $withFixed['net_salary']);
+$assertEq('fixed PAYE unchanged',    $plain['paye'], $withFixed['paye']);
+$assertEq('fixed employer cost rises by employer amount', 10000.0,
+    round($withFixed['employer_cost'] - $plain['employer_cost'], 2));
+
+// Fixed items do not depend on salary: the same amount on a higher basic
+$bigger = PC::calculate(1000000, null, 0.0, 0.0, null, null, 0.0, $fixed);
+$assertEq('fixed amount same on higher salary', 25000.0, $bigger['auto_deductions']);
+
+// Fixed and percentage items together
+$mixed = PC::calculate(500000, null, 0.0, 0.0, null, null, 0.0, array_merge($auto, $fixed));
+$assertEq('fixed + percent other (21)', 84571.42, $mixed['other_deductions']);
+$assertEq('fixed + percent net pay (22)', 316271.43, $mixed['net_pay']);
+
+// A legacy item without a type is still a percentage
+$legacy = PC::calculate(500000, null, 0.0, 0.0, null, null, 0.0,
+    [['label' => 'old', 'base' => 'gross', 'employee_rate' => 3.0, 'employer_rate' => 0.0]]);
+$assertEq('no type means percent', 19285.71, $legacy['auto_deductions']);
+
+// Type normalisation: anything other than 'fixed' is a percentage
+$assertEq('type fixed',          'fixed',   \App\Services\AutoDeductionService::normaliseType('FIXED'));
+$assertEq('type empty is percent', 'percent', \App\Services\AutoDeductionService::normaliseType(''));
+$assertEq('type unknown is percent', 'percent', \App\Services\AutoDeductionService::normaliseType('rwf'));
+
 // Base normalisation: unknown or empty bases fall back to gross
 $assertEq('base net',           'net',   \App\Services\AutoDeductionService::normaliseBase('NET'));
 $assertEq('base empty is gross', 'gross', \App\Services\AutoDeductionService::normaliseBase(''));

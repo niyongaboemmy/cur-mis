@@ -217,31 +217,40 @@ export interface PayrollListParams extends HrListParams {
 
 /* ── Payroll Config types ───────────────────────────────────────────────── */
 
-/** Automatic deduction set on Payroll Settings. Rates are percentages (6 = 6%). */
+/**
+ * Automatic deduction set on Payroll Settings. 'fixed' is an amount in RWF taken from net pay;
+ * 'percent' is a rate (6 = 6%) on gross or net salary. New items are always fixed.
+ */
 export interface CustomDeduction {
-  id:            number
-  label:         string
-  description:   string | null
-  category:      'Insurance' | 'Other'
-  employee_rate: number
-  employer_rate: number
-  base:          'gross' | 'net'        // gross salary, or net salary before CBHI
-  scope:         'all' | 'individual'   // every employee, or only employee_ids
-  employee_ids:  number[]
-  is_active:     number
-  sort_order:    number
+  id:              number
+  label:           string
+  description:     string | null
+  category:        'Insurance' | 'Other'
+  amount_type:     'fixed' | 'percent'
+  employee_rate:   number
+  employer_rate:   number
+  employee_amount: number                // RWF, used when amount_type is 'fixed'
+  employer_amount: number                // RWF, used when amount_type is 'fixed'
+  base:            'gross' | 'net'        // gross salary, or net salary before CBHI (percent items only)
+  scope:           'all' | 'individual'   // every employee, or only employee_ids
+  employee_ids:    number[]
+  is_active:       number
+  sort_order:      number
 }
 
 export interface CustomDeductionPayload {
-  label:         string
-  description?:  string
-  category:      'Insurance' | 'Other'
-  employee_rate: number
-  employer_rate: number
-  base:          'gross' | 'net'
-  scope:         'all' | 'individual'
-  employee_ids:  number[]
-  is_active?:    number
+  label:            string
+  description?:     string
+  category:         'Insurance' | 'Other'
+  amount_type:      'fixed' | 'percent'
+  employee_rate:    number
+  employer_rate:    number
+  employee_amount:  number
+  employer_amount:  number
+  base:             'gross' | 'net'
+  scope:            'all' | 'individual'
+  employee_ids:     number[]
+  is_active?:       number
 }
 
 /** Payroll settings. Rates are percentages (6 = 6%); amounts are RWF. */
