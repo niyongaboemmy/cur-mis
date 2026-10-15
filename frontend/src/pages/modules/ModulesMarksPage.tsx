@@ -861,6 +861,10 @@ export function MarksEditor({
           // Exempted rows are owned by the Student details → Curriculum view;
           // never overwrite them from this page.
           if (r.is_exempted) return null
+          // Only rows the user changed are sent. Untouched rows keep their
+          // stored values, and re-sending imported legacy figures would let one
+          // out-of-range historical mark block the whole sheet.
+          if (!dirty[r.regnumber]) return null
           const d = drafts[r.regnumber]; if (!d) return null
           const cats = num(d.cats)
           const cat1 = num(d.cat1), cat2 = num(d.cat2), cat3 = num(d.cat3)
