@@ -11,6 +11,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../../app/Services/PayrollSettings.php';
 require_once __DIR__ . '/../../app/Services/PayrollCalculator.php';
+require_once __DIR__ . '/../../app/Services/AutoDeductionService.php';
 
 use App\Services\PayrollCalculator as PC;
 
@@ -117,6 +118,41 @@ try {
 } catch (InvalidArgumentException) {
     $passes++;
 }
+
+// ── Automatic deductions (Payroll Settings: insurers and other percentages) ─
+// Basic 500,000: gross 642,857.14, net salary 402,857.14 (cases above).
+//   item A, base gross, employee 3%, employer 2%:  642,857.14 × 3% = 19,285.71; × 2% = 12,857.14
+//   item B, base net,   employee 10%, employer 0%: 402,857.14 × 10% = 40,285.71
+//   automatic total 59,571.42 is added to other deductions (step 21).
+//   net pay = 402,857.14 − CBHI 2,014.29 − 59,571.42 = 341,271.43
+$auto = [
+    ['label' => 'Radiant', 'base' => 'gross', 'employee_rate' => 3.0,  'employer_rate' => 2.0],
+    ['label' => 'Housing', 'base' => 'net',   'employee_rate' => 10.0, 'employer_rate' => 0.0],
+];
+$withAuto = PC::calculate(500000, null, 0.0, 0.0, null, null, 0.0, $auto);
+$assertEq('auto employee total',   59571.42,  $withAuto['auto_deductions']);
+$assertEq('auto employer total',   12857.14,  $withAuto['auto_employer']);
+$assertEq('auto in other (21)',    59571.42,  $withAuto['other_deductions']);
+$assertEq('auto net pay (22)',     341271.43, $withAuto['net_pay']);
+$assertEq('auto net salary unchanged', 402857.14, $withAuto['net_salary']);
+
+$plain = PC::calculate(500000);
+$assertEq('no auto: total is 0',   0.0,       $plain['auto_deductions']);
+$assertEq('employer cost rises by employer share', 12857.14,
+    round($withAuto['employer_cost'] - $plain['employer_cost'], 2));
+
+// Manual other deductions and automatic ones add together
+$both = PC::calculate(500000, null, 0.0, 1000.0, null, null, 0.0, $auto);
+$assertEq('manual + auto other',   60571.42,  $both['other_deductions']);
+
+// Rates of zero add nothing
+$zero = PC::calculate(500000, null, 0.0, 0.0, null, null, 0.0, [['label' => 'x', 'base' => 'gross', 'employee_rate' => 0.0, 'employer_rate' => 0.0]]);
+$assertEq('zero rate adds nothing', 0.0, $zero['auto_deductions']);
+
+// Base normalisation: unknown or empty bases fall back to gross
+$assertEq('base net',           'net',   \App\Services\AutoDeductionService::normaliseBase('NET'));
+$assertEq('base empty is gross', 'gross', \App\Services\AutoDeductionService::normaliseBase(''));
+$assertEq('base unknown is gross', 'gross', \App\Services\AutoDeductionService::normaliseBase('basic'));
 
 echo "{$passes} passed, {$failures} failed" . PHP_EOL;
 exit($failures === 0 ? 0 : 1);

@@ -216,14 +216,31 @@ export interface PayrollListParams extends HrListParams {
 
 /* ── Payroll Config types ───────────────────────────────────────────────── */
 
+/** Automatic deduction set on Payroll Settings. Rates are percentages (6 = 6%). */
 export interface CustomDeduction {
   id:            number
   label:         string
   description:   string | null
+  category:      'Insurance' | 'Other'
   employee_rate: number
   employer_rate: number
+  base:          'gross' | 'net'        // gross salary, or net salary before CBHI
+  scope:         'all' | 'individual'   // every employee, or only employee_ids
+  employee_ids:  number[]
   is_active:     number
   sort_order:    number
+}
+
+export interface CustomDeductionPayload {
+  label:         string
+  description?:  string
+  category:      'Insurance' | 'Other'
+  employee_rate: number
+  employer_rate: number
+  base:          'gross' | 'net'
+  scope:         'all' | 'individual'
+  employee_ids:  number[]
+  is_active?:    number
 }
 
 /** Payroll settings. Rates are percentages (6 = 6%); amounts are RWF. */
@@ -507,11 +524,11 @@ export const hrService = {
   listCustomDeductions: (signal?: AbortSignal) =>
     api.get<CustomDeduction[]>('/hr/config/deductions', {}, signal),
 
-  addCustomDeduction: (data: { label: string; description?: string; employee_rate: number; employer_rate: number }) =>
+  addCustomDeduction: (data: CustomDeductionPayload) =>
     api.post<CustomDeduction>('/hr/config/deductions', data),
 
-  updateCustomDeduction: (id: number, data: { label: string; description?: string; employee_rate: number; employer_rate: number; is_active: number }) =>
-    api.put<CustomDeduction>(`/api/hr/config/deductions/${id}`, data),
+  updateCustomDeduction: (id: number, data: CustomDeductionPayload) =>
+    api.put<CustomDeduction>(`/hr/config/deductions/${id}`, data),
 
   deleteCustomDeduction: (id: number) =>
     api.delete<void>(`/api/hr/config/deductions/${id}`),

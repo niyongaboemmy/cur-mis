@@ -84,6 +84,7 @@ final class HrPayrollRecalculator
         $empRow    = $db->fetchOne("SELECT insurance_type, insurance_premium FROM employees WHERE id = ?", [$empId]) ?: [];
         $insurance = PayrollCalculator::insuranceOf($empRow['insurance_type'] ?? null);
         $premium   = (float) ($empRow['insurance_premium'] ?? 0);
+        $autoDeductions = AutoDeductionService::forEmployee($db, $empId);
 
         foreach ($rows as $row) {
             if ((float)$row['basic_salary'] <= 0) {
@@ -104,7 +105,8 @@ final class HrPayrollRecalculator
                 $other,
                 $settings,
                 $insurance,
-                $premium
+                $premium,
+                $autoDeductions
             );
 
             $columns = self::columnsFor($calc);

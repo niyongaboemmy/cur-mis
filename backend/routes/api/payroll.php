@@ -47,6 +47,7 @@ $router->group('/api/hr', function ($router) {
 $router->group('/api/hr', function ($router) {
     $router->post('/config',                    [PayrollConfigController::class, 'update']);
     $router->post('/config/deductions',        [PayrollConfigController::class, 'addDeduction']);
+    $router->put('/config/deductions/:id',      [PayrollConfigController::class, 'updateDeduction']);
     $router->post('/config/deductions/:id',     [PayrollConfigController::class, 'updateDeduction']);
     $router->delete('/config/deductions/:id',  [PayrollConfigController::class, 'deleteDeduction']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_HR_EMPLOYEES)]);

@@ -119,6 +119,8 @@ final class PayrollCalculator
      * @param float       $arrears         Step 6 – arrears for this period, if any
      * @param float|null  $otherDeductions Step 21 – total of other deductions, if known
      * @param array|null  $settings        Output of PayrollSettings::calculatorInputs()
+     * @param list<array{label: string, base: string, employee_rate: float, employer_rate: float}> $autoDeductions
+     *                                     Step 21 – automatic deductions from AutoDeductionService::forEmployee()
      * @return array<string, float> Every figure in the procedure, keyed by step name
      */
     public static function calculate(
@@ -129,6 +131,7 @@ final class PayrollCalculator
         ?array $settings = null,
         ?string $insurance = null,
         float $insurancePremium = 0.0,
+        array $autoDeductions = [],
     ): array {
         $settings ??= PayrollSettings::calculatorDefaults();
         return self::compute(
@@ -139,6 +142,7 @@ final class PayrollCalculator
             $settings,
             $insurance,
             $insurancePremium,
+            $autoDeductions,
         );
     }
 
@@ -148,6 +152,8 @@ final class PayrollCalculator
      * was in force when it was created.
      *
      * @param array|null $settings Output of PayrollSettings::calculatorInputs()
+     * @param list<array{label: string, base: string, employee_rate: float, employer_rate: float}> $autoDeductions
+     *                     Rates are percentages (6 = 6%). base 'gross' uses total gross, 'net' uses net salary.
      * @return array<string, float>
      */
     public static function compute(
@@ -158,6 +164,7 @@ final class PayrollCalculator
         ?array $settings = null,
         ?string $insurance = null,
         float $insurancePremium = 0.0,
+        array $autoDeductions = [],
     ): array {
         $settings ??= PayrollSettings::calculatorDefaults();
         $rates = $settings['rates'];
@@ -211,8 +218,20 @@ final class PayrollCalculator
         // Employer CBHI share – base: total gross (employer cost only, not deducted from pay)
         $cbhiEmployer = self::r2($gross * $rates['cbhi_employer']);
 
-        // Steps 21–22 – other deductions, then net pay
-        $other  = self::r2(max(0.0, (float) ($otherDeductions ?? 0.0)));
+        // Step 21 – automatic deductions from Payroll Settings (insurers and other percentages).
+        // Each one is a percentage of gross or of net salary. The employer share adds to employer cost.
+        $autoEmployee = 0.0;
+        $autoEmployer = 0.0;
+        foreach ($autoDeductions as $item) {
+            $base          = ($item['base'] ?? AutoDeductionService::BASE_GROSS) === AutoDeductionService::BASE_NET ? $netSalary : $gross;
+            $autoEmployee += self::r2($base * (float) ($item['employee_rate'] ?? 0) / 100);
+            $autoEmployer += self::r2($base * (float) ($item['employer_rate'] ?? 0) / 100);
+        }
+        $autoEmployee = self::r2($autoEmployee);
+        $autoEmployer = self::r2($autoEmployer);
+
+        // Steps 21–22 – other deductions (manual plus automatic), then net pay
+        $other  = self::r2(max(0.0, (float) ($otherDeductions ?? 0.0)) + $autoEmployee);
         $netPay = self::r2(max(0.0, $netAfterCbhi - $other));
 
         return [
@@ -238,10 +257,12 @@ final class PayrollCalculator
             'cbhi'                      => $cbhi,
             'cbhi_employer'             => $cbhiEmployer,
             'net_after_cbhi'            => $netAfterCbhi,
+            'auto_deductions'           => $autoEmployee,
+            'auto_employer'             => $autoEmployer,
             'other_deductions'          => $other,
             'net_pay'                   => $netPay,
             'employer_cost'             => self::r2($gross + $pensionEmployer + $occupationalEmployer
-                                            + $maternityEmployer + $ramaEmployer + $cbhiEmployer),
+                                            + $maternityEmployer + $ramaEmployer + $cbhiEmployer + $autoEmployer),
         ];
     }
 

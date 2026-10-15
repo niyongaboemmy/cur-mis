@@ -6,8 +6,9 @@ import {
   Plus, Trash2, Pencil, Check, X, ToggleLeft, ToggleRight,
 } from 'lucide-react'
 import {
-  hrService, type PayrollConfig, type CustomDeduction, type PayrollRules,
+  hrService, type PayrollConfig, type CustomDeduction, type CustomDeductionPayload, type PayrollRules,
 } from '@/services/hrService'
+import type { HrEmployee } from '@/types/academic'
 import { computePayroll } from '@/utils/payrollCalc'
 
 const fmt = (v: number, d = 0) =>
@@ -325,56 +326,52 @@ function BandRow({ label, upper, onUpper, rate, onRate }: {
   )
 }
 
-/* ── Custom Deductions Section ── */
+/* ── Automatic Deductions Section ── */
 function CustomDeductionsSection({ deductions }: { deductions: CustomDeduction[] }) {
   const qc = useQueryClient()
   const [adding, setAdding] = useState(false)
   const [editId, setEditId] = useState<number | null>(null)
 
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ['hr-custom-deductions'] })
+    qc.invalidateQueries({ queryKey: ['hr-payroll-config'] })
+  }
+
   const addMut = useMutation({
-    mutationFn: (d: { label: string; description: string; employee_rate: number; employer_rate: number }) =>
-      hrService.addCustomDeduction(d),
+    mutationFn: (d: CustomDeductionPayload) => hrService.addCustomDeduction(d),
     onSuccess: () => {
-      toast.success('Custom deduction added.')
-      qc.invalidateQueries({ queryKey: ['hr-custom-deductions'] })
-      qc.invalidateQueries({ queryKey: ['hr-payroll-config'] })
+      toast.success('Deduction added. Pending payroll updated.')
+      refresh()
       setAdding(false)
     },
-    onError: () => toast.error('Failed to add deduction.'),
+    onError: (e) => toast.error(saveErrorMessage(e)),
   })
 
   const updateMut = useMutation({
-    mutationFn: ({ id, ...data }: { id: number; label: string; description: string; employee_rate: number; employer_rate: number; is_active: number }) =>
+    mutationFn: ({ id, data }: { id: number; data: CustomDeductionPayload }) =>
       hrService.updateCustomDeduction(id, data),
     onSuccess: () => {
-      toast.success('Deduction updated.')
-      qc.invalidateQueries({ queryKey: ['hr-custom-deductions'] })
-      qc.invalidateQueries({ queryKey: ['hr-payroll-config'] })
+      toast.success('Deduction updated. Pending payroll updated.')
+      refresh()
       setEditId(null)
     },
-    onError: () => toast.error('Failed to update deduction.'),
+    onError: (e) => toast.error(saveErrorMessage(e)),
   })
 
   const deleteMut = useMutation({
     mutationFn: (id: number) => hrService.deleteCustomDeduction(id),
     onSuccess: () => {
-      toast.success('Deduction removed.')
-      qc.invalidateQueries({ queryKey: ['hr-custom-deductions'] })
-      qc.invalidateQueries({ queryKey: ['hr-payroll-config'] })
+      toast.success('Deduction removed. Pending payroll updated.')
+      refresh()
     },
-    onError: () => toast.error('Failed to delete deduction.'),
+    onError: (e) => toast.error(saveErrorMessage(e)),
   })
 
   const toggleMut = useMutation({
     mutationFn: (d: CustomDeduction) =>
-      hrService.updateCustomDeduction(d.id, {
-        label: d.label,
-        description: d.description ?? '',
-        employee_rate: Number(d.employee_rate),
-        employer_rate: Number(d.employer_rate),
-        is_active: d.is_active ? 0 : 1,
-      }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['hr-custom-deductions'] }),
+      hrService.updateCustomDeduction(d.id, { ...toPayload(d), is_active: d.is_active ? 0 : 1 }),
+    onSuccess: () => refresh(),
+    onError: (e) => toast.error(saveErrorMessage(e)),
   })
 
   return (
@@ -383,7 +380,7 @@ function CustomDeductionsSection({ deductions }: { deductions: CustomDeduction[]
         <div>
           <h3 className="font-bold text-[13px] text-ink-800 dark:text-ink-200">Additional Deductions</h3>
           <p className="text-[11px] text-ink-400 mt-0.5">
-            Custom deduction items auto-applied in payroll calculations
+            Percentage deductions (RADIANT, other insurers, etc.) taken automatically from each payslip, for all staff or selected staff
           </p>
         </div>
         {!adding && (
@@ -407,11 +404,11 @@ function CustomDeductionsSection({ deductions }: { deductions: CustomDeduction[]
                 key={d.id}
                 initial={d}
                 pending={updateMut.isPending}
-                onSave={(vals) => updateMut.mutate({ id: d.id, ...vals, is_active: d.is_active })}
+                onSave={(payload) => updateMut.mutate({ id: d.id, data: { ...payload, is_active: d.is_active } })}
                 onCancel={() => setEditId(null)}
               />
             : (
-              <div key={d.id} className={`flex items-center gap-3 px-5 py-3 ${!d.is_active ? 'opacity-50' : ''}`}>
+              <div key={d.id} className={`flex flex-wrap items-center gap-3 px-5 py-3 ${!d.is_active ? 'opacity-50' : ''}`}>
                 <button
                   onClick={() => toggleMut.mutate(d)}
                   disabled={toggleMut.isPending}
@@ -424,7 +421,14 @@ function CustomDeductionsSection({ deductions }: { deductions: CustomDeduction[]
                 </button>
                 <div className="flex-1 min-w-0">
                   <p className="text-[13px] font-semibold text-ink-800 dark:text-ink-200">{d.label}</p>
-                  {d.description && <p className="text-[11px] text-ink-400">{d.description}</p>}
+                  <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                    <span className="px-1.5 py-0.5 rounded bg-ink-100 dark:bg-ink-700 text-ink-600 dark:text-ink-300 text-[10px] font-semibold">{d.category}</span>
+                    <span className="px-1.5 py-0.5 rounded bg-ink-100 dark:bg-ink-700 text-ink-600 dark:text-ink-300 text-[10px] font-semibold">{d.base === 'net' ? 'On net salary' : 'On gross salary'}</span>
+                    <span className="px-1.5 py-0.5 rounded bg-ink-100 dark:bg-ink-700 text-ink-600 dark:text-ink-300 text-[10px] font-semibold">
+                      {d.scope === 'all' ? 'All staff' : `${d.employee_ids.length} selected staff`}
+                    </span>
+                  </div>
+                  {d.description && <p className="text-[11px] text-ink-400 mt-1">{d.description}</p>}
                 </div>
                 <div className="flex items-center gap-4 text-[12px] tabular-nums shrink-0">
                   <span className="text-ink-500">Emp: <span className="font-bold text-ink-800 dark:text-ink-100">{Number(d.employee_rate)}%</span></span>
@@ -435,7 +439,7 @@ function CustomDeductionsSection({ deductions }: { deductions: CustomDeduction[]
                     <Pencil className="w-3.5 h-3.5" />
                   </button>
                   <button
-                    onClick={() => { if (confirm('Remove this deduction?')) deleteMut.mutate(d.id) }}
+                    onClick={() => { if (confirm('Remove this deduction from all payslips it applies to?')) deleteMut.mutate(d.id) }}
                     className="icon-btn text-red-500 hover:text-red-600"
                     title="Delete"
                   >
@@ -449,7 +453,7 @@ function CustomDeductionsSection({ deductions }: { deductions: CustomDeduction[]
         {adding && (
           <DeductionForm
             pending={addMut.isPending}
-            onSave={(vals) => addMut.mutate(vals)}
+            onSave={(payload) => addMut.mutate(payload)}
             onCancel={() => setAdding(false)}
           />
         )}
@@ -458,7 +462,21 @@ function CustomDeductionsSection({ deductions }: { deductions: CustomDeduction[]
   )
 }
 
-type DedFormVals = { label: string; description: string; employee_rate: number; employer_rate: number }
+/** Turns a saved deduction into the request body. */
+function toPayload(d: CustomDeduction): CustomDeductionPayload {
+  return {
+    label:         d.label,
+    description:   d.description ?? '',
+    category:      d.category,
+    employee_rate: Number(d.employee_rate),
+    employer_rate: Number(d.employer_rate),
+    base:          d.base,
+    scope:         d.scope,
+    employee_ids:  d.employee_ids ?? [],
+  }
+}
+
+type DedFormVals = CustomDeductionPayload
 
 function DeductionForm({
   initial, pending, onSave, onCancel,
@@ -468,15 +486,47 @@ function DeductionForm({
   onSave: (vals: DedFormVals) => void
   onCancel: () => void
 }) {
-  const [label,        setLabel]       = useState(initial?.label ?? '')
-  const [description,  setDescription] = useState(initial?.description ?? '')
-  const [empRate,      setEmpRate]     = useState(String(initial ? Number(initial.employee_rate) : 0))
-  const [emprRate,     setEmprRate]    = useState(String(initial ? Number(initial.employer_rate) : 0))
+  const [label,       setLabel]       = useState(initial?.label ?? '')
+  const [description, setDescription] = useState(initial?.description ?? '')
+  const [category,    setCategory]    = useState<'Insurance' | 'Other'>(initial?.category ?? 'Insurance')
+  const [base,        setBase]        = useState<'gross' | 'net'>(initial?.base ?? 'gross')
+  const [scope,       setScope]       = useState<'all' | 'individual'>(initial?.scope ?? 'all')
+  const [employeeIds, setEmployeeIds] = useState<number[]>(initial?.employee_ids ?? [])
+  const [empRate,     setEmpRate]     = useState(String(initial ? Number(initial.employee_rate) : 0))
+  const [emprRate,    setEmprRate]    = useState(String(initial ? Number(initial.employer_rate) : 0))
+  const [staffQuery,  setStaffQuery]  = useState('')
+
+  const staffQ = useQuery({
+    queryKey: ['hr', 'employees', 'deduction-picker'],
+    queryFn:  ({ signal }) => hrService.listEmployees({ per_page: 500, status: 'Active' }, signal),
+    staleTime: 5 * 60 * 1000,
+    enabled:  scope === 'individual',
+  })
+  const staff = (staffQ.data?.data?.data ?? []) as HrEmployee[]
+  const visibleStaff = staff.filter(e =>
+    `${e.first_name} ${e.last_name}`.toLowerCase().includes(staffQuery.trim().toLowerCase())
+  )
+
+  const toggleStaff = (id: number) =>
+    setEmployeeIds(ids => ids.includes(id) ? ids.filter(x => x !== id) : [...ids, id])
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!label.trim()) return
-    onSave({ label: label.trim(), description: description.trim(), employee_rate: parseFloat(empRate) || 0, employer_rate: parseFloat(emprRate) || 0 })
+    if (scope === 'individual' && employeeIds.length === 0) {
+      toast.error('Select at least one staff member, or choose All staff.')
+      return
+    }
+    onSave({
+      label:         label.trim(),
+      description:   description.trim(),
+      category,
+      employee_rate: parseFloat(empRate) || 0,
+      employer_rate: parseFloat(emprRate) || 0,
+      base,
+      scope,
+      employee_ids:  scope === 'individual' ? employeeIds : [],
+    })
   }
 
   return (
@@ -484,27 +534,87 @@ function DeductionForm({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="form-label">Label <span className="text-red-500">*</span></label>
-          <input autoFocus required className="input text-[13px]" placeholder="e.g. Housing Fund" value={label} onChange={e => setLabel(e.target.value)} />
+          <input autoFocus required className="input text-[13px]" placeholder="e.g. RADIANT" value={label} onChange={e => setLabel(e.target.value)} />
         </div>
         <div>
           <label className="form-label">Description <span className="text-ink-400 font-normal">(optional)</span></label>
           <input className="input text-[13px]" placeholder="Short description" value={description} onChange={e => setDescription(e.target.value)} />
         </div>
         <div>
+          <label className="form-label">Category</label>
+          <select className="input text-[13px]" value={category} onChange={e => setCategory(e.target.value as 'Insurance' | 'Other')}>
+            <option value="Insurance">Insurance (RADIANT, other insurer)</option>
+            <option value="Other">Other deduction</option>
+          </select>
+        </div>
+        <div>
+          <label className="form-label">Calculated on</label>
+          <select className="input text-[13px]" value={base} onChange={e => setBase(e.target.value as 'gross' | 'net')}>
+            <option value="gross">Gross salary</option>
+            <option value="net">Net salary (after PAYE, RSSB, RAMA)</option>
+          </select>
+        </div>
+        <div>
           <label className="form-label">Employee rate (%)</label>
           <div className="flex items-center gap-1.5">
-            <input type="number" min="0" max="100" step="0.1" className="input text-[13px]" value={empRate} onChange={e => setEmpRate(e.target.value)} />
+            <input type="number" min="0" max="100" step="0.01" className="input text-[13px]" value={empRate} onChange={e => setEmpRate(e.target.value)} />
             <span className="text-ink-500 text-[13px]">%</span>
           </div>
         </div>
         <div>
           <label className="form-label">Employer rate (%)</label>
           <div className="flex items-center gap-1.5">
-            <input type="number" min="0" max="100" step="0.1" className="input text-[13px]" value={emprRate} onChange={e => setEmprRate(e.target.value)} />
+            <input type="number" min="0" max="100" step="0.01" className="input text-[13px]" value={emprRate} onChange={e => setEmprRate(e.target.value)} />
             <span className="text-ink-500 text-[13px]">%</span>
           </div>
         </div>
       </div>
+
+      <fieldset className="space-y-2">
+        <legend className="form-label">Applies to</legend>
+        <div className="flex flex-wrap gap-4 text-[13px]">
+          <label className="flex items-center gap-2">
+            <input type="radio" name="ded-scope" checked={scope === 'all'} onChange={() => setScope('all')} />
+            All staff
+          </label>
+          <label className="flex items-center gap-2">
+            <input type="radio" name="ded-scope" checked={scope === 'individual'} onChange={() => setScope('individual')} />
+            Selected staff only
+          </label>
+        </div>
+
+        {scope === 'individual' && (
+          <div className="rounded-lg border border-ink-200 dark:border-ink-600 bg-white dark:bg-ink-800 p-3 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <input
+                className="input text-[13px] max-w-xs"
+                placeholder="Search staff"
+                value={staffQuery}
+                onChange={e => setStaffQuery(e.target.value)}
+              />
+              <span className="text-[11px] text-ink-500 shrink-0">{employeeIds.length} selected</span>
+            </div>
+            {staffQ.isLoading && <p className="text-[12px] text-ink-400">Loading staff…</p>}
+            <div className="max-h-56 overflow-y-auto divide-y divide-ink-100 dark:divide-ink-700">
+              {visibleStaff.map(e => (
+                <label key={e.id} className="flex items-center gap-2 py-1.5 text-[13px] cursor-pointer">
+                  <input type="checkbox" checked={employeeIds.includes(Number(e.id))} onChange={() => toggleStaff(Number(e.id))} />
+                  {e.first_name} {e.last_name}
+                </label>
+              ))}
+              {!staffQ.isLoading && visibleStaff.length === 0 && (
+                <p className="py-2 text-[12px] text-ink-400">No matching staff.</p>
+              )}
+            </div>
+          </div>
+        )}
+      </fieldset>
+
+      <p className="text-[11px] text-ink-500">
+        Applied automatically to every payslip for the chosen staff. Pending payslips are recalculated when you save;
+        approved and paid ones are not changed.
+      </p>
+
       <div className="flex justify-end gap-2">
         <button type="button" className="btn-secondary btn-sm" onClick={onCancel}>
           <X className="w-3.5 h-3.5" /> Cancel
@@ -517,7 +627,6 @@ function DeductionForm({
     </form>
   )
 }
-
 /* ── Rate Row Component ── */
 function RateRow({ label, description, value, onChange }: {
   label: string; description: string; value: number

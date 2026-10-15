@@ -10,6 +10,7 @@ use App\Models\HrPayrollModel;
 use App\Models\HrEmployeeModel;
 use App\Helpers\ValidationHelper;
 use App\Services\SystemLogService;
+use App\Services\AutoDeductionService;
 use App\Services\PayrollCalculator;
 use App\Services\PayrollSettings;
 use App\Services\HrPayrollRecalculator;
@@ -370,7 +371,9 @@ class HrPayrollController extends BaseController
         $premium = (float) (array_key_exists('insurance_premium', $data)
             ? ($data['insurance_premium'] ?? 0)
             : ($employee['insurance_premium'] ?? 0));
-        $calc   = PayrollCalculator::calculate($inputs['basic'], $inputs['role'], $inputs['arrears'], $inputs['other'], $this->payrollSettings(), $insurance, $premium);
+        // Automatic deductions from Payroll Settings that apply to this employee (all staff or selected staff).
+        $autoDeductions = AutoDeductionService::forEmployee($this->payrollModel->db(), $empId);
+        $calc   = PayrollCalculator::calculate($inputs['basic'], $inputs['role'], $inputs['arrears'], $inputs['other'], $this->payrollSettings(), $insurance, $premium, $autoDeductions);
 
         $existing = $this->payrollModel->findByPeriod($empId, $year, $month);
 
