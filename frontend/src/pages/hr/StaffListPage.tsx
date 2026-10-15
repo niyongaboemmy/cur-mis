@@ -19,6 +19,8 @@ import {
   Pencil,
   Save,
   CreditCard,
+  ListChecks,
+  Check,
 } from 'lucide-react'
 import {
   hrService,
@@ -38,6 +40,12 @@ import type { HrEmployee } from '@/types/academic'
 import ModalPortal from '@/components/ui/ModalPortal'
 
 const PER_PAGE = 15
+
+const CATEGORY_OPTIONS: FacetOption[] = [
+  { value: 'Academic',       label: 'Academic' },
+  { value: 'Administrative', label: 'Administrative' },
+  { value: 'unclassified',   label: 'Not classified' },
+]
 
 type Tab = 'active' | 'all'
 
@@ -323,10 +331,13 @@ function AllTab({ stats }: { stats: HrStats | null }) {
   const department = sp.get('department') ?? ''
   const position   = sp.get('position') ?? ''
   const contract   = sp.get('contract_type') ?? ''
+  const category   = sp.get('staff_category') ?? ''
   const joined30   = sp.get('joined_last_30d') === '1'
   const sort_by    = sp.get('sort_by') ?? ''
   const sort_dir   = (sp.get('sort_dir') as 'asc' | 'desc') ?? 'desc'
   const page       = Math.max(1, Number(sp.get('page') || 1))
+  const canManage  = usePermission(PERMISSIONS.MANAGE_HR_EMPLOYEES)
+  const [classifyOpen, setClassifyOpen] = useState(false)
 
   const debouncedQ = useDebounce(q, 350)
 
@@ -367,10 +378,11 @@ function AllTab({ stats }: { stats: HrStats | null }) {
     department:      department || undefined,
     position:        position || undefined,
     contract_type:   contract || undefined,
+    staff_category:  (category || undefined) as HrListParams['staff_category'],
     joined_last_30d: joined30 ? 1 : undefined,
     sort_by:         sort_by || undefined,
     sort_dir:        sort_dir || undefined,
-  }), [page, debouncedQ, status, gender, department, position, contract, joined30, sort_by, sort_dir])
+  }), [page, debouncedQ, status, gender, department, position, contract, category, joined30, sort_by, sort_dir])
 
   const listQ = useQuery({
     queryKey: ['hr-employees', listParams],
@@ -382,7 +394,7 @@ function AllTab({ stats }: { stats: HrStats | null }) {
   const total = listQ.data?.data?.total ?? 0
   const last  = listQ.data?.data?.last_page ?? 1
 
-  const activeFilterCount = [status, gender, department, position, contract, joined30 ? '1' : '']
+  const activeFilterCount = [status, gender, department, position, contract, category, joined30 ? '1' : '']
     .filter(Boolean).length
 
   const clearAll = () => setSp({ tab: 'all' }, { replace: false })
@@ -449,6 +461,7 @@ function AllTab({ stats }: { stats: HrStats | null }) {
           <FilterSelect label="Department"    value={department} onChange={(v) => update({ department:    v })} options={withUnknown(facets?.department)} />
           <FilterSelect label="Position"      value={position}   onChange={(v) => update({ position:      v })} options={withUnknown(facets?.position)} />
           <FilterSelect label="Contract"      value={contract}   onChange={(v) => update({ contract_type: v })} options={facets?.contract_type} />
+          <FilterSelect label="Category"      value={category}   onChange={(v) => update({ staff_category: v })} options={CATEGORY_OPTIONS} />
           <FilterSelect label="Gender"        value={gender}     onChange={(v) => update({ gender:        v })} options={withUnknown(facets?.gender)} />
         </div>
 
@@ -469,7 +482,13 @@ function AllTab({ stats }: { stats: HrStats | null }) {
           title="Staff list"
           sub={`${total.toLocaleString()} employees${activeFilterCount ? ' · filtered' : ''}`}
           loading={listQ.isLoading || listQ.isFetching}
+          actions={canManage ? (
+            <button className="btn-secondary btn-sm" onClick={() => setClassifyOpen(true)}>
+              <ListChecks className="w-3.5 h-3.5" /> Classify CUR staff
+            </button>
+          ) : undefined}
         />
+        {classifyOpen && <StaffCategoryModal onClose={() => setClassifyOpen(false)} />}
 
         {listQ.isLoading ? (
           <Skel />
@@ -540,6 +559,9 @@ function EmployeeRow({ e, index }: { e: HrEmployee; index: number }) {
           </div>
           <div className="min-w-0">
             <p className="font-semibold text-ink-900 dark:text-ink-100 truncate">{e.full_name}</p>
+            {e.staff_category && (
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-500">{e.staff_category}</span>
+            )}
           </div>
         </div>
       </td>
@@ -1064,15 +1086,132 @@ function FilterSelect({
   )
 }
 
-function Header({ title, sub, loading }: { title: string; sub: string; loading: boolean }) {
+function Header({ title, sub, loading, actions }: { title: string; sub: string; loading: boolean; actions?: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-4 px-6 pt-5 pb-3 border-b border-ink-100 dark:border-ink-700">
+    <div className="flex flex-wrap items-center justify-between gap-3 px-6 pt-5 pb-3 border-b border-ink-100 dark:border-ink-700">
       <div>
         <h2 className="section-title">{title}</h2>
         <p className="section-sub">{sub}</p>
       </div>
-      {loading && <Loader2 className="w-4 h-4 text-ink-400 animate-spin" />}
+      <div className="flex items-center gap-2">
+        {actions}
+        {loading && <Loader2 className="w-4 h-4 text-ink-400 animate-spin" />}
+      </div>
     </div>
+  )
+}
+
+/* Preview, then save, the Academic / Administrative split from the CUR staff list.
+   Nothing is saved until the user confirms; unmatched and ambiguous names are listed and left alone. */
+function StaffCategoryModal({ onClose }: { onClose: () => void }) {
+  const qc = useQueryClient()
+
+  const previewQ = useQuery({
+    queryKey: ['hr-staff-category-preview'],
+    queryFn: () => hrService.classifyStaffCategories(false),
+    staleTime: 0,
+    gcTime: 0,
+  })
+  const plan = previewQ.data?.data
+
+  const applyMut = useMutation({
+    mutationFn: () => hrService.classifyStaffCategories(true),
+    onSuccess: (res) => {
+      toast.success(`Saved ${res.data?.applied ?? 0} staff categories.`)
+      qc.invalidateQueries({ queryKey: ['hr-employees'] })
+      onClose()
+    },
+    onError: () => toast.error('Could not save the staff categories.'),
+  })
+
+  return (
+    <ModalPortal>
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-ink-900/50 backdrop-blur-sm">
+      <div className="bg-white dark:bg-ink-800 rounded-xl shadow-xl w-full max-w-2xl max-h-[92vh] overflow-hidden flex flex-col">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-ink-100 dark:border-ink-700">
+          <div>
+            <h3 className="font-bold text-[14px] text-ink-900 dark:text-ink-100">Classify staff (CUR list)</h3>
+            <p className="text-[11.5px] text-ink-500">Sets each person as Academic or Administrative, as in the CUR staff sheets.</p>
+          </div>
+          <button onClick={onClose} className="icon-btn" title="Close"><X className="w-4 h-4" /></button>
+        </div>
+
+        <div className="p-5 overflow-y-auto space-y-4">
+          {previewQ.isLoading && <p className="text-[13px] text-ink-500">Matching names…</p>}
+          {previewQ.isError && <p className="text-[13px] text-red-600">Could not check the list. Try again.</p>}
+
+          {plan && (
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-center">
+                <Stat label="Academic" value={plan.counts.Academic} />
+                <Stat label="Administrative" value={plan.counts.Administrative} />
+                <Stat label="Will be saved" value={plan.counts.matched} accent />
+                <Stat label="Not found" value={plan.counts.unmatched} warn={plan.counts.unmatched > 0} />
+              </div>
+
+              {plan.counts.ambiguous > 0 && (
+                <Details title={`${plan.counts.ambiguous} name(s) match more than one staff record — not saved`}>
+                  {plan.ambiguous.map((a) => (
+                    <li key={a.name + a.category}>{a.name} <span className="text-ink-400">({a.category})</span></li>
+                  ))}
+                </Details>
+              )}
+
+              {plan.counts.unmatched > 0 && (
+                <Details title={`${plan.counts.unmatched} name(s) not found in the staff records — not saved`}>
+                  {plan.unmatched.map((u) => (
+                    <li key={u.name + u.category}>{u.name} <span className="text-ink-400">({u.category})</span></li>
+                  ))}
+                </Details>
+              )}
+
+              {plan.counts.conflicts > 0 && (
+                <Details title={`${plan.counts.conflicts} person(s) on both lists — not saved`}>
+                  {plan.conflicts.map((c) => <li key={c.employee_id}>{c.name}</li>)}
+                </Details>
+              )}
+
+              <p className="text-[11.5px] text-ink-500">
+                Staff not on the list keep their current category. Saving only sets the category; it does not change pay.
+              </p>
+            </>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 px-5 py-3 border-t border-ink-100 dark:border-ink-700">
+          <button className="btn-secondary btn-sm" onClick={onClose}>Cancel</button>
+          <button
+            className="btn-primary btn-sm"
+            disabled={!plan || plan.counts.matched === 0 || applyMut.isPending}
+            onClick={() => applyMut.mutate()}
+          >
+            {applyMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+            Save {plan?.counts.matched ?? 0} categories
+          </button>
+        </div>
+      </div>
+    </div>
+    </ModalPortal>
+  )
+}
+
+function Stat({ label, value, accent, warn }: { label: string; value: number; accent?: boolean; warn?: boolean }) {
+  return (
+    <div className={`rounded-lg border p-3 ${accent ? 'border-brand/40 bg-brand/5' : warn ? 'border-amber-300 bg-amber-50 dark:bg-amber-900/20' : 'border-ink-100 dark:border-ink-700'}`}>
+      <p className="text-[11px] uppercase tracking-wider text-ink-500">{label}</p>
+      <p className="text-[18px] font-bold text-ink-900 dark:text-ink-100 tabular-nums">{value.toLocaleString()}</p>
+    </div>
+  )
+}
+
+function Details({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <details className="rounded-lg border border-ink-100 dark:border-ink-700 p-3">
+      <summary className="cursor-pointer text-[12.5px] font-semibold text-ink-700 dark:text-ink-200">{title}</summary>
+      <ul className="mt-2 max-h-48 overflow-y-auto list-disc pl-5 text-[12.5px] text-ink-600 dark:text-ink-300 space-y-0.5">
+        {children}
+      </ul>
+    </details>
   )
 }
 

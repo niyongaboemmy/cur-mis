@@ -178,6 +178,7 @@ export interface HrEmployee {
   /** 'employee' = row from the HR employees table; 'user' = a non-student
    *  user account surfaced in the directory (read-only here). */
   source?:                    'employee' | 'user'
+  staff_category?:            'Academic' | 'Administrative' | null
   emp_code:                   string
   staff_id?:                  string | null
   full_name:                  string

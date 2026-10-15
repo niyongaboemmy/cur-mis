@@ -284,6 +284,15 @@ class HrEmployeeController extends BaseController
             $bindings[] = $deptVal;
         }
 
+        // staff category filter: Academic | Administrative | unclassified (not yet set)
+        $categoryVal = $request->query('staff_category');
+        if ($categoryVal === 'unclassified') {
+            $clauses[] = "(e.staff_category IS NULL OR e.staff_category = '')";
+        } elseif (in_array($categoryVal, ['Academic', 'Administrative'], true)) {
+            $clauses[]  = "e.staff_category = ?";
+            $bindings[] = $categoryVal;
+        }
+
         // position filter
         $posVal = $request->query('position');
         if ($posVal !== null && $posVal !== '') {
@@ -330,6 +339,7 @@ class HrEmployeeController extends BaseController
               e.area_specialization AS area_of_specialization,
               e.foreign_degree_equivalence,
               e.faculty,
+              e.staff_category,
               'employee' AS source
             FROM employees e
             $where
@@ -371,6 +381,7 @@ class HrEmployeeController extends BaseController
               e.employee_phone,
               e.employee_post,
               e.faculty,
+              e.staff_category,
               e.employee_status,
               e.account_status,
               e.salary

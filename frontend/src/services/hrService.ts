@@ -54,6 +54,7 @@ export interface HrStats {
 }
 
 export interface HrListParams {
+  staff_category?:  'Academic' | 'Administrative' | 'unclassified'
   page?:            number
   per_page?:        number
   q?:               string
@@ -397,7 +398,20 @@ export interface ProcessPaymentPayload {
   notes?:          string | null
 }
 
+/** Result of the CUR staff classification. `applied` is 0 for a preview. */
+export interface StaffCategoryResult {
+  applied:   number
+  counts:    { Academic: number; Administrative: number; matched: number; unmatched: number; ambiguous: number; conflicts: number }
+  unmatched: { name: string; category: 'Academic' | 'Administrative' }[]
+  ambiguous: { name: string; category: 'Academic' | 'Administrative'; employee_ids: number[] }[]
+  conflicts: { name: string; employee_id: number }[]
+}
+
 export const hrService = {
+  /** apply=false previews the matches; apply=true saves them. */
+  classifyStaffCategories: (apply: boolean) =>
+    api.post<StaffCategoryResult>('/employees/staff-categories', { apply }),
+
   listEmployees: (
     params: HrListParams = {},
     signal?: AbortSignal,
