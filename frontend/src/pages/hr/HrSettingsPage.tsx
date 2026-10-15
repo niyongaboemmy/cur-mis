@@ -380,7 +380,7 @@ function CustomDeductionsSection({ deductions }: { deductions: CustomDeduction[]
         <div>
           <h3 className="font-bold text-[13px] text-ink-800 dark:text-ink-200">Additional Deductions</h3>
           <p className="text-[11px] text-ink-400 mt-0.5">
-            Percentage deductions (RADIANT, other insurers, etc.) taken automatically from each payslip, for all staff or selected staff
+            Fixed amounts in RWF (RADIANT, other insurers, etc.) taken automatically from each payslip's net pay, for all staff or selected staff
           </p>
         </div>
         {!adding && (
@@ -423,7 +423,9 @@ function CustomDeductionsSection({ deductions }: { deductions: CustomDeduction[]
                   <p className="text-[13px] font-semibold text-ink-800 dark:text-ink-200">{d.label}</p>
                   <div className="flex flex-wrap items-center gap-1.5 mt-1">
                     <span className="px-1.5 py-0.5 rounded bg-ink-100 dark:bg-ink-700 text-ink-600 dark:text-ink-300 text-[10px] font-semibold">{d.category}</span>
-                    <span className="px-1.5 py-0.5 rounded bg-ink-100 dark:bg-ink-700 text-ink-600 dark:text-ink-300 text-[10px] font-semibold">{d.base === 'net' ? 'On net salary' : 'On gross salary'}</span>
+                    <span className="px-1.5 py-0.5 rounded bg-ink-100 dark:bg-ink-700 text-ink-600 dark:text-ink-300 text-[10px] font-semibold">
+                      {d.amount_type === 'fixed' ? 'Fixed amount, from net pay' : (d.base === 'net' ? 'Percent of net salary' : 'Percent of gross salary')}
+                    </span>
                     <span className="px-1.5 py-0.5 rounded bg-ink-100 dark:bg-ink-700 text-ink-600 dark:text-ink-300 text-[10px] font-semibold">
                       {d.scope === 'all' ? 'All staff' : `${d.employee_ids.length} selected staff`}
                     </span>
@@ -431,8 +433,15 @@ function CustomDeductionsSection({ deductions }: { deductions: CustomDeduction[]
                   {d.description && <p className="text-[11px] text-ink-400 mt-1">{d.description}</p>}
                 </div>
                 <div className="flex items-center gap-4 text-[12px] tabular-nums shrink-0">
-                  <span className="text-ink-500">Emp: <span className="font-bold text-ink-800 dark:text-ink-100">{Number(d.employee_rate)}%</span></span>
-                  <span className="text-ink-500">Empr: <span className="font-bold text-ink-800 dark:text-ink-100">{Number(d.employer_rate)}%</span></span>
+                  {d.amount_type === 'fixed'
+                    ? <>
+                        <span className="text-ink-500">Emp: <span className="font-bold text-ink-800 dark:text-ink-100">{fmt(Number(d.employee_amount))} RWF</span></span>
+                        <span className="text-ink-500">Empr: <span className="font-bold text-ink-800 dark:text-ink-100">{fmt(Number(d.employer_amount))} RWF</span></span>
+                      </>
+                    : <>
+                        <span className="text-ink-500">Emp: <span className="font-bold text-ink-800 dark:text-ink-100">{Number(d.employee_rate)}%</span></span>
+                        <span className="text-ink-500">Empr: <span className="font-bold text-ink-800 dark:text-ink-100">{Number(d.employer_rate)}%</span></span>
+                      </>}
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <button onClick={() => setEditId(d.id)} className="icon-btn" title="Edit">
@@ -467,12 +476,15 @@ function toPayload(d: CustomDeduction): CustomDeductionPayload {
   return {
     label:         d.label,
     description:   d.description ?? '',
-    category:      d.category,
-    employee_rate: Number(d.employee_rate),
-    employer_rate: Number(d.employer_rate),
-    base:          d.base,
-    scope:         d.scope,
-    employee_ids:  d.employee_ids ?? [],
+    category:        d.category,
+    amount_type:     d.amount_type,
+    employee_rate:   Number(d.employee_rate),
+    employer_rate:   Number(d.employer_rate),
+    employee_amount: Number(d.employee_amount),
+    employer_amount: Number(d.employer_amount),
+    base:            d.base,
+    scope:           d.scope,
+    employee_ids:    d.employee_ids ?? [],
   }
 }
 
@@ -489,12 +501,17 @@ function DeductionForm({
   const [label,       setLabel]       = useState(initial?.label ?? '')
   const [description, setDescription] = useState(initial?.description ?? '')
   const [category,    setCategory]    = useState<'Insurance' | 'Other'>(initial?.category ?? 'Insurance')
+  // New items are fixed amounts. An older percentage item keeps its percentage unless HR switches it.
+  const [amountType,  setAmountType]  = useState<'fixed' | 'percent'>(initial?.amount_type ?? 'fixed')
   const [base,        setBase]        = useState<'gross' | 'net'>(initial?.base ?? 'gross')
   const [scope,       setScope]       = useState<'all' | 'individual'>(initial?.scope ?? 'all')
   const [employeeIds, setEmployeeIds] = useState<number[]>(initial?.employee_ids ?? [])
+  const [empAmount,   setEmpAmount]   = useState(String(initial ? Number(initial.employee_amount) : 0))
+  const [emprAmount,  setEmprAmount]  = useState(String(initial ? Number(initial.employer_amount) : 0))
   const [empRate,     setEmpRate]     = useState(String(initial ? Number(initial.employee_rate) : 0))
   const [emprRate,    setEmprRate]    = useState(String(initial ? Number(initial.employer_rate) : 0))
   const [staffQuery,  setStaffQuery]  = useState('')
+  const isFixed = amountType === 'fixed'
 
   const staffQ = useQuery({
     queryKey: ['hr', 'employees', 'deduction-picker'],
@@ -518,14 +535,17 @@ function DeductionForm({
       return
     }
     onSave({
-      label:         label.trim(),
-      description:   description.trim(),
+      label:           label.trim(),
+      description:     description.trim(),
       category,
-      employee_rate: parseFloat(empRate) || 0,
-      employer_rate: parseFloat(emprRate) || 0,
-      base,
+      amount_type:     amountType,
+      employee_rate:   isFixed ? 0 : (parseFloat(empRate) || 0),
+      employer_rate:   isFixed ? 0 : (parseFloat(emprRate) || 0),
+      employee_amount: isFixed ? (parseFloat(empAmount) || 0) : 0,
+      employer_amount: isFixed ? (parseFloat(emprAmount) || 0) : 0,
+      base:            isFixed ? 'net' : base,
       scope,
-      employee_ids:  scope === 'individual' ? employeeIds : [],
+      employee_ids:    scope === 'individual' ? employeeIds : [],
     })
   }
 
@@ -547,27 +567,57 @@ function DeductionForm({
             <option value="Other">Other deduction</option>
           </select>
         </div>
-        <div>
-          <label className="form-label">Calculated on</label>
-          <select className="input text-[13px]" value={base} onChange={e => setBase(e.target.value as 'gross' | 'net')}>
-            <option value="gross">Gross salary</option>
-            <option value="net">Net salary (after PAYE, RSSB, RAMA)</option>
-          </select>
-        </div>
-        <div>
-          <label className="form-label">Employee rate (%)</label>
-          <div className="flex items-center gap-1.5">
-            <input type="number" min="0" max="100" step="0.01" className="input text-[13px]" value={empRate} onChange={e => setEmpRate(e.target.value)} />
-            <span className="text-ink-500 text-[13px]">%</span>
+        {initial?.amount_type === 'percent' && (
+          <div>
+            <label className="form-label">Amount type</label>
+            <select className="input text-[13px]" value={amountType} onChange={e => setAmountType(e.target.value as 'fixed' | 'percent')}>
+              <option value="percent">Percentage (older item)</option>
+              <option value="fixed">Fixed amount (RWF)</option>
+            </select>
           </div>
-        </div>
-        <div>
-          <label className="form-label">Employer rate (%)</label>
-          <div className="flex items-center gap-1.5">
-            <input type="number" min="0" max="100" step="0.01" className="input text-[13px]" value={emprRate} onChange={e => setEmprRate(e.target.value)} />
-            <span className="text-ink-500 text-[13px]">%</span>
-          </div>
-        </div>
+        )}
+        {isFixed ? (
+          <>
+            <div>
+              <label className="form-label">Employee amount (RWF)</label>
+              <div className="flex items-center gap-1.5">
+                <input type="number" min="0" step="1" className="input text-[13px]" value={empAmount} onChange={e => setEmpAmount(e.target.value)} />
+                <span className="text-ink-500 text-[13px] shrink-0">RWF</span>
+              </div>
+            </div>
+            <div>
+              <label className="form-label">Employer amount (RWF)</label>
+              <div className="flex items-center gap-1.5">
+                <input type="number" min="0" step="1" className="input text-[13px]" value={emprAmount} onChange={e => setEmprAmount(e.target.value)} />
+                <span className="text-ink-500 text-[13px] shrink-0">RWF</span>
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <div>
+              <label className="form-label">Calculated on</label>
+              <select className="input text-[13px]" value={base} onChange={e => setBase(e.target.value as 'gross' | 'net')}>
+                <option value="gross">Gross salary</option>
+                <option value="net">Net salary (after PAYE, RSSB, RAMA)</option>
+              </select>
+            </div>
+            <div>
+              <label className="form-label">Employee rate (%)</label>
+              <div className="flex items-center gap-1.5">
+                <input type="number" min="0" max="100" step="0.01" className="input text-[13px]" value={empRate} onChange={e => setEmpRate(e.target.value)} />
+                <span className="text-ink-500 text-[13px]">%</span>
+              </div>
+            </div>
+            <div>
+              <label className="form-label">Employer rate (%)</label>
+              <div className="flex items-center gap-1.5">
+                <input type="number" min="0" max="100" step="0.01" className="input text-[13px]" value={emprRate} onChange={e => setEmprRate(e.target.value)} />
+                <span className="text-ink-500 text-[13px]">%</span>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       <fieldset className="space-y-2">
@@ -611,8 +661,9 @@ function DeductionForm({
       </fieldset>
 
       <p className="text-[11px] text-ink-500">
-        Applied automatically to every payslip for the chosen staff. Pending payslips are recalculated when you save;
-        approved and paid ones are not changed.
+        {isFixed
+          ? 'A fixed amount is taken from net pay on every payslip for the chosen staff. Pending payslips are recalculated when you save; approved and paid ones are not changed.'
+          : 'Applied automatically to every payslip for the chosen staff. Pending payslips are recalculated when you save; approved and paid ones are not changed.'}
       </p>
 
       <div className="flex justify-end gap-2">

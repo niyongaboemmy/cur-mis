@@ -7,17 +7,22 @@ namespace App\Services;
 use Core\Database;
 
 /**
- * Automatic percentage deductions set on the Payroll Settings page
- * (Additional Deductions): RADIANT or another insurer, or any other percentage.
+ * Automatic deductions set on the Payroll Settings page (Additional Deductions):
+ * RADIANT or another insurer, or any other deduction.
  *
- * Each item applies to all staff or to selected staff and is taken from the base
- * chosen on the item: total gross salary, or net salary (step 19). PayrollCalculator
- * does the arithmetic. This class only finds the items that apply to an employee.
+ * An item is either a fixed amount in RWF (type 'fixed', taken from net pay) or a
+ * percentage (type 'percent', taken from gross or net salary). New items are fixed;
+ * percentage items saved before that stay percentages. Each item applies to all
+ * staff or to selected staff. PayrollCalculator does the arithmetic. This class only
+ * finds the items that apply to an employee.
  */
 final class AutoDeductionService
 {
     public const SCOPE_ALL        = 'all';
     public const SCOPE_INDIVIDUAL = 'individual';
+
+    public const TYPE_FIXED   = 'fixed';
+    public const TYPE_PERCENT = 'percent';
 
     public const BASE_GROSS = 'gross';
     public const BASE_NET   = 'net';
@@ -26,14 +31,15 @@ final class AutoDeductionService
 
     /**
      * Active items that apply to one employee, in Payroll Settings order.
-     * Rates are percentages (6 = 6%), the same as the settings page.
+     * Percentages are 6 = 6%, the same as the settings page. Amounts are in RWF.
      *
-     * @return list<array{label: string, base: string, employee_rate: float, employer_rate: float}>
+     * @return list<array{label: string, type: string, base: string, employee_rate: float, employer_rate: float,
+     *                     employee_amount: float, employer_amount: float}>
      */
     public static function forEmployee(Database $db, int $empId): array
     {
         $rows = $db->fetchAll(
-            "SELECT d.label, d.base, d.employee_rate, d.employer_rate
+            "SELECT d.label, d.amount_type, d.base, d.employee_rate, d.employer_rate, d.employee_amount, d.employer_amount
              FROM hr_custom_deductions d
              WHERE d.is_active = 1
                AND (d.scope = ? OR EXISTS (
@@ -44,10 +50,13 @@ final class AutoDeductionService
         ) ?: [];
 
         return array_map(static fn (array $row): array => [
-            'label'         => (string) $row['label'],
-            'base'          => self::normaliseBase((string) $row['base']),
-            'employee_rate' => (float) $row['employee_rate'],
-            'employer_rate' => (float) $row['employer_rate'],
+            'label'           => (string) $row['label'],
+            'type'            => self::normaliseType((string) $row['amount_type']),
+            'base'            => self::normaliseBase((string) $row['base']),
+            'employee_rate'   => (float) $row['employee_rate'],
+            'employer_rate'   => (float) $row['employer_rate'],
+            'employee_amount' => (float) $row['employee_amount'],
+            'employer_amount' => (float) $row['employer_amount'],
         ], $rows);
     }
 
@@ -85,5 +94,11 @@ final class AutoDeductionService
     public static function normaliseBase(?string $base): string
     {
         return strtolower(trim((string) $base)) === self::BASE_NET ? self::BASE_NET : self::BASE_GROSS;
+    }
+
+    /** Anything other than 'fixed' is a percentage, which is how items were stored before fixed amounts. */
+    public static function normaliseType(?string $type): string
+    {
+        return strtolower(trim((string) $type)) === self::TYPE_FIXED ? self::TYPE_FIXED : self::TYPE_PERCENT;
     }
 }

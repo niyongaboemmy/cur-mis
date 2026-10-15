@@ -13,7 +13,7 @@ use App\Services\PayrollSettings;
 
 class PayrollConfigController extends BaseController
 {
-    private const DEDUCTION_COLUMNS = "id, label, description, category, employee_rate, employer_rate, base, scope, is_active, sort_order";
+    private const DEDUCTION_COLUMNS = "id, label, description, category, amount_type, employee_rate, employer_rate, employee_amount, employer_amount, base, scope, is_active, sort_order";
 
     private function db()
     {
@@ -29,8 +29,11 @@ class PayrollConfigController extends BaseController
                 `label`         VARCHAR(100) NOT NULL,
                 `description`   VARCHAR(255) DEFAULT NULL,
                 `category`      VARCHAR(20)  NOT NULL DEFAULT 'Other',
+                `amount_type`   VARCHAR(10)  NOT NULL DEFAULT 'percent',
                 `employee_rate` DECIMAL(6,3) NOT NULL DEFAULT 0,
                 `employer_rate` DECIMAL(6,3) NOT NULL DEFAULT 0,
+                `employee_amount` DECIMAL(14,2) NOT NULL DEFAULT 0,
+                `employer_amount` DECIMAL(14,2) NOT NULL DEFAULT 0,
                 `base`          VARCHAR(10)  NOT NULL DEFAULT 'gross',
                 `scope`         VARCHAR(12)  NOT NULL DEFAULT 'all',
                 `is_active`     TINYINT(1) NOT NULL DEFAULT 1,
@@ -129,11 +132,13 @@ class PayrollConfigController extends BaseController
 
         $db->execute(
             "INSERT INTO hr_custom_deductions
-                (label, description, category, employee_rate, employer_rate, base, scope, is_active, sort_order)
-             VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0)",
+                (label, description, category, amount_type, employee_rate, employer_rate, employee_amount, employer_amount,
+                 base, scope, is_active, sort_order)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)",
             [
-                $data['label'], $data['description'], $data['category'],
-                $data['employee_rate'], $data['employer_rate'], $data['base'], $data['scope'],
+                $data['label'], $data['description'], $data['category'], $data['amount_type'],
+                $data['employee_rate'], $data['employer_rate'], $data['employee_amount'], $data['employer_amount'],
+                $data['base'], $data['scope'],
             ]
         );
         $id = (int) $db->lastInsertId();
@@ -174,13 +179,13 @@ class PayrollConfigController extends BaseController
 
         $db->execute(
             "UPDATE hr_custom_deductions
-             SET label = ?, description = ?, category = ?, employee_rate = ?, employer_rate = ?,
-                 base = ?, scope = ?, is_active = ?
+             SET label = ?, description = ?, category = ?, amount_type = ?, employee_rate = ?, employer_rate = ?,
+                 employee_amount = ?, employer_amount = ?, base = ?, scope = ?, is_active = ?
              WHERE id = ?",
             [
-                $values['label'], $values['description'], $values['category'],
-                $values['employee_rate'], $values['employer_rate'], $values['base'], $values['scope'],
-                $isActive, $id,
+                $values['label'], $values['description'], $values['category'], $values['amount_type'],
+                $values['employee_rate'], $values['employer_rate'], $values['employee_amount'], $values['employer_amount'],
+                $values['base'], $values['scope'], $isActive, $id,
             ]
         );
         AutoDeductionService::syncStaff($db, $id, $values['scope'] === AutoDeductionService::SCOPE_ALL ? [] : $values['employee_ids']);
@@ -250,6 +255,8 @@ class PayrollConfigController extends BaseController
         $row['sort_order']    = (int) $row['sort_order'];
         $row['employee_rate'] = (float) $row['employee_rate'];
         $row['employer_rate'] = (float) $row['employer_rate'];
+        $row['employee_amount'] = (float) $row['employee_amount'];
+        $row['employer_amount'] = (float) $row['employer_amount'];
         $row['employee_ids']  = $employeeIds;
         return $row;
     }
@@ -258,8 +265,9 @@ class PayrollConfigController extends BaseController
      * Checks a deduction item from the request and returns the values to store.
      * Responds with 422 when a value is not valid.
      *
-     * @return array{label: string, description: string, category: string, employee_rate: float,
-     *               employer_rate: float, base: string, scope: string, employee_ids: list<int>}
+     * @return array{label: string, description: string, category: string, amount_type: string,
+     *               employee_rate: float, employer_rate: float, employee_amount: float, employer_amount: float,
+     *               base: string, scope: string, employee_ids: list<int>}
      */
     private function validatedDeduction(array $data, Response $response): array
     {
@@ -272,11 +280,36 @@ class PayrollConfigController extends BaseController
             $errors['label'] = 'Label must be 100 characters or fewer.';
         }
 
-        foreach (['employee_rate', 'employer_rate'] as $field) {
-            $value = $data[$field] ?? 0;
-            if (!is_numeric($value) || (float)$value < 0 || (float)$value > 100) {
-                $errors[$field] = 'Must be a percentage from 0 to 100.';
+        // Fixed amounts (RWF) come from net pay. Percentages keep their base (gross or net).
+        // A missing type means percentage, the way items were stored before fixed amounts.
+        $type = strtolower(trim((string)($data['amount_type'] ?? AutoDeductionService::TYPE_PERCENT)));
+        if (!in_array($type, [AutoDeductionService::TYPE_FIXED, AutoDeductionService::TYPE_PERCENT], true)) {
+            $errors['amount_type'] = 'Type must be fixed or percent.';
+        }
+        $isFixed = $type === AutoDeductionService::TYPE_FIXED;
+
+        $employeeRate = 0.0;
+        $employerRate = 0.0;
+        $employeeAmount = 0.0;
+        $employerAmount = 0.0;
+        if ($isFixed) {
+            foreach (['employee_amount', 'employer_amount'] as $field) {
+                $value = $data[$field] ?? 0;
+                if (!is_numeric($value) || (float)$value < 0 || (float)$value > 999999999999.99) {
+                    $errors[$field] = 'Must be an amount in RWF, 0 or more.';
+                }
             }
+            $employeeAmount = (float)($data['employee_amount'] ?? 0);
+            $employerAmount = (float)($data['employer_amount'] ?? 0);
+        } else {
+            foreach (['employee_rate', 'employer_rate'] as $field) {
+                $value = $data[$field] ?? 0;
+                if (!is_numeric($value) || (float)$value < 0 || (float)$value > 100) {
+                    $errors[$field] = 'Must be a percentage from 0 to 100.';
+                }
+            }
+            $employeeRate = (float)($data['employee_rate'] ?? 0);
+            $employerRate = (float)($data['employer_rate'] ?? 0);
         }
 
         $category = (string)($data['category'] ?? 'Other');
@@ -287,6 +320,9 @@ class PayrollConfigController extends BaseController
         $base = strtolower(trim((string)($data['base'] ?? AutoDeductionService::BASE_GROSS)));
         if (!in_array($base, [AutoDeductionService::BASE_GROSS, AutoDeductionService::BASE_NET], true)) {
             $errors['base'] = 'Base must be gross or net.';
+        }
+        if ($isFixed) {
+            $base = AutoDeductionService::BASE_NET;
         }
 
         $scope = (string)($data['scope'] ?? AutoDeductionService::SCOPE_ALL);
@@ -318,14 +354,17 @@ class PayrollConfigController extends BaseController
         }
 
         return [
-            'label'         => $label,
-            'description'   => trim((string)($data['description'] ?? '')),
-            'category'      => $category,
-            'employee_rate' => (float)($data['employee_rate'] ?? 0),
-            'employer_rate' => (float)($data['employer_rate'] ?? 0),
-            'base'          => $base,
-            'scope'         => $scope,
-            'employee_ids'  => $employeeIds,
+            'label'           => $label,
+            'description'     => trim((string)($data['description'] ?? '')),
+            'category'        => $category,
+            'amount_type'     => $type,
+            'employee_rate'   => $employeeRate,
+            'employer_rate'   => $employerRate,
+            'employee_amount' => $employeeAmount,
+            'employer_amount' => $employerAmount,
+            'base'            => $base,
+            'scope'           => $scope,
+            'employee_ids'    => $employeeIds,
         ];
     }
 

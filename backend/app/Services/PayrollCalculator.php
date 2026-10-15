@@ -119,7 +119,7 @@ final class PayrollCalculator
      * @param float       $arrears         Step 6 – arrears for this period, if any
      * @param float|null  $otherDeductions Step 21 – total of other deductions, if known
      * @param array|null  $settings        Output of PayrollSettings::calculatorInputs()
-     * @param list<array{label: string, base: string, employee_rate: float, employer_rate: float}> $autoDeductions
+     * @param list<array{label: string, type?: string, base: string, employee_rate: float, employer_rate: float, employee_amount?: float, employer_amount?: float}> $autoDeductions
      *                                     Step 21 – automatic deductions from AutoDeductionService::forEmployee()
      * @return array<string, float> Every figure in the procedure, keyed by step name
      */
@@ -152,8 +152,9 @@ final class PayrollCalculator
      * was in force when it was created.
      *
      * @param array|null $settings Output of PayrollSettings::calculatorInputs()
-     * @param list<array{label: string, base: string, employee_rate: float, employer_rate: float}> $autoDeductions
-     *                     Rates are percentages (6 = 6%). base 'gross' uses total gross, 'net' uses net salary.
+     * @param list<array{label: string, type?: string, base: string, employee_rate: float, employer_rate: float, employee_amount?: float, employer_amount?: float}> $autoDeductions
+     *                     Fixed items use employee_amount / employer_amount in RWF. Percentage items use
+     *                     employee_rate / employer_rate (6 = 6%); base 'gross' uses total gross, 'net' uses net salary.
      * @return array<string, float>
      */
     public static function compute(
@@ -218,11 +219,17 @@ final class PayrollCalculator
         // Employer CBHI share – base: total gross (employer cost only, not deducted from pay)
         $cbhiEmployer = self::r2($gross * $rates['cbhi_employer']);
 
-        // Step 21 – automatic deductions from Payroll Settings (insurers and other percentages).
-        // Each one is a percentage of gross or of net salary. The employer share adds to employer cost.
+        // Step 21 – automatic deductions from Payroll Settings (insurers and other deductions).
+        // A fixed item is an amount in RWF taken from net pay. A percentage item is a share of gross or
+        // of net salary. The employer share adds to employer cost.
         $autoEmployee = 0.0;
         $autoEmployer = 0.0;
         foreach ($autoDeductions as $item) {
+            if (($item['type'] ?? AutoDeductionService::TYPE_PERCENT) === AutoDeductionService::TYPE_FIXED) {
+                $autoEmployee += self::r2(max(0.0, (float) ($item['employee_amount'] ?? 0)));
+                $autoEmployer += self::r2(max(0.0, (float) ($item['employer_amount'] ?? 0)));
+                continue;
+            }
             $base          = ($item['base'] ?? AutoDeductionService::BASE_GROSS) === AutoDeductionService::BASE_NET ? $netSalary : $gross;
             $autoEmployee += self::r2($base * (float) ($item['employee_rate'] ?? 0) / 100);
             $autoEmployer += self::r2($base * (float) ($item['employer_rate'] ?? 0) / 100);
