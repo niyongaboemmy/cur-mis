@@ -1595,24 +1595,26 @@ class ModuleMarksController extends BaseController
      */
     private function pinRowsToLevelNine(array $rows, array $student): array
     {
-        $levelId = array_search('Level 9', LevelHelper::map(), true);
-        if ($levelId === false) {
-            return $rows;
-        }
+        // The sheet header is read from the name, so the name is fixed here.
+        // The catalogue is only consulted for the id, and it can come back
+        // empty (a failed `levels` query) — the name must not depend on it.
+        $name    = 'Level 9';
+        $levelId = array_search($name, LevelHelper::map(), true);
 
         $programme = implode(' ', [
             (string)($student['option_name'] ?? ''),
             (string)($student['dep_name'] ?? ''),
         ]);
-        $isPostgraduate = (int)($student['current_level'] ?? 0) === $levelId
+        $isPostgraduate = ($levelId !== false && (int)($student['current_level'] ?? 0) === $levelId)
             || preg_match('/post\s*-?\s*graduate|master|pgde/i', $programme) === 1;
         if (!$isPostgraduate) {
             return $rows;
         }
 
-        $name = LevelHelper::name($levelId);
         foreach ($rows as &$r) {
-            $r['level']      = $levelId;
+            if ($levelId !== false) {
+                $r['level'] = $levelId;
+            }
             $r['level_name'] = $name;
         }
         unset($r);
