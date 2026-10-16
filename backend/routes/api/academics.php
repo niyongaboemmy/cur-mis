@@ -63,7 +63,12 @@ $router->group('/api/academics-management/modules', function (Core\Router $r) {
     $r->get('',                    [AcademicsManagementController::class, 'index']);
     $r->get('/:id',                [AcademicsManagementController::class, 'show']);
     $r->post('',                   [AcademicsManagementController::class, 'create']);
+    // Literal POST segments must be registered BEFORE `/:id`: the router takes
+    // the first match, so `/:id` would otherwise swallow "program-import" as an
+    // id and send it to update(), which 404s with "Item not found."
     $r->post('/bulk-import',       [AcademicsManagementController::class, 'bulkImport']);
+    $r->post('/program-import',    [AcademicsManagementController::class, 'programImport']);
+    $r->post('/curriculum-import', [AcademicsManagementController::class, 'curriculumImport']);
     $r->post('/:id',                [AcademicsManagementController::class, 'update']);
     // Hide / restore a catalogue row. Separate from update() because that one
     // validates the whole record, so it cannot take a status-only payload —
@@ -71,8 +76,6 @@ $router->group('/api/academics-management/modules', function (Core\Router $r) {
     $r->post('/:id/archive',       [AcademicsManagementController::class, 'archiveModule']);
     $r->post('/:id/restore',       [AcademicsManagementController::class, 'restoreModule']);
     $r->delete('/:id',             [AcademicsManagementController::class, 'delete']);
-    $r->post('/program-import',    [AcademicsManagementController::class, 'programImport']);
-    $r->post('/curriculum-import', [AcademicsManagementController::class, 'curriculumImport']);
     $r->get ('/curriculum-export', [AcademicsManagementController::class, 'curriculumExport']);
 }, [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_MODULES)]);
 
