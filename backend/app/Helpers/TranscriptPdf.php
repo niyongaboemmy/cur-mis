@@ -321,19 +321,17 @@ HTML;
     /* ── level grouping ────────────────────────────────────────────────── */
 
     /**
-     * Split the marks into one sheet per level and semester pair, lowest first.
+     * Split the marks into one sheet per catalogue level, lowest first.
      *
-     * A `levels` row is a level *and* a semester ("Level 8, Semester 3"), so
-     * the sheet is keyed on the level number read from that name, then on the
-     * pair of semesters it falls in (S1–S2, S3–S4, …). Postgraduate diplomas
-     * print two sheets for level 8 this way; an undergraduate level still gets
-     * one sheet per two semesters. A level with no semester in its name gets a
-     * single sheet with no semester list.
+     * A sheet is one `levels` row — the same split the on-screen transcript
+     * shows, so the PDF and the preview always agree. Catalogue rows such as
+     * "Level 8 , Semester (1&2)" and "Level 8 , Semester (3&4)" are two sheets,
+     * and "Level 9" is one. The sheet's number and semesters are read from its
+     * name by {@see sheetInfo()}.
      *
-     * Rows whose level cannot be read are collected under `unclassified` and
-     * printed last on a sheet of their own — the legacy import left a handful of
-     * modules unclassified, and dropping them would silently shorten the
-     * transcript.
+     * Rows with no level are collected under `unclassified` and printed last on
+     * a sheet of their own — the legacy import left a handful of modules
+     * unclassified, and dropping them would silently shorten the transcript.
      *
      * @param  array<int,array<string,mixed>> $rows
      * @return array<string,array<int,array<string,mixed>>>
@@ -342,19 +340,19 @@ HTML;
     {
         $groups = [];
         foreach ($rows as $r) {
-            $p   = self::levelParts($r);
-            $key = $p['level'] === null
-                ? 'unclassified'
-                : $p['level'] . '.' . ($p['sem'] === null ? -1 : intdiv($p['sem'] - 1, 2));
+            $raw = $r['level'] ?? null;
+            $key = ($raw === null || $raw === '') ? 'unclassified' : (string)(int)$raw;
             $groups[$key][] = $r;
         }
 
-        uksort($groups, static function (string $a, string $b): int {
+        // Order sheets by the level and semester their names state, not by the
+        // catalogue id, which is assigned in insertion order.
+        uksort($groups, static function (string $a, string $b) use ($groups): int {
             if ($a === 'unclassified') return 1;
             if ($b === 'unclassified') return -1;
-            [$la, $ba] = array_map('intval', explode('.', $a));
-            [$lb, $bb] = array_map('intval', explode('.', $b));
-            return [$la, $ba] <=> [$lb, $bb];
+            $x = self::sheetInfo($groups[$a]);
+            $y = self::sheetInfo($groups[$b]);
+            return [$x['level'] ?? 999, $x['sems'][0] ?? 999] <=> [$y['level'] ?? 999, $y['sems'][0] ?? 999];
         });
 
         // Within a sheet, the registrar's transcripts list the first
@@ -444,7 +442,7 @@ HTML;
         foreach ($list as $r) {
             $p      = self::levelParts($r);
             $level ??= $p['level'];
-            if ($p['sem'] !== null) $sems[$p['sem']] = true;
+            foreach ($p['sems'] as $s) $sems[$s] = true;
         }
         $sems = array_keys($sems);
         sort($sems, SORT_NUMERIC);
@@ -452,14 +450,15 @@ HTML;
     }
 
     /**
-     * Level number and semester number a row sits at, read from its level name
-     * ("Level 8, Semester 3", "Year 2"). Either is null when the name lacks it.
+     * Level number and semester numbers a row sits at, read from its level name
+     * ("Level 8, Semester 3", "Level 8 , Semester (1&2)", "Year 2"). The level is
+     * null when the name has none; the semesters are empty when it names none.
      *
      * The name comes from the row's `level_name` when the query supplied one,
      * otherwise from the `levels` catalogue via `level`.
      *
      * @param  array<string,mixed> $r
-     * @return array{level: ?int, sem: ?int}
+     * @return array{level: ?int, sems: array<int,int>}
      */
     private static function levelParts(array $r): array
     {
@@ -468,8 +467,15 @@ HTML;
             $name = LevelHelper::name($r['level'] ?? null);
         }
         $lvl = preg_match('/\b(?:level|year)\s*(\d+)/i', $name, $m) ? (int)$m[1] : null;
-        $sem = preg_match('/\bsemester\s*(\d+)/i', $name, $s) ? (int)$s[1] : null;
-        return ['level' => $lvl, 'sem' => $sem];
+
+        // The semester list may be written "Semester 3", "Semester 3&4" or
+        // "Semester (1&2)" — take every digit after the word, not just the first.
+        $sems = [];
+        if (preg_match('/\bsemesters?\s*\(?\s*([\d\s&,\-]+)/i', $name, $s)) {
+            preg_match_all('/\d+/', $s[1], $d);
+            $sems = array_map('intval', $d[0]);
+        }
+        return ['level' => $lvl, 'sems' => $sems];
     }
 
     /** @param array<int,int> $sems */

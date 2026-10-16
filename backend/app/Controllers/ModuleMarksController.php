@@ -1577,6 +1577,16 @@ class ModuleMarksController extends BaseController
 
         $rows = $this->pinRowsToLevelNine($rows, $student);
 
+        // Legacy names were stored HTML-escaped ("I &amp; II"). Decode them
+        // once here so the preview shows "&" and the PDF escapes it exactly
+        // once, instead of printing the entity text.
+        foreach ($rows as &$r) {
+            if (isset($r['module_name'])) {
+                $r['module_name'] = html_entity_decode((string)$r['module_name'], ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            }
+        }
+        unset($r);
+
         return [$rows, $totals, $student];
     }
 
