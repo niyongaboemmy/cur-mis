@@ -269,18 +269,8 @@ const NAV_TREE: NavNode[] = [
     ],
     children: [
       {
-        to: "/hr/staff",
-        label: "All staff",
-        permissions: [PERMISSIONS.VIEW_HR_EMPLOYEES],
-      },
-      {
-        to: "/hr/payroll",
-        label: "Payroll",
-        permissions: [PERMISSIONS.VIEW_PAYROLL, PERMISSIONS.MANAGE_PAYROLL],
-      },
-      {
-        to: "/hr/payments",
-        label: "Salary",
+        to: "/hr/payroll-system",
+        label: "Payroll System",
         permissions: [PERMISSIONS.VIEW_PAYROLL, PERMISSIONS.MANAGE_PAYROLL],
       },
       {
@@ -304,11 +294,6 @@ const NAV_TREE: NavNode[] = [
         to: "/hr/appraisals",
         label: "Appraisals",
         permissions: [PERMISSIONS.VIEW_APPRAISALS, PERMISSIONS.VIEW_HR_EMPLOYEES],
-      },
-      {
-        to: "/hr/settings",
-        label: "Payroll Settings",
-        permissions: [PERMISSIONS.MANAGE_HR_EMPLOYEES],
       },
       {
         to: "/registrar/report",
@@ -1100,6 +1085,10 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
   "/teacher/exams": {
     title: "My Exams",
     sub: "Exam rooms, candidates and attendance",
+  },
+  "/hr/payroll-system": {
+    title: "Payroll System",
+    sub: "Payroll, salary and payroll settings",
   },
   "/hr/payments": {
     title: "Salary Payments",
