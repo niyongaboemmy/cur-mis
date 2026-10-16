@@ -1124,7 +1124,12 @@ class AcademicsManagementController extends BaseController
                     $linksCreated++;
                 }
             } catch (\Throwable $e) {
-                $failed[] = ['index' => $idx, 'error' => $e->getMessage()];
+                $failed[] = [
+                    'index'       => $idx,
+                    'module_code' => $code,
+                    'error'       => $this->friendlyImportError($e),
+                    'detail'      => $e->getMessage(),
+                ];
             }
         }
 
@@ -1133,6 +1138,27 @@ class AcademicsManagementController extends BaseController
             'links'   => ['created' => $linksCreated, 'updated' => $linksUpdated, 'skipped' => $linksSkipped],
             'failed'  => $failed,
         ], 'Modules imported.');
+    }
+
+    /**
+     * Turns a database exception from one import row into a sentence an
+     * administrator can act on. The raw SQL text stays in the row's `detail`
+     * field for support; it is never the main message.
+     */
+    private function friendlyImportError(\Throwable $e): string
+    {
+        $code = $e instanceof \PDOException ? (int)($e->errorInfo[1] ?? 0) : 0;
+
+        return match ($code) {
+            1452 => 'This module could not be linked to the programme because a related record is missing. '
+                  . 'The module catalogue is out of step with the database; ask the system administrator to check the module foreign keys.',
+            1062 => 'This module is already linked to the programme.',
+            1406 => 'A value is too long for its field (for example the module name or code). Shorten it and try again.',
+            1264 => 'A number is outside the allowed range (for example credits, hours or module order).',
+            1048 => 'A required field is empty.',
+            1366 => 'A value has the wrong type (for example text in a number field).',
+            default => 'The database rejected this row. Check the values and try again, or contact support if it keeps failing.',
+        };
     }
 
     /**

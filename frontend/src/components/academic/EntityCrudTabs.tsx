@@ -1371,9 +1371,33 @@ function CrudPanel({ entity, canWrite }: { entity: EntityCfg; canWrite: boolean 
           l.updated ? `${l.updated} updated` : null,
           l.skipped ? `${l.skipped} skipped` : null,
         ].filter(Boolean).join(', ')
-        if (summary) toast.success(`Imported — ${summary}.`)
-        if (failed.length > 0) {
-          toast.error(`${failed.length} row${failed.length === 1 ? '' : 's'} failed — e.g. row ${failed[0].index + 2}: ${failed[0].error}`)
+        const imported = m.created + m.updated + l.created + l.updated
+        if (failed.length === 0) {
+          if (summary) toast.success(`Imported — ${summary}.`)
+        } else {
+          // Rows are saved one at a time, so a failure does not undo the rows
+          // before it. Say both counts, then list the failed rows in plain words.
+          const shown = failed.slice(0, 5)
+          toast.error(
+            <div className="space-y-1.5">
+              <p className="font-semibold">
+                {imported > 0 ? `${imported} saved, ` : ''}
+                {failed.length} row{failed.length === 1 ? '' : 's'} could not be imported
+              </p>
+              <ul className="list-disc pl-4 space-y-0.5 text-sm">
+                {shown.map((f) => (
+                  <li key={f.index}>
+                    <span className="font-medium">Row {f.index + 2}{f.module_code ? ` (${f.module_code})` : ''}:</span>{' '}
+                    {f.error}
+                  </li>
+                ))}
+              </ul>
+              {failed.length > shown.length && (
+                <p className="text-sm">…and {failed.length - shown.length} more.</p>
+              )}
+            </div>,
+            { duration: 12000 },
+          )
         }
         invalidate()
         return
@@ -1402,7 +1426,12 @@ function CrudPanel({ entity, canWrite }: { entity: EntityCfg; canWrite: boolean 
       }
       invalidate()
     } catch (e: any) {
-      toast.error(e?.response?.data?.message ?? 'Import failed')
+      // Server message first; otherwise say what kind of failure it was.
+      const serverMessage = e?.response?.data?.message
+      const reason = !e?.response
+        ? 'Could not reach the server. Check your connection and try again.'
+        : 'The server could not complete the import. Rows already saved stay saved; reload the list before retrying.'
+      toast.error(serverMessage || reason, { duration: 10000 })
     } finally {
       setImporting(false)
     }
