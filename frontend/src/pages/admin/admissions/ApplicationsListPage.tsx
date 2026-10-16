@@ -740,7 +740,7 @@ export default function ApplicationsListPage() {
       {/* Bank Slip Modal */}
       {showBankSlipModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 dark:bg-black/70 backdrop-blur-sm p-4 animate-in fade-in">
-          <div className="w-[90%] max-w-5xl h-[85vh] max-h-[85vh] bg-white dark:bg-ink-900 rounded-xl shadow-2xl flex flex-col animate-in zoom-in-95">
+          <div className="w-full h-full bg-white dark:bg-ink-900 rounded-xl shadow-2xl flex flex-col animate-in zoom-in-95">
             {/* Modal Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-ink-100 dark:border-ink-800 shrink-0">
               <div className="flex items-center gap-3">
@@ -766,7 +766,7 @@ export default function ApplicationsListPage() {
             <div className="flex-1 overflow-hidden bg-white dark:bg-ink-950">
               <iframe
                 src="https://cur.ac.rw/umis/finance/bank_slip/index.php?tab=registrar"
-                className="w-full h-full border-none"
+                className="block w-full h-full border-0 bg-white"
                 title="Bank Slip Portal"
               />
             </div>

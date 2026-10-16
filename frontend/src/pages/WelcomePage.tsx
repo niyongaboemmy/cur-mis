@@ -618,7 +618,7 @@ export default function WelcomePage() {
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="bg-white dark:bg-ink-950 rounded-xl shadow-2xl w-full h-[90vh] flex flex-col max-w-[80%]"
+            className="bg-white dark:bg-ink-950 rounded-xl shadow-2xl w-full h-full flex flex-col"
           >
             {/* Modal Header */}
             <div className="flex items-center justify-between p-6 border-b border-ink-200 dark:border-ink-800">
@@ -638,7 +638,7 @@ export default function WelcomePage() {
               <iframe
                 src="https://cur.ac.rw/umis/documents/"
                 title="University Documents"
-                className="w-full h-full border-0"
+                className="block w-full h-full border-0 bg-white"
               />
             </div>
           </motion.div>
@@ -652,7 +652,7 @@ export default function WelcomePage() {
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="bg-white dark:bg-ink-950 rounded-xl shadow-2xl w-full h-[90vh] flex flex-col max-w-[80%]"
+            className="bg-white dark:bg-ink-950 rounded-xl shadow-2xl w-full h-full flex flex-col"
           >
             {/* Modal Header */}
             <div className="flex items-center justify-between p-6 border-b border-ink-200 dark:border-ink-800">
@@ -672,7 +672,7 @@ export default function WelcomePage() {
               <iframe
                 src="https://cur.ac.rw/umis/documents/registrar_report/index.php"
                 title="Academic Reports"
-                className="w-full h-full border-0"
+                className="block w-full h-full border-0 bg-white"
               />
             </div>
           </motion.div>
@@ -686,7 +686,7 @@ export default function WelcomePage() {
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="bg-white dark:bg-ink-950 rounded-xl shadow-2xl w-full h-[90vh] flex flex-col"
+            className="bg-white dark:bg-ink-950 rounded-xl shadow-2xl w-full h-full flex flex-col"
             style={{ maxWidth: "97vw" }}
           >
             {/* Modal Header */}
@@ -707,7 +707,7 @@ export default function WelcomePage() {
               <iframe
                 src="https://cur.ac.rw/umis/finance/billing/student/login.php"
                 title="Student Finance Portal"
-                className="w-full h-full border-0"
+                className="block w-full h-full border-0 bg-white"
                 allow="same-origin"
               />
             </div>
@@ -1078,7 +1078,7 @@ function ApplicantWelcome({ firstName }: { firstName: string }) {
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="bg-white dark:bg-ink-950 rounded-xl shadow-2xl w-full h-[90vh] flex flex-col"
+            className="bg-white dark:bg-ink-950 rounded-xl shadow-2xl w-full h-full flex flex-col"
             style={{ maxWidth: "97%" }}
           >
             {/* Modal Header */}
@@ -1099,7 +1099,7 @@ function ApplicantWelcome({ firstName }: { firstName: string }) {
               <iframe
                 src="https://cur.ac.rw/umis/finance/billing/student/login.php"
                 title="Fee Billing Help"
-                className="w-full h-full border-0"
+                className="block w-full h-full border-0 bg-white"
               />
             </div>
           </motion.div>

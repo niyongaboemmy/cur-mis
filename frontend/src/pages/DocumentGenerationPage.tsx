@@ -36,7 +36,7 @@ export default function DocumentGenerationPage() {
           <iframe
             src="https://cur.ac.rw/umis/documents/"
             title="CUR Documents Portal"
-            className="w-full h-full flex-1 border-0"
+            className="block w-full h-full flex-1 border-0 bg-white"
             style={{ minHeight: "calc(100vh - 200px)" }}
           />
         </div>

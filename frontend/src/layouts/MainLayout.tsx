@@ -1670,7 +1670,7 @@ export default function MainLayout() {
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="w-[calc(100vw-1rem)] h-[calc(100vh-2rem)] max-h-[95vh] sm:w-[calc(100vw-2rem)] sm:max-w-[98vw] bg-white dark:bg-ink-800 rounded-lg shadow-2xl flex flex-col"
+              className="w-full h-full bg-white dark:bg-ink-800 rounded-lg shadow-2xl flex flex-col"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Modal header */}
@@ -1691,7 +1691,7 @@ export default function MainLayout() {
               <div className="flex-1 overflow-hidden">
                 <iframe
                   src="https://cur.ac.rw/umis/documents/registrar_report/campus_statistics.php"
-                  className="w-full h-full border-0"
+                  className="block w-full h-full border-0 bg-white"
                   title="Campus Statistics"
                 />
               </div>
@@ -1714,7 +1714,7 @@ export default function MainLayout() {
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="w-[calc(100vw-1rem)] h-[calc(100vh-2rem)] max-h-[95vh] sm:w-[calc(100vw-2rem)] sm:max-w-[98vw] bg-white dark:bg-ink-800 rounded-lg shadow-2xl flex flex-col"
+              className="w-full h-full bg-white dark:bg-ink-800 rounded-lg shadow-2xl flex flex-col"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Modal header */}
@@ -1735,7 +1735,7 @@ export default function MainLayout() {
               <div className="flex-1 overflow-hidden">
                 <iframe
                   src="https://cur.ac.rw/umis/documents/registrar_report/index.php"
-                  className="w-full h-full border-0"
+                  className="block w-full h-full border-0 bg-white"
                   title="Support & Reporting"
                 />
               </div>
