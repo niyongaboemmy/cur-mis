@@ -255,7 +255,7 @@ export const academicsMgmtService = {
     api.post<{
       modules: { created: number; updated: number }
       links:   { created: number; updated: number; skipped: number }
-      failed:  Array<{ index: number; error: string }>
+      failed:  Array<{ index: number; module_code?: string; error: string; detail?: string }>
     }>(`/api/academics-management/modules/program-import`, body),
 
   /**
