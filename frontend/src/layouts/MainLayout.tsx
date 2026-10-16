@@ -1308,6 +1308,23 @@ export default function MainLayout() {
   const [campusStatisticsOpen, setCampusStatisticsOpen] = useState(false);
   const [supportReportingOpen, setSupportReportingOpen] = useState(false);
 
+  // Campus Statistics and Support & Reporting render inside the content column
+  // (under the top bar, beside the sidebar), like the Payroll System page.
+  const embedded = campusStatisticsOpen
+    ? { title: "Campus Statistics", src: "https://cur.ac.rw/umis/documents/registrar_report/campus_statistics.php" }
+    : supportReportingOpen
+      ? { title: "Support & Reporting", src: "https://cur.ac.rw/umis/documents/registrar_report/index.php" }
+      : null;
+  const closeEmbedded = () => {
+    setCampusStatisticsOpen(false);
+    setSupportReportingOpen(false);
+  };
+  // Navigating to another page should leave the embedded panel.
+  useEffect(() => {
+    setCampusStatisticsOpen(false);
+    setSupportReportingOpen(false);
+  }, [location.pathname]);
+
   const initiallyOpen = useMemo<Set<string>>(() => {
     const set = new Set<string>();
     for (const node of [...NAV_TREE, ...ADMIN_TREE]) {
@@ -1649,101 +1666,36 @@ export default function MainLayout() {
           // background before they stuck.
           className="flex-1 overflow-y-auto px-5 sm:px-6 lg:px-8 pb-6"
         >
-          <Outlet />
+          {embedded ? (
+            <div className="-mx-5 sm:-mx-6 lg:-mx-8 -mb-6 h-full flex flex-col bg-white dark:bg-ink-800">
+              <div className="flex items-center justify-between px-5 sm:px-6 py-3 border-b border-ink-200 dark:border-ink-700 shrink-0">
+                <h2 className="text-lg font-semibold text-ink-900 dark:text-white">
+                  {embedded.title}
+                </h2>
+                <button
+                  onClick={closeEmbedded}
+                  className="p-1 rounded-lg hover:bg-ink-100 dark:hover:bg-ink-700 text-ink-500 hover:text-ink-900 dark:hover:text-white transition-colors"
+                  aria-label="Close"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <iframe
+                src={embedded.src}
+                title={embedded.title}
+                className="block w-full flex-1 min-h-0 border-0 bg-white"
+              />
+            </div>
+          ) : (
+            <Outlet />
+          )}
         </motion.main>
       </div>
 
       {/* AiChatWidget hidden until ANTHROPIC_API_KEY is active */}
       {/* <AiChatWidget /> */}
 
-      {/* Campus Statistics Modal */}
-      <AnimatePresence>
-        {campusStatisticsOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-ink-900/50 backdrop-blur-sm flex items-center justify-center p-0.5 sm:p-1"
-            onClick={() => setCampusStatisticsOpen(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="w-full h-full bg-white dark:bg-ink-800 rounded-lg shadow-2xl flex flex-col"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Modal header */}
-              <div className="flex items-center justify-between p-4 border-b border-ink-200 dark:border-ink-700">
-                <h2 className="text-lg font-semibold text-ink-900 dark:text-white">
-                  Campus Statistics
-                </h2>
-                <button
-                  onClick={() => setCampusStatisticsOpen(false)}
-                  className="p-1 rounded-lg hover:bg-ink-100 dark:hover:bg-ink-700 text-ink-500 hover:text-ink-900 dark:hover:text-white transition-colors"
-                  aria-label="Close modal"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-
-              {/* Modal body with iframe */}
-              <div className="flex-1 overflow-hidden">
-                <iframe
-                  src="https://cur.ac.rw/umis/documents/registrar_report/campus_statistics.php"
-                  className="block w-full h-full border-0 bg-white"
-                  title="Campus Statistics"
-                />
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Support & Reporting Modal */}
-      <AnimatePresence>
-        {supportReportingOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-ink-900/50 backdrop-blur-sm flex items-center justify-center p-0.5 sm:p-1"
-            onClick={() => setSupportReportingOpen(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="w-full h-full bg-white dark:bg-ink-800 rounded-lg shadow-2xl flex flex-col"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Modal header */}
-              <div className="flex items-center justify-between p-4 border-b border-ink-200 dark:border-ink-700">
-                <h2 className="text-lg font-semibold text-ink-900 dark:text-white">
-                  Support & Reporting
-                </h2>
-                <button
-                  onClick={() => setSupportReportingOpen(false)}
-                  className="p-1 rounded-lg hover:bg-ink-100 dark:hover:bg-ink-700 text-ink-500 hover:text-ink-900 dark:hover:text-white transition-colors"
-                  aria-label="Close modal"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-
-              {/* Modal body with iframe */}
-              <div className="flex-1 overflow-hidden">
-                <iframe
-                  src="https://cur.ac.rw/umis/documents/registrar_report/index.php"
-                  className="block w-full h-full border-0 bg-white"
-                  title="Support & Reporting"
-                />
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-      </div>
+            </div>
     </div>
   );
 }
