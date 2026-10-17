@@ -247,8 +247,37 @@ export default function AdmissionFeesPanel({
     )
   }
 
+  // Priced fee types that have no bill yet (e.g. Registration added after CURSU
+  // was already billed). Without this the validator has no way to raise them.
+  const unbilledPriced = (data.billable ?? []).filter(
+    (b) => b.amount !== null && !bills.some((x) => x.fee_type === b.fee_type),
+  )
+
   return (
     <section className={`card p-6 space-y-5 ${className}`}>
+      {isValidator && canManage && unbilledPriced.length > 0 && (
+        <div className="rounded-2xl border-2 border-blue-500 bg-blue-50 dark:bg-blue-950/30 p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="flex-1">
+            <p className="text-[15px] font-black text-blue-900 dark:text-blue-100 uppercase tracking-tight">
+              Action needed: bill {unbilledPriced.map((b) => b.label).join(' and ')}
+            </p>
+            <p className="text-[12px] text-blue-800 dark:text-blue-200 mt-1">
+              {unbilledPriced.map((b) => `${b.label}: ${fmt(b.amount as number)} ${b.currency}`).join(' · ')}.
+              The applicant is emailed and notified straight away.
+            </p>
+          </div>
+          <button
+            className="btn-primary w-full sm:w-auto px-8 py-4 text-[16px] font-black shadow-lg"
+            disabled={raiseBills.isPending}
+            onClick={() => raiseBills.mutate()}
+          >
+            {raiseBills.isPending
+              ? <><Loader2 className="w-5 h-5 animate-spin" /> Billing…</>
+              : <><ReceiptText className="w-5 h-5" /> Bill applicant</>}
+          </button>
+        </div>
+      )}
+
       {/* Unpaid Amount Alert for Applicants */}
       {!isValidator && summary && summary.balance > 0 && (
         <div className="p-4 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
