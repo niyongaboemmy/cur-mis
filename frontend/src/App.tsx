@@ -45,6 +45,7 @@ import HRImportExportPage from "@/pages/hr/HRImportExportPage";
 import SupervisorLeaveApprovalDashboard from "@/pages/hr/SupervisorLeaveApprovalDashboard";
 import PayrollManagementPage from "@/pages/hr/PayrollManagementPage";
 import PayrollPhpPage from "@/pages/hr/PayrollPhpPage";
+import LeavePhpPage from "@/pages/hr/LeavePhpPage";
 import ContractManagementPage from "@/pages/hr/ContractManagementPage";
 import HrMonitoringDashboard from "@/pages/hr/HrMonitoringDashboard";
 import PerformanceMonitoringPage from "@/pages/hr/PerformanceMonitoringPage";
@@ -441,6 +442,7 @@ function App() {
                 }
               >
                 <Route path="/hr/leave" element={<LeavePage />} />
+                <Route path="/hr/leave-system" element={<LeavePhpPage />} />
               </Route>
 
               {/* ── Leave approvals — the reviewer's own stage queue. Gated on
