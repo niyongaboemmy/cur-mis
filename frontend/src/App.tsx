@@ -37,7 +37,6 @@ import MyPayrollPage from "@/pages/hr/MyPayrollPage";
 import PaymentsPage from "@/pages/hr/PaymentsPage";
 import HrSettingsPage from "@/pages/hr/HrSettingsPage";
 import LeavePage from "@/pages/hr/LeavePage";
-import MyLeavePage from "@/pages/hr/MyLeavePage";
 import LeaveApprovalQueuePage from "@/pages/hr/LeaveApprovalQueuePage";
 import NotificationsPage from "@/pages/NotificationsPage";
 import AppraisalPage from "@/pages/hr/AppraisalPage";
@@ -486,16 +485,8 @@ function App() {
                   the only gate; no permission grants access to anyone else's. ── */}
               <Route path="/notifications" element={<NotificationsPage />} />
 
-              {/* ── Staff self-service: leave ── */}
-              <Route
-                element={
-                  <ProtectedRoute
-                    requiredPermissions={PERMISSIONS.REQUEST_LEAVE}
-                  />
-                }
-              >
-                <Route path="/me/leave" element={<MyLeavePage />} />
-              </Route>
+              {/* ── Staff self-service: leave — same PHP leave app as HR → Leave ── */}
+              <Route path="/me/leave" element={<LeavePhpPage />} />
 
               {/* ── Teacher (lecturer) self-service portal ──
                   Gated on ACCESS_TEACHER_PORTAL, NOT VIEW_MY_MODULES — the

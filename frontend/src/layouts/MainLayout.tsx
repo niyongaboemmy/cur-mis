@@ -204,13 +204,12 @@ const NAV_TREE: NavNode[] = [
     hideForRoles: ["student", "applicant"],
   },
   {
-    // Self-service leave — any staff member with REQUEST_LEAVE can file and
-    // track their own leave requests. Hidden from students/applicants.
+    // Self-service leave — opens the same PHP leave app as HR → Leave, for every
+    // staff account. Hidden from students/applicants.
     id: "my-leave",
     label: "My Leave",
     icon: CalendarDays,
     to: "/me/leave",
-    permissions: [PERMISSIONS.REQUEST_LEAVE],
     hideForRoles: ["student", "applicant"],
   },
   {
