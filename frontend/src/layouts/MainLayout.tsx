@@ -284,20 +284,13 @@ const NAV_TREE: NavNode[] = [
         permissions: [PERMISSIONS.VIEW_PAYROLL, PERMISSIONS.MANAGE_PAYROLL],
       },
       {
-        to: "/hr/leave",
+        to: "/hr/leave-system",
         label: "Leave",
         permissions: [
           PERMISSIONS.VIEW_HR_EMPLOYEES,
           PERMISSIONS.VIEW_LEAVE_REQUESTS,
           PERMISSIONS.MANAGE_LEAVE_REQUESTS,
-        ],
-      },
-      {
-        to: "/hr/leave/approvals",
-        label: "Leave Approvals",
-        permissions: [
           ...LEAVE_STAGE_PERMISSIONS,
-          PERMISSIONS.MANAGE_LEAVE_REQUESTS,
         ],
       },
       {
@@ -1104,6 +1097,10 @@ const ROUTE_TITLES: Record<string, { title: string; sub?: string }> = {
   "/hr/payments": {
     title: "Salary Payments",
     sub: "Disbursement history and payment records",
+  },
+  "/hr/leave-system": {
+    title: "Leave",
+    sub: "Leave requests, approvals and balances",
   },
   "/hr/leave": {
     title: "Leave Management",
