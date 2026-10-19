@@ -44,5 +44,11 @@ class AuthMiddleware
         }
 
         $request->setRouteParams(['_auth_user' => $user]);
+
+        // Dean / HOD accounts: refuse areas outside their faculty or department.
+        $refusal = \App\Services\AcademicScopeGate::refusal($user, $request->method(), $request->uri(), $request->body());
+        if ($refusal !== null) {
+            ResponseHelper::json(['success' => false, 'message' => $refusal['message']], $refusal['status']);
+        }
     }
 }

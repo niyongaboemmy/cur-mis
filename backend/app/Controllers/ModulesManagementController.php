@@ -6,6 +6,7 @@ namespace App\Controllers;
 
 use Core\Request;
 use Core\Response;
+use App\Services\AcademicScopeService;
 use App\Models\ModuleModel;
 use App\Models\ModulePrerequisiteModel;
 use App\Models\ModuleAssignmentModel;
@@ -72,6 +73,18 @@ class ModulesManagementController extends BaseController
             'status'     => $request->query('status'),
             'q'          => $request->query('q'),
         ];
+        // Dean / HOD: only modules in their departments.
+        $scopeDeps = AcademicScopeService::scopeDepartmentIds((array)($request->param('_auth_user') ?? []));
+        if ($scopeDeps !== null) {
+            $requested = $request->query('department');
+            $filters['department'] = null;
+            $filters['departments'] = ($requested && in_array((int)$requested, $scopeDeps, true))
+                ? [(int)$requested]
+                : ($scopeDeps ?: [-1]);
+            if ($requested && !in_array((int)$requested, $scopeDeps, true)) {
+                $filters['departments'] = [-1];
+            }
+        }
 
         $paginated = $this->modules->listWithPrereqs($page, $perPage, $filters);
         $this->success($response, $paginated, 'Modules fetched.');
@@ -182,6 +195,8 @@ class ModulesManagementController extends BaseController
             'module_id' => $request->query('module_id'),
             'room_id'   => $request->query('room_id'),
             'staff_id'  => $request->query('staff_id'),
+            // Dean / HOD: only schedules for modules in their departments (null = unrestricted).
+            'department_ids' => AcademicScopeService::scopeDepartmentIds((array)($request->param('_auth_user') ?? [])),
         ];
         $this->success($response, $this->schedules->listWithJoins($filters), 'Schedules fetched.');
     }
@@ -408,6 +423,8 @@ class ModulesManagementController extends BaseController
             'module_id' => $request->query('module_id'),
             'regnumber' => $request->query('regnumber'),
             'status'    => $request->query('status'),
+            // Dean / HOD: only registrations in their departments (null = unrestricted).
+            'department_ids' => AcademicScopeService::scopeDepartmentIds((array)($request->param('_auth_user') ?? [])),
         ];
         $this->success($response, $this->registrations->listWithJoins($filters), 'Registrations fetched.');
     }

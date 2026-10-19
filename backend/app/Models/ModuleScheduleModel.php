@@ -40,7 +40,17 @@ class ModuleScheduleModel extends BaseModel
             $bindings[] = (int)$filters['staff_id'];
         }
 
-        $whereSql = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
+        // Dean / HOD: limit to modules in their departments (null = unrestricted).
+        if (isset($filters["department_ids"]) && is_array($filters["department_ids"])) {
+            if ($filters["department_ids"] === []) {
+                $where[] = "1 = 0";
+            } else {
+                $ph = implode(",", array_fill(0, count($filters["department_ids"]), "?"));
+                $where[] = "m.department IN ({$ph})";
+                foreach ($filters["department_ids"] as $dep) { $bindings[] = (int)$dep; }
+            }
+        }
+        $whereSql = $where ? ("WHERE " . implode(" AND ", $where)) : "";
 
         return $this->db->fetchAll(
             "SELECT ms.*,
