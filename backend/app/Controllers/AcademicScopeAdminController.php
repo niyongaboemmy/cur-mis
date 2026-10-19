@@ -190,6 +190,104 @@ class AcademicScopeAdminController extends BaseController
         $this->success($response, ['unit_id' => $unitId, 'count' => count($wanted)], 'Staff saved.');
     }
 
+    /** GET — requests waiting for a decision, with the unit they would take over. */
+    public function listRequests(Request $request, Response $response): never
+    {
+        $status = (string)($request->query('status') ?? 'pending');
+        if (!in_array($status, ['pending', 'approved', 'rejected'], true)) {
+            $status = 'pending';
+        }
+
+        $rows = Database::getInstance()->fetchAll(
+            "SELECT r.id, r.user_id, r.fac_id, r.dep_id, r.status, r.requested_at, r.decision_note,
+                    u.full_name, u.username, u.role_id,
+                    f.fac_name, d.dep_name,
+                    l.unit_id, ou.name AS unit_name, ou.head_user_id AS unit_head_id, hu.full_name AS unit_head_name
+               FROM academic_scope_requests r
+               JOIN users u ON u.id = r.user_id
+               LEFT JOIN faculty f ON f.fac_id = r.fac_id
+               LEFT JOIN departements d ON d.dep_id = r.dep_id
+               LEFT JOIN leave_org_unit_academic_links l
+                      ON (r.fac_id IS NOT NULL AND l.fac_id = r.fac_id)
+                      OR (r.dep_id IS NOT NULL AND l.dep_id = r.dep_id)
+               LEFT JOIN leave_org_units ou ON ou.id = l.unit_id
+               LEFT JOIN users hu ON hu.id = ou.head_user_id
+              WHERE r.status = ?
+              ORDER BY r.requested_at ASC, r.id ASC",
+            [$status]
+        );
+
+        $this->success($response, $rows);
+    }
+
+    /**
+     * POST — approve a request: the requester becomes head of the org unit linked
+     * to the requested faculty or department. Any previous head is replaced and
+     * recorded in the audit log.
+     */
+    public function approveRequest(Request $request, Response $response): never
+    {
+        $requestId = (int)$request->param('id');
+        $db        = Database::getInstance();
+        $req       = $db->fetchOne('SELECT * FROM academic_scope_requests WHERE id = ?', [$requestId]);
+        if (!$req) {
+            $this->error($response, 'Request not found.', 404);
+        }
+        if ($req['status'] !== 'pending') {
+            $this->error($response, 'This request has already been decided.', 409);
+        }
+
+        $unit = $req['fac_id'] !== null
+            ? $db->fetchOne('SELECT unit_id FROM leave_org_unit_academic_links WHERE fac_id = ? LIMIT 1', [(int)$req['fac_id']])
+            : $db->fetchOne('SELECT unit_id FROM leave_org_unit_academic_links WHERE dep_id = ? LIMIT 1', [(int)$req['dep_id']]);
+        if (!$unit) {
+            $this->error($response, 'No organisation unit is linked to this faculty or department yet. Link it on the Academic Scope page first.', 422);
+        }
+        $unitId = (int)$unit['unit_id'];
+        $prev   = $db->fetchOne('SELECT head_user_id FROM leave_org_units WHERE id = ?', [$unitId]);
+        $actor  = (int)(((array)($request->param('_auth_user') ?? []))['id'] ?? 0);
+
+        $db->execute('UPDATE leave_org_units SET head_user_id = ? WHERE id = ?', [(int)$req['user_id'], $unitId]);
+        $db->execute(
+            "UPDATE academic_scope_requests SET status = 'approved', decided_by = ?, decided_at = NOW() WHERE id = ?",
+            [$actor ?: null, $requestId]
+        );
+
+        $this->audit($request, 'academic_link', $unitId, 'request_approved', [
+            'request_id'        => $requestId,
+            'user_id'           => (int)$req['user_id'],
+            'previous_head_id'  => $prev['head_user_id'] ?? null,
+        ]);
+        $this->success($response, ['request_id' => $requestId, 'unit_id' => $unitId], 'Request approved.');
+    }
+
+    /** POST — reject a request. Body: { note?: string }. */
+    public function rejectRequest(Request $request, Response $response): never
+    {
+        $requestId = (int)$request->param('id');
+        $db        = Database::getInstance();
+        $req       = $db->fetchOne('SELECT id, status, user_id FROM academic_scope_requests WHERE id = ?', [$requestId]);
+        if (!$req) {
+            $this->error($response, 'Request not found.', 404);
+        }
+        if ($req['status'] !== 'pending') {
+            $this->error($response, 'This request has already been decided.', 409);
+        }
+
+        $note  = mb_substr(trim((string)$request->input('note', '')), 0, 255) ?: null;
+        $actor = (int)(((array)($request->param('_auth_user') ?? []))['id'] ?? 0);
+        $db->execute(
+            "UPDATE academic_scope_requests SET status = 'rejected', decided_by = ?, decided_at = NOW(), decision_note = ? WHERE id = ?",
+            [$actor ?: null, $note, $requestId]
+        );
+
+        $this->audit($request, 'academic_request', $requestId, 'request_rejected', [
+            'user_id' => (int)$req['user_id'],
+            'note'    => $note,
+        ]);
+        $this->success($response, ['request_id' => $requestId], 'Request rejected.');
+    }
+
     private function unitExists(int $unitId): bool
     {
         return (bool) Database::getInstance()->fetchOne('SELECT id FROM leave_org_units WHERE id = ?', [$unitId]);

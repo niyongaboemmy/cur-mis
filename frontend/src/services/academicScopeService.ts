@@ -40,7 +40,43 @@ export interface ScopeMember {
 }
 
 // Writes go through POST: the production WAF and the API client send PUT as POST.
+export interface ScopeRequest {
+  id: number
+  user_id?: number
+  full_name?: string
+  username?: string
+  fac_id: number | null
+  dep_id: number | null
+  fac_name?: string | null
+  dep_name?: string | null
+  status: 'pending' | 'approved' | 'rejected'
+  requested_at: string
+  decision_note?: string | null
+  unit_id?: number | null
+  unit_name?: string | null
+  unit_head_name?: string | null
+}
+
 export const academicScopeService = {
+  // Own scope and choose / waiting state (any signed-in user).
+  options: () =>
+    api.get<{ faculties: { fac_id: number; fac_name: string }[]; departments: { dep_id: number; dep_name: string; fac_id: number | null }[] }>(
+      '/api/academic-scope/options',
+    ),
+
+  requestScope: (body: { fac_id?: number; dep_id?: number }) =>
+    api.post<ScopeRequest>('/api/academic-scope/requests', body),
+
+  // Admin: approvals.
+  requests: (status: 'pending' | 'approved' | 'rejected' = 'pending') =>
+    api.get<ScopeRequest[]>('/api/academic-scope/admin/requests', { status }),
+
+  approve: (requestId: number) =>
+    api.post(`/api/academic-scope/admin/requests/${requestId}/approve`, {}),
+
+  reject: (requestId: number, note?: string) =>
+    api.post(`/api/academic-scope/admin/requests/${requestId}/reject`, { note: note ?? '' }),
+
   overview: () =>
     api.get<ScopeOverview>('/api/academic-scope/admin/overview'),
 
