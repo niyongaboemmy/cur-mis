@@ -291,6 +291,17 @@ class StudentController extends BaseController
 
         $this->applyFilterableClauses($request, $clauses, $bindings, $alias, $except);
 
+        // Dean / HOD: every list, export and facet count is limited to their
+        // faculty or department. Superadmin and unscoped users get no extra clause.
+        $deptCond = AcademicScopeService::departmentCondition(
+            AcademicScopeService::forUser((array)($request->param('_auth_user') ?? [])),
+            $p . 'department'
+        );
+        if ($deptCond !== null) {
+            $clauses[] = $deptCond[0];
+            $bindings  = array_merge($bindings, $deptCond[1]);
+        }
+
         $where = $clauses ? implode(' AND ', $clauses) : '';
         return [$where, $bindings];
     }
@@ -430,14 +441,8 @@ class StudentController extends BaseController
         $page    = (int)($request->query('page') ?? 1);
         $perPage = (int)($request->query('per_page') ?? 15);
 
+        // Dean / HOD scope is applied inside buildListFilters.
         [$where, $bindings] = $this->buildListFilters($request);
-
-        // Dean / HOD: only students in their faculty or department.
-        $scope = AcademicScopeService::forUser((array)($request->param('_auth_user') ?? []));
-        if (($deptCond = AcademicScopeService::departmentCondition($scope, 'department')) !== null) {
-            $where     = $where === '' ? $deptCond[0] : "({$where}) AND {$deptCond[0]}";
-            $bindings  = array_merge($bindings, $deptCond[1]);
-        }
 
         $paginated = $this->paginateStudents($request, $page, $perPage, $where, $bindings);
 
@@ -5553,6 +5558,16 @@ class StudentController extends BaseController
         if ($studentState !== '' && $studentState !== 'all') {
             $clauses[]  = "LOWER(TRIM(s.student_state)) = ?";
             $bindings[] = $studentState;
+        }
+
+        // Dean / HOD: international students in their faculty or department only.
+        $deptCond = AcademicScopeService::departmentCondition(
+            AcademicScopeService::forUser((array)($request->param('_auth_user') ?? [])),
+            's.department'
+        );
+        if ($deptCond !== null) {
+            $clauses[] = $deptCond[0];
+            $bindings  = array_merge($bindings, $deptCond[1]);
         }
 
         return [implode(' AND ', $clauses), $bindings];
