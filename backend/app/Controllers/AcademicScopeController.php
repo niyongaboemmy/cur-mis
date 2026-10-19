@@ -44,6 +44,7 @@ class AcademicScopeController extends BaseController
         $this->success($response, [
             'faculties'   => $db->fetchAll('SELECT fac_id, fac_name FROM faculty ORDER BY fac_name'),
             'departments' => $db->fetchAll('SELECT dep_id, dep_name, fac_id FROM departements ORDER BY dep_name'),
+            'options'     => $db->fetchAll('SELECT id, name, department_id FROM options WHERE is_active = 1 OR is_active IS NULL ORDER BY name'),
         ]);
     }
 

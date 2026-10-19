@@ -57,12 +57,54 @@ export interface ScopeRequest {
   unit_head_name?: string | null
 }
 
+export interface ScopeLecturer {
+  user_id: number
+  full_name: string
+  username: string
+  fac_id: number | null
+  dep_id: number | null
+  option_id: number | null
+  fac_name: string | null
+  dep_name: string | null
+  option_name: string | null
+}
+
+export interface ScopeStudentRow {
+  regnumber: string
+  status: string
+  grade: string | null
+  module_id: number
+  module_code: string
+  module_name: string
+  term_label: string
+  fname: string | null
+  lname: string | null
+}
+
 export const academicScopeService = {
   // Own scope and choose / waiting state (any signed-in user).
   options: () =>
-    api.get<{ faculties: { fac_id: number; fac_name: string }[]; departments: { dep_id: number; dep_name: string; fac_id: number | null }[] }>(
-      '/api/academic-scope/options',
-    ),
+    api.get<{
+      faculties: { fac_id: number; fac_name: string }[]
+      departments: { dep_id: number; dep_name: string; fac_id: number | null }[]
+      options: { id: number; name: string; department_id: number }[]
+    }>('/api/academic-scope/options'),
+
+  // Lecturer placement: admin (all) or Dean / HOD (their scope).
+  lecturers: () =>
+    api.get<ScopeLecturer[]>('/api/academic-scope/lecturers'),
+
+  placeLecturer: (userId: number, body: { fac_id?: number | null; dep_id?: number | null; option_id?: number | null }) =>
+    api.post(`/api/academic-scope/lecturers/${userId}/placement`, body),
+
+  // Lecturer: students in my modules for one academic year (default: current year).
+  myStudents: (academicYearId?: number) =>
+    api.get<{
+      years: { id: number; label: string; is_current: number }[]
+      academic_year_id: number
+      modules: { module_id: number; module_code: string; module_name: string }[]
+      students: ScopeStudentRow[]
+    }>('/api/academic-scope/my-students', academicYearId ? { academic_year_id: academicYearId } : {}),
 
   requestScope: (body: { fac_id?: number; dep_id?: number }) =>
     api.post<ScopeRequest>('/api/academic-scope/requests', body),
