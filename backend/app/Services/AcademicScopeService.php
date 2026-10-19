@@ -17,6 +17,12 @@ use Core\Database;
  */
 final class AcademicScopeService
 {
+    /**
+     * Role names (lower-case) that are always scoped. Add a role name here when
+     * a new Dean or HOD role is created.
+     */
+    public const SCOPED_ROLES = ['dean', 'hod', 'head of department', 'dean of faculty'];
+
     /** @var array<int, array{level:string,faculty_ids:int[],department_ids:int[],unit_ids:int[]}|null> */
     private static array $cache = [];
 
@@ -34,9 +40,22 @@ final class AcademicScopeService
             return null;
         }
         if (!array_key_exists($userId, self::$cache)) {
-            self::$cache[$userId] = self::resolve($userId);
+            $scope = self::resolve($userId);
+            // Fail closed: a Dean / HOD account with no approved link sees nothing
+            // until an admin approves its faculty or department.
+            if ($scope === null && self::hasScopedRole($authUser)) {
+                $scope = ['level' => 'none', 'faculty_ids' => [], 'department_ids' => [], 'unit_ids' => []];
+            }
+            self::$cache[$userId] = $scope;
         }
         return self::$cache[$userId];
+    }
+
+    /** True for accounts whose role must be scoped (matched case-insensitively). */
+    public static function hasScopedRole(array $authUser): bool
+    {
+        $role = strtolower(trim((string)($authUser['role'] ?? $authUser['role_name'] ?? '')));
+        return in_array($role, self::SCOPED_ROLES, true);
     }
 
     /**

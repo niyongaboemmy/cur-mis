@@ -45,6 +45,7 @@ import Logo from "@/components/brand/Logo";
 // import AiChatWidget from "@/components/layout/AiChatWidget"; // re-enable when ANTHROPIC_API_KEY is set
 import { useCurrentUser } from "@/hooks/useAuth";
 import { useAcademicScope } from "@/hooks/useAcademicScope";
+import ScopeGate from "@/components/layout/ScopeGate";
 import { useSystemBasics } from "@/hooks/useSystemBasics";
 
 import {
@@ -1387,7 +1388,7 @@ export default function MainLayout() {
   );
 
   const { user } = useAuthStore();
-  const { scope: academicScope } = useAcademicScope();
+  const { scope: academicScope, refresh: refreshScope } = useAcademicScope();
 
   const hasAccess = useCallback(
     (perms?: string[]) => {
@@ -1473,6 +1474,8 @@ export default function MainLayout() {
 
     const filterTree = (tree: NavNode[]) => {
       if (isApplicant) return [];
+      // Dean / HOD accounts get no administration menus (services, settings, logs, users).
+      if (academicScope.scoped) return [];
       return tree
         .filter((n) => hasAccess(n.permissions))
         .map((n) => {
@@ -1512,6 +1515,9 @@ export default function MainLayout() {
 
   return (
     <div className="h-screen flex flex-col bg-[rgb(var(--bg-app))] text-ink-800 dark:text-ink-100 overflow-hidden">
+      {(academicScope.needs_choice || academicScope.waiting) && (
+        <ScopeGate scope={academicScope} onSubmitted={refreshScope} />
+      )}
       {/* Blue banner */}
       <BlueBanner />
 

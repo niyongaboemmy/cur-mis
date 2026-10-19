@@ -5,6 +5,7 @@ import { Search, UserMinus, X } from "lucide-react";
 import {
   academicScopeService,
   ScopeMember,
+  ScopeRequest,
   ScopeUnit,
 } from "@/services/academicScopeService";
 import userService, { User } from "@/services/userService";
@@ -33,6 +34,23 @@ export default function AcademicScopePage() {
   const [search, setSearch] = useState("");
 
   const refresh = () => qc.invalidateQueries({ queryKey: ["academic-scope"] });
+
+  const requestsQ = useQuery({
+    queryKey: ["academic-scope", "requests", "pending"],
+    queryFn: () => academicScopeService.requests("pending"),
+  });
+  const pendingRaw: any = requestsQ.data;
+  const pending: ScopeRequest[] = pendingRaw?.data ?? pendingRaw ?? [];
+
+  const decideM = useMutation({
+    mutationFn: async (v: { id: number; approve: boolean }) =>
+      v.approve ? academicScopeService.approve(v.id) : academicScopeService.reject(v.id),
+    onSuccess: (_d, v) => {
+      toast.success(v.approve ? "Approved" : "Rejected");
+      refresh();
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? "Could not record the decision"),
+  });
 
   const linkM = useMutation({
     mutationFn: (v: { unitId: number; facId: number | null; depId: number | null }) =>
@@ -148,6 +166,44 @@ export default function AcademicScopePage() {
           the staff who work there. A Dean sees their whole faculty; an HOD sees only their
           department. Units with no link keep full access.
         </p>
+      </div>
+
+      <div className="card-tight space-y-3">
+        <h2 className="font-semibold">Pending requests ({pending.length})</h2>
+        {pending.length === 0 && (
+          <p className="text-sm text-gray-500">No Dean or HOD is waiting for approval.</p>
+        )}
+        <ul className="divide-y">
+          {pending.map((r) => (
+            <li key={r.id} className="py-2 flex flex-wrap items-center justify-between gap-3">
+              <div className="text-sm">
+                <div className="font-medium">{r.full_name ?? `User #${r.user_id}`} <span className="text-xs text-gray-500">({r.username})</span></div>
+                <div className="text-gray-700">Requests: {r.fac_name ?? r.dep_name}</div>
+                <div className="text-xs text-gray-500">
+                  {r.unit_name
+                    ? `Org unit: ${r.unit_name}${r.unit_head_name ? ` — current head: ${r.unit_head_name}` : " — no head yet"}`
+                    : "No org unit is linked to this faculty or department yet. Link it in the table below first."}
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  className="px-3 py-1 rounded bg-blue-700 text-white text-sm disabled:opacity-50"
+                  disabled={!r.unit_id || decideM.isPending}
+                  onClick={() => decideM.mutate({ id: r.id, approve: true })}
+                >
+                  Approve
+                </button>
+                <button
+                  className="px-3 py-1 rounded border text-sm"
+                  disabled={decideM.isPending}
+                  onClick={() => decideM.mutate({ id: r.id, approve: false })}
+                >
+                  Reject
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
       </div>
 
       <div className="card-tight overflow-x-auto">
