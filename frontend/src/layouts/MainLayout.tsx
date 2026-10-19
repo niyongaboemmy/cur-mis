@@ -126,8 +126,7 @@ const SCOPED_HIDDEN_PATHS = [
   "/students/id-cards",
   "/documents/generate",
   "/me/payroll",
-  // Recording marks, deliberation and revaluations stay with lecturers and the registry.
-  "/modules/marks",
+  // Deliberation and revaluations stay with the exam office.
   "/exams/deliberation",
   "/exams/revaluations",
   "/academic/transcript",
