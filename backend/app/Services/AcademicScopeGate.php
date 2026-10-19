@@ -27,6 +27,9 @@ final class AcademicScopeGate
         '/api/marks', '/api/attendance', '/api/grades', '/api/academic-analytics',
     ];
 
+    /** Reference lists a scoped account may read, by exact path (no personal data). */
+    private const READ_REFERENCE = ['/api/users/campuses-catalog'];
+
     /** Areas a scoped account may read (view marks, attendance and exams) but never change. */
     private const READ_ONLY = ['/api/marks', '/api/attendance', '/api/grades', '/api/academics-management/exams'];
 
@@ -55,8 +58,12 @@ final class AcademicScopeGate
         $method = strtoupper($method);
         $p      = self::apiPath($path);
 
-        if (!self::under($p, self::ALLOWED)) {
+        $isReference = $method === 'GET' && in_array($p, self::READ_REFERENCE, true);
+        if (!$isReference && !self::under($p, self::ALLOWED)) {
             return self::deny(403, 'This area is not available to your account.');
+        }
+        if ($isReference) {
+            return null;
         }
 
         // Academic catalogues: read the reference lists, change only the academic structure.
