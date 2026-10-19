@@ -55,6 +55,18 @@ export interface ScopeRequest {
   unit_id?: number | null
   unit_name?: string | null
   unit_head_name?: string | null
+  requester_role?: string | null
+}
+
+export interface ScopeSecretary {
+  id: number
+  user_id: number
+  full_name: string
+  username: string
+  fac_id: number | null
+  dep_id: number | null
+  fac_name: string | null
+  dep_name: string | null
 }
 
 export interface ScopeLecturer {
@@ -89,6 +101,16 @@ export const academicScopeService = {
       departments: { dep_id: number; dep_name: string; fac_id: number | null }[]
       options: { id: number; name: string; department_id: number }[]
     }>('/api/academic-scope/options'),
+
+  // Academic secretaries: admin (all), Dean / HOD (their unit).
+  secretaries: () =>
+    api.get<ScopeSecretary[]>('/api/academic-scope/secretaries'),
+
+  assignSecretary: (userId: number, unit: { fac_id?: number; dep_id?: number }) =>
+    api.post('/api/academic-scope/secretaries', { user_id: userId, ...unit }),
+
+  removeSecretary: (id: number) =>
+    api.post(`/api/academic-scope/secretaries/${id}/remove`, {}),
 
   // Lecturer placement: admin (all) or Dean / HOD (their scope).
   lecturers: () =>

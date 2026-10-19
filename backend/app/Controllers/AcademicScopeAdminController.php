@@ -201,6 +201,7 @@ class AcademicScopeAdminController extends BaseController
         $rows = Database::getInstance()->fetchAll(
             "SELECT r.id, r.user_id, r.fac_id, r.dep_id, r.status, r.requested_at, r.decision_note,
                     u.full_name, u.username, u.role_id,
+                    (SELECT LOWER(TRIM(rl.name)) FROM roles rl WHERE rl.id = u.role_id) AS requester_role,
                     f.fac_name, d.dep_name,
                     l.unit_id, ou.name AS unit_name, ou.head_user_id AS unit_head_id, hu.full_name AS unit_head_name
                FROM academic_scope_requests r
@@ -235,6 +236,30 @@ class AcademicScopeAdminController extends BaseController
         }
         if ($req['status'] !== 'pending') {
             $this->error($response, 'This request has already been decided.', 409);
+        }
+
+        $actor = (int)(((array)($request->param('_auth_user') ?? []))['id'] ?? 0);
+
+        // An academic secretary is assigned to the faculty or department; they do not become head of a unit.
+        $roleRow = $db->fetchOne(
+            'SELECT r.name FROM users u LEFT JOIN roles r ON r.id = u.role_id WHERE u.id = ?',
+            [(int)$req['user_id']]
+        ) ?: [];
+        if (strtolower(trim((string)($roleRow['name'] ?? ''))) === 'academic secretary') {
+            $db->execute(
+                'INSERT INTO academic_secretaries (user_id, fac_id, dep_id, assigned_by) VALUES (?, ?, ?, ?)',
+                [(int)$req['user_id'], $req['fac_id'], $req['dep_id'], $actor ?: null]
+            );
+            $db->execute(
+                "UPDATE academic_scope_requests SET status = 'approved', decided_by = ?, decided_at = NOW() WHERE id = ?",
+                [$actor ?: null, $requestId]
+            );
+            $this->audit($request, 'academic_secretary', (int)$req['user_id'], 'request_approved', [
+                'request_id' => $requestId,
+                'fac_id'     => $req['fac_id'],
+                'dep_id'     => $req['dep_id'],
+            ]);
+            $this->success($response, ['request_id' => $requestId], 'Secretary approved.');
         }
 
         $unit = $req['fac_id'] !== null

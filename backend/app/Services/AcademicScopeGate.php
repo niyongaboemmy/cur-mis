@@ -68,6 +68,10 @@ final class AcademicScopeGate
             if ($method !== 'GET' && !in_array($entity, self::ENTITY_WRITE, true)) {
                 return self::deny(403, 'You cannot change this list.');
             }
+            // Academic secretaries manage programmes and modules; faculties and departments stay with the Dean / HOD.
+            if ($method !== 'GET' && ($scope['kind'] ?? '') === 'secretary' && in_array($entity, ['faculties', 'departments'], true)) {
+                return self::deny(403, 'Only the Dean or HOD can change faculties and departments.');
+            }
         }
 
         // Marks, attendance, grades and exams: read-only, limited to the scope.

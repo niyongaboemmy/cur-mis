@@ -21,7 +21,7 @@ final class AcademicScopeService
      * Role names (lower-case) that are always scoped. Add a role name here when
      * a new Dean or HOD role is created.
      */
-    public const SCOPED_ROLES = ['dean', 'hod', 'head of department', 'dean of faculty'];
+    public const SCOPED_ROLES = ['dean', 'hod', 'head of department', 'dean of faculty', 'academic secretary'];
 
     /** @var array<int, array{level:string,faculty_ids:int[],department_ids:int[],unit_ids:int[]}|null> */
     private static array $cache = [];
@@ -43,14 +43,15 @@ final class AcademicScopeService
             // This runs on every request. If the scope tables are not there yet, fail
             // safe: Dean / HOD accounts get no access, everyone else keeps the normal view.
             try {
-                $scope = self::resolve($userId);
+                // A head of a unit takes precedence; otherwise an assigned academic secretary.
+                $scope = self::resolve($userId) ?? self::resolveSecretary($userId);
             } catch (\Throwable) {
                 $scope = null;
             }
-            // Fail closed: a Dean / HOD account with no approved link sees nothing
+            // Fail closed: a Dean / HOD / secretary account with no approved link sees nothing
             // until an admin approves its faculty or department.
             if ($scope === null && self::hasScopedRole($authUser)) {
-                $scope = ['level' => 'none', 'faculty_ids' => [], 'department_ids' => [], 'unit_ids' => []];
+                $scope = ['level' => 'none', 'kind' => 'none', 'faculty_ids' => [], 'department_ids' => [], 'unit_ids' => []];
             }
             self::$cache[$userId] = $scope;
         }
@@ -234,8 +235,79 @@ final class AcademicScopeService
 
         return [
             'level'          => $level,
+            'kind'           => 'head',
             'faculty_ids'    => $facultyIds,
             'department_ids' => array_values(array_unique($departmentIds)),
+            'unit_ids'       => $unitIds,
+        ];
+    }
+
+    /**
+     * Scope of an academic secretary: their assigned department(s), or every
+     * department of an assigned faculty. Staff come from the org units linked to
+     * those departments and faculties, and the units below them.
+     *
+     * @return array{level:string,kind:string,faculty_ids:int[],department_ids:int[],unit_ids:int[]}|null
+     */
+    private static function resolveSecretary(int $userId): ?array
+    {
+        $db   = Database::getInstance();
+        $rows = $db->fetchAll('SELECT fac_id, dep_id FROM academic_secretaries WHERE user_id = ?', [$userId]);
+        if (!$rows) {
+            return null;
+        }
+
+        $facultyIds    = [];
+        $departmentIds = [];
+        $level         = 'department';
+        foreach ($rows as $r) {
+            if (!empty($r['fac_id'])) {
+                $facultyIds[] = (int)$r['fac_id'];
+                $level        = 'faculty';
+            }
+            if (!empty($r['dep_id'])) {
+                $departmentIds[] = (int)$r['dep_id'];
+            }
+        }
+        $facultyIds = array_values(array_unique($facultyIds));
+        if ($facultyIds) {
+            $fph  = implode(',', array_fill(0, count($facultyIds), '?'));
+            foreach ($db->fetchAll("SELECT dep_id FROM departements WHERE fac_id IN ({$fph})", $facultyIds) as $d) {
+                $departmentIds[] = (int)$d['dep_id'];
+            }
+        }
+        $departmentIds = array_values(array_unique($departmentIds));
+
+        // Org units linked to these faculties / departments, and the units below them.
+        $unitIds = [];
+        if ($facultyIds || $departmentIds) {
+            $conds  = [];
+            $params = [];
+            if ($facultyIds) {
+                $conds[] = 'l.fac_id IN (' . implode(',', array_fill(0, count($facultyIds), '?')) . ')';
+                $params  = array_merge($params, $facultyIds);
+            }
+            if ($departmentIds) {
+                $conds[] = 'l.dep_id IN (' . implode(',', array_fill(0, count($departmentIds), '?')) . ')';
+                $params  = array_merge($params, $departmentIds);
+            }
+            $unitRows = $db->fetchAll(
+                "WITH RECURSIVE tree AS (
+                    SELECT l.unit_id AS id FROM leave_org_unit_academic_links l WHERE " . implode(' OR ', $conds) . "
+                    UNION
+                    SELECT c.id FROM leave_org_units c JOIN tree t ON c.parent_id = t.id
+                 )
+                 SELECT id FROM tree",
+                $params
+            );
+            $unitIds = array_map(static fn ($r) => (int)$r['id'], $unitRows);
+        }
+
+        return [
+            'level'          => $level,
+            'kind'           => 'secretary',
+            'faculty_ids'    => $facultyIds,
+            'department_ids' => $departmentIds,
             'unit_ids'       => $unitIds,
         ];
     }
