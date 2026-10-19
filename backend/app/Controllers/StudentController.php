@@ -3762,11 +3762,23 @@ class StudentController extends BaseController
             $categoryBind  = [];
         }
 
-        // Convenience: merge year + campus + category into a single bound
+        // Dean / HOD: every count and breakdown covers only their faculty or
+        // department. Superadmin and unscoped users get no extra condition.
+        $scope    = AcademicScopeService::forUser((array)($request->param('_auth_user') ?? []));
+        $deptCond = AcademicScopeService::departmentCondition($scope, 'department');
+        $deptScope = $deptScopeS = '';
+        $deptBind  = [];
+        if ($deptCond !== null) {
+            $deptScope  = " AND {$deptCond[0]}";
+            $deptScopeS = ' AND ' . str_replace('department', 's.department', $deptCond[0]);
+            $deptBind   = $deptCond[1];
+        }
+
+        // Convenience: merge year + campus + category + scope into a single bound
         // list so each aggregate uses one consistent params array.
-        $combined  = $yearScope . $campusScope . $categoryScope;
-        $combinedS = $yearScopeS . $campusScopeS . $categoryScopeS;
-        $bind      = array_merge($yearBind, $campusBind, $categoryBind);
+        $combined  = $yearScope . $campusScope . $categoryScope . $deptScope;
+        $combinedS = $yearScopeS . $campusScopeS . $categoryScopeS . $deptScopeS;
+        $bind      = array_merge($yearBind, $campusBind, $categoryBind, $deptBind);
 
         $row = $db->fetchOne("
             SELECT
@@ -3911,40 +3923,41 @@ class StudentController extends BaseController
             SELECT DISTINCT s.faculty AS v, f.fac_name AS label
             FROM student s
             LEFT JOIN faculty f ON CAST(f.fac_id AS CHAR) COLLATE utf8mb4_unicode_ci = s.faculty COLLATE utf8mb4_unicode_ci
-            WHERE s.faculty IS NOT NULL AND s.faculty <> ''
+            WHERE s.faculty IS NOT NULL AND s.faculty <> ''{$deptScopeS}
             ORDER BY label IS NULL, label ASC
             LIMIT 100
-        ");
+        ", $deptBind);
         $departments = $db->fetchAll("
             SELECT DISTINCT s.department AS v, d.dep_name AS label
             FROM student s
             LEFT JOIN departements d ON CAST(d.dep_id AS CHAR) COLLATE utf8mb4_unicode_ci = s.department COLLATE utf8mb4_unicode_ci
-            WHERE s.department IS NOT NULL AND s.department <> ''
+            WHERE s.department IS NOT NULL AND s.department <> ''{$deptScopeS}
             ORDER BY label IS NULL, label ASC
             LIMIT 100
-        ");
+        ", $deptBind);
         $levels = $db->fetchAll("
             SELECT DISTINCT s.current_level AS v, l.name AS label
             FROM student s
             LEFT JOIN levels l ON l.id = s.current_level
-            WHERE s.current_level IS NOT NULL AND s.current_level <> ''
+            WHERE s.current_level IS NOT NULL AND s.current_level <> ''{$deptScopeS}
             ORDER BY s.current_level ASC
             LIMIT 50
-        ");
-        $years    = $db->fetchAll("SELECT DISTINCT acc_year AS v, acc_year AS label FROM student WHERE acc_year IS NOT NULL AND acc_year <> '' ORDER BY acc_year DESC LIMIT 30");
-        $programs = $db->fetchAll("SELECT DISTINCT program  AS v, program  AS label FROM student WHERE program  IS NOT NULL AND program  <> '' ORDER BY program  ASC LIMIT 50");
+        ", $deptBind);
+        $years    = $db->fetchAll("SELECT DISTINCT acc_year AS v, acc_year AS label FROM student WHERE acc_year IS NOT NULL AND acc_year <> ''{$deptScope} ORDER BY acc_year DESC LIMIT 30", $deptBind);
+        $programs = $db->fetchAll("SELECT DISTINCT program  AS v, program  AS label FROM student WHERE program  IS NOT NULL AND program  <> ''{$deptScope} ORDER BY program  ASC LIMIT 50", $deptBind);
 
         // Programs/options pulled from the catalogue, with the parent
         // department + faculty so the student edit form can show a single
         // searchable picker that auto-derives faculty/department.
+        $optionScope = AcademicScopeService::departmentCondition($scope, 'o.department_id');
         $options = $db->fetchAll("
             SELECT o.id AS v, o.name AS label, o.department_id, d.fac_id AS faculty_id
             FROM `options` o
             LEFT JOIN `departements` d ON d.dep_id = o.department_id
-            WHERE COALESCE(o.is_active, 1) = 1
+            WHERE COALESCE(o.is_active, 1) = 1" . ($optionScope ? " AND {$optionScope[0]}" : '') . "
             ORDER BY o.name ASC
             LIMIT 1000
-        ");
+        ", $optionScope[1] ?? []);
 
         $asPairs = function (array $rows): array {
             $out = [];

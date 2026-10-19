@@ -108,7 +108,14 @@ type NavNode = {
  * Top-level groups hidden from Dean / Head of Department accounts. Academic
  * and staff menus stay visible; the backend limits the data to their scope.
  */
-const SCOPED_HIDDEN_NAV_IDS = new Set(["finance", "admissions", "hr-management"]);
+const SCOPED_HIDDEN_NAV_IDS = new Set([
+  "finance",
+  "admissions",
+  "hr-management",
+  // Institution-wide metrics: not shown to Dean / HOD accounts.
+  "campus-statistics",
+  "support-reporting",
+]);
 
 const NAV_TREE: NavNode[] = [
   { id: "home", label: "Home", icon: Home, to: "/" },
