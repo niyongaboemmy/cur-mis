@@ -295,6 +295,133 @@ class StudentController extends BaseController
     }
 
     /**
+     * Columns the student list can sort by in SQL. Keys are the `sort_by`
+     * values the UI sends. `age` sorts by birthdate, so its direction flips.
+     */
+    private const SQL_SORT_COLUMNS = [
+        'id'            => 'id',
+        'fname'         => 'fname',
+        'regnumber'     => 'regnumber',
+        'email'         => 'email',
+        'gender'        => 'gender',
+        'nationality'   => 'nationality',
+        'district'      => 'district',
+        'acc_year'      => 'acc_year',
+        'learning_mode' => 'learning_mode',
+        'age'           => 'birthdate',
+    ];
+
+    /**
+     * Columns computed in PHP (campus name, reg-number years, document
+     * status). They are ordered over the whole filtered set before the page
+     * is cut, so the sort holds across pages.
+     */
+    private const DERIVED_SORT_COLUMNS = ['campus', 'start_year', 'end_year', 'document_status'];
+
+    /**
+     * One page of the student list in the requested order. Returns the same
+     * shape as BaseModel::paginate().
+     *
+     * @return array{data: array<int, array<string, mixed>>, total: int, per_page: int, current_page: int, last_page: int}
+     */
+    private function paginateStudents(Request $request, int $page, int $perPage, string $where, array $bindings): array
+    {
+        $sortBy  = (string)($request->query('sort_by') ?? '');
+        $sortDir = strtoupper((string)($request->query('sort_dir') ?? 'DESC')) === 'ASC' ? 'ASC' : 'DESC';
+
+        if (in_array($sortBy, self::DERIVED_SORT_COLUMNS, true)) {
+            return $this->paginateByDerivedSort($sortBy, $sortDir, max(1, $page), max(1, min(1000, $perPage)), $where, $bindings);
+        }
+
+        if (!isset(self::SQL_SORT_COLUMNS[$sortBy])) {
+            $sortBy = 'id';
+        }
+        // Age grows as birthdate shrinks, so "age ascending" is birthdate descending.
+        if ($sortBy === 'age') {
+            $sortDir = $sortDir === 'ASC' ? 'DESC' : 'ASC';
+        }
+
+        return $this->studentModel->paginate($page, $perPage, $where, $bindings, self::SQL_SORT_COLUMNS[$sortBy], $sortDir);
+    }
+
+    /**
+     * Sorts the filtered set by a PHP-computed column, then returns one page.
+     * Unknown values (no reg number, no campus, …) always sort last, whichever
+     * way the column runs. Ties keep id order so paging stays stable.
+     *
+     * @return array{data: array<int, array<string, mixed>>, total: int, per_page: int, current_page: int, last_page: int}
+     */
+    private function paginateByDerivedSort(string $sortBy, string $sortDir, int $page, int $perPage, string $where, array $bindings): array
+    {
+        $db       = $this->studentModel->db();
+        $whereSql = $where !== '' ? "WHERE {$where}" : '';
+        $rows     = $db->fetchAll("SELECT id, regnumber, faculty, campus FROM `student` {$whereSql} ORDER BY id", $bindings);
+        // Adds start_year and end_year to every row.
+        $rows     = $this->decorateCohortColumns($rows);
+
+        $keys = [];
+        if ($sortBy === 'campus') {
+            $campusIds = [];
+            foreach ($rows as $r) {
+                $c = (string)($r['campus'] ?? '');
+                if ($c !== '') $campusIds[$c] = true;
+            }
+            $campusNames = [];
+            foreach (array_chunk(array_keys($campusIds), 500) as $chunk) {
+                $ph = implode(',', array_fill(0, count($chunk), '?'));
+                foreach ($db->fetchAll("SELECT id, name FROM `campuses` WHERE id IN ($ph)", $chunk) as $c) {
+                    $campusNames[(string)$c['id']] = mb_strtolower(trim((string)$c['name']));
+                }
+            }
+            foreach ($rows as $r) {
+                $keys[(int)$r['id']] = $campusNames[(string)($r['campus'] ?? '')] ?? null;
+            }
+        } elseif ($sortBy === 'document_status') {
+            $summary = [];
+            foreach (array_chunk(array_map(static fn ($r) => (int)$r['id'], $rows), 500) as $chunk) {
+                $summary += $this->fetchDocumentStatusSummary($chunk);
+            }
+            $rank = ['none' => 0, 'pending' => 1, 'rejected' => 2, 'verified' => 3];
+            foreach ($rows as $r) {
+                $status = $summary[(int)$r['id']]['status'] ?? 'none';
+                $keys[(int)$r['id']] = $rank[$status] ?? 0;
+            }
+        } else {
+            foreach ($rows as $r) {
+                $keys[(int)$r['id']] = $r[$sortBy] ?? null;
+            }
+        }
+
+        usort($rows, static function (array $a, array $b) use ($keys, $sortDir): int {
+            $ka = $keys[(int)$a['id']];
+            $kb = $keys[(int)$b['id']];
+            if ($ka === null || $kb === null) {
+                $cmp = ($ka === null ? 1 : 0) <=> ($kb === null ? 1 : 0);
+                return $cmp !== 0 ? $cmp : (int)$a['id'] <=> (int)$b['id'];
+            }
+            $cmp = $ka <=> $kb;
+            if ($cmp === 0) {
+                return (int)$a['id'] <=> (int)$b['id'];
+            }
+            return $sortDir === 'ASC' ? $cmp : -$cmp;
+        });
+
+        $total = count($rows);
+        $ids   = array_map(
+            static fn ($r) => (int)$r['id'],
+            array_slice($rows, ($page - 1) * $perPage, $perPage)
+        );
+
+        return [
+            'data'         => $this->studentModel->findManyInOrder($ids),
+            'total'        => $total,
+            'per_page'     => $perPage,
+            'current_page' => $page,
+            'last_page'    => (int)ceil($total / $perPage),
+        ];
+    }
+
+    /**
      * List all students with pagination and search.
      */
     public function index(Request $request, Response $response): never
@@ -302,20 +429,9 @@ class StudentController extends BaseController
         $page    = (int)($request->query('page') ?? 1);
         $perPage = (int)($request->query('per_page') ?? 15);
 
-        $sortBy  = $request->query('sort_by');
-        $sortDir = strtoupper($request->query('sort_dir') ?? 'DESC');
-
-        $allowedSorts = ['id', 'fname', 'lname', 'regnumber', 'email', 'gender', 'nationality'];
-        if (!in_array($sortBy, $allowedSorts, true)) {
-            $sortBy = 'id';
-        }
-        if (!in_array($sortDir, ['ASC', 'DESC'], true)) {
-            $sortDir = 'DESC';
-        }
-
         [$where, $bindings] = $this->buildListFilters($request);
 
-        $paginated = $this->studentModel->paginate($page, $perPage, $where, $bindings, $sortBy, $sortDir);
+        $paginated = $this->paginateStudents($request, $page, $perPage, $where, $bindings);
 
         // Decorate rows with a human-readable campus_name. One follow-up
         // query per page keeps the list lightweight without changing the
@@ -393,20 +509,9 @@ class StudentController extends BaseController
         $page    = (int)($request->query('page') ?? 1);
         $perPage = (int)($request->query('per_page') ?? 15);
 
-        $sortBy  = $request->query('sort_by');
-        $sortDir = strtoupper($request->query('sort_dir') ?? 'DESC');
-
-        $allowedSorts = ['id', 'fname', 'lname', 'regnumber', 'email', 'gender', 'nationality'];
-        if (!in_array($sortBy, $allowedSorts, true)) {
-            $sortBy = 'id';
-        }
-        if (!in_array($sortDir, ['ASC', 'DESC'], true)) {
-            $sortDir = 'DESC';
-        }
-
         [$where, $bindings] = $this->buildListFilters($request);
 
-        $paginated = $this->studentModel->paginate($page, $perPage, $where, $bindings, $sortBy, $sortDir);
+        $paginated = $this->paginateStudents($request, $page, $perPage, $where, $bindings);
 
         $rows = $paginated['data'] ?? [];
         if (!empty($rows)) {

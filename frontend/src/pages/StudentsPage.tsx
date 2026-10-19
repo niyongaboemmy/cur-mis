@@ -37,6 +37,10 @@ import DonutChart from "@/components/dashboard/DonutChart";
 import BarChart, { type BarDatum } from "@/components/dashboard/BarChart";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import StudentExportModal from "@/components/admin/StudentExportModal";
+import DistrictEditPopover from "@/components/students/DistrictEditPopover";
+import { displayDistrict } from "@/data/rwandaLocations";
+import { usePermission } from "@/utils/permissions";
+import { PERMISSIONS } from "@/constants/permissions";
 import BulkUploadModal from "@/components/admin/BulkUploadModal";
 import DocumentCompletionBadge, {
   type DocumentStatus,
@@ -581,6 +585,9 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
 
   // Admin, Registrar, and Super Admin can delete students
   const canDeleteStudents = !!(user?.role_name && ['Admin', 'registrar', 'superadmin'].includes(user.role_name));
+
+  // Inline district edit saves through POST /students/:id, which needs MANAGE_STUDENTS.
+  const canEditDistrict = usePermission(PERMISSIONS.MANAGE_STUDENTS);
 
   // Entity data for filters. Departments + programs are loaded once and
   // shown flat — no faculty cascade — so the user can pick either directly.
@@ -1176,24 +1183,17 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
             </div>
             <button
               onClick={() => {
-                const columns = ['regnumber', 'full_name', 'email', 'phone', 'campus_name', 'gender', 'nationality', 'learning_mode'];
+                // The full filtered registry, not just this page: paging and
+                // sorting are dropped, and the columns match the table.
+                const columns = [
+                  'regnumber', 'full_name', 'email', 'phone', 'campus_name', 'gender',
+                  'nationality', '__age', 'district', 'acc_year', '__start_year',
+                  '__end_year', 'learning_mode',
+                ];
+                const { page: _p, per_page: _pp, sort_by: _sb, sort_dir: _sd, ...filters } = listParams;
                 const url = studentService.exportUrl({
                   columns,
-                  filters: {
-                    q: q || undefined,
-                    program: program || undefined,
-                    current_level: level || undefined,
-                    campus: campus || undefined,
-                    gender: gender || undefined,
-                    nationality: nationality || undefined,
-                    acc_year: accYear || undefined,
-                    student_state: state !== 'all' ? state : undefined,
-                    learning_mode: learning_mode || undefined,
-                    intake: intake || undefined,
-                    sector: sector || undefined,
-                    age_min: ageMin || undefined,
-                    age_max: ageMax || undefined,
-                  },
+                  filters: filters as Record<string, string | number | undefined>,
                   format: 'xlsx',
                 });
                 studentService.downloadExport(url);
@@ -1290,10 +1290,41 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
                       currentDir={sort_dir}
                       onSort={handleSort}
                     />
-                    <th className="text-sm font-semibold text-ink-700 dark:text-ink-300 px-4">Age</th>
-                    <th className="text-sm font-semibold text-ink-700 dark:text-ink-300 px-4">District</th>
-                    <th className="text-sm font-semibold text-ink-700 dark:text-ink-300 px-4">Start year</th>
-                    <th className="text-sm font-semibold text-ink-700 dark:text-ink-300 px-4">End year</th>
+                    <SortableHeader
+                      label="Age"
+                      field="age"
+                      currentSort={sort_by}
+                      currentDir={sort_dir}
+                      onSort={handleSort}
+                    />
+                    <SortableHeader
+                      label="District"
+                      field="district"
+                      currentSort={sort_by}
+                      currentDir={sort_dir}
+                      onSort={handleSort}
+                    />
+                    <SortableHeader
+                      label="Academic year"
+                      field="acc_year"
+                      currentSort={sort_by}
+                      currentDir={sort_dir}
+                      onSort={handleSort}
+                    />
+                    <SortableHeader
+                      label="Start year"
+                      field="start_year"
+                      currentSort={sort_by}
+                      currentDir={sort_dir}
+                      onSort={handleSort}
+                    />
+                    <SortableHeader
+                      label="End year"
+                      field="end_year"
+                      currentSort={sort_by}
+                      currentDir={sort_dir}
+                      onSort={handleSort}
+                    />
                     <SortableHeader
                       label="Learning Mode"
                       field="learning_mode"
@@ -1301,7 +1332,13 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
                       currentDir={sort_dir}
                       onSort={handleSort}
                     />
-                    <th className="text-sm font-semibold text-ink-700 dark:text-ink-300 px-4">Documents</th>
+                    <SortableHeader
+                      label="Documents"
+                      field="document_status"
+                      currentSort={sort_by}
+                      currentDir={sort_dir}
+                      onSort={handleSort}
+                    />
                     <th className="w-[120px]"></th>
                   </tr>
                 </thead>
@@ -1313,6 +1350,7 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
                       searchParams={sp}
                       isSelected={selectedIds.has(s.id)}
                       canGenerateDocuments={canGenerateDocuments}
+                      canEditDistrict={canEditDistrict}
                       onToggleSelect={(checked) => {
                         const next = new Set(selectedIds);
                         if (checked) next.add(s.id);
@@ -1382,6 +1420,54 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
    Gender cell — click the chip to open a tiny popover and change it
    in place, with a success toast on save.
    ───────────────────────────────────────────────────────────── */
+/**
+ * District with inline edit. A missing or unknown district shows a placeholder
+ * in italics. Users with MANAGE_STUDENTS click it to pick the real district.
+ */
+function DistrictCell({
+  studentId,
+  district,
+  canEdit,
+}: {
+  studentId: number;
+  district: string | null | undefined;
+  canEdit: boolean;
+}) {
+  const [anchor, setAnchor] = useState<DOMRect | null>(null);
+  const shown = displayDistrict(district, studentId);
+  const label = (
+    <span
+      className={shown.isPlaceholder ? "italic text-amber-600 dark:text-amber-400" : undefined}
+      title={shown.isPlaceholder ? "Not found in the database. Placeholder shown until a district is set." : undefined}
+    >
+      {shown.name}
+    </span>
+  );
+
+  if (!canEdit) return label;
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={(e) => setAnchor(e.currentTarget.getBoundingClientRect())}
+        className="rounded px-1 -mx-1 hover:ring-2 hover:ring-brand/30 transition-shadow cursor-pointer text-left"
+        title="Click to set the district"
+      >
+        {label}
+      </button>
+      {anchor && (
+        <DistrictEditPopover
+          studentId={studentId}
+          currentDistrict={shown.isPlaceholder ? null : shown.name}
+          anchorRect={anchor}
+          onClose={() => setAnchor(null)}
+        />
+      )}
+    </>
+  );
+}
+
 function GenderCell({
   studentId,
   gender,
@@ -1421,6 +1507,7 @@ function StudentRow({
   searchParams,
   isSelected,
   canGenerateDocuments,
+  canEditDistrict,
   onToggleSelect,
   onDelete,
 }: {
@@ -1428,6 +1515,7 @@ function StudentRow({
   searchParams?: URLSearchParams;
   isSelected?: boolean;
   canGenerateDocuments?: boolean;
+  canEditDistrict?: boolean;
   onToggleSelect?: (checked: boolean) => void;
   onDelete?: (studentId: number) => void;
 }) {
@@ -1529,7 +1617,14 @@ function StudentRow({
       </td>
       <td>{s.nationality || "—"}</td>
       <td className="text-[12.5px] text-ink-700 dark:text-ink-200">{s.age ?? "—"}</td>
-      <td className="text-[12.5px] text-ink-700 dark:text-ink-200">{s.district || "—"}</td>
+      <td className="text-[12.5px] text-ink-700 dark:text-ink-200" onClick={(e) => e.stopPropagation()}>
+        <DistrictCell
+          studentId={s.id}
+          district={s.district as string | null | undefined}
+          canEdit={!!canEditDistrict}
+        />
+      </td>
+      <td className="text-[12.5px] text-ink-700 dark:text-ink-200">{s.acc_year || "—"}</td>
       <td className="text-[12.5px] text-ink-700 dark:text-ink-200">{s.start_year ?? "—"}</td>
       <td className="text-[12.5px] text-ink-700 dark:text-ink-200">{s.end_year ?? "—"}</td>
       <td className="text-[12.5px] text-ink-700 dark:text-ink-200">

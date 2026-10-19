@@ -157,6 +157,7 @@ export interface Student {
   nationality?:        string | null
   learning_mode?:      'day' | 'evening' | 'weekend' | 'holiday'
   district?:           string | null
+  acc_year?:           string | null
   /** Derived by the students list endpoint (StudentController::decorateCohortColumns). */
   age?:                number | null
   faculty_name?:       string | null
