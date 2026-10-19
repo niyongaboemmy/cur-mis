@@ -118,7 +118,7 @@ export default function StudentsPage() {
   const stats: StudentStats | null = statsQ.data?.data ?? null;
 
   return (
-    <div className="max-w-[1400px] mx-auto space-y-5">
+    <div className="max-w-none mx-auto space-y-5">
       {/* ── Tabs ── */}
       <section className="card p-1.5">
         <div className="flex items-center gap-1">
@@ -1979,6 +1979,7 @@ function SortableHeader({
   const active = currentSort === field;
   return (
     <th
+      data-col={field}
       onClick={() => onSort(field)}
       className="cursor-pointer group hover:bg-ink-50/50 dark:hover:bg-ink-800/50 transition-colors select-none"
     >
