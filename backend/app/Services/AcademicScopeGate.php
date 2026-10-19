@@ -24,7 +24,7 @@ final class AcademicScopeGate
         '/api/academics-management', '/api/modules', '/api/timetable', '/api/academic',
         '/api/admin/academic-years', '/api/notifications', '/api/messages', '/api/announcements',
         '/api/forums', '/api/push', '/api/navigation',
-        '/api/marks', '/api/attendance', '/api/grades',
+        '/api/marks', '/api/attendance', '/api/grades', '/api/academic-analytics',
     ];
 
     /** Areas a scoped account may read (view marks, attendance and exams) but never change. */

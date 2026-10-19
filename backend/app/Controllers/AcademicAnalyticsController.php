@@ -35,6 +35,28 @@ class AcademicAnalyticsController extends BaseController
 
     /* ── Auth helpers ──────────────────────────────────────────────────── */
 
+    /**
+     * " AND {column} IN (...)" limiting a module id column to a Dean's, HOD's or
+     * secretary's modules. Empty for superadmin and unscoped accounts.
+     */
+    private function modScope(Request $request, string $column): string
+    {
+        return \App\Services\AcademicScopeService::moduleClause((array)($request->param('_auth_user') ?? []), $column);
+    }
+
+    /** " AND {column} IN ('1','2')" limiting a student department column to the scope. */
+    private function studScope(Request $request, string $column): string
+    {
+        $deps = \App\Services\AcademicScopeService::scopeDepartmentIds((array)($request->param('_auth_user') ?? []));
+        if ($deps === null) {
+            return '';
+        }
+        if ($deps === []) {
+            return ' AND 1 = 0';
+        }
+        return " AND {$column} IN (" . implode(',', array_map(static fn ($d) => "'" . (int)$d . "'", $deps)) . ')';
+    }
+
     private function hasPerm(Request $request, string $slug): bool
     {
         $user = (array)($request->param('_auth_user') ?? []);
@@ -67,7 +89,7 @@ class AcademicAnalyticsController extends BaseController
 
         // Active students
         $students = (int)($this->db->fetchOne(
-            "SELECT COUNT(*) AS n FROM student WHERE LOWER(student_state) = 'active'"
+            "SELECT COUNT(*) AS n FROM student WHERE LOWER(student_state) = 'active'{$this->studScope($request, 'department')}"
         )['n'] ?? 0);
 
         // Module marks aggregates (optionally scoped to an academic year via terms)
@@ -79,6 +101,8 @@ class AcademicAnalyticsController extends BaseController
             )';
             $termBind  = [$yearId];
         }
+
+        $termWhere .= $this->modScope($request, 'mm.module_id');
 
         $marksRow = $this->db->fetchOne("
             SELECT
@@ -108,6 +132,7 @@ class AcademicAnalyticsController extends BaseController
               SUM(CASE WHEN ar.status = 'present' THEN 1 ELSE 0 END) AS present,
               SUM(CASE WHEN ar.status = 'absent'  THEN 1 ELSE 0 END) AS absent
             FROM attendance_records ar
+            WHERE ar.session_id IN (SELECT id FROM attendance_sessions WHERE 1=1{$this->modScope($request, 'module_id')})
         ") ?: [];
 
         $attTotal   = (int)($attRow['total']   ?? 0);
@@ -116,7 +141,7 @@ class AcademicAnalyticsController extends BaseController
 
         // Modules with submitted marks (distinct)
         $modulesWithMarks = (int)($this->db->fetchOne("
-            SELECT COUNT(DISTINCT module_id) AS n FROM module_marks WHERE percentage IS NOT NULL
+            SELECT COUNT(DISTINCT module_id) AS n FROM module_marks WHERE percentage IS NOT NULL{$this->modScope($request, 'module_id')}
         ")['n'] ?? 0);
 
         $this->success($response, [
@@ -160,7 +185,7 @@ class AcademicAnalyticsController extends BaseController
             $bind[]  = $deptId;
         }
 
-        $whereClause = implode(' AND ', $where);
+        $whereClause = implode(' AND ', $where) . $this->modScope($request, 'm.module_id');
 
         $rows = $this->db->fetchAll("
             SELECT
@@ -217,7 +242,7 @@ class AcademicAnalyticsController extends BaseController
             $bind[]  = $yearId;
         }
 
-        $whereClause = implode(' AND ', $where);
+        $whereClause = implode(' AND ', $where) . $this->modScope($request, 'm.module_id');
 
         if ($groupBy === 'module') {
             $rows = $this->db->fetchAll("
@@ -296,14 +321,14 @@ class AcademicAnalyticsController extends BaseController
               SUM(CASE WHEN LOWER(TRIM(s.category)) LIKE '%post%'   THEN 1 ELSE 0 END) AS postgraduate,
               SUM(CASE WHEN LOWER(TRIM(s.category)) LIKE '%master%' THEN 1 ELSE 0 END) AS masters
             FROM student s
-            WHERE s.acc_year IS NOT NULL AND s.acc_year != ''
+            WHERE s.acc_year IS NOT NULL AND s.acc_year != ''{$this->studScope($request, 's.department')}
             GROUP BY s.acc_year
             ORDER BY s.acc_year ASC
         ");
 
         // Program enrollment for current/latest year (top 10 programs)
         $latestYearRow = $this->db->fetchOne("
-            SELECT acc_year FROM student WHERE acc_year IS NOT NULL AND acc_year != ''
+            SELECT acc_year FROM student WHERE acc_year IS NOT NULL AND acc_year != ''{$this->studScope($request, 'department')}
             ORDER BY id DESC LIMIT 1
         ");
         $latestYear = $latestYearRow['acc_year'] ?? null;
@@ -316,7 +341,7 @@ class AcademicAnalyticsController extends BaseController
                   COUNT(*) AS count
                 FROM student s
                 LEFT JOIN options o ON o.id = CAST(NULLIF(s.std_option,'') AS UNSIGNED)
-                WHERE s.acc_year = ?
+                WHERE s.acc_year = ?{$this->studScope($request, 's.department')}
                 GROUP BY o.id, o.name
                 ORDER BY count DESC
                 LIMIT 10
@@ -346,7 +371,7 @@ class AcademicAnalyticsController extends BaseController
             $bind[]  = $yearId;
         }
 
-        $whereClause = implode(' AND ', $where);
+        $whereClause = implode(' AND ', $where) . $this->modScope($request, 'm.module_id');
 
         $rows = $this->db->fetchAll("
             SELECT
@@ -406,6 +431,7 @@ class AcademicAnalyticsController extends BaseController
             $yearWhere = "AND at2.academic_year_id = ?";
             $yearBind  = [$yearId];
         }
+        $yearWhere .= $this->modScope($request, 'asess.module_id');
 
         $rows = $this->db->fetchAll("
             SELECT
@@ -451,6 +477,7 @@ class AcademicAnalyticsController extends BaseController
               SUM(CASE WHEN status = 'present' THEN 1 ELSE 0 END)  AS present,
               SUM(CASE WHEN status = 'absent'  THEN 1 ELSE 0 END)  AS absent
             FROM attendance_records
+            WHERE session_id IN (SELECT id FROM attendance_sessions WHERE 1=1{$this->modScope($request, 'module_id')})
         ") ?: [];
 
         $this->success($response, [
