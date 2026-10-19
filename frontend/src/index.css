@@ -253,6 +253,40 @@
            hover:bg-ink-50/70 dark:hover:bg-ink-700/30 transition-colors;
   }
 
+  /* ---------- Student registry table ----------
+     Tighter cells so every column fits on a laptop screen. Short values stay
+     on one line; emails and names wrap instead of widening the table. Columns
+     hidden through the Columns menu are removed by the attribute selectors. */
+  .data-table.students-table thead th,
+  .data-table.students-table tbody td { @apply px-2.5 py-2; }
+  .data-table.students-table thead th:first-child,
+  .data-table.students-table tbody td:first-child { @apply pl-3; }
+  .data-table.students-table tbody td { @apply text-[12.5px] leading-snug; }
+  .data-table.students-table tbody td[data-col="regnumber"],
+  .data-table.students-table tbody td[data-col="gender"],
+  .data-table.students-table tbody td[data-col="age"],
+  .data-table.students-table tbody td[data-col="nationality"],
+  .data-table.students-table tbody td[data-col="acc_year"],
+  .data-table.students-table tbody td[data-col="start_year"],
+  .data-table.students-table tbody td[data-col="end_year"],
+  .data-table.students-table tbody td[data-col="learning_mode"] { white-space: nowrap; }
+  .data-table.students-table tbody td[data-col="email"] { word-break: break-all; }
+  .data-table.students-table[data-hidden-cols~="fname"] [data-col="fname"],
+  .data-table.students-table[data-hidden-cols~="regnumber"] [data-col="regnumber"],
+  .data-table.students-table[data-hidden-cols~="email"] [data-col="email"],
+  .data-table.students-table[data-hidden-cols~="campus"] [data-col="campus"],
+  .data-table.students-table[data-hidden-cols~="gender"] [data-col="gender"],
+  .data-table.students-table[data-hidden-cols~="nationality"] [data-col="nationality"],
+  .data-table.students-table[data-hidden-cols~="age"] [data-col="age"],
+  .data-table.students-table[data-hidden-cols~="district"] [data-col="district"],
+  .data-table.students-table[data-hidden-cols~="acc_year"] [data-col="acc_year"],
+  .data-table.students-table[data-hidden-cols~="start_year"] [data-col="start_year"],
+  .data-table.students-table[data-hidden-cols~="end_year"] [data-col="end_year"],
+  .data-table.students-table[data-hidden-cols~="learning_mode"] [data-col="learning_mode"],
+  .data-table.students-table[data-hidden-cols~="document_status"] [data-col="document_status"] {
+    display: none;
+  }
+
   /* ---------- Icon buttons ---------- */
   .icon-btn {
     @apply p-2 rounded-md text-ink-500 hover:text-ink-900 hover:bg-ink-100

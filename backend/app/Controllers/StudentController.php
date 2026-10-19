@@ -4589,9 +4589,49 @@ class StudentController extends BaseController
      * GET /api/students/export-columns
      * Returns the column registry + group order. Drives the picker UI.
      */
+    /** Per-request cache for exportRegistry(). */
+    private ?array $exportRegistryCache = null;
+
+    /**
+     * Every column the export can produce: the curated registry above, plus
+     * each column of the `student` table that the registry does not already
+     * name. Database-only columns get a generated label and sit in their own
+     * group, so nothing stored on a student is missing from the export.
+     * Credential-like columns are never offered.
+     */
+    private function exportRegistry(): array
+    {
+        if ($this->exportRegistryCache !== null) {
+            return $this->exportRegistryCache;
+        }
+
+        $registry = self::exportColumns();
+        $taken    = [];
+        foreach ($registry as $key => $meta) {
+            $taken[$key] = true;
+            $taken[$meta['alias']] = true;
+        }
+
+        $fields = $this->studentModel->db()->fetchAll('SHOW COLUMNS FROM `student`');
+        foreach ($fields as $field) {
+            $col = (string)($field['Field'] ?? '');
+            if ($col === '' || isset($taken[$col])) continue;
+            if (preg_match('/password|token|secret|remember/i', $col)) continue;
+            $registry[$col] = [
+                'label' => ucwords(str_replace('_', ' ', $col)),
+                'group' => 'All database fields',
+                'sql'   => "s.`{$col}`",
+                'alias' => $col,
+            ];
+        }
+
+        $this->exportRegistryCache = $registry;
+        return $registry;
+    }
+
     public function exportColumnsList(Request $request, Response $response): never
     {
-        $cols = self::exportColumns();
+        $cols = $this->exportRegistry();
         $groups = [];
         foreach ($cols as $key => $meta) {
             $groups[$meta['group']] ??= [];
@@ -4673,7 +4713,7 @@ class StudentController extends BaseController
 
         // Validate every column key against the registry so we never
         // persist a typo that would later blow up the CSV generator.
-        $valid = self::exportColumns();
+        $valid = $this->exportRegistry();
         $normalised = [];
         foreach ($columns as $c) {
             $key = is_array($c) ? (string)($c['key'] ?? '') : (string)$c;
@@ -4753,7 +4793,7 @@ class StudentController extends BaseController
      */
     public function exportCsv(Request $request, Response $response): never
     {
-        $registry = self::exportColumns();
+        $registry = $this->exportRegistry();
 
         // ── Resolve column descriptors ─────────────────────────────────
         // A descriptor is `['key' => string, 'label' => string]`. Loading
@@ -5051,7 +5091,7 @@ class StudentController extends BaseController
      */
     private function resolveTemplateColumns(string $templateId, Request $request): array
     {
-        $registry = self::exportColumns();
+        $registry = $this->exportRegistry();
 
         if (str_starts_with($templateId, 'sys:')) {
             foreach ($this->systemExportTemplates() as $tpl) {
