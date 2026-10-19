@@ -112,6 +112,8 @@ const SCOPED_HIDDEN_NAV_IDS = new Set(["finance", "admissions", "hr-management"]
 
 const NAV_TREE: NavNode[] = [
   { id: "home", label: "Home", icon: Home, to: "/" },
+  // Admin and Dean / HOD: place lecturers (faculty, department, option).
+  { id: "lecturer-placement", label: "Lecturers", icon: UserIcon, to: "/lecturers" },
   {
     id: "campus-statistics",
     label: "Campus Statistics",
@@ -190,6 +192,12 @@ const NAV_TREE: NavNode[] = [
       {
         to: "/teacher/exams",
         label: "My exams",
+        permissions: [PERMISSIONS.ACCESS_TEACHER_PORTAL],
+        showWhenTeaching: true,
+      },
+      {
+        to: "/my-students",
+        label: "My students",
         permissions: [PERMISSIONS.ACCESS_TEACHER_PORTAL],
         showWhenTeaching: true,
       },
@@ -1428,6 +1436,10 @@ export default function MainLayout() {
     }) => {
       if (node.hideForRoles?.includes(user?.role ?? "")) return false;
       // Dean / Head of Department: finance, admissions and HR are outside their scope.
+      if (node.id === "lecturer-placement") {
+        const perms: string[] = user?.permissions ?? [];
+        return academicScope.scoped || isSuperadmin(user) || perms.includes(PERMISSIONS.MANAGE_USERS);
+      }
       if (academicScope.scoped && node.id && SCOPED_HIDDEN_NAV_IDS.has(node.id)) return false;
       if (node.showWhenTeaching && user?.is_teaching) return matchesRoles(node.roles);
       return matchesRoles(node.roles) && hasAccess(node.permissions);
