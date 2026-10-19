@@ -27,7 +27,9 @@ $router->get('/api/academic-scope/options',  [AcademicScopeController::class, 'o
 $router->post('/api/academic-scope/requests', [AcademicScopeController::class, 'createRequest'], [AuthMiddleware::class]);
 
 // Admin: connect org units to faculties / departments, set Dean / HOD, place staff.
-$academicScopeAdmin = [new PermissionMiddleware(Permissions::MANAGE_USERS)];
+// AuthMiddleware must come first: it sets `_auth_user`, which PermissionMiddleware reads.
+// Without it every call returns 401 and the frontend signs the admin out.
+$academicScopeAdmin = [AuthMiddleware::class, new PermissionMiddleware(Permissions::MANAGE_USERS)];
 $router->get('/api/academic-scope/admin/overview',          [AcademicScopeAdminController::class, 'overview'],   $academicScopeAdmin);
 $router->get('/api/academic-scope/admin/units/:id/members', [AcademicScopeAdminController::class, 'members'],    $academicScopeAdmin);
 // Writes use POST: the production WAF and the frontend client send PUT as POST.
