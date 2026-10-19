@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Constants\Permissions;
 use App\Controllers\AcademicScopeAdminController;
 use App\Controllers\AcademicScopeController;
+use App\Controllers\AcademicSecretaryController;
 use App\Controllers\LecturerPlacementController;
 use App\Controllers\AuthController;
 use App\Middleware\AuthMiddleware;
@@ -32,6 +33,11 @@ $router->post('/api/academic-scope/requests', [AcademicScopeController::class, '
 $router->get('/api/academic-scope/lecturers',                  [LecturerPlacementController::class, 'lecturers'],  [AuthMiddleware::class]);
 $router->post('/api/academic-scope/lecturers/:id/placement',   [LecturerPlacementController::class, 'place'],      [AuthMiddleware::class]);
 $router->get('/api/academic-scope/my-students',                [LecturerPlacementController::class, 'myStudents'], [AuthMiddleware::class]);
+
+// Academic secretaries: admin anywhere; Dean / HOD inside their own unit.
+$router->get('/api/academic-scope/secretaries',                 [AcademicSecretaryController::class, 'list'],   [AuthMiddleware::class]);
+$router->post('/api/academic-scope/secretaries',                [AcademicSecretaryController::class, 'assign'], [AuthMiddleware::class]);
+$router->post('/api/academic-scope/secretaries/:id/remove',     [AcademicSecretaryController::class, 'remove'], [AuthMiddleware::class]);
 
 // Admin: connect org units to faculties / departments, set Dean / HOD, place staff.
 // AuthMiddleware must come first: it sets `_auth_user`, which PermissionMiddleware reads.

@@ -180,7 +180,9 @@ export default function AcademicScopePage() {
                 <div className="font-medium">{r.full_name ?? `User #${r.user_id}`} <span className="text-xs text-gray-500">({r.username})</span></div>
                 <div className="text-gray-700">Requests: {r.fac_name ?? r.dep_name}</div>
                 <div className="text-xs text-gray-500">
-                  {r.unit_name
+                  {r.requester_role === "academic secretary"
+                    ? "Academic secretary — approving assigns this person to the faculty or department."
+                    : r.unit_name
                     ? `Org unit: ${r.unit_name}${r.unit_head_name ? ` — current head: ${r.unit_head_name}` : " — no head yet"}`
                     : "No org unit is linked to this faculty or department yet. Link it in the table below first."}
                 </div>
@@ -188,7 +190,7 @@ export default function AcademicScopePage() {
               <div className="flex gap-2">
                 <button
                   className="px-3 py-1 rounded bg-blue-700 text-white text-sm disabled:opacity-50"
-                  disabled={!r.unit_id || decideM.isPending}
+                  disabled={(!r.unit_id && r.requester_role !== "academic secretary") || decideM.isPending}
                   onClick={() => decideM.mutate({ id: r.id, approve: true })}
                 >
                   Approve

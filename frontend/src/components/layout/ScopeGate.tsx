@@ -58,7 +58,7 @@ export default function ScopeGate({
           <p className="text-sm text-gray-600 mt-1">
             {scope.waiting
               ? `Your request for ${req?.fac_name ?? req?.dep_name ?? "your unit"} has been sent. An administrator will approve it. You will see your data once it is approved.`
-              : "Your account is a Dean or Head of Department. Choose the faculty (Dean) or department (HOD) you manage. An administrator will confirm it before you see any data."}
+              : "Your account is a Dean, Head of Department or academic secretary. Choose the faculty or department you manage. An administrator will confirm it before you see any data."}
           </p>
           {req?.status === "rejected" && req.decision_note && (
             <p className="text-sm text-red-700 mt-2">Previous request was not approved: {req.decision_note}</p>
@@ -70,11 +70,11 @@ export default function ScopeGate({
             <div className="flex gap-2 text-sm">
               <label className="flex items-center gap-1">
                 <input type="radio" checked={kind === "faculty"} onChange={() => { setKind("faculty"); setId(""); }} />
-                Dean — faculty
+                Faculty (Dean or academic secretary)
               </label>
               <label className="flex items-center gap-1">
                 <input type="radio" checked={kind === "department"} onChange={() => { setKind("department"); setId(""); }} />
-                Head of Department
+                Department (HOD or academic secretary)
               </label>
             </div>
             <select

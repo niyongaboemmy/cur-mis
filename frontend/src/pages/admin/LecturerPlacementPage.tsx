@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { Search } from "lucide-react";
-import { academicScopeService, ScopeLecturer } from "@/services/academicScopeService";
+import { academicScopeService, ScopeLecturer, ScopeSecretary } from "@/services/academicScopeService";
 import userService, { User } from "@/services/userService";
 import { useAcademicScope } from "@/hooks/useAcademicScope";
 
@@ -40,6 +40,52 @@ export default function LecturerPlacementPage() {
     () => (catalog.departments as any[]).filter((d) => !scoped || scope.department_ids.includes(d.dep_id)),
     [catalog, scoped, scope.department_ids],
   );
+
+  // Academic secretaries (one per department, or one for a whole faculty).
+  const secretariesQ = useQuery({
+    queryKey: ["academic-scope", "secretaries"],
+    queryFn: () => academicScopeService.secretaries(),
+  });
+  const secRaw: any = secretariesQ.data;
+  const secretaries: ScopeSecretary[] = secRaw?.data ?? secRaw ?? [];
+  const [secSearch, setSecSearch] = useState("");
+  const [secUser, setSecUser] = useState<User | null>(null);
+  const [secUnit, setSecUnit] = useState<string>("");
+  const secUsersQ = useQuery({
+    queryKey: ["academic-scope", "secretary-user-search", secSearch],
+    queryFn: () => userService.getUsers(1, secSearch, 8),
+    enabled: secSearch.trim().length >= 2 && !secUser,
+  });
+  const secUsersRaw: any = secUsersQ.data;
+  const secFound: User[] = secUsersRaw?.data?.data ?? secUsersRaw?.data ?? [];
+
+  const assignSecM = useMutation({
+    mutationFn: () => {
+      if (!secUser || !secUnit) throw new Error("missing");
+      const [kind, id] = secUnit.split(":");
+      return academicScopeService.assignSecretary(
+        secUser.id,
+        kind === "fac" ? { fac_id: Number(id) } : { dep_id: Number(id) },
+      );
+    },
+    onSuccess: () => {
+      toast.success("Secretary assigned");
+      setSecUser(null);
+      setSecSearch("");
+      setSecUnit("");
+      qc.invalidateQueries({ queryKey: ["academic-scope", "secretaries"] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? "Could not assign the secretary"),
+  });
+
+  const removeSecM = useMutation({
+    mutationFn: (id: number) => academicScopeService.removeSecretary(id),
+    onSuccess: () => {
+      toast.success("Secretary removed");
+      qc.invalidateQueries({ queryKey: ["academic-scope", "secretaries"] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? "Could not remove the secretary"),
+  });
 
   const [edits, setEdits] = useState<Record<number, Pick>>({});
   const [added, setAdded] = useState<ScopeLecturer[]>([]);
@@ -155,6 +201,93 @@ export default function LecturerPlacementPage() {
             ))}
           </ul>
         )}
+      </div>
+
+      <div className="card-tight space-y-3">
+        <h2 className="font-semibold">Academic secretaries</h2>
+        <p className="text-sm text-gray-600">
+          A secretary manages the programmes, modules and staff of one department, or of a whole faculty.
+          Secretaries cannot record marks or attendance, and cannot change faculties or departments.
+        </p>
+        <ul className="divide-y">
+          {secretaries.length === 0 && <li className="py-2 text-sm text-gray-500">No secretaries assigned yet.</li>}
+          {secretaries.map((s) => (
+            <li key={s.id} className="py-2 flex items-center justify-between gap-3 text-sm">
+              <div>
+                <span className="font-medium">{s.full_name}</span>{" "}
+                <span className="text-xs text-gray-500">({s.username})</span>
+                <div className="text-xs text-gray-600">
+                  {s.fac_name ? `Faculty: ${s.fac_name}` : `Department: ${s.dep_name}`}
+                </div>
+              </div>
+              <button
+                className="px-3 py-1 rounded border text-sm"
+                disabled={removeSecM.isPending}
+                onClick={() => removeSecM.mutate(s.id)}
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+
+        <div className="border-t pt-3 space-y-2">
+          <label className="text-sm font-medium">Assign a secretary</label>
+          {secUser ? (
+            <div className="flex items-center gap-2 text-sm">
+              <span className="font-medium">{secUser.full_name}</span>
+              <button className="text-xs text-blue-700 underline" onClick={() => setSecUser(null)}>Change</button>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center gap-2">
+                <Search size={14} className="text-gray-400" />
+                <input
+                  className="flex-1 border rounded px-2 py-1 text-sm"
+                  placeholder="Type a name (2+ letters)"
+                  value={secSearch}
+                  onChange={(e) => setSecSearch(e.target.value)}
+                />
+              </div>
+              {secSearch.trim().length >= 2 && (
+                <ul className="max-h-40 overflow-y-auto">
+                  {secFound.map((u) => (
+                    <li key={u.id}>
+                      <button
+                        className="w-full text-left px-2 py-1 rounded hover:bg-gray-100 text-sm"
+                        onClick={() => setSecUser(u)}
+                      >
+                        {u.full_name} <span className="text-xs text-gray-500">({u.username})</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <select className="border rounded px-2 py-1 text-sm" value={secUnit} onChange={(e) => setSecUnit(e.target.value)}>
+              <option value="">Choose a faculty or department</option>
+              <optgroup label="Faculties (all departments in it)">
+                {faculties.map((f: any) => (
+                  <option key={`sf-${f.fac_id}`} value={`fac:${f.fac_id}`}>{f.fac_name}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Departments">
+                {departments.map((d: any) => (
+                  <option key={`sd-${d.dep_id}`} value={`dep:${d.dep_id}`}>{d.dep_name}</option>
+                ))}
+              </optgroup>
+            </select>
+            <button
+              className="px-3 py-1 rounded bg-blue-700 text-white text-sm disabled:opacity-40"
+              disabled={!secUser || !secUnit || assignSecM.isPending}
+              onClick={() => assignSecM.mutate()}
+            >
+              Assign secretary
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="card-tight overflow-x-auto">
