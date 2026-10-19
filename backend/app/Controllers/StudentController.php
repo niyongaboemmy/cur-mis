@@ -16,6 +16,7 @@ use App\Models\DepartmentModel;
 use App\Models\OptionModel;
 use App\Helpers\ValidationHelper;
 use App\Helpers\FileServerClient;
+use App\Services\AcademicScopeService;
 use App\Services\SystemLogService;
 use App\Services\StudentDocumentComplianceService;
 
@@ -431,6 +432,13 @@ class StudentController extends BaseController
 
         [$where, $bindings] = $this->buildListFilters($request);
 
+        // Dean / HOD: only students in their faculty or department.
+        $scope = AcademicScopeService::forUser((array)($request->param('_auth_user') ?? []));
+        if (($deptCond = AcademicScopeService::departmentCondition($scope, 'department')) !== null) {
+            $where     = $where === '' ? $deptCond[0] : "({$where}) AND {$deptCond[0]}";
+            $bindings  = array_merge($bindings, $deptCond[1]);
+        }
+
         $paginated = $this->paginateStudents($request, $page, $perPage, $where, $bindings);
 
         // Decorate rows with a human-readable campus_name. One follow-up
@@ -684,6 +692,11 @@ class StudentController extends BaseController
         $student = $this->studentModel->find($id);
 
         if (!$student) {
+            $this->error($response, 'Student not found', 404);
+        }
+
+        $scope = AcademicScopeService::forUser((array)($request->param('_auth_user') ?? []));
+        if (!AcademicScopeService::allowsDepartment($scope, $student['department'] ?? null)) {
             $this->error($response, 'Student not found', 404);
         }
 

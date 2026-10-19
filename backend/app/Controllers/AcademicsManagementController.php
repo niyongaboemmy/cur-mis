@@ -21,6 +21,7 @@ use App\Models\DegreeModel;
 use App\Models\CampusModel;
 use App\Helpers\ValidationHelper;
 use App\Helpers\InstructorDirectory;
+use App\Services\AcademicScopeService;
 
 /**
  * Handles CRUD for general academic entities.
@@ -92,9 +93,24 @@ class AcademicsManagementController extends BaseController
         if ($entity === 'modules') {
             /** @var ModuleModel $moduleModel */
             $moduleModel = $this->models['modules'];
+
+            // Dean / HOD: only modules in their faculty or department.
+            $scope        = AcademicScopeService::forUser((array)($request->param('_auth_user') ?? []));
+            $department   = $request->query('department') ?: null;
+            $departments  = null;
+            if ($scope !== null) {
+                $allowed     = $scope['department_ids'] ?: [-1];
+                $department  = null;
+                $departments = $allowed;
+                if ($request->query('department') && AcademicScopeService::allowsDepartment($scope, $request->query('department'))) {
+                    $departments = [(int)$request->query('department')];
+                }
+            }
+
             $paginated = $moduleModel->listWithPrereqs($page, $perPage, [
-                'program'    => $request->query('program')    ?: null,
-                'department' => $request->query('department') ?: null,
+                'program'     => $request->query('program')    ?: null,
+                'department'  => $department,
+                'departments' => $departments,
                 'level'      => $request->query('level')      ?: null,
                 'status'     => $request->query('status')     ?: null,
                 'q'          => $request->query('q')          ?: null,
@@ -253,6 +269,10 @@ class AcademicsManagementController extends BaseController
             $moduleModel = $this->models['modules'];
             $item = $moduleModel->findWithPrereqs($id);
             if (!$item) {
+                $this->error($response, 'Item not found.', 404);
+            }
+            $scope = AcademicScopeService::forUser((array)($request->param('_auth_user') ?? []));
+            if (!AcademicScopeService::allowsDepartment($scope, $item['department'] ?? null)) {
                 $this->error($response, 'Item not found.', 404);
             }
             $this->success($response, $item, 'Module details fetched.');
