@@ -50,6 +50,96 @@ class AcademicsManagementController extends BaseController
     }
 
     /**
+     * Dean / HOD scope for the academic structure. Returns [sql, bindings] for
+     * the list query, or null when the entity is not scoped (superadmin, and
+     * shared reference lists such as levels and campuses).
+     *
+     * @return array{0:string,1:array<int,int|string>}|null
+     */
+    private function scopeWhere(Request $request, string $entity): ?array
+    {
+        $scope = AcademicScopeService::forUser((array)($request->param('_auth_user') ?? []));
+        if ($scope === null) {
+            return null;
+        }
+        return match ($entity) {
+            'departments' => AcademicScopeService::departmentCondition($scope, '`dep_id`'),
+            'options'     => AcademicScopeService::departmentCondition($scope, '`department_id`'),
+            'faculties'   => ($facIds = $this->facultyIdsFor($scope)) === []
+                                ? ['1=0', []]
+                                : ['`fac_id` IN (' . implode(',', array_fill(0, count($facIds), '?')) . ')', $facIds],
+            default       => null,
+        };
+    }
+
+    /** Faculties a scoped user may see: their faculties plus the faculty of each of their departments. */
+    private function facultyIdsFor(array $scope): array
+    {
+        $ids = array_map('intval', $scope['faculty_ids']);
+        if ($scope['department_ids'] !== []) {
+            $ph   = implode(',', array_fill(0, count($scope['department_ids']), '?'));
+            $rows = Database::getInstance()->fetchAll(
+                "SELECT DISTINCT fac_id FROM departements WHERE dep_id IN ({$ph})",
+                array_values($scope['department_ids'])
+            );
+            foreach ($rows as $r) {
+                if ($r['fac_id'] !== null) {
+                    $ids[] = (int)$r['fac_id'];
+                }
+            }
+        }
+        return array_values(array_unique($ids));
+    }
+
+    /**
+     * Single-record guard: a scoped user may read or change a faculty,
+     * department, programme or module only when it belongs to their scope.
+     * $data holds the request body for create / update.
+     */
+    private function guardScope(Request $request, Response $response, string $entity, ?int $id, array $data = []): void
+    {
+        $scope = AcademicScopeService::forUser((array)($request->param('_auth_user') ?? []));
+        if ($scope === null || !in_array($entity, ['faculties', 'departments', 'options', 'modules'], true)) {
+            return;
+        }
+
+        if ($id !== null) {
+            $row = $this->models[$entity]->find($id);
+            if (!$row || !$this->rowInScope($scope, $entity, $row)) {
+                $this->error($response, 'Item not found.', 404);
+            }
+        }
+        // A create must name an in-scope unit; an update may omit keys it does not change.
+        if (!$this->rowInScope($scope, $entity, $data, $id !== null)) {
+            $this->error($response, 'You can only manage records in your own faculty or department.', 403);
+        }
+    }
+
+    /** @param array<string,mixed> $row */
+    private function rowInScope(array $scope, string $entity, array $row, bool $partial = false): bool
+    {
+        return match ($entity) {
+            'departments' => $this->inScopeOrAbsent($scope, $row, 'dep_id', $partial, fn ($v) => AcademicScopeService::allowsDepartment($scope, $v)),
+            'options'     => $this->inScopeOrAbsent($scope, $row, 'department_id', $partial, fn ($v) => AcademicScopeService::allowsDepartment($scope, $v)),
+            'modules'     => $this->inScopeOrAbsent($scope, $row, 'department', $partial, fn ($v) => AcademicScopeService::allowsDepartment($scope, $v)),
+            'faculties'   => $this->inScopeOrAbsent($scope, $row, 'fac_id', $partial, fn ($v) => in_array((int)$v, $this->facultyIdsFor($scope), true)),
+            default       => false,
+        };
+    }
+
+    /**
+     * On a partial write (update) the key may be absent, meaning "unchanged"; a
+     * present key must be in scope. Reads always need the key to be in scope.
+     */
+    private function inScopeOrAbsent(array $scope, array $row, string $key, bool $partial, callable $check): bool
+    {
+        if ($partial && !array_key_exists($key, $row)) {
+            return true;
+        }
+        return $check($row[$key] ?? null);
+    }
+
+    /**
      * Resolve the target entity from the request.
      */
     private function resolveEntity(Request $request): ?string
@@ -153,6 +243,13 @@ class AcademicsManagementController extends BaseController
                 }
                 $whereClauses[] = '(' . implode(' OR ', $likes) . ')';
             }
+        }
+
+        // Dean / HOD: faculties, departments and programmes limited to their scope.
+        $scopeWhere = $this->scopeWhere($request, $entity);
+        if ($scopeWhere !== null) {
+            $whereClauses[] = $scopeWhere[0];
+            $bindings       = array_merge($bindings, $scopeWhere[1]);
         }
 
         $where = implode(' AND ', $whereClauses);
@@ -260,6 +357,7 @@ class AcademicsManagementController extends BaseController
         if (!isset($this->models[$entity])) {
             $this->error($response, 'Entity not found.', 404);
         }
+        $this->guardScope($request, $response, $entity, $id);
 
         // Modules carry both prerequisites and the programmes they belong
         // to, so callers (the edit form, in particular) can render their
@@ -294,6 +392,7 @@ class AcademicsManagementController extends BaseController
         if (!isset($this->models[$entity])) {
             $this->error($response, 'Entity not found.', 404);
         }
+        $this->guardScope($request, $response, $entity, null, $data);
 
         // For modules, `program_ids` and `level_ids` are meta — pull them
         // out before model write.
@@ -383,6 +482,7 @@ class AcademicsManagementController extends BaseController
         if (!isset($this->models[$entity])) {
             $this->error($response, 'Entity not found.', 404);
         }
+        $this->guardScope($request, $response, $entity, $id, $data);
 
         if (!$this->models[$entity]->find($id)) {
             $this->error($response, 'Item not found.', 404);
@@ -466,6 +566,7 @@ class AcademicsManagementController extends BaseController
         if (!isset($this->models[$entity])) {
             $this->error($response, 'Entity not found.', 404);
         }
+        $this->guardScope($request, $response, $entity, $id);
 
         $this->models[$entity]->delete($id);
         $this->success($response, null, ucfirst($entity) . ' deleted.');

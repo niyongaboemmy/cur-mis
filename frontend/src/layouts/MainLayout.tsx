@@ -1430,6 +1430,7 @@ export default function MainLayout() {
   const isVisible = useCallback(
     (node: {
       id?: string;
+      to?: string;
       roles?: string[];
       permissions?: string[];
       hideForRoles?: string[];
@@ -1442,6 +1443,8 @@ export default function MainLayout() {
         return academicScope.scoped || isSuperadmin(user) || perms.includes(PERMISSIONS.MANAGE_USERS);
       }
       if (academicScope.scoped && node.id && SCOPED_HIDDEN_NAV_IDS.has(node.id)) return false;
+      // Dean / HOD: year and term setup is institution-wide, not theirs to change.
+      if (academicScope.scoped && node.to?.includes("tab=years-terms")) return false;
       if (node.showWhenTeaching && user?.is_teaching) return matchesRoles(node.roles);
       return matchesRoles(node.roles) && hasAccess(node.permissions);
     },
