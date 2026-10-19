@@ -99,7 +99,7 @@ class ModuleMarksController extends BaseController
     /** null = full scope, [] = none, else list of module ids the user may record for. */
     private function teachableModuleIds(Request $request): ?array
     {
-        // Dean / HOD: the modules in their faculty or department (read access).
+        // Dean / HOD / secretary: the modules in their faculty or department (view and record marks).
         $inScope = \App\Services\AcademicScopeService::moduleIdsFor((array)($request->param("_auth_user") ?? []));
         if ($inScope !== null) return $inScope;
 

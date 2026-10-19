@@ -77,7 +77,11 @@ final class AcademicScopeGate
         // Marks, attendance, grades and exams: read-only, limited to the scope.
         if (self::under($p, self::READ_ONLY)) {
             if ($method !== 'GET') {
-                return self::deny(403, 'Dean and HOD accounts view marks and attendance. Lecturers record them.');
+                // Marks: a Dean, HOD or secretary may record them for modules in their scope.
+                if (str_starts_with($p, '/api/marks')) {
+                    return self::markWriteRefused($scope, $method, $p, $body);
+                }
+                return self::deny(403, 'Dean and HOD accounts view attendance and exams. Lecturers record attendance.');
             }
             $mid = $query['module_id'] ?? null;
             if ($mid !== null && $mid !== '' && !self::moduleInScope($scope, (int)$mid)) {
@@ -136,6 +140,27 @@ final class AcademicScopeGate
         }
 
         return null;
+    }
+
+    /**
+     * Marks writes: POST /api/marks (save), POST /api/marks/workflow, DELETE /api/marks/:id.
+     * The module must be in the scope. The controller applies the same module
+     * rule (teachable modules = the scope for these accounts).
+     */
+    private static function markWriteRefused(array $scope, string $method, string $p, array $body): ?array
+    {
+        if ($method === 'DELETE' && preg_match('#^/api/marks/(\d+)$#', $p, $mm)) {
+            $mid = self::one('SELECT module_id FROM module_marks WHERE id = ?', [(int)$mm[1]], 'module_id');
+            return ($mid !== null && self::moduleInScope($scope, (int)$mid))
+                ? null
+                : self::deny(404, 'Mark not found.');
+        }
+        if ($method === 'POST' && ($p === '/api/marks' || $p === '/api/marks/workflow')) {
+            return self::moduleInScope($scope, (int)($body['module_id'] ?? 0))
+                ? null
+                : self::deny(403, 'That module is outside your faculty or department.');
+        }
+        return self::deny(403, 'You cannot change marks this way.');
     }
 
     /**
