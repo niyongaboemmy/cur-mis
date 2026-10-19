@@ -40,7 +40,13 @@ final class AcademicScopeService
             return null;
         }
         if (!array_key_exists($userId, self::$cache)) {
-            $scope = self::resolve($userId);
+            // This runs on every request. If the scope tables are not there yet, fail
+            // safe: Dean / HOD accounts get no access, everyone else keeps the normal view.
+            try {
+                $scope = self::resolve($userId);
+            } catch (\Throwable) {
+                $scope = null;
+            }
             // Fail closed: a Dean / HOD account with no approved link sees nothing
             // until an admin approves its faculty or department.
             if ($scope === null && self::hasScopedRole($authUser)) {
@@ -77,6 +83,17 @@ final class AcademicScopeService
         // Stored as strings in student/module rows, so bind as strings for a
         // portable comparison against both varchar and int columns.
         return ["{$column} IN ({$ph})", array_map('strval', $ids)];
+    }
+
+    /**
+     * Department ids the user may see, or null when unrestricted. Used by list queries.
+     *
+     * @return int[]|null
+     */
+    public static function scopeDepartmentIds(array $authUser): ?array
+    {
+        $scope = self::forUser($authUser);
+        return $scope === null ? null : $scope["department_ids"];
     }
 
     /**

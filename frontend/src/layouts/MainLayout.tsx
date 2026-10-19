@@ -115,7 +115,34 @@ const SCOPED_HIDDEN_NAV_IDS = new Set([
   // Institution-wide metrics: not shown to Dean / HOD accounts.
   "campus-statistics",
   "support-reporting",
+  // Areas the Dean / HOD scope does not cover yet (the server refuses them).
+  "academic-records",
+  "exam",
+  "attendance",
+  "attendance-student",
+  "my-payroll",
+  "my-service-requests",
+  "services",
 ]);
+
+/** Menu links (by path) hidden from Dean / HOD accounts for the same reason. */
+const SCOPED_HIDDEN_PATHS = [
+  "/students/id-cards",
+  "/documents/generate",
+  "/attendance",
+  "/me/payroll",
+  "/exams",
+  "/teacher/exams",
+  "/my-modules?tab=exams",
+  "/my-modules?tab=marks",
+  "/modules/marks",
+  "/academic/transcript",
+  "/academic/system-documents",
+  "/academic/graduands",
+  "/service",
+  "/finance",
+  "/my-finance",
+];
 
 const NAV_TREE: NavNode[] = [
   { id: "home", label: "Home", icon: Home, to: "/" },
@@ -1451,6 +1478,7 @@ export default function MainLayout() {
       if (academicScope.scoped && node.id && SCOPED_HIDDEN_NAV_IDS.has(node.id)) return false;
       // Dean / HOD: year and term setup is institution-wide, not theirs to change.
       if (academicScope.scoped && node.to?.includes("tab=years-terms")) return false;
+      if (academicScope.scoped && node.to && SCOPED_HIDDEN_PATHS.some((p) => node.to!.includes(p))) return false;
       if (node.showWhenTeaching && user?.is_teaching) return matchesRoles(node.roles);
       return matchesRoles(node.roles) && hasAccess(node.permissions);
     },
