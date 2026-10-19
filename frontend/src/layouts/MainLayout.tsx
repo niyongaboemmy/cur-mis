@@ -44,6 +44,7 @@ import BlueBanner from "@/components/layout/BlueBanner";
 import Logo from "@/components/brand/Logo";
 // import AiChatWidget from "@/components/layout/AiChatWidget"; // re-enable when ANTHROPIC_API_KEY is set
 import { useCurrentUser } from "@/hooks/useAuth";
+import { useAcademicScope } from "@/hooks/useAcademicScope";
 import { useSystemBasics } from "@/hooks/useSystemBasics";
 
 import {
@@ -101,6 +102,12 @@ type NavNode = {
   showWhenTeaching?: boolean;
   children?: NavChild[];
 };
+
+/**
+ * Top-level groups hidden from Dean / Head of Department accounts. Academic
+ * and staff menus stay visible; the backend limits the data to their scope.
+ */
+const SCOPED_HIDDEN_NAV_IDS = new Set(["finance", "admissions", "hr-management"]);
 
 const NAV_TREE: NavNode[] = [
   { id: "home", label: "Home", icon: Home, to: "/" },
@@ -800,6 +807,13 @@ const ADMIN_TREE: NavNode[] = [
     permissions: [PERMISSIONS.MANAGE_USERS],
   },
   {
+    id: "academic-scope",
+    label: "Academic Scope",
+    icon: UserIcon,
+    to: "/academic-scope",
+    permissions: [PERMISSIONS.MANAGE_USERS],
+  },
+  {
     id: "roles",
     label: "Roles",
     icon: ShieldCheck,
@@ -1373,6 +1387,7 @@ export default function MainLayout() {
   );
 
   const { user } = useAuthStore();
+  const { scope: academicScope } = useAcademicScope();
 
   const hasAccess = useCallback(
     (perms?: string[]) => {
@@ -1398,16 +1413,19 @@ export default function MainLayout() {
 
   const isVisible = useCallback(
     (node: {
+      id?: string;
       roles?: string[];
       permissions?: string[];
       hideForRoles?: string[];
       showWhenTeaching?: boolean;
     }) => {
       if (node.hideForRoles?.includes(user?.role ?? "")) return false;
+      // Dean / Head of Department: finance, admissions and HR are outside their scope.
+      if (academicScope.scoped && node.id && SCOPED_HIDDEN_NAV_IDS.has(node.id)) return false;
       if (node.showWhenTeaching && user?.is_teaching) return matchesRoles(node.roles);
       return matchesRoles(node.roles) && hasAccess(node.permissions);
     },
-    [matchesRoles, hasAccess, user],
+    [matchesRoles, hasAccess, user, academicScope],
   );
 
   const filtered = useMemo<NavNode[]>(() => {
@@ -1447,7 +1465,7 @@ export default function MainLayout() {
     };
 
     return filterTree(NAV_TREE);
-  }, [query, hasAccess, user]);
+  }, [query, hasAccess, user, isVisible]);
 
   const filteredAdmin = useMemo<NavNode[]>(() => {
     const q = query.trim().toLowerCase();
@@ -1487,7 +1505,7 @@ export default function MainLayout() {
     };
 
     return filterTree(ADMIN_TREE);
-  }, [query, hasAccess, user]);
+  }, [query, hasAccess, user, isVisible]);
 
   const headerMeta = ROUTE_TITLES[location.pathname] ?? { title: "CUR-MIS" };
   const sidebarWidth = collapsed ? 72 : 240;

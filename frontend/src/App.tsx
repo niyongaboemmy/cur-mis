@@ -19,6 +19,7 @@ import RolesManagementPage from "@/pages/admin/RolesManagementPage";
 import ServiceCatalogManagementPage from "@/pages/admin/ServiceCatalogManagementPage";
 import PermissionsManagementPage from "@/pages/admin/PermissionsManagementPage";
 import UsersManagementPage from "@/pages/admin/UsersManagementPage";
+import AcademicScopePage from "@/pages/admin/AcademicScopePage";
 // University Modules
 import StudentsPage from "@/pages/StudentsPage";
 import StudentDetailsPage from "@/pages/StudentDetailsPage";
@@ -324,6 +325,7 @@ function App() {
                 }
               >
                 <Route path="/users" element={<UsersManagementPage />} />
+                <Route path="/academic-scope" element={<AcademicScopePage />} />
               </Route>
 
               {/* ── Students ── */}
