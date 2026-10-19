@@ -99,6 +99,10 @@ class ModuleMarksController extends BaseController
     /** null = full scope, [] = none, else list of module ids the user may record for. */
     private function teachableModuleIds(Request $request): ?array
     {
+        // Dean / HOD: the modules in their faculty or department (read access).
+        $inScope = \App\Services\AcademicScopeService::moduleIdsFor((array)($request->param("_auth_user") ?? []));
+        if ($inScope !== null) return $inScope;
+
         if ($this->hasPerm($request, Permissions::MANAGE_MODULE_MARKS)) return null;
         // Delegated to the shared resolver so marks, attendance, the module
         // picker and the teacher portal all agree on what "my modules" means.
@@ -246,10 +250,12 @@ class ModuleMarksController extends BaseController
             // Admin: show every active module — the marks page is the canonical
             // place to record marks, so the picker should never silently hide
             // a module just because nobody is registered yet.
+            // Dean / HOD: only the modules in their faculty or department.
+            $scopeSql = \App\Services\AcademicScopeService::moduleClause((array)($request->param('_auth_user') ?? []), 'm.module_id');
             $rows = $this->db->fetchAll(
                 "SELECT m.module_id, m.module_code, m.module_name, m.level
                  FROM modules m
-                 WHERE m.status = 'active'
+                 WHERE m.status = 'active'{$scopeSql}
                  ORDER BY m.module_code ASC
                  LIMIT 2000",
                 []

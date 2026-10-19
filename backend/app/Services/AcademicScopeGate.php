@@ -24,11 +24,16 @@ final class AcademicScopeGate
         '/api/academics-management', '/api/modules', '/api/timetable', '/api/academic',
         '/api/admin/academic-years', '/api/notifications', '/api/messages', '/api/announcements',
         '/api/forums', '/api/push', '/api/navigation',
+        '/api/marks', '/api/attendance', '/api/grades',
     ];
+
+    /** Areas a scoped account may read (view marks, attendance and exams) but never change. */
+    private const READ_ONLY = ['/api/marks', '/api/attendance', '/api/grades', '/api/academics-management/exams'];
 
     /** Academic catalogues a scoped account may read. */
     private const ENTITY_READ = [
         'faculties', 'departments', 'options', 'modules', 'levels', 'campuses', 'schools', 'degrees', 'intakes', 'facility',
+        'exams',
     ];
 
     /** Academic structure a scoped account may change (inside its scope, checked by the controller). */
@@ -37,9 +42,10 @@ final class AcademicScopeGate
     /**
      * @param array<string,mixed> $user   the signed-in user (from AuthMiddleware)
      * @param array<string,mixed> $body   the request body
+     * @param array<string,mixed> $query  the query string
      * @return array{status:int,message:string}|null  null = allowed
      */
-    public static function refusal(array $user, string $method, string $path, array $body = []): ?array
+    public static function refusal(array $user, string $method, string $path, array $body = [], array $query = []): ?array
     {
         $scope = AcademicScopeService::forUser($user);
         if ($scope === null) {
@@ -61,6 +67,21 @@ final class AcademicScopeGate
             }
             if ($method !== 'GET' && !in_array($entity, self::ENTITY_WRITE, true)) {
                 return self::deny(403, 'You cannot change this list.');
+            }
+        }
+
+        // Marks, attendance, grades and exams: read-only, limited to the scope.
+        if (self::under($p, self::READ_ONLY)) {
+            if ($method !== 'GET') {
+                return self::deny(403, 'Dean and HOD accounts view marks and attendance. Lecturers record them.');
+            }
+            $mid = $query['module_id'] ?? null;
+            if ($mid !== null && $mid !== '' && !self::moduleInScope($scope, (int)$mid)) {
+                return self::deny(403, 'That module is outside your faculty or department.');
+            }
+            $refused = self::readRecordRefused($scope, $p);
+            if ($refused !== null) {
+                return $refused;
             }
         }
 
@@ -108,6 +129,40 @@ final class AcademicScopeGate
             if (!isset($body['module_id']) || !self::moduleInScope($scope, (int)$body['module_id'])) {
                 return self::deny(403, 'You can only manage records for modules in your own faculty or department.');
             }
+        }
+
+        return null;
+    }
+
+    /**
+     * Read paths that name one record. Returns a refusal when that record is
+     * outside the scope, or null when it is allowed (or the path names none).
+     */
+    private static function readRecordRefused(array $scope, string $p): ?array
+    {
+        $notFound = self::deny(404, 'Not found');
+
+        // Student by internal id, then by registration number.
+        if (preg_match('#/(?:students|gpa)/by-id/(\d+)(?:/|$)#', $p, $mm)) {
+            $dep = self::one('SELECT department FROM student WHERE id = ?', [(int)$mm[1]], 'department');
+            return ($dep !== null && AcademicScopeService::allowsDepartment($scope, $dep)) ? null : $notFound;
+        }
+        if (preg_match('#^/api/(?:marks|attendance)/students/([^/]+)(?:/|$)#', $p, $mm)) {
+            $dep = self::one('SELECT department FROM student WHERE regnumber = ?', [urldecode($mm[1])], 'department');
+            return ($dep !== null && AcademicScopeService::allowsDepartment($scope, $dep)) ? null : $notFound;
+        }
+        // Attendance session and module report.
+        if (preg_match('#^/api/attendance/sessions/(\d+)(?:/|$)#', $p, $mm)) {
+            $mid = self::one('SELECT module_id FROM attendance_sessions WHERE id = ?', [(int)$mm[1]], 'module_id');
+            return ($mid !== null && self::moduleInScope($scope, (int)$mid)) ? null : $notFound;
+        }
+        if (preg_match('#^/api/attendance/modules/(\d+)(?:/|$)#', $p, $mm)) {
+            return self::moduleInScope($scope, (int)$mm[1]) ? null : $notFound;
+        }
+        // Exam schedule by id (and its attendance list).
+        if (preg_match('#^/api/academics-management/exams/(\d+)(?:/|$)#', $p, $mm)) {
+            $mid = self::one('SELECT module_id FROM exam_schedules WHERE id = ?', [(int)$mm[1]], 'module_id');
+            return ($mid !== null && self::moduleInScope($scope, (int)$mid)) ? null : $notFound;
         }
 
         return null;
