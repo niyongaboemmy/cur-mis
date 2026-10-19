@@ -3,12 +3,21 @@ import AdminDashboardPage from "@/pages/admin/AdminDashboardPage";
 import ApplicantOverviewPage from "@/pages/applicant/ApplicantOverviewPage";
 import TeacherDashboardPage from "@/pages/teacher/TeacherDashboardPage";
 import { PERMISSIONS } from "@/constants/permissions";
+import { useAcademicScope } from "@/hooks/useAcademicScope";
 
 export default function HomePage() {
   const { user } = useAuthStore();
+  const { scope } = useAcademicScope();
 
   if (user?.role === "applicant" || user?.is_applicant) {
     return <ApplicantOverviewPage />;
+  }
+
+  // Dean, HOD and academic secretary accounts get the admin dashboard, which is
+  // already limited to their faculty or department. The teacher dashboard shows a
+  // lecturer's own teaching and would fail for these accounts.
+  if (scope.scoped) {
+    return <AdminDashboardPage />;
   }
 
   // Teaching staff land on their own workspace instead of the institution-wide
