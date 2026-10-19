@@ -1734,6 +1734,8 @@ class AcademicsManagementController extends BaseController
      */
     public function examScheduledModules(Request $request, Response $response): never
     {
+        // Dean / HOD: only modules in their faculty or department.
+        $scopeSql = AcademicScopeService::moduleClause((array)($request->param('_auth_user') ?? []), 'mo.module_id');
         $rows = $this->models['module_offerings']->db()->fetchAll(
             "SELECT
                 mo.module_id,
@@ -1757,7 +1759,7 @@ class AcademicsManagementController extends BaseController
              JOIN `modules`      m  ON m.module_id = mo.module_id
              LEFT JOIN `options` o  ON o.id        = mo.option_id
              LEFT JOIN `campuses`    c ON c.id     = mo.campus_id
-             WHERE mo.module_id IS NOT NULL
+             WHERE mo.module_id IS NOT NULL{$scopeSql}
              GROUP BY mo.module_id, mo.option_id, mo.mode, mo.academic_year,
                       mo.year_of_study, mo.semesters, mo.campus_id,
                       m.module_code, m.module_name, m.module_credits, m.level,
@@ -1850,6 +1852,8 @@ class AcademicsManagementController extends BaseController
                 $args[]  = $like;
             }
             $whereSql = $where ? ('AND ' . implode(' AND ', $where)) : '';
+            // Dean / HOD: only exams for modules in their faculty or department.
+            $whereSql .= AcademicScopeService::moduleClause((array)($request->param('_auth_user') ?? []), 'm.module_id');
 
             // Subquery dedupes module_offerings into one row per module
             // inside the program — admins only need one entry per module
@@ -1927,6 +1931,9 @@ class AcademicsManagementController extends BaseController
                 $args[]  = $like;
             }
             $whereSql = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
+            // Dean / HOD: only exam schedules for modules in their faculty or department.
+            $whereSql  = ($whereSql === '' ? ' WHERE 1 = 1' : $whereSql)
+                . AcademicScopeService::moduleClause((array)($request->param('_auth_user') ?? []), 'm.module_id');
 
             $rows = $this->models['exam_schedules']->db()->fetchAll(
                 "SELECT

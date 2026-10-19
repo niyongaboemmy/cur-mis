@@ -83,6 +83,10 @@ class AttendanceController extends BaseController
      */
     private function teachableModuleIds(Request $request): ?array
     {
+        // Dean / HOD: the modules in their faculty or department (read access).
+        $inScope = \App\Services\AcademicScopeService::moduleIdsFor((array)($request->param("_auth_user") ?? []));
+        if ($inScope !== null) return $inScope;
+
         if ($this->hasPerm($request, Permissions::MANAGE_ATTENDANCE))
             return null;
 

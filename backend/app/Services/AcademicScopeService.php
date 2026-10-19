@@ -97,6 +97,45 @@ final class AcademicScopeService
     }
 
     /**
+     * Module ids in the user's departments, or null when unrestricted.
+     *
+     * @return int[]|null
+     */
+    public static function moduleIdsFor(array $authUser): ?array
+    {
+        $deps = self::scopeDepartmentIds($authUser);
+        if ($deps === null) {
+            return null;
+        }
+        if ($deps === []) {
+            return [];
+        }
+        $ph   = implode(',', array_fill(0, count($deps), '?'));
+        $rows = Database::getInstance()->fetchAll(
+            "SELECT module_id FROM modules WHERE department IN ({$ph})",
+            array_values($deps)
+        );
+        return array_map(static fn ($r) => (int)$r['module_id'], $rows);
+    }
+
+    /**
+     * SQL fragment " AND {$column} IN (...)" limiting a module-id column to the
+     * user's scope. Ids are cast to int and written inline. Returns '' when
+     * unrestricted and " AND 1 = 0" when the scope has no modules.
+     */
+    public static function moduleClause(array $authUser, string $column): string
+    {
+        $ids = self::moduleIdsFor($authUser);
+        if ($ids === null) {
+            return '';
+        }
+        if ($ids === []) {
+            return ' AND 1 = 0';
+        }
+        return " AND {$column} IN (" . implode(',', array_map('intval', $ids)) . ')';
+    }
+
+    /**
      * True when a department id (int or numeric string) is inside the scope.
      */
     public static function allowsDepartment(?array $scope, mixed $departmentId): bool
