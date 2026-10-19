@@ -22,6 +22,29 @@ class StudentModel extends BaseModel
     ];
 
     /**
+     * Rows for the given ids, in the order of the ids. Used when the list is
+     * sorted in PHP and the page has already been cut.
+     */
+    public function findManyInOrder(array $ids): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+        $ph   = implode(',', array_fill(0, count($ids), '?'));
+        $byId = [];
+        foreach ($this->db->fetchAll("SELECT * FROM `{$this->table}` WHERE `{$this->primaryKey}` IN ($ph)", $ids) as $row) {
+            $byId[(int)$row[$this->primaryKey]] = $row;
+        }
+        $out = [];
+        foreach ($ids as $id) {
+            if (isset($byId[$id])) {
+                $out[] = $this->hideFields($byId[$id]);
+            }
+        }
+        return $out;
+    }
+
+    /**
      * Walk `parent_student_id` upwards to return the student's prior
      * programme rows (oldest enrollment last). Used to surface the
      * "previously enrolled as undergraduate" history on the profile.
