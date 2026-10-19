@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams, Link, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
@@ -16,6 +16,7 @@ import {
   Filter,
   X,
   Eye,
+  Columns3,
   Download,
   Upload,
   FileText,
@@ -59,6 +60,35 @@ const PER_PAGE = 15;
    URL-driven state — card clicks navigate with filter params.
    ───────────────────────────────────────────────────────────── */
 type Tab = "active" | "all";
+
+/** Columns the student table can hide. Keys match the sortable field names. */
+const COLUMN_OPTIONS: { key: string; label: string }[] = [
+  { key: "fname", label: "Student" },
+  { key: "regnumber", label: "Reg / Index" },
+  { key: "email", label: "Contact" },
+  { key: "campus", label: "Campus" },
+  { key: "gender", label: "Gender" },
+  { key: "nationality", label: "Nationality" },
+  { key: "age", label: "Age" },
+  { key: "district", label: "District" },
+  { key: "acc_year", label: "Academic year" },
+  { key: "start_year", label: "Start year" },
+  { key: "end_year", label: "End year" },
+  { key: "learning_mode", label: "Learning mode" },
+  { key: "document_status", label: "Documents" },
+];
+
+const HIDDEN_COLUMNS_KEY = "students.hiddenColumns";
+
+/** Per-browser column choice. Storage can be blocked, so every access is guarded. */
+function readHiddenColumns(): string[] {
+  try {
+    const value = JSON.parse(localStorage.getItem(HIDDEN_COLUMNS_KEY) ?? "[]");
+    return Array.isArray(value) ? value.filter((k) => typeof k === "string") : [];
+  } catch {
+    return [];
+  }
+}
 
 export default function StudentsPage() {
   const [sp, setSp] = useSearchParams();
@@ -588,6 +618,19 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
 
   // Inline district edit saves through POST /students/:id, which needs MANAGE_STUDENTS.
   const canEditDistrict = usePermission(PERMISSIONS.MANAGE_STUDENTS);
+
+  const [hiddenCols, setHiddenCols] = useState<string[]>(readHiddenColumns);
+  const toggleColumn = (key: string) => {
+    const next = hiddenCols.includes(key)
+      ? hiddenCols.filter((k) => k !== key)
+      : [...hiddenCols, key];
+    setHiddenCols(next);
+    try {
+      localStorage.setItem(HIDDEN_COLUMNS_KEY, JSON.stringify(next));
+    } catch {
+      // Storage unavailable: the choice still applies for this visit.
+    }
+  };
 
   // Entity data for filters. Departments + programs are loaded once and
   // shown flat — no faculty cascade — so the user can pick either directly.
@@ -1230,8 +1273,17 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
           />
         ) : (
           <>
+            <div className="flex justify-end px-4 pt-3">
+              <ColumnPicker
+                hidden={hiddenCols}
+                onToggle={toggleColumn}
+              />
+            </div>
             <div className="overflow-x-auto">
-              <table className="data-table">
+              <table
+                className="data-table students-table"
+                data-hidden-cols={hiddenCols.join(" ")}
+              >
                 <thead>
                   <tr>
                     <th className="w-[40px] pl-4">
@@ -1566,7 +1618,7 @@ function StudentRow({
           className="rounded border-ink-300 text-brand focus:ring-brand"
         />
       </td>
-      <td>
+      <td data-col="fname">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-md bg-brand/10 text-brand dark:bg-brand/25 dark:text-gold-400 flex items-center justify-center font-semibold text-[12px] shrink-0 overflow-hidden relative">
             <span>{initials}</span>
@@ -1587,12 +1639,12 @@ function StudentRow({
           </div>
         </div>
       </td>
-      <td>
+      <td data-col="regnumber">
         <span className="font-mono text-[12px] text-ink-700 dark:text-ink-200">
           {s.regnumber || s.index_number || s.index_file || "—"}
         </span>
       </td>
-      <td>
+      <td data-col="email">
         <div className="flex flex-col gap-0.5">
           {s.email && (
             <span className="text-[12.5px] flex items-center gap-1 text-ink-700 dark:text-ink-200">
@@ -1607,32 +1659,32 @@ function StudentRow({
           {!s.email && !s.phone && <span className="text-ink-400">—</span>}
         </div>
       </td>
-      <td>
+      <td data-col="campus">
         <span className="text-[12.5px] text-ink-700 dark:text-ink-200">
           {String(s.campus_name || s.campus || "—")}
         </span>
       </td>
-      <td onClick={(e) => e.stopPropagation()}>
+      <td data-col="gender" onClick={(e) => e.stopPropagation()}>
         <GenderCell studentId={s.id} gender={s.gender as string | null | undefined} />
       </td>
-      <td>{s.nationality || "—"}</td>
-      <td className="text-[12.5px] text-ink-700 dark:text-ink-200">{s.age ?? "—"}</td>
-      <td className="text-[12.5px] text-ink-700 dark:text-ink-200" onClick={(e) => e.stopPropagation()}>
+      <td data-col="nationality">{s.nationality || "—"}</td>
+      <td data-col="age" className="text-[12.5px] text-ink-700 dark:text-ink-200">{s.age ?? "—"}</td>
+      <td data-col="district" className="text-[12.5px] text-ink-700 dark:text-ink-200" onClick={(e) => e.stopPropagation()}>
         <DistrictCell
           studentId={s.id}
           district={s.district as string | null | undefined}
           canEdit={!!canEditDistrict}
         />
       </td>
-      <td className="text-[12.5px] text-ink-700 dark:text-ink-200">{s.acc_year || "—"}</td>
-      <td className="text-[12.5px] text-ink-700 dark:text-ink-200">{s.start_year ?? "—"}</td>
-      <td className="text-[12.5px] text-ink-700 dark:text-ink-200">{s.end_year ?? "—"}</td>
-      <td className="text-[12.5px] text-ink-700 dark:text-ink-200">
+      <td data-col="acc_year" className="text-[12.5px] text-ink-700 dark:text-ink-200">{s.acc_year || "—"}</td>
+      <td data-col="start_year" className="text-[12.5px] text-ink-700 dark:text-ink-200">{s.start_year ?? "—"}</td>
+      <td data-col="end_year" className="text-[12.5px] text-ink-700 dark:text-ink-200">{s.end_year ?? "—"}</td>
+      <td data-col="learning_mode" className="text-[12.5px] text-ink-700 dark:text-ink-200">
         <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-ink-100 dark:bg-ink-700/50 text-ink-700 dark:text-ink-300 font-medium">
           {s.learning_mode || "—"}
         </span>
       </td>
-      <td className="px-4">
+      <td data-col="document_status" className="px-4">
         <DocumentCompletionBadge
           status={documentStatus}
           onClick={() => {
@@ -1780,6 +1832,59 @@ function FilterSelect({
           placeholder={placeholder ?? "All"}
         />
       </div>
+    </div>
+  );
+}
+
+/** "Columns" menu: tick the columns to show. Hidden columns stay sortable via URL. */
+function ColumnPicker({
+  hidden,
+  onToggle,
+}: {
+  hidden: string[];
+  onToggle: (key: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="btn-secondary btn-sm inline-flex items-center gap-1.5"
+        aria-expanded={open}
+      >
+        <Columns3 className="w-3.5 h-3.5" />
+        Columns{hidden.length > 0 ? ` (${hidden.length} hidden)` : ""}
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1.5 z-30 w-52 rounded-xl border border-ink-100 dark:border-ink-800 bg-white dark:bg-ink-900 shadow-xl py-1.5">
+          {COLUMN_OPTIONS.map((col) => (
+            <label
+              key={col.key}
+              className="flex items-center gap-2.5 px-3 py-1.5 text-[13px] text-ink-700 dark:text-ink-200 hover:bg-ink-50 dark:hover:bg-ink-800/60 cursor-pointer"
+            >
+              <input
+                type="checkbox"
+                checked={!hidden.includes(col.key)}
+                onChange={() => onToggle(col.key)}
+                className="rounded border-ink-300 text-brand focus:ring-brand"
+              />
+              {col.label}
+            </label>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
