@@ -258,7 +258,8 @@ export default function TeacherCoursesPage() {
   // is instant and the per-tab counts need no extra request.
   const q = useQuery({
     queryKey: ['teacher', 'courses', 'scheduled'],
-    queryFn:  ({ signal }) => teacherService.courses('all', false, signal),
+    // Assigned modules are listed even before they have a timetable slot.
+    queryFn:  ({ signal }) => teacherService.courses('all', true, signal),
   })
 
   // Only used to explain an empty/short list — a course with no timetable block
