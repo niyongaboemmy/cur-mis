@@ -4960,6 +4960,7 @@ class StudentController extends BaseController
     private const YEAR_SHEET_HEADERS = [
         'National ID number', 'Sex', 'Age', 'District of origin', 'Program of Study',
         'Faculty/School/Department', 'Academic Year of Entry', 'Fees', 'Funding source', 'Year of study',
+        'Registration Number', 'Full Name',
     ];
 
     /** Columns of the Unmapped Records sheet, which keeps the identifying fields. */
@@ -5003,16 +5004,6 @@ class StudentController extends BaseController
         // Qualified with the `s` alias, as in exportCsv(), because the query joins
         // tables that share column names with `student`.
         [$where, $bindings] = $this->buildListFilters($request, 's');
-
-        // The workbook is about current students. With no status chosen on the
-        // list, only active students are exported; an explicit status wins.
-        $statusChosen = trim((string)($request->query('student_state') ?? '')) !== '';
-        if (!$statusChosen) {
-            $variants = self::stateVariants('active');
-            $ph       = implode(',', array_fill(0, count($variants), '?'));
-            $where    = ($where !== '' ? "({$where}) AND " : '') . "LOWER(TRIM(s.student_state)) IN ({$ph})";
-            $bindings = array_merge($bindings, $variants);
-        }
 
         $db   = $this->studentModel->db();
         $rows = $db->fetchAll(
@@ -5097,9 +5088,6 @@ class StudentController extends BaseController
         $book->addRow($summary, ['Total exported', '', count($rows)]);
 
         $filters = $this->describeFilters($request);
-        if (!$statusChosen) {
-            $filters[] = ['Status', 'active (default: only active students are exported)'];
-        }
         $book->addRow($summary, []);
         $book->addRow($summary, ['Filters applied']);
         foreach ($filters ?: [['(none)', 'All students']] as $pair) {
@@ -5136,6 +5124,8 @@ class StudentController extends BaseController
             '',
             $this->resolveTemplateCell('sponsor', $row, $registry),
             $this->resolveTemplateCell('current_level', $row, $registry),
+            $this->resolveTemplateCell('regnumber', $row, $registry),
+            $this->resolveTemplateCell('full_name', $row, $registry),
         ];
     }
 
