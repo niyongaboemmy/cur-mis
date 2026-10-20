@@ -234,18 +234,7 @@ class ModuleAssignmentRequestController extends BaseController
     /** Current academic year and term ids (or nulls). */
     private function currentYearTerm(): array
     {
-        $termId = AcademicContext::termId();
-        $db     = Database::getInstance();
-        if ($termId === null) {
-            $row = $db->fetchOne('SELECT id FROM academic_terms WHERE is_current = 1 LIMIT 1');
-            $termId = $row ? (int) $row['id'] : null;
-        }
-        $yearId = null;
-        if ($termId !== null) {
-            $row = $db->fetchOne('SELECT academic_year_id FROM academic_terms WHERE id = ?', [$termId]);
-            $yearId = $row ? (int) $row['academic_year_id'] : null;
-        }
-        return [$yearId, $termId];
+        return \App\Helpers\AcademicYearTerm::current();
     }
 
     private function isAdmin(array $authUser): bool
