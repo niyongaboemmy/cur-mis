@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useSystemStore } from '@/store/systemStore'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useAnyPermission } from '@/utils/permissions'
@@ -81,12 +82,19 @@ export default function ModulesMarksPage() {
   const termsQ = useQuery({ queryKey: ['academic', 'terms'], queryFn: () => academicService.listTerms() })
   const terms  = termsQ.data?.data ?? []
   const [termId, setTermId] = useState<number>(0)
+  // The term chosen in the top bar is the default here too.
+  const topBarTermId = useSystemStore((s) => s.selectedTermId)
   useEffect(() => {
     if (!termId && terms.length) {
-      const current = terms.find((t: any) => t.is_current) ?? terms[0]
+      const fromTopBar = topBarTermId != null ? terms.find((t: any) => t.id === topBarTermId) : undefined
+      const current = fromTopBar ?? terms.find((t: any) => t.is_current) ?? terms[0]
       setTermId(current.id)
     }
   }, [terms, termId])
+  useEffect(() => {
+    if (topBarTermId != null && terms.some((t: any) => t.id === topBarTermId)) setTermId(topBarTermId)
+    // Follows the top bar when it changes; the page's own term selector still works after that.
+  }, [topBarTermId])
 
   const pickModule = (modId: number, code: string, name: string) => {
     const next = new URLSearchParams(sp)

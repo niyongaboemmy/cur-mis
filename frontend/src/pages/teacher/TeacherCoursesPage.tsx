@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useSystemStore } from '@/store/systemStore'
 import { Link, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -240,7 +241,9 @@ const VIEW_STORAGE_KEY = 'teacher.courses.view'
 export default function TeacherCoursesPage() {
   const navigate = useNavigate()
   const [tab, setTab]       = useState<TabKey>('ongoing')
-  const [term, setTerm]     = useState<number | 'all'>('all')
+  // Start on the term chosen in the top bar, so Legacy courses are not shown by default.
+  const topBarTermId        = useSystemStore((s) => s.selectedTermId)
+  const [term, setTerm]     = useState<number | 'all'>(topBarTermId ?? 'all')
   const [search, setSearch] = useState('')
   const [view, setView]     = useState<ViewKey>(
     () => (localStorage.getItem(VIEW_STORAGE_KEY) as ViewKey) || 'grid',
