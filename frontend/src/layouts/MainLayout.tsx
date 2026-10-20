@@ -1468,6 +1468,8 @@ export default function MainLayout() {
       if (node.hideForRoles?.includes(user?.role ?? "")) return false;
       // Dean / Head of Department: finance, admissions and HR are outside their scope.
       if (teachingOnly && (node.id === "students-group" || node.to?.startsWith("/students"))) return false;
+      // Lecturers do not manage system settings, grading or system documents.
+      if (teachingOnly && (node.id === "system-settings" || ["/settings", "/academic/grading-scale", "/academic/system-documents"].some((p) => node.to?.startsWith(p)))) return false;
       if (node.id === "lecturer-placement") {
         const perms: string[] = user?.permissions ?? [];
         return academicScope.scoped || isSuperadmin(user) || perms.includes(PERMISSIONS.MANAGE_USERS);
