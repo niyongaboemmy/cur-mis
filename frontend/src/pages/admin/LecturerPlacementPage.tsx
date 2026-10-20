@@ -473,7 +473,11 @@ function LecturerModulesEditor({
     return <div className="text-sm text-red-600">Set the current academic year and term in Years &amp; terms first.</div>;
   }
 
-  const shown = options.filter((m) => {
+  // Modules already assigned always show, even outside the placement filter, so they can be unticked.
+  const assignedRows = (data?.assigned ?? []) as { module_id: number; module_code: string; module_name: string; department: number | null }[];
+  const optionIds = new Set(options.map((m) => m.module_id));
+  const listed = [...options, ...assignedRows.filter((a) => !optionIds.has(a.module_id))];
+  const shown = listed.filter((m) => {
     const f = filter.trim().toLowerCase();
     return !f || `${m.module_code} ${m.module_name}`.toLowerCase().includes(f);
   });
