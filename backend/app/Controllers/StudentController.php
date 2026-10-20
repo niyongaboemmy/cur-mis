@@ -4953,10 +4953,19 @@ class StudentController extends BaseController
         exit;
     }
 
-    /** Columns of each year worksheet. The No. column comes first. */
-    private const YEAR_EXPORT_HEADERS = [
+    /**
+     * Columns of each academic-year worksheet, in the order of the reporting
+     * template: one row per student, headers in row 1, no title line.
+     */
+    private const YEAR_SHEET_HEADERS = [
+        'National ID number', 'Sex', 'Age', 'District of origin', 'Program of Study',
+        'Faculty/School/Department', 'Academic Year of Entry', 'Fees', 'Funding source', 'Year of study',
+    ];
+
+    /** Columns of the Unmapped Records sheet, which keeps the identifying fields. */
+    private const UNMAPPED_EXPORT_HEADERS = [
         'No.', 'Student ID', 'Registration Number', 'Full Name', 'Campus', 'Gender', 'Nationality',
-        'Age', 'District', 'Academic Year', 'Start Year', 'End Year', 'Learning Mode', 'Student Status',
+        'Age', 'District', 'Academic Year', 'Start Year', 'End Year', 'Learning Mode', 'Student Status', 'Reason',
     ];
 
     /**
@@ -4964,9 +4973,9 @@ class StudentController extends BaseController
      *
      * Excel workbook of the filtered students, grouped by the two-digit year
      * code after "CUR" in each registration number (see RegistrationYearGroups).
-     * Sheets: Summary, then one sheet per mapped year from 2010-2011 to
-     * 2026-2027 (empty years included), then Unmapped Records for numbers that
-     * cannot be placed in a year.
+     * Sheets: Summary (counts per year and the filters used), one sheet per
+     * mapped year from 2010-2011 to 2026-2027 (empty years included), and
+     * Unmapped Records for numbers that cannot be placed in a year.
      *
      * Filters are the list page's own (search, campus, department scope and so
      * on), so the workbook matches what is on screen. Read-only; the route sits
@@ -4981,6 +4990,7 @@ class StudentController extends BaseController
         $keys = [
             'student_id', 'regnumber', 'full_name', 'campus_name', 'gender', 'nationality',
             'birthdate', 'district', 'acc_year', 'learning_mode', 'student_state', 'faculty_name',
+            'national_id', 'program_name', 'department_name', 'sponsor', 'current_level',
         ];
         $selectParts = [];
         foreach ($keys as $key) {
@@ -4995,7 +5005,10 @@ class StudentController extends BaseController
         $rows = $db->fetchAll(
             "SELECT " . implode(', ', $selectParts) . "
             FROM `student` s
-            LEFT JOIN `faculty` f ON f.fac_id = CAST(NULLIF(s.faculty, '') AS UNSIGNED)
+            LEFT JOIN `faculty`      f   ON f.fac_id      = CAST(NULLIF(s.faculty, '')    AS UNSIGNED)
+            LEFT JOIN `departements` d   ON d.dep_id      = CAST(NULLIF(s.department, '') AS UNSIGNED)
+            LEFT JOIN `options`      o   ON o.id          = CAST(NULLIF(s.std_option, '') AS UNSIGNED)
+            LEFT JOIN `levels`       lvl ON lvl.id        = CAST(NULLIF(s.current_level, '') AS UNSIGNED)
             " . ($where !== '' ? " WHERE {$where}" : '') . "
             ORDER BY s.regnumber, s.id",
             $bindings
@@ -5019,13 +5032,12 @@ class StudentController extends BaseController
             if (isset($campusNames[$campusId])) {
                 $row['campus_name'] = $campusNames[$campusId];
             }
-            $cells = $this->yearExportCells($row, $registry);
-            $info  = \App\Helpers\RegistrationYearGroups::classify($row['regnumber'] ?? null);
+            $info = \App\Helpers\RegistrationYearGroups::classify($row['regnumber'] ?? null);
 
             if ($info['code'] !== null && $info['label'] !== null) {
-                $groups[$info['code']][] = $cells;
+                $groups[$info['code']][] = $this->yearSheetCells($row, $registry);
             } else {
-                $unmapped[] = array_merge($cells, [$info['reason']]);
+                $unmapped[] = array_merge($this->unmappedCells($row, $registry), [$info['reason']]);
             }
         }
 
@@ -5040,24 +5052,17 @@ class StudentController extends BaseController
         $mappedTotal = 0;
         foreach (\App\Helpers\RegistrationYearGroups::YEAR_LABELS as $code => $label) {
             $count = count($groups[$code]);
-            $title = $count === 0
-                ? "Academic year {$label} · registration year code {$code} · no students in this group"
-                : "Academic year {$label} · registration year code {$code} · {$count} student" . ($count === 1 ? '' : 's');
 
-            $sheet = $book->addSheet($label, self::YEAR_EXPORT_HEADERS, $title);
-            foreach ($groups[$code] as $i => $cells) {
-                $book->addRow($sheet, array_merge([$i + 1], $cells));
+            $sheet = $book->addSheet($label, self::YEAR_SHEET_HEADERS);
+            foreach ($groups[$code] as $cells) {
+                $book->addRow($sheet, $cells);
             }
 
             $summaryRows[] = [$label, (string)$code, $count];
             $mappedTotal  += $count;
         }
 
-        $unmappedSheet = $book->addSheet(
-            'Unmapped Records',
-            array_merge(self::YEAR_EXPORT_HEADERS, ['Reason']),
-            'Records that could not be placed in an academic year · ' . count($unmapped) . ' record(s)'
-        );
+        $unmappedSheet = $book->addSheet('Unmapped Records', self::UNMAPPED_EXPORT_HEADERS);
         foreach ($unmapped as $i => $cells) {
             $book->addRow($unmappedSheet, array_merge([$i + 1], $cells));
         }
@@ -5080,15 +5085,43 @@ class StudentController extends BaseController
     }
 
     /**
-     * The cells for one student, in YEAR_EXPORT_HEADERS order after "No.". Each
-     * value goes through resolveTemplateCell(), so it reads the same as the CSV
-     * export. The student id and age are numbers, so they sort numerically.
+     * The cells for one student on a year worksheet, in YEAR_SHEET_HEADERS order.
+     * Values go through resolveTemplateCell(), so they read the same as the CSV
+     * export. Fees has no source on the student record and is left blank.
      *
      * @param array<string, mixed> $row
      * @param array<string, array> $registry
      * @return list<string|int>
      */
-    private function yearExportCells(array $row, array $registry): array
+    private function yearSheetCells(array $row, array $registry): array
+    {
+        $age        = $this->resolveTemplateCell('__age', $row, $registry);
+        $faculty    = $this->resolveTemplateCell('faculty_name', $row, $registry);
+        $department = $this->resolveTemplateCell('department_name', $row, $registry);
+
+        return [
+            $this->resolveTemplateCell('national_id', $row, $registry),
+            $this->resolveTemplateCell('gender', $row, $registry),
+            $age === '' ? '' : (int)$age,
+            $this->resolveTemplateCell('district', $row, $registry),
+            $this->resolveTemplateCell('program_name', $row, $registry),
+            implode(' / ', array_filter([$faculty, $department], static fn(string $v): bool => $v !== '')),
+            $this->resolveTemplateCell('acc_year', $row, $registry),
+            '',
+            $this->resolveTemplateCell('sponsor', $row, $registry),
+            $this->resolveTemplateCell('current_level', $row, $registry),
+        ];
+    }
+
+    /**
+     * The identifying cells for one student on the Unmapped Records sheet, in
+     * UNMAPPED_EXPORT_HEADERS order after "No.", minus the Reason column.
+     *
+     * @param array<string, mixed> $row
+     * @param array<string, array> $registry
+     * @return list<string|int>
+     */
+    private function unmappedCells(array $row, array $registry): array
     {
         $age = $this->resolveTemplateCell('__age', $row, $registry);
         return [
