@@ -223,8 +223,11 @@ export default function LecturerPlacementPage() {
         )}
       </div>
 
-      <div className="card-tight space-y-3">
-        <h2 className="font-semibold">Module requests ({modReqs.length})</h2>
+      <div className={`card-tight space-y-3 ${modReqs.length > 0 ? "border-l-4 border-l-amber-500 bg-amber-50" : ""}`}>
+        <h2 className="font-semibold">
+          Module requests ({modReqs.length})
+          {modReqs.length > 0 && <span className="ml-2 text-xs font-medium text-amber-700">Waiting for your decision</span>}
+        </h2>
         <p className="text-sm text-gray-600">
           Lecturers who have no modules yet ask for the modules they teach. Approving assigns the module to the lecturer.
         </p>
