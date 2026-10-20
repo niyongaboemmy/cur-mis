@@ -45,6 +45,7 @@ $router->group('/api/students', function ($router) {
     $router->get('/filter-options',                       [StudentController::class, 'filterOptions']);
     // Bulk CSV export (literal segments must come before /:id).
     $router->get('/export',                               [StudentController::class, 'exportCsv']);
+    $router->get('/export-by-academic-year',             [StudentController::class, 'exportByAcademicYear']);
     $router->get('/export-columns',                       [StudentController::class, 'exportColumnsList']);
     $router->get('/export-templates',                     [StudentController::class, 'listExportTemplates']);
     $router->post('/export-templates',                    [StudentController::class, 'saveExportTemplate']);

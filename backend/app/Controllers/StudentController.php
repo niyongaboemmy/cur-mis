@@ -4953,6 +4953,161 @@ class StudentController extends BaseController
         exit;
     }
 
+    /** Columns of each year worksheet. The No. column comes first. */
+    private const YEAR_EXPORT_HEADERS = [
+        'No.', 'Student ID', 'Registration Number', 'Full Name', 'Campus', 'Gender', 'Nationality',
+        'Age', 'District', 'Academic Year', 'Start Year', 'End Year', 'Learning Mode', 'Student Status',
+    ];
+
+    /**
+     * GET /api/students/export-by-academic-year
+     *
+     * Excel workbook of the filtered students, grouped by the two-digit year
+     * code after "CUR" in each registration number (see RegistrationYearGroups).
+     * Sheets: Summary, then one sheet per mapped year from 2010-2011 to
+     * 2026-2027 (empty years included), then Unmapped Records for numbers that
+     * cannot be placed in a year.
+     *
+     * Filters are the list page's own (search, campus, department scope and so
+     * on), so the workbook matches what is on screen. Read-only; the route sits
+     * in the VIEW_STUDENTS group.
+     */
+    public function exportByAcademicYear(Request $request, Response $response): never
+    {
+        $registry = $this->exportRegistry();
+
+        // Registry columns the workbook reads. Age, Start Year and End Year are
+        // derived in PHP by resolveTemplateCell(), so their inputs are fetched too.
+        $keys = [
+            'student_id', 'regnumber', 'full_name', 'campus_name', 'gender', 'nationality',
+            'birthdate', 'district', 'acc_year', 'learning_mode', 'student_state', 'faculty_name',
+        ];
+        $selectParts = [];
+        foreach ($keys as $key) {
+            $selectParts[] = "{$registry[$key]['sql']} AS `{$registry[$key]['alias']}`";
+        }
+
+        // Qualified with the `s` alias, as in exportCsv(), because the query joins
+        // tables that share column names with `student`.
+        [$where, $bindings] = $this->buildListFilters($request, 's');
+
+        $db   = $this->studentModel->db();
+        $rows = $db->fetchAll(
+            "SELECT " . implode(', ', $selectParts) . "
+            FROM `student` s
+            LEFT JOIN `faculty` f ON f.fac_id = CAST(NULLIF(s.faculty, '') AS UNSIGNED)
+            " . ($where !== '' ? " WHERE {$where}" : '') . "
+            ORDER BY s.regnumber, s.id",
+            $bindings
+        );
+
+        // The stored campus is an id. The list page shows its name, so do the same.
+        $campusNames = [];
+        foreach ($db->fetchAll("SELECT id, name FROM `campuses`") as $c) {
+            $campusNames[(string)$c['id']] = (string)$c['name'];
+        }
+
+        // Group every student. A student whose number cannot be placed goes to
+        // Unmapped Records with the reason. Nobody is guessed into a year.
+        $groups = [];
+        foreach (\App\Helpers\RegistrationYearGroups::YEAR_LABELS as $code => $_label) {
+            $groups[$code] = [];
+        }
+        $unmapped = [];
+        foreach ($rows as $row) {
+            $campusId = (string)($row['campus_name'] ?? '');
+            if (isset($campusNames[$campusId])) {
+                $row['campus_name'] = $campusNames[$campusId];
+            }
+            $cells = $this->yearExportCells($row, $registry);
+            $info  = \App\Helpers\RegistrationYearGroups::classify($row['regnumber'] ?? null);
+
+            if ($info['code'] !== null && $info['label'] !== null) {
+                $groups[$info['code']][] = $cells;
+            } else {
+                $unmapped[] = array_merge($cells, [$info['reason']]);
+            }
+        }
+
+        $book    = new \App\Helpers\StreamingXlsxBook();
+        $summary = $book->addSheet(
+            'Summary',
+            ['Academic Year', 'Registration Year Code', 'Number of Students'],
+            'Students by registration year · generated ' . date('Y-m-d H:i')
+        );
+
+        $summaryRows = [];
+        $mappedTotal = 0;
+        foreach (\App\Helpers\RegistrationYearGroups::YEAR_LABELS as $code => $label) {
+            $count = count($groups[$code]);
+            $title = $count === 0
+                ? "Academic year {$label} · registration year code {$code} · no students in this group"
+                : "Academic year {$label} · registration year code {$code} · {$count} student" . ($count === 1 ? '' : 's');
+
+            $sheet = $book->addSheet($label, self::YEAR_EXPORT_HEADERS, $title);
+            foreach ($groups[$code] as $i => $cells) {
+                $book->addRow($sheet, array_merge([$i + 1], $cells));
+            }
+
+            $summaryRows[] = [$label, (string)$code, $count];
+            $mappedTotal  += $count;
+        }
+
+        $unmappedSheet = $book->addSheet(
+            'Unmapped Records',
+            array_merge(self::YEAR_EXPORT_HEADERS, ['Reason']),
+            'Records that could not be placed in an academic year · ' . count($unmapped) . ' record(s)'
+        );
+        foreach ($unmapped as $i => $cells) {
+            $book->addRow($unmappedSheet, array_merge([$i + 1], $cells));
+        }
+
+        foreach ($summaryRows as $line) {
+            $book->addRow($summary, $line);
+        }
+        $book->addRow($summary, ['Mapped students', '', $mappedTotal]);
+        $book->addRow($summary, ['Unmapped Records', '', count($unmapped)]);
+        $book->addRow($summary, ['Total exported', '', count($rows)]);
+
+        $filters = $this->describeFilters($request);
+        $book->addRow($summary, []);
+        $book->addRow($summary, ['Filters applied']);
+        foreach ($filters ?: [['(none)', 'All students']] as $pair) {
+            $book->addRow($summary, [$pair[0], $pair[1]]);
+        }
+
+        $book->download('students_by_academic_year_' . date('Y-m-d_His') . '.xlsx');
+    }
+
+    /**
+     * The cells for one student, in YEAR_EXPORT_HEADERS order after "No.". Each
+     * value goes through resolveTemplateCell(), so it reads the same as the CSV
+     * export. The student id and age are numbers, so they sort numerically.
+     *
+     * @param array<string, mixed> $row
+     * @param array<string, array> $registry
+     * @return list<string|int>
+     */
+    private function yearExportCells(array $row, array $registry): array
+    {
+        $age = $this->resolveTemplateCell('__age', $row, $registry);
+        return [
+            (int)($row['student_id'] ?? 0),
+            $this->resolveTemplateCell('regnumber', $row, $registry),
+            $this->resolveTemplateCell('full_name', $row, $registry),
+            $this->resolveTemplateCell('campus_name', $row, $registry),
+            $this->resolveTemplateCell('gender', $row, $registry),
+            $this->resolveTemplateCell('nationality', $row, $registry),
+            $age === '' ? '' : (int)$age,
+            $this->resolveTemplateCell('district', $row, $registry),
+            $this->resolveTemplateCell('acc_year', $row, $registry),
+            $this->resolveTemplateCell('__start_year', $row, $registry),
+            $this->resolveTemplateCell('__end_year', $row, $registry),
+            $this->resolveTemplateCell('learning_mode', $row, $registry),
+            $this->resolveTemplateCell('student_state', $row, $registry),
+        ];
+    }
+
     /**
      * Columns used when the caller asked for an export without naming any —
      * the filter panel's one-click "download this cohort" button. Enough to

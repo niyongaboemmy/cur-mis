@@ -1025,6 +1025,24 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
             </button>
             <button
               type="button"
+              onClick={() => {
+                // The whole filtered set, not the current page: paging and
+                // sorting are dropped, as for the flat export.
+                const { page: _p, per_page: _pp, sort_by: _sb, sort_dir: _sd, ...filters } = listParams;
+                studentService.downloadExport(
+                  studentService.exportByAcademicYearUrl({
+                    filters: filters as Record<string, string | number | undefined>,
+                  }),
+                );
+              }}
+              disabled={total === 0}
+              className="btn-secondary btn-sm flex items-center gap-1.5"
+              title="Download the filtered students as an Excel workbook, one sheet per academic year (from each registration number)"
+            >
+              <Download className="w-3.5 h-3.5" /> Export by Academic Year (Excel)
+            </button>
+            <button
+              type="button"
               onClick={() => setExportOpen(true)}
               disabled={total === 0}
               className="btn-primary btn-sm flex items-center gap-1.5"
