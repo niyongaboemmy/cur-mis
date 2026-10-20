@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Constants\Permissions;
 use Core\Database;
 
 /**
@@ -56,6 +57,22 @@ final class AcademicScopeService
             self::$cache[$userId] = $scope;
         }
         return self::$cache[$userId];
+    }
+
+    /**
+     * A lecturer account with no admin rights and no faculty or department scope.
+     * Such an account sees only the students registered in its own modules.
+     */
+    public static function isTeachingOnly(array $authUser): bool
+    {
+        if (AuthService::isSuperadmin($authUser)) {
+            return false;
+        }
+        if (in_array(Permissions::MANAGE_USERS, (array)($authUser['permissions'] ?? []), true)) {
+            return false;
+        }
+        $role = strtolower(trim((string)($authUser['role'] ?? $authUser['role_name'] ?? '')));
+        return $role === 'lecturer' && self::forUser($authUser) === null;
     }
 
     /** True for accounts whose role must be scoped (matched case-insensitively). */
