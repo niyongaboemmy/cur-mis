@@ -412,7 +412,14 @@ export default function LecturerPlacementPage() {
                 {modOpenId === l.user_id && (
                   <tr className="border-b">
                     <td colSpan={5} className="py-3">
-                      <LecturerModulesEditor userId={l.user_id} />
+                      <LecturerModulesEditor
+                        userId={l.user_id}
+                        place={{
+                          fac_id: v.fac === "" ? null : Number(v.fac),
+                          dep_id: v.dep === "" ? null : Number(v.dep),
+                          option_id: v.opt === "" ? null : Number(v.opt),
+                        }}
+                      />
                     </td>
                   </tr>
                 )}
@@ -430,11 +437,17 @@ export default function LecturerPlacementPage() {
  * Tick the modules this lecturer teaches this term. Saving adds the ticked ones and
  * removes the unticked ones. A Dean, HOD or secretary sees only modules in their scope.
  */
-function LecturerModulesEditor({ userId }: { userId: number }) {
+function LecturerModulesEditor({
+  userId,
+  place,
+}: {
+  userId: number;
+  place: { fac_id: number | null; dep_id: number | null; option_id: number | null };
+}) {
   const qc = useQueryClient();
   const q = useQuery({
-    queryKey: ["academic-scope", "lecturer-modules", userId],
-    queryFn: () => academicScopeService.lecturerModules(userId),
+    queryKey: ["academic-scope", "lecturer-modules", userId, place.fac_id, place.dep_id, place.option_id],
+    queryFn: () => academicScopeService.lecturerModules(userId, place),
   });
   const raw: any = q.data;
   const data = raw?.data ?? raw;
