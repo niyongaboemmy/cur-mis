@@ -25,6 +25,8 @@ final class AcademicScopeGate
         '/api/admin/academic-years', '/api/notifications', '/api/messages', '/api/announcements',
         '/api/forums', '/api/push', '/api/navigation',
         '/api/marks', '/api/attendance', '/api/grades', '/api/academic-analytics', '/api/module-requests',
+        // Teacher area: already limited to the caller's own module assignments (LecturerScope).
+        '/api/teacher',
     ];
 
     /** Reference lists a scoped account may read, by exact path (no personal data). */
