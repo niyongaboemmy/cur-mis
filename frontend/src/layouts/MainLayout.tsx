@@ -46,6 +46,7 @@ import Logo from "@/components/brand/Logo";
 import { useCurrentUser } from "@/hooks/useAuth";
 import { useAcademicScope } from "@/hooks/useAcademicScope";
 import ScopeGate from "@/components/layout/ScopeGate";
+import ModuleRequestGate from "@/components/layout/ModuleRequestGate";
 import { useSystemBasics } from "@/hooks/useSystemBasics";
 
 import {
@@ -1568,6 +1569,7 @@ export default function MainLayout() {
       {(academicScope.needs_choice || academicScope.waiting) && (
         <ScopeGate scope={academicScope} onSubmitted={refreshScope} />
       )}
+      <ModuleRequestGate />
       {/* Blue banner */}
       <BlueBanner />
 

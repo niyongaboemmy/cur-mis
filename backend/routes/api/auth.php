@@ -6,6 +6,7 @@ use App\Constants\Permissions;
 use App\Controllers\AcademicScopeAdminController;
 use App\Controllers\AcademicScopeController;
 use App\Controllers\AcademicSecretaryController;
+use App\Controllers\ModuleAssignmentRequestController;
 use App\Controllers\LecturerPlacementController;
 use App\Controllers\AuthController;
 use App\Middleware\AuthMiddleware;
@@ -33,6 +34,14 @@ $router->post('/api/academic-scope/requests', [AcademicScopeController::class, '
 $router->get('/api/academic-scope/lecturers',                  [LecturerPlacementController::class, 'lecturers'],  [AuthMiddleware::class]);
 $router->post('/api/academic-scope/lecturers/:id/placement',   [LecturerPlacementController::class, 'place'],      [AuthMiddleware::class]);
 $router->get('/api/academic-scope/my-students',                [LecturerPlacementController::class, 'myStudents'], [AuthMiddleware::class]);
+
+// Lecturers without modules: ask for them. Admin, or the Dean / HOD / secretary of the module's department, approves.
+$router->get('/api/module-requests/status',                   [ModuleAssignmentRequestController::class, 'status'],  [AuthMiddleware::class]);
+$router->get('/api/module-requests/options',                  [ModuleAssignmentRequestController::class, 'options'], [AuthMiddleware::class]);
+$router->post('/api/module-requests',                         [ModuleAssignmentRequestController::class, 'submit'],  [AuthMiddleware::class]);
+$router->get('/api/module-requests/pending',                  [ModuleAssignmentRequestController::class, 'pending'], [AuthMiddleware::class]);
+$router->post('/api/module-requests/:id/approve',             [ModuleAssignmentRequestController::class, 'approve'], [AuthMiddleware::class]);
+$router->post('/api/module-requests/:id/reject',              [ModuleAssignmentRequestController::class, 'reject'],  [AuthMiddleware::class]);
 
 // Academic secretaries: admin anywhere; Dean / HOD inside their own unit.
 $router->get('/api/academic-scope/secretaries',                 [AcademicSecretaryController::class, 'list'],   [AuthMiddleware::class]);
