@@ -1739,7 +1739,9 @@ class AcademicsManagementController extends BaseController
         $scopeSql = AcademicScopeService::moduleClause($authUser, 'mo.module_id');
         // A lecturer sees only the modules assigned to them, not every timetabled module.
         if (AcademicScopeService::isTeachingOnly($authUser)) {
-            $mine     = \App\Helpers\LecturerScope::moduleIds($this->models['module_offerings']->db(), (int)($authUser['id'] ?? 0));
+            // This term's assignments only: an assignment from an earlier term is not a current module.
+            $termId   = (int) (\App\Helpers\AcademicYearTerm::current()[1] ?? 0);
+            $mine     = \App\Helpers\LecturerScope::moduleIds($this->models['module_offerings']->db(), (int)($authUser['id'] ?? 0), $termId > 0 ? $termId : null);
             $scopeSql = $mine === [] ? ' AND 1 = 0' : ' AND mo.module_id IN (' . implode(',', array_map('intval', $mine)) . ')';
         }
         $rows = $this->models['module_offerings']->db()->fetchAll(
