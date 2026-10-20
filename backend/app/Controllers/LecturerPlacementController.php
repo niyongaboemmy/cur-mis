@@ -6,6 +6,7 @@ namespace App\Controllers;
 
 use App\Constants\Permissions;
 use App\Helpers\AcademicContext;
+use App\Helpers\AcademicYearTerm;
 use App\Helpers\InstructorDirectory;
 use App\Helpers\LecturerScope;
 use App\Services\AcademicScopeService;
@@ -173,11 +174,23 @@ class LecturerPlacementController extends BaseController
             }
         }
 
-        // Modules this user teaches in the selected year.
+        // One term: the top-bar term when the selected year is the top-bar year, otherwise
+        // that year's current term (or its first term). The same term as Record marks.
+        if ($yearId === (int) (AcademicContext::yearId() ?? 0)) {
+            $termId = (int) (AcademicYearTerm::current()[1] ?? 0);
+        } else {
+            $row    = $db->fetchOne(
+                'SELECT id FROM academic_terms WHERE academic_year_id = ? ORDER BY is_current DESC, start_date ASC LIMIT 1',
+                [$yearId]
+            );
+            $termId = $row ? (int) $row['id'] : 0;
+        }
+
+        // Modules this user is assigned to in that term.
         [$pred, $args] = LecturerScope::assignmentPredicate($db, $userId, 'a');
-        $moduleRows = $db->fetchAll(
-            "SELECT DISTINCT a.module_id FROM module_assignments a WHERE {$pred} AND a.academic_year_id = ?",
-            array_merge($args, [$yearId])
+        $moduleRows = $termId <= 0 ? [] : $db->fetchAll(
+            "SELECT DISTINCT a.module_id FROM module_assignments a WHERE {$pred} AND a.academic_term_id = ?",
+            array_merge($args, [$termId])
         );
         $moduleIds = array_map(static fn ($r) => (int) $r['module_id'], $moduleRows);
 
@@ -192,12 +205,12 @@ class LecturerPlacementController extends BaseController
                     t.label AS term_label,
                     s.fname, s.lname
                FROM module_registrations mr
-               JOIN academic_terms t ON t.id = mr.academic_term_id AND t.academic_year_id = ?
+               JOIN academic_terms t ON t.id = mr.academic_term_id
                JOIN modules m ON m.module_id = mr.module_id
                LEFT JOIN student s ON s.regnumber = mr.student_regnumber
-              WHERE mr.module_id IN ({$ph}) AND mr.status = 'registered'
+              WHERE mr.academic_term_id = ? AND mr.module_id IN ({$ph}) AND mr.status = 'registered'
               ORDER BY m.module_code, s.lname, s.fname",
-            array_merge([$yearId], $moduleIds)
+            array_merge([$termId], $moduleIds)
         );
 
         $modules = $db->fetchAll(
@@ -208,6 +221,7 @@ class LecturerPlacementController extends BaseController
         $this->success($response, [
             'years'            => $years,
             'academic_year_id' => $yearId,
+            'academic_term_id' => $termId,
             'modules'          => $modules,
             'students'         => $students,
         ]);
