@@ -5035,7 +5035,7 @@ class StudentController extends BaseController
             $info = \App\Helpers\RegistrationYearGroups::classify($row['regnumber'] ?? null);
 
             if ($info['code'] !== null && $info['label'] !== null) {
-                $groups[$info['code']][] = $this->yearSheetCells($row, $registry);
+                $groups[$info['code']][] = $this->yearSheetCells($row, $registry, $info['label']);
             } else {
                 $unmapped[] = array_merge($this->unmappedCells($row, $registry), [$info['reason']]);
             }
@@ -5093,7 +5093,7 @@ class StudentController extends BaseController
      * @param array<string, array> $registry
      * @return list<string|int>
      */
-    private function yearSheetCells(array $row, array $registry): array
+    private function yearSheetCells(array $row, array $registry, string $entryYear): array
     {
         $age        = $this->resolveTemplateCell('__age', $row, $registry);
         $faculty    = $this->resolveTemplateCell('faculty_name', $row, $registry);
@@ -5106,7 +5106,7 @@ class StudentController extends BaseController
             $this->resolveTemplateCell('district', $row, $registry),
             $this->resolveTemplateCell('program_name', $row, $registry),
             implode(' / ', array_filter([$faculty, $department], static fn(string $v): bool => $v !== '')),
-            $this->resolveTemplateCell('acc_year', $row, $registry),
+            $entryYear,
             '',
             $this->resolveTemplateCell('sponsor', $row, $registry),
             $this->resolveTemplateCell('current_level', $row, $registry),
