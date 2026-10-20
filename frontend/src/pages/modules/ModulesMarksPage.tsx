@@ -84,17 +84,17 @@ export default function ModulesMarksPage() {
   const [termId, setTermId] = useState<number>(0)
   // The term chosen in the top bar is the default here too.
   const topBarTermId = useSystemStore((s) => s.selectedTermId)
+  // Pick the top-bar term whenever it is known (it may arrive after the term list loads).
+  // The database's "current" term is used only when no top-bar term exists.
   useEffect(() => {
-    if (!termId && terms.length) {
-      const fromTopBar = topBarTermId != null ? terms.find((t: any) => t.id === topBarTermId) : undefined
-      const current = fromTopBar ?? terms.find((t: any) => t.is_current) ?? terms[0]
-      setTermId(current.id)
+    if (!terms.length) return
+    const fromTopBar = topBarTermId != null ? terms.find((t: any) => t.id === topBarTermId) : undefined
+    if (fromTopBar) {
+      if (fromTopBar.id !== termId) setTermId(fromTopBar.id)
+    } else if (!termId) {
+      setTermId((terms.find((t: any) => t.is_current) ?? terms[0]).id)
     }
-  }, [terms, termId])
-  useEffect(() => {
-    if (topBarTermId != null && terms.some((t: any) => t.id === topBarTermId)) setTermId(topBarTermId)
-    // Follows the top bar when it changes; the page's own term selector still works after that.
-  }, [topBarTermId])
+  }, [terms.length, topBarTermId])
 
   const pickModule = (modId: number, code: string, name: string) => {
     const next = new URLSearchParams(sp)
