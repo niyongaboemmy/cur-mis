@@ -1735,7 +1735,13 @@ class AcademicsManagementController extends BaseController
     public function examScheduledModules(Request $request, Response $response): never
     {
         // Dean / HOD: only modules in their faculty or department.
-        $scopeSql = AcademicScopeService::moduleClause((array)($request->param('_auth_user') ?? []), 'mo.module_id');
+        $authUser = (array)($request->param('_auth_user') ?? []);
+        $scopeSql = AcademicScopeService::moduleClause($authUser, 'mo.module_id');
+        // A lecturer sees only the modules assigned to them, not every timetabled module.
+        if (AcademicScopeService::isTeachingOnly($authUser)) {
+            $mine     = \App\Helpers\LecturerScope::moduleIds($this->models['module_offerings']->db(), (int)($authUser['id'] ?? 0));
+            $scopeSql = $mine === [] ? ' AND 1 = 0' : ' AND mo.module_id IN (' . implode(',', array_map('intval', $mine)) . ')';
+        }
         $rows = $this->models['module_offerings']->db()->fetchAll(
             "SELECT
                 mo.module_id,
