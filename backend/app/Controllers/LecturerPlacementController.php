@@ -161,6 +161,10 @@ class LecturerPlacementController extends BaseController
         $years = $db->fetchAll('SELECT id, label, is_current FROM academic_years ORDER BY start_date DESC');
         $yearId = (int) ($request->query('academic_year_id') ?? 0);
         if ($yearId <= 0) {
+            // Same year as the top bar and Record marks.
+            $yearId = (int) (AcademicContext::yearId() ?? 0);
+        }
+        if ($yearId <= 0) {
             foreach ($years as $y) {
                 if ((int) $y['is_current'] === 1) {
                     $yearId = (int) $y['id'];
