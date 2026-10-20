@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Controllers;
 
 use App\Constants\Permissions;
+use App\Helpers\AcademicContext;
+use App\Helpers\InstructorDirectory;
 use App\Helpers\LecturerScope;
 use App\Services\AcademicScopeService;
 use App\Services\AuthService;
@@ -205,6 +207,143 @@ class LecturerPlacementController extends BaseController
             'modules'          => $modules,
             'students'         => $students,
         ]);
+    }
+
+    /**
+     * GET — modules a lecturer teaches this term, and the modules the caller may assign
+     * (admin: all active modules; Dean / HOD / secretary: modules in their scope).
+     */
+    public function modules(Request $request, Response $response): never
+    {
+        $authUser = (array) ($request->param('_auth_user') ?? []);
+        $isAdmin  = self::isAdmin($authUser);
+        $scope    = AcademicScopeService::forUser($authUser);
+        if (!$isAdmin && $scope === null) {
+            $this->error($response, 'Forbidden.', 403);
+        }
+
+        $userId = (int) $request->param('id');
+        $db     = Database::getInstance();
+        if (!$db->fetchOne('SELECT id FROM users WHERE id = ?', [$userId])) {
+            $this->error($response, 'User not found.', 404);
+        }
+        [$yearId, $termId] = $this->currentYearTerm();
+
+        $assigned = $termId === null ? [] : $db->fetchAll(
+            "SELECT ma.module_id, m.module_code, m.module_name, m.department
+               FROM module_assignments ma
+               JOIN modules m ON m.module_id = ma.module_id
+              WHERE ma.user_id = ? AND ma.academic_term_id = ?
+              ORDER BY m.module_code",
+            [$userId, $termId]
+        );
+
+        $options = array_values(array_filter(
+            $db->fetchAll("SELECT module_id, module_code, module_name, department FROM modules WHERE status = 'active' ORDER BY module_code"),
+            fn ($m) => $isAdmin || AcademicScopeService::allowsDepartment($scope, $m['department'])
+        ));
+
+        $this->success($response, [
+            'academic_year_id' => $yearId,
+            'academic_term_id' => $termId,
+            'assigned'         => $assigned,
+            'options'          => $options,
+        ]);
+    }
+
+    /**
+     * POST — set the modules a lecturer teaches this term. Body: { module_ids: int[] }.
+     * Adds the ones ticked and removes the ones unticked. A Dean / HOD / secretary
+     * changes only modules in their own scope.
+     */
+    public function setModules(Request $request, Response $response): never
+    {
+        $authUser = (array) ($request->param('_auth_user') ?? []);
+        $isAdmin  = self::isAdmin($authUser);
+        $scope    = AcademicScopeService::forUser($authUser);
+        if (!$isAdmin && $scope === null) {
+            $this->error($response, 'Forbidden.', 403);
+        }
+
+        $userId = (int) $request->param('id');
+        $db     = Database::getInstance();
+        if (!$db->fetchOne('SELECT id FROM users WHERE id = ?', [$userId])) {
+            $this->error($response, 'User not found.', 404);
+        }
+        [$yearId, $termId] = $this->currentYearTerm();
+        if ($yearId === null || $termId === null) {
+            $this->error($response, 'No current academic year or term is set. Set one in Years & terms first.', 422);
+        }
+
+        $wanted = array_values(array_unique(array_filter(array_map('intval', (array) $request->input('module_ids', [])))));
+        $actor  = (int) ($authUser['id'] ?? 0);
+
+        // Every wanted module must be active and inside the caller's scope.
+        foreach ($wanted as $mid) {
+            $m = $db->fetchOne("SELECT department FROM modules WHERE module_id = ? AND status = 'active'", [$mid]);
+            if (!$m) {
+                $this->error($response, 'One or more modules were not found.', 422);
+            }
+            if (!$isAdmin && !AcademicScopeService::allowsDepartment($scope, $m['department'])) {
+                $this->error($response, 'You can only assign modules in your own faculty or department.', 403);
+            }
+        }
+
+        // Current assignments this term that the caller may change.
+        $current = $db->fetchAll(
+            "SELECT ma.id, ma.module_id, m.department
+               FROM module_assignments ma JOIN modules m ON m.module_id = ma.module_id
+              WHERE ma.user_id = ? AND ma.academic_term_id = ?",
+            [$userId, $termId]
+        );
+        $currentIds = [];
+        foreach ($current as $row) {
+            $mid = (int) $row['module_id'];
+            if (!$isAdmin && !AcademicScopeService::allowsDepartment($scope, $row['department'])) {
+                continue; // outside the caller's scope: leave it alone
+            }
+            $currentIds[] = $mid;
+            if (!in_array($mid, $wanted, true)) {
+                $db->execute('DELETE FROM module_assignments WHERE id = ?', [(int) $row['id']]);
+            }
+        }
+        $added = [];
+        foreach ($wanted as $mid) {
+            if (in_array($mid, $currentIds, true)) {
+                continue;
+            }
+            $db->execute(
+                "INSERT INTO module_assignments (module_id, staff_id, user_id, academic_year_id, academic_term_id, role, hours_per_week, notes, created_by)
+                 VALUES (?, ?, ?, ?, ?, 'primary', 0, 'Assigned by admin or head', ?)",
+                [$mid, InstructorDirectory::USER_OFFSET + $userId, $userId, $yearId, $termId, $actor ?: null]
+            );
+            $added[] = $mid;
+        }
+
+        $db->execute(
+            'INSERT INTO leave_audit_log (entity, entity_id, user_id, action, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)',
+            ['lecturer_modules', (string) $userId, $actor ?: null, 'modules_set',
+             json_encode(['module_ids' => $wanted, 'added' => $added], JSON_UNESCAPED_UNICODE), $request->ip()]
+        );
+
+        $this->success($response, ['user_id' => $userId, 'module_ids' => $wanted], 'Modules saved.');
+    }
+
+    /** Current academic year and term ids (or nulls). */
+    private function currentYearTerm(): array
+    {
+        $db     = Database::getInstance();
+        $termId = AcademicContext::termId();
+        if ($termId === null) {
+            $row    = $db->fetchOne('SELECT id FROM academic_terms WHERE is_current = 1 LIMIT 1');
+            $termId = $row ? (int) $row['id'] : null;
+        }
+        $yearId = null;
+        if ($termId !== null) {
+            $row    = $db->fetchOne('SELECT academic_year_id FROM academic_terms WHERE id = ?', [$termId]);
+            $yearId = $row ? (int) $row['academic_year_id'] : null;
+        }
+        return [$yearId, $termId];
     }
 
     private static function isAdmin(array $authUser): bool

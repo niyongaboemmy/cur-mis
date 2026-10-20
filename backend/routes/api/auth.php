@@ -34,6 +34,8 @@ $router->post('/api/academic-scope/requests', [AcademicScopeController::class, '
 $router->get('/api/academic-scope/lecturers',                  [LecturerPlacementController::class, 'lecturers'],  [AuthMiddleware::class]);
 $router->post('/api/academic-scope/lecturers/:id/placement',   [LecturerPlacementController::class, 'place'],      [AuthMiddleware::class]);
 $router->get('/api/academic-scope/my-students',                [LecturerPlacementController::class, 'myStudents'], [AuthMiddleware::class]);
+$router->get('/api/academic-scope/lecturers/:id/modules',      [LecturerPlacementController::class, 'modules'],    [AuthMiddleware::class]);
+$router->post('/api/academic-scope/lecturers/:id/modules',     [LecturerPlacementController::class, 'setModules'], [AuthMiddleware::class]);
 
 // Lecturers without modules: ask for them. Admin, or the Dean / HOD / secretary of the module's department, approves.
 $router->get('/api/module-requests/status',                   [ModuleAssignmentRequestController::class, 'status'],  [AuthMiddleware::class]);

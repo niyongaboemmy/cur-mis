@@ -102,6 +102,18 @@ export const academicScopeService = {
       options: { id: number; name: string; department_id: number }[]
     }>('/api/academic-scope/options'),
 
+  // Modules a lecturer teaches this term; admin (all) or Dean / HOD / secretary (their scope).
+  lecturerModules: (userId: number) =>
+    api.get<{
+      academic_year_id: number | null
+      academic_term_id: number | null
+      assigned: { module_id: number; module_code: string; module_name: string; department: number | null }[]
+      options: { module_id: number; module_code: string; module_name: string; department: number | null }[]
+    }>(`/api/academic-scope/lecturers/${userId}/modules`),
+
+  setLecturerModules: (userId: number, moduleIds: number[]) =>
+    api.post(`/api/academic-scope/lecturers/${userId}/modules`, { module_ids: moduleIds }),
+
   // Academic secretaries: admin (all), Dean / HOD (their unit).
   secretaries: () =>
     api.get<ScopeSecretary[]>('/api/academic-scope/secretaries'),
