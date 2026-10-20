@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { Search } from "lucide-react";
@@ -106,6 +106,7 @@ export default function LecturerPlacementPage() {
     onError: (e: any) => toast.error(e?.response?.data?.message ?? "Could not remove the secretary"),
   });
 
+  const [modOpenId, setModOpenId] = useState<number | null>(null);
   const [edits, setEdits] = useState<Record<number, Pick>>({});
   const [added, setAdded] = useState<ScopeLecturer[]>([]);
   const [search, setSearch] = useState("");
@@ -365,7 +366,8 @@ export default function LecturerPlacementPage() {
               const opts = (catalog.options as any[]).filter((o) => v.dep !== "" && o.department_id === Number(v.dep));
               const dirty = !!edits[l.user_id];
               return (
-                <tr key={l.user_id} className="border-b align-top">
+                <Fragment key={l.user_id}>
+                <tr className="border-b align-top">
                   <td className="py-2 pr-3">
                     <div className="font-medium">{l.full_name}</div>
                     <div className="text-xs text-gray-500">{l.username}</div>
@@ -399,13 +401,103 @@ export default function LecturerPlacementPage() {
                     >
                       Save
                     </button>
+                    <button
+                      className="ml-2 px-3 py-1 rounded border text-sm"
+                      onClick={() => setModOpenId(modOpenId === l.user_id ? null : l.user_id)}
+                    >
+                      {modOpenId === l.user_id ? "Hide modules" : "Modules"}
+                    </button>
                   </td>
                 </tr>
+                {modOpenId === l.user_id && (
+                  <tr className="border-b">
+                    <td colSpan={5} className="py-3">
+                      <LecturerModulesEditor userId={l.user_id} />
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               );
             })}
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Tick the modules this lecturer teaches this term. Saving adds the ticked ones and
+ * removes the unticked ones. A Dean, HOD or secretary sees only modules in their scope.
+ */
+function LecturerModulesEditor({ userId }: { userId: number }) {
+  const qc = useQueryClient();
+  const q = useQuery({
+    queryKey: ["academic-scope", "lecturer-modules", userId],
+    queryFn: () => academicScopeService.lecturerModules(userId),
+  });
+  const raw: any = q.data;
+  const data = raw?.data ?? raw;
+  const options: { module_id: number; module_code: string; module_name: string; department: number | null }[] = data?.options ?? [];
+  const assignedIds: number[] = (data?.assigned ?? []).map((a: any) => Number(a.module_id));
+
+  const [picked, setPicked] = useState<number[] | null>(null);
+  const [filter, setFilter] = useState("");
+  const current = picked ?? assignedIds;
+
+  const saveM = useMutation({
+    mutationFn: () => academicScopeService.setLecturerModules(userId, current),
+    onSuccess: () => {
+      toast.success("Modules saved");
+      setPicked(null);
+      qc.invalidateQueries({ queryKey: ["academic-scope", "lecturer-modules", userId] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? "Could not save the modules"),
+  });
+
+  if (q.isLoading) return <div className="text-sm text-gray-500">Loading modules…</div>;
+  if (!data?.academic_term_id) {
+    return <div className="text-sm text-red-600">Set the current academic year and term in Years &amp; terms first.</div>;
+  }
+
+  const shown = options.filter((m) => {
+    const f = filter.trim().toLowerCase();
+    return !f || `${m.module_code} ${m.module_name}`.toLowerCase().includes(f);
+  });
+
+  const toggle = (id: number) =>
+    setPicked((p) => {
+      const base = p ?? assignedIds;
+      return base.includes(id) ? base.filter((x) => x !== id) : [...base, id];
+    });
+
+  return (
+    <div className="space-y-2">
+      <div className="text-sm font-medium">Modules taught this term ({current.length} selected)</div>
+      <input
+        className="w-full max-w-md border rounded px-2 py-1 text-sm"
+        placeholder="Search by code or name"
+        value={filter}
+        onChange={(e) => setFilter(e.target.value)}
+      />
+      <ul className="max-h-60 overflow-y-auto border rounded divide-y max-w-3xl">
+        {shown.length === 0 && <li className="p-2 text-sm text-gray-500">No modules to show.</li>}
+        {shown.map((m) => (
+          <li key={m.module_id}>
+            <label className="flex items-center gap-2 px-2 py-1 text-sm cursor-pointer hover:bg-gray-50">
+              <input type="checkbox" checked={current.includes(m.module_id)} onChange={() => toggle(m.module_id)} />
+              <span className="font-medium">{m.module_code}</span> {m.module_name}
+            </label>
+          </li>
+        ))}
+      </ul>
+      <button
+        className="px-3 py-1 rounded bg-blue-700 text-white text-sm disabled:opacity-40"
+        disabled={picked === null || saveM.isPending}
+        onClick={() => saveM.mutate()}
+      >
+        Save modules
+      </button>
     </div>
   );
 }
