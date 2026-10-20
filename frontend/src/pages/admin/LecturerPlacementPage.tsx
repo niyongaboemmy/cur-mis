@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { Search } from "lucide-react";
 import { academicScopeService, ScopeLecturer, ScopeSecretary } from "@/services/academicScopeService";
+import { moduleRequestService, PendingModuleRequest } from "@/services/moduleRequestService";
 import userService, { User } from "@/services/userService";
 import { useAcademicScope } from "@/hooks/useAcademicScope";
 
@@ -40,6 +41,24 @@ export default function LecturerPlacementPage() {
     () => (catalog.departments as any[]).filter((d) => !scoped || scope.department_ids.includes(d.dep_id)),
     [catalog, scoped, scope.department_ids],
   );
+
+  // Module requests from lecturers with no modules: approve or reject.
+  const modReqQ = useQuery({
+    queryKey: ["module-requests", "pending"],
+    queryFn: () => moduleRequestService.pending(),
+  });
+  const modReqRaw: any = modReqQ.data;
+  const modReqs: PendingModuleRequest[] = modReqRaw?.data ?? modReqRaw ?? [];
+
+  const decideModReqM = useMutation({
+    mutationFn: (v: { id: number; approve: boolean }) =>
+      v.approve ? moduleRequestService.approve(v.id) : moduleRequestService.reject(v.id),
+    onSuccess: (_d, v) => {
+      toast.success(v.approve ? "Module assigned" : "Request rejected");
+      qc.invalidateQueries({ queryKey: ["module-requests", "pending"] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message ?? "Could not record the decision"),
+  });
 
   // Academic secretaries (one per department, or one for a whole faculty).
   const secretariesQ = useQuery({
@@ -201,6 +220,41 @@ export default function LecturerPlacementPage() {
             ))}
           </ul>
         )}
+      </div>
+
+      <div className="card-tight space-y-3">
+        <h2 className="font-semibold">Module requests ({modReqs.length})</h2>
+        <p className="text-sm text-gray-600">
+          Lecturers who have no modules yet ask for the modules they teach. Approving assigns the module to the lecturer.
+        </p>
+        {modReqs.length === 0 && <p className="text-sm text-gray-500">No module requests are waiting.</p>}
+        <ul className="divide-y">
+          {modReqs.map((r) => (
+            <li key={r.id} className="py-2 flex flex-wrap items-center justify-between gap-3 text-sm">
+              <div>
+                <div className="font-medium">{r.full_name} <span className="text-xs text-gray-500">({r.username})</span></div>
+                <div className="text-gray-700">{r.module_code} — {r.module_name}</div>
+                <div className="text-xs text-gray-500">{r.dep_name ?? "No department"}</div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  className="px-3 py-1 rounded bg-blue-700 text-white text-sm disabled:opacity-50"
+                  disabled={decideModReqM.isPending}
+                  onClick={() => decideModReqM.mutate({ id: r.id, approve: true })}
+                >
+                  Approve
+                </button>
+                <button
+                  className="px-3 py-1 rounded border text-sm"
+                  disabled={decideModReqM.isPending}
+                  onClick={() => decideModReqM.mutate({ id: r.id, approve: false })}
+                >
+                  Reject
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
       </div>
 
       <div className="card-tight space-y-3">

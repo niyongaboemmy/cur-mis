@@ -24,7 +24,7 @@ final class AcademicScopeGate
         '/api/academics-management', '/api/modules', '/api/timetable', '/api/academic',
         '/api/admin/academic-years', '/api/notifications', '/api/messages', '/api/announcements',
         '/api/forums', '/api/push', '/api/navigation',
-        '/api/marks', '/api/attendance', '/api/grades', '/api/academic-analytics',
+        '/api/marks', '/api/attendance', '/api/grades', '/api/academic-analytics', '/api/module-requests',
     ];
 
     /** Reference lists a scoped account may read, by exact path (no personal data). */
