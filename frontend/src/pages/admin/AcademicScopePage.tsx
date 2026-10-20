@@ -186,8 +186,11 @@ export default function AcademicScopePage() {
         </p>
       </div>
 
-      <div className="card-tight space-y-3">
-        <h2 className="font-semibold">Pending requests ({pending.length})</h2>
+      <div className={`card-tight space-y-3 ${pending.length > 0 ? "border-l-4 border-l-amber-500 bg-amber-50" : ""}`}>
+        <h2 className="font-semibold">
+          Pending requests ({pending.length})
+          {pending.length > 0 && <span className="ml-2 text-xs font-medium text-amber-700">Waiting for your decision</span>}
+        </h2>
         {pending.length === 0 && (
           <p className="text-sm text-gray-500">No Dean or HOD is waiting for approval.</p>
         )}
