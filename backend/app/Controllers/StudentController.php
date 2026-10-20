@@ -5004,6 +5004,16 @@ class StudentController extends BaseController
         // tables that share column names with `student`.
         [$where, $bindings] = $this->buildListFilters($request, 's');
 
+        // The workbook is about current students. With no status chosen on the
+        // list, only active students are exported; an explicit status wins.
+        $statusChosen = trim((string)($request->query('student_state') ?? '')) !== '';
+        if (!$statusChosen) {
+            $variants = self::stateVariants('active');
+            $ph       = implode(',', array_fill(0, count($variants), '?'));
+            $where    = ($where !== '' ? "({$where}) AND " : '') . "LOWER(TRIM(s.student_state)) IN ({$ph})";
+            $bindings = array_merge($bindings, $variants);
+        }
+
         $db   = $this->studentModel->db();
         $rows = $db->fetchAll(
             "SELECT " . implode(', ', $selectParts) . "
@@ -5087,6 +5097,9 @@ class StudentController extends BaseController
         $book->addRow($summary, ['Total exported', '', count($rows)]);
 
         $filters = $this->describeFilters($request);
+        if (!$statusChosen) {
+            $filters[] = ['Status', 'active (default: only active students are exported)'];
+        }
         $book->addRow($summary, []);
         $book->addRow($summary, ['Filters applied']);
         foreach ($filters ?: [['(none)', 'All students']] as $pair) {
