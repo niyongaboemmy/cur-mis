@@ -1031,7 +1031,8 @@ function AllTab({ stats }: { stats: StudentStats | null }) {
                 const { page: _p, per_page: _pp, sort_by: _sb, sort_dir: _sd, ...filters } = listParams;
                 studentService.downloadExport(
                   studentService.exportByAcademicYearUrl({
-                    filters: filters as Record<string, string | number | undefined>,
+                    // The status picker defaults to "active"; this export covers every status.
+                    filters: { ...(filters as Record<string, string | number | undefined>), student_state: "all" },
                   }),
                 );
               }}
