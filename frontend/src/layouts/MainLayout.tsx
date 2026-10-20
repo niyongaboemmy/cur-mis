@@ -1426,6 +1426,13 @@ export default function MainLayout() {
 
   const { user } = useAuthStore();
   const { scope: academicScope, refresh: refreshScope } = useAcademicScope();
+  // A lecturer with no faculty or department sees students only under My students.
+  const teachingOnly =
+    !!user &&
+    String(user.role ?? "").toLowerCase() === "lecturer" &&
+    !isSuperadmin(user) &&
+    !(user.permissions ?? []).includes(PERMISSIONS.MANAGE_USERS) &&
+    !academicScope.scoped;
 
   const hasAccess = useCallback(
     (perms?: string[]) => {
@@ -1460,6 +1467,7 @@ export default function MainLayout() {
     }) => {
       if (node.hideForRoles?.includes(user?.role ?? "")) return false;
       // Dean / Head of Department: finance, admissions and HR are outside their scope.
+      if (teachingOnly && (node.id === "students-group" || node.to?.startsWith("/students"))) return false;
       if (node.id === "lecturer-placement") {
         const perms: string[] = user?.permissions ?? [];
         return academicScope.scoped || isSuperadmin(user) || perms.includes(PERMISSIONS.MANAGE_USERS);

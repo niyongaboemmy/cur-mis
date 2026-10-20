@@ -18,15 +18,19 @@ export default function MyStudentsPage() {
   const data = raw?.data ?? raw ?? { years: [], academic_year_id: 0, modules: [], students: [] };
   const students: ScopeStudentRow[] = data.students ?? [];
 
+  // One block per module you teach, including modules with nobody enrolled yet.
   const byModule = useMemo(() => {
     const groups = new Map<number, { code: string; name: string; rows: ScopeStudentRow[] }>();
+    for (const m of data.modules as { module_id: number; module_code: string; module_name: string }[]) {
+      groups.set(m.module_id, { code: m.module_code, name: m.module_name, rows: [] });
+    }
     for (const s of students) {
       const g = groups.get(s.module_id) ?? { code: s.module_code, name: s.module_name, rows: [] };
       g.rows.push(s);
       groups.set(s.module_id, g);
     }
     return [...groups.values()];
-  }, [students]);
+  }, [students, data.modules]);
 
   return (
     <div className="space-y-4">
@@ -55,7 +59,12 @@ export default function MyStudentsPage() {
       {byModule.map((g) => (
         <div key={g.code + g.name} className="card-tight overflow-x-auto">
           <h2 className="font-semibold mb-2">{g.code} — {g.name} <span className="text-xs text-gray-500">({g.rows.length} students)</span></h2>
-          <table className="min-w-full text-sm">
+          {g.rows.length === 0 && (
+            <p className="text-sm text-amber-700">
+              No students are enrolled in this module yet. Ask your Head of Department to enrol them.
+            </p>
+          )}
+          {g.rows.length > 0 && <table className="min-w-full text-sm">
             <thead>
               <tr className="text-left text-gray-500 border-b">
                 <th className="py-2 pr-3">Reg. number</th>
@@ -74,7 +83,7 @@ export default function MyStudentsPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table>}
         </div>
       ))}
     </div>

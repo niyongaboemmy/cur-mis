@@ -52,13 +52,18 @@ final class AcademicScopeGate
      */
     public static function refusal(array $user, string $method, string $path, array $body = [], array $query = []): ?array
     {
+        $method = strtoupper($method);
+        $p      = self::apiPath($path);
+
+        // Lecturers without a faculty or department: students in their own modules only.
+        if (AcademicScopeService::isTeachingOnly($user)) {
+            return self::teachingOnlyRefusal($user, $method, $p);
+        }
+
         $scope = AcademicScopeService::forUser($user);
         if ($scope === null) {
             return null;
         }
-
-        $method = strtoupper($method);
-        $p      = self::apiPath($path);
 
         $isReference = $method === 'GET' && in_array($p, self::READ_REFERENCE, true);
         if (!$isReference && !self::under($p, self::ALLOWED)) {
@@ -149,6 +154,33 @@ final class AcademicScopeGate
         }
 
         return null;
+    }
+
+    /**
+     * Lecturer without a unit: may open one student only if that student is registered
+     * in one of the lecturer's modules. The student list and all other student screens are refused.
+     */
+    private static function teachingOnlyRefusal(array $user, string $method, string $p): ?array
+    {
+        if (!str_starts_with($p, '/api/students')) {
+            return null;
+        }
+        if ($method === 'GET' && preg_match('#^/api/students/(\d+)$#', $p, $mm)) {
+            $uid     = (int)($user['id'] ?? 0);
+            $modules = \App\Helpers\LecturerScope::moduleIds(Database::getInstance(), $uid);
+            if ($modules === []) {
+                return self::deny(404, 'Student not found');
+            }
+            $ph  = implode(',', array_fill(0, count($modules), '?'));
+            $row = Database::getInstance()->fetchOne(
+                "SELECT 1 AS ok FROM student s
+                   JOIN module_registrations mr ON mr.student_regnumber = s.regnumber
+                  WHERE s.id = ? AND mr.status = 'registered' AND mr.module_id IN ({$ph}) LIMIT 1",
+                array_merge([(int)$mm[1]], array_map('intval', $modules))
+            );
+            return $row ? null : self::deny(404, 'Student not found');
+        }
+        return self::deny(403, 'Lecturers see the students in their own modules under My students.');
     }
 
     /**
