@@ -6,37 +6,40 @@ namespace App\Helpers;
 
 /**
  * Groups students by the two-digit year code that follows "CUR" in their
- * registration number, and maps each code to the academic-year label used by
- * the "Export by Academic Year" workbook.
+ * registration number (1CUR21AK013541 -> code 21).
  *
- *   1CUR26AK013541  -> code 26 -> 2026-2027
- *   2CUR12AK013090  -> code 12 -> 2012-2013   (the leading 1/2 is not used)
+ * YEAR_CODES lists, for each academic year, the registration codes that belong
+ * to it. A student appears on every academic-year sheet whose list contains
+ * their code, so one student can appear on several sheets.
  *
- * This is a grouping by registration year, not a claim that a student was
- * enrolled or graduated in that academic year. The stored `acc_year` column is
- * never used for grouping.
+ * The entry academic year of a student is the year of their own code:
+ * 1CUR21... -> 2021-2022. The stored `acc_year` column is not used.
  */
 final class RegistrationYearGroups
 {
-    /** Registration year code => academic-year label (also the worksheet name). */
-    public const YEAR_LABELS = [
-        10 => '2010-2011',
-        11 => '2011-2012',
-        12 => '2012-2013',
-        13 => '2013-2014',
-        14 => '2014-2015',
-        15 => '2015-2016',
-        16 => '2016-2017',
-        17 => '2017-2018',
-        18 => '2018-2019',
-        19 => '2019-2020',
-        20 => '2020-2021',
-        21 => '2021-2022',
-        22 => '2022-2023',
-        23 => '2023-2024',
-        24 => '2024-2025',
-        25 => '2025-2026',
-        26 => '2026-2027',
+    /**
+     * Academic year => registration year codes that belong to it.
+     * 2025-2026 and 2026-2027 are inferred from the 3-code window used from
+     * 2023-2024 onward; confirm them against the registry table.
+     */
+    public const YEAR_CODES = [
+        '2010-2011' => [10],
+        '2011-2012' => [10, 11],
+        '2012-2013' => [10, 11, 12],
+        '2013-2014' => [10, 11, 12, 13, 14],
+        '2014-2015' => [10, 11, 12, 13, 14, 15],
+        '2015-2016' => [13, 14, 15],
+        '2016-2017' => [14, 15, 16],
+        '2017-2018' => [15, 16, 17],
+        '2018-2019' => [16, 17, 18],
+        '2019-2020' => [17, 18, 19],
+        '2020-2021' => [18, 19, 20],
+        '2021-2022' => [18, 19, 20, 21],
+        '2022-2023' => [19, 20, 21, 22],
+        '2023-2024' => [21, 22, 23],
+        '2024-2025' => [22, 23, 24],
+        '2025-2026' => [23, 24, 25],
+        '2026-2027' => [24, 25, 26],
     ];
 
     public const REASON_MISSING  = 'Missing registration number';
@@ -51,25 +54,66 @@ final class RegistrationYearGroups
     private const PATTERN = '/^[12]CUR(\d{2})[A-Z]{2}\d{5,6}$/';
 
     /**
-     * @return array{code: ?int, label: ?string, reason: ?string}
-     *         `label` is null exactly when `reason` is set (an unmapped record).
+     * @return array{code: ?int, reason: ?string}
+     *         `reason` is set exactly when the record is unmapped, and `code` is
+     *         null when the number could not be read at all.
      */
     public static function classify(?string $regNumber): array
     {
         $clean = strtoupper((string)preg_replace('/\s+/', '', (string)$regNumber));
         if ($clean === '') {
-            return ['code' => null, 'label' => null, 'reason' => self::REASON_MISSING];
+            return ['code' => null, 'reason' => self::REASON_MISSING];
         }
         if (preg_match(self::PATTERN, $clean, $m) !== 1) {
-            return ['code' => null, 'label' => null, 'reason' => self::REASON_FORMAT];
+            return ['code' => null, 'reason' => self::REASON_FORMAT];
         }
 
-        // (int) makes "10" match the integer keys above; "05" becomes 5 and is
-        // not in the map, so it is reported rather than guessed at.
+        // (int) turns "10" into 10 and "05" into 5. A code outside the table is
+        // reported rather than guessed at.
         $code = (int)$m[1];
-        if (!isset(self::YEAR_LABELS[$code])) {
-            return ['code' => $code, 'label' => null, 'reason' => self::REASON_UNMAPPED];
+        if (!in_array($code, self::knownCodes(), true)) {
+            return ['code' => $code, 'reason' => self::REASON_UNMAPPED];
         }
-        return ['code' => $code, 'label' => self::YEAR_LABELS[$code], 'reason' => null];
+        return ['code' => $code, 'reason' => null];
+    }
+
+    /**
+     * Every registration code that appears in YEAR_CODES, ascending.
+     *
+     * @return list<int>
+     */
+    public static function knownCodes(): array
+    {
+        $codes = [];
+        foreach (self::YEAR_CODES as $list) {
+            foreach ($list as $code) {
+                $codes[$code] = true;
+            }
+        }
+        $keys = array_keys($codes);
+        sort($keys);
+        return $keys;
+    }
+
+    /**
+     * The academic-year sheets that include a code, in chronological order.
+     *
+     * @return list<string>
+     */
+    public static function yearsForCode(int $code): array
+    {
+        $years = [];
+        foreach (self::YEAR_CODES as $year => $codes) {
+            if (in_array($code, $codes, true)) {
+                $years[] = (string)$year;
+            }
+        }
+        return $years;
+    }
+
+    /** Entry academic year of a code: 21 -> 2021-2022. */
+    public static function entryYear(int $code): string
+    {
+        return (2000 + $code) . '-' . (2001 + $code);
     }
 }
