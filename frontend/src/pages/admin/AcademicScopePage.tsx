@@ -121,6 +121,24 @@ export default function AcademicScopePage() {
     return depth;
   }, [units]);
 
+  // Inline search over the units table: unit name, its head, and the faculty or department it is linked to.
+  const [unitQuery, setUnitQuery] = useState("");
+  const shownUnits = useMemo(() => {
+    const q = unitQuery.trim().toLowerCase();
+    if (!q) return units;
+    const linkName = (u: ScopeUnit) => {
+      if (u.fac_id) return faculties.find((f) => f.fac_id === u.fac_id)?.fac_name ?? "";
+      if (u.dep_id) return departments.find((d) => d.dep_id === u.dep_id)?.dep_name ?? "";
+      return "";
+    };
+    return units.filter((u) =>
+      [u.name, u.head_title, u.head_name ?? "", u.acting_name ?? "", linkName(u)]
+        .join(" ")
+        .toLowerCase()
+        .includes(q),
+    );
+  }, [units, unitQuery, faculties, departments]);
+
   const linkValue = (u: ScopeUnit) =>
     u.fac_id ? `fac:${u.fac_id}` : u.dep_id ? `dep:${u.dep_id}` : "";
 
@@ -208,6 +226,18 @@ export default function AcademicScopePage() {
         </ul>
       </div>
 
+      <div className="card-tight flex flex-wrap items-center justify-between gap-2">
+        <input
+          className="border rounded px-3 py-1.5 text-sm w-full max-w-md"
+          placeholder="Search units, heads, faculties or departments"
+          value={unitQuery}
+          onChange={(e) => setUnitQuery(e.target.value)}
+        />
+        <span className="text-xs text-gray-500">
+          Showing {shownUnits.length} of {units.length} units
+        </span>
+      </div>
+
       <div className="card-tight overflow-x-auto">
         <table className="min-w-full text-sm">
           <thead>
@@ -219,7 +249,7 @@ export default function AcademicScopePage() {
             </tr>
           </thead>
           <tbody>
-            {units.map((u) => {
+            {shownUnits.map((u) => {
               const indent = (depthById.get(u.id) ?? 0) * 16;
               const isStaffOpen = staffUnitId === u.id;
               const isPickerOpen = picker?.unitId === u.id;
