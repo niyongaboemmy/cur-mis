@@ -103,13 +103,18 @@ export const academicScopeService = {
     }>('/api/academic-scope/options'),
 
   // Modules a lecturer teaches this term; admin (all) or Dean / HOD / secretary (their scope).
-  lecturerModules: (userId: number) =>
-    api.get<{
+  lecturerModules: (userId: number, place?: { fac_id?: number | null; dep_id?: number | null; option_id?: number | null }) => {
+    const params: Record<string, number> = {}
+    if (place?.fac_id) params.fac_id = place.fac_id
+    if (place?.dep_id) params.dep_id = place.dep_id
+    if (place?.option_id) params.option_id = place.option_id
+    return api.get<{
       academic_year_id: number | null
       academic_term_id: number | null
       assigned: { module_id: number; module_code: string; module_name: string; department: number | null }[]
       options: { module_id: number; module_code: string; module_name: string; department: number | null }[]
-    }>(`/api/academic-scope/lecturers/${userId}/modules`),
+    }>(`/api/academic-scope/lecturers/${userId}/modules`, params)
+  },
 
   setLecturerModules: (userId: number, moduleIds: number[]) =>
     api.post(`/api/academic-scope/lecturers/${userId}/modules`, { module_ids: moduleIds }),

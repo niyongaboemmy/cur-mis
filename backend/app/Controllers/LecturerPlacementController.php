@@ -242,8 +242,28 @@ class LecturerPlacementController extends BaseController
             [$userId, $termId]
         );
 
+        // Narrow to the lecturer's placement: department (or faculty) and programme option, when given.
+        $facId = (int) ($request->query('fac_id') ?? 0);
+        $depId = (int) ($request->query('dep_id') ?? 0);
+        $optId = (int) ($request->query('option_id') ?? 0);
+        $where = ["m.status = 'active'"];
+        $args  = [];
+        if ($depId > 0) {
+            $where[] = 'm.department = ?';
+            $args[]  = $depId;
+        } elseif ($facId > 0) {
+            $where[] = 'm.department IN (SELECT dep_id FROM departements WHERE fac_id = ?)';
+            $args[]  = $facId;
+        }
+        if ($optId > 0) {
+            $where[] = 'EXISTS (SELECT 1 FROM module_programs mp WHERE mp.module_id = m.module_id AND mp.option_id = ?)';
+            $args[]  = $optId;
+        }
         $options = array_values(array_filter(
-            $db->fetchAll("SELECT module_id, module_code, module_name, department FROM modules WHERE status = 'active' ORDER BY module_code"),
+            $db->fetchAll(
+                'SELECT m.module_id, m.module_code, m.module_name, m.department FROM modules m WHERE ' . implode(' AND ', $where) . ' ORDER BY m.module_code',
+                $args
+            ),
             fn ($m) => $isAdmin || AcademicScopeService::allowsDepartment($scope, $m['department'])
         ));
 
