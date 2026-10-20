@@ -329,18 +329,34 @@ class LecturerPlacementController extends BaseController
             $currentIds[] = $mid;
             if (!in_array($mid, $wanted, true)) {
                 $db->execute('DELETE FROM module_assignments WHERE id = ?', [(int) $row['id']]);
-                // Also remove this lecturer as the timetable teacher for that module, so
-                // unticking a module really removes it from their courses.
-                $candidates = LecturerScope::staffIdCandidates($db, $userId);
-                if ($candidates !== []) {
-                    $ph = implode(',', array_fill(0, count($candidates), '?'));
-                    $db->execute(
-                        "UPDATE module_offerings SET instructor_id = NULL WHERE module_id = ? AND instructor_id IN ({$ph})",
-                        array_merge([$mid], $candidates)
-                    );
-                }
             }
         }
+        // The checklist is the lecturer's teaching list. A timetable entry that still names
+        // this lecturer as teacher for a module that is not ticked is cleared (within scope).
+        $candidates = LecturerScope::staffIdCandidates($db, $userId);
+        if ($candidates !== []) {
+            $ph = implode(',', array_fill(0, count($candidates), '?'));
+            $timetabled = $db->fetchAll(
+                "SELECT DISTINCT mo.module_id, m.department FROM module_offerings mo
+                   JOIN modules m ON m.module_id = mo.module_id
+                  WHERE mo.instructor_id IN ({$ph})",
+                $candidates
+            );
+            foreach ($timetabled as $t) {
+                $mid = (int) $t['module_id'];
+                if (in_array($mid, $wanted, true)) {
+                    continue;
+                }
+                if (!$isAdmin && !AcademicScopeService::allowsDepartment($scope, $t['department'])) {
+                    continue; // outside the caller's scope: leave it alone
+                }
+                $db->execute(
+                    "UPDATE module_offerings SET instructor_id = NULL WHERE module_id = ? AND instructor_id IN ({$ph})",
+                    array_merge([$mid], $candidates)
+                );
+            }
+        }
+
         $added = [];
         foreach ($wanted as $mid) {
             if (in_array($mid, $currentIds, true)) {
