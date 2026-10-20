@@ -336,7 +336,7 @@ class ModuleMarksController extends BaseController
             $this->error($response, 'Term not found.', 404);
         }
 
-        $roster = $this->buildRoster($moduleId, $termId, $module);
+        $roster = $this->buildRoster($moduleId, $termId, $module, \App\Services\AcademicScopeService::isTeachingOnly((array)($request->param("_auth_user") ?? [])));
 
         // Maxima: the sheet's own saved values when it has any, else the CUR
         // standard 60 + 40. Mirrors how ModulesMarksPage seeds them, so a
@@ -384,7 +384,7 @@ class ModuleMarksController extends BaseController
      * the eligibility fallback when nobody is registered, and the append of
      * anyone already holding a mark.
      */
-    private function buildRoster(int $moduleId, int $termId, array $module): array
+    private function buildRoster(int $moduleId, int $termId, array $module, bool $registeredOnly = false): array
     {
         $rosterCols = "st.id AS student_id, st.regnumber, st.fname, st.lname, st.email,
                        st.gender AS sex, st.program AS student_program, st.std_option AS option_acro,
@@ -429,7 +429,9 @@ class ModuleMarksController extends BaseController
         //   • dep_options.op_id → student.std_option
         // Combined with the module's level + department, this picks up the
         // typical class even before formal module_registrations exist.
-        if (count($roster) === 0) {
+        // Lecturers without a unit see formally registered students only, so a
+        // fallback class list is never shown to them as enrolled.
+        if (count($roster) === 0 && !$registeredOnly) {
             $level = (int)($module['level'] ?? 0);
             $depId = (int)($module['dep_id'] ?? 0);
 
@@ -669,7 +671,7 @@ class ModuleMarksController extends BaseController
         $module['teaching_started_on'] = $offering['start_date'] ?? null;
         $module['teaching_ended_on']   = $offering['end_date']   ?? null;
 
-        $roster = $this->buildRoster($moduleId, $termId, $module);
+        $roster = $this->buildRoster($moduleId, $termId, $module, \App\Services\AcademicScopeService::isTeachingOnly((array)($request->param("_auth_user") ?? [])));
 
         // Workflow status & class-level teaching dates: mode of the saved rows
         // (rows are written together as a batch so they share the same values).
