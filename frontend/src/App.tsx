@@ -9,6 +9,7 @@ import { PERMISSIONS, LEAVE_STAGE_PERMISSIONS } from "@/constants/permissions";
 // ── Pages (direct imports — no lazy() to avoid chunk-load failures on cPanel) ──
 import WelcomePage from "@/pages/WelcomePage";
 import HomePage from "@/pages/HomePage";
+import RootRoute from "@/components/layout/RootRoute";
 import AdminDashboardPage from "@/pages/admin/AdminDashboardPage";
 import LoginPage from "@/pages/LoginPage";
 import RegisterPage from "@/pages/RegisterPage";
@@ -205,7 +206,7 @@ function App() {
           <Route element={<ProtectedRoute />}>
             <Route element={<MainLayout />}>
               {/* Free to all authenticated users */}
-              <Route path="/" element={<WelcomePage />} />
+              <Route path="/" element={<RootRoute />} />
               <Route path="/welcome" element={<WelcomePage />} />
               <Route
                 element={
