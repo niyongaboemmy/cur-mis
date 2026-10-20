@@ -329,6 +329,16 @@ class LecturerPlacementController extends BaseController
             $currentIds[] = $mid;
             if (!in_array($mid, $wanted, true)) {
                 $db->execute('DELETE FROM module_assignments WHERE id = ?', [(int) $row['id']]);
+                // Also remove this lecturer as the timetable teacher for that module, so
+                // unticking a module really removes it from their courses.
+                $candidates = LecturerScope::staffIdCandidates($db, $userId);
+                if ($candidates !== []) {
+                    $ph = implode(',', array_fill(0, count($candidates), '?'));
+                    $db->execute(
+                        "UPDATE module_offerings SET instructor_id = NULL WHERE module_id = ? AND instructor_id IN ({$ph})",
+                        array_merge([$mid], $candidates)
+                    );
+                }
             }
         }
         $added = [];
