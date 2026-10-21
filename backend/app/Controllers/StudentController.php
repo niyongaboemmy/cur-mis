@@ -4958,7 +4958,7 @@ class StudentController extends BaseController
      * template: one row per student, headers in row 1, no title line.
      */
     private const YEAR_SHEET_HEADERS = [
-        'Student ID', 'Registration Number', 'Full Name', 'National ID number', 'Sex', 'Age',
+        'No.', 'Registration Number', 'Full Name', 'National ID number', 'Sex', 'Age',
         'District of origin', 'Program of Study', 'Faculty/School/Department', 'Academic Year of Entry',
         'Fees', 'Funding source', 'Year of study', 'Learning Mode',
     ];
@@ -5063,8 +5063,8 @@ class StudentController extends BaseController
         $entries     = 0;
         foreach (\App\Helpers\RegistrationYearGroups::YEAR_CODES as $year => $codes) {
             $sheet = $book->addSheet((string)$year, self::YEAR_SHEET_HEADERS);
-            foreach ($groups[(string)$year] as $cells) {
-                $book->addRow($sheet, $cells);
+            foreach ($groups[(string)$year] as $i => $cells) {
+                $book->addRow($sheet, array_merge([$i + 1], $cells));
             }
 
             $count        = count($groups[(string)$year]);
@@ -5114,7 +5114,6 @@ class StudentController extends BaseController
         $department = $this->resolveTemplateCell('department_name', $row, $registry);
 
         return [
-            (int)($row['student_id'] ?? 0),
             $this->resolveTemplateCell('regnumber', $row, $registry),
             $this->resolveTemplateCell('full_name', $row, $registry),
             $this->resolveTemplateCell('national_id', $row, $registry),
