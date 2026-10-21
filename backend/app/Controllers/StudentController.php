@@ -4958,9 +4958,9 @@ class StudentController extends BaseController
      * template: one row per student, headers in row 1, no title line.
      */
     private const YEAR_SHEET_HEADERS = [
-        'National ID number', 'Sex', 'Age', 'District of origin', 'Program of Study',
-        'Faculty/School/Department', 'Academic Year of Entry', 'Fees', 'Funding source', 'Year of study',
-        'Registration Number', 'Full Name',
+        'Student ID', 'Registration Number', 'Full Name', 'National ID number', 'Sex', 'Age',
+        'District of origin', 'Program of Study', 'Faculty/School/Department', 'Academic Year of Entry',
+        'Fees', 'Funding source', 'Year of study', 'Learning Mode',
     ];
 
     /** Columns of the Unmapped Records sheet, which keeps the identifying fields. */
@@ -5114,6 +5114,9 @@ class StudentController extends BaseController
         $department = $this->resolveTemplateCell('department_name', $row, $registry);
 
         return [
+            (int)($row['student_id'] ?? 0),
+            $this->resolveTemplateCell('regnumber', $row, $registry),
+            $this->resolveTemplateCell('full_name', $row, $registry),
             $this->resolveTemplateCell('national_id', $row, $registry),
             $this->resolveTemplateCell('gender', $row, $registry),
             $age === '' ? '' : (int)$age,
@@ -5124,8 +5127,7 @@ class StudentController extends BaseController
             '',
             $this->resolveTemplateCell('sponsor', $row, $registry),
             $this->resolveTemplateCell('current_level', $row, $registry),
-            $this->resolveTemplateCell('regnumber', $row, $registry),
-            $this->resolveTemplateCell('full_name', $row, $registry),
+            $this->resolveTemplateCell('learning_mode', $row, $registry),
         ];
     }
 
