@@ -132,6 +132,8 @@ export default function ApplicationEditModal({
               <input
                 type="date"
                 className="input mt-1"
+                min="1900-01-01"
+                max={new Date().toISOString().slice(0, 10)}
                 value={(formData as any).birthdate || ''}
                 onChange={(e) => handleChange('birthdate' as any, e.target.value)}
               />

@@ -9,7 +9,7 @@ class ValidationHelper
     /**
      * Validate data against a rule set.
      *
-     * Supported rules: required, email, min:n, max:n, numeric, string, boolean, in:a,b,c, regex:/pattern/
+     * Supported rules: required, email, min:n, max:n, numeric, string, boolean, in:a,b,c, regex:/pattern/, date, email_domain
      *
      * @return array  Field-keyed error arrays. Empty = valid.
      */
@@ -42,6 +42,8 @@ class ValidationHelper
                     'boolean'  => static::validateBoolean($value),
                     'in'       => static::validateIn($value, explode(',', $param ?? '')),
                     'regex'    => static::validateRegex($value, $param ?? ''),
+                    'date'     => static::validateDate($value),
+                    'email_domain' => static::validateEmailDomain($value),
                     default    => null,
                 };
 
@@ -147,6 +149,54 @@ class ValidationHelper
         if ($value === null || $value === '') return null;
         if (!preg_match($pattern, (string)$value)) {
             return 'The %s field format is invalid.';
+        }
+        return null;
+    }
+
+    /**
+     * A real calendar date in YYYY-MM-DD with a plausible year. A browser
+     * date input lets the year run to six digits ("19876-01-01"), which
+     * MySQL rejects with a 1292 error instead of a clean 422.
+     */
+    private static function validateDate(mixed $value): ?string
+    {
+        if ($value === null || $value === '') return null;
+        $str = (string)$value;
+        if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $str, $m)
+            || !checkdate((int)$m[2], (int)$m[3], (int)$m[1])
+            || (int)$m[1] < 1900
+            || $str > date('Y-m-d')) {
+            return 'The %s field must be a valid date (YYYY-MM-DD).';
+        }
+        return null;
+    }
+
+    /** Misspellings of the providers applicants actually use, seen bouncing in production. */
+    private const EMAIL_DOMAIN_TYPOS = [
+        'gmail.cm'   => 'gmail.com', 'gmail.co'   => 'gmail.com', 'gmail.om'   => 'gmail.com',
+        'gmail.con'  => 'gmail.com', 'gmail.comm' => 'gmail.com', 'gmail.cpm'  => 'gmail.com',
+        'gmail.vom'  => 'gmail.com', 'gmail.coom' => 'gmail.com', 'gmail.c'    => 'gmail.com',
+        'gmaill.com' => 'gmail.com', 'gmaile.com' => 'gmail.com', 'gmai.com'   => 'gmail.com',
+        'gamil.com'  => 'gmail.com', 'gmial.com'  => 'gmail.com', 'gnail.com'  => 'gmail.com',
+        'gmal.com'   => 'gmail.com', 'gmil.com'   => 'gmail.com', 'gmail.cim'  => 'gmail.com',
+        'yahoo.cm'   => 'yahoo.com', 'yahoo.co'   => 'yahoo.com', 'yahoo.con'  => 'yahoo.com',
+        'yaho.com'   => 'yahoo.com', 'yahooo.com' => 'yahoo.com',
+        'hotmail.cm' => 'hotmail.com', 'hotmail.con' => 'hotmail.com', 'hotmal.com' => 'hotmail.com',
+        'outlook.cm' => 'outlook.com', 'outlook.con' => 'outlook.com',
+    ];
+
+    /**
+     * Reject well-known misspellings of common mail domains. A typo here
+     * means the applicant never receives their OTP or letters, and keeps
+     * retrying against an address the mail server will always bounce.
+     */
+    private static function validateEmailDomain(mixed $value): ?string
+    {
+        if ($value === null || $value === '') return null;
+        $domain = strtolower(substr(strrchr((string)$value, '@') ?: '', 1));
+        $fix = self::EMAIL_DOMAIN_TYPOS[$domain] ?? null;
+        if ($fix !== null) {
+            return "The %s address looks misspelled: did you mean @{$fix}?";
         }
         return null;
     }

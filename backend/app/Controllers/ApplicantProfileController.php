@@ -713,7 +713,10 @@ class ApplicantProfileController extends BaseController
         }
 
         $data = $request->body();
-        // Skip validation of basics here to save lines, assuming frontend validated it
+        $errors = ValidationHelper::validate($data, ['birthdate' => 'date']);
+        if (!empty($errors)) {
+            $this->error($response, 'Validation failed.', 422, $errors);
+        }
         $extendedKeys = [
             'father', 'mother', 'reference_phone', 'marital_status',
             'country_of_residence', 'national_id', 'disability', 'address',
@@ -1226,6 +1229,11 @@ class ApplicantProfileController extends BaseController
         $allowed = ['draft', 'submitted', 'requested_changes'];
         if (!in_array($application['status'], $allowed, true)) {
             $this->error($response, 'Application cannot be edited at this stage.', 422);
+        }
+
+        $errors = ValidationHelper::validate($data, ['birthdate' => 'date']);
+        if (!empty($errors)) {
+            $this->error($response, 'Validation failed.', 422, $errors);
         }
 
         $fields = array_filter([

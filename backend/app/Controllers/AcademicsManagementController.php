@@ -2642,10 +2642,10 @@ class AcademicsManagementController extends BaseController
             'schools' => [
                 'school_name'     => ['required', 'min:3'],
                 'school_descript' => ['string'],
-                'school_address'  => ['string'],
-                'school_phone'    => ['string'],
+                'school_address'  => ['string', 'max:255'],
+                'school_phone'    => ['string', 'max:21'],
                 'school_email'    => ['string'],
-                'url'             => ['string'],
+                'url'             => ['string', 'max:255'],
             ],
             'degrees' => [
                 'code'           => ['required', 'min:2'],
