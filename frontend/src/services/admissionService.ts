@@ -621,6 +621,23 @@ export interface AdmissionBillingOverview {
   auto_enroll:          boolean
 }
 
+export interface AdmissionPaymentStatus {
+  application_id:     number
+  application_number: string
+  applicant_name:     string
+  status:             string
+  billed:             boolean
+  required:           number
+  paid:               number
+  balance:            number
+  sufficient:         boolean
+  message:            string
+  bills: Array<{ id: number; fee_type: string; label: string; due: number; paid: number; balance: number; status: string }>
+  payments: Array<{ kind: 'admission' | 'application_fee'; label: string; amount: number; reference: string; receipt_number: string | null; source: string; paid_at: string }>
+  application_fee: { paid: number }
+  recorded_on_application: { amount: number; transaction_id: string | null; paid_at: string | null; matches_ledger: boolean }
+}
+
 /** Validator side — permission: MANAGE_STUDENT_APPLICATIONS */
 export const admissionBillingService = {
   list: (appId: number, signal?: AbortSignal) =>
@@ -639,6 +656,10 @@ export const admissionBillingService = {
       `/admin/applications/${appId}/bills/${billId}/confirm`,
       data,
     ),
+
+  /** Paid against required, with every payment behind the total. Gates the next step. */
+  paymentStatus: (appId: number, signal?: AbortSignal) =>
+    api.get<AdmissionPaymentStatus>(`/admin/applications/${appId}/payment-status`, {}, signal),
 
   /** `checkout_url` is null when the applicant owes nothing — there is no link to open. */
   checkout: (appId: number, feeType?: string, signal?: AbortSignal) =>

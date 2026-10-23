@@ -2103,8 +2103,37 @@ class FeeController extends BaseController
             $this->error($response, 'No transaction ID on file for this claim.', 422);
         }
 
+        $reference = (string)$app['claimed_transaction_id'];
+        $amount    = (float)($app['payment_amount'] ?? 0);
+        $billing   = new \App\Services\AdmissionBillingService();
+
+        // Book the claimed money onto the open admission bills first. If that
+        // fails the claim stays pending, so finance never approves a payment
+        // that the bills do not show as paid.
+        $booking = null;
+        if ($billing->hasOpenBills($id)) {
+            if ($amount <= 0) {
+                $this->error($response, 'The claimed amount is missing, so it cannot be applied to the admission fees.', 422);
+            }
+
+            $booking = $billing->applyGatewayPayment(
+                $app,
+                $reference,
+                $amount,
+                (string)($app['payment_currency'] ?: 'RWF'),
+                date('Y-m-d H:i:s'),
+                '',
+                'MANUAL',
+                (int)($actor['id'] ?? 0) ?: null
+            );
+
+            if ($booking['status'] === 'error') {
+                $this->error($response, $booking['message'], 422);
+            }
+        }
+
         $this->applicationModel->update($id, [
-            'transaction_id'            => $app['claimed_transaction_id'],
+            'transaction_id'            => $reference,
             'paid_at'                   => date('Y-m-d H:i:s'),
             'payment_verification_status' => 'approved',
             'verified_by'               => $actor['id'] ?? null,
@@ -2114,14 +2143,27 @@ class FeeController extends BaseController
         SystemLogService::log(
             'APPROVE',
             'FINANCE',
-            "Approved applicant payment for application {$app['application_number']} (ID {$id}), transaction {$app['claimed_transaction_id']}.",
+            "Approved applicant payment for application {$app['application_number']} (ID {$id}), transaction {$reference}.",
             $id,
             'student_application',
-            ['transaction_id' => $app['claimed_transaction_id'], 'amount' => $app['payment_amount'] ?? 5000],
+            ['transaction_id' => $reference, 'amount' => $amount, 'booking' => $booking['status'] ?? 'no_open_bills'],
             (array)$actor ?: null
         );
 
-        $this->success($response, null, 'Application payment approved.');
+        // Tell finance where the applicant now stands, so nobody has to open
+        // the bills screen to find out whether the payment landed.
+        $summary = (new \App\Models\ApplicationInvoiceModel())->summaryFor($id);
+        $message = $booking === null
+            ? 'Application payment approved. No admission bills are open for this application.'
+            : 'Application payment approved and booked onto the admission bills. Paid '
+                . number_format($summary['total_paid'], 0) . ' of ' . number_format($summary['total_due'], 0)
+                . ' RWF; balance ' . number_format($summary['balance'], 0) . ' RWF'
+                . ($summary['fully_paid'] ? ' — fully paid.' : '.');
+
+        $this->success($response, [
+            'booking' => $booking['status'] ?? null,
+            'summary' => $summary,
+        ], $message);
     }
 
     /**

@@ -48,6 +48,7 @@ import DocumentPreviewModal from "./DocumentPreviewModal";
 import RequestChangesModal from "./RequestChangesModal";
 import ModalPortal from "@/components/ui/ModalPortal";
 import AdmissionFeesPanel from "@/components/admission/AdmissionFeesPanel";
+import PaymentStatusCard from "@/components/admission/PaymentStatusCard";
 import PaymentHistoryPanel from "@/components/admission/PaymentHistoryPanel";
 import { PERMISSIONS } from "@/constants";
 import { usePermission } from "@/utils/permissions";
@@ -1540,6 +1541,8 @@ export default function ApplicationDetailPage() {
                       </div>
                     </div>
                   </div>
+
+                  <PaymentStatusCard applicationId={appId} />
 
                   {status === ApplicationStatus.OFFER_ACCEPTED && !registrationPaid ? (
                     <div className="space-y-5 text-left">
