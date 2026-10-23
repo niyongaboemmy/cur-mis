@@ -1387,7 +1387,7 @@ function PersonalInfoStep({
               </select>
             </Field>
             <Field label="Date of Birth *" error={errors.birthdate?.message}>
-              <input type="date" className="input" {...form.register("birthdate")} />
+              <input type="date" className="input" min="1900-01-01" max={new Date().toISOString().slice(0, 10)} {...form.register("birthdate")} />
             </Field>
             <Field
               label="National ID / Passport Number *"

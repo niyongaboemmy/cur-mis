@@ -278,6 +278,11 @@ class ApplicationAdminController extends BaseController
 
         $data = $request->body();
 
+        $errors = ValidationHelper::validate($data, ['birthdate' => 'date']);
+        if (!empty($errors)) {
+            $this->error($response, 'Validation failed.', 422, $errors);
+        }
+
         // Whitelist editable fields (prevent updating status, sensitive fields)
         $allowedFields = [
             // Personal Information
