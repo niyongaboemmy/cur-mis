@@ -6,6 +6,7 @@ namespace App\Controllers;
 
 use Core\Request;
 use Core\Response;
+use Core\Database;
 use App\Models\RoomModel;
 use App\Models\DepartmentModel;
 use App\Models\OptionModel;
